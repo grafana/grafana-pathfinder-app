@@ -29,6 +29,8 @@ export enum ParameterizedRequirementPrefix {
   IN_ENVIRONMENT = 'in-environment:',
   MIN_VERSION = 'min-version:',
   SECTION_COMPLETED = 'section-completed:',
+  /** Guide response variable check (e.g., var-policyAccepted:true) */
+  VARIABLE = 'var-',
 }
 
 // Helper type for parameterized requirements

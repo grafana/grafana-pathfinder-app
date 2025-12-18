@@ -12,6 +12,7 @@ import {
   InteractiveMultiStep,
   InteractiveGuided,
   InteractiveQuiz,
+  InputBlock,
   CodeBlock,
   ExpandableTable,
   ImageRenderer,
@@ -27,7 +28,10 @@ import {
   buildDocumentContext,
   AssistantCustomizable,
   AssistantBlockWrapper,
+  TextSelectionState,
 } from '../integrations/assistant-integration';
+import { GuideResponseProvider, useGuideResponses } from '../lib/GuideResponseContext';
+import { substituteVariables } from '../utils/variable-substitution';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
@@ -300,6 +304,69 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     return undefined;
   }, [processedContent, onContentReady]);
 
+  // Derive guide ID from content URL for response storage
+  const guideId = useMemo(() => {
+    // Use the URL path as the guide identifier, or fallback to 'default'
+    try {
+      const url = new URL(content.url, window.location.origin);
+      // Remove leading slash and use path as ID
+      return url.pathname.replace(/^\//, '').replace(/\//g, '-') || 'default';
+    } catch {
+      return content.url || 'default';
+    }
+  }, [content.url]);
+
+  // Expose guide ID globally for requirements checker to access
+  useEffect(() => {
+    try {
+      (window as any).__DocsPluginGuideId = guideId;
+    } catch {
+      // no-op
+    }
+  }, [guideId]);
+
+  return (
+    <GuideResponseProvider guideId={guideId}>
+      <ContentWithVariables
+        processedContent={processedContent}
+        contentType={content.type}
+        baseUrl={content.url}
+        onContentReady={onContentReady}
+        activeRef={activeRef}
+        className={className}
+        selectionState={selectionState}
+        documentContext={documentContext}
+      />
+    </GuideResponseProvider>
+  );
+});
+
+/** Inner component that has access to GuideResponseContext for variable substitution */
+interface ContentWithVariablesProps {
+  processedContent: string;
+  contentType: 'learning-journey' | 'single-doc';
+  baseUrl: string;
+  onContentReady?: () => void;
+  activeRef: React.RefObject<HTMLDivElement>;
+  className?: string;
+  selectionState: TextSelectionState;
+  documentContext: ReturnType<typeof buildDocumentContext>;
+}
+
+function ContentWithVariables({
+  processedContent,
+  contentType,
+  baseUrl,
+  onContentReady,
+  activeRef,
+  className,
+  selectionState,
+  documentContext,
+}: ContentWithVariablesProps) {
+  // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
+  // This avoids breaking JSON structure when user values contain special characters
+  const { responses } = useGuideResponses();
+
   return (
     <div
       ref={activeRef}
@@ -310,16 +377,16 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         flexDirection: 'column',
         minHeight: 0,
         overflow: 'visible',
-        position: 'relative', // Positioning context for assistant popover
+        position: 'relative',
       }}
     >
       <ContentProcessor
         html={processedContent}
-        contentType={content.type}
-        baseUrl={content.url}
+        contentType={contentType}
+        baseUrl={baseUrl}
         onReady={onContentReady}
+        responses={responses}
       />
-      {/* Assistant selection popover - rendered inside container so it scrolls with content */}
       {selectionState.isValid && (
         <AssistantSelectionPopover
           selectedText={selectionState.selectedText}
@@ -330,7 +397,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       )}
     </div>
   );
-});
+}
 
 interface ContentProcessorProps {
   html: string;
@@ -338,9 +405,11 @@ interface ContentProcessorProps {
   theme?: GrafanaTheme2;
   baseUrl: string;
   onReady?: () => void;
+  /** User responses for variable substitution at render time */
+  responses: Record<string, unknown>;
 }
 
-function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProcessorProps) {
+function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Reset interactive counters only when content changes (not on every render)
@@ -423,7 +492,9 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   return (
     <div ref={ref}>
-      {parsedContent.elements.map((element, index) => renderParsedElement(element, `element-${index}`, baseUrl))}
+      {parsedContent.elements.map((element, index) =>
+        renderParsedElement(element, `element-${index}`, baseUrl, responses)
+      )}
     </div>
   );
 }
@@ -533,11 +604,33 @@ function TabContentRenderer({ html }: { html: string }) {
 function renderParsedElement(
   element: ParsedElement | ParsedElement[],
   key: string | number,
-  contentKey?: string
+  contentKey?: string,
+  responses: Record<string, unknown> = {}
 ): React.ReactNode {
   if (Array.isArray(element)) {
-    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`, contentKey));
+    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`, contentKey, responses));
   }
+
+  // Helper to substitute variables in strings at render time
+  // This is safe because it happens AFTER JSON parsing
+  const sub = (value: string | undefined): string | undefined => {
+    if (!value) {
+      return value;
+    }
+    // Cast responses - they may contain any JSON value but substituteVariables
+    // only reads string/boolean/number which it stringifies
+    return substituteVariables(value, responses as Record<string, string | boolean | number>, {
+      preserveUnmatched: true,
+    });
+  };
+
+  // Helper to substitute in string children
+  const renderChildren = (children: Array<ParsedElement | string>) =>
+    children.map((child: ParsedElement | string, childIndex: number) =>
+      typeof child === 'string'
+        ? sub(child)
+        : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses)
+    );
 
   // Handle special cases first
   switch (element.type) {
@@ -558,7 +651,7 @@ function renderParsedElement(
       return (
         <InteractiveSection
           key={key}
-          title={element.props.title || 'Interactive section'}
+          title={sub(element.props.title) || 'Interactive section'}
           isSequence={element.props.isSequence}
           skippable={element.props.skippable}
           requirements={element.props.requirements}
@@ -566,9 +659,7 @@ function renderParsedElement(
           hints={element.props.hints}
           id={element.props.id} // Pass the HTML id attribute
         >
-          {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
-          )}
+          {renderChildren(element.children)}
         </InteractiveSection>
       );
     case 'interactive-step':
@@ -577,7 +668,7 @@ function renderParsedElement(
           key={key}
           targetAction={element.props.targetAction}
           refTarget={element.props.refTarget}
-          targetValue={element.props.targetValue}
+          targetValue={sub(element.props.targetValue)}
           hints={element.props.hints}
           targetComment={element.props.targetComment}
           doIt={element.props.doIt}
@@ -588,11 +679,9 @@ function renderParsedElement(
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
-          title={element.props.title}
+          title={sub(element.props.title)}
         >
-          {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
-          )}
+          {renderChildren(element.children)}
         </InteractiveStep>
       );
     case 'interactive-multi-step':
@@ -605,11 +694,9 @@ function renderParsedElement(
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}
-          title={element.props.title}
+          title={sub(element.props.title)}
         >
-          {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
-          )}
+          {renderChildren(element.children)}
         </InteractiveMultiStep>
       );
     case 'interactive-guided':
@@ -623,18 +710,16 @@ function renderParsedElement(
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}
-          title={element.props.title}
+          title={sub(element.props.title)}
         >
-          {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
-          )}
+          {renderChildren(element.children)}
         </InteractiveGuided>
       );
     case 'quiz-block':
       return (
         <InteractiveQuiz
           key={key}
-          question={element.props.question}
+          question={sub(element.props.question) ?? element.props.question}
           choices={element.props.choices}
           multiSelect={element.props.multiSelect}
           completionMode={element.props.completionMode}
@@ -642,10 +727,27 @@ function renderParsedElement(
           requirements={element.props.requirements}
           skippable={element.props.skippable}
         >
-          {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
-          )}
+          {renderChildren(element.children)}
         </InteractiveQuiz>
+      );
+    case 'input-block':
+      return (
+        <InputBlock
+          key={key}
+          prompt={sub(element.props.prompt) ?? element.props.prompt}
+          inputType={element.props.inputType}
+          variableName={element.props.variableName}
+          placeholder={sub(element.props.placeholder)}
+          checkboxLabel={sub(element.props.checkboxLabel)}
+          defaultValue={element.props.defaultValue}
+          required={element.props.required}
+          pattern={element.props.pattern}
+          validationMessage={sub(element.props.validationMessage)}
+          requirements={element.props.requirements}
+          skippable={element.props.skippable}
+        >
+          {renderChildren(element.children)}
+        </InputBlock>
       );
     case 'video':
       return (
@@ -697,13 +799,11 @@ function renderParsedElement(
         <ExpandableTable
           key={key}
           defaultCollapsed={element.props.defaultCollapsed}
-          toggleText={element.props.toggleText}
+          toggleText={sub(element.props.toggleText)}
           className={element.props.className}
           isCollapseSection={element.props.isCollapseSection}
         >
-          {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
-          )}
+          {renderChildren(element.children)}
         </ExpandableTable>
       );
     case 'assistant-customizable':
@@ -728,9 +828,7 @@ function renderParsedElement(
           contentKey={contentKey || ''}
           surroundingContext={element.props.surroundingContext}
         >
-          {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
-          )}
+          {renderChildren(element.children)}
         </AssistantBlockWrapper>
       );
     case 'raw-html':
@@ -775,7 +873,9 @@ function renderParsedElement(
         if (comp) {
           const children = element.children
             ?.map((child: ParsedElement | string, childIndex: number) =>
-              typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
+              typeof child === 'string'
+                ? sub(child)
+                : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses)
             )
             .filter((child: React.ReactNode) => child !== null);
 
@@ -816,14 +916,15 @@ function renderParsedElement(
         // Void elements should not have children
         return React.createElement(element.type, { key, ...element.props });
       } else {
-        // Regular elements can have children
+        // Regular elements can have children - apply variable substitution to text
         const children = element.children
           ?.map((child: ParsedElement | string, childIndex: number) => {
             if (typeof child === 'string') {
-              // Preserve whitespace in text content
-              return child.length > 0 ? child : null;
+              // Apply variable substitution and preserve whitespace
+              const substituted = sub(child);
+              return substituted && substituted.length > 0 ? substituted : null;
             }
-            return renderParsedElement(child, `${key}-child-${childIndex}`, contentKey);
+            return renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses);
           })
           .filter((child: React.ReactNode) => child !== null);
 

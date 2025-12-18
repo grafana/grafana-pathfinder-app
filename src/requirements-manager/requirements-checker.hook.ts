@@ -393,6 +393,7 @@ export class SequentialRequirementsManager {
   private domObserver?: MutationObserver;
   private lastUrl?: string;
   private navigationUnlisten?: () => void;
+  private guideResponseUnlisten?: () => void;
 
   startDOMMonitoring(): void {
     if (this.domObserver) {
@@ -401,6 +402,9 @@ export class SequentialRequirementsManager {
 
     // Start context monitoring (lightweight EchoSrv listener)
     this.startContextMonitoring();
+
+    // Start guide response monitoring (for variable-based requirements)
+    this.startGuideResponseMonitoring();
 
     // Monitor URL changes for navigation detection
     this.lastUrl = window.location.href;
@@ -438,6 +442,44 @@ export class SequentialRequirementsManager {
       attributes: true,
       attributeFilter: ['data-testid', 'class'],
     });
+  }
+
+  /**
+   * Start listening for guide response changes (variable updates)
+   * Triggers requirements re-evaluation when input block values change
+   */
+  private startGuideResponseMonitoring(): void {
+    if (this.guideResponseUnlisten) {
+      return; // Already monitoring
+    }
+
+    const handleResponseChange = () => {
+      // Debounce to allow multiple rapid changes to settle
+      const timeoutManager = TimeoutManager.getInstance();
+      timeoutManager.setDebounced(
+        'guide-response-recheck',
+        () => {
+          this.recheckNextSteps();
+        },
+        100 // Quick response for variable changes
+      );
+    };
+
+    window.addEventListener('guide-response-changed', handleResponseChange);
+
+    this.guideResponseUnlisten = () => {
+      window.removeEventListener('guide-response-changed', handleResponseChange);
+    };
+  }
+
+  /**
+   * Stop listening for guide response changes
+   */
+  private stopGuideResponseMonitoring(): void {
+    if (this.guideResponseUnlisten) {
+      this.guideResponseUnlisten();
+      this.guideResponseUnlisten = undefined;
+    }
   }
 
   private startURLMonitoring(): void {
@@ -482,6 +524,9 @@ export class SequentialRequirementsManager {
     // Stop context monitoring
     this.stopContextMonitoring();
 
+    // Stop guide response monitoring
+    this.stopGuideResponseMonitoring();
+
     if (this.domObserver) {
       this.domObserver.disconnect();
       this.domObserver = undefined;
@@ -502,6 +547,7 @@ export class SequentialRequirementsManager {
     timeoutManager.clear('dom-check-throttle');
     timeoutManager.clear('url-check-throttle');
     timeoutManager.clear('context-recheck');
+    timeoutManager.clear('guide-response-recheck');
     timeoutManager.clear('watch-next-step-interval');
   }
 }
