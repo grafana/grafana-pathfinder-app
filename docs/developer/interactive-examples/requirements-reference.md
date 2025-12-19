@@ -42,6 +42,18 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 
 **Explanation when failed**: "The target element must be visible and available on the page."
 
+### `form-valid`
+
+**Purpose**: Ensures the current form on the page passes validation. Used to prevent proceeding until form inputs are valid.
+
+```html
+<li class="interactive" data-targetaction="button" data-reftarget="Save" data-requirements="form-valid">
+  Save your configuration.
+</li>
+```
+
+**Explanation when failed**: "Please fix form validation errors before proceeding."
+
 ## Page and Navigation Requirements
 
 ### `on-page:<path>`
@@ -69,6 +81,18 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 
 ## User Authentication and Permissions
 
+### `is-logged-in`
+
+**Purpose**: Ensures the user is authenticated (logged in to Grafana).
+
+```html
+<li class="interactive" data-targetaction="navigate" data-reftarget="/dashboards" data-requirements="is-logged-in">
+  View your dashboards.
+</li>
+```
+
+**Explanation when failed**: "You must be logged in to perform this action."
+
 ### `is-admin`
 
 **Purpose**: Requires the user to have Grafana admin privileges.
@@ -80,6 +104,18 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 ```
 
 **Explanation when failed**: "You need administrator privileges to perform this action. Please log in as an admin user."
+
+### `is-editor`
+
+**Purpose**: Requires the user to have at least Editor role in the current organization.
+
+```html
+<li class="interactive" data-targetaction="button" data-reftarget="Save dashboard" data-requirements="is-editor">
+  Save your dashboard changes.
+</li>
+```
+
+**Explanation when failed**: "You need Editor permissions or higher to perform this action."
 
 ### `has-role:<role>`
 
@@ -218,6 +254,18 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 
 ## Dashboard and Content Requirements
 
+### `dashboard-exists`
+
+**Purpose**: Ensures at least one dashboard exists in the current organization.
+
+```html
+<li class="interactive" data-targetaction="navigate" data-reftarget="/dashboards" data-requirements="dashboard-exists">
+  View your existing dashboards.
+</li>
+```
+
+**Explanation when failed**: "At least one dashboard must exist. Create a dashboard first."
+
 ### `has-dashboard-named:<title>`
 
 **Purpose**: Ensures a dashboard with a specific title exists.
@@ -306,6 +354,46 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 
 **Explanation when failed**: "This feature requires Grafana version {version} or higher."
 
+## Variable Requirements
+
+### `var-<variableName>:<expectedValue>`
+
+**Purpose**: Checks if a guide response variable has a specific value. Variables are set by [Input blocks](./json-guide-format.md#input-block).
+
+```json
+{
+  "type": "section",
+  "title": "Advanced configuration",
+  "requirements": ["var-termsAccepted:true"],
+  "blocks": [...]
+}
+```
+
+**Syntax:** `var-{variableName}:{expectedValue}`
+
+**Examples**:
+
+- `var-termsAccepted:true` - Boolean variable must be `true`
+- `var-experienceLevel:advanced` - Text variable must equal `"advanced"`
+- `var-datasourceName:prometheus` - Variable must match specific value
+
+**Explanation when failed**: "The variable '{variableName}' must be set to '{expectedValue}'."
+
+**Use cases:**
+
+```json
+{
+  "type": "conditional",
+  "conditions": ["var-isProd:true"],
+  "whenTrue": [{ "type": "markdown", "content": "Production settings enabled." }],
+  "whenFalse": [{ "type": "markdown", "content": "Development mode active." }]
+}
+```
+
+See [Variable Substitution](./json-guide-format.md#variable-substitution) for more details on using variables.
+
+---
+
 ## Sequential and Dependency Requirements
 
 ### `section-completed:<sectionId>`
@@ -393,10 +481,11 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 
 ### Syntax rules
 
-- Fixed types (`is-admin`, `exists-reftarget`, etc.) cannot have arguments
-- Parameterized types (`has-datasource:X`, `on-page:/path`) require an argument after the colon
+- Fixed types (`is-admin`, `is-logged-in`, `is-editor`, `exists-reftarget`, `navmenu-open`, `has-datasources`, `dashboard-exists`, `form-valid`) cannot have arguments
+- Parameterized types (`has-datasource:X`, `on-page:/path`, `var-name:value`) require an argument after the colon
 - Path arguments (e.g., `on-page:`) should start with `/`
 - Version arguments (e.g., `min-version:`) should be semver format (e.g., `11.0.0`)
+- Variable arguments (e.g., `var-`) use format `var-{variableName}:{expectedValue}`
 
 ### Common errors
 
@@ -407,6 +496,8 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 | `has-datasource`     | Unknown type           | `has-datasource:X` or `has-datasources` |
 | `on-page:dashboard`  | Invalid path format    | `on-page:/dashboard`                    |
 | `min-version:latest` | Invalid version format | `min-version:11.0.0`                    |
+| `var-myVar`          | Missing value          | `var-myVar:true`                        |
+| `var-:value`         | Missing variable name  | `var-variableName:value`                |
 
 ## Objectives system
 
