@@ -260,13 +260,13 @@ See [guided-interactions.md](./guided-interactions.md) for detailed documentatio
 
 ## Choosing the right type
 
-| Need                                    | Action/Block Type |
-| --------------------------------------- | ----------------- |
-| Click by CSS selector                   | `highlight`       |
-| Click by button text                    | `button`          |
-| Enter text/select values                | `formfill`        |
-| Route change                            | `navigate`        |
-| Hover to reveal hidden UI               | `hover`           |
+| Need                                    | Action/Block Type                    |
+| --------------------------------------- | ------------------------------------ |
+| Click by CSS selector                   | `highlight`                          |
+| Click by button text                    | `button`                             |
+| Enter text/select values                | `formfill`                           |
+| Route change                            | `navigate`                           |
+| Hover to reveal hidden UI               | `hover`                              |
 | Teach a linear section                  | `section` (JSON) / `sequence` (HTML) |
-| Bundle micro-steps into one (automated) | `multistep`       |
-| User performs steps manually            | `guided`          |
+| Bundle micro-steps into one (automated) | `multistep`                          |
+| User performs steps manually            | `guided`                             |

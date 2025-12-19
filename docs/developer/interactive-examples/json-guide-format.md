@@ -173,23 +173,23 @@ A single interactive step with "Show me" and "Do it" buttons.
 }
 ```
 
-| Field           | Type     | Required | Default | Description                                        |
-| --------------- | -------- | -------- | ------- | -------------------------------------------------- |
-| `action`        | string   | ✅       | —       | Action type (see below)                            |
-| `reftarget`     | string   | ✅       | —       | CSS selector or button text                        |
-| `content`       | string   | ✅       | —       | Markdown description shown to user                 |
+| Field           | Type     | Required | Default | Description                                              |
+| --------------- | -------- | -------- | ------- | -------------------------------------------------------- |
+| `action`        | string   | ✅       | —       | Action type (see below)                                  |
+| `reftarget`     | string   | ✅       | —       | CSS selector or button text                              |
+| `content`       | string   | ✅       | —       | Markdown description shown to user                       |
 | `targetvalue`   | string   | ❌       | —       | Value for `formfill` actions (supports regex, see below) |
-| `tooltip`       | string   | ❌       | —       | Tooltip shown on highlight (supports markdown)     |
-| `requirements`  | string[] | ❌       | —       | Conditions that must be met                        |
-| `objectives`    | string[] | ❌       | —       | Objectives marked complete after this step         |
-| `skippable`     | boolean  | ❌       | `false` | Allow skipping if requirements fail                |
-| `hint`          | string   | ❌       | —       | Hint shown when step cannot be completed           |
-| `formHint`      | string   | ❌       | —       | Hint shown when form validation fails (formfill only) |
-| `validateInput` | boolean  | ❌       | `false` | Require input to match `targetvalue` pattern       |
-| `showMe`        | boolean  | ❌       | `true`  | Show the "Show me" button                          |
-| `doIt`          | boolean  | ❌       | `true`  | Show the "Do it" button                            |
-| `completeEarly` | boolean  | ❌       | `false` | Mark step complete BEFORE action executes          |
-| `verify`        | string   | ❌       | —       | Post-action verification (e.g., `"on-page:/path"`) |
+| `tooltip`       | string   | ❌       | —       | Tooltip shown on highlight (supports markdown)           |
+| `requirements`  | string[] | ❌       | —       | Conditions that must be met                              |
+| `objectives`    | string[] | ❌       | —       | Objectives marked complete after this step               |
+| `skippable`     | boolean  | ❌       | `false` | Allow skipping if requirements fail                      |
+| `hint`          | string   | ❌       | —       | Hint shown when step cannot be completed                 |
+| `formHint`      | string   | ❌       | —       | Hint shown when form validation fails (formfill only)    |
+| `validateInput` | boolean  | ❌       | `false` | Require input to match `targetvalue` pattern             |
+| `showMe`        | boolean  | ❌       | `true`  | Show the "Show me" button                                |
+| `doIt`          | boolean  | ❌       | `true`  | Show the "Do it" button                                  |
+| `completeEarly` | boolean  | ❌       | `false` | Mark step complete BEFORE action executes                |
+| `verify`        | string   | ❌       | —       | Post-action verification (e.g., `"on-page:/path"`)       |
 
 **Action Types:**
 
@@ -220,15 +220,16 @@ By default, any non-empty input completes a `formfill` step. Use `validateInput:
 **Regex Pattern Support:**
 
 When `validateInput` is `true`, `targetvalue` is treated as a regex pattern if it:
+
 - Starts with `^` or `$`, or
 - Is enclosed in `/pattern/` syntax
 
-| `targetvalue`              | Matches                                      |
-| -------------------------- | -------------------------------------------- |
-| `prometheus`               | Exact string "prometheus"                    |
-| `^https?://`               | Strings starting with http:// or https://    |
-| `/^[a-z]+$/`               | Lowercase letters only                       |
-| `rate\\(.*\\[5m\\]\\)`     | Pattern containing "rate(...[5m])"           |
+| `targetvalue`          | Matches                                   |
+| ---------------------- | ----------------------------------------- |
+| `prometheus`           | Exact string "prometheus"                 |
+| `^https?://`           | Strings starting with http:// or https:// |
+| `/^[a-z]+$/`           | Lowercase letters only                    |
+| `rate\\(.*\\[5m\\]\\)` | Pattern containing "rate(...[5m])"        |
 
 **Button Visibility Control:**
 
@@ -347,15 +348,15 @@ Shows different content based on runtime condition evaluation. Conditions use th
 }
 ```
 
-| Field                   | Type                        | Required | Default    | Description                                              |
-| ----------------------- | --------------------------- | -------- | ---------- | -------------------------------------------------------- |
-| `conditions`            | string[]                    | ✅       | —          | Conditions to evaluate (uses requirement syntax)         |
-| `whenTrue`              | JsonBlock[]                 | ✅       | —          | Blocks shown when ALL conditions pass                    |
-| `whenFalse`             | JsonBlock[]                 | ✅       | —          | Blocks shown when ANY condition fails                    |
-| `description`           | string                      | ❌       | —          | Author note (not shown to users)                         |
-| `display`               | `"inline"` \| `"section"`   | ❌       | `"inline"` | Display mode for the branch content                      |
-| `whenTrueSectionConfig` | ConditionalSectionConfig    | ❌       | —          | Section config for the pass branch (when display is section) |
-| `whenFalseSectionConfig`| ConditionalSectionConfig    | ❌       | —          | Section config for the fail branch (when display is section) |
+| Field                    | Type                      | Required | Default    | Description                                                  |
+| ------------------------ | ------------------------- | -------- | ---------- | ------------------------------------------------------------ |
+| `conditions`             | string[]                  | ✅       | —          | Conditions to evaluate (uses requirement syntax)             |
+| `whenTrue`               | JsonBlock[]               | ✅       | —          | Blocks shown when ALL conditions pass                        |
+| `whenFalse`              | JsonBlock[]               | ✅       | —          | Blocks shown when ANY condition fails                        |
+| `description`            | string                    | ❌       | —          | Author note (not shown to users)                             |
+| `display`                | `"inline"` \| `"section"` | ❌       | `"inline"` | Display mode for the branch content                          |
+| `whenTrueSectionConfig`  | ConditionalSectionConfig  | ❌       | —          | Section config for the pass branch (when display is section) |
+| `whenFalseSectionConfig` | ConditionalSectionConfig  | ❌       | —          | Section config for the fail branch (when display is section) |
 
 **Display Modes:**
 
@@ -400,11 +401,11 @@ When `display` is `"section"`, each branch can have its own section configuratio
 
 **ConditionalSectionConfig:**
 
-| Field          | Type     | Description                                |
-| -------------- | -------- | ------------------------------------------ |
-| `title`        | string   | Section title for this branch              |
-| `requirements` | string[] | Requirements that must be met              |
-| `objectives`   | string[] | Objectives tracked for completion          |
+| Field          | Type     | Description                       |
+| -------------- | -------- | --------------------------------- |
+| `title`        | string   | Section title for this branch     |
+| `requirements` | string[] | Requirements that must be met     |
+| `objectives`   | string[] | Objectives tracked for completion |
 
 **Multiple Conditions:**
 
@@ -579,19 +580,19 @@ Collects user responses that can be stored as variables and used elsewhere in th
 }
 ```
 
-| Field               | Type                      | Required | Default | Description                                          |
-| ------------------- | ------------------------- | -------- | ------- | ---------------------------------------------------- |
-| `prompt`            | string                    | ✅       | —       | Question/instruction shown to user (supports markdown) |
-| `inputType`         | `"text"` \| `"boolean"`   | ✅       | —       | Input type: text field or checkbox                   |
-| `variableName`      | string                    | ✅       | —       | Identifier for storing/referencing the response      |
-| `placeholder`       | string                    | ❌       | —       | Placeholder text for text input                      |
-| `checkboxLabel`     | string                    | ❌       | —       | Label for boolean checkbox                           |
-| `defaultValue`      | string \| boolean         | ❌       | —       | Default value for the input                          |
-| `required`          | boolean                   | ❌       | `false` | Whether a response is required to proceed            |
-| `pattern`           | string                    | ❌       | —       | Regex pattern for text validation                    |
-| `validationMessage` | string                    | ❌       | —       | Custom message shown when validation fails           |
-| `requirements`      | string[]                  | ❌       | —       | Requirements that must be met for this input         |
-| `skippable`         | boolean                   | ❌       | `false` | Whether this input can be skipped                    |
+| Field               | Type                    | Required | Default | Description                                            |
+| ------------------- | ----------------------- | -------- | ------- | ------------------------------------------------------ |
+| `prompt`            | string                  | ✅       | —       | Question/instruction shown to user (supports markdown) |
+| `inputType`         | `"text"` \| `"boolean"` | ✅       | —       | Input type: text field or checkbox                     |
+| `variableName`      | string                  | ✅       | —       | Identifier for storing/referencing the response        |
+| `placeholder`       | string                  | ❌       | —       | Placeholder text for text input                        |
+| `checkboxLabel`     | string                  | ❌       | —       | Label for boolean checkbox                             |
+| `defaultValue`      | string \| boolean       | ❌       | —       | Default value for the input                            |
+| `required`          | boolean                 | ❌       | `false` | Whether a response is required to proceed              |
+| `pattern`           | string                  | ❌       | —       | Regex pattern for text validation                      |
+| `validationMessage` | string                  | ❌       | —       | Custom message shown when validation fails             |
+| `requirements`      | string[]                | ❌       | —       | Requirements that must be met for this input           |
+| `skippable`         | boolean                 | ❌       | `false` | Whether this input can be skipped                      |
 
 **Text Input Example:**
 
@@ -651,7 +652,7 @@ See the [Variable Substitution](#variable-substitution) section for more details
 
 Wraps child blocks with AI-powered customization capabilities. Each child block gets a "Customize" button that uses Grafana Assistant to adapt content to the user's actual environment (datasources, metrics, etc.).
 
-```json
+````json
 {
   "type": "assistant",
   "assistantId": "prom-queries",
@@ -670,28 +671,28 @@ Wraps child blocks with AI-powered customization capabilities. Each child block 
     }
   ]
 }
-```
+````
 
-| Field           | Type                                        | Required | Description                                              |
-| --------------- | ------------------------------------------- | -------- | -------------------------------------------------------- |
-| `assistantId`   | string                                      | ❌       | Unique ID prefix for wrapped elements (auto-generated if not provided) |
-| `assistantType` | `"query"` \| `"config"` \| `"code"` \| `"text"` | ❌       | Type of content - affects AI prompts and customization behavior |
-| `blocks`        | JsonBlock[]                                 | ✅       | Child blocks to wrap with assistant functionality        |
+| Field           | Type                                            | Required | Description                                                            |
+| --------------- | ----------------------------------------------- | -------- | ---------------------------------------------------------------------- |
+| `assistantId`   | string                                          | ❌       | Unique ID prefix for wrapped elements (auto-generated if not provided) |
+| `assistantType` | `"query"` \| `"config"` \| `"code"` \| `"text"` | ❌       | Type of content - affects AI prompts and customization behavior        |
+| `blocks`        | JsonBlock[]                                     | ✅       | Child blocks to wrap with assistant functionality                      |
 
 **Assistant Types:**
 
-| Type     | Use Case                                          |
-| -------- | ------------------------------------------------- |
-| `query`  | PromQL, LogQL, or other query language content    |
-| `config` | Configuration snippets (YAML, JSON, etc.)         |
-| `code`   | Code examples that may need adaptation            |
-| `text`   | General text content                              |
+| Type     | Use Case                                       |
+| -------- | ---------------------------------------------- |
+| `query`  | PromQL, LogQL, or other query language content |
+| `config` | Configuration snippets (YAML, JSON, etc.)      |
+| `code`   | Code examples that may need adaptation         |
+| `text`   | General text content                           |
 
 **AssistantProps on Individual Blocks:**
 
 Instead of using a wrapper block, you can enable AI customization directly on `markdown` and `interactive` blocks:
 
-```json
+````json
 {
   "type": "markdown",
   "content": "Try this query:\n\n```promql\nsum(rate(http_requests_total[5m])) by (status_code)\n```",
@@ -699,13 +700,13 @@ Instead of using a wrapper block, you can enable AI customization directly on `m
   "assistantId": "http-query-example",
   "assistantType": "query"
 }
-```
+````
 
-| Field              | Type                                        | Description                                              |
-| ------------------ | ------------------------------------------- | -------------------------------------------------------- |
-| `assistantEnabled` | boolean                                     | Enable AI customization for this block                   |
-| `assistantId`      | string                                      | Unique ID for localStorage persistence (auto-generated if not provided) |
-| `assistantType`    | `"query"` \| `"config"` \| `"code"` \| `"text"` | Type of content for AI prompts                           |
+| Field              | Type                                            | Description                                                             |
+| ------------------ | ----------------------------------------------- | ----------------------------------------------------------------------- |
+| `assistantEnabled` | boolean                                         | Enable AI customization for this block                                  |
+| `assistantId`      | string                                          | Unique ID for localStorage persistence (auto-generated if not provided) |
+| `assistantType`    | `"query"` \| `"config"` \| `"code"` \| `"text"` | Type of content for AI prompts                                          |
 
 When `assistantEnabled` is `true`, the block displays a "Customize" button that invokes Grafana Assistant to adapt the content based on the user's configured datasources and environment.
 
@@ -713,20 +714,20 @@ When `assistantEnabled` is `true`, the block displays a "Customize" button that 
 
 ### Block Types Summary
 
-| Block Type    | Category    | Description                                              |
-| ------------- | ----------- | -------------------------------------------------------- |
-| `markdown`    | Content     | Formatted text with headings, lists, code, tables        |
-| `html`        | Content     | Raw HTML for migration/custom content                    |
-| `image`       | Content     | Embedded images with optional dimensions                 |
-| `video`       | Content     | YouTube or native HTML5 video embeds                     |
-| `section`     | Structure   | Container for grouped interactive steps with "Do Section" |
-| `conditional` | Structure   | Shows different content based on runtime conditions      |
-| `assistant`   | Structure   | Wraps blocks with AI-powered customization               |
+| Block Type    | Category    | Description                                                       |
+| ------------- | ----------- | ----------------------------------------------------------------- |
+| `markdown`    | Content     | Formatted text with headings, lists, code, tables                 |
+| `html`        | Content     | Raw HTML for migration/custom content                             |
+| `image`       | Content     | Embedded images with optional dimensions                          |
+| `video`       | Content     | YouTube or native HTML5 video embeds                              |
+| `section`     | Structure   | Container for grouped interactive steps with "Do Section"         |
+| `conditional` | Structure   | Shows different content based on runtime conditions               |
+| `assistant`   | Structure   | Wraps blocks with AI-powered customization                        |
 | `interactive` | Interactive | Single-action step (highlight, button, formfill, navigate, hover) |
-| `multistep`   | Interactive | Automated sequence of actions                            |
-| `guided`      | Interactive | User-performed sequence with detection                   |
-| `quiz`        | Assessment  | Knowledge check with single/multiple choice              |
-| `input`       | Assessment  | Collects user responses as variables                     |
+| `multistep`   | Interactive | Automated sequence of actions                                     |
+| `guided`      | Interactive | User-performed sequence with detection                            |
+| `quiz`        | Assessment  | Knowledge check with single/multiple choice                       |
+| `input`       | Assessment  | Collects user responses as variables                              |
 
 ---
 
@@ -748,17 +749,17 @@ Steps used in `multistep` and `guided` blocks share this structure:
 }
 ```
 
-| Field           | Type     | Required | Default | Description                                              |
-| --------------- | -------- | -------- | ------- | -------------------------------------------------------- |
+| Field           | Type     | Required | Default | Description                                                         |
+| --------------- | -------- | -------- | ------- | ------------------------------------------------------------------- |
 | `action`        | string   | ✅       | —       | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover` |
-| `reftarget`     | string   | ✅       | —       | CSS selector or button text                              |
-| `targetvalue`   | string   | ❌       | —       | Value for `formfill` actions (supports regex patterns)   |
-| `requirements`  | string[] | ❌       | —       | Requirements for this specific step                      |
-| `tooltip`       | string   | ❌       | —       | Tooltip shown during multistep execution                 |
-| `description`   | string   | ❌       | —       | Description shown in guided steps panel                  |
-| `skippable`     | boolean  | ❌       | `false` | Whether this step can be skipped (guided only)           |
-| `formHint`      | string   | ❌       | —       | Hint shown when form validation fails                    |
-| `validateInput` | boolean  | ❌       | `false` | Require input to match `targetvalue` pattern             |
+| `reftarget`     | string   | ✅       | —       | CSS selector or button text                                         |
+| `targetvalue`   | string   | ❌       | —       | Value for `formfill` actions (supports regex patterns)              |
+| `requirements`  | string[] | ❌       | —       | Requirements for this specific step                                 |
+| `tooltip`       | string   | ❌       | —       | Tooltip shown during multistep execution                            |
+| `description`   | string   | ❌       | —       | Description shown in guided steps panel                             |
+| `skippable`     | boolean  | ❌       | `false` | Whether this step can be skipped (guided only)                      |
+| `formHint`      | string   | ❌       | —       | Hint shown when form validation fails                               |
+| `validateInput` | boolean  | ❌       | `false` | Require input to match `targetvalue` pattern                        |
 
 **Note:** The `tooltip` property is primarily used in `multistep` blocks (shown during automated execution), while `description` is used in `guided` blocks (shown in the steps panel as instructions for the user).
 
@@ -812,11 +813,11 @@ Use the `var-` prefix in requirements to gate content based on user responses:
 
 **Syntax:** `var-{variableName}:{expectedValue}`
 
-| Example                        | Description                                      |
-| ------------------------------ | ------------------------------------------------ |
-| `var-termsAccepted:true`       | Boolean variable must be `true`                  |
-| `var-experienceLevel:advanced` | Text variable must equal `"advanced"`            |
-| `var-datasourceName:prometheus`| Variable must match specific value               |
+| Example                         | Description                           |
+| ------------------------------- | ------------------------------------- |
+| `var-termsAccepted:true`        | Boolean variable must be `true`       |
+| `var-experienceLevel:advanced`  | Text variable must equal `"advanced"` |
+| `var-datasourceName:prometheus` | Variable must match specific value    |
 
 ### Complete Variable Flow Example
 

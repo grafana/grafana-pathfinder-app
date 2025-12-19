@@ -385,12 +385,8 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 {
   "type": "conditional",
   "conditions": ["var-isProd:true"],
-  "whenTrue": [
-    { "type": "markdown", "content": "Production settings enabled." }
-  ],
-  "whenFalse": [
-    { "type": "markdown", "content": "Development mode active." }
-  ]
+  "whenTrue": [{ "type": "markdown", "content": "Production settings enabled." }],
+  "whenFalse": [{ "type": "markdown", "content": "Development mode active." }]
 }
 ```
 
