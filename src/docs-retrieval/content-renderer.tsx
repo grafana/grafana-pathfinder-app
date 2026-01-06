@@ -696,6 +696,8 @@ function renderParsedElement(
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
           title={sub(element.props.title)}
+          lazyRender={element.props.lazyRender}
+          scrollContainer={element.props.scrollContainer}
         >
           {renderChildren(element.children)}
         </InteractiveStep>

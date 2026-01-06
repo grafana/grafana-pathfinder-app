@@ -20,6 +20,75 @@ import {
 import { testIds } from '../../../components/testIds';
 import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../integrations/assistant-integration';
 import { CodeBlock } from '../docs/code-block';
+import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
+
+/**
+ * Result type for lazy scroll execution wrapper
+ */
+interface LazyScrollResult {
+  success: boolean;
+  error?: string;
+  elementFound: boolean;
+}
+
+/**
+ * Wrapper that attempts lazy scroll discovery before executing an action.
+ * If element exists, executes immediately. If not and lazyRender is enabled,
+ * scrolls to find element first, then executes.
+ *
+ * @param refTarget - CSS selector for target element
+ * @param lazyRender - Whether lazy scroll fallback is enabled
+ * @param scrollContainer - CSS selector for scroll container
+ * @param action - The action to execute once element is found
+ * @returns Result indicating success/failure
+ */
+async function executeWithLazyScroll(
+  refTarget: string,
+  lazyRender: boolean,
+  scrollContainer: string | undefined,
+  action: () => Promise<void>
+): Promise<LazyScrollResult> {
+  // Resolve grafana: selectors
+  const resolvedSelector = resolveSelector(refTarget);
+
+  // First check if element already exists
+  const existingResult = querySelectorAllEnhanced(resolvedSelector);
+  const elementExists = existingResult.elements.length > 0;
+
+  if (elementExists) {
+    // Element found - execute action immediately
+    await action();
+    return { success: true, elementFound: true };
+  }
+
+  // Element not found - try lazy scroll if enabled
+  if (lazyRender) {
+    console.log(`[LazyScroll] Element not found, attempting scroll discovery: ${refTarget}`);
+    const foundElement = await scrollUntilElementFound(refTarget, {
+      scrollContainerSelector: scrollContainer,
+    });
+
+    if (foundElement) {
+      // Element discovered after scroll - execute action
+      await action();
+      return { success: true, elementFound: true };
+    }
+
+    // Scroll completed but element still not found
+    return {
+      success: false,
+      elementFound: false,
+      error: 'Element not found after scrolling dashboard',
+    };
+  }
+
+  // lazyRender not enabled and element not found
+  return {
+    success: false,
+    elementFound: false,
+    error: `Element not found: ${refTarget}`,
+  };
+}
 
 /**
  * Map datasource type to syntax highlighting language
@@ -61,6 +130,8 @@ export const InteractiveStep = forwardRef<
       completeEarly = false, // Default to false - only mark early if explicitly set
       formHint, // Hint shown when form validation fails (for formfill with regex patterns)
       validateInput = false, // Default to false - only validate form input if explicitly enabled
+      lazyRender = false, // Default to false - only enable progressive scroll discovery if explicitly set
+      scrollContainer, // CSS selector for scroll container when lazyRender is enabled
       showMeText,
       title,
       description,
@@ -110,6 +181,8 @@ export const InteractiveStep = forwardRef<
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
+    const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
+    const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
 
     // Check for customized value from parent AssistantBlockWrapper context
     const assistantBlockValue = useAssistantBlockValue();
@@ -164,6 +237,8 @@ export const InteractiveStep = forwardRef<
       isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
       skippable,
       stepIndex, // Pass document-wide step index for sequence awareness
+      lazyRender, // Enable progressive scroll discovery for virtualized containers
+      scrollContainer, // CSS selector for scroll container
     });
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
@@ -175,14 +250,17 @@ export const InteractiveStep = forwardRef<
 
     // Determine if step should show action buttons
     // Section steps require both eligibility AND requirements to be met
+    // When lazyRender is enabled, allow buttons even if element isn't found yet (lazy scroll fallback)
+    const lazyScrollAvailable = lazyRender && checker.fixType === 'lazy-scroll';
     const finalIsEnabled = isPartOfSection
       ? isEligibleForChecking && !isCompleted && checker.isEnabled && checker.completionReason !== 'objectives'
-      : checker.isEnabled;
+      : checker.isEnabled || lazyScrollAvailable;
 
     // Determine when to show explanation text and what text to show
+    // Don't show blocking explanation when lazy scroll fallback is available
     const shouldShowExplanation = isPartOfSection
       ? !isEligibleForChecking || (isEligibleForChecking && requirements && !checker.isEnabled)
-      : !checker.isEnabled;
+      : !checker.isEnabled && !lazyScrollAvailable;
 
     // Choose appropriate explanation text based on step state
     const explanationText = isPartOfSection
@@ -472,6 +550,10 @@ export const InteractiveStep = forwardRef<
         return;
       }
 
+      // Clear any previous lazy scroll error and track this action for retry
+      setLazyScrollError(null);
+      setLastAttemptedAction('show');
+
       // Track "Show me" button click analytics
       reportAppInteraction(
         UserInteraction.ShowMeButtonClick,
@@ -488,7 +570,16 @@ export const InteractiveStep = forwardRef<
 
       setIsShowRunning(true);
       try {
-        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
+        // Use lazy scroll wrapper to ensure element is found before executing
+        const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, async () => {
+          await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
+        });
+
+        if (!result.success) {
+          // Lazy scroll failed to find element
+          setLazyScrollError(result.error || 'Element not found');
+          return;
+        }
 
         // If doIt is false, mark as completed after showing (like the old highlight-only behavior)
         if (!doIt) {
@@ -506,6 +597,7 @@ export const InteractiveStep = forwardRef<
         }
       } catch (error) {
         console.error('Interactive show action failed:', error);
+        setLazyScrollError(error instanceof Error ? error.message : 'Action failed');
       } finally {
         setIsShowRunning(false);
       }
@@ -519,6 +611,8 @@ export const InteractiveStep = forwardRef<
       isShowRunning,
       isCompletedWithObjectives,
       finalIsEnabled,
+      lazyRender,
+      scrollContainer,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -531,6 +625,10 @@ export const InteractiveStep = forwardRef<
       if (disabled || isDoRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
       }
+
+      // Clear any previous lazy scroll error and track this action for retry
+      setLazyScrollError(null);
+      setLastAttemptedAction('do');
 
       // Track "Do it" button click analytics
       reportAppInteraction(
@@ -548,9 +646,18 @@ export const InteractiveStep = forwardRef<
 
       setIsDoRunning(true);
       try {
-        await executeStep();
+        // Use lazy scroll wrapper to ensure element is found before executing
+        const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, async () => {
+          await executeStep();
+        });
+
+        if (!result.success) {
+          // Lazy scroll failed to find element
+          setLazyScrollError(result.error || 'Element not found');
+        }
       } catch (error) {
         console.error('Interactive do action failed:', error);
+        setLazyScrollError(error instanceof Error ? error.message : 'Action failed');
       } finally {
         setIsDoRunning(false);
       }
@@ -559,9 +666,11 @@ export const InteractiveStep = forwardRef<
       isDoRunning,
       isCompletedWithObjectives,
       finalIsEnabled,
+      lazyRender,
+      scrollContainer,
+      refTarget,
       executeStep,
       targetAction,
-      refTarget,
       currentTargetValue,
       analyticsStepMeta,
     ]);
@@ -593,6 +702,17 @@ export const InteractiveStep = forwardRef<
     // Intentionally excluding to prevent circular dependencies:
     // - setIsLocallyCompleted, setPostVerifyError: stable React setters
     // - checker.resetStep: including 'checker' would cause infinite re-creation since checker depends on component state
+
+    // Handle retry for lazy scroll failures
+    const handleLazyScrollRetry = useCallback(() => {
+      setLazyScrollError(null);
+      // Re-attempt the last action
+      if (lastAttemptedAction === 'show') {
+        handleShowAction();
+      } else if (lastAttemptedAction === 'do') {
+        handleDoAction();
+      }
+    }, [lastAttemptedAction, handleShowAction, handleDoAction]);
 
     const getActionDescription = () => {
       switch (targetAction) {
@@ -763,6 +883,20 @@ export const InteractiveStep = forwardRef<
             data-testid={testIds.interactive.errorMessage(renderedStepId)}
           >
             {postVerifyError}
+          </div>
+        )}
+
+        {/* Lazy scroll failure message with retry */}
+        {!isCompletedWithObjectives && lazyScrollError && (
+          <div className="interactive-step-lazy-error" data-testid={`lazy-scroll-error-${renderedStepId}`}>
+            <span className="interactive-lazy-error-text">{lazyScrollError}</span>
+            <button
+              className="interactive-lazy-retry-btn"
+              onClick={handleLazyScrollRetry}
+              disabled={isShowRunning || isDoRunning}
+            >
+              Retry
+            </button>
           </div>
         )}
 

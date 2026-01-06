@@ -26,6 +26,7 @@ interface BaseStepState {
   canSkip: boolean;
   fixType: string | undefined;
   targetHref: string | undefined;
+  scrollContainer: string | undefined; // For lazy-scroll fixes
   retryCount: number;
   maxRetries: number;
   isRetrying: boolean;
@@ -52,6 +53,7 @@ export function createCheckingState(skippable: boolean): BaseStepState {
     canSkip: skippable,
     fixType: undefined,
     targetHref: undefined,
+    scrollContainer: undefined,
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
@@ -77,6 +79,7 @@ export function createObjectivesCompletedState(skippable: boolean): BaseStepStat
     canSkip: skippable,
     fixType: undefined,
     targetHref: undefined,
+    scrollContainer: undefined,
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
@@ -105,6 +108,7 @@ export function createBlockedState(_stepId: string): BaseStepState {
     canSkip: false, // Never allow skipping for sequential dependencies
     fixType: undefined,
     targetHref: undefined,
+    scrollContainer: undefined,
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
@@ -118,25 +122,42 @@ export function createBlockedState(_stepId: string): BaseStepState {
 export function createRequirementsState(
   requirementsResult: {
     pass: boolean;
-    error?: Array<{ error?: string; canFix?: boolean; fixType?: string; targetHref?: string }>;
+    error?: Array<{
+      requirement?: string;
+      pass?: boolean;
+      error?: string;
+      canFix?: boolean;
+      fixType?: string;
+      targetHref?: string;
+      scrollContainer?: string;
+    }>;
   },
   requirements: string,
   hints: string | undefined,
   skippable: boolean
 ): BaseStepState {
+  // Filter to only failed requirements for clearer user messaging
+  const failedChecks = requirementsResult.error?.filter((e) => e.pass === false) ?? [];
+  const firstFailedRequirement = failedChecks[0]?.requirement;
+  const failedErrors = failedChecks
+    .map((e) => e.error)
+    .filter(Boolean)
+    .join(', ');
+
   const explanation = requirementsResult.pass
     ? undefined
     : getRequirementExplanation(
-        requirements,
+        firstFailedRequirement || requirements, // Use specific failing requirement for better message
         hints,
-        requirementsResult.error?.map((e) => e.error).join(', '),
+        failedErrors, // Only show errors from failed checks
         skippable
       );
 
   // Check for fixable errors and extract fix information
-  const fixableError = requirementsResult.error?.find((e) => e.canFix);
+  const fixableError = failedChecks.find((e) => e.canFix);
   const fixType = fixableError?.fixType || (requirements.includes('navmenu-open') ? 'navigation' : undefined);
   const targetHref = fixableError?.targetHref;
+  const scrollContainer = fixableError?.scrollContainer;
   const canFixRequirement = !!fixableError || requirements.includes('navmenu-open');
 
   return {
@@ -146,11 +167,12 @@ export function createRequirementsState(
     isSkipped: false,
     completionReason: 'none',
     explanation,
-    error: requirementsResult.pass ? undefined : requirementsResult.error?.map((e) => e.error).join(', '),
+    error: requirementsResult.pass ? undefined : failedErrors || undefined,
     canFixRequirement,
     canSkip: skippable,
     fixType,
     targetHref,
+    scrollContainer,
     retryCount: 0, // Reset retry count after completion
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
@@ -173,6 +195,7 @@ export function createEnabledState(skippable: boolean): BaseStepState {
     canSkip: skippable,
     fixType: undefined,
     targetHref: undefined,
+    scrollContainer: undefined,
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
@@ -201,6 +224,7 @@ export function createErrorState(
     canSkip: skippable,
     fixType: undefined,
     targetHref: undefined,
+    scrollContainer: undefined,
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,

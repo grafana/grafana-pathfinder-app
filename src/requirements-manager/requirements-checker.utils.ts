@@ -30,6 +30,8 @@ export interface CheckResultError {
   canFix?: boolean;
   fixType?: string;
   targetHref?: string;
+  /** Scroll container selector for lazy-scroll fixes */
+  scrollContainer?: string;
 }
 
 export interface RequirementsCheckOptions {
@@ -40,6 +42,10 @@ export interface RequirementsCheckOptions {
   stepId?: string;
   retryCount?: number; // Current retry attempt (internal use)
   maxRetries?: number; // Maximum retry attempts (defaults to config)
+  /** Enable progressive scroll discovery for virtualized containers */
+  lazyRender?: boolean;
+  /** CSS selector for scroll container when lazyRender is enabled */
+  scrollContainer?: string;
 }
 
 /**
@@ -51,10 +57,14 @@ type CheckMode = 'pre' | 'post';
 interface CheckContext {
   targetAction?: string;
   refTarget?: string;
+  /** Enable progressive scroll discovery for virtualized containers */
+  lazyRender?: boolean;
+  /** CSS selector for scroll container when lazyRender is enabled */
+  scrollContainer?: string;
 }
 
 async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
-  const { targetAction = 'button', refTarget = '' } = ctx;
+  const { targetAction = 'button', refTarget = '', lazyRender, scrollContainer } = ctx;
 
   // Type-safe validation with helpful developer feedback
   if (!isValidRequirement(check)) {
@@ -72,7 +82,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
 
   // DOM-dependent checks
   if (check === 'exists-reftarget') {
-    return reftargetExistsCheck(refTarget, targetAction);
+    return reftargetExistsCheck(refTarget, targetAction, { lazyRender, scrollContainer });
   }
   if (check === 'navmenu-open') {
     return navmenuOpenCheck();
@@ -196,6 +206,8 @@ async function executeChecksWithRetry(
     refTarget = '',
     retryCount = 0,
     maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+    lazyRender,
+    scrollContainer,
   } = options;
 
   if (!requirements) {
@@ -210,7 +222,7 @@ async function executeChecksWithRetry(
   const errorTimeoutKey = `${checkType}-retry-error-${requirements}-${retryCount}`;
 
   try {
-    const result = await runUnifiedChecks(requirements, mode, { targetAction, refTarget });
+    const result = await runUnifiedChecks(requirements, mode, { targetAction, refTarget, lazyRender, scrollContainer });
 
     // If the check passes, return success
     if (result.pass) {

@@ -38,6 +38,8 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
   formHint?: string; // Hint shown when form validation fails (for formfill with regex patterns)
   validateInput?: boolean; // Enable strict validation for formfill (require targetValue match). Default: false
+  lazyRender?: boolean; // Enable progressive scroll discovery for virtualized containers
+  scrollContainer?: string; // CSS selector for scroll container when lazyRender is enabled
   title?: string;
   description?: string;
   children?: React.ReactNode;

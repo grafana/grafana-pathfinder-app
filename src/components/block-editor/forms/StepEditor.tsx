@@ -233,6 +233,8 @@ export function StepEditor({
   const [newDescription, setNewDescription] = useState('');
   const [newFormHint, setNewFormHint] = useState('');
   const [newValidateInput, setNewValidateInput] = useState(false);
+  const [newLazyRender, setNewLazyRender] = useState(false);
+  const [newScrollContainer, setNewScrollContainer] = useState('');
 
   // Edit step form state
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
@@ -243,6 +245,8 @@ export function StepEditor({
   const [editDescription, setEditDescription] = useState('');
   const [editFormHint, setEditFormHint] = useState('');
   const [editValidateInput, setEditValidateInput] = useState(false);
+  const [editLazyRender, setEditLazyRender] = useState(false);
+  const [editScrollContainer, setEditScrollContainer] = useState('');
 
   // Drag/drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -281,6 +285,8 @@ export function StepEditor({
       setEditTargetvalue(step.targetvalue ?? '');
       setEditFormHint(step.formHint ?? '');
       setEditValidateInput(step.validateInput ?? false);
+      setEditLazyRender(step.lazyRender ?? false);
+      setEditScrollContainer(step.scrollContainer ?? '');
       if (isGuided) {
         setEditDescription(step.description ?? '');
         setEditTooltip('');
@@ -309,6 +315,8 @@ export function StepEditor({
       ...(isGuided
         ? editDescription.trim() && { description: editDescription.trim() }
         : editTooltip.trim() && { tooltip: editTooltip.trim() }),
+      ...(editLazyRender && { lazyRender: true }),
+      ...(editLazyRender && editScrollContainer.trim() && { scrollContainer: editScrollContainer.trim() }),
     };
 
     const newSteps = [...steps];
@@ -325,6 +333,8 @@ export function StepEditor({
     editValidateInput,
     editTooltip,
     editDescription,
+    editLazyRender,
+    editScrollContainer,
     isGuided,
     steps,
     onChange,
@@ -364,6 +374,8 @@ export function StepEditor({
       ...(isGuided
         ? newDescription.trim() && { description: newDescription.trim() }
         : newTooltip.trim() && { tooltip: newTooltip.trim() }),
+      ...(newLazyRender && { lazyRender: true }),
+      ...(newLazyRender && newScrollContainer.trim() && { scrollContainer: newScrollContainer.trim() }),
     };
 
     onChange([...steps, step]);
@@ -373,6 +385,8 @@ export function StepEditor({
     setNewDescription('');
     setNewFormHint('');
     setNewValidateInput(false);
+    setNewLazyRender(false);
+    setNewScrollContainer('');
     setShowAddForm(false);
   }, [
     newAction,
@@ -380,6 +394,8 @@ export function StepEditor({
     newTargetvalue,
     newFormHint,
     newValidateInput,
+    newLazyRender,
+    newScrollContainer,
     newTooltip,
     newDescription,
     isGuided,
@@ -579,6 +595,35 @@ export function StepEditor({
                     </Field>
                   )}
 
+                  <Checkbox
+                    label="Lazy render (element in virtualized container)"
+                    checked={editLazyRender}
+                    onChange={(e) => setEditLazyRender(e.currentTarget.checked)}
+                  />
+                  {editLazyRender && (
+                    <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
+                      <div className={styles.addStepRow}>
+                        <Input
+                          value={editScrollContainer}
+                          onChange={(e) => setEditScrollContainer(e.currentTarget.value)}
+                          placeholder=".scrollbar-view (default)"
+                          style={{ flex: 1 }}
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            onPickerModeChange?.(true, (selector: string) => {
+                              setEditScrollContainer(selector);
+                            });
+                          }}
+                          icon="crosshair"
+                        >
+                          Pick
+                        </Button>
+                      </div>
+                    </Field>
+                  )}
+
                   <div className={styles.addStepRow}>
                     <Button variant="secondary" onClick={handleCancelEdit}>
                       Cancel
@@ -733,6 +778,35 @@ export function StepEditor({
                 onChange={(e) => setNewTooltip(e.currentTarget.value)}
                 placeholder="Tooltip shown during this step"
               />
+            </Field>
+          )}
+
+          <Checkbox
+            label="Lazy render (element in virtualized container)"
+            checked={newLazyRender}
+            onChange={(e) => setNewLazyRender(e.currentTarget.checked)}
+          />
+          {newLazyRender && (
+            <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
+              <div className={styles.addStepRow}>
+                <Input
+                  value={newScrollContainer}
+                  onChange={(e) => setNewScrollContainer(e.currentTarget.value)}
+                  placeholder=".scrollbar-view (default)"
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    onPickerModeChange?.(true, (selector: string) => {
+                      setNewScrollContainer(selector);
+                    });
+                  }}
+                  icon="crosshair"
+                >
+                  Pick
+                </Button>
+              </div>
             </Field>
           )}
 

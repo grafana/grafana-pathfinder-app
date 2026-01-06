@@ -62,6 +62,8 @@ export function InteractiveBlockForm({
   const [doIt, setDoIt] = useState(initial?.doIt ?? true);
   const [completeEarly, setCompleteEarly] = useState(initial?.completeEarly ?? false);
   const [verify, setVerify] = useState(initial?.verify ?? '');
+  const [lazyRender, setLazyRender] = useState(initial?.lazyRender ?? false);
+  const [scrollContainer, setScrollContainer] = useState(initial?.scrollContainer ?? '');
 
   // AI customization state
   const [assistantEnabled, setAssistantEnabled] = useState(initial?.assistantEnabled ?? false);
@@ -111,6 +113,9 @@ export function InteractiveBlockForm({
         ...(!doIt && { doIt: false }),
         ...(completeEarly && { completeEarly }),
         ...(verify.trim() && { verify: verify.trim() }),
+        // Lazy render support for virtualized containers
+        ...(lazyRender && { lazyRender }),
+        ...(lazyRender && scrollContainer.trim() && { scrollContainer: scrollContainer.trim() }),
         // AI customization props
         ...(assistantEnabled && { assistantEnabled }),
         ...(assistantEnabled && assistantId.trim() && { assistantId: assistantId.trim() }),
@@ -133,6 +138,8 @@ export function InteractiveBlockForm({
       doIt,
       completeEarly,
       verify,
+      lazyRender,
+      scrollContainer,
       assistantEnabled,
       assistantId,
       assistantType,
@@ -283,8 +290,40 @@ export function InteractiveBlockForm({
             checked={completeEarly}
             onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
           />
+          <Checkbox
+            label="Lazy render (element is in virtualized/lazy-loaded container)"
+            checked={lazyRender}
+            onChange={(e) => setLazyRender(e.currentTarget.checked)}
+          />
         </Stack>
       </div>
+
+      {/* Lazy Render Scroll Container */}
+      {lazyRender && (
+        <Field label="Scroll container" description="CSS selector for the scroll container (default: .scrollbar-view)">
+          <div className={styles.selectorField}>
+            <Input
+              value={scrollContainer}
+              onChange={(e) => setScrollContainer(e.currentTarget.value)}
+              placeholder=".scrollbar-view"
+              className={styles.selectorInput}
+            />
+            <Button
+              variant="secondary"
+              onClick={() => {
+                onPickerModeChange?.(true, (selector: string) => {
+                  setScrollContainer(selector);
+                });
+              }}
+              type="button"
+              icon="crosshair"
+              tooltip="Click an element to capture its selector"
+            >
+              Pick Element
+            </Button>
+          </div>
+        </Field>
+      )}
 
       {/* Hint (for skippable) */}
       {skippable && (

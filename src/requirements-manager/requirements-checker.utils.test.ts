@@ -101,7 +101,10 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(mockReftargetExistsCheck).toHaveBeenCalledWith('button[data-testid="test-button"]', 'button');
+      expect(mockReftargetExistsCheck).toHaveBeenCalledWith('button[data-testid="test-button"]', 'button', {
+        lazyRender: undefined,
+        scrollContainer: undefined,
+      });
     });
   });
 
