@@ -229,11 +229,7 @@ function formatStepForWebsite(step: JsonStep, indent: string, isGuided = false):
   return output;
 }
 
-function formatConditionalBlock(
-  block: JsonConditionalBlock,
-  includeComments: boolean,
-  indentLevel: number
-): string {
+function formatConditionalBlock(block: JsonConditionalBlock, includeComments: boolean, indentLevel: number): string {
   const indent = '  '.repeat(indentLevel);
   let output = '';
 
@@ -375,10 +371,7 @@ function extractYouTubeId(url: string): string {
 /**
  * Copy guide as website shortcodes to clipboard
  */
-export async function copyGuideForWebsite(
-  guide: JsonGuide,
-  options?: GuideWebsiteExportOptions
-): Promise<boolean> {
+export async function copyGuideForWebsite(guide: JsonGuide, options?: GuideWebsiteExportOptions): Promise<boolean> {
   try {
     const output = exportGuideForWebsite(guide, options);
     await navigator.clipboard.writeText(output);
