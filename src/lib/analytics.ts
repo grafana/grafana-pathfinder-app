@@ -8,7 +8,7 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security';
-import { getExperimentConfig, FeatureFlags } from '../utils/openfeature';
+import { getExperimentConfig, FeatureFlags, type ExperimentConfig } from '../utils/openfeature';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -85,6 +85,23 @@ const createInteractionName = (type: UserInteraction): string => {
 interface ExperimentAnalyticsEntry {
   flag: string;
   [key: string]: unknown; // Allow any additional properties from GOFF
+}
+
+/**
+ * Gets the current experiment variant for analytics enrichment
+ *
+ * Returns the simple variant string ('excluded' | 'control' | 'treatment')
+ * for easy filtering and segmentation in analytics dashboards.
+ *
+ * @returns The experiment variant or null if unavailable
+ */
+function getExperimentVariant(): ExperimentConfig['variant'] | null {
+  try {
+    const config = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+    return config.variant;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -169,11 +186,14 @@ export function reportAppInteraction(
     // (those events already contain the flag info in their properties)
     const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
     const experiments = shouldEnrichWithExperiments ? getExperimentsForAnalytics() : null;
+    const variant = shouldEnrichWithExperiments ? getExperimentVariant() : null;
 
     // Add global attributes to all events
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
       ...properties,
+      // Include variant for easy filtering/segmentation in analytics
+      ...(variant && { variant }),
       // Include experiments array if available (null check for graceful degradation)
       ...(experiments && { experiments }),
     };

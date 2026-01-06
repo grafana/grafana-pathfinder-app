@@ -223,14 +223,20 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     const shouldOpenNow = isTreatment ? matchingPattern !== null : !hasAutoOpened;
 
     // Auto-open immediately if not on onboarding flow
+    // Skip if sidebar is already in use by another plugin (e.g., Assistant)
+    // Don't mark sessionStorage when skipping - try again next session
     if (shouldOpenNow && !isOnboardingFlow) {
-      if (isTreatment && matchingPattern) {
-        markPageAutoOpened(hostname, matchingPattern);
-      } else if (!isTreatment) {
-        sessionStorage.setItem(sessionKey, 'true');
+      if (isSidebarAlreadyInUse()) {
+        console.log('[Pathfinder] Skipping auto-open: sidebar already in use by another plugin');
+      } else {
+        if (isTreatment && matchingPattern) {
+          markPageAutoOpened(hostname, matchingPattern);
+        } else if (!isTreatment) {
+          sessionStorage.setItem(sessionKey, 'true');
+        }
+        sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open');
+        attemptAutoOpen(200);
       }
-      sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open');
-      attemptAutoOpen(200);
     }
 
     // If user starts on onboarding flow, listen for navigation away from it
@@ -247,16 +253,21 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         const shouldOpenAfterOnboarding = isTreatment ? newMatchingPattern !== null : !alreadyOpened;
 
         // If we've left onboarding and should open, do it now
+        // Skip if sidebar is already in use - don't mark sessionStorage, try next session
         if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
-          if (isTreatment && newMatchingPattern) {
-            markPageAutoOpened(hostname, newMatchingPattern);
-          } else if (!isTreatment) {
-            sessionStorage.setItem(sessionKey, 'true');
+          if (isSidebarAlreadyInUse()) {
+            console.log('[Pathfinder] Skipping auto-open after onboarding: sidebar already in use');
+          } else {
+            if (isTreatment && newMatchingPattern) {
+              markPageAutoOpened(hostname, newMatchingPattern);
+            } else if (!isTreatment) {
+              sessionStorage.setItem(sessionKey, 'true');
+            }
+            sidebarState.setPendingOpenSource(
+              isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding'
+            );
+            attemptAutoOpen(500);
           }
-          sidebarState.setPendingOpenSource(
-            isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding'
-          );
-          attemptAutoOpen(500);
         }
       };
 
@@ -287,10 +298,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       // Check if new path matches a target page that hasn't auto-opened yet
       const matchingPattern = shouldAutoOpenForPath(hostname, targetPages, newPath);
 
+      // Skip if sidebar is already in use - don't mark as opened, try next session
       if (matchingPattern) {
-        markPageAutoOpened(hostname, matchingPattern);
-        sidebarState.setPendingOpenSource('experiment_treatment_navigation');
-        attemptAutoOpen(300);
+        if (isSidebarAlreadyInUse()) {
+          console.log('[Pathfinder] Skipping auto-open on navigation: sidebar already in use');
+        } else {
+          markPageAutoOpened(hostname, matchingPattern);
+          sidebarState.setPendingOpenSource('experiment_treatment_navigation');
+          attemptAutoOpen(300);
+        }
       }
     };
 
@@ -563,6 +579,21 @@ const findDocPage = function (param: string): DocPage | null {
   }
 
   return null;
+};
+
+/**
+ * Checks if any extension sidebar is already open/docked in Grafana
+ * This prevents Pathfinder from forcefully taking over when another plugin (like Assistant) is in use
+ *
+ * @returns true if a sidebar is already docked/open, false otherwise
+ */
+const isSidebarAlreadyInUse = (): boolean => {
+  try {
+    return localStorage.getItem('grafana.navigation.extensionSidebarDocked') !== null;
+  } catch {
+    // localStorage might be unavailable in some contexts
+    return false;
+  }
 };
 
 /**
