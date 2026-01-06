@@ -15,17 +15,6 @@ export interface SelectorInfo {
   contextStrategy?: string;
 }
 
-export interface TestResult {
-  success: boolean;
-  message: string;
-  matchCount?: number;
-}
-
-export interface ProgressInfo {
-  current: number;
-  total: number;
-}
-
 export interface ExtractedSelector {
   selector: string;
   action: string;

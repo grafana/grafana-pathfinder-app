@@ -1,8 +1,8 @@
 /**
  * Shared utility for generating and validating selectors from DOM events
  *
- * This utility extracts the common selector generation logic used by both
- * useSelectorCapture and useActionRecorder hooks, reducing code duplication.
+ * This utility extracts the common selector generation logic used by
+ * the useActionRecorder hook and block editor components.
  */
 
 import { generateBestSelector, getSelectorInfo, validateAndCleanSelector } from '../../lib/dom';
