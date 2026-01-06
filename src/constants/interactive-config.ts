@@ -11,7 +11,7 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     // Scoped heartbeat recheck for fragile prerequisites (optional, off by default)
     heartbeat: {
       enabled: true,
-      intervalMs: 2000,
+      intervalMs: 3000,
       watchWindowMs: 10000,
       onlyForFragile: true,
     },

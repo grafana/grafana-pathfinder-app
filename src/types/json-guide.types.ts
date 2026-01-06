@@ -254,6 +254,12 @@ export interface JsonInteractiveBlock extends AssistantProps {
   completeEarly?: boolean;
   /** Post-action verification requirement (e.g., "on-page:/dashboard") */
   verify?: string;
+
+  // ---- Lazy Render Support ----
+  /** Enable progressive scroll discovery for virtualized containers (default: false) */
+  lazyRender?: boolean;
+  /** CSS selector for the scroll container when lazyRender is enabled (default: ".scrollbar-view") */
+  scrollContainer?: string;
 }
 
 /**
@@ -323,6 +329,10 @@ export interface JsonStep {
   formHint?: string;
   /** Enable strict validation for formfill (require targetvalue match). Default: false (any non-empty input) */
   validateInput?: boolean;
+  /** Enable progressive scroll discovery for virtualized containers (default: false) */
+  lazyRender?: boolean;
+  /** CSS selector for the scroll container when lazyRender is enabled */
+  scrollContainer?: string;
 }
 
 // ============ QUIZ BLOCK ============

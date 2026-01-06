@@ -857,6 +857,9 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
         // Execution control
         completeEarly: block.completeEarly ?? false,
         postVerify: block.verify,
+        // Lazy render support for virtualized containers
+        lazyRender: block.lazyRender ?? false,
+        scrollContainer: block.scrollContainer,
       },
       children,
     },

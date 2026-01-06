@@ -18,6 +18,10 @@ export interface InteractiveElementData {
   objectives?: string;
   skippable?: boolean; // Whether this step can be skipped if requirements fail
 
+  // Lazy render support for virtualized containers
+  lazyRender?: boolean; // Enable progressive scroll discovery
+  scrollContainer?: string; // CSS selector for scroll container (default: ".scrollbar-view")
+
   // Element context
   tagName: string;
   className?: string;

@@ -421,3 +421,137 @@ describe('navmenuOpenCheck', () => {
     });
   });
 });
+
+describe('reftargetExistsCheck with lazyRender option', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body = document.createElement('body');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    if (document.body) {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('should return lazy-scroll fixType when lazyRender is enabled and element not found', async () => {
+    const result = await reftargetExistsCheck('#non-existent', 'highlight', {
+      lazyRender: true,
+      scrollContainer: '.my-scroll-container',
+    });
+
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: 'Element not found - scroll dashboard to discover',
+      canFix: true,
+      fixType: 'lazy-scroll',
+      scrollContainer: '.my-scroll-container',
+    });
+  });
+
+  it('should use default scroll container when not specified', async () => {
+    const result = await reftargetExistsCheck('#non-existent', 'highlight', {
+      lazyRender: true,
+    });
+
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: 'Element not found - scroll dashboard to discover',
+      canFix: true,
+      fixType: 'lazy-scroll',
+      scrollContainer: '.scrollbar-view',
+    });
+  });
+
+  it('should pass normally when element exists even with lazyRender enabled', async () => {
+    const div = document.createElement('div');
+    div.id = 'test-element';
+    container.appendChild(div);
+
+    const result = await reftargetExistsCheck('#test-element', 'highlight', {
+      lazyRender: true,
+    });
+
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: true,
+    });
+  });
+
+  it('should return standard error when lazyRender is false', async () => {
+    const result = await reftargetExistsCheck('#non-existent', 'highlight', {
+      lazyRender: false,
+    });
+
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: 'Element not found: #non-existent',
+    });
+  });
+});
+
+describe('scrollUntilElementFound', () => {
+  let container: HTMLDivElement;
+  let scrollContainer: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    scrollContainer = document.createElement('div');
+    scrollContainer.className = 'scrollbar-view';
+    // Mock scroll properties
+    Object.defineProperty(scrollContainer, 'scrollTop', { value: 0, writable: true });
+    Object.defineProperty(scrollContainer, 'clientHeight', { value: 500, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 2000, writable: true });
+    scrollContainer.scrollBy = jest.fn();
+
+    document.body = document.createElement('body');
+    document.body.appendChild(scrollContainer);
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    if (document.body) {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('should return element immediately if it already exists', async () => {
+    const div = document.createElement('div');
+    div.id = 'existing-element';
+    container.appendChild(div);
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = await scrollUntilElementFound('#existing-element');
+
+    expect(result).toBe(div);
+    expect(scrollContainer.scrollBy).not.toHaveBeenCalled();
+  });
+
+  it('should return null when scroll container not found', async () => {
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = await scrollUntilElementFound('#non-existent', {
+      scrollContainerSelector: '.non-existent-container',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('should return null when element not found after scrolling', async () => {
+    // Make it reach bottom quickly
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 500, writable: true });
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = await scrollUntilElementFound('#non-existent', {
+      maxScrollAttempts: 2,
+      waitTime: 10,
+    });
+
+    expect(result).toBeNull();
+  });
+});

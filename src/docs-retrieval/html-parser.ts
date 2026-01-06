@@ -1015,6 +1015,9 @@ export function parseHTMLToComponents(
               hints: el.getAttribute('data-hint'), // Fixed: now captures data-hint
               // Post-action verification (author-provided)
               postVerify: el.getAttribute('data-verify') || undefined,
+              // Lazy render support for virtualized containers
+              lazyRender: el.getAttribute('data-lazyrender') === 'true', // Default to false
+              scrollContainer: el.getAttribute('data-scrollcontainer') || undefined,
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,
             },

@@ -21,6 +21,8 @@ export interface UseStepCheckerProps {
   isEligibleForChecking: boolean;
   skippable?: boolean; // Whether this step can be skipped if requirements fail
   stepIndex?: number; // Document-wide step index for sequence awareness
+  lazyRender?: boolean; // Enable progressive scroll discovery for virtualized containers
+  scrollContainer?: string; // CSS selector for scroll container when lazyRender is enabled
 }
 
 /**
@@ -44,6 +46,7 @@ export interface UseStepCheckerReturn {
   error?: string;
   canFixRequirement?: boolean; // Whether the requirement can be automatically fixed
   canSkip?: boolean; // Whether this step can be skipped
+  fixType?: string; // Type of fix available (e.g., 'lazy-scroll', 'navigation', 'location')
 
   // Actions
   checkStep: () => Promise<void>;

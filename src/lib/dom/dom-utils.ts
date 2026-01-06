@@ -41,6 +41,8 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
         'data-requirements',
         'data-objectives',
         'data-skippable',
+        'data-lazyrender',
+        'data-scrollcontainer',
       ].includes(attr.name)
     ) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
@@ -55,6 +57,8 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const requirements = element.getAttribute('data-requirements') || undefined;
   const objectives = element.getAttribute('data-objectives') || undefined;
   const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
+  const lazyRender = element.getAttribute('data-lazyrender') === 'true'; // Default to false
+  const scrollContainer = element.getAttribute('data-scrollcontainer') || undefined;
   const textContent = element.textContent?.trim() || undefined;
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
@@ -69,6 +73,8 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     requirements: requirements,
     objectives: objectives,
     skippable: skippable,
+    lazyRender: lazyRender || undefined,
+    scrollContainer: scrollContainer,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,
@@ -133,15 +139,27 @@ export function resetValueTracker(targetElement: HTMLElement): void {
 }
 
 /**
+ * Options for lazy render support in reftargetExistsCheck
+ */
+export interface ReftargetExistsOptions {
+  /** Enable progressive scroll discovery for virtualized containers */
+  lazyRender?: boolean;
+  /** CSS selector for scroll container when lazyRender is enabled */
+  scrollContainer?: string;
+}
+
+/**
  * Check if a target element exists based on the action type
  * For button actions, checks if buttons with matching text exist
  * For other actions, checks if the CSS selector matches an element
  * Includes retry logic for elements that might not exist immediately
  * Enhanced with parent section expansion detection for navigation menu items
+ * Supports lazy render fallback for virtualized containers (e.g., Grafana dashboards)
  */
 export async function reftargetExistsCheck(
   reftarget: string,
-  targetAction: string
+  targetAction: string,
+  options?: ReftargetExistsOptions
 ): Promise<{
   requirement: string;
   pass: boolean;
@@ -149,6 +167,7 @@ export async function reftargetExistsCheck(
   canFix?: boolean;
   fixType?: string;
   targetHref?: string;
+  scrollContainer?: string;
 }> {
   // Resolve grafana: selectors first
   const resolvedSelector = resolveSelector(reftarget);
@@ -244,11 +263,100 @@ export async function reftargetExistsCheck(
     };
   }
 
+  // If lazyRender is enabled, return a fixable error that allows scroll discovery
+  if (options?.lazyRender) {
+    return {
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: 'Element not found - scroll dashboard to discover',
+      canFix: true,
+      fixType: 'lazy-scroll',
+      scrollContainer: options.scrollContainer || DEFAULT_DASHBOARD_SCROLL_CONTAINER,
+    };
+  }
+
   return {
     requirement: 'exists-reftarget',
     pass: false,
     error: `Element not found: ${reftarget}`,
   };
+}
+
+/**
+ * Default scroll container for Grafana dashboards
+ */
+const DEFAULT_DASHBOARD_SCROLL_CONTAINER = '.scrollbar-view';
+
+/**
+ * Progressive scroll discovery configuration
+ */
+export interface LazyScrollOptions {
+  scrollContainerSelector?: string;
+  maxScrollAttempts?: number;
+  scrollIncrement?: number;
+  waitTime?: number;
+}
+
+/**
+ * Progressively scroll a container to discover lazy-loaded elements.
+ * Useful for Grafana dashboards that virtualize panels off-screen.
+ *
+ * @param selector - CSS selector for the element to find
+ * @param options - Configuration for scroll behavior
+ * @returns Promise resolving to the element if found, null otherwise
+ */
+export async function scrollUntilElementFound(
+  selector: string,
+  options: LazyScrollOptions = {}
+): Promise<HTMLElement | null> {
+  const {
+    scrollContainerSelector = DEFAULT_DASHBOARD_SCROLL_CONTAINER,
+    maxScrollAttempts = 15, // More attempts since we scroll smaller increments
+    scrollIncrement = 400, // Smaller increments for smoother scrolling
+    waitTime = 350, // Longer wait to allow smooth scroll animation to complete
+  } = options;
+
+  // Find the scroll container
+  const scrollContainer = document.querySelector(scrollContainerSelector);
+  if (!scrollContainer || !(scrollContainer instanceof HTMLElement)) {
+    console.warn(`[LazyScroll] Scroll container not found: ${scrollContainerSelector}`);
+    return null;
+  }
+
+  // Resolve grafana: selectors
+  const resolvedSelector = resolveSelector(selector);
+
+  // First check if element already exists
+  // Use querySelectorAllEnhanced to support custom selectors like :nth-match(), :contains(), etc.
+  const existingResult = querySelectorAllEnhanced(resolvedSelector);
+  if (existingResult.elements.length > 0 && existingResult.elements[0] instanceof HTMLElement) {
+    return existingResult.elements[0];
+  }
+
+  for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
+    // Scroll down with smooth animation for better UX
+    scrollContainer.scrollBy({ top: scrollIncrement, behavior: 'smooth' });
+
+    // Wait for smooth scroll animation + lazy render to kick in
+    await new Promise((resolve) => setTimeout(resolve, waitTime));
+
+    // Check if element now exists using enhanced selector
+    const result = querySelectorAllEnhanced(resolvedSelector);
+    if (result.elements.length > 0 && result.elements[0] instanceof HTMLElement) {
+      console.log(`[LazyScroll] Found element after ${attempt + 1} scroll(s): ${selector}`);
+      return result.elements[0];
+    }
+
+    // Check if we've reached the bottom
+    const atBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10;
+
+    if (atBottom) {
+      console.log(`[LazyScroll] Reached bottom without finding element: ${selector}`);
+      break;
+    }
+  }
+
+  return null;
 }
 
 /**

@@ -76,6 +76,8 @@ export const JsonStepSchema = z
     skippable: z.boolean().optional(),
     formHint: z.string().optional(),
     validateInput: z.boolean().optional(),
+    lazyRender: z.boolean().optional(),
+    scrollContainer: z.string().optional(),
   })
   .refine(
     (step) => {
@@ -170,6 +172,8 @@ export const JsonInteractiveBlockSchema = z
     doIt: z.boolean().optional(),
     completeEarly: z.boolean().optional(),
     verify: z.string().optional(),
+    lazyRender: z.boolean().optional(),
+    scrollContainer: z.string().optional(),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
   })
@@ -426,6 +430,8 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'formHint',
     'validateInput',
+    'lazyRender',
+    'scrollContainer',
   ]),
   _choice: new Set(['id', 'text', 'correct', 'hint']),
   markdown: new Set(['type', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
@@ -449,6 +455,8 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'doIt',
     'completeEarly',
     'verify',
+    'lazyRender',
+    'scrollContainer',
     'assistantEnabled',
     'assistantId',
     'assistantType',

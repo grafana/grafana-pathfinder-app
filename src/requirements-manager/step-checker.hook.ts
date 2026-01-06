@@ -44,6 +44,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     isEligibleForChecking = true,
     skippable = false,
     stepIndex,
+    lazyRender,
+    scrollContainer,
   } = props;
   const [state, setState] = useState({
     isEnabled: false,
@@ -57,6 +59,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     canSkip: skippable,
     fixType: undefined as string | undefined,
     targetHref: undefined as string | undefined,
+    scrollContainer: undefined as string | undefined, // For lazy-scroll fixes
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
     isRetrying: false,
@@ -127,6 +130,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             stepId: optionsStepId,
             retryCount: 0, // Disable internal retry since we're handling it here
             maxRetries: 0,
+            lazyRender,
+            scrollContainer,
           });
 
           // REACT: Check mounted before continuing recursive calls (R4)
@@ -184,7 +189,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
       return attemptCheck(0);
     },
-    [] // checkRequirements is an imported function and doesn't need to be in dependencies
+    [lazyRender, scrollContainer] // checkRequirements is an imported function but lazyRender/scrollContainer are props
   );
 
   // Manager integration for state propagation
@@ -279,6 +284,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           targetAction: targetAction || 'button',
           refTarget: refTarget || stepId,
           stepId,
+          lazyRender,
+          scrollContainer,
         });
 
         const conditionsMet = result.pass;
@@ -301,7 +308,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         return { pass: false, error: errorMessage };
       }
     },
-    [stepId, refTarget, targetAction, checkRequirementsFromData]
+    [stepId, refTarget, targetAction, checkRequirementsFromData, lazyRender, scrollContainer]
   );
 
   /**
@@ -458,6 +465,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       } else if (state.fixType === 'location' && state.targetHref && navigationManagerRef.current) {
         // Fix location requirements by navigating to the expected path
         await navigationManagerRef.current.fixLocationRequirement(state.targetHref);
+      } else if (state.fixType === 'lazy-scroll') {
+        // lazy-scroll is now handled transparently in Show me/Do it buttons
+        // This case should not be reached - buttons are enabled and handle scroll automatically
+        console.warn('lazy-scroll fixType should be handled by button click, not fixRequirement');
+        safeSetState((prev) => ({ ...prev, isChecking: false }));
+        return;
       } else if (state.fixType === 'navigation') {
         // Fix basic navigation requirements (menu open/dock)
         await fixNavigationRequirements();
@@ -567,6 +580,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       canSkip: skippable,
       fixType: undefined,
       targetHref: undefined,
+      scrollContainer: undefined,
       retryCount: 0,
       maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
       isRetrying: false,
@@ -723,7 +737,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     document.addEventListener('grafana:location-changed', handleUrlChange);
 
     // Also check periodically for SPA navigation that doesn't fire events
-    const urlCheckInterval = setInterval(handleUrlChange, 1000);
+    const urlCheckInterval = setInterval(handleUrlChange, 2000);
 
     return () => {
       isSubscribed = false;
@@ -791,6 +805,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     markSkipped: skippable ? markSkipped : undefined,
     resetStep,
     canFixRequirement: state.canFixRequirement,
+    fixType: state.fixType,
     fixRequirement: state.canFixRequirement ? fixRequirement : undefined,
   };
 }

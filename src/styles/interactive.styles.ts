@@ -833,6 +833,53 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // LAZY SCROLL ERROR STYLES - For virtualized container discovery failures
+  // Follows same style as requirement explanation (subtle, not warning)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  '.interactive-step-lazy-error': {
+    marginTop: '12px',
+    padding: '10px 12px',
+    background: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: '6px',
+    fontSize: '0.875rem',
+    lineHeight: '1.5',
+    color: theme.colors.text.secondary,
+    // Add scroll icon via ::before with inline layout
+    '&::before': {
+      content: '"↕"',
+      marginRight: '8px',
+      fontSize: '0.9rem',
+    },
+  },
+
+  '.interactive-lazy-error-text': {
+    display: 'inline',
+  },
+
+  '.interactive-lazy-retry-btn': {
+    padding: '4px 10px',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    border: `1px solid ${theme.colors.border.medium}`,
+    background: 'transparent',
+    color: theme.colors.text.secondary,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    marginLeft: '8px',
+    '&:hover': {
+      borderColor: theme.colors.text.secondary,
+      background: theme.colors.action.hover,
+    },
+    '&:disabled': {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // FORM VALIDATION STYLES - Checking indicator and validation hint warning
   // ═══════════════════════════════════════════════════════════════════════════
 
