@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.3.5
+
+### Fixed
+
+- Fixed sidebar not opening correctly on initial load
+- Added analytics tracking for sidebar open/close events
+
+## 1.3.4
+
+### Added
+
+- **Conditional block type**: New `conditional` block type for JSON guides that shows/hides content based on requirements (#450)
+  - Supports conditional sections with requirement-based visibility
+  - Block editor integration for creating and editing conditional blocks
+- **Quiz block editor**: Full block editor support for creating quiz blocks with visual editing (#454)
+- **Input block type**: New `input` block type for collecting user responses within guides (#454)
+  - Stores responses in user storage for use in conditional logic
+  - Integrates with requirements system for dynamic content
+
+### Fixed
+
+- Fixed scroll behavior and requirements checking issues discovered during testing (#459)
+- Fixed requirements not rechecking properly in certain step sequences
+
+### Chore
+
+- Removed extraneous debug tooling and simplified selector debug panel (#458)
+- Documentation updates to keep interactive system in sync (#456)
+
 ## 1.3.3
 
 ### Added
