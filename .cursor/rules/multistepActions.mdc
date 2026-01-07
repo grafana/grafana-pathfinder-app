@@ -39,18 +39,25 @@ Notice that we can put attributes all on the li element because we're only doing
 
 ```html
   <li class="interactive" data-targetaction="multistep">
-    <span class="interactive" data-requirements="navmenu-open"
+    <div class="interactive" data-requirements="navmenu-open"
       data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
-      data-targetaction='highlight'/>
-    <span class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'/>
-    <span class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'/>
+      data-targetaction='highlight'>
+      <p>Navigate to Plugins</p>
+    </div>
+    <div class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'>
+      <p>Click the Plugins button</p>
+    </div>
+    <div class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'>
+      <p>Search for "Business News"</p>
+    </div>
     Take 3 steps at once!
   </li>
 ```
 
 Critical differences:
 * The interactive element is specified as data-targetaction="multistep"
-* The interactive element contains a series of class="interactive" empty `<span>` elements, whose attributes carry the details of each step to be executed.
+* The interactive element contains a series of class="interactive" `<div>` elements, whose attributes carry the details of each step to be executed.
+* **Important**: Use `<div>` (not `<span>`) for internal actions if they contain block-level content like `<p>` tags. Using `<span>` with `<p>` inside causes invalid HTML that the DOM parser will restructure unexpectedly. Both `<div>` and `<span>` are supported for backwards compatibility, but `<div>` is recommended.
 
 Examine all of this information carefully, and discuss your plans of how you would implement this.  There are at least three concerns to be aware of:
 
@@ -161,18 +168,25 @@ Notice that we can put attributes all on the li element because we're only doing
 
 ```html
   <li class="interactive" data-targetaction="multistep">
-    <span class="interactive" data-requirements="navmenu-open"
+    <div class="interactive" data-requirements="navmenu-open"
       data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
-      data-targetaction='highlight'/>
-    <span class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'/>
-    <span class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'/>
+      data-targetaction='highlight'>
+      <p>Navigate to Plugins</p>
+    </div>
+    <div class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'>
+      <p>Click the Plugins button</p>
+    </div>
+    <div class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'>
+      <p>Search for "Business News"</p>
+    </div>
     Take 3 steps at once!
   </li>
 ```
 
 Critical differences:
 * The interactive element is specified as data-targetaction="multistep"
-* The interactive element contains a series of class="interactive" empty <span> elements, whose attributes carry the details of each step to be executed.
+* The interactive element contains a series of class="interactive" `<div>` elements, whose attributes carry the details of each step to be executed.
+* **Important**: Use `<div>` (not `<span>`) for internal actions if they contain block-level content like `<p>` tags. Using `<span>` with `<p>` inside causes invalid HTML that the DOM parser will restructure unexpectedly. Both `<div>` and `<span>` are supported for backwards compatibility, but `<div>` is recommended.
 
 Examine all of this information carefully, and discuss your plans of how you would implement this.  There are at least three concerns to be aware of:
 
