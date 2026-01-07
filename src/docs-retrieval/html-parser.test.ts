@@ -171,4 +171,51 @@ describe('html-parser: guided element with div internal actions', () => {
     expect(guided.props.internalActions[1].refTarget).toBe('input.b');
     expect(guided.props.internalActions[1].targetValue).toBe('value');
   });
+
+  it('parses guided element with li.interactive internal actions correctly', () => {
+    // This tests the use case where a guided block uses li elements as internal actions
+    // The li elements must be wrapped in an ol/ul for valid HTML
+    const html = `
+      <li class="interactive" data-targetaction="guided">
+        <p>Use the tool to create a new token.</p>
+        <ol class="interactive-substeps">
+          <li class="interactive" data-targetaction="formfill" data-reftarget="input[data-testid='token-input']" data-targetvalue="" data-requirements="exists-reftarget">
+            <p>Give the token a name</p>
+          </li>
+          <li class="interactive" data-targetaction="highlight" data-reftarget="input.expiry" data-requirements="exists-reftarget">
+            <p>Set the token expiration date</p>
+          </li>
+          <li class="interactive" data-targetaction="hover" data-reftarget="div.scope-info" data-requirements="exists-reftarget">
+            <p>Hover to see scope details</p>
+          </li>
+          <li class="interactive" data-targetaction="highlight" data-reftarget="button.create" data-requirements="exists-reftarget">
+            <p>Click Create token</p>
+          </li>
+        </ol>
+      </li>
+    `;
+
+    const baseUrl = 'https://grafana.com/docs/test/';
+    const result = parseHTMLToComponents(html, baseUrl);
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+
+    const guided = (result.data as any).elements.find((el: any) => el.type === 'interactive-guided');
+    expect(guided).toBeTruthy();
+    expect(guided.props.internalActions).toHaveLength(4);
+
+    // Verify each internal action has required attributes
+    expect(guided.props.internalActions[0].targetAction).toBe('formfill');
+    expect(guided.props.internalActions[0].refTarget).toBe("input[data-testid='token-input']");
+
+    expect(guided.props.internalActions[1].targetAction).toBe('highlight');
+    expect(guided.props.internalActions[1].refTarget).toBe('input.expiry');
+
+    expect(guided.props.internalActions[2].targetAction).toBe('hover');
+    expect(guided.props.internalActions[2].refTarget).toBe('div.scope-info');
+
+    expect(guided.props.internalActions[3].targetAction).toBe('highlight');
+    expect(guided.props.internalActions[3].refTarget).toBe('button.create');
+  });
 });
