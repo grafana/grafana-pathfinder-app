@@ -491,6 +491,27 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     );
   }
 
+  // Check for empty content - parsing succeeded but produced no renderable elements
+  if (parsedContent.elements.length === 0) {
+    console.error('[DocsPlugin] Parsing succeeded but no renderable elements were found');
+    return (
+      <div ref={ref}>
+        <ContentParsingError
+          errors={[
+            {
+              type: 'html_parsing',
+              message:
+                'Content was parsed successfully but produced no renderable elements. The content may be empty, contain only whitespace, or use an unsupported format.',
+              location: 'ContentProcessor',
+            },
+          ]}
+          warnings={parseResult.warnings}
+          fallbackHtml={html}
+        />
+      </div>
+    );
+  }
+
   return (
     <div ref={ref}>
       {parsedContent.elements.map((element, index) =>
