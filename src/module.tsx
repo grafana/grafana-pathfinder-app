@@ -161,8 +161,8 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       { once: true }
     );
 
-    // Set source for analytics before opening
-    sidebarState.setPendingOpenSource('url_param');
+    // Set source for analytics before opening (auto-open from URL param)
+    sidebarState.setPendingOpenSource('url_param', true);
 
     // open the sidebar
     attemptAutoOpen(200);
@@ -234,7 +234,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         } else if (!isTreatment) {
           sessionStorage.setItem(sessionKey, 'true');
         }
-        sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open');
+        sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open', true);
         attemptAutoOpen(200);
       }
     }
@@ -264,7 +264,8 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
               sessionStorage.setItem(sessionKey, 'true');
             }
             sidebarState.setPendingOpenSource(
-              isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding'
+              isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding',
+              true
             );
             attemptAutoOpen(500);
           }
@@ -304,7 +305,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           console.log('[Pathfinder] Skipping auto-open on navigation: sidebar already in use');
         } else {
           markPageAutoOpened(hostname, matchingPattern);
-          sidebarState.setPendingOpenSource('experiment_treatment_navigation');
+          sidebarState.setPendingOpenSource('experiment_treatment_navigation', true);
           attemptAutoOpen(300);
         }
       }
@@ -357,11 +358,12 @@ if (experimentVariant !== 'control') {
         sidebarState.setIsSidebarMounted(true);
 
         // Track sidebar open via component mount
-        // consumePendingOpenSource() returns the source set before opening, or 'sidebar_toggle' as default
-        const openSource = sidebarState.consumePendingOpenSource();
+        // consumePendingOpenSource() returns { source, isAutoOpen } set before opening
+        const { source, isAutoOpen } = sidebarState.consumePendingOpenSource();
+
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-          action: 'open',
-          source: openSource,
+          action: isAutoOpen ? 'auto-open' : 'open',
+          source,
         });
 
         // Fire custom event when sidebar component mounts

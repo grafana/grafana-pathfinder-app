@@ -198,6 +198,9 @@ export function reportAppInteraction(
       ...(experiments && { experiments }),
     };
 
+    // TODO: Remove this debug logging before production
+    console.warn('[Analytics]', interactionName, enrichedProperties);
+
     reportInteraction(interactionName, enrichedProperties);
   } catch (error) {
     console.warn('Analytics reporting failed:', error);

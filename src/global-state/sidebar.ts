@@ -14,12 +14,20 @@ export class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtension
 }
 
 /**
+ * Pending open info for analytics tracking
+ */
+interface PendingOpenInfo {
+  source: string;
+  isAutoOpen: boolean;
+}
+
+/**
  * Global state manager for the Pathfinder plugin's sidebar management.
  * Manages sidebar mounting and unmounting.
  */
 class GlobalSidebarState {
   private _isSidebarMounted = false;
-  private _pendingOpenSource: string | null = null;
+  private _pendingOpenInfo: PendingOpenInfo | null = null;
 
   public getIsSidebarMounted(): boolean {
     return this._isSidebarMounted;
@@ -32,19 +40,22 @@ class GlobalSidebarState {
   /**
    * Sets the source for the next sidebar open event.
    * This is consumed by the sidebar mount analytics and cleared after use.
+   *
+   * @param source - The source identifier for analytics
+   * @param isAutoOpen - Whether this is a programmatic auto-open (true) or user-initiated (false)
    */
-  public setPendingOpenSource(source: string): void {
-    this._pendingOpenSource = source;
+  public setPendingOpenSource(source: string, isAutoOpen = false): void {
+    this._pendingOpenInfo = { source, isAutoOpen };
   }
 
   /**
-   * Gets and clears the pending open source.
-   * Returns the source if set, otherwise returns 'sidebar_toggle' as default.
+   * Gets and clears the pending open info.
+   * Returns the source and isAutoOpen flag if set, otherwise returns defaults.
    */
-  public consumePendingOpenSource(): string {
-    const source = this._pendingOpenSource || 'sidebar_toggle';
-    this._pendingOpenSource = null;
-    return source;
+  public consumePendingOpenSource(): PendingOpenInfo {
+    const info = this._pendingOpenInfo || { source: 'sidebar_toggle', isAutoOpen: false };
+    this._pendingOpenInfo = null;
+    return info;
   }
 
   // Sidebar management
