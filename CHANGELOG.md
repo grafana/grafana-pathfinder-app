@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.6
+
+### Fixed
+
+- Fixed issue with OpenFeature experiment tracking
+
 ## 1.3.5
 
 ### Fixed
