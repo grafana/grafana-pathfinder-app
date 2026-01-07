@@ -62,3 +62,113 @@ describe('html-parser: sandbox attribute handling', () => {
     expect(input.props.checked).toBe(true);
   });
 });
+
+describe('html-parser: guided element with div internal actions', () => {
+  it('parses guided element with div.interactive internal actions correctly', () => {
+    const html = `
+      <div class="interactive" data-targetaction="guided">
+        <p>Complete the following steps:</p>
+        <div class="interactive" data-targetaction="highlight" data-reftarget="button.step1" data-requirements="exists-reftarget">
+          <p>Click step 1</p>
+        </div>
+        <div class="interactive" data-targetaction="formfill" data-reftarget="input.step2" data-targetvalue="test" data-requirements="exists-reftarget">
+          <p>Fill step 2</p>
+        </div>
+        <div class="interactive" data-targetaction="highlight" data-reftarget="button.step3" data-requirements="exists-reftarget">
+          <p>Click step 3</p>
+        </div>
+      </div>
+    `;
+
+    const baseUrl = 'https://grafana.com/docs/test/';
+    const result = parseHTMLToComponents(html, baseUrl);
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+
+    const guided = (result.data as any).elements.find((el: any) => el.type === 'interactive-guided');
+    expect(guided).toBeTruthy();
+    expect(guided.props.internalActions).toHaveLength(3);
+
+    // Verify each internal action has required attributes
+    expect(guided.props.internalActions[0].targetAction).toBe('highlight');
+    expect(guided.props.internalActions[0].refTarget).toBe('button.step1');
+
+    expect(guided.props.internalActions[1].targetAction).toBe('formfill');
+    expect(guided.props.internalActions[1].refTarget).toBe('input.step2');
+    expect(guided.props.internalActions[1].targetValue).toBe('test');
+
+    expect(guided.props.internalActions[2].targetAction).toBe('highlight');
+    expect(guided.props.internalActions[2].refTarget).toBe('button.step3');
+  });
+
+  it('parses guided with CSS child combinator in data-reftarget (requires space before >)', () => {
+    // NOTE: DOMPurify strips data-reftarget attributes containing "]>" pattern
+    // (bracket immediately followed by >). To avoid this, use a space before ">".
+    // Example: "div[attr] > div" works, but "div[attr]>div" gets stripped.
+    const html = `<div class="interactive" data-targetaction="guided">
+      <p>Steps:</p>
+      <div class="interactive" data-targetaction="formfill" 
+           data-reftarget="div[data-testid='portal'] > div[data-testid='input']" 
+           data-targetvalue="test" data-requirements="exists-reftarget">
+        <p>Fill input</p>
+      </div>
+    </div>`;
+
+    const baseUrl = 'https://grafana.com/docs/test/';
+    const result = parseHTMLToComponents(html, baseUrl);
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+
+    const guided = (result.data as any).elements.find((el: any) => el.type === 'interactive-guided');
+    expect(guided).toBeTruthy();
+    expect(guided.props.internalActions).toHaveLength(1);
+    // With space before >, the selector is preserved correctly
+    expect(guided.props.internalActions[0].refTarget).toBe("div[data-testid='portal'] > div[data-testid='input']");
+  });
+
+  it('parses guided element inside sequence with div internal actions', () => {
+    const html = `
+      <div class="interactive" data-targetaction="sequence" data-reftarget="div#section">
+        <div class="interactive" data-targetaction="highlight" data-reftarget="button.first" data-requirements="navmenu-open">
+          <p>First step</p>
+        </div>
+        <div class="interactive" data-targetaction="guided">
+          <p>Complete guided steps:</p>
+          <div class="interactive" data-targetaction="highlight" data-reftarget="button.a" data-requirements="exists-reftarget">
+            <p>Guided step A</p>
+          </div>
+          <div class="interactive" data-targetaction="formfill" data-reftarget="input.b" data-targetvalue="value" data-requirements="exists-reftarget">
+            <p>Guided step B</p>
+          </div>
+        </div>
+        <div class="interactive" data-targetaction="highlight" data-reftarget="button.last" data-requirements="exists-reftarget">
+          <p>Last step</p>
+        </div>
+      </div>
+    `;
+
+    const baseUrl = 'https://grafana.com/docs/test/';
+    const result = parseHTMLToComponents(html, baseUrl);
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+
+    const section = (result.data as any).elements.find((el: any) => el.type === 'interactive-section');
+    expect(section).toBeTruthy();
+    expect(section.children).toHaveLength(3);
+
+    // Check guided element within section
+    const guided = section.children.find((el: any) => el.type === 'interactive-guided');
+    expect(guided).toBeTruthy();
+    expect(guided.props.internalActions).toHaveLength(2);
+
+    expect(guided.props.internalActions[0].targetAction).toBe('highlight');
+    expect(guided.props.internalActions[0].refTarget).toBe('button.a');
+
+    expect(guided.props.internalActions[1].targetAction).toBe('formfill');
+    expect(guided.props.internalActions[1].refTarget).toBe('input.b');
+    expect(guided.props.internalActions[1].targetValue).toBe('value');
+  });
+});

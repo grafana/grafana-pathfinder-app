@@ -633,10 +633,34 @@ export function parseHTMLToComponents(
           hasInteractiveElements = true;
           const titleEl = el.querySelector('h1,h2,h3,h4,h5,h6');
           const title = titleEl ? titleEl.textContent?.trim() : 'Interactive Section';
-          const stepNodes = el.querySelectorAll('li.interactive[data-targetaction]');
+
+          // Find interactive step elements - support any element type that has both the 'interactive' class and a data-targetaction attribute.
+          // Before, only span elements were supported but as an inline element, it can't contain blocks.
+          const stepNodes = el.querySelectorAll('.interactive[data-targetaction]');
           const stepElements: ParsedElement[] = [];
 
           stepNodes.forEach((stepEl, index) => {
+            // Skip elements that have been removed from the DOM like internal spans removed by guided/multistep handlers.
+            // querySelectorAll returns a static NodeList, but walk() may modify the DOM.
+            if (!stepEl.isConnected) {
+              return;
+            }
+
+            // Skip internal action elements that belong to multistep or guided blocks.
+            // These are processed by their parent block, not as standalone steps.
+            const closestMultistepOrGuided = stepEl.closest(
+              '.interactive[data-targetaction="multistep"], .interactive[data-targetaction="guided"]'
+            );
+            // If this element is inside a multistep/guided block AND is not the block itself, skip it.
+            if (closestMultistepOrGuided && closestMultistepOrGuided !== stepEl) {
+              return;
+            }
+
+            // Also skip the section element itself (we're inside it).
+            if (stepEl === el) {
+              return;
+            }
+
             try {
               // Process each step element with children support
               const step = walk(stepEl, `${currentPath}.step[${index}]`);
@@ -682,8 +706,9 @@ export function parseHTMLToComponents(
         if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'multistep') {
           hasInteractiveElements = true;
 
-          // Extract internal action spans (from original element) before processing children
-          const internalSpans = el.querySelectorAll('span.interactive');
+          // Extract internal action elements (span or div) before processing children
+          // Support both span.interactive (legacy) and div.interactive (allows block content like <p>)
+          const internalSpans = el.querySelectorAll('span.interactive, div.interactive');
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
@@ -702,7 +727,7 @@ export function parseHTMLToComponents(
                   'element_creation',
                   `Multi-step internal action ${
                     index + 1
-                  } missing required attributes (data-targetaction and data-reftarget)`,
+                  } missing required attributes (data-targetaction="${targetAction || 'MISSING'}" data-reftarget="${refTarget || 'MISSING'}"). Element: <${span.tagName.toLowerCase()} class="${span.className}">`,
                   span.outerHTML,
                   `${currentPath}.multistep.action[${index}]`
                 );
@@ -801,8 +826,9 @@ export function parseHTMLToComponents(
         if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'guided') {
           hasInteractiveElements = true;
 
-          // Extract internal action spans (same logic as multistep)
-          const internalSpans = el.querySelectorAll('span.interactive');
+          // Extract internal action elements (span or div) before processing children
+          // Support both span.interactive (legacy) and div.interactive (allows block content like <p>)
+          const internalSpans = el.querySelectorAll('span.interactive, div.interactive');
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
@@ -817,11 +843,11 @@ export function parseHTMLToComponents(
               const targetAction = span.getAttribute('data-targetaction');
               const refTarget = span.getAttribute('data-reftarget');
 
-              // Validate action type for guided (hover, button, highlight, and noop supported)
-              if (targetAction && !['hover', 'button', 'highlight', 'noop'].includes(targetAction)) {
+              // Validate action type for guided (hover, button, highlight, formfill, and noop supported)
+              if (targetAction && !['hover', 'button', 'highlight', 'formfill', 'noop'].includes(targetAction)) {
                 errorCollector.addError(
                   'element_creation',
-                  `Guided internal action ${index + 1} has unsupported action type: ${targetAction}. Only 'hover', 'button', 'highlight', and 'noop' are supported.`,
+                  `Guided internal action ${index + 1} has unsupported action type: ${targetAction}. Only 'hover', 'button', 'highlight', 'formfill', and 'noop' are supported.`,
                   span.outerHTML,
                   `${currentPath}.guided.action[${index}]`
                 );
@@ -834,7 +860,7 @@ export function parseHTMLToComponents(
                   'element_creation',
                   `Guided internal action ${
                     index + 1
-                  } missing required attributes (data-targetaction and data-reftarget)`,
+                  } missing required attributes (data-targetaction="${targetAction || 'MISSING'}" data-reftarget="${refTarget || 'MISSING'}"). Element: <${span.tagName.toLowerCase()} class="${span.className}">`,
                   span.outerHTML,
                   `${currentPath}.guided.action[${index}]`
                 );
@@ -934,11 +960,22 @@ export function parseHTMLToComponents(
         }
 
         // INTERACTIVE STEP (outside of section)
+        // Skip elements that are internal actions of guided or multistep blocks.
+        // These internal spans are processed by their parent block, not as standalone steps.
+        const isInternalAction = (() => {
+          const closestGuided = el.closest('.interactive[data-targetaction="guided"]');
+          const closestMultistep = el.closest('.interactive[data-targetaction="multistep"]');
+          // If this element is inside a guided or multistep action AND is not the block itself, it's internal.
+          return (closestGuided && closestGuided !== el) || (closestMultistep && closestMultistep !== el);
+        })();
+
         if (
           /\binteractive\b/.test(el.className || '') &&
           el.getAttribute('data-targetaction') &&
           el.getAttribute('data-targetaction') !== 'sequence' &&
-          el.getAttribute('data-targetaction') !== 'multistep'
+          el.getAttribute('data-targetaction') !== 'multistep' &&
+          el.getAttribute('data-targetaction') !== 'guided' &&
+          !isInternalAction
         ) {
           hasInteractiveElements = true;
 

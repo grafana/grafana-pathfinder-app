@@ -491,6 +491,60 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     );
   }
 
+  // Check for empty content where parsing succeeded but produced no renderable elements.
+  // If there are parse failure warnings, promote them to errors.
+  // When we render unstyled HTML, it is first converted to a single JSON HTML block.
+  // The block parser only emits warnings so a single block doesn't break overall rendering, but for this case, a single block failing to render means the whole HTML failed to render because there's only a single block.
+  if (parsedContent.elements.length === 0) {
+    const parseFailureWarnings = (parseResult.warnings || []).filter(
+      (w) => w.includes('Failed to parse') || w.includes('Empty HTML block')
+    );
+
+    if (parseFailureWarnings.length > 0) {
+      // Promote parse failure warnings to errors.
+      const promotedErrors = parseFailureWarnings.map((w) => {
+        // Clean up the error message for single HTML block errors since the block context isn't meaningful.
+        const cleanMessage = w
+          .replace(/^Failed to parse HTML block at blocks\[\d+\]:\s*/, '')
+          .replace(/^Empty HTML block at blocks\[\d+\]$/, 'The HTML content is empty');
+
+        return {
+          type: 'html_parsing' as const,
+          message: cleanMessage,
+          location: undefined,
+        };
+      });
+
+      // Remove promoted warnings from the list
+      const remainingWarnings = (parseResult.warnings || []).filter(
+        (w) => !w.includes('Failed to parse') && !w.includes('Empty HTML block')
+      );
+
+      return (
+        <div ref={ref}>
+          <ContentParsingError errors={promotedErrors} warnings={remainingWarnings} fallbackHtml={html} />
+        </div>
+      );
+    }
+
+    return (
+      <div ref={ref}>
+        <ContentParsingError
+          errors={[
+            {
+              type: 'html_parsing',
+              message:
+                'Content was parsed successfully but produced no renderable elements. The content may be empty, contain only whitespace, or use an unsupported format.',
+              location: 'ContentProcessor',
+            },
+          ]}
+          warnings={parseResult.warnings}
+          fallbackHtml={html}
+        />
+      </div>
+    );
+  }
+
   return (
     <div ref={ref}>
       {parsedContent.elements.map((element, index) =>
