@@ -111,7 +111,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       onStateUpdate: (retryCount: number, maxRetries: number, isRetrying: boolean) => void
     ) => {
       const { requirements, targetAction = 'button', refTarget = '', stepId: optionsStepId } = options;
-      const maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries;
+      // When lazyRender is enabled, don't do automatic retries - let the button handle lazy scroll
+      // This prevents continuous checking loop before user initiates lazy scroll
+      const maxRetries = lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries;
 
       const attemptCheck = async (retryCount: number): Promise<any> => {
         // REACT: Check mounted before state updates to prevent updates after unmount (R4)
@@ -695,6 +697,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
+    // For lazyRender steps with lazy-scroll fixType, skip continuous rechecking
+    // Let the user click the button to trigger lazy scroll instead of auto-rechecking
+    if (lazyRender && state.fixType === 'lazy-scroll') {
+      return;
+    }
+
     // Subscribe to context changes from EchoSrv
     let contextUnsubscribe: (() => void) | undefined;
     let isSubscribed = true;
@@ -749,7 +757,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       document.removeEventListener('grafana:location-changed', handleUrlChange);
       clearInterval(urlCheckInterval);
     };
-  }, [isEligibleForChecking, state.isCompleted, stepId]); // Only re-subscribe when eligibility or completion changes
+  }, [isEligibleForChecking, state.isCompleted, state.fixType, lazyRender, stepId]); // Only re-subscribe when eligibility, completion, or lazy-scroll state changes
 
   // Scoped heartbeat recheck for fragile prerequisites
   useEffect(() => {
