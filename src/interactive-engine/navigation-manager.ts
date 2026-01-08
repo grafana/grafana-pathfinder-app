@@ -325,6 +325,12 @@ export class NavigationManager {
    */
   private setupAutoCleanup(element: HTMLElement): void {
     let hasTriggeredCleanup = false; // Flag to prevent double-cleanup
+    // FIX: Grace period to ignore scroll events from ensureElementVisible's scrollIntoView
+    // Without this, leftover scroll events immediately clear the highlight
+    let isInGracePeriod = true;
+    setTimeout(() => {
+      isInGracePeriod = false;
+    }, 150); // 150ms grace period for scroll events to settle
 
     const cleanup = () => {
       if (hasTriggeredCleanup) {
@@ -343,6 +349,11 @@ export class NavigationManager {
 
     // 1. Simple scroll detection - clear on any scroll (unless section is running)
     const scrollHandler = () => {
+      // FIX: Ignore scroll events during grace period (leftover from scrollIntoView)
+      if (isInGracePeriod) {
+        return;
+      }
+
       // Check if section blocking is active - if so, don't clear on scroll
       // This allows users to scroll during section execution without losing highlights
       const sectionBlocker = document.getElementById('interactive-blocking-overlay');
