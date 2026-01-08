@@ -1,10 +1,22 @@
 # Changelog
 
+## 1.3.7
+
+### Fixed
+
+- Fixed scroll highlight being cleared immediately after "Show me" action due to leftover scroll events (#463)
+- Fixed lazy-loaded interactive steps not enabling buttons when element wasn't visible yet (#462)
+- Fixed continuous requirement checking loop for lazy-render steps preventing button interaction (#462)
+
 ## 1.3.6
 
 ### Fixed
 
 - Fixed issue with OpenFeature experiment tracking
+
+### Chore
+
+- Removed debug logging from analytics module
 
 ## 1.3.5
 
