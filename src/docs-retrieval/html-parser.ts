@@ -706,9 +706,9 @@ export function parseHTMLToComponents(
         if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'multistep') {
           hasInteractiveElements = true;
 
-          // Extract internal action elements (span or div) before processing children
-          // Support both span.interactive (legacy) and div.interactive (allows block content like <p>)
-          const internalSpans = el.querySelectorAll('span.interactive, div.interactive');
+          // Extract internal action elements before processing children
+          // Support any element type with .interactive class (span, div, li, p, etc.)
+          const internalSpans = el.querySelectorAll('.interactive[data-targetaction]');
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
@@ -826,9 +826,9 @@ export function parseHTMLToComponents(
         if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'guided') {
           hasInteractiveElements = true;
 
-          // Extract internal action elements (span or div) before processing children
-          // Support both span.interactive (legacy) and div.interactive (allows block content like <p>)
-          const internalSpans = el.querySelectorAll('span.interactive, div.interactive');
+          // Extract internal action elements before processing children
+          // Support any element type with .interactive class (span, div, li, p, etc.)
+          const internalSpans = el.querySelectorAll('.interactive[data-targetaction]');
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
