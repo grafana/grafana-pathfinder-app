@@ -252,14 +252,20 @@ export const InteractiveStep = forwardRef<
     // Section steps require both eligibility AND requirements to be met
     // When lazyRender is enabled, allow buttons even if element isn't found yet (lazy scroll fallback)
     const lazyScrollAvailable = lazyRender && checker.fixType === 'lazy-scroll';
+    // FIX: Include lazyScrollAvailable in section step calculation to enable buttons
+    // when element isn't visible yet but lazy scroll discovery is available
     const finalIsEnabled = isPartOfSection
-      ? isEligibleForChecking && !isCompleted && checker.isEnabled && checker.completionReason !== 'objectives'
+      ? isEligibleForChecking &&
+        !isCompleted &&
+        (checker.isEnabled || lazyScrollAvailable) &&
+        checker.completionReason !== 'objectives'
       : checker.isEnabled || lazyScrollAvailable;
 
     // Determine when to show explanation text and what text to show
     // Don't show blocking explanation when lazy scroll fallback is available
+    // For lazyRender steps, hide explanation to let user click "Show me" button instead
     const shouldShowExplanation = isPartOfSection
-      ? !isEligibleForChecking || (isEligibleForChecking && requirements && !checker.isEnabled)
+      ? !isEligibleForChecking || (isEligibleForChecking && requirements && !checker.isEnabled && !lazyScrollAvailable)
       : !checker.isEnabled && !lazyScrollAvailable;
 
     // Choose appropriate explanation text based on step state
@@ -775,7 +781,7 @@ export const InteractiveStep = forwardRef<
             {showMe && targetAction !== 'navigate' && !isCompletedWithObjectives && finalIsEnabled && (
               <Button
                 onClick={handleShowAction}
-                disabled={disabled || isAnyActionRunning || checker.isChecking}
+                disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
                 size="sm"
                 variant="secondary"
                 className="interactive-step-show-btn"
@@ -793,7 +799,7 @@ export const InteractiveStep = forwardRef<
                 disabled={
                   disabled ||
                   isAnyActionRunning ||
-                  checker.isChecking ||
+                  (checker.isChecking && !lazyScrollAvailable) ||
                   (!finalIsEnabled && checker.completionReason !== 'objectives')
                 }
                 size="sm"
