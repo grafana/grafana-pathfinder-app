@@ -634,7 +634,11 @@ export function StepEditor({
                     <Button variant="secondary" onClick={handleCancelEdit}>
                       Cancel
                     </Button>
-                    <Button variant="primary" onClick={handleSaveEdit} disabled={editAction !== 'noop' && !editReftarget.trim()}>
+                    <Button
+                      variant="primary"
+                      onClick={handleSaveEdit}
+                      disabled={editAction !== 'noop' && !editReftarget.trim()}
+                    >
                       Save Changes
                     </Button>
                   </div>
