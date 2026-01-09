@@ -210,7 +210,7 @@ export interface JsonConditionalBlock {
  * Action types for JSON guide interactive elements.
  * Named differently from collaboration.types.ts InteractiveAction to avoid conflicts.
  */
-export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover';
+export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover' | 'noop';
 
 /**
  * Single-action interactive step.
