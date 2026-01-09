@@ -104,23 +104,23 @@ export function InteractiveBlockForm({
         type: 'interactive',
         action,
         // Only include reftarget for non-noop actions
-        ...((!isNoopAction && reftarget.trim()) && { reftarget: reftarget.trim() }),
+        ...(!isNoopAction && reftarget.trim() && { reftarget: reftarget.trim() }),
         content: content.trim(),
         // The following fields are not relevant for noop actions
-        ...((!isNoopAction && targetvalue.trim()) && { targetvalue: targetvalue.trim() }),
-        ...((!isNoopAction && tooltip.trim()) && { tooltip: tooltip.trim() }),
-        ...((!isNoopAction && reqArray.length > 0) && { requirements: reqArray }),
-        ...((!isNoopAction && objArray.length > 0) && { objectives: objArray }),
-        ...((!isNoopAction && skippable) && { skippable }),
-        ...((!isNoopAction && hint.trim()) && { hint: hint.trim() }),
-        ...((!isNoopAction && formHint.trim()) && { formHint: formHint.trim() }),
-        ...((!isNoopAction && !showMe) && { showMe: false }),
-        ...((!isNoopAction && !doIt) && { doIt: false }),
-        ...((!isNoopAction && completeEarly) && { completeEarly }),
-        ...((!isNoopAction && verify.trim()) && { verify: verify.trim() }),
+        ...(!isNoopAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
+        ...(!isNoopAction && tooltip.trim() && { tooltip: tooltip.trim() }),
+        ...(!isNoopAction && reqArray.length > 0 && { requirements: reqArray }),
+        ...(!isNoopAction && objArray.length > 0 && { objectives: objArray }),
+        ...(!isNoopAction && skippable && { skippable }),
+        ...(!isNoopAction && hint.trim() && { hint: hint.trim() }),
+        ...(!isNoopAction && formHint.trim() && { formHint: formHint.trim() }),
+        ...(!isNoopAction && !showMe && { showMe: false }),
+        ...(!isNoopAction && !doIt && { doIt: false }),
+        ...(!isNoopAction && completeEarly && { completeEarly }),
+        ...(!isNoopAction && verify.trim() && { verify: verify.trim() }),
         // Lazy render support for virtualized containers (not relevant for noop)
-        ...((!isNoopAction && lazyRender) && { lazyRender }),
-        ...((!isNoopAction && lazyRender && scrollContainer.trim()) && { scrollContainer: scrollContainer.trim() }),
+        ...(!isNoopAction && lazyRender && { lazyRender }),
+        ...(!isNoopAction && lazyRender && scrollContainer.trim() && { scrollContainer: scrollContainer.trim() }),
         // AI customization props
         ...(assistantEnabled && { assistantEnabled }),
         ...(assistantEnabled && assistantId.trim() && { assistantId: assistantId.trim() }),
@@ -319,7 +319,10 @@ export function InteractiveBlockForm({
 
           {/* Lazy Render Scroll Container */}
           {lazyRender && (
-            <Field label="Scroll container" description="CSS selector for the scroll container (default: .scrollbar-view)">
+            <Field
+              label="Scroll container"
+              description="CSS selector for the scroll container (default: .scrollbar-view)"
+            >
               <div className={styles.selectorField}>
                 <Input
                   value={scrollContainer}
@@ -347,7 +350,11 @@ export function InteractiveBlockForm({
           {/* Hint (for skippable) */}
           {skippable && (
             <Field label="Hint" description="Hint shown when step cannot be completed">
-              <Input value={hint} onChange={(e) => setHint(e.currentTarget.value)} placeholder="This step requires..." />
+              <Input
+                value={hint}
+                onChange={(e) => setHint(e.currentTarget.value)}
+                placeholder="This step requires..."
+              />
             </Field>
           )}
 

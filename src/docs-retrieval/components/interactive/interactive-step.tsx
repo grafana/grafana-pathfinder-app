@@ -287,7 +287,9 @@ export const InteractiveStep = forwardRef<
     }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
 
     const shouldShowExplanation = isPartOfSection
-      ? !isNoopAction && (!isEligibleForChecking || (isEligibleForChecking && requirements && !checker.isEnabled && !lazyScrollAvailable))
+      ? !isNoopAction &&
+        (!isEligibleForChecking ||
+          (isEligibleForChecking && requirements && !checker.isEnabled && !lazyScrollAvailable))
       : !checker.isEnabled && !lazyScrollAvailable;
 
     // Choose appropriate explanation text based on step state
@@ -766,9 +768,12 @@ export const InteractiveStep = forwardRef<
     const isAnyActionRunning = isShowRunning || isDoRunning || isCurrentlyExecuting;
 
     // Don't apply completed/skipped styles to noop actions - they're informational only
-    const completedClass = isCompletedWithObjectives && !isNoopAction
-      ? (checker.completionReason === 'skipped' ? ' skipped' : ' completed')
-      : '';
+    const completedClass =
+      isCompletedWithObjectives && !isNoopAction
+        ? checker.completionReason === 'skipped'
+          ? ' skipped'
+          : ' completed'
+        : '';
 
     return (
       <div
@@ -820,35 +825,38 @@ export const InteractiveStep = forwardRef<
 
             {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
             {/* Noop actions are informational only - no buttons needed */}
-            {doIt && !isNoopAction && !isCompletedWithObjectives && (finalIsEnabled || checker.completionReason === 'objectives') && (
-              <Button
-                onClick={handleDoAction}
-                disabled={
-                  disabled ||
-                  isAnyActionRunning ||
-                  (checker.isChecking && !lazyScrollAvailable) ||
-                  (!finalIsEnabled && checker.completionReason !== 'objectives')
-                }
-                size="sm"
-                variant="primary"
-                className="interactive-step-do-btn"
-                data-testid={testIds.interactive.doItButton(renderedStepId)}
-                title={
-                  hints ||
-                  (targetAction === 'navigate'
-                    ? `Go there: ${getActionDescription()}`
-                    : `Do it: ${getActionDescription()}`)
-                }
-              >
-                {isDoRunning || isCurrentlyExecuting
-                  ? targetAction === 'navigate'
-                    ? 'Going...'
-                    : 'Executing...'
-                  : targetAction === 'navigate'
-                    ? 'Go there'
-                    : 'Do it'}
-              </Button>
-            )}
+            {doIt &&
+              !isNoopAction &&
+              !isCompletedWithObjectives &&
+              (finalIsEnabled || checker.completionReason === 'objectives') && (
+                <Button
+                  onClick={handleDoAction}
+                  disabled={
+                    disabled ||
+                    isAnyActionRunning ||
+                    (checker.isChecking && !lazyScrollAvailable) ||
+                    (!finalIsEnabled && checker.completionReason !== 'objectives')
+                  }
+                  size="sm"
+                  variant="primary"
+                  className="interactive-step-do-btn"
+                  data-testid={testIds.interactive.doItButton(renderedStepId)}
+                  title={
+                    hints ||
+                    (targetAction === 'navigate'
+                      ? `Go there: ${getActionDescription()}`
+                      : `Do it: ${getActionDescription()}`)
+                  }
+                >
+                  {isDoRunning || isCurrentlyExecuting
+                    ? targetAction === 'navigate'
+                      ? 'Going...'
+                      : 'Executing...'
+                    : targetAction === 'navigate'
+                      ? 'Go there'
+                      : 'Do it'}
+                </Button>
+              )}
 
             {/* Show "Skip" button when step is skippable (always available, not just on error) */}
             {/* Noop actions don't need skip - they're just informational */}

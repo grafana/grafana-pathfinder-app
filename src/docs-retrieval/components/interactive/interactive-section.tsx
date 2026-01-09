@@ -438,8 +438,8 @@ export function InteractiveSection({
   // Calculate base completion (steps completed) - needed for completion logic
   // Noop steps are always considered complete (they're informational only)
   const nonNoopSteps = stepComponents.filter((s) => s.targetAction !== 'noop');
-  const stepsCompleted = stepComponents.length > 0 && 
-    (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
+  const stepsCompleted =
+    stepComponents.length > 0 && (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
 
   // Add objectives checking for section - disable if steps are already completed
   const objectivesChecker = useStepChecker({
@@ -557,9 +557,9 @@ export function InteractiveSection({
       // Subsequent steps are eligible if all previous steps are completed
       // Noop steps (informational only) are always considered "complete" for eligibility purposes
       // since they have no action to perform
-      return stepComponents.slice(0, index).every((prevStep) => 
-        prevStep.targetAction === 'noop' || completedSteps.has(prevStep.stepId)
-      );
+      return stepComponents
+        .slice(0, index)
+        .every((prevStep) => prevStep.targetAction === 'noop' || completedSteps.has(prevStep.stepId));
     });
   }, [completedSteps, stepComponents]); // Only recalculate when these change
 
