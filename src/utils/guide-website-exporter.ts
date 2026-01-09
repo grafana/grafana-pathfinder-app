@@ -128,7 +128,7 @@ function formatInteractiveBlock(block: JsonInteractiveBlock, indent: string): st
   output += `${indent}{{< ${shortcodeName}`;
 
   // noop actions don't require reftarget
-  if (block.action !== 'noop' || block.reftarget) {
+  if (block.reftarget) {
     output += ` reftarget="${escapeShortcodeString(block.reftarget)}"`;
   }
 
@@ -216,7 +216,7 @@ function formatStepForWebsite(step: JsonStep, indent: string, isGuided = false):
   output += `${indent}{{< ${shortcodeName}`;
 
   // noop actions don't require reftarget
-  if (step.action !== 'noop' || step.reftarget) {
+  if (step.reftarget) {
     output += ` reftarget="${escapeShortcodeString(step.reftarget)}"`;
   }
 

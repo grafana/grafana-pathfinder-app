@@ -222,8 +222,8 @@ export interface JsonInteractiveBlock extends AssistantProps {
   type: 'interactive';
   /** The action to perform */
   action: JsonInteractiveAction;
-  /** CSS selector or Grafana selector for the target element */
-  reftarget: string;
+  /** CSS selector or Grafana selector for the target element (optional for noop actions) */
+  reftarget?: string;
   /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
   targetvalue?: string;
   /** Markdown description shown to the user */
@@ -313,8 +313,8 @@ export interface JsonGuidedBlock {
 export interface JsonStep {
   /** The action to perform or wait for */
   action: JsonInteractiveAction;
-  /** CSS selector or Grafana selector for the target element */
-  reftarget: string;
+  /** CSS selector or Grafana selector for the target element (optional for noop actions) */
+  reftarget?: string;
   /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
   targetvalue?: string;
   /** Requirements for this specific step */

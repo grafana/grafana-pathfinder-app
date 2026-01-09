@@ -281,7 +281,7 @@ export function StepEditor({
       const step = steps[index];
       setEditingStepIndex(index);
       setEditAction(step.action);
-      setEditReftarget(step.reftarget);
+      setEditReftarget(step.reftarget ?? '');
       setEditTargetvalue(step.targetvalue ?? '');
       setEditFormHint(step.formHint ?? '');
       setEditValidateInput(step.validateInput ?? false);

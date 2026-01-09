@@ -264,8 +264,30 @@ export const InteractiveStep = forwardRef<
     // Determine when to show explanation text and what text to show
     // Don't show blocking explanation when lazy scroll fallback is available
     // For lazyRender steps, hide explanation to let user click "Show me" button instead
+    // For noop actions (informational steps), never block with "Complete previous step" - users should always be able to read the content
+    const isNoopAction = targetAction === 'noop';
+
+    // Auto-complete noop steps when they become eligible
+    // Noop steps are informational only - they should auto-complete so they don't block subsequent steps
+    // We deliberately don't check isCompleted here - noop steps should always notify the parent
+    // when eligible, even if they were previously "completed". This handles the case where
+    // a previous step is reset and re-completed.
+    useEffect(() => {
+      if (isNoopAction && isEligibleForChecking && !disabled) {
+        // Notify parent section of completion (idempotent - section ignores if already complete)
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+
+        // Call the original onComplete callback if provided
+        if (onComplete) {
+          onComplete();
+        }
+      }
+    }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
+
     const shouldShowExplanation = isPartOfSection
-      ? !isEligibleForChecking || (isEligibleForChecking && requirements && !checker.isEnabled && !lazyScrollAvailable)
+      ? !isNoopAction && (!isEligibleForChecking || (isEligibleForChecking && requirements && !checker.isEnabled && !lazyScrollAvailable))
       : !checker.isEnabled && !lazyScrollAvailable;
 
     // Choose appropriate explanation text based on step state
@@ -743,11 +765,14 @@ export const InteractiveStep = forwardRef<
 
     const isAnyActionRunning = isShowRunning || isDoRunning || isCurrentlyExecuting;
 
+    // Don't apply completed/skipped styles to noop actions - they're informational only
+    const completedClass = isCompletedWithObjectives && !isNoopAction
+      ? (checker.completionReason === 'skipped' ? ' skipped' : ' completed')
+      : '';
+
     return (
       <div
-        className={`interactive-step${className ? ` ${className}` : ''}${
-          isCompletedWithObjectives ? (checker.completionReason === 'skipped' ? ' skipped' : ' completed') : ''
-        }${isCurrentlyExecuting ? ' executing' : ''}`}
+        className={`interactive-step${className ? ` ${className}` : ''}${completedClass}${isCurrentlyExecuting ? ' executing' : ''}`}
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
@@ -776,9 +801,10 @@ export const InteractiveStep = forwardRef<
 
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
-            {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate action */}
+            {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate/noop action */}
             {/* Navigate actions don't have a sensible "show me" behavior - it's "go there" or nothing */}
-            {showMe && targetAction !== 'navigate' && !isCompletedWithObjectives && finalIsEnabled && (
+            {/* Noop actions are informational only - no buttons needed */}
+            {showMe && !isNoopAction && targetAction !== 'navigate' && !isCompletedWithObjectives && finalIsEnabled && (
               <Button
                 onClick={handleShowAction}
                 disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
@@ -792,8 +818,9 @@ export const InteractiveStep = forwardRef<
               </Button>
             )}
 
-            {/* Only show "Do it" button when doIt prop is true */}
-            {doIt && !isCompletedWithObjectives && (finalIsEnabled || checker.completionReason === 'objectives') && (
+            {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
+            {/* Noop actions are informational only - no buttons needed */}
+            {doIt && !isNoopAction && !isCompletedWithObjectives && (finalIsEnabled || checker.completionReason === 'objectives') && (
               <Button
                 onClick={handleDoAction}
                 disabled={
@@ -824,7 +851,8 @@ export const InteractiveStep = forwardRef<
             )}
 
             {/* Show "Skip" button when step is skippable (always available, not just on error) */}
-            {skippable && !isCompletedWithObjectives && (
+            {/* Noop actions don't need skip - they're just informational */}
+            {skippable && !isNoopAction && !isCompletedWithObjectives && (
               <Button
                 onClick={async () => {
                   if (checker.markSkipped) {
@@ -852,7 +880,8 @@ export const InteractiveStep = forwardRef<
             )}
           </div>
 
-          {isCompletedWithObjectives && (
+          {/* Hide completed badge and redo button for noop actions - they're informational only */}
+          {isCompletedWithObjectives && !isNoopAction && (
             <div className="interactive-guided-completed">
               <div className="interactive-guided-completed-badge">
                 <span
