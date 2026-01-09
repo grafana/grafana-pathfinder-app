@@ -126,7 +126,11 @@ function formatInteractiveBlock(block: JsonInteractiveBlock, indent: string): st
   let output = '';
 
   output += `${indent}{{< ${shortcodeName}`;
-  output += ` reftarget="${escapeShortcodeString(block.reftarget)}"`;
+
+  // noop actions don't require reftarget
+  if (block.reftarget) {
+    output += ` reftarget="${escapeShortcodeString(block.reftarget)}"`;
+  }
 
   if (block.action === 'formfill' && block.targetvalue) {
     output += ` targetvalue="${escapeShortcodeString(block.targetvalue)}"`;
@@ -210,7 +214,11 @@ function formatStepForWebsite(step: JsonStep, indent: string, isGuided = false):
   let output = '';
 
   output += `${indent}{{< ${shortcodeName}`;
-  output += ` reftarget="${escapeShortcodeString(step.reftarget)}"`;
+
+  // noop actions don't require reftarget
+  if (step.reftarget) {
+    output += ` reftarget="${escapeShortcodeString(step.reftarget)}"`;
+  }
 
   if (step.action === 'formfill' && step.targetvalue) {
     output += ` targetvalue="${escapeShortcodeString(step.targetvalue)}"`;

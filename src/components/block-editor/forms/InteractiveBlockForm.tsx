@@ -97,25 +97,30 @@ export function InteractiveBlockForm({
           return o.length > 0;
         });
 
+      // noop actions don't need most of these fields
+      const isNoopAction = action === 'noop';
+
       const block: JsonInteractiveBlock = {
         type: 'interactive',
         action,
-        reftarget: reftarget.trim(),
+        // Only include reftarget for non-noop actions
+        ...(!isNoopAction && reftarget.trim() && { reftarget: reftarget.trim() }),
         content: content.trim(),
-        ...(targetvalue.trim() && { targetvalue: targetvalue.trim() }),
-        ...(tooltip.trim() && { tooltip: tooltip.trim() }),
-        ...(reqArray.length > 0 && { requirements: reqArray }),
-        ...(objArray.length > 0 && { objectives: objArray }),
-        ...(skippable && { skippable }),
-        ...(hint.trim() && { hint: hint.trim() }),
-        ...(formHint.trim() && { formHint: formHint.trim() }),
-        ...(!showMe && { showMe: false }),
-        ...(!doIt && { doIt: false }),
-        ...(completeEarly && { completeEarly }),
-        ...(verify.trim() && { verify: verify.trim() }),
-        // Lazy render support for virtualized containers
-        ...(lazyRender && { lazyRender }),
-        ...(lazyRender && scrollContainer.trim() && { scrollContainer: scrollContainer.trim() }),
+        // The following fields are not relevant for noop actions
+        ...(!isNoopAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
+        ...(!isNoopAction && tooltip.trim() && { tooltip: tooltip.trim() }),
+        ...(!isNoopAction && reqArray.length > 0 && { requirements: reqArray }),
+        ...(!isNoopAction && objArray.length > 0 && { objectives: objArray }),
+        ...(!isNoopAction && skippable && { skippable }),
+        ...(!isNoopAction && hint.trim() && { hint: hint.trim() }),
+        ...(!isNoopAction && formHint.trim() && { formHint: formHint.trim() }),
+        ...(!isNoopAction && !showMe && { showMe: false }),
+        ...(!isNoopAction && !doIt && { doIt: false }),
+        ...(!isNoopAction && completeEarly && { completeEarly }),
+        ...(!isNoopAction && verify.trim() && { verify: verify.trim() }),
+        // Lazy render support for virtualized containers (not relevant for noop)
+        ...(!isNoopAction && lazyRender && { lazyRender }),
+        ...(!isNoopAction && lazyRender && scrollContainer.trim() && { scrollContainer: scrollContainer.trim() }),
         // AI customization props
         ...(assistantEnabled && { assistantEnabled }),
         ...(assistantEnabled && assistantId.trim() && { assistantId: assistantId.trim() }),
@@ -162,7 +167,9 @@ export function InteractiveBlockForm({
     });
   }, []);
 
-  const isValid = reftarget.trim().length > 0 && content.trim().length > 0;
+  // noop actions don't require a reftarget since they're informational only
+  const isNoop = action === 'noop';
+  const isValid = (isNoop || reftarget.trim().length > 0) && content.trim().length > 0;
   const showTargetValue = action === 'formfill';
 
   // Selected action option for Select component
@@ -175,26 +182,28 @@ export function InteractiveBlockForm({
         <Select options={ACTION_OPTIONS} value={selectedAction} onChange={handleActionChange} />
       </Field>
 
-      {/* Target Selector with DOM Picker */}
-      <Field label="Target Selector" description="CSS selector or Grafana selector for the target element" required>
-        <div className={styles.selectorField}>
-          <Input
-            value={reftarget}
-            onChange={(e) => setReftarget(e.currentTarget.value)}
-            placeholder="e.g., button[data-testid='save'], .my-class"
-            className={styles.selectorInput}
-          />
-          <Button
-            variant="secondary"
-            onClick={startPicker}
-            type="button"
-            icon="crosshair"
-            tooltip="Click an element to capture its selector"
-          >
-            Pick Element
-          </Button>
-        </div>
-      </Field>
+      {/* Target Selector with DOM Picker - hidden for noop actions */}
+      {!isNoop && (
+        <Field label="Target Selector" description="CSS selector or Grafana selector for the target element" required>
+          <div className={styles.selectorField}>
+            <Input
+              value={reftarget}
+              onChange={(e) => setReftarget(e.currentTarget.value)}
+              placeholder="e.g., button[data-testid='save'], .my-class"
+              className={styles.selectorInput}
+            />
+            <Button
+              variant="secondary"
+              onClick={startPicker}
+              type="button"
+              icon="crosshair"
+              tooltip="Click an element to capture its selector"
+            >
+              Pick Element
+            </Button>
+          </div>
+        </Field>
+      )}
 
       {/* Target Value (for formfill) */}
       {showTargetValue && (
@@ -231,124 +240,143 @@ export function InteractiveBlockForm({
         />
       </Field>
 
-      {/* Tooltip */}
-      <Field label="Tooltip" description="Tooltip shown when highlighting the element">
-        <Input
-          value={tooltip}
-          onChange={(e) => setTooltip(e.currentTarget.value)}
-          placeholder="Optional tooltip text"
-        />
-      </Field>
-
-      {/* Requirements */}
-      <Field label="Requirements" description="Conditions that must be met (comma-separated)">
-        <Input
-          value={requirements}
-          onChange={(e) => setRequirements(e.currentTarget.value)}
-          placeholder="e.g., exists-reftarget, on-page:/dashboards"
-        />
-      </Field>
-      <div className={styles.requirementsContainer}>
-        <span className={styles.requirementsLabel}>Quick add:</span>
-        <div className={styles.requirementsChips}>
-          {COMMON_REQUIREMENTS.map((req) => (
-            <Badge
-              key={req}
-              text={req}
-              color="blue"
-              className={styles.requirementChip}
-              onClick={() => handleRequirementClick(req)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Button Visibility */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>Button Visibility</div>
-        <Stack direction="row" gap={2}>
-          <Checkbox
-            label="Show 'Show me' button"
-            checked={showMe}
-            onChange={(e) => setShowMe(e.currentTarget.checked)}
+      {/* Tooltip - hidden for noop actions */}
+      {!isNoop && (
+        <Field label="Tooltip" description="Tooltip shown when highlighting the element">
+          <Input
+            value={tooltip}
+            onChange={(e) => setTooltip(e.currentTarget.value)}
+            placeholder="Optional tooltip text"
           />
-          <Checkbox label="Show 'Do it' button" checked={doIt} onChange={(e) => setDoIt(e.currentTarget.checked)} />
-        </Stack>
-      </div>
+        </Field>
+      )}
 
-      {/* Advanced Options */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>Advanced Options</div>
-        <Stack direction="column" gap={1} alignItems="flex-start">
-          <Checkbox
-            label="Skippable (can be skipped if requirements fail)"
-            checked={skippable}
-            onChange={(e) => setSkippable(e.currentTarget.checked)}
-          />
-          <Checkbox
-            label="Complete early (mark complete before action)"
-            checked={completeEarly}
-            onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
-          />
-          <Checkbox
-            label="Lazy render (element is in virtualized/lazy-loaded container)"
-            checked={lazyRender}
-            onChange={(e) => setLazyRender(e.currentTarget.checked)}
-          />
-        </Stack>
-      </div>
-
-      {/* Lazy Render Scroll Container */}
-      {lazyRender && (
-        <Field label="Scroll container" description="CSS selector for the scroll container (default: .scrollbar-view)">
-          <div className={styles.selectorField}>
+      {/* Requirements - hidden for noop actions */}
+      {!isNoop && (
+        <>
+          <Field label="Requirements" description="Conditions that must be met (comma-separated)">
             <Input
-              value={scrollContainer}
-              onChange={(e) => setScrollContainer(e.currentTarget.value)}
-              placeholder=".scrollbar-view"
-              className={styles.selectorInput}
+              value={requirements}
+              onChange={(e) => setRequirements(e.currentTarget.value)}
+              placeholder="e.g., exists-reftarget, on-page:/dashboards"
             />
-            <Button
-              variant="secondary"
-              onClick={() => {
-                onPickerModeChange?.(true, (selector: string) => {
-                  setScrollContainer(selector);
-                });
-              }}
-              type="button"
-              icon="crosshair"
-              tooltip="Click an element to capture its selector"
-            >
-              Pick Element
-            </Button>
+          </Field>
+          <div className={styles.requirementsContainer}>
+            <span className={styles.requirementsLabel}>Quick add:</span>
+            <div className={styles.requirementsChips}>
+              {COMMON_REQUIREMENTS.map((req) => (
+                <Badge
+                  key={req}
+                  text={req}
+                  color="blue"
+                  className={styles.requirementChip}
+                  onClick={() => handleRequirementClick(req)}
+                />
+              ))}
+            </div>
           </div>
-        </Field>
+        </>
       )}
 
-      {/* Hint (for skippable) */}
-      {skippable && (
-        <Field label="Hint" description="Hint shown when step cannot be completed">
-          <Input value={hint} onChange={(e) => setHint(e.currentTarget.value)} placeholder="This step requires..." />
-        </Field>
+      {/* Button Visibility - hidden for noop actions */}
+      {!isNoop && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Button visibility</div>
+          <Stack direction="row" gap={2}>
+            <Checkbox
+              label="Show 'Show me' button"
+              checked={showMe}
+              onChange={(e) => setShowMe(e.currentTarget.checked)}
+            />
+            <Checkbox label="Show 'Do it' button" checked={doIt} onChange={(e) => setDoIt(e.currentTarget.checked)} />
+          </Stack>
+        </div>
       )}
 
-      {/* Verify */}
-      <Field label="Verify" description="Post-action verification requirement (e.g., on-page:/dashboard)">
-        <Input
-          value={verify}
-          onChange={(e) => setVerify(e.currentTarget.value)}
-          placeholder="e.g., on-page:/dashboards"
-        />
-      </Field>
+      {/* Advanced Options - hidden for noop actions */}
+      {!isNoop && (
+        <>
+          <div className={styles.section}>
+            <div className={styles.sectionTitle}>Advanced options</div>
+            <Stack direction="column" gap={1} alignItems="flex-start">
+              <Checkbox
+                label="Skippable (can be skipped if requirements fail)"
+                checked={skippable}
+                onChange={(e) => setSkippable(e.currentTarget.checked)}
+              />
+              <Checkbox
+                label="Complete early (mark complete before action)"
+                checked={completeEarly}
+                onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
+              />
+              <Checkbox
+                label="Lazy render (element is in virtualized/lazy-loaded container)"
+                checked={lazyRender}
+                onChange={(e) => setLazyRender(e.currentTarget.checked)}
+              />
+            </Stack>
+          </div>
 
-      {/* Objectives (optional) */}
-      <Field label="Objectives" description="Objectives tracked for completion (comma-separated)">
-        <Input
-          value={objectives}
-          onChange={(e) => setObjectives(e.currentTarget.value)}
-          placeholder="e.g., created-dashboard, saved-changes"
-        />
-      </Field>
+          {/* Lazy Render Scroll Container */}
+          {lazyRender && (
+            <Field
+              label="Scroll container"
+              description="CSS selector for the scroll container (default: .scrollbar-view)"
+            >
+              <div className={styles.selectorField}>
+                <Input
+                  value={scrollContainer}
+                  onChange={(e) => setScrollContainer(e.currentTarget.value)}
+                  placeholder=".scrollbar-view"
+                  className={styles.selectorInput}
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    onPickerModeChange?.(true, (selector: string) => {
+                      setScrollContainer(selector);
+                    });
+                  }}
+                  type="button"
+                  icon="crosshair"
+                  tooltip="Click an element to capture its selector"
+                >
+                  Pick Element
+                </Button>
+              </div>
+            </Field>
+          )}
+
+          {/* Hint (for skippable) */}
+          {skippable && (
+            <Field label="Hint" description="Hint shown when step cannot be completed">
+              <Input
+                value={hint}
+                onChange={(e) => setHint(e.currentTarget.value)}
+                placeholder="This step requires..."
+              />
+            </Field>
+          )}
+
+          {/* Verify */}
+          <Field label="Verify" description="Post-action verification requirement (e.g., on-page:/dashboard)">
+            <Input
+              value={verify}
+              onChange={(e) => setVerify(e.currentTarget.value)}
+              placeholder="e.g., on-page:/dashboards"
+            />
+          </Field>
+
+          {/* Objectives (optional) */}
+          <Field label="Objectives" description="Objectives tracked for completion (comma-separated)">
+            <Input
+              value={objectives}
+              onChange={(e) => setObjectives(e.currentTarget.value)}
+              placeholder="e.g., created-dashboard, saved-changes"
+            />
+          </Field>
+        </>
+      )}
 
       {/* AI Customization Section */}
       <div className={styles.section}>

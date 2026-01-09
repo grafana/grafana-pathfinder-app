@@ -33,7 +33,7 @@ const SafeUrlSchema = z
  * Schema for interactive action types.
  * @coupling Type: JsonInteractiveAction
  */
-export const JsonInteractiveActionSchema = z.enum(['highlight', 'button', 'formfill', 'navigate', 'hover']);
+export const JsonInteractiveActionSchema = z.enum(['highlight', 'button', 'formfill', 'navigate', 'hover', 'noop']);
 
 // ============ MATCH METADATA ============
 
@@ -68,7 +68,8 @@ export const JsonQuizChoiceSchema = z.object({
 export const JsonStepSchema = z
   .object({
     action: JsonInteractiveActionSchema,
-    reftarget: z.string().min(1, 'Step reftarget is required'),
+    // reftarget is optional for noop actions (informational steps)
+    reftarget: z.string().optional(),
     targetvalue: z.string().optional(),
     requirements: z.array(z.string()).optional(),
     tooltip: z.string().optional(),
@@ -79,6 +80,16 @@ export const JsonStepSchema = z
     lazyRender: z.boolean().optional(),
     scrollContainer: z.string().optional(),
   })
+  .refine(
+    (step) => {
+      // Non-noop actions require a reftarget
+      if (step.action !== 'noop' && (!step.reftarget || step.reftarget.trim() === '')) {
+        return false;
+      }
+      return true;
+    },
+    { error: "Non-noop actions require 'reftarget'" }
+  )
   .refine(
     (step) => {
       // formfill with validateInput: true requires targetvalue
@@ -158,7 +169,8 @@ export const JsonInteractiveBlockSchema = z
   .object({
     type: z.literal('interactive'),
     action: JsonInteractiveActionSchema,
-    reftarget: z.string().min(1, 'Interactive reftarget is required'),
+    // reftarget is optional for noop actions (informational steps)
+    reftarget: z.string().optional(),
     targetvalue: z.string().optional(),
     content: z.string().min(1, 'Interactive content is required'),
     tooltip: z.string().optional(),
@@ -177,6 +189,16 @@ export const JsonInteractiveBlockSchema = z
     // Assistant customization props
     ...AssistantPropsSchema.shape,
   })
+  .refine(
+    (block) => {
+      // Non-noop actions require a reftarget
+      if (block.action !== 'noop') {
+        return block.reftarget !== undefined && block.reftarget.trim() !== '';
+      }
+      return true;
+    },
+    { error: "Non-noop actions require 'reftarget'" }
+  )
   .refine(
     (block) => {
       // formfill with validateInput: true requires targetvalue

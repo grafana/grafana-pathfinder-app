@@ -281,7 +281,7 @@ export function StepEditor({
       const step = steps[index];
       setEditingStepIndex(index);
       setEditAction(step.action);
-      setEditReftarget(step.reftarget);
+      setEditReftarget(step.reftarget ?? '');
       setEditTargetvalue(step.targetvalue ?? '');
       setEditFormHint(step.formHint ?? '');
       setEditValidateInput(step.validateInput ?? false);
@@ -302,7 +302,8 @@ export function StepEditor({
 
   // Save edited step
   const handleSaveEdit = useCallback(() => {
-    if (editingStepIndex === null || !editReftarget.trim()) {
+    // noop actions don't require a reftarget
+    if (editingStepIndex === null || (editAction !== 'noop' && !editReftarget.trim())) {
       return;
     }
 
@@ -361,7 +362,8 @@ export function StepEditor({
 
   // Handle adding a manual step
   const handleAddStep = useCallback(() => {
-    if (!newReftarget.trim()) {
+    // noop actions don't require a reftarget
+    if (newAction !== 'noop' && !newReftarget.trim()) {
       return;
     }
 
@@ -531,21 +533,25 @@ export function StepEditor({
                         menuPlacement="top"
                       />
                     </Field>
-                    <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
-                      <Input
-                        value={editReftarget}
-                        onChange={(e) => setEditReftarget(e.currentTarget.value)}
-                        placeholder="Click Pick or enter selector"
-                      />
-                    </Field>
-                    <Button
-                      variant="secondary"
-                      onClick={startEditPicker}
-                      icon="crosshair"
-                      style={{ marginTop: '22px' }}
-                    >
-                      Pick
-                    </Button>
+                    {editAction !== 'noop' && (
+                      <>
+                        <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
+                          <Input
+                            value={editReftarget}
+                            onChange={(e) => setEditReftarget(e.currentTarget.value)}
+                            placeholder="Click Pick or enter selector"
+                          />
+                        </Field>
+                        <Button
+                          variant="secondary"
+                          onClick={startEditPicker}
+                          icon="crosshair"
+                          style={{ marginTop: '22px' }}
+                        >
+                          Pick
+                        </Button>
+                      </>
+                    )}
                   </div>
 
                   {editAction === 'formfill' && (
@@ -628,7 +634,11 @@ export function StepEditor({
                     <Button variant="secondary" onClick={handleCancelEdit}>
                       Cancel
                     </Button>
-                    <Button variant="primary" onClick={handleSaveEdit} disabled={!editReftarget.trim()}>
+                    <Button
+                      variant="primary"
+                      onClick={handleSaveEdit}
+                      disabled={editAction !== 'noop' && !editReftarget.trim()}
+                    >
                       Save Changes
                     </Button>
                   </div>
@@ -653,9 +663,15 @@ export function StepEditor({
                       <Badge text={step.action} color="blue" />
                       {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
                     </div>
-                    {/* Show description/tooltip if available, otherwise show selector */}
+                    {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop) */}
                     <div className={styles.stepSelector} title={step.reftarget}>
-                      {isGuided ? step.description || step.reftarget : step.tooltip || step.reftarget}
+                      {step.action === 'noop'
+                        ? isGuided
+                          ? step.description || 'Informational step'
+                          : step.tooltip || 'Informational step'
+                        : isGuided
+                          ? step.description || step.reftarget
+                          : step.tooltip || step.reftarget}
                     </div>
                   </div>
 
@@ -722,16 +738,20 @@ export function StepEditor({
                 menuPlacement="top"
               />
             </Field>
-            <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
-              <Input
-                value={newReftarget}
-                onChange={(e) => setNewReftarget(e.currentTarget.value)}
-                placeholder="Click Pick or enter selector"
-              />
-            </Field>
-            <Button variant="secondary" onClick={startPicker} icon="crosshair" style={{ marginTop: '22px' }}>
-              Pick
-            </Button>
+            {newAction !== 'noop' && (
+              <>
+                <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
+                  <Input
+                    value={newReftarget}
+                    onChange={(e) => setNewReftarget(e.currentTarget.value)}
+                    placeholder="Click Pick or enter selector"
+                  />
+                </Field>
+                <Button variant="secondary" onClick={startPicker} icon="crosshair" style={{ marginTop: '22px' }}>
+                  Pick
+                </Button>
+              </>
+            )}
           </div>
 
           {newAction === 'formfill' && (
@@ -814,7 +834,7 @@ export function StepEditor({
             <Button variant="secondary" onClick={() => setShowAddForm(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleAddStep} disabled={!newReftarget.trim()}>
+            <Button variant="primary" onClick={handleAddStep} disabled={newAction !== 'noop' && !newReftarget.trim()}>
               Add step
             </Button>
           </div>

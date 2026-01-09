@@ -133,6 +133,7 @@ export const INTERACTIVE_ACTIONS = [
   { value: 'formfill', label: '📝 Form Fill', description: 'Fill an input field' },
   { value: 'navigate', label: '🧭 Navigate', description: 'Go to a URL' },
   { value: 'hover', label: '👆 Hover', description: 'Hover over an element' },
+  { value: 'noop', label: '📖 Info', description: 'Non-interactive informational step' },
 ] as const;
 
 /**
