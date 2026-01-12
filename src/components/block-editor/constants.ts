@@ -113,6 +113,12 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
 export const BLOCK_EDITOR_STORAGE_KEY = 'pathfinder-block-editor-state';
 
 /**
+ * Local storage key for persisting recording mode state
+ * Allows recording to survive page refreshes (e.g., when saving a dashboard)
+ */
+export const RECORDING_STATE_STORAGE_KEY = 'pathfinder-block-editor-recording-state';
+
+/**
  * Default guide metadata for new guides
  */
 export const DEFAULT_GUIDE_METADATA = {

@@ -10,6 +10,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
+import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { GuideMetadataForm } from './GuideMetadataForm';
 import { BlockPalette } from './BlockPalette';
@@ -95,6 +96,36 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     enableModalDetection: true,
   });
 
+  // Callback to restore recording state after page refresh
+  const handleRestoreRecordingState = useCallback(
+    (state: PersistedRecordingState) => {
+      // Restore the recording context
+      setRecordingIntoSection(state.recordingIntoSection);
+      setRecordingIntoConditionalBranch(state.recordingIntoConditionalBranch);
+      setRecordingStartUrl(state.recordingStartUrl);
+
+      // Restore recorded steps and resume recording
+      if (state.recordedSteps.length > 0) {
+        actionRecorder.setRecordedSteps(state.recordedSteps);
+      }
+
+      // Resume recording if there was an active recording session
+      if (state.recordingIntoSection || state.recordingIntoConditionalBranch) {
+        actionRecorder.startRecording();
+      }
+    },
+    [actionRecorder]
+  );
+
+  // Recording state persistence - survives page refreshes
+  const recordingPersistence = useRecordingPersistence({
+    recordingIntoSection,
+    recordingIntoConditionalBranch,
+    recordingStartUrl,
+    recordedSteps: actionRecorder.recordedSteps,
+    onRestore: handleRestoreRecordingState,
+  });
+
   // Memoized callback for persistence save - prevents unnecessary effect triggers
   const handlePersistenceSave = useCallback(() => {
     editor.markSaved();
@@ -104,13 +135,15 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   // Auto-save is paused while block form modal is open to avoid saving on every keystroke
   const persistence = useBlockPersistence({
     guide: editor.getGuide(),
+    blockIds: editor.state.blocks.map((b) => b.id), // Store block IDs to preserve across refreshes
     autoSave: true,
     autoSavePaused: isBlockFormOpen,
-    onLoad: (savedGuide) => {
+    onLoad: (savedGuide, savedBlockIds) => {
       // Only load once on initial mount
       if (!hasLoadedFromStorage.current && !initialGuide) {
         hasLoadedFromStorage.current = true;
-        editor.loadGuide(savedGuide);
+        // Pass savedBlockIds to preserve IDs (important for recording persistence)
+        editor.loadGuide(savedGuide, savedBlockIds);
         editor.markSaved(); // Don't mark as dirty after loading
       }
     },
@@ -326,9 +359,14 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   // Handle new guide (reset and clear storage)
   const handleNewGuide = useCallback(() => {
     persistence.clear(); // Clear localStorage
+    recordingPersistence.clear(); // Clear any persisted recording state
+    actionRecorder.clearRecording(); // Stop any active recording
+    setRecordingIntoSection(null);
+    setRecordingIntoConditionalBranch(null);
+    setRecordingStartUrl(null);
     editor.resetGuide(); // Reset editor state
     setIsNewGuideConfirmOpen(false);
-  }, [editor, persistence]);
+  }, [editor, persistence, recordingPersistence, actionRecorder]);
 
   // Handle import guide
   const handleImportGuide = useCallback(
@@ -577,6 +615,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         actionRecorder.clearRecording();
         setRecordingIntoSection(null);
         setRecordingStartUrl(null);
+        // Clear persisted recording state since recording is complete
+        recordingPersistence.clear();
       } else {
         // Start recording into this section (clear any conditional recording first)
         setRecordingIntoConditionalBranch(null);
@@ -586,7 +626,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         setRecordingStartUrl(window.location.href);
       }
     },
-    [recordingIntoSection, actionRecorder, editor]
+    [recordingIntoSection, actionRecorder, editor, recordingPersistence]
   );
 
   // Handle conditional branch recording toggle
@@ -665,6 +705,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         actionRecorder.clearRecording();
         setRecordingIntoConditionalBranch(null);
         setRecordingStartUrl(null);
+        // Clear persisted recording state since recording is complete
+        recordingPersistence.clear();
       } else {
         // Start recording into this conditional branch (clear any section recording first)
         setRecordingIntoSection(null);
@@ -674,7 +716,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         setRecordingStartUrl(window.location.href);
       }
     },
-    [recordingIntoConditionalBranch, actionRecorder, editor]
+    [recordingIntoConditionalBranch, actionRecorder, editor, recordingPersistence]
   );
 
   // Handle stop recording from overlay
