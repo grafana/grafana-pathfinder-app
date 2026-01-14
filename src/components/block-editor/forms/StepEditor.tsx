@@ -878,10 +878,7 @@ export function StepEditor({
                   />
                   {newValidateInput && (
                     <>
-                      <Field
-                        label="Expected value (supports regex: ^pattern, /pattern/)"
-                        style={{ marginBottom: 0 }}
-                      >
+                      <Field label="Expected value (supports regex: ^pattern, /pattern/)" style={{ marginBottom: 0 }}>
                         <Input
                           value={newTargetvalue}
                           onChange={(e) => setNewTargetvalue(e.currentTarget.value)}
