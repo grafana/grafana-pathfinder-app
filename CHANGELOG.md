@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.4.0
+
+### Added
+
+- **Block editor tour**: New interactive tour for the block editor with improved guided UX (#467)
+- **Inner list element support**: Added support for inner list elements in interactive steps (#461)
+- **Noop shortcode export**: Noop actions now export as `{{< interactive/noop >}}` shortcode for website documentation (#464)
+  - Made `reftarget` optional for noop actions in interactive, multistep, and guided blocks
+
+### Changed
+
+- **Centralized experiment auto-open state**: Replaced sessionStorage-based tracking with persistent Grafana user storage for auto-open states (#470)
+  - Enhanced functions for marking and syncing auto-open states across sessions and devices
+  - Updated sidebar state management to reflect new action types for analytics
+  - Improved reset functionality to clear both session and user storage states
+- **React 19 compatibility**: Fixed compatibility issues with React 19 (#468)
+
+### Fixed
+
+- Fixed various block editor UI/UX issues (#469)
+- Added aria label to block form modal for accessibility (#469)
+- Fixed bug with lazy scroll in React 19 (#468)
+- Fixed block editor record mode persistence issues (#465)
+- Fixed noop completion eligibility logic (#464)
+
 ## 1.3.7
 
 ### Fixed
