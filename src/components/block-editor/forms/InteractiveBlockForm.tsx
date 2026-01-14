@@ -284,11 +284,17 @@ export function InteractiveBlockForm({
           <div className={styles.sectionTitle}>Button visibility</div>
           <Stack direction="row" gap={2}>
             <Checkbox
+              className={styles.checkbox}
               label="Show 'Show me' button"
               checked={showMe}
               onChange={(e) => setShowMe(e.currentTarget.checked)}
             />
-            <Checkbox label="Show 'Do it' button" checked={doIt} onChange={(e) => setDoIt(e.currentTarget.checked)} />
+            <Checkbox
+              className={styles.checkbox}
+              label="Show 'Do it' button"
+              checked={doIt}
+              onChange={(e) => setDoIt(e.currentTarget.checked)}
+            />
           </Stack>
         </div>
       )}
@@ -300,17 +306,22 @@ export function InteractiveBlockForm({
             <div className={styles.sectionTitle}>Advanced options</div>
             <Stack direction="column" gap={1} alignItems="flex-start">
               <Checkbox
+                className={styles.checkbox}
                 label="Skippable (can be skipped if requirements fail)"
                 checked={skippable}
                 onChange={(e) => setSkippable(e.currentTarget.checked)}
               />
               <Checkbox
+                className={styles.checkbox}
                 label="Complete early (mark complete before action)"
+                description="Marks the step as done immediately, before the action executes"
                 checked={completeEarly}
                 onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
               />
               <Checkbox
-                label="Lazy render (element is in virtualized/lazy-loaded container)"
+                className={styles.checkbox}
+                label="Element may be off-screen (scroll to find)"
+                description="Enable if the target is in a long list that requires scrolling"
                 checked={lazyRender}
                 onChange={(e) => setLazyRender(e.currentTarget.checked)}
               />

@@ -208,6 +208,7 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
 
           <Field label="Default checked">
             <Checkbox
+              className={styles.checkbox}
               label="Checkbox is checked by default"
               checked={defaultValue === true}
               onChange={(e) => setDefaultValue(e.currentTarget.checked)}
@@ -220,11 +221,13 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Options</div>
         <Checkbox
+          className={styles.checkbox}
           label="Required (user must provide a value to proceed)"
           checked={required}
           onChange={(e) => setRequired(e.currentTarget.checked)}
         />
         <Checkbox
+          className={styles.checkbox}
           label="Skippable (user can skip this input)"
           checked={skippable}
           onChange={(e) => setSkippable(e.currentTarget.checked)}

@@ -564,6 +564,12 @@ export const getBlockFormStyles = (theme: GrafanaTheme2) => ({
     },
   }),
 
+  // Checkbox container - ensures left alignment
+  checkbox: css({
+    alignSelf: 'flex-start',
+    textAlign: 'left',
+  }),
+
   // Preview section for displaying parsed values
   previewSection: css({
     marginTop: theme.spacing(1),
