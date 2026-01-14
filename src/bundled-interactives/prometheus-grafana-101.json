@@ -161,8 +161,8 @@
         },
         {
           "type": "interactive",
-          "action": "button",
-          "reftarget": "Refresh",
+          "action": "highlight",
+          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
           "requirements": ["exists-reftarget"],
           "content": "Click the **Refresh** button to execute the query and see your Prometheus data.",
           "tooltip": "The **Refresh** button is used to execute the query and see your Prometheus data."
@@ -268,7 +268,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "grafana:components.RefreshPicker.runButtonV2",
+          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
           "requirements": ["exists-reftarget"],
           "content": "Click **Run query** to see which targets are being monitored.",
           "tooltip": "Click **Run query** to execute your PromQL and see the results. Explore shows both a graph visualization and a table view of your metrics."
@@ -285,7 +285,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "grafana:components.RefreshPicker.runButtonV2",
+          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
           "requirements": ["exists-reftarget"],
           "content": "Execute the query to see targets grouped by job."
         },
@@ -301,7 +301,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "grafana:components.RefreshPicker.runButtonV2",
+          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
           "requirements": ["exists-reftarget"],
           "content": "Run the query to visualize request rates over time."
         },
@@ -317,7 +317,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "grafana:components.RefreshPicker.runButtonV2",
+          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
           "requirements": ["exists-reftarget"],
           "content": "Execute to see your Prometheus version and build details.",
           "tooltip": "Info metrics like this one typically have a constant value of **1**, but their labels contain the valuable information about the system."
