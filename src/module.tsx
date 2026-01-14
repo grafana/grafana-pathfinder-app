@@ -21,11 +21,15 @@ import {
   matchPathPattern,
 } from './utils/openfeature';
 import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
+import { StorageKeys } from './lib/user-storage';
 import {
   createExperimentDebugger,
   logExperimentConfig,
   shouldAutoOpenForPath,
-  markPageAutoOpened,
+  markParentAutoOpened,
+  markGlobalAutoOpened,
+  syncExperimentStateFromUserStorage,
+  resetExperimentState,
 } from './utils/experiment-debug';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
@@ -60,25 +64,24 @@ const experimentVariant = experimentConfig.variant;
 createExperimentDebugger(experimentConfig);
 
 // Check for manual pop-open reset via resetCache field in experiment config
-// This allows operators to clear the "Clippy protection" sessionStorage via GOFF
+// This allows operators to clear the "Clippy protection" via GOFF
 // Uses localStorage to track if the reset has been processed (persists across sessions)
 // Only resets when resetCache transitions from false → true (not on every page load while true)
 const hostname = window.location.hostname;
-const resetProcessedKey = `grafana-pathfinder-pop-open-reset-processed-${hostname}`;
+const resetProcessedKey = `${StorageKeys.EXPERIMENT_RESET_PROCESSED_PREFIX}${hostname}`;
 const resetProcessed = localStorage.getItem(resetProcessedKey);
 
 if (experimentConfig.resetCache) {
   // resetCache is true - check if we've already processed this reset
   if (resetProcessed !== 'true') {
-    // First time seeing resetCache as true - clear the sessionStorage keys and mark as processed
-    const autoOpenSessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
-    const treatmentSessionKey = `grafana-pathfinder-experiment-treatment-opened-${hostname}`;
-
-    sessionStorage.removeItem(autoOpenSessionKey);
-    sessionStorage.removeItem(treatmentSessionKey);
+    // First time seeing resetCache as true - reset experiment state and mark as processed
+    // This clears both sessionStorage and Grafana user storage
+    resetExperimentState(hostname).catch((error) => {
+      console.warn('[Pathfinder] Failed to reset experiment state:', error);
+    });
     localStorage.setItem(resetProcessedKey, 'true');
 
-    console.log('[Pathfinder] Pop-open reset triggered: cleared auto-open session tracking');
+    console.log('[Pathfinder] Pop-open reset triggered: cleared auto-open tracking in all storages');
   }
 } else {
   // resetCache is false - reset the processed marker so next true triggers a reset
@@ -88,8 +91,36 @@ if (experimentConfig.resetCache) {
 }
 const targetPages = experimentConfig.pages;
 
+// Sync experiment state from Grafana user storage to sessionStorage
+// This restores auto-open tracking from previous sessions/browsers
+// Fire and forget - don't block module initialization
+syncExperimentStateFromUserStorage(hostname, targetPages).catch((error) => {
+  console.warn('[Pathfinder] Failed to sync experiment state from user storage:', error);
+});
+
 // Log experiment config for debugging (warning level so it's visible)
 logExperimentConfig(experimentConfig);
+
+// Check if Pathfinder was already docked (browser restore scenario)
+try {
+  const dockedValue = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
+  if (dockedValue) {
+    let isPathfinderDocked = false;
+    try {
+      const parsedValue = JSON.parse(dockedValue);
+      isPathfinderDocked =
+        parsedValue.pluginId === pluginJson.id || parsedValue.componentTitle === 'Interactive learning';
+    } catch {
+      // Fallback for older Grafana versions that might store a simple string
+      isPathfinderDocked = dockedValue === pluginJson.id || dockedValue === 'Interactive learning';
+    }
+    if (isPathfinderDocked) {
+      sidebarState.setPendingOpenSource('browser_restore', 'restore');
+    }
+  }
+} catch {
+  // localStorage might be unavailable
+}
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -162,7 +193,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     );
 
     // Set source for analytics before opening (auto-open from URL param)
-    sidebarState.setPendingOpenSource('url_param', true);
+    sidebarState.setPendingOpenSource('url_param', 'auto-open');
 
     // open the sidebar
     attemptAutoOpen(200);
@@ -212,7 +243,9 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     // Include hostname to make this unique per Grafana instance
     const hostname = window.location.hostname;
     // Global session key for excluded variant (once per session globally)
-    const sessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
+    // Global session key for excluded variant (once per session globally)
+    // Uses module-level hostname for consistency
+    const sessionKey = `${StorageKeys.EXPERIMENT_SESSION_AUTO_OPENED_PREFIX}${hostname}`;
 
     const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
@@ -224,17 +257,17 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
     // Auto-open immediately if not on onboarding flow
     // Skip if sidebar is already in use by another plugin (e.g., Assistant)
-    // Don't mark sessionStorage when skipping - try again next session
+    // Don't mark storage when skipping - try again next session
     if (shouldOpenNow && !isOnboardingFlow) {
       if (isSidebarAlreadyInUse()) {
         console.log('[Pathfinder] Skipping auto-open: sidebar already in use by another plugin');
       } else {
         if (isTreatment && matchingPattern) {
-          markPageAutoOpened(hostname, matchingPattern);
+          markParentAutoOpened(hostname, matchingPattern);
         } else if (!isTreatment) {
-          sessionStorage.setItem(sessionKey, 'true');
+          markGlobalAutoOpened(hostname);
         }
-        sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open', true);
+        sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open', 'auto-open');
         attemptAutoOpen(200);
       }
     }
@@ -253,19 +286,19 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         const shouldOpenAfterOnboarding = isTreatment ? newMatchingPattern !== null : !alreadyOpened;
 
         // If we've left onboarding and should open, do it now
-        // Skip if sidebar is already in use - don't mark sessionStorage, try next session
+        // Skip if sidebar is already in use - don't mark storage, try next session
         if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
           if (isSidebarAlreadyInUse()) {
             console.log('[Pathfinder] Skipping auto-open after onboarding: sidebar already in use');
           } else {
             if (isTreatment && newMatchingPattern) {
-              markPageAutoOpened(hostname, newMatchingPattern);
+              markParentAutoOpened(hostname, newMatchingPattern);
             } else if (!isTreatment) {
-              sessionStorage.setItem(sessionKey, 'true');
+              markGlobalAutoOpened(hostname);
             }
             sidebarState.setPendingOpenSource(
               isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding',
-              true
+              'auto-open'
             );
             attemptAutoOpen(500);
           }
@@ -304,8 +337,8 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         if (isSidebarAlreadyInUse()) {
           console.log('[Pathfinder] Skipping auto-open on navigation: sidebar already in use');
         } else {
-          markPageAutoOpened(hostname, matchingPattern);
-          sidebarState.setPendingOpenSource('experiment_treatment_navigation', true);
+          markParentAutoOpened(hostname, matchingPattern);
+          sidebarState.setPendingOpenSource('experiment_treatment_navigation', 'auto-open');
           attemptAutoOpen(300);
         }
       }
@@ -358,11 +391,11 @@ if (experimentVariant !== 'control') {
         sidebarState.setIsSidebarMounted(true);
 
         // Track sidebar open via component mount
-        // consumePendingOpenSource() returns { source, isAutoOpen } set before opening
-        const { source, isAutoOpen } = sidebarState.consumePendingOpenSource();
+        // consumePendingOpenSource() returns { source, action } set before opening
+        const { source, action } = sidebarState.consumePendingOpenSource();
 
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-          action: isAutoOpen ? 'auto-open' : 'open',
+          action,
           source,
         });
 
