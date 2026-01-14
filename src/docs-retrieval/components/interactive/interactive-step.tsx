@@ -20,7 +20,8 @@ import {
 import { testIds } from '../../../components/testIds';
 import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../integrations/assistant-integration';
 import { CodeBlock } from '../docs/code-block';
-import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
+import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../../lib/dom';
+import { isCssSelector } from '../../../lib/dom/selector-detector';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -46,14 +47,25 @@ async function executeWithLazyScroll(
   refTarget: string,
   lazyRender: boolean,
   scrollContainer: string | undefined,
-  action: () => Promise<void>
+  action: () => Promise<void>,
+  targetAction?: string
 ): Promise<LazyScrollResult> {
   // Resolve grafana: selectors
   const resolvedSelector = resolveSelector(refTarget);
 
   // First check if element already exists
-  const existingResult = querySelectorAllEnhanced(resolvedSelector);
-  const elementExists = existingResult.elements.length > 0;
+  // For button actions with text (not CSS selectors), use findButtonByText instead of querySelectorAllEnhanced
+  let elementExists = false;
+  
+  if (targetAction === 'button' && !isCssSelector(refTarget)) {
+    // Use text-based button matching (same as reftargetExistsCheck)
+    const buttons = findButtonByText(refTarget);
+    elementExists = buttons.length > 0;
+  } else {
+    // Use CSS selector matching for all other actions
+    const existingResult = querySelectorAllEnhanced(resolvedSelector);
+    elementExists = existingResult.elements.length > 0;
+  }
 
   if (elementExists) {
     // Element found - execute action immediately
@@ -603,7 +615,7 @@ export const InteractiveStep = forwardRef<
         // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, async () => {
           await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
-        });
+        }, targetAction);
 
         if (!result.success) {
           // Lazy scroll failed to find element
@@ -679,7 +691,7 @@ export const InteractiveStep = forwardRef<
         // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, async () => {
           await executeStep();
-        });
+        }, targetAction);
 
         if (!result.success) {
           // Lazy scroll failed to find element
