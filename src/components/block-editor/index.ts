@@ -8,6 +8,9 @@
 // Main editor component
 export { BlockEditor } from './BlockEditor';
 
+// Tour component
+export { BlockEditorTour } from './BlockEditorTour';
+
 // Types
 export type {
   BlockType,

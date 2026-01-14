@@ -20,8 +20,10 @@ import { BlockFormModal } from './BlockFormModal';
 import { ImportGuideModal } from './ImportGuideModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { GitHubPRModal } from './GitHubPRModal';
+import { BlockEditorTour } from './BlockEditorTour';
 import { useActionRecorder } from '../../utils/devtools';
 import { copyGuideForWebsite } from '../../utils/guide-website-exporter';
+import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
 
@@ -53,6 +55,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isGitHubPRModalOpen, setIsGitHubPRModalOpen] = useState(false);
+  const [isTourOpen, setIsTourOpen] = useState(false);
   // State for editing nested blocks
   const [editingNestedBlock, setEditingNestedBlock] = useState<{
     sectionId: string;
@@ -376,6 +379,11 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     },
     [editor]
   );
+
+  // Handle loading the example template guide
+  const handleLoadTemplate = useCallback(() => {
+    editor.loadGuide(blockEditorTutorial as JsonGuide);
+  }, [editor]);
 
   // Handle nesting a block into a section
   const handleNestBlock = useCallback(
@@ -884,12 +892,24 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             icon="cog"
             onClick={() => setIsMetadataOpen(true)}
             tooltip="Edit guide settings"
+            data-testid="guide-metadata-button"
           />
         </div>
 
         <div className={styles.headerRight}>
+          {/* Tour button */}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="question-circle"
+            onClick={() => setIsTourOpen(true)}
+            tooltip="Take a tour of the guide editor"
+          >
+            Tour
+          </Button>
+
           {/* View mode toggle - icon only */}
-          <div className={styles.viewModeToggle}>
+          <div className={styles.viewModeToggle} data-testid="view-mode-toggle">
             <ButtonGroup>
               <Button
                 variant={!state.isPreviewMode ? 'primary' : 'secondary'}
@@ -918,7 +938,14 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           />
 
           {/* Export actions */}
-          <Button variant="secondary" size="sm" icon="copy" onClick={handleCopy} tooltip="Copy JSON to clipboard" />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="copy"
+            onClick={handleCopy}
+            tooltip="Copy JSON to clipboard"
+            data-testid="copy-json-button"
+          />
           <Button
             variant={websiteCopied ? 'success' : 'secondary'}
             size="sm"
@@ -951,7 +978,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       </div>
 
       {/* Content */}
-      <div className={styles.content}>
+      <div className={styles.content} data-testid="block-editor-content">
         {/* Selection controls - shown in edit mode, above blocks */}
         {!state.isPreviewMode && hasBlocks && (
           <div className={styles.selectionControls}>
@@ -1021,13 +1048,21 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           <div className={styles.emptyState}>
             <div className={styles.emptyStateIcon}>📄</div>
             <p className={styles.emptyStateText}>Your guide is empty. Add your first block to get started.</p>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <Button variant="secondary" onClick={handleLoadTemplate} icon="file-alt">
+                Load example guide
+              </Button>
+              <Button variant="secondary" onClick={() => setIsTourOpen(true)} icon="question-circle">
+                Take a tour
+              </Button>
+            </div>
           </div>
         )}
       </div>
 
       {/* Footer with add block button (only in edit mode) */}
       {!state.isPreviewMode && (
-        <div className={styles.footer}>
+        <div className={styles.footer} data-testid="block-palette">
           <BlockPalette onSelect={handleBlockTypeSelect} embedded />
         </div>
       )}
@@ -1103,6 +1138,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           startingUrl={recordingStartUrl ?? undefined}
         />
       )}
+
+      {/* Block Editor Tour */}
+      {isTourOpen && <BlockEditorTour onClose={() => setIsTourOpen(false)} />}
     </div>
   );
 }

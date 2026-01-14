@@ -1483,6 +1483,12 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
+    /* Instant highlight - no draw animation, just breathing glow */
+    .interactive-highlight-outline--instant {
+      animation: interactive-glow-breathe 2s ease-in-out infinite !important;
+      background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100% !important;
+    }
+
     /* Enhanced comment box animations */
     @keyframes fadeInComment {
       0% {
@@ -1619,7 +1625,11 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     /* Final state - visible and in position */
-    .interactive-comment-box[data-ready="true"] {
+    /* Override position-specific transforms to prevent overlap */
+    .interactive-comment-box[data-ready="true"][data-position="right"],
+    .interactive-comment-box[data-ready="true"][data-position="left"],
+    .interactive-comment-box[data-ready="true"][data-position="top"],
+    .interactive-comment-box[data-ready="true"][data-position="bottom"] {
       opacity: 1;
       transform: scale(1) translateX(0) translateY(0);
     }
@@ -1628,9 +1638,34 @@ export const addGlobalInteractiveStyles = () => {
       transform: scale(1) translate(-50%, -50%);
     }
 
+    /* Instant comment box - no transition, final state immediately */
+    /* Use high specificity to override position-specific transforms */
+    .interactive-comment-box.interactive-comment-box--instant,
+    .interactive-comment-box.interactive-comment-box--instant[data-position="right"],
+    .interactive-comment-box.interactive-comment-box--instant[data-position="left"],
+    .interactive-comment-box.interactive-comment-box--instant[data-position="top"],
+    .interactive-comment-box.interactive-comment-box--instant[data-position="bottom"] {
+      transition: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+
+    .interactive-comment-box.interactive-comment-box--instant[data-position="center"] {
+      transform: translate(-50%, -50%) !important;
+    }
+
+    .interactive-comment-box--instant .interactive-comment-content {
+      animation: none !important;
+      box-shadow: 
+        0 4px 20px rgba(0, 0, 0, 0.25),
+        0 0 0 2px rgba(255, 136, 0, 0.25),
+        0 0 15px rgba(255, 136, 0, 0.15) !important;
+    }
+
     .interactive-comment-content {
       border-radius: 8px;
       padding: 12px;
+      padding-right: 36px; /* Extra padding for close button */
       font-size: 14px;
       line-height: 1.5;
       /* Layered shadow: soft glow + depth shadow */
@@ -1651,16 +1686,16 @@ export const addGlobalInteractiveStyles = () => {
       box-sizing: border-box;
     }
 
-    /* Simple white close button for comment boxes */
+    /* Close button - subtle, positioned in header */
     .interactive-comment-close {
       position: absolute;
-      top: 6px;
-      right: 6px;
-      width: 20px;
-      height: 20px;
+      top: 10px;
+      right: 10px;
+      width: 24px;
+      height: 24px;
       border: none;
       background: transparent;
-      color: #ffffff;
+      color: rgba(255, 255, 255, 0.5);
       border-radius: 4px;
       cursor: pointer;
       display: flex;
@@ -1671,62 +1706,55 @@ export const addGlobalInteractiveStyles = () => {
       line-height: 1;
       padding: 0;
       pointer-events: auto;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
       z-index: 1;
-      opacity: 0.7;
     }
 
     .interactive-comment-close:hover {
-      background: rgba(255, 255, 255, 0.15);
-      opacity: 1;
-      transform: scale(1.1);
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.9);
     }
 
     .interactive-comment-close:active {
       transform: scale(0.95);
     }
 
-    /* Skip button for comment boxes (after instruction text) */
+    /* Legacy skip button - kept for noop steps and backward compatibility */
     .interactive-comment-skip-btn {
-      position: static !important;
-      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
       border: 1px solid rgba(255, 255, 255, 0.2);
-      background: rgba(255, 255, 255, 0.05);
-      color: rgba(255, 255, 255, 0.7);
-      border-radius: 4px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.8);
+      border-radius: 6px;
       cursor: pointer;
-      display: block !important;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 500;
-      line-height: 1.3;
       pointer-events: auto;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
       white-space: nowrap;
-      width: fit-content;
-      float: none !important;
-      top: auto !important;
-      right: auto !important;
-      left: auto !important;
-      bottom: auto !important;
     }
 
     .interactive-comment-skip-btn:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.1);
       border-color: rgba(255, 255, 255, 0.3);
-      color: rgba(255, 255, 255, 0.9);
+      color: #ffffff;
     }
 
     .interactive-comment-skip-btn:active {
       transform: scale(0.98);
     }
 
-    /* Button container for skip and cancel buttons */
+    /* Button container - navigation row layout */
     .interactive-comment-buttons {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
       gap: 8px;
-      margin-top: 12px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     /* Form validation status when inline with buttons */
@@ -1736,38 +1764,9 @@ export const addGlobalInteractiveStyles = () => {
       min-width: 120px;
     }
 
-    /* Cancel button for comment boxes - always available during guided execution */
+    /* Legacy cancel button - kept for backward compatibility */
     .interactive-comment-cancel-btn {
-      position: static !important;
-      padding: 6px 12px;
-      border: 1px solid rgba(255, 100, 100, 0.3);
-      background: rgba(255, 100, 100, 0.1);
-      color: rgba(255, 200, 200, 0.9);
-      border-radius: 4px;
-      cursor: pointer;
-      display: block !important;
-      font-size: 11px;
-      font-weight: 500;
-      line-height: 1.3;
-      pointer-events: auto;
-      transition: all 0.2s ease;
-      white-space: nowrap;
-      width: fit-content;
-      float: none !important;
-      top: auto !important;
-      right: auto !important;
-      left: auto !important;
-      bottom: auto !important;
-    }
-
-    .interactive-comment-cancel-btn:hover {
-      background: rgba(255, 100, 100, 0.25);
-      border-color: rgba(255, 100, 100, 0.5);
-      color: rgba(255, 220, 220, 1);
-    }
-
-    .interactive-comment-cancel-btn:active {
-      transform: scale(0.98);
+      display: none; /* Use nav-btn--cancel instead */
     }
 
     /* Orange glow border for comment boxes with entrance animation */
@@ -1797,7 +1796,14 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Logo and text layout */
+    /* Clean content section layout (no logo) */
+    .interactive-comment-content-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Legacy wrapper - kept for backward compatibility with simple comments */
     .interactive-comment-wrapper {
       display: flex;
       align-items: flex-start;
@@ -1805,24 +1811,7 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-comment-logo {
-      flex-shrink: 0;
-      margin-top: 1px; /* Slight adjustment to align with text */
-      width: 20px;
-      height: 20px;
-      overflow: hidden;
-      border-radius: 4px;
-      background: transparent;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .interactive-comment-logo img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      background: transparent;
-      border-radius: 4px;
+      display: none; /* Hidden by default - clean design without logo */
     }
 
     .interactive-comment-text {
@@ -1834,7 +1823,8 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     /* Handle code elements within comments */
-    .interactive-comment-text code {
+    .interactive-comment-text code,
+    .interactive-comment-description code {
       display: inline-block;
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1851,7 +1841,10 @@ export const addGlobalInteractiveStyles = () => {
     /* Handle other inline elements to prevent overflow */
     .interactive-comment-text strong,
     .interactive-comment-text em,
-    .interactive-comment-text span {
+    .interactive-comment-text span,
+    .interactive-comment-description strong,
+    .interactive-comment-description em,
+    .interactive-comment-description span {
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
@@ -1906,7 +1899,7 @@ export const addGlobalInteractiveStyles = () => {
       border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
-    /* Step checklist in guided comment tooltips */
+    /* Step checklist in guided comment tooltips (legacy - kept for compatibility) */
     .interactive-comment-steps-list {
       display: flex;
       flex-direction: column;
@@ -1933,6 +1926,184 @@ export const addGlobalInteractiveStyles = () => {
       padding: 4px 6px;
       margin: -2px -4px;
       border-radius: 3px;
+    }
+
+    /* Comment box header - step badge only */
+    .interactive-comment-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .interactive-comment-step-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 14px;
+      background: linear-gradient(135deg, #3871dc 0%, #5a67d8 100%);
+      color: #ffffff;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      box-shadow: 0 2px 8px rgba(56, 113, 220, 0.3);
+    }
+
+    /* Progress bar */
+    .interactive-comment-progress-container {
+      position: relative;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .interactive-comment-progress-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background: linear-gradient(90deg, #3871dc 0%, #5a67d8 100%);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    /* Step dots - centered, no borders */
+    .interactive-comment-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin: 16px 0 8px;
+    }
+
+    .interactive-comment-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      transition: all 0.2s ease;
+    }
+
+    .interactive-comment-dot--current {
+      background: #3871dc;
+      box-shadow: 0 0 0 3px rgba(56, 113, 220, 0.3);
+      animation: dotPulse 2s ease-in-out infinite;
+    }
+
+    .interactive-comment-dot--completed {
+      background: #73bf69;
+    }
+
+    @keyframes dotPulse {
+      0%, 100% {
+        box-shadow: 0 0 0 3px rgba(56, 113, 220, 0.3);
+      }
+      50% {
+        box-shadow: 0 0 0 6px rgba(56, 113, 220, 0);
+      }
+    }
+
+    /* Title - clean typography */
+    .interactive-comment-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--grafana-colors-text-primary, #ffffff);
+      margin: 0 0 6px 0;
+      line-height: 1.3;
+    }
+
+    /* Description - secondary text */
+    .interactive-comment-description {
+      font-size: 14px;
+      color: var(--grafana-colors-text-secondary, rgba(255, 255, 255, 0.75));
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    /* Navigation buttons - clean, minimal */
+    .interactive-comment-nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 8px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .interactive-comment-nav-btn:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.3);
+      color: #ffffff;
+    }
+
+    .interactive-comment-nav-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Primary button - gradient */
+    .interactive-comment-nav-btn--primary {
+      background: linear-gradient(135deg, #3871dc 0%, #5a67d8 100%);
+      border-color: transparent;
+      color: #ffffff;
+    }
+
+    .interactive-comment-nav-btn--primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #4a82e4 0%, #6b74e8 100%);
+      border-color: transparent;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(56, 113, 220, 0.4);
+    }
+
+    /* Cancel button - subtle danger styling */
+    .interactive-comment-nav-btn--cancel {
+      border-color: rgba(255, 100, 100, 0.3);
+      color: rgba(255, 180, 180, 0.9);
+    }
+
+    .interactive-comment-nav-btn--cancel:hover:not(:disabled) {
+      background: rgba(255, 100, 100, 0.15);
+      border-color: rgba(255, 100, 100, 0.5);
+      color: rgba(255, 220, 220, 1);
+    }
+
+    .interactive-comment-nav-spacer {
+      flex: 1;
+    }
+
+    /* Keyboard hint - subtle, integrated */
+    .interactive-comment-keyboard-hint {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 12px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.35);
+    }
+
+    .interactive-comment-kbd {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      padding: 2px 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     }
 
     /* Hide interactive comment spans - they're extracted as metadata */
