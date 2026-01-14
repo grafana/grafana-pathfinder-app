@@ -147,6 +147,7 @@ export function MultistepBlockForm({
 
       {/* Skippable */}
       <Checkbox
+        className={styles.checkbox}
         label="Skippable (can be skipped if requirements fail)"
         checked={skippable}
         onChange={(e) => setSkippable(e.currentTarget.checked)}

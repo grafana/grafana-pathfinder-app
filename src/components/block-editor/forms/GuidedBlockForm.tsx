@@ -173,12 +173,15 @@ export function GuidedBlockForm({
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Options</div>
         <Checkbox
+          className={styles.checkbox}
           label="Skippable (can be skipped if requirements fail)"
           checked={skippable}
           onChange={(e) => setSkippable(e.currentTarget.checked)}
         />
         <Checkbox
+          className={styles.checkbox}
           label="Complete early (mark complete when user performs action early)"
+          description="Marks the block as done if user completes the action before being prompted"
           checked={completeEarly}
           onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
         />

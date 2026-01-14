@@ -458,6 +458,7 @@ export function QuizBlockForm({ initialData, onSubmit, onCancel, isEditing = fal
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Advanced options</div>
         <Checkbox
+          className={styles.checkbox}
           label="Skippable (user can skip this quiz)"
           checked={skippable}
           onChange={(e) => setSkippable(e.currentTarget.checked)}

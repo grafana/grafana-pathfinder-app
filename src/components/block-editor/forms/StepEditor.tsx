@@ -10,6 +10,7 @@ import { Button, Field, Input, Select, Badge, IconButton, Checkbox, useStyles2 }
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import { INTERACTIVE_ACTIONS } from '../constants';
+import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
 import type { JsonStep, JsonInteractiveAction } from '../types';
 
@@ -185,6 +186,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     flexWrap: 'wrap',
   }),
+  // Checkbox - ensures left alignment
+  checkbox: css({
+    alignSelf: 'flex-start',
+    textAlign: 'left',
+  }),
 });
 
 const ACTION_OPTIONS: Array<SelectableValue<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
@@ -235,6 +241,8 @@ export function StepEditor({
   const [newValidateInput, setNewValidateInput] = useState(false);
   const [newLazyRender, setNewLazyRender] = useState(false);
   const [newScrollContainer, setNewScrollContainer] = useState('');
+  const [newRequirements, setNewRequirements] = useState('');
+  const [newSkippable, setNewSkippable] = useState(false);
 
   // Edit step form state
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
@@ -247,6 +255,8 @@ export function StepEditor({
   const [editValidateInput, setEditValidateInput] = useState(false);
   const [editLazyRender, setEditLazyRender] = useState(false);
   const [editScrollContainer, setEditScrollContainer] = useState('');
+  const [editRequirements, setEditRequirements] = useState('');
+  const [editSkippable, setEditSkippable] = useState(false);
 
   // Drag/drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -287,6 +297,8 @@ export function StepEditor({
       setEditValidateInput(step.validateInput ?? false);
       setEditLazyRender(step.lazyRender ?? false);
       setEditScrollContainer(step.scrollContainer ?? '');
+      setEditRequirements(step.requirements?.join(', ') ?? '');
+      setEditSkippable(step.skippable ?? false);
       if (isGuided) {
         setEditDescription(step.description ?? '');
         setEditTooltip('');
@@ -307,6 +319,12 @@ export function StepEditor({
       return;
     }
 
+    // Parse requirements from comma-separated string
+    const reqArray = editRequirements
+      .split(',')
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0);
+
     const updatedStep: JsonStep = {
       action: editAction,
       reftarget: editReftarget.trim(),
@@ -318,6 +336,8 @@ export function StepEditor({
         : editTooltip.trim() && { tooltip: editTooltip.trim() }),
       ...(editLazyRender && { lazyRender: true }),
       ...(editLazyRender && editScrollContainer.trim() && { scrollContainer: editScrollContainer.trim() }),
+      ...(reqArray.length > 0 && { requirements: reqArray }),
+      ...(isGuided && editSkippable && { skippable: true }),
     };
 
     const newSteps = [...steps];
@@ -336,6 +356,8 @@ export function StepEditor({
     editDescription,
     editLazyRender,
     editScrollContainer,
+    editRequirements,
+    editSkippable,
     isGuided,
     steps,
     onChange,
@@ -367,6 +389,12 @@ export function StepEditor({
       return;
     }
 
+    // Parse requirements from comma-separated string
+    const reqArray = newRequirements
+      .split(',')
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0);
+
     const step: JsonStep = {
       action: newAction,
       reftarget: newReftarget.trim(),
@@ -378,6 +406,8 @@ export function StepEditor({
         : newTooltip.trim() && { tooltip: newTooltip.trim() }),
       ...(newLazyRender && { lazyRender: true }),
       ...(newLazyRender && newScrollContainer.trim() && { scrollContainer: newScrollContainer.trim() }),
+      ...(reqArray.length > 0 && { requirements: reqArray }),
+      ...(isGuided && newSkippable && { skippable: true }),
     };
 
     onChange([...steps, step]);
@@ -389,6 +419,8 @@ export function StepEditor({
     setNewValidateInput(false);
     setNewLazyRender(false);
     setNewScrollContainer('');
+    setNewRequirements('');
+    setNewSkippable(false);
     setShowAddForm(false);
   }, [
     newAction,
@@ -398,6 +430,8 @@ export function StepEditor({
     newValidateInput,
     newLazyRender,
     newScrollContainer,
+    newRequirements,
+    newSkippable,
     newTooltip,
     newDescription,
     isGuided,
@@ -556,28 +590,51 @@ export function StepEditor({
 
                   {editAction === 'formfill' && (
                     <>
-                      <Checkbox
-                        label="Validate input (require value/pattern match)"
-                        description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
-                        checked={editValidateInput}
-                        onChange={(e) => setEditValidateInput(e.currentTarget.checked)}
-                      />
-                      {editValidateInput && (
+                      {/* For multistep: always show value field (it's what gets auto-filled) */}
+                      {/* For guided: show value field only when validation is enabled */}
+                      {!isGuided && (
+                        <Field
+                          label="Value to fill"
+                          description="The value that will be automatically entered into the form field"
+                          style={{ marginBottom: 0 }}
+                        >
+                          <Input
+                            value={editTargetvalue}
+                            onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
+                            placeholder="Value to automatically fill"
+                          />
+                        </Field>
+                      )}
+                      {isGuided && (
                         <>
-                          <Field label="Value (supports regex: ^pattern, /pattern/)" style={{ marginBottom: 0 }}>
-                            <Input
-                              value={editTargetvalue}
-                              onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
-                              placeholder="Value to fill or regex pattern"
-                            />
-                          </Field>
-                          <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
-                            <Input
-                              value={editFormHint}
-                              onChange={(e) => setEditFormHint(e.currentTarget.value)}
-                              placeholder="Hint when validation fails"
-                            />
-                          </Field>
+                          <Checkbox
+                            className={styles.checkbox}
+                            label="Validate input (require value/pattern match)"
+                            description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
+                            checked={editValidateInput}
+                            onChange={(e) => setEditValidateInput(e.currentTarget.checked)}
+                          />
+                          {editValidateInput && (
+                            <>
+                              <Field
+                                label="Expected value (supports regex: ^pattern, /pattern/)"
+                                style={{ marginBottom: 0 }}
+                              >
+                                <Input
+                                  value={editTargetvalue}
+                                  onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
+                                  placeholder="Value or regex pattern to validate against"
+                                />
+                              </Field>
+                              <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
+                                <Input
+                                  value={editFormHint}
+                                  onChange={(e) => setEditFormHint(e.currentTarget.value)}
+                                  placeholder="Hint when validation fails"
+                                />
+                              </Field>
+                            </>
+                          )}
                         </>
                       )}
                     </>
@@ -602,7 +659,9 @@ export function StepEditor({
                   )}
 
                   <Checkbox
-                    label="Lazy render (element in virtualized container)"
+                    className={styles.checkbox}
+                    label="Element may be off-screen (scroll to find)"
+                    description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
                     checked={editLazyRender}
                     onChange={(e) => setEditLazyRender(e.currentTarget.checked)}
                   />
@@ -628,6 +687,43 @@ export function StepEditor({
                         </Button>
                       </div>
                     </Field>
+                  )}
+
+                  {/* Per-step requirements */}
+                  <Field
+                    label="Step requirements (optional)"
+                    description="Conditions checked before this step executes (comma-separated)"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input
+                      value={editRequirements}
+                      onChange={(e) => setEditRequirements(e.currentTarget.value)}
+                      placeholder="e.g., exists-reftarget, navmenu-open"
+                    />
+                  </Field>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
+                    {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
+                      <Badge
+                        key={req}
+                        text={req}
+                        color="blue"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => {
+                          setEditRequirements((prev) => (prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req));
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Per-step skippable (guided only) */}
+                  {isGuided && (
+                    <Checkbox
+                      className={styles.checkbox}
+                      label="Skippable (user can skip this step)"
+                      description="Allow user to proceed without completing this step"
+                      checked={editSkippable}
+                      onChange={(e) => setEditSkippable(e.currentTarget.checked)}
+                    />
                   )}
 
                   <div className={styles.addStepRow}>
@@ -756,28 +852,48 @@ export function StepEditor({
 
           {newAction === 'formfill' && (
             <>
-              <Checkbox
-                label="Validate input (require value/pattern match)"
-                description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
-                checked={newValidateInput}
-                onChange={(e) => setNewValidateInput(e.currentTarget.checked)}
-              />
-              {newValidateInput && (
+              {/* For multistep: always show value field (it's what gets auto-filled) */}
+              {/* For guided: show value field only when validation is enabled */}
+              {!isGuided && (
+                <Field
+                  label="Value to fill"
+                  description="The value that will be automatically entered into the form field"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Input
+                    value={newTargetvalue}
+                    onChange={(e) => setNewTargetvalue(e.currentTarget.value)}
+                    placeholder="Value to automatically fill"
+                  />
+                </Field>
+              )}
+              {isGuided && (
                 <>
-                  <Field label="Value (supports regex: ^pattern, /pattern/)" style={{ marginBottom: 0 }}>
-                    <Input
-                      value={newTargetvalue}
-                      onChange={(e) => setNewTargetvalue(e.currentTarget.value)}
-                      placeholder="Value to fill or regex pattern"
-                    />
-                  </Field>
-                  <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
-                    <Input
-                      value={newFormHint}
-                      onChange={(e) => setNewFormHint(e.currentTarget.value)}
-                      placeholder="Hint when validation fails"
-                    />
-                  </Field>
+                  <Checkbox
+                    className={styles.checkbox}
+                    label="Validate input (require value/pattern match)"
+                    description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
+                    checked={newValidateInput}
+                    onChange={(e) => setNewValidateInput(e.currentTarget.checked)}
+                  />
+                  {newValidateInput && (
+                    <>
+                      <Field label="Expected value (supports regex: ^pattern, /pattern/)" style={{ marginBottom: 0 }}>
+                        <Input
+                          value={newTargetvalue}
+                          onChange={(e) => setNewTargetvalue(e.currentTarget.value)}
+                          placeholder="Value or regex pattern to validate against"
+                        />
+                      </Field>
+                      <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
+                        <Input
+                          value={newFormHint}
+                          onChange={(e) => setNewFormHint(e.currentTarget.value)}
+                          placeholder="Hint when validation fails"
+                        />
+                      </Field>
+                    </>
+                  )}
                 </>
               )}
             </>
@@ -802,7 +918,9 @@ export function StepEditor({
           )}
 
           <Checkbox
-            label="Lazy render (element in virtualized container)"
+            className={styles.checkbox}
+            label="Element may be off-screen (scroll to find)"
+            description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
             checked={newLazyRender}
             onChange={(e) => setNewLazyRender(e.currentTarget.checked)}
           />
@@ -828,6 +946,43 @@ export function StepEditor({
                 </Button>
               </div>
             </Field>
+          )}
+
+          {/* Per-step requirements */}
+          <Field
+            label="Step requirements (optional)"
+            description="Conditions checked before this step executes (comma-separated)"
+            style={{ marginBottom: 0 }}
+          >
+            <Input
+              value={newRequirements}
+              onChange={(e) => setNewRequirements(e.currentTarget.value)}
+              placeholder="e.g., exists-reftarget, navmenu-open"
+            />
+          </Field>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
+            {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
+              <Badge
+                key={req}
+                text={req}
+                color="blue"
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setNewRequirements((prev) => (prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req));
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Per-step skippable (guided only) */}
+          {isGuided && (
+            <Checkbox
+              className={styles.checkbox}
+              label="Skippable (user can skip this step)"
+              description="Allow user to proceed without completing this step"
+              checked={newSkippable}
+              onChange={(e) => setNewSkippable(e.currentTarget.checked)}
+            />
           )}
 
           <div className={styles.addStepRow}>
