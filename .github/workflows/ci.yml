@@ -151,7 +151,7 @@ jobs:
         uses: grafana/plugin-actions/e2e-version@e2e-version/v1.2.0
         with:
           # TODO: Remove once React 19 compatibility is fixed
-          skip-grafana-react-image: true
+          skip-grafana-react-19-preview-image: true
 
   playwright-tests:
     needs: [resolve-versions, build]
