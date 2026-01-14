@@ -56,7 +56,7 @@ async function executeWithLazyScroll(
   // First check if element already exists
   // For button actions with text (not CSS selectors), use findButtonByText instead of querySelectorAllEnhanced
   let elementExists = false;
-  
+
   if (targetAction === 'button' && !isCssSelector(refTarget)) {
     // Use text-based button matching (same as reftargetExistsCheck)
     const buttons = findButtonByText(refTarget);
@@ -613,9 +613,15 @@ export const InteractiveStep = forwardRef<
       setIsShowRunning(true);
       try {
         // Use lazy scroll wrapper to ensure element is found before executing
-        const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, async () => {
-          await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
-        }, targetAction);
+        const result = await executeWithLazyScroll(
+          refTarget,
+          lazyRender,
+          scrollContainer,
+          async () => {
+            await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
+          },
+          targetAction
+        );
 
         if (!result.success) {
           // Lazy scroll failed to find element
@@ -689,9 +695,15 @@ export const InteractiveStep = forwardRef<
       setIsDoRunning(true);
       try {
         // Use lazy scroll wrapper to ensure element is found before executing
-        const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, async () => {
-          await executeStep();
-        }, targetAction);
+        const result = await executeWithLazyScroll(
+          refTarget,
+          lazyRender,
+          scrollContainer,
+          async () => {
+            await executeStep();
+          },
+          targetAction
+        );
 
         if (!result.success) {
           // Lazy scroll failed to find element
