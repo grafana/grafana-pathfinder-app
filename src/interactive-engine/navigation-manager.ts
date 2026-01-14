@@ -666,7 +666,7 @@ export class NavigationManager {
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
-    
+
     // We'll calculate position after building the content so we can measure actual height
 
     // Defer visibility to prevent layout bounce (unless skipping animations)
@@ -874,28 +874,28 @@ export class NavigationManager {
     }
 
     commentBox.appendChild(content);
-    
+
     // MEASURE ACTUAL HEIGHT: Append off-screen temporarily to measure real dimensions
     commentBox.style.visibility = 'hidden';
     commentBox.style.position = 'absolute';
     commentBox.style.left = '-9999px';
     document.body.appendChild(commentBox);
-    
+
     // Get the actual rendered height
     const actualHeight = commentBox.offsetHeight;
-    
+
     // Remove it temporarily (we'll append it properly later)
     commentBox.remove();
     commentBox.style.visibility = '';
     commentBox.style.position = '';
     commentBox.style.left = '';
-    
+
     // NOW calculate position with the REAL height
     const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
     commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
     commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
     commentBox.setAttribute('data-position', position);
-    
+
     return commentBox;
   }
 
