@@ -172,7 +172,8 @@ export class NavigationManager {
 
         // Update comment box offsets if it exists (recalculate in case viewport changed)
         if (this.driftDetectionComment) {
-          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect);
+          const commentHeight = this.driftDetectionComment.offsetHeight;
+          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
           this.driftDetectionComment.style.setProperty('--comment-offset-x', `${offsetX}px`);
           this.driftDetectionComment.style.setProperty('--comment-offset-y', `${offsetY}px`);
         }
@@ -269,7 +270,8 @@ export class NavigationManager {
 
         // Update comment box offsets if it exists (recalculate in case viewport changed)
         if (commentBox) {
-          const { offsetX, offsetY } = this.calculateCommentPosition(rect);
+          const commentHeight = commentBox.offsetHeight;
+          const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
           commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
           commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
         }
@@ -538,6 +540,9 @@ export class NavigationManager {
    * @param stepInfo - Optional step progress info for guided interactions
    * @param onSkipCallback - Optional callback when skip button is clicked
    * @param onCancelCallback - Optional callback when cancel button is clicked (for guided mode)
+   * @param onNextCallback - Optional callback when next button is clicked (for tour mode)
+   * @param onPreviousCallback - Optional callback when previous button is clicked (for tour mode)
+   * @param options - Additional options for the comment box
    * @returns Promise that resolves when highlighting is complete
    */
   async highlightWithComment(
@@ -546,12 +551,17 @@ export class NavigationManager {
     enableAutoCleanup = true,
     stepInfo?: { current: number; total: number; completedSteps: number[] },
     onSkipCallback?: () => void,
-    onCancelCallback?: () => void
+    onCancelCallback?: () => void,
+    onNextCallback?: () => void,
+    onPreviousCallback?: () => void,
+    options?: {
+      showKeyboardHint?: boolean;
+      stepTitle?: string;
+      skipAnimations?: boolean; // For smooth step transitions
+    }
   ): Promise<HTMLElement> {
-    // Clear any existing highlights before showing new one
-    this.clearAllHighlights();
-
     // First, ensure navigation is open and element is visible
+    // Keep old highlight visible during this async work for smooth transitions
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);
 
@@ -561,6 +571,9 @@ export class NavigationManager {
     // Create a highlight outline element
     const highlightOutline = document.createElement('div');
     highlightOutline.className = 'interactive-highlight-outline';
+
+    // Note: We always show the highlight draw animation (looks good)
+    // skipAnimations only affects the comment box transition
 
     // Position the outline around the target element using CSS custom properties
     const rect = element.getBoundingClientRect();
@@ -588,13 +601,25 @@ export class NavigationManager {
     highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
     highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
 
+    // Clear old highlights RIGHT BEFORE adding new one for seamless transition
+    this.clearAllHighlights();
+
     document.body.appendChild(highlightOutline);
 
-    // Create comment box if comment is provided OR if skip/cancel callback is provided
+    // Create comment box if comment is provided OR if any callback is provided
     // Comment box is now a CHILD of the highlight, positioned via CSS
     let commentBox: HTMLElement | null = null;
-    if ((comment && comment.trim()) || onSkipCallback || onCancelCallback) {
-      commentBox = this.createCommentBox(comment || '', rect, stepInfo, onSkipCallback, onCancelCallback);
+    if ((comment && comment.trim()) || onSkipCallback || onCancelCallback || onNextCallback || onPreviousCallback) {
+      commentBox = this.createCommentBox(
+        comment || '',
+        rect,
+        stepInfo,
+        onSkipCallback,
+        onCancelCallback,
+        onNextCallback,
+        onPreviousCallback,
+        options
+      );
       // Append as child of highlight - follows automatically when highlight moves
       highlightOutline.appendChild(commentBox);
     }
@@ -623,159 +648,273 @@ export class NavigationManager {
   /**
    * Create a themed comment box positioned near the highlighted element.
    * Uses offset positioning relative to highlight parent, clamped to viewport.
+   * Uses a clean, polished card design for both tour and guided modes.
    */
   private createCommentBox(
     comment: string,
     targetRect: DOMRect,
     stepInfo?: { current: number; total: number; completedSteps: number[] },
     onSkipCallback?: () => void,
-    onCancelCallback?: () => void
+    onCancelCallback?: () => void,
+    onNextCallback?: () => void,
+    onPreviousCallback?: () => void,
+    options?: {
+      showKeyboardHint?: boolean;
+      stepTitle?: string;
+      skipAnimations?: boolean;
+    }
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
+    
+    // We'll calculate position after building the content so we can measure actual height
 
-    // Calculate offsets relative to highlight parent
-    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect);
-    commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-    commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
-    commentBox.setAttribute('data-position', position);
-
-    // Defer visibility to prevent layout bounce
-    requestAnimationFrame(() => {
+    // Defer visibility to prevent layout bounce (unless skipping animations)
+    if (options?.skipAnimations) {
       commentBox.setAttribute('data-ready', 'true');
-    });
+      commentBox.classList.add('interactive-comment-box--instant');
+    } else {
+      requestAnimationFrame(() => {
+        commentBox.setAttribute('data-ready', 'true');
+      });
+    }
 
-    // Create content structure with logo and text
+    // Create content structure - clean card design
     const content = document.createElement('div');
     content.className = 'interactive-comment-content interactive-comment-glow';
 
-    // Create simple close button in top-right of comment box
+    // Close button (absolute positioned for simple tooltips)
     const closeButton = document.createElement('button');
     closeButton.className = 'interactive-comment-close';
     closeButton.innerHTML = '×';
-    closeButton.setAttribute('aria-label', 'Close comment');
-    closeButton.setAttribute('title', 'Close comment');
+    closeButton.setAttribute('aria-label', 'Close');
+    closeButton.setAttribute('title', 'Exit (Esc)');
 
     closeButton.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.clearAllHighlights();
+      if (onCancelCallback) {
+        onCancelCallback();
+      } else {
+        this.clearAllHighlights();
+      }
     });
 
     content.appendChild(closeButton);
 
-    // Create logo container
-    const logoContainer = document.createElement('div');
-    logoContainer.className = 'interactive-comment-logo';
-
-    // Create img element to reference the logo.svg file (imported at top)
-    const logoImg = document.createElement('img');
-    logoImg.src = logoSvg;
-    logoImg.width = 20;
-    logoImg.height = 20;
-    logoImg.alt = 'Grafana';
-    logoImg.style.display = 'block';
-
-    logoContainer.appendChild(logoImg);
-
-    // Create step checklist if stepInfo is provided (for guided interactions)
-    let stepsListContainer: HTMLElement | null = null;
+    // === HEADER: Step badge (only when stepInfo provided) ===
     if (stepInfo) {
-      stepsListContainer = document.createElement('div');
-      stepsListContainer.className = 'interactive-comment-steps-list';
+      const headerContainer = document.createElement('div');
+      headerContainer.className = 'interactive-comment-header';
+
+      const stepBadge = document.createElement('span');
+      stepBadge.className = 'interactive-comment-step-badge';
+      stepBadge.textContent = `Step ${stepInfo.current + 1} of ${stepInfo.total}`;
+      headerContainer.appendChild(stepBadge);
+
+      content.appendChild(headerContainer);
+    }
+
+    // === PROGRESS BAR ===
+    if (stepInfo) {
+      const progressContainer = document.createElement('div');
+      progressContainer.className = 'interactive-comment-progress-container';
+
+      const progressBar = document.createElement('div');
+      progressBar.className = 'interactive-comment-progress-bar';
+      const progressPercent = ((stepInfo.current + 1) / stepInfo.total) * 100;
+      progressBar.style.width = `${progressPercent}%`;
+
+      progressContainer.appendChild(progressBar);
+      content.appendChild(progressContainer);
+    }
+
+    // === CONTENT: Title + Description ===
+    const contentSection = document.createElement('div');
+    contentSection.className = 'interactive-comment-content-section';
+
+    // Title (optional)
+    if (options?.stepTitle) {
+      const titleElement = document.createElement('h4');
+      titleElement.className = 'interactive-comment-title';
+      titleElement.textContent = options.stepTitle;
+      contentSection.appendChild(titleElement);
+    }
+
+    // Description/comment
+    const descriptionElement = document.createElement('p');
+    descriptionElement.className = 'interactive-comment-description';
+    // SECURITY: Sanitize comment HTML before insertion to prevent XSS
+    descriptionElement.innerHTML = sanitizeDocumentationHTML(comment || '');
+    contentSection.appendChild(descriptionElement);
+
+    content.appendChild(contentSection);
+
+    // === STEP DOTS ===
+    if (stepInfo) {
+      const dotsContainer = document.createElement('div');
+      dotsContainer.className = 'interactive-comment-dots';
 
       for (let i = 0; i < stepInfo.total; i++) {
-        const stepItem = document.createElement('div');
-        stepItem.className = 'interactive-comment-step-item';
+        const dot = document.createElement('span');
+        dot.className = 'interactive-comment-dot';
 
-        // Add current step class for highlighting
         if (i === stepInfo.current) {
-          stepItem.classList.add('interactive-comment-step-current');
+          dot.classList.add('interactive-comment-dot--current');
+        } else if (stepInfo.completedSteps.includes(i)) {
+          dot.classList.add('interactive-comment-dot--completed');
         }
 
-        // Use checked or unchecked box
-        const isCompleted = stepInfo.completedSteps.includes(i);
-        const checkbox = isCompleted ? '☑' : '☐';
-        stepItem.textContent = `${checkbox} Step ${i + 1}`;
-
-        stepsListContainer.appendChild(stepItem);
+        dotsContainer.appendChild(dot);
       }
+
+      content.appendChild(dotsContainer);
     }
 
-    // Create text container with HTML support
-    const textContainer = document.createElement('div');
-    textContainer.className = 'interactive-comment-text';
-    // SECURITY: Sanitize comment HTML before insertion to prevent XSS
-    textContainer.innerHTML = sanitizeDocumentationHTML(comment || '');
+    // === NAVIGATION BUTTONS ===
+    const hasGuidedButtons = onSkipCallback || onCancelCallback;
+    const hasTourButtons = onNextCallback || onPreviousCallback;
 
-    // Create content wrapper
-    const contentWrapper = document.createElement('div');
-    contentWrapper.className = 'interactive-comment-wrapper';
-    contentWrapper.appendChild(logoContainer);
-
-    // Add steps list before the instruction text if available
-    if (stepsListContainer) {
-      contentWrapper.appendChild(stepsListContainer);
-    }
-
-    contentWrapper.appendChild(textContainer);
-
-    content.appendChild(contentWrapper);
-
-    // Add action buttons OUTSIDE wrapper so they're on their own line below everything
-    if (onSkipCallback || onCancelCallback) {
+    if (hasGuidedButtons || hasTourButtons) {
       const buttonContainer = document.createElement('div');
       buttonContainer.className = 'interactive-comment-buttons';
 
-      // Add cancel button (always available during guided execution)
-      if (onCancelCallback) {
-        const cancelButton = document.createElement('button');
-        cancelButton.className = 'interactive-comment-cancel-btn';
-        cancelButton.textContent = 'Cancel';
-        cancelButton.setAttribute('aria-label', 'Cancel guided interaction');
-        cancelButton.setAttribute('title', 'Cancel the entire guided interaction');
+      // Tour mode: Previous/Next navigation
+      if (hasTourButtons) {
+        // Previous button
+        const prevButton = document.createElement('button');
+        prevButton.className = 'interactive-comment-nav-btn';
+        prevButton.innerHTML = '← Back';
+        prevButton.setAttribute('aria-label', 'Previous step');
+        prevButton.disabled = !onPreviousCallback;
 
-        cancelButton.addEventListener('click', (e) => {
-          e.stopPropagation();
-          onCancelCallback();
-        });
+        if (onPreviousCallback) {
+          prevButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onPreviousCallback();
+          });
+        }
 
-        buttonContainer.appendChild(cancelButton);
+        buttonContainer.appendChild(prevButton);
+
+        // Spacer
+        const spacer = document.createElement('div');
+        spacer.className = 'interactive-comment-nav-spacer';
+        buttonContainer.appendChild(spacer);
+
+        // Next button - primary style
+        const nextButton = document.createElement('button');
+        const isLastStep = stepInfo && stepInfo.current === stepInfo.total - 1;
+        nextButton.className = 'interactive-comment-nav-btn interactive-comment-nav-btn--primary';
+        nextButton.innerHTML = isLastStep ? 'Start creating' : 'Next →';
+        nextButton.setAttribute('aria-label', isLastStep ? 'Start creating' : 'Next step');
+
+        if (onNextCallback) {
+          nextButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onNextCallback();
+          });
+        }
+
+        buttonContainer.appendChild(nextButton);
       }
 
-      // Add skip button (only for skippable steps)
-      if (onSkipCallback) {
-        const skipButton = document.createElement('button');
-        skipButton.className = 'interactive-comment-skip-btn';
-        skipButton.textContent = 'Skip step';
-        skipButton.setAttribute('aria-label', 'Skip this step');
-        skipButton.setAttribute('title', 'Skip this step and move to next');
+      // Guided mode: Cancel/Skip buttons (same row layout as tour)
+      if (hasGuidedButtons && !hasTourButtons) {
+        // Cancel button (left side)
+        if (onCancelCallback) {
+          const cancelButton = document.createElement('button');
+          cancelButton.className = 'interactive-comment-nav-btn interactive-comment-nav-btn--cancel';
+          cancelButton.textContent = 'Cancel';
+          cancelButton.setAttribute('aria-label', 'Cancel guided interaction');
 
-        skipButton.addEventListener('click', (e) => {
-          e.stopPropagation();
-          onSkipCallback();
-        });
+          cancelButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onCancelCallback();
+          });
 
-        buttonContainer.appendChild(skipButton);
+          buttonContainer.appendChild(cancelButton);
+        }
+
+        // Spacer
+        const spacer = document.createElement('div');
+        spacer.className = 'interactive-comment-nav-spacer';
+        buttonContainer.appendChild(spacer);
+
+        // Skip button (right side, if skippable)
+        if (onSkipCallback) {
+          const skipButton = document.createElement('button');
+          skipButton.className = 'interactive-comment-nav-btn';
+          skipButton.textContent = 'Skip →';
+          skipButton.setAttribute('aria-label', 'Skip this step');
+
+          skipButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onSkipCallback();
+          });
+
+          buttonContainer.appendChild(skipButton);
+        }
       }
 
       content.appendChild(buttonContainer);
     }
 
+    // === KEYBOARD HINT ===
+    if (options?.showKeyboardHint) {
+      const keyboardHint = document.createElement('div');
+      keyboardHint.className = 'interactive-comment-keyboard-hint';
+      keyboardHint.innerHTML = `
+        <span class="interactive-comment-kbd">←</span>
+        <span class="interactive-comment-kbd">→</span>
+        <span>navigate</span>
+        <span class="interactive-comment-kbd">Esc</span>
+        <span>exit</span>
+      `;
+      content.appendChild(keyboardHint);
+    }
+
     commentBox.appendChild(content);
+    
+    // MEASURE ACTUAL HEIGHT: Append off-screen temporarily to measure real dimensions
+    commentBox.style.visibility = 'hidden';
+    commentBox.style.position = 'absolute';
+    commentBox.style.left = '-9999px';
+    document.body.appendChild(commentBox);
+    
+    // Get the actual rendered height
+    const actualHeight = commentBox.offsetHeight;
+    
+    // Remove it temporarily (we'll append it properly later)
+    commentBox.remove();
+    commentBox.style.visibility = '';
+    commentBox.style.position = '';
+    commentBox.style.left = '';
+    
+    // NOW calculate position with the REAL height
+    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
+    commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
+    commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+    commentBox.setAttribute('data-position', position);
+    
     return commentBox;
   }
 
   /**
    * Calculate the optimal position for the comment box.
    * Returns offsets relative to the highlight parent, clamped to stay on screen.
+   * @param targetRect - The bounding rectangle of the highlighted element
+   * @param actualCommentHeight - The measured height of the comment box
    */
-  private calculateCommentPosition(targetRect: DOMRect): {
+  private calculateCommentPosition(
+    targetRect: DOMRect,
+    actualCommentHeight: number
+  ): {
     offsetX: number;
     offsetY: number;
     position: string;
   } {
     const commentWidth = 420;
-    const commentHeight = 180; // Estimate
+    const commentHeight = actualCommentHeight;
     const gap = 16;
     const padding = 8; // Viewport edge padding
     const viewportWidth = window.innerWidth;
@@ -798,17 +937,31 @@ export class NavigationManager {
 
     // Helper to clamp vertical offset so comment stays on screen
     const clampVertical = (baseOffsetY: number): number => {
-      // Calculate where the comment would be in viewport coords
-      const commentTop = highlightTop + baseOffsetY;
-      const commentBottom = commentTop + commentHeight;
+      // For very tall elements (taller than viewport), position comment
+      // at a fixed position in the viewport instead of trying to center
+      if (highlightHeight > viewportHeight) {
+        // Position near top of viewport, accounting for highlight's viewport position
+        const targetViewportY = Math.max(padding, Math.min(100, highlightTop + 50));
+        return targetViewportY - highlightTop;
+      }
 
-      // Adjust if it would go off screen
-      if (commentTop < padding) {
-        return baseOffsetY + (padding - commentTop);
+      // Calculate where the tooltip would be in viewport coordinates
+      let tooltipTop = highlightTop + baseOffsetY;
+      let tooltipBottom = tooltipTop + commentHeight;
+
+      // If tooltip goes off the bottom, push it up
+      if (tooltipBottom > viewportHeight - padding) {
+        const overflow = tooltipBottom - (viewportHeight - padding);
+        tooltipTop -= overflow;
+        baseOffsetY -= overflow;
       }
-      if (commentBottom > viewportHeight - padding) {
-        return baseOffsetY - (commentBottom - (viewportHeight - padding));
+
+      // If tooltip goes off the top (after bottom adjustment), push it down
+      if (tooltipTop < padding) {
+        const underflow = padding - tooltipTop;
+        baseOffsetY += underflow;
       }
+
       return baseOffsetY;
     };
 
@@ -816,6 +969,12 @@ export class NavigationManager {
     const clampHorizontal = (baseOffsetX: number): number => {
       const commentLeft = highlightLeft + baseOffsetX;
       const commentRight = commentLeft + commentWidth;
+
+      // For very wide elements, position comment at a fixed horizontal position
+      if (highlightWidth > viewportWidth) {
+        const targetViewportX = Math.max(padding, (viewportWidth - commentWidth) / 2);
+        return targetViewportX - highlightLeft;
+      }
 
       if (commentLeft < padding) {
         return baseOffsetX + (padding - commentLeft);
@@ -826,32 +985,75 @@ export class NavigationManager {
       return baseOffsetX;
     };
 
-    // Try positions in order: right, left, bottom, top
+    // Default order: right, left, bottom, top
+    // Always prefer LEFT/RIGHT positioning first for better UX
+    // Only use TOP/BOTTOM if horizontal space is insufficient
     // RIGHT position: offset to the right of highlight
-    if (spaceRight >= commentWidth) {
-      const offsetX = highlightWidth + gap;
-      const offsetY = clampVertical((highlightHeight - commentHeight) / 2);
-      return { offsetX, offsetY, position: 'right' };
+    // Try RIGHT if there's reasonable space (at least 60% of tooltip width)
+    if (spaceRight >= commentWidth * 0.6) {
+      // Ensure tooltip is completely outside highlight bounds
+      let offsetX = highlightWidth + gap;
+      // Align tooltip top with highlight top (clamped to viewport), don't center
+      const offsetY = clampVertical(0);
+      // Clamp horizontal position to ensure tooltip stays on screen
+      // Tooltip right edge = highlightLeft + offsetX + commentWidth, must be <= viewportWidth - padding
+      const maxOffsetX = viewportWidth - padding - highlightLeft - commentWidth;
+      if (offsetX > maxOffsetX) {
+        // Not enough space on right, don't use RIGHT position
+        // Fall through to try LEFT or TOP/BOTTOM
+      } else {
+        // Verify no overlap: tooltip left edge (offsetX) must be >= highlight right edge (highlightWidth)
+        if (offsetX < highlightWidth) {
+          offsetX = highlightWidth + gap;
+        }
+        return { offsetX, offsetY, position: 'right' };
+      }
     }
 
     // LEFT position: offset to the left of highlight
-    if (spaceLeft >= commentWidth) {
-      const offsetX = -commentWidth - gap;
-      const offsetY = clampVertical((highlightHeight - commentHeight) / 2);
-      return { offsetX, offsetY, position: 'left' };
+    // Try LEFT if there's reasonable space (at least 60% of tooltip width)
+    // Strongly prefer LEFT over TOP/BOTTOM to avoid overlapping the element
+    if (spaceLeft >= commentWidth * 0.6) {
+      // Ensure tooltip is completely outside highlight bounds
+      let offsetX = -commentWidth - gap;
+      // Align tooltip top with highlight top (clamped to viewport), don't center
+      const offsetY = clampVertical(0);
+      // Clamp horizontal position to ensure tooltip stays on screen
+      // Tooltip left edge = highlightLeft + offsetX, must be >= padding
+      const minOffsetX = padding - highlightLeft;
+      if (offsetX < minOffsetX) {
+        // Not enough space on left, don't use LEFT position
+        // Fall through to try TOP/BOTTOM
+      } else {
+        // Verify no overlap: tooltip right edge (offsetX + commentWidth) must be <= 0 (highlight left edge)
+        if (offsetX + commentWidth > 0) {
+          offsetX = -commentWidth - gap;
+        }
+        return { offsetX, offsetY, position: 'left' };
+      }
     }
 
     // BOTTOM position: offset below highlight
     if (spaceBottom >= commentHeight) {
+      // Ensure tooltip is completely below highlight: offsetY must be >= highlightHeight + gap
       const offsetY = highlightHeight + gap;
       const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
+      // Verify no vertical overlap: tooltip top edge (offsetY) must be >= highlight bottom edge (highlightHeight)
+      if (offsetY < highlightHeight) {
+        return { offsetX, offsetY: highlightHeight + gap, position: 'bottom' };
+      }
       return { offsetX, offsetY, position: 'bottom' };
     }
 
     // TOP position: offset above highlight
     if (spaceTop >= commentHeight) {
+      // Ensure tooltip is completely above highlight: offsetY must be <= -commentHeight - gap
       const offsetY = -commentHeight - gap;
       const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
+      // Verify no vertical overlap: tooltip bottom edge (offsetY + commentHeight) must be <= 0 (highlight top edge)
+      if (offsetY + commentHeight > 0) {
+        return { offsetX, offsetY: -commentHeight - gap, position: 'top' };
+      }
       return { offsetX, offsetY, position: 'top' };
     }
 
@@ -864,8 +1066,9 @@ export class NavigationManager {
       return { offsetX, offsetY, position: maxSpace === spaceBottom ? 'bottom' : 'top' };
     }
 
+    // For LEFT/RIGHT fallback, align to top (not center) to avoid overlap
     const offsetX = maxSpace === spaceRight ? highlightWidth + gap : -commentWidth - gap;
-    const offsetY = clampVertical((highlightHeight - commentHeight) / 2);
+    const offsetY = clampVertical(0);
     return { offsetX, offsetY, position: maxSpace === spaceRight ? 'right' : 'left' };
   }
 

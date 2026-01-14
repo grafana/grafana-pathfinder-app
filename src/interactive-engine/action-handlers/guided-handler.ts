@@ -76,6 +76,10 @@ export class GuidedHandler {
     totalSteps: number,
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout
   ): Promise<CompletionResult> {
+    // Clean up any stale listeners from previous cancelled sessions
+    // This prevents interference when user cancels mid-session and restarts
+    this.cleanupListeners();
+
     try {
       if (action.targetAction === 'noop') {
         return this.executeNoopStep(action, stepIndex, totalSteps, timeout);
@@ -129,6 +133,10 @@ export class GuidedHandler {
       // Wait for user to complete the action, skip, cancel, or timeout
       const result = await Promise.race([completionPromise, skipPromise, cancelPromise]);
 
+      // CRITICAL: Always clean up listeners after step completes (any outcome)
+      // This prevents stale listeners from interfering with subsequent guided sessions
+      this.cleanupListeners();
+
       // Track completion for progress display (both completed and skipped count as done)
       if (result === 'completed' || result === 'skipped') {
         this.completedSteps.push(stepIndex);
@@ -159,6 +167,8 @@ export class GuidedHandler {
     totalSteps: number,
     timeout: number
   ): Promise<CompletionResult> {
+    // Clean up any stale listeners from previous steps
+    this.cleanupListeners();
     this.currentAbortController = new AbortController();
 
     const skipPromise = action.isSkippable
@@ -483,7 +493,20 @@ export class GuidedHandler {
 
     // Use existing highlight system with persistent highlight
     // Disable auto-cleanup for guided mode - highlights should only clear when step completes
-    await this.navigationManager.highlightWithComment(element, message, false, stepInfo, skipCallback, cancelCallback);
+    // Skip animations after first step for smooth transitions
+    await this.navigationManager.highlightWithComment(
+      element,
+      message,
+      false,
+      stepInfo,
+      skipCallback,
+      cancelCallback,
+      undefined, // No next callback for guided mode
+      undefined, // No previous callback for guided mode
+      {
+        skipAnimations: stepIndex > 0, // Instant transitions after first step
+      }
+    );
 
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
@@ -578,24 +601,53 @@ export class GuidedHandler {
 
   /**
    * Create cancel listener that resolves when user clicks cancel button in comment box
+   * or presses Escape key
    */
   private createCancelListener(stepIndex: number): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
+      let isResolved = false;
+
       const handleCancel = (event: Event) => {
+        if (isResolved) {
+          return;
+        }
         const customEvent = event as CustomEvent<{ stepIndex: number }>;
         if (customEvent.detail.stepIndex === stepIndex) {
+          isResolved = true;
           // Clear highlights when cancelled from comment box
           this.navigationManager.clearAllHighlights();
           resolve('cancelled');
         }
       };
 
+      // Handle Escape key press to cancel guided step
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (isResolved) {
+          return;
+        }
+        if (event.key === 'Escape') {
+          isResolved = true;
+          // Clear highlights when cancelled via Escape key
+          this.navigationManager.clearAllHighlights();
+          resolve('cancelled');
+        }
+      };
+
       document.addEventListener('guided-step-cancelled', handleCancel);
-      this.activeListeners.push({
-        target: document,
-        type: 'guided-step-cancelled',
-        handler: handleCancel,
-      });
+      document.addEventListener('keydown', handleKeyDown);
+
+      this.activeListeners.push(
+        {
+          target: document,
+          type: 'guided-step-cancelled',
+          handler: handleCancel,
+        },
+        {
+          target: document,
+          type: 'keydown',
+          handler: handleKeyDown as EventListener,
+        }
+      );
     });
   }
 

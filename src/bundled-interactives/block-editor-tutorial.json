@@ -1,0 +1,208 @@
+{
+  "id": "block-editor-tutorial",
+  "title": "Guide editor tutorial",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Welcome to the guide editor! 🎉\n\nThis template demonstrates all the **block types** you can use to create interactive guides. Use it as a reference or starting point for your own guides.\n\n## What are guides?\n\nGuides are interactive tutorials that help users learn Grafana. They combine:\n\n- **Markdown** for explanatory text\n- **Interactive elements** that highlight and automate UI actions\n- **Quizzes** to test understanding\n- **Sections** to organize related steps\n\n## Block types overview\n\nClick any block in the editor to see its structure. The palette at the bottom shows all available block types."
+    },
+    {
+      "type": "section",
+      "id": "interactive-basics",
+      "title": "Interactive blocks",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Interactive blocks let users interact with the Grafana UI. Each block has:\n\n- **Action type**: What happens (highlight, button click, form fill)\n- **Target selector**: CSS selector for the element\n- **Content**: Description shown to the user\n- **Show me / Do it buttons**: Preview or execute the action"
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "content": "This **highlight** action points out UI elements. Try the \"Show me\" button!",
+          "tooltip": "Highlight actions draw attention to specific elements. Great for pointing out interface features.",
+          "requirements": ["exists-reftarget"],
+          "skippable": true
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "button:contains('New')",
+          "content": "The **button** action clicks elements. This one clicks the New button on the Dashboards page.",
+          "tooltip": "Button actions simulate clicks. Open the nav menu first to see this in action.",
+          "requirements": ["navmenu-open", "exists-reftarget"],
+          "skippable": true
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "div[data-testid='input-wrapper']:nth-match(1)",
+          "content": "The **formfill** action enters text. Great for search boxes and forms.",
+          "targetvalue": "Example search",
+          "tooltip": "Use targetvalue to specify what text to enter. This targets the command palette search.",
+          "requirements": ["exists-reftarget"],
+          "skippable": true
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "multistep-guided",
+      "title": "Multi-step sequences",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "When you need multiple actions in sequence, use **multistep** or **guided** blocks.\n\n### Multistep vs Guided\n\n| Type | Behavior |\n|------|----------|\n| **Multistep** | Executes steps automatically |\n| **Guided** | Waits for user to perform each step |"
+        },
+        {
+          "type": "multistep",
+          "content": "This **multistep** block highlights two menu items automatically in sequence.",
+          "requirements": ["navmenu-open"],
+          "skippable": true,
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+              "requirements": ["exists-reftarget"],
+              "tooltip": "First: Dashboards menu item"
+            },
+            {
+              "action": "highlight",
+              "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+              "requirements": ["exists-reftarget"],
+              "tooltip": "Second: Explore menu item"
+            }
+          ]
+        },
+        {
+          "type": "guided",
+          "content": "This **guided** block waits for you to click each highlighted element.",
+          "requirements": ["navmenu-open"],
+          "skippable": true,
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+              "requirements": ["exists-reftarget"],
+              "description": "Click Dashboards to continue"
+            },
+            {
+              "action": "highlight",
+              "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+              "requirements": ["exists-reftarget"],
+              "description": "Now click Explore"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "quiz-section",
+      "title": "Knowledge check",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "**Quiz blocks** test understanding with single or multiple choice questions.\n\nInside sections, quizzes enforce sequential completion - users must answer correctly before proceeding!"
+        },
+        {
+          "type": "quiz",
+          "question": "Which block type **automatically** executes a sequence of actions?",
+          "completionMode": "correct-only",
+          "choices": [
+            {
+              "id": "a",
+              "text": "Interactive",
+              "hint": "Interactive blocks handle single actions only."
+            },
+            {
+              "id": "b",
+              "text": "Multistep",
+              "correct": true
+            },
+            {
+              "id": "c",
+              "text": "Guided",
+              "hint": "Guided blocks wait for user input at each step."
+            },
+            {
+              "id": "d",
+              "text": "Section",
+              "hint": "Sections are containers, not action blocks."
+            }
+          ]
+        },
+        {
+          "type": "quiz",
+          "question": "Which of these are valid interactive actions? *(Select all that apply)*",
+          "multiSelect": true,
+          "completionMode": "max-attempts",
+          "maxAttempts": 2,
+          "choices": [
+            {
+              "id": "a",
+              "text": "highlight",
+              "correct": true
+            },
+            {
+              "id": "b",
+              "text": "button",
+              "correct": true
+            },
+            {
+              "id": "c",
+              "text": "delete",
+              "hint": "There is no delete action - use button to click delete buttons."
+            },
+            {
+              "id": "d",
+              "text": "formfill",
+              "correct": true
+            },
+            {
+              "id": "e",
+              "text": "hover",
+              "correct": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "conditional",
+      "conditions": ["is-admin"],
+      "whenTrue": [
+        {
+          "type": "markdown",
+          "content": "## 👑 Admin-only content\n\nYou're an **admin user**! Conditional blocks can show different content based on:\n\n- `is-admin` - Administrator privileges\n- `is-editor` - Editor permissions\n- `is-logged-in` - Authentication status\n- Custom requirement checks like `has-datasource:prometheus`"
+        }
+      ],
+      "whenFalse": [
+        {
+          "type": "markdown",
+          "content": "## 👤 Standard user content\n\nThis content appears for **non-admin users**. Conditional blocks adapt content based on:\n\n- `is-admin` - Administrator privileges\n- `is-editor` - Editor permissions\n- `is-logged-in` - Authentication status\n- Custom requirement checks like `has-datasource:prometheus`"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Media blocks\n\nAdd images and videos to make guides more visual:"
+    },
+    {
+      "type": "image",
+      "src": "https://grafana.com/static/assets/img/grafana_logo.svg",
+      "alt": "Grafana Logo",
+      "width": 150
+    },
+    {
+      "type": "video",
+      "src": "https://www.youtube.com/embed/vTiIkdDwT-0",
+      "provider": "youtube",
+      "title": "Getting started with Grafana"
+    },
+    {
+      "type": "markdown",
+      "content": "## 🎯 What's next?\n\nNow that you understand the block types:\n\n1. **Edit this guide** - Click any block to modify it\n2. **Add new blocks** - Use the palette at the bottom\n3. **Preview your work** - Toggle to preview mode\n4. **Export** - Copy JSON or create a GitHub PR\n\n**Pro tips:**\n\n- Use sections to group related steps\n- Add `skippable: true` for optional steps\n- Use requirements to ensure prerequisites are met\n- Test with the preview mode before exporting"
+    }
+  ]
+}
