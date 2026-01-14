@@ -312,6 +312,7 @@ export function BlockFormModal({
       {/* Modal - always mounted, but visually hidden when picker or record mode is active to preserve form state */}
       <Modal
         title={title}
+        ariaLabel={isEditing ? `Edit ${meta.name} block` : `Add ${meta.name} block`}
         isOpen={true}
         onDismiss={onCancel}
         className={`${styles.modal} ${isOverlayActive ? styles.modalHidden : ''}`}

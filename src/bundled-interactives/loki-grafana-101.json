@@ -177,8 +177,8 @@
         },
         {
           "type": "interactive",
-          "action": "button",
-          "reftarget": "Refresh",
+          "action": "highlight",
+          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
           "requirements": ["exists-reftarget"],
           "content": "Click the **Refresh** button to execute the query and see your logs.",
           "tooltip": "The **Refresh** button executes your LogQL query and displays the log results from your Loki data source."

@@ -138,7 +138,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     },
     ref
   ) => {
-    const generatedStepIdRef = useRef<string>();
+    const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
       anonymousGuidedCounter += 1;
       generatedStepIdRef.current = `guided-step-${anonymousGuidedCounter}`;

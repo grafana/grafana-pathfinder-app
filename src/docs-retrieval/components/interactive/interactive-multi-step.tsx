@@ -135,7 +135,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     },
     ref
   ) => {
-    const generatedStepIdRef = useRef<string>();
+    const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
       anonymousMultiStepCounter += 1;
       generatedStepIdRef.current = `standalone-multistep-${anonymousMultiStepCounter}`;
