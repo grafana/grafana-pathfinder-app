@@ -104,7 +104,7 @@ export interface UseBlockEditorReturn {
   /** Get the current guide as a JsonGuide object */
   getGuide: () => JsonGuide;
   /** Load a guide from JsonGuide data */
-  loadGuide: (guide: JsonGuide) => void;
+  loadGuide: (guide: JsonGuide, blockIds?: string[]) => void;
   /** Reset to a new empty guide */
   resetGuide: () => void;
 
@@ -1098,9 +1098,11 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
   }, [state.guide, state.blocks]);
 
   // Load a guide
-  const loadGuide = useCallback((guide: JsonGuide) => {
-    const newBlocks: EditorBlock[] = guide.blocks.map((block) => ({
-      id: generateBlockId(),
+  const loadGuide = useCallback((guide: JsonGuide, blockIds?: string[]) => {
+    // If blockIds are provided (from persistence), use them to preserve IDs across refreshes
+    // Otherwise generate new IDs (for new/imported guides)
+    const newBlocks: EditorBlock[] = guide.blocks.map((block, index) => ({
+      id: blockIds && blockIds[index] ? blockIds[index] : generateBlockId(),
       block,
     }));
 

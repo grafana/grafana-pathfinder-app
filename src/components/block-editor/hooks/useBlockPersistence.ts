@@ -19,8 +19,10 @@ const AUTO_SAVE_DELAY = 1000;
 export interface UseBlockPersistenceOptions {
   /** Current guide data */
   guide: JsonGuide;
+  /** Current block IDs (to preserve across refreshes) */
+  blockIds?: string[];
   /** Called when guide should be loaded from storage */
-  onLoad?: (guide: JsonGuide) => void;
+  onLoad?: (guide: JsonGuide, blockIds?: string[]) => void;
   /** Called after a successful save */
   onSave?: () => void;
   /** Whether auto-save is enabled */
@@ -52,17 +54,20 @@ export interface UseBlockPersistenceReturn {
  */
 interface StoredGuide {
   guide: JsonGuide;
+  /** Block IDs to preserve across page refreshes (added in v2) */
+  blockIds?: string[];
   savedAt: string;
   version: number;
 }
 
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 /**
  * Block editor persistence hook
  */
 export function useBlockPersistence({
   guide,
+  blockIds,
   onLoad,
   onSave,
   autoSave = true,
@@ -77,6 +82,7 @@ export function useBlockPersistence({
     try {
       const stored: StoredGuide = {
         guide,
+        blockIds, // Store block IDs to preserve across refreshes
         savedAt: new Date().toISOString(),
         version: STORAGE_VERSION,
       };
@@ -87,7 +93,7 @@ export function useBlockPersistence({
     } catch (e) {
       console.error('Failed to save guide to localStorage:', e);
     }
-  }, [guide, storageKey, onSave]);
+  }, [guide, blockIds, storageKey, onSave]);
 
   // Load guide from localStorage
   const load = useCallback((): JsonGuide | null => {
@@ -181,9 +187,15 @@ export function useBlockPersistence({
   // Load on mount if onLoad provided
   useEffect(() => {
     if (onLoad) {
-      const savedGuide = load();
-      if (savedGuide) {
-        onLoad(savedGuide);
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          const parsed: StoredGuide = JSON.parse(stored);
+          // Pass both guide and blockIds to onLoad
+          onLoad(parsed.guide, parsed.blockIds);
+        }
+      } catch (e) {
+        console.error('Failed to load guide from localStorage:', e);
       }
     }
     // Only run on mount

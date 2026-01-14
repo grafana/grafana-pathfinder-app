@@ -288,8 +288,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
   private async saveTabsToStorage(): Promise<void> {
     try {
+      // Save user-opened tabs and devtools tab (devtools persists across refreshes)
+      // Recommendations and my-learning are permanent tabs and don't need persistence
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
+        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,

@@ -7,3 +7,10 @@ export type { UseBlockEditorOptions, UseBlockEditorReturn } from './useBlockEdit
 
 export { useBlockPersistence } from './useBlockPersistence';
 export type { UseBlockPersistenceOptions, UseBlockPersistenceReturn } from './useBlockPersistence';
+
+export { useRecordingPersistence } from './useRecordingPersistence';
+export type {
+  UseRecordingPersistenceOptions,
+  UseRecordingPersistenceReturn,
+  PersistedRecordingState,
+} from './useRecordingPersistence';

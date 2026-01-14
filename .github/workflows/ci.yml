@@ -148,7 +148,10 @@ jobs:
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - name: Resolve Grafana E2E versions
         id: resolve-versions
-        uses: grafana/plugin-actions/e2e-version@main
+        uses: grafana/plugin-actions/e2e-version@e2e-version/v1.2.0
+        with:
+          # TODO: Remove once React 19 compatibility is fixed
+          skip-grafana-react-19-preview-image: true
 
   playwright-tests:
     needs: [resolve-versions, build]
