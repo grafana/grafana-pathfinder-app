@@ -148,7 +148,7 @@ jobs:
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - name: Resolve Grafana E2E versions
         id: resolve-versions
-        uses: grafana/plugin-actions/e2e-version@e2e-version/v1.1.3
+        uses: grafana/plugin-actions/e2e-version@e2e-version/v1.2.0
         with:
           skip-grafana-react-19-preview-image: false
 
