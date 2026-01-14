@@ -106,6 +106,13 @@ export const StorageKeys = {
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
   // Guide responses from input blocks (user-entered values for variables)
   GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
+  // Experiment auto-open state (Grafana user storage key)
+  EXPERIMENT_AUTO_OPEN: 'grafana-pathfinder-app-experiment-auto-open',
+  // Experiment session storage key prefixes (used with hostname suffix)
+  // These are sessionStorage keys, not Grafana user storage
+  EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
+  EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
+  EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
 } as const;
 
 // Timestamp suffix for conflict resolution
@@ -1375,6 +1382,142 @@ export const guideResponseStorage = {
       );
     } catch (error) {
       console.warn('Failed to clear all guide responses:', error);
+    }
+  },
+};
+
+// ============================================================================
+// EXPERIMENT AUTO-OPEN STORAGE
+// ============================================================================
+
+/**
+ * Data structure for experiment auto-open tracking
+ *
+ * - pagesAutoOpened: Array of page path patterns that have triggered auto-open (treatment variant)
+ * - globalAutoOpened: Whether global auto-open has occurred (excluded variant)
+ */
+export interface ExperimentAutoOpenState {
+  pagesAutoOpened: string[];
+  globalAutoOpened: boolean;
+}
+
+const DEFAULT_EXPERIMENT_STATE: ExperimentAutoOpenState = {
+  pagesAutoOpened: [],
+  globalAutoOpened: false,
+};
+
+/** Schema for experiment auto-open state validation */
+const ExperimentAutoOpenStateSchema = z.object({
+  pagesAutoOpened: z.array(z.string()),
+  globalAutoOpened: z.boolean(),
+});
+
+/**
+ * Experiment auto-open storage operations
+ *
+ * Tracks whether the sidebar has been auto-opened for the experiment.
+ * Persists across browsers via Grafana user storage (when available).
+ *
+ * This replaces sessionStorage-based tracking to ensure:
+ * - State persists across browser sessions
+ * - State syncs across devices (via Grafana user storage)
+ * - State survives cookie/storage clears (if Grafana storage available)
+ */
+export const experimentAutoOpenStorage = {
+  /**
+   * Gets the current experiment auto-open state with Zod validation
+   */
+  async get(): Promise<ExperimentAutoOpenState> {
+    try {
+      const storage = createUserStorage();
+      const stored = await storage.getItem<unknown>(StorageKeys.EXPERIMENT_AUTO_OPEN);
+
+      if (!stored) {
+        return DEFAULT_EXPERIMENT_STATE;
+      }
+
+      // Validate stored data against schema to protect against corruption
+      const parsed = ExperimentAutoOpenStateSchema.safeParse(stored);
+      if (parsed.success) {
+        return parsed.data;
+      }
+
+      console.warn('Experiment auto-open state validation failed, using defaults:', parsed.error.issues);
+      return DEFAULT_EXPERIMENT_STATE;
+    } catch {
+      return DEFAULT_EXPERIMENT_STATE;
+    }
+  },
+
+  /**
+   * Checks if a specific page pattern has been auto-opened (treatment variant)
+   */
+  async hasPageAutoOpened(pagePattern: string): Promise<boolean> {
+    const state = await experimentAutoOpenStorage.get();
+    return state.pagesAutoOpened.includes(pagePattern);
+  },
+
+  /**
+   * Marks a page pattern as auto-opened (treatment variant)
+   * Does not add duplicates
+   */
+  async markPageAutoOpened(pagePattern: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const state = await experimentAutoOpenStorage.get();
+
+      if (!state.pagesAutoOpened.includes(pagePattern)) {
+        state.pagesAutoOpened.push(pagePattern);
+        await storage.setItem(StorageKeys.EXPERIMENT_AUTO_OPEN, state);
+      }
+    } catch (error) {
+      console.warn('Failed to mark page as auto-opened:', error);
+    }
+  },
+
+  /**
+   * Checks if global auto-open has occurred (excluded variant)
+   */
+  async hasGlobalAutoOpened(): Promise<boolean> {
+    const state = await experimentAutoOpenStorage.get();
+    return state.globalAutoOpened;
+  },
+
+  /**
+   * Marks global auto-open as occurred (excluded variant)
+   */
+  async markGlobalAutoOpened(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const state = await experimentAutoOpenStorage.get();
+      state.globalAutoOpened = true;
+      await storage.setItem(StorageKeys.EXPERIMENT_AUTO_OPEN, state);
+    } catch (error) {
+      console.warn('Failed to mark global auto-open:', error);
+    }
+  },
+
+  /**
+   * Resets auto-open state (called when resetCache flag is toggled in GOFF)
+   */
+  async reset(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(StorageKeys.EXPERIMENT_AUTO_OPEN, DEFAULT_EXPERIMENT_STATE);
+    } catch (error) {
+      console.warn('Failed to reset experiment auto-open state:', error);
+    }
+  },
+
+  /**
+   * Clears all experiment auto-open state
+   */
+  async clear(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.EXPERIMENT_AUTO_OPEN);
+    } catch (error) {
+      console.warn('Failed to clear experiment auto-open state:', error);
     }
   },
 };

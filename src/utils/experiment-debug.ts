@@ -10,50 +10,150 @@
  */
 
 import { getExperimentConfig, FeatureFlags, matchPathPattern, type ExperimentConfig } from './openfeature';
+import { experimentAutoOpenStorage, StorageKeys } from '../lib/user-storage';
 
 // Rate limiting for refetch
 const REFETCH_COOLDOWN_MS = 5000; // 5 second cooldown
 let lastRefetchTime = 0;
 
-// Prefix for per-page treatment tracking keys
-const TREATMENT_PAGE_PREFIX = 'grafana-pathfinder-treatment-page-';
-
 /**
  * Storage keys used by Pathfinder for auto-open tracking
+ * Uses centralized key prefixes from StorageKeys
  */
 const getStorageKeys = (hostname: string) => ({
   // localStorage - persists across sessions
-  resetProcessed: `grafana-pathfinder-pop-open-reset-processed-${hostname}`,
+  resetProcessed: `${StorageKeys.EXPERIMENT_RESET_PROCESSED_PREFIX}${hostname}`,
 
   // sessionStorage - cleared when browser closes
-  autoOpened: `grafana-interactive-learning-panel-auto-opened-${hostname}`,
+  autoOpened: `${StorageKeys.EXPERIMENT_SESSION_AUTO_OPENED_PREFIX}${hostname}`,
   // Legacy global treatment key (kept for backwards compatibility)
   treatmentOpened: `grafana-pathfinder-experiment-treatment-opened-${hostname}`,
   // Per-page treatment prefix
-  treatmentPagePrefix: `${TREATMENT_PAGE_PREFIX}${hostname}-`,
+  treatmentPagePrefix: `${StorageKeys.EXPERIMENT_TREATMENT_PAGE_PREFIX}${hostname}-`,
 });
 
 /**
- * Get the session storage key for a specific target page pattern
+ * Extract the parent path from a page pattern for app-level tracking.
+ *
+ * For app paths (/a/app-id/*), extracts /a/app-id so all pages within
+ * an app are tracked together (e.g., all IRM pages count as one).
+ *
+ * For non-app paths, extracts the first segment (e.g., /dashboard).
+ *
+ * Examples:
+ * - /a/grafana-irm-app/integrations* → /a/grafana-irm-app
+ * - /a/grafana-irm-app?tab=home* → /a/grafana-irm-app
+ * - /a/grafana-synthetic-monitoring-app* → /a/grafana-synthetic-monitoring-app
+ * - /dashboard/snapshots* → /dashboard
+ * - /alerting/list* → /alerting
  */
-export function getTreatmentPageKey(hostname: string, pagePattern: string): string {
-  return `${TREATMENT_PAGE_PREFIX}${hostname}-${pagePattern}`;
+export function getParentPath(pattern: string): string {
+  // For app paths (/a/app-id/*), extract /a/app-id
+  // Stop at /, *, or ? (query string)
+  if (pattern.startsWith('/a/')) {
+    const match = pattern.match(/^(\/a\/[^/*?]+)/);
+    return match ? match[1] : pattern;
+  }
+
+  // For non-app paths, extract first segment (e.g., /dashboard)
+  // Stop at /, *, or ? (query string)
+  const match = pattern.match(/^(\/[^/*?]+)/);
+  return match ? match[1] : pattern;
 }
 
 /**
- * Check if a specific target page pattern has already triggered auto-open this session
+ * Get the session storage key for a specific parent path
  */
-export function hasPageAutoOpened(hostname: string, pagePattern: string): boolean {
-  const key = getTreatmentPageKey(hostname, pagePattern);
+export function getTreatmentPageKey(hostname: string, parentPath: string): string {
+  return `${StorageKeys.EXPERIMENT_TREATMENT_PAGE_PREFIX}${hostname}-${parentPath}`;
+}
+
+/**
+ * Check if a parent path has already triggered auto-open this session.
+ * Uses parent path (e.g., /a/grafana-irm-app) for app-level tracking.
+ */
+export function hasParentAutoOpened(hostname: string, parentPath: string): boolean {
+  const key = getTreatmentPageKey(hostname, parentPath);
   return sessionStorage.getItem(key) === 'true';
 }
 
 /**
- * Mark a target page pattern as having triggered auto-open this session
+ * Mark a parent path as having triggered auto-open this session.
+ * Writes to both sessionStorage (sync, immediate) and Grafana user storage (async, persistent).
+ * Uses parent path (e.g., /a/grafana-irm-app) for app-level tracking.
  */
-export function markPageAutoOpened(hostname: string, pagePattern: string): void {
-  const key = getTreatmentPageKey(hostname, pagePattern);
+export function markParentAutoOpened(hostname: string, parentPath: string): void {
+  // Write to sessionStorage immediately (sync) for same-session checks
+  const key = getTreatmentPageKey(hostname, parentPath);
   sessionStorage.setItem(key, 'true');
+
+  // Also write to Grafana user storage (async) for cross-browser persistence
+  // Fire and forget - don't block on this
+  experimentAutoOpenStorage.markPageAutoOpened(parentPath).catch((error: unknown) => {
+    console.warn('[Pathfinder] Failed to persist parent auto-open to user storage:', error);
+  });
+}
+
+/**
+ * Mark global auto-open as having occurred (excluded variant)
+ * Writes to both sessionStorage (sync) and Grafana user storage (async)
+ */
+export function markGlobalAutoOpened(hostname: string): void {
+  const keys = getStorageKeys(hostname);
+  sessionStorage.setItem(keys.autoOpened, 'true');
+
+  // Also write to Grafana user storage for cross-browser persistence
+  experimentAutoOpenStorage.markGlobalAutoOpened().catch((error: unknown) => {
+    console.warn('[Pathfinder] Failed to persist global auto-open to user storage:', error);
+  });
+}
+
+/**
+ * Sync experiment auto-open state from Grafana user storage to sessionStorage
+ * This should be called on app initialization to restore state from previous sessions
+ * Returns a promise that resolves when sync is complete
+ */
+export async function syncExperimentStateFromUserStorage(hostname: string, targetPages: string[]): Promise<void> {
+  try {
+    const state = await experimentAutoOpenStorage.get();
+
+    // Sync global auto-open state
+    if (state.globalAutoOpened) {
+      const keys = getStorageKeys(hostname);
+      sessionStorage.setItem(keys.autoOpened, 'true');
+    }
+
+    // Sync per-page auto-open state
+    for (const pagePattern of state.pagesAutoOpened) {
+      const key = getTreatmentPageKey(hostname, pagePattern);
+      sessionStorage.setItem(key, 'true');
+    }
+  } catch (error) {
+    console.warn('[Pathfinder] Failed to sync experiment state from user storage:', error);
+  }
+}
+
+/**
+ * Reset experiment auto-open state in both storages
+ * Called when resetCache flag is toggled in GOFF
+ */
+export async function resetExperimentState(hostname: string): Promise<void> {
+  const keys = getStorageKeys(hostname);
+
+  // Clear sessionStorage
+  sessionStorage.removeItem(keys.autoOpened);
+  sessionStorage.removeItem(keys.treatmentOpened);
+
+  // Clear per-page keys from sessionStorage
+  for (let i = sessionStorage.length - 1; i >= 0; i--) {
+    const key = sessionStorage.key(i);
+    if (key && key.startsWith(keys.treatmentPagePrefix)) {
+      sessionStorage.removeItem(key);
+    }
+  }
+
+  // Reset Grafana user storage
+  await experimentAutoOpenStorage.reset();
 }
 
 /**
@@ -70,8 +170,11 @@ export function findMatchingTargetPage(targetPages: string[], currentPath: strin
 }
 
 /**
- * Check if the sidebar should auto-open for the current path
- * Returns the matching pattern if should open, null otherwise
+ * Check if the sidebar should auto-open for the current path.
+ * Uses app-level tracking: returns the parent path (e.g., /a/grafana-irm-app)
+ * if the path matches a target page and the parent hasn't auto-opened yet.
+ *
+ * Returns the parent path if should open, null otherwise.
  */
 export function shouldAutoOpenForPath(hostname: string, targetPages: string[], currentPath: string): string | null {
   const matchingPattern = findMatchingTargetPage(targetPages, currentPath);
@@ -79,11 +182,16 @@ export function shouldAutoOpenForPath(hostname: string, targetPages: string[], c
     return null;
   }
 
-  if (hasPageAutoOpened(hostname, matchingPattern)) {
+  // Extract parent path for app-level tracking
+  const parentPath = getParentPath(matchingPattern);
+
+  // Check if this parent (app) has already auto-opened
+  if (hasParentAutoOpened(hostname, parentPath)) {
     return null;
   }
 
-  return matchingPattern;
+  // Return parent path for tracking (not exact pattern)
+  return parentPath;
 }
 
 /**
@@ -127,8 +235,8 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       return freshConfig;
     },
 
-    // Method to clear all Pathfinder storage (localStorage + sessionStorage)
-    clearCache: () => {
+    // Method to clear all Pathfinder storage (localStorage + sessionStorage + Grafana user storage)
+    clearCache: async () => {
       console.log('[Pathfinder] Clearing all storage...');
 
       // Find all per-page treatment keys
@@ -146,6 +254,14 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
         perPageState[key] = sessionStorage.getItem(key);
       });
 
+      // Get Grafana user storage state
+      let userStorageState = null;
+      try {
+        userStorageState = await experimentAutoOpenStorage.get();
+      } catch {
+        console.warn('[Pathfinder] Could not read user storage state');
+      }
+
       console.log('[Pathfinder] Current state:');
       console.log('  localStorage:', {
         [storageKeys.resetProcessed]: localStorage.getItem(storageKeys.resetProcessed),
@@ -156,6 +272,9 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       });
       if (perPageKeys.length > 0) {
         console.log('[Pathfinder] Per-page treatment keys:', perPageState);
+      }
+      if (userStorageState) {
+        console.log('[Pathfinder] Grafana user storage:', userStorageState);
       }
 
       // Clear localStorage
@@ -168,6 +287,14 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       // Clear per-page treatment keys
       perPageKeys.forEach((key) => sessionStorage.removeItem(key));
 
+      // Clear Grafana user storage
+      try {
+        await experimentAutoOpenStorage.clear();
+        console.log('[Pathfinder] Grafana user storage cleared');
+      } catch (error) {
+        console.warn('[Pathfinder] Failed to clear Grafana user storage:', error);
+      }
+
       console.log(
         `[Pathfinder] Storage cleared (${perPageKeys.length} per-page keys). Refresh the page to re-evaluate experiment.`
       );
@@ -175,7 +302,7 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
     },
 
     // Show current storage state without clearing
-    showCache: () => {
+    showCache: async () => {
       // Find all per-page treatment keys
       const perPageKeys: Record<string, string | null> = {};
       for (let i = 0; i < sessionStorage.length; i++) {
@@ -183,6 +310,14 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
         if (key && key.startsWith(storageKeys.treatmentPagePrefix)) {
           perPageKeys[key] = sessionStorage.getItem(key);
         }
+      }
+
+      // Get Grafana user storage state
+      let userStorageState = null;
+      try {
+        userStorageState = await experimentAutoOpenStorage.get();
+      } catch {
+        console.warn('[Pathfinder] Could not read user storage state');
       }
 
       const state = {
@@ -194,6 +329,7 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
           treatmentOpened: sessionStorage.getItem(storageKeys.treatmentOpened),
         },
         perPageKeys,
+        userStorage: userStorageState,
       };
 
       console.log('[Pathfinder] Global keys:');
@@ -215,6 +351,10 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
         console.log('[Pathfinder] Per-page treatment keys (auto-open once per target page):', perPageKeys);
       } else {
         console.log('[Pathfinder] No per-page treatment keys found.');
+      }
+
+      if (userStorageState) {
+        console.log('[Pathfinder] Grafana user storage (persists across browsers):', userStorageState);
       }
 
       return state;

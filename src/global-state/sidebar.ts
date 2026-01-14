@@ -14,11 +14,16 @@ export class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtension
 }
 
 /**
+ * Action types for sidebar open analytics
+ */
+export type OpenAction = 'open' | 'auto-open' | 'restore';
+
+/**
  * Pending open info for analytics tracking
  */
 interface PendingOpenInfo {
   source: string;
-  isAutoOpen: boolean;
+  action: OpenAction;
 }
 
 /**
@@ -42,18 +47,18 @@ class GlobalSidebarState {
    * This is consumed by the sidebar mount analytics and cleared after use.
    *
    * @param source - The source identifier for analytics
-   * @param isAutoOpen - Whether this is a programmatic auto-open (true) or user-initiated (false)
+   * @param action - The action type: 'open' (user-initiated), 'auto-open' (programmatic), or 'restore' (browser cache)
    */
-  public setPendingOpenSource(source: string, isAutoOpen = false): void {
-    this._pendingOpenInfo = { source, isAutoOpen };
+  public setPendingOpenSource(source: string, action: OpenAction = 'open'): void {
+    this._pendingOpenInfo = { source, action };
   }
 
   /**
    * Gets and clears the pending open info.
-   * Returns the source and isAutoOpen flag if set, otherwise returns defaults.
+   * Returns the source and action if set, otherwise returns defaults.
    */
   public consumePendingOpenSource(): PendingOpenInfo {
-    const info = this._pendingOpenInfo || { source: 'sidebar_toggle', isAutoOpen: false };
+    const info = this._pendingOpenInfo || { source: 'sidebar_toggle', action: 'open' };
     this._pendingOpenInfo = null;
     return info;
   }
