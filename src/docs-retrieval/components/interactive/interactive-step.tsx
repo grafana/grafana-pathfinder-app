@@ -171,7 +171,7 @@ export const InteractiveStep = forwardRef<
     },
     ref
   ) => {
-    const generatedStepIdRef = useRef<string>();
+    const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
       anonymousStepCounter += 1;
       generatedStepIdRef.current = `standalone-step-${anonymousStepCounter}`;
