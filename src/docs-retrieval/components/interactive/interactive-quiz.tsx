@@ -13,7 +13,6 @@ import { testIds } from '../../../components/testIds';
 export interface QuizChoice {
   id: string;
   text: string;
-  textElements?: ParsedElement[];
   correct: boolean;
   hint?: string;
 }

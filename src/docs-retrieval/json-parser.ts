@@ -9,6 +9,7 @@ import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from './
 import { parseHTMLToComponents } from './html-parser';
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
+import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
 import {
   hasAssistantEnabled,
@@ -74,8 +75,6 @@ const MARKDOWN_ALLOWED_ATTR = [
   'width',
   'height',
 ];
-
-const HTML_TAG_PATTERN = /<\s*\/?\s*[a-zA-Z][^>]*>/;
 
 /**
  * Parse a JSON guide into ContentParseResult.
@@ -301,10 +300,8 @@ function convertBlockToParsedElement(
 }
 
 /**
- * Convert markdown content to ParsedElement children.
- * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks, tables.
- * SECURITY: Input is sanitized with a safe allowlist of structural tags before parsing (F1, F4).
- * We allow basic content tags (div, span, headings, lists, tables, code) while stripping scripts/events.
+ * Convert Markdown content to ParsedElement children.
+ * SECURITY: Input is sanitized with DOMPurify before parsing (F1, F4).
  *
  * @public Exported for use in AssistantBlockWrapper to render customized content
  */
@@ -316,246 +313,30 @@ export function parseMarkdownToElements(content: string): ParsedElement[] {
     KEEP_CONTENT: true,
   });
 
-  // If the content includes HTML tags after sanitization, try parsing as HTML to preserve allowed structure
-  if (HTML_TAG_PATTERN.test(sanitizedContent)) {
-    const htmlResult = parseHTMLToComponents(sanitizeDocumentationHTML(sanitizedContent));
-    if (htmlResult.isValid && htmlResult.data?.elements?.length) {
-      return htmlResult.data.elements;
-    }
+  const html = renderMarkdown(sanitizedContent);
+
+  // Sanitize the HTML output (renderMarkdown may produce HTML that needs additional sanitization)
+  const sanitizedHtml = sanitizeDocumentationHTML(html);
+
+  // Parse HTML to ParsedElement[] using existing HTML parser
+  const htmlResult = parseHTMLToComponents(sanitizedHtml);
+
+  if (!htmlResult.isValid || !htmlResult.data?.elements?.length) {
+    // Fallback: return empty array or single paragraph with text
+    return [
+      {
+        type: 'p',
+        props: {},
+        children: [sanitizedContent],
+      },
+    ];
   }
 
-  const elements: ParsedElement[] = [];
-  const lines = sanitizedContent.split('\n');
-  let currentList: ParsedElement | null = null;
-  let currentListItems: ParsedElement[] = [];
-  let inCodeBlock = false;
-  let codeBlockLanguage = '';
-  let codeBlockLines: string[] = [];
-  let inTable = false;
-  let tableHeaders: string[] = [];
-  let tableRows: string[][] = [];
-
-  const flushList = () => {
-    if (currentList && currentListItems.length > 0) {
-      currentList.children = currentListItems;
-      elements.push(currentList);
-      currentList = null;
-      currentListItems = [];
-    }
-  };
-
-  const flushCodeBlock = () => {
-    if (codeBlockLines.length > 0) {
-      // Use the code-block type to get the CodeBlock component with copy button and syntax highlighting
-      elements.push({
-        type: 'code-block',
-        props: {
-          code: codeBlockLines.join('\n'),
-          language: codeBlockLanguage || undefined,
-          showCopy: true,
-          inline: false,
-        },
-        children: [],
-      });
-      codeBlockLines = [];
-      codeBlockLanguage = '';
-    }
-  };
-
-  const flushTable = () => {
-    if (tableHeaders.length > 0 || tableRows.length > 0) {
-      const headerCells: ParsedElement[] = tableHeaders.map((cell) => ({
-        type: 'th',
-        props: {},
-        children: parseInlineMarkdown(cell.trim()),
-      }));
-
-      const bodyRows: ParsedElement[] = tableRows.map((row) => ({
-        type: 'tr',
-        props: {},
-        children: row.map((cell) => ({
-          type: 'td',
-          props: {},
-          children: parseInlineMarkdown(cell.trim()),
-        })),
-      }));
-
-      const tableElement: ParsedElement = {
-        type: 'table',
-        props: {},
-        children: [
-          {
-            type: 'thead',
-            props: {},
-            children: [
-              {
-                type: 'tr',
-                props: {},
-                children: headerCells,
-              },
-            ],
-          },
-          {
-            type: 'tbody',
-            props: {},
-            children: bodyRows,
-          },
-        ],
-      };
-
-      elements.push(tableElement);
-      tableHeaders = [];
-      tableRows = [];
-      inTable = false;
-    }
-  };
-
-  // Helper to parse table row cells
-  const parseTableRow = (line: string): string[] => {
-    // Remove leading/trailing pipes and split by pipe
-    const trimmed = line.trim();
-    const withoutLeadingPipe = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
-    const withoutTrailingPipe = withoutLeadingPipe.endsWith('|') ? withoutLeadingPipe.slice(0, -1) : withoutLeadingPipe;
-    return withoutTrailingPipe.split('|');
-  };
-
-  // Helper to check if a line is a table separator (|---|---|)
-  const isTableSeparator = (line: string): boolean => {
-    const trimmed = line.trim();
-    // Must contain | and only |, -, :, and spaces
-    return trimmed.includes('|') && /^[\s|:\-]+$/.test(trimmed);
-  };
-
-  // Helper to check if a line looks like a table row
-  const isTableRow = (line: string): boolean => {
-    const trimmed = line.trim();
-    return trimmed.includes('|') && !isTableSeparator(trimmed);
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmedLine = line.trim();
-
-    // Check for fenced code block start/end
-    if (trimmedLine.startsWith('```')) {
-      if (inCodeBlock) {
-        // End of code block
-        flushCodeBlock();
-        inCodeBlock = false;
-      } else {
-        // Start of code block
-        flushList();
-        flushTable();
-        inCodeBlock = true;
-        codeBlockLanguage = trimmedLine.slice(3).trim();
-      }
-      continue;
-    }
-
-    // If we're inside a code block, collect the lines
-    if (inCodeBlock) {
-      codeBlockLines.push(line);
-      continue;
-    }
-
-    // Table handling
-    if (isTableRow(trimmedLine)) {
-      flushList();
-
-      if (!inTable) {
-        // This could be the header row - check if next line is separator
-        const nextLine = lines[i + 1]?.trim() || '';
-        if (isTableSeparator(nextLine)) {
-          // Start of table - this is the header
-          inTable = true;
-          tableHeaders = parseTableRow(trimmedLine);
-          i++; // Skip the separator line
-          continue;
-        }
-      }
-
-      if (inTable) {
-        // This is a body row
-        tableRows.push(parseTableRow(trimmedLine));
-        continue;
-      }
-    } else if (inTable) {
-      // End of table (non-table line encountered)
-      flushTable();
-    }
-
-    // Skip empty lines (but flush lists and tables)
-    if (trimmedLine === '') {
-      flushList();
-      flushTable();
-      continue;
-    }
-
-    // Headings
-    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.+)$/);
-    if (headingMatch) {
-      flushList();
-      flushTable();
-      const level = headingMatch[1].length;
-      const text = headingMatch[2];
-      elements.push({
-        type: `h${level}`,
-        props: {},
-        children: parseInlineMarkdown(text),
-      });
-      continue;
-    }
-
-    // Unordered list items
-    if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
-      flushTable();
-      if (!currentList) {
-        currentList = { type: 'ul', props: {}, children: [] };
-      }
-      currentListItems.push({
-        type: 'li',
-        props: {},
-        children: parseInlineMarkdown(trimmedLine.slice(2)),
-      });
-      continue;
-    }
-
-    // Ordered list items
-    const orderedMatch = trimmedLine.match(/^(\d+)\.\s+(.+)$/);
-    if (orderedMatch) {
-      flushTable();
-      if (!currentList || currentList.type !== 'ol') {
-        flushList();
-        currentList = { type: 'ol', props: {}, children: [] };
-      }
-      currentListItems.push({
-        type: 'li',
-        props: {},
-        children: parseInlineMarkdown(orderedMatch[2]),
-      });
-      continue;
-    }
-
-    // Regular paragraph
-    flushList();
-    flushTable();
-    elements.push({
-      type: 'p',
-      props: {},
-      children: parseInlineMarkdown(trimmedLine),
-    });
-  }
-
-  // Flush any remaining list, code block, or table
-  flushList();
-  flushCodeBlock();
-  flushTable();
-
-  return elements;
+  return htmlResult.data.elements;
 }
 
 /**
- * Convert inline markdown to HTML string.
+ * Convert inline Markdown to HTML.
  * Used for targetComment which expects HTML.
  * SECURITY: Output is sanitized with DOMPurify to prevent XSS attacks (F1, F4).
  */
@@ -567,100 +348,12 @@ function markdownToHtml(text: string): string {
     KEEP_CONTENT: true,
   });
 
-  const html = sanitizedInput
-    // Bold: **text** or __text__
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic: *text* or _text_ (but not inside words)
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
-    // Inline code: `code`
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Links: [text](url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  const html = renderMarkdown(sanitizedInput);
 
   // SECURITY: Sanitize HTML output to prevent XSS attacks (F1, F4)
   // This is defense-in-depth - targetComment is also sanitized at render time,
   // but sanitizing here ensures safety at the source
   return sanitizeDocumentationHTML(html);
-}
-
-/**
- * Parse inline markdown (bold, italic, code, links) into ParsedElement children.
- */
-function parseInlineMarkdown(text: string): Array<ParsedElement | string> {
-  const children: Array<ParsedElement | string> = [];
-  let lastIndex = 0;
-
-  // Combined regex to find any inline element
-  const combinedRegex = /(\*\*(.+?)\*\*|__(.+?)__|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*([^*]+)\*|_([^_]+)_)/g;
-
-  let match;
-  while ((match = combinedRegex.exec(text)) !== null) {
-    // Add text before the match
-    if (match.index > lastIndex) {
-      const textBefore = text.slice(lastIndex, match.index);
-      if (textBefore) {
-        children.push(textBefore);
-      }
-    }
-
-    const fullMatch = match[0];
-
-    // Determine which pattern matched
-    if (fullMatch.startsWith('**') || fullMatch.startsWith('__')) {
-      // Bold
-      const content = match[2] || match[3];
-      children.push({
-        type: 'strong',
-        props: {},
-        children: [content],
-      });
-    } else if (fullMatch.startsWith('`')) {
-      // Inline code - use code-block type for consistent styling
-      children.push({
-        type: 'code-block',
-        props: {
-          code: match[4],
-          showCopy: true,
-          inline: true,
-        },
-        children: [],
-      });
-    } else if (fullMatch.startsWith('[')) {
-      // Link
-      children.push({
-        type: 'a',
-        props: { href: match[6], target: '_blank', rel: 'noopener noreferrer' },
-        children: [match[5]],
-      });
-    } else if (fullMatch.startsWith('*') || fullMatch.startsWith('_')) {
-      // Italic
-      const content = match[7] || match[8];
-      children.push({
-        type: 'em',
-        props: {},
-        children: [content],
-      });
-    }
-
-    lastIndex = match.index + fullMatch.length;
-  }
-
-  // Add remaining text
-  if (lastIndex < text.length) {
-    const remaining = text.slice(lastIndex);
-    if (remaining) {
-      children.push(remaining);
-    }
-  }
-
-  // If no patterns matched, return the original text
-  if (children.length === 0) {
-    return [text];
-  }
-
-  return children;
 }
 
 function convertMarkdownBlock(block: JsonMarkdownBlock, path: string): ConversionResult {
@@ -825,10 +518,13 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
 
   // Add tooltip as interactive-comment if present
   if (block.tooltip) {
+    // Parse tooltip markdown and extract children (for inline rendering)
+    const tooltipElements = parseMarkdownToElements(block.tooltip);
+    const tooltipChildren = tooltipElements.flatMap((el) => (el.children ? el.children : [el]));
     const tooltipElement: ParsedElement = {
       type: 'span',
       props: { className: 'interactive-comment' },
-      children: parseInlineMarkdown(block.tooltip),
+      children: tooltipChildren,
     };
     children.unshift(tooltipElement);
   }
@@ -995,11 +691,10 @@ function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult 
   // Convert requirements array to comma-separated string
   const requirements = block.requirements?.join(',') || undefined;
 
-  // Build choices with parsed markdown text
+  // Build choices (textElements removed - not used by quiz component)
   const choices = block.choices.map((choice) => ({
     id: choice.id,
     text: choice.text,
-    textElements: parseInlineMarkdown(choice.text),
     correct: choice.correct ?? false,
     hint: choice.hint,
   }));
