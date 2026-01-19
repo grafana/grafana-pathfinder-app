@@ -345,7 +345,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 /** Inner component that has access to GuideResponseContext for variable substitution */
 interface ContentWithVariablesProps {
   processedContent: string;
-  contentType: 'learning-journey' | 'single-doc';
+  contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
   onContentReady?: () => void;
   activeRef: React.RefObject<HTMLDivElement>;
@@ -402,7 +402,7 @@ function ContentWithVariables({
 
 interface ContentProcessorProps {
   html: string;
-  contentType: 'learning-journey' | 'single-doc';
+  contentType: 'learning-journey' | 'single-doc' | 'interactive';
   theme?: GrafanaTheme2;
   baseUrl: string;
   onReady?: () => void;

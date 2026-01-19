@@ -97,6 +97,12 @@ const getStyles = getComponentStyles;
 // Import centralized types
 import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
 
+/**
+ * Helper to check if a tab type should be treated as docs-like content.
+ * Both 'docs' and 'interactive' types render the same way (vs 'learning-journey').
+ */
+const isDocsLikeTab = (type?: string): boolean => type === 'docs' || type === 'interactive';
+
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;
 
@@ -166,7 +172,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     if (activeTab && activeTab.id !== 'recommendations') {
       // If we have an active tab but no content, load it
       if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-        if (activeTab.type === 'docs') {
+        if (isDocsLikeTab(activeTab.type)) {
           this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
           this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
@@ -474,9 +480,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
-      if (tab.type === 'docs' && !tab.content) {
+      if (isDocsLikeTab(tab.type) && !tab.content) {
         this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
-      } else if (tab.type !== 'docs' && !tab.content) {
+      } else if (!isDocsLikeTab(tab.type) && !tab.content) {
         this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
       }
     }
@@ -1762,10 +1768,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           if (!isRecommendationsTab && activeTab?.isLoading) {
             return (
               <div
-                className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}
+                className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
                 data-testid={testIds.docsPanel.loadingState}
               >
-                <SkeletonLoader type={activeTab.type === 'docs' ? 'documentation' : 'learning-journey'} />
+                <SkeletonLoader type={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'} />
               </div>
             );
           }
@@ -1779,12 +1785,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
             return (
               <div
-                className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}
+                className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
                 data-testid={testIds.docsPanel.errorState}
               >
                 <Alert
                   severity="error"
-                  title={`Unable to load ${activeTab.type === 'docs' ? 'documentation' : 'learning journey'}`}
+                  title={`Unable to load ${isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning journey'}`}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <p>{activeTab.error}</p>
@@ -1794,7 +1800,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           size="sm"
                           variant="secondary"
                           onClick={() => {
-                            if (activeTab.type === 'docs') {
+                            if (isDocsLikeTab(activeTab.type)) {
                               model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
                             } else {
                               model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
@@ -1816,7 +1822,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
           // Show content - both learning journeys and docs use the same ContentRenderer now!
           if (!isRecommendationsTab && activeTab?.content && !activeTab.isLoading) {
-            const isLearningJourneyTab = activeTab.type === 'learning-journey' || activeTab.type !== 'docs';
+            const isLearningJourneyTab = activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type);
             const showMilestoneProgress =
               isLearningJourneyTab &&
               activeTab.content?.type === 'learning-journey' &&
@@ -1824,7 +1830,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               activeTab.content.metadata.learningJourney.currentMilestone > 0;
 
             return (
-              <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
+              <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
                 {/* Return to Editor Banner - only shown for WYSIWYG preview */}
                 {isWysiwygPreview && (
                   <div className={styles.returnToEditorBanner} data-testid={testIds.devTools.previewBanner}>
@@ -1860,7 +1866,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 )}
 
                 {/* Content Meta for docs - now includes secondary open-in-new button */}
-                {activeTab.type === 'docs' && (
+                {isDocsLikeTab(activeTab.type) && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
                       <span>{t('docsPanel.documentation', 'Documentation')}</span>
@@ -1920,7 +1926,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           name="sync"
                           onClick={() => {
                             if (activeTab) {
-                              if (activeTab.type === 'docs') {
+                              if (isDocsLikeTab(activeTab.type)) {
                                 model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
                               } else {
                                 model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
@@ -2014,7 +2020,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 )}
 
                 {/* Content Action Bar removed for docs to reclaim vertical space */}
-                {activeTab.type !== 'docs' && (
+                {!isDocsLikeTab(activeTab.type) && (
                   <div className={styles.contentActionBar}>
                     <IconButton
                       name="external-link-alt"
@@ -2033,7 +2039,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                             link_type: 'external_browser',
                             interaction_location: 'journey_content_action_bar',
-                            ...(activeTab.type !== 'docs' &&
+                            ...(!isDocsLikeTab(activeTab.type) &&
                               activeTab.content?.metadata.learningJourney && {
                                 current_milestone: activeTab.content.metadata.learningJourney.currentMilestone,
                                 total_milestones: activeTab.content.metadata.learningJourney.totalMilestones,
@@ -2091,7 +2097,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         })()}
       </div>
       {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement, my-learning has its own */}
-      {!isRecommendationsTab && activeTabId !== 'my-learning' && activeTab?.type !== 'docs' && (
+      {!isRecommendationsTab && activeTabId !== 'my-learning' && !isDocsLikeTab(activeTab?.type) && (
         <>
           <FeedbackButton
             contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}

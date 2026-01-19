@@ -285,15 +285,12 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
         // If parsing fails, use default title
       }
 
-      // Determine content type for preview
-      const contentType = determineContentType(url);
-
       const rawContent: RawContent = {
         content: previewContent, // Already valid JSON guide format
         metadata: {
           title,
         },
-        type: contentType,
+        type: 'interactive',
         url,
         lastFetched: new Date().toISOString(),
       };
@@ -343,7 +340,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       metadata: {
         title: interactive.title || contentId,
       },
-      type: 'single-doc',
+      type: 'interactive',
       url,
       lastFetched: new Date().toISOString(),
     };
