@@ -212,7 +212,7 @@ export function reportAppInteraction(
  * Type definition for tabs compatible with scroll tracking
  */
 export interface ScrollTrackingTab {
-  type?: 'docs' | 'learning-journey' | 'devtools';
+  type?: 'docs' | 'learning-journey' | 'devtools' | 'interactive';
   content?: {
     url?: string;
     metadata?: {
@@ -293,8 +293,11 @@ function determinePageIdentifier(activeTab: ScrollTrackingTab | null, isRecommen
     return null;
   }
 
-  // For docs tabs, use the content URL or fallback to currentUrl/baseUrl
-  if (activeTab.type === 'docs') {
+  // Helper to check if tab is docs-like (docs or interactive)
+  const isDocsLike = activeTab.type === 'docs' || activeTab.type === 'interactive';
+
+  // For docs and interactive tabs, use the content URL or fallback to currentUrl/baseUrl
+  if (isDocsLike) {
     return activeTab.content?.url || activeTab.currentUrl || activeTab.baseUrl || 'unknown-docs';
   }
 
@@ -351,7 +354,7 @@ export function clearScrollTrackingCache(): void {
  * Accepts both RawContent and legacy content formats
  */
 export interface JourneyContent {
-  type?: 'learning-journey' | 'docs' | 'single-doc'; // Include single-doc for RawContent compatibility
+  type?: 'learning-journey' | 'docs' | 'single-doc' | 'interactive'; // Include single-doc and interactive for RawContent compatibility
   metadata?: {
     learningJourney?: {
       currentMilestone?: number;

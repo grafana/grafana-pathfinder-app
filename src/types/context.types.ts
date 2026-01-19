@@ -53,7 +53,7 @@ export interface DashboardInfo {
 export interface Recommendation {
   title: string;
   url: string;
-  type?: string; // 'learning-journey' or 'docs-page'
+  type?: 'learning-journey' | 'docs-page' | 'interactive';
   matchAccuracy?: number; // Scale of 0 to 1, where 1 = 100% accurate match
   milestones?: any[]; // Import from docs-fetcher if needed
   totalSteps?: number;

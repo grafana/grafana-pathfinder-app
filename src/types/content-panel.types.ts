@@ -20,7 +20,7 @@ export interface LearningJourneyTab {
   content: RawContent | null; // Unified content type
   isLoading: boolean;
   error: string | null;
-  type?: 'learning-journey' | 'docs' | 'devtools';
+  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
 }
 
 /**
@@ -32,7 +32,7 @@ export interface PersistedTabData {
   title: string;
   baseUrl: string;
   currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
-  type?: 'learning-journey' | 'docs' | 'devtools';
+  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
 }
 
 /**

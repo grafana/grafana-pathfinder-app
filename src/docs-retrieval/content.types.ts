@@ -1,7 +1,7 @@
 // Unified content types for the new retrieval architecture
 // This replaces the separate interfaces in docs-fetcher.ts and single-docs-fetcher.ts
 
-export type ContentType = 'learning-journey' | 'single-doc';
+export type ContentType = 'learning-journey' | 'single-doc' | 'interactive';
 
 export interface RawContent {
   /** Raw content - always a JSON guide string */

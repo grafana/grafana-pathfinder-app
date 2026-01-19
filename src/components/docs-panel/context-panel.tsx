@@ -2,7 +2,7 @@ import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
+import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -17,6 +17,42 @@ import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } fro
 import { getConfigWithDefaults } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../testIds';
+
+/** Get icon name based on recommendation type */
+const getRecommendationIcon = (type?: string): IconName => {
+  if (type === 'docs-page') {
+    return 'file-alt';
+  }
+  if (type === 'interactive') {
+    return 'rocket';
+  }
+  return 'map-marker'; // learning-journey default - suggests a journey path
+};
+
+/** Get short button text based on recommendation type */
+const getRecommendationButtonText = (type?: string): string => {
+  if (type === 'docs-page') {
+    return t('contextPanel.view', 'View');
+  }
+  if (type === 'interactive') {
+    return t('contextPanel.tryIt', 'Try it');
+  }
+  return t('contextPanel.start', 'Start');
+};
+
+/** Get long CTA button text based on recommendation type */
+const getRecommendationCtaText = (type?: string): string => {
+  if (type === 'docs-page') {
+    return t('contextPanel.viewDocumentation', 'View documentation');
+  }
+  if (type === 'interactive') {
+    return t('contextPanel.tryInteractiveGuide', 'Try interactive guide');
+  }
+  return t('contextPanel.startLearningJourney', 'Start learning journey');
+};
+
+/** Check if recommendation type is docs-only (static documentation, not action-oriented) */
+const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page';
 
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
@@ -210,18 +246,18 @@ const RecommendationsSection = memo(function RecommendationsSection({
                               openLearningJourney(recommendation.url, recommendation.title);
                             }
                           }}
-                          className={recommendation.type === 'docs-page' ? styles.secondaryButton : styles.startButton}
+                          className={
+                            isDocsOnlyRecommendation(recommendation.type) ? styles.secondaryButton : styles.startButton
+                          }
                         >
-                          <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
-                          {recommendation.type === 'docs-page'
-                            ? t('contextPanel.view', 'View')
-                            : t('contextPanel.start', 'Start')}
+                          <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
+                          {getRecommendationButtonText(recommendation.type)}
                         </button>
                       </div>
                     </div>
 
                     {/* Only show summary/milestones for learning journeys or docs with summaries */}
-                    {(recommendation.type !== 'docs-page' || recommendation.summary) && (
+                    {(!isDocsOnlyRecommendation(recommendation.type) || recommendation.summary) && (
                       <>
                         <div className={styles.cardMetadata}>
                           <div className={styles.summaryInfo}>
@@ -251,7 +287,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                               <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                             </button>
                             {/* Show completion percentage for learning journeys */}
-                            {recommendation.type !== 'docs-page' &&
+                            {!isDocsOnlyRecommendation(recommendation.type) &&
                               typeof recommendation.completionPercentage === 'number' && (
                                 <div className={styles.completionInfo}>
                                   <div
@@ -276,7 +312,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                             )}
 
                             {/* Only show milestones for learning journeys */}
-                            {recommendation.type !== 'docs-page' &&
+                            {!isDocsOnlyRecommendation(recommendation.type) &&
                               (recommendation.totalSteps ?? 0) > 0 &&
                               recommendation.milestones && (
                                 <div className={styles.milestonesSection}>
@@ -345,10 +381,8 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                 }}
                                 className={styles.summaryCtaButton}
                               >
-                                <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
-                                {recommendation.type === 'docs-page'
-                                  ? t('contextPanel.viewDocumentation', 'View Documentation')
-                                  : t('contextPanel.startLearningJourney', 'Start Learning Journey')}
+                                <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
+                                {getRecommendationCtaText(recommendation.type)}
                               </button>
                             </div>
                           </div>
@@ -369,18 +403,18 @@ const RecommendationsSection = memo(function RecommendationsSection({
               <Card
                 key={recommendation.url}
                 className={`${styles.recommendationCard} ${
-                  recommendation.type === 'docs-page' ? styles.compactCard : ''
+                  isDocsOnlyRecommendation(recommendation.type) ? styles.compactCard : ''
                 }`}
                 data-testid={testIds.contextPanel.recommendationCard(index)}
               >
                 <div
                   className={`${styles.recommendationCardContent} ${
-                    recommendation.type === 'docs-page' ? styles.compactCardContent : ''
+                    isDocsOnlyRecommendation(recommendation.type) ? styles.compactCardContent : ''
                   }`}
                 >
                   <div
                     className={`${styles.cardHeader} ${
-                      recommendation.type === 'docs-page' ? styles.compactHeader : ''
+                      isDocsOnlyRecommendation(recommendation.type) ? styles.compactHeader : ''
                     }`}
                   >
                     <h3
@@ -417,19 +451,19 @@ const RecommendationsSection = memo(function RecommendationsSection({
                             openLearningJourney(recommendation.url, recommendation.title);
                           }
                         }}
-                        className={recommendation.type === 'docs-page' ? styles.secondaryButton : styles.startButton}
+                        className={
+                          isDocsOnlyRecommendation(recommendation.type) ? styles.secondaryButton : styles.startButton
+                        }
                         data-testid={testIds.contextPanel.recommendationStartButton(index)}
                       >
-                        <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
-                        {recommendation.type === 'docs-page'
-                          ? t('contextPanel.view', 'View')
-                          : t('contextPanel.start', 'Start')}
+                        <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
+                        {getRecommendationButtonText(recommendation.type)}
                       </button>
                     </div>
                   </div>
 
                   {/* Only show summary/milestones for learning journeys or docs with summaries */}
-                  {(recommendation.type !== 'docs-page' || recommendation.summary) && (
+                  {(!isDocsOnlyRecommendation(recommendation.type) || recommendation.summary) && (
                     <>
                       <div className={styles.cardMetadata}>
                         <div className={styles.summaryInfo}>
@@ -460,7 +494,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                             <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                           </button>
                           {/* Show completion percentage for learning journeys */}
-                          {recommendation.type !== 'docs-page' &&
+                          {!isDocsOnlyRecommendation(recommendation.type) &&
                             typeof recommendation.completionPercentage === 'number' && (
                               <div className={styles.completionInfo}>
                                 <div
@@ -488,7 +522,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                           )}
 
                           {/* Only show milestones for learning journeys */}
-                          {recommendation.type !== 'docs-page' &&
+                          {!isDocsOnlyRecommendation(recommendation.type) &&
                             (recommendation.totalSteps ?? 0) > 0 &&
                             recommendation.milestones && (
                               <div
@@ -564,10 +598,8 @@ const RecommendationsSection = memo(function RecommendationsSection({
                               }}
                               className={styles.summaryCtaButton}
                             >
-                              <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
-                              {recommendation.type === 'docs-page'
-                                ? t('contextPanel.viewDocumentation', 'View Documentation')
-                                : t('contextPanel.startLearningJourney', 'Start Learning Journey')}
+                              <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
+                              {getRecommendationCtaText(recommendation.type)}
                             </button>
                           </div>
                         </div>
@@ -609,7 +641,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                       data-testid={testIds.contextPanel.otherDocItem(index)}
                     >
                       <div className={styles.docIcon}>
-                        <Icon name={item.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
+                        <Icon name={getRecommendationIcon(item.type)} size="sm" />
                       </div>
                       <div className={styles.docContent}>
                         <button
@@ -620,11 +652,15 @@ const RecommendationsSection = memo(function RecommendationsSection({
                               content_url: item.url,
                               content_type: getContentTypeForAnalytics(
                                 item.url,
-                                item.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                item.type === 'docs-page'
+                                  ? 'docs'
+                                  : item.type === 'interactive'
+                                    ? 'interactive'
+                                    : 'learning-journey'
                               ),
                               interaction_location: 'other_docs_list',
                               match_accuracy: item.matchAccuracy || 0,
-                              ...(item.type !== 'docs-page' && {
+                              ...(!isDocsOnlyRecommendation(item.type) && {
                                 total_milestones: item.totalSteps || 0,
                                 completion_percentage: item.completionPercentage ?? 0,
                               }),

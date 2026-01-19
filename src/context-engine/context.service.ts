@@ -494,7 +494,7 @@ export class ContextService {
           title: sanitizeTextForDisplay(rec.title || ''),
           url: typeof rec.url === 'string' ? rec.url : '', // Validated when opened
           summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
-          type: rec.type === 'docs-page' || rec.type === 'learning-journey' ? rec.type : 'docs-page',
+          type: ['docs-page', 'learning-journey', 'interactive'].includes(rec.type) ? rec.type : 'docs-page',
           matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
           // Explicitly DO NOT spread ...rec to prevent prototype pollution attacks
           // Properties like __proto__, constructor, onClick, dangerouslySetInnerHTML are blocked
@@ -1244,7 +1244,7 @@ export class ContextService {
           bundledRecommendations.push({
             title: interactive.title,
             url: `bundled:${interactive.id}`,
-            type: 'docs-page',
+            type: 'interactive',
             summary: interactive.summary,
             matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
           });
