@@ -1,16 +1,21 @@
 {
   "contextPanel": {
     "failedToLoad": "Kan aanbevelingen niet laden: {{error}}",
+    "giveFeedback": "Feedback geven",
     "items_one": "{{count}} item",
     "items_other": "{{count}} items",
+    "menuAriaLabel": "Meer opties",
+    "menuTooltip": "Meer opties",
     "milestones": "Mijlpalen:",
     "noRecommendations": "Geen aanbevelingen beschikbaar voor uw huidige context",
     "otherDocumentation": "Andere Documentatie",
     "percentComplete": "{{percent}}% voltooid",
-    "recommendedDocumentation": "Aanbevolen Documentatie",
+    "recommendedLearning": "Aanbevolen Documentatie",
+    "resume": "Hervatten",
+    "settings": "Instellingen",
     "start": "Starten",
     "startLearningJourney": "Leerreis Starten",
-    "subtitle": "Op basis van uw huidige context zijn hier enkele leerreizen en documentatie die nuttig kunnen zijn.",
+    "subtitle": "Interactieve gidsen en bronnen op basis van waar u aan werkt.",
     "summary": "Samenvatting",
     "view": "Bekijken",
     "viewDocumentation": "Documentatie Bekijken"
@@ -34,6 +39,8 @@
     "previousMilestone": "Vorige mijlpaal",
     "previousMilestoneTooltip": "Vorige mijlpaal (Alt + ←)",
     "recommendations": "Aanbevelingen",
+    "resetGuide": "Gids resetten",
+    "resetGuideTooltip": "Reset alle interactieve stappen",
     "showMoreTabs_one": "{{count}} meer tabblad tonen",
     "showMoreTabs_other": "{{count}} meer tabbladen tonen",
     "switchToTab": "Overschakelen naar {{title}}"

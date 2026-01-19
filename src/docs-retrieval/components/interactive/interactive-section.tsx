@@ -9,7 +9,11 @@ import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
 import { InteractiveQuiz } from './interactive-quiz';
 import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../lib/analytics';
-import { interactiveStepStorage, sectionCollapseStorage } from '../../../lib/user-storage';
+import {
+  interactiveStepStorage,
+  sectionCollapseStorage,
+  interactiveCompletionStorage,
+} from '../../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../../types/component-props.types';
@@ -113,20 +117,23 @@ export function InteractiveSection({
   const isProgrammaticScrollRef = useRef(false);
 
   // --- Persistence helpers (restore across refresh) ---
+  // Use content URL (not tab ID) so progress persists across tab sessions
   const getContentKey = useCallback((): string => {
     try {
-      const tabId = (window as any).__DocsPluginActiveTabId as string | undefined;
-      const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
       const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
-      // Prefer tabId for uniqueness across multiple open tutorials
-      if (tabId && tabId.length > 0) {
-        return `tab:${tabId}`;
+      const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      const tabId = (window as any).__DocsPluginActiveTabId as string | undefined;
+      // Prefer contentKey (from content.url) for persistence across tab sessions
+      if (contentKey && contentKey.length > 0) {
+        return contentKey;
       }
+      // Fallback to tabUrl (content URL from tab)
       if (tabUrl && tabUrl.length > 0) {
         return tabUrl;
       }
-      if (contentKey && contentKey.length > 0) {
-        return contentKey;
+      // Last resort: use tabId (but this shouldn't happen in normal flow)
+      if (tabId && tabId.length > 0) {
+        return `tab:${tabId}`;
       }
     } catch {
       // no-op
@@ -137,9 +144,24 @@ export function InteractiveSection({
 
   // Persist completed steps using new user storage system
   const persistCompletedSteps = useCallback(
-    (ids: Set<string>) => {
+    (ids: Set<string>, totalSteps?: number) => {
       const contentKey = getContentKey();
       interactiveStepStorage.setCompleted(contentKey, sectionId, ids);
+
+      // Calculate and save completion percentage if total steps is known
+      const percentage = totalSteps && totalSteps > 0 ? Math.round((ids.size / totalSteps) * 100) : undefined;
+      if (percentage !== undefined) {
+        interactiveCompletionStorage.set(contentKey, percentage);
+      }
+
+      // Dispatch event to notify that progress was saved (for reset button visibility)
+      if (ids.size > 0 && typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('interactive-progress-saved', {
+            detail: { contentKey, hasProgress: true, completionPercentage: percentage },
+          })
+        );
+      }
     },
     [getContentKey, sectionId]
   );
@@ -594,7 +616,7 @@ export function InteractiveSection({
           setCurrentStepIndex(currentIndex + 1);
         }
 
-        persistCompletedSteps(newCompletedSteps);
+        persistCompletedSteps(newCompletedSteps, stepComponents.length);
 
         // React's reactive model handles eligibility updates automatically:
         // 1. State updates are batched and applied
@@ -644,7 +666,7 @@ export function InteractiveSection({
         }
 
         // Persist removal
-        persistCompletedSteps(newSet);
+        persistCompletedSteps(newSet, stepComponents.length);
         return newSet;
       });
 
@@ -1010,7 +1032,7 @@ export function InteractiveSection({
           setCompletedSteps((prev) => {
             const newSet = new Set([...prev, stepInfo.stepId]);
             // Persist immediately to ensure green state is preserved
-            persistCompletedSteps(newSet);
+            persistCompletedSteps(newSet, stepComponents.length);
             return newSet;
           });
 

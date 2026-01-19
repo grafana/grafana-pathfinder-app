@@ -79,6 +79,15 @@ export const getSectionHeaderStyles = (theme: GrafanaTheme2) => ({
       color: theme.colors.text.primary,
     },
   }),
+  menuButton: css({
+    position: 'absolute',
+    top: theme.spacing(1),
+    right: theme.spacing(1),
+    color: theme.colors.text.secondary,
+    '&:hover': {
+      color: theme.colors.text.primary,
+    },
+  }),
   headerIcon: css({
     color: theme.colors.primary.main,
     marginBottom: theme.spacing(1),
@@ -130,6 +139,15 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     minHeight: '100px',
+    // Visual definition for card elevation
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+    '&:hover': {
+      borderColor: theme.colors.border.medium,
+      boxShadow: theme.shadows.z1,
+    },
   }),
   compactCard: css({
     // Keep compact but balanced
@@ -241,7 +259,7 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: theme.spacing(0.5),
-    borderTop: `1px solid ${theme.colors.border.weak}`,
+    borderTop: `1px solid ${theme.colors.border.medium}`,
   }),
   stepsInfo: css({
     display: 'flex',

@@ -44,6 +44,7 @@ export enum UserInteraction {
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
   StepAutoCompleteFailed = 'step_auto_complete_failed',
+  ResetProgressClick = 'reset_progress_click',
 
   // Global Link Interception
   GlobalDocsLinkIntercepted = 'global_docs_link_intercepted',

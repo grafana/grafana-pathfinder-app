@@ -1,16 +1,21 @@
 {
   "contextPanel": {
     "failedToLoad": "Öneriler yüklenemedi: {{error}}",
+    "giveFeedback": "Geri bildirim ver",
     "items_one": "{{count}} öğe",
     "items_other": "{{count}} öğe",
+    "menuAriaLabel": "Daha fazla seçenek",
+    "menuTooltip": "Daha fazla seçenek",
     "milestones": "Kilometre Taşları:",
     "noRecommendations": "Mevcut bağlamınız için öneriler yok",
     "otherDocumentation": "Diğer Belgeler",
     "percentComplete": "{{percent}}% tamamlandı",
-    "recommendedDocumentation": "Önerilen Belgeler",
+    "recommendedLearning": "Önerilen Belgeler",
+    "resume": "Devam et",
+    "settings": "Ayarlar",
     "start": "Başla",
     "startLearningJourney": "Öğrenme Yolculuğunu Başlat",
-    "subtitle": "Mevcut bağlamınıza dayalı olarak, faydalı olabilecek bazı öğrenme yolculukları ve belgeler burada.",
+    "subtitle": "Üzerinde çalıştığınız konulara göre etkileşimli kılavuzlar ve kaynaklar.",
     "summary": "Özet",
     "view": "Görüntüle",
     "viewDocumentation": "Belgeleri Görüntüle"
@@ -34,6 +39,8 @@
     "previousMilestone": "Önceki kilometre taşı",
     "previousMilestoneTooltip": "Önceki kilometre taşı (Alt + ←)",
     "recommendations": "Öneriler",
+    "resetGuide": "Kılavuzu sıfırla",
+    "resetGuideTooltip": "Tüm etkileşimli adımları sıfırlar",
     "showMoreTabs_one": "{{count}} sekme daha göster",
     "showMoreTabs_other": "{{count}} sekme daha göster",
     "switchToTab": "{{title}} sekmesine geç"

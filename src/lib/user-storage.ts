@@ -91,6 +91,7 @@ const DEFAULT_GUIDE_RESPONSES: GuideResponses = {};
 
 export const StorageKeys = {
   JOURNEY_COMPLETION: 'grafana-pathfinder-app-journey-completion',
+  INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
@@ -131,6 +132,7 @@ function getTimestampKey(key: string): string {
 
 const LIMITS = {
   MAX_JOURNEY_COMPLETIONS: 100, // Prevent quota exhaustion
+  MAX_INTERACTIVE_COMPLETIONS: 100, // Prevent quota exhaustion
   MAX_PERSISTED_TABS: 50, // Prevent quota exhaustion
 } as const;
 
@@ -671,6 +673,105 @@ export const journeyCompletionStorage = {
 };
 
 /**
+ * Interactive guide completion storage operations
+ *
+ * Stores completion percentage for interactive guides (bundled and external).
+ * Similar to journeyCompletionStorage but for step-based interactive content.
+ */
+export const interactiveCompletionStorage = {
+  /**
+   * Gets the completion percentage for an interactive guide
+   */
+  async get(contentKey: string): Promise<number> {
+    try {
+      const storage = createUserStorage();
+      const completionData = await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION);
+      return completionData?.[contentKey] || 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
+   * Sets the completion percentage for an interactive guide
+   *
+   * SECURITY: Automatically cleans up old completions to prevent quota exhaustion
+   */
+  async set(contentKey: string, percentage: number): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
+
+      // Clamp percentage between 0 and 100
+      completionData[contentKey] = Math.max(0, Math.min(100, percentage));
+
+      // SECURITY: Cleanup old completions if too many
+      const entries = Object.entries(completionData);
+      if (entries.length > LIMITS.MAX_INTERACTIVE_COMPLETIONS) {
+        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_INTERACTIVE_COMPLETIONS));
+        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, reduced);
+      } else {
+        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, completionData);
+      }
+    } catch (error) {
+      // SECURITY: Handle QuotaExceededError gracefully
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        console.warn('Storage quota exceeded, clearing old interactive completion data');
+        await interactiveCompletionStorage.cleanup();
+        // Retry after cleanup
+        await interactiveCompletionStorage.set(contentKey, percentage);
+      } else {
+        console.warn('Failed to save interactive completion percentage:', error);
+      }
+    }
+  },
+
+  /**
+   * Clears the completion data for a specific interactive guide
+   */
+  async clear(contentKey: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
+      delete completionData[contentKey];
+      await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, completionData);
+    } catch (error) {
+      console.warn('Failed to clear interactive completion:', error);
+    }
+  },
+
+  /**
+   * Gets all interactive guide completions
+   */
+  async getAll(): Promise<Record<string, number>> {
+    try {
+      const storage = createUserStorage();
+      return (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
+    } catch {
+      return {};
+    }
+  },
+
+  /**
+   * Cleans up old completions to prevent quota exhaustion
+   */
+  async cleanup(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
+      const entries = Object.entries(completionData);
+
+      if (entries.length > LIMITS.MAX_INTERACTIVE_COMPLETIONS) {
+        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_INTERACTIVE_COMPLETIONS));
+        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, reduced);
+      }
+    } catch (error) {
+      console.warn('Failed to cleanup interactive completions:', error);
+    }
+  },
+};
+
+/**
  * Tab persistence storage operations
  */
 export const tabStorage = {
@@ -792,6 +893,60 @@ export const interactiveStepStorage = {
       await storage.removeItem(key);
     } catch (error) {
       console.warn('Failed to clear completed steps:', error);
+    }
+  },
+
+  /**
+   * Check if any progress exists for a content key (any section)
+   */
+  async hasProgress(contentKey: string): Promise<boolean> {
+    try {
+      const prefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
+      // Check localStorage directly for keys matching the prefix
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const value = localStorage.getItem(key);
+          if (value) {
+            try {
+              const ids = JSON.parse(value);
+              if (Array.isArray(ids) && ids.length > 0) {
+                return true;
+              }
+            } catch {
+              // Invalid JSON, skip
+            }
+          }
+        }
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Clear all progress for a content key (all sections)
+   * Also clears section collapse states for the same content
+   */
+  async clearAllForContent(contentKey: string): Promise<void> {
+    try {
+      const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
+      const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
+
+      // Find and remove all matching keys
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix))) {
+          keysToRemove.push(key);
+        }
+      }
+
+      // Remove all matching keys
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+    } catch (error) {
+      console.warn('Failed to clear all progress for content:', error);
     }
   },
 };

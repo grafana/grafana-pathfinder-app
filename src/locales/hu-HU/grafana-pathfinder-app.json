@@ -1,16 +1,21 @@
 {
   "contextPanel": {
     "failedToLoad": "Nem sikerült betölteni az ajánlásokat: {{error}}",
+    "giveFeedback": "Visszajelzés küldése",
     "items_one": "{{count}} elem",
     "items_other": "{{count}} elem",
+    "menuAriaLabel": "További lehetőségek",
+    "menuTooltip": "További lehetőségek",
     "milestones": "Mérföldkövek:",
     "noRecommendations": "Nincs elérhető ajánlás a jelenlegi kontextushoz",
     "otherDocumentation": "Egyéb Dokumentáció",
     "percentComplete": "{{percent}}% kész",
-    "recommendedDocumentation": "Ajánlott Dokumentáció",
+    "recommendedLearning": "Ajánlott Dokumentáció",
+    "resume": "Folytatás",
+    "settings": "Beállítások",
     "start": "Indítás",
     "startLearningJourney": "Tanulási Útvonalon Indítása",
-    "subtitle": "A jelenlegi kontextus alapján itt találhat néhány hasznos tanulási útvonalon és dokumentációt.",
+    "subtitle": "Interaktív útmutatók és források az aktuális munkájához.",
     "summary": "Összefoglaló",
     "view": "Megtekintés",
     "viewDocumentation": "Dokumentáció Megtekintése"
@@ -34,6 +39,8 @@
     "previousMilestone": "Előző mérföldkő",
     "previousMilestoneTooltip": "Előző mérföldkő (Alt + ←)",
     "recommendations": "Ajánlások",
+    "resetGuide": "Útmutató visszaállítása",
+    "resetGuideTooltip": "Visszaállítja az összes interaktív lépést",
     "showMoreTabs_one": "{{count}} további fül megjelenítése",
     "showMoreTabs_other": "{{count}} további fül megjelenítése",
     "switchToTab": "Váltás a következőre: {{title}}"
