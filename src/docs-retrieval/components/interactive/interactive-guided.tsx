@@ -275,8 +275,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
 
-      // Reset progress tracking before starting
-      guidedHandler.resetProgress();
+      // Progress persists between sessions - reset only via explicit "Restart section" button
 
       try {
         // Execute each internal action in sequence, waiting for user

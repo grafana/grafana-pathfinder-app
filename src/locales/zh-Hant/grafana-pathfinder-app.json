@@ -1,15 +1,20 @@
 {
   "contextPanel": {
     "failedToLoad": "載入推薦失敗：{{error}}",
+    "giveFeedback": "提供回饋",
     "items_other": "{{count}} 個項目",
+    "menuAriaLabel": "更多選項",
+    "menuTooltip": "更多選項",
     "milestones": "里程碑：",
     "noRecommendations": "當前情境沒有可用的推薦",
     "otherDocumentation": "其他文件",
     "percentComplete": "{{percent}}% 完成",
-    "recommendedDocumentation": "推薦文件",
+    "recommendedLearning": "推薦文件",
+    "resume": "繼續",
+    "settings": "設定",
     "start": "開始",
     "startLearningJourney": "開始學習之旅",
-    "subtitle": "根據您當前的情境，這裡有一些可能有益的學習之旅和文件。",
+    "subtitle": "基於您正在處理的內容的互動式指南和資源。",
     "summary": "摘要",
     "view": "查看",
     "viewDocumentation": "查看文件"
@@ -31,6 +36,8 @@
     "previousMilestone": "上一個里程碑",
     "previousMilestoneTooltip": "上一個里程碑 (Alt + ←)",
     "recommendations": "推薦",
+    "resetGuide": "重置指南",
+    "resetGuideTooltip": "重置所有互動步驟",
     "showMoreTabs_other": "顯示更多 {{count}} 個標籤頁",
     "switchToTab": "切換到 {{title}}"
   },

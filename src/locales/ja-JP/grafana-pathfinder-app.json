@@ -1,15 +1,20 @@
 {
   "contextPanel": {
     "failedToLoad": "推奨の読み込みに失敗しました：{{error}}",
+    "giveFeedback": "フィードバックを送信",
     "items_other": "{{count}} 項目",
+    "menuAriaLabel": "その他のオプション",
+    "menuTooltip": "その他のオプション",
     "milestones": "マイルストーン：",
     "noRecommendations": "現在のコンテキストに対する推奨はありません",
     "otherDocumentation": "その他のドキュメント",
     "percentComplete": "{{percent}}% 完了",
-    "recommendedDocumentation": "推奨ドキュメント",
+    "recommendedLearning": "推奨ドキュメント",
+    "resume": "再開",
+    "settings": "設定",
     "start": "開始",
     "startLearningJourney": "学習ジャーニーを開始",
-    "subtitle": "現在のコンテキストに基づいて、有益な学習ジャーニーやドキュメントをここに示します。",
+    "subtitle": "作業内容に基づいたインタラクティブガイドとリソース。",
     "summary": "概要",
     "view": "表示",
     "viewDocumentation": "ドキュメントを表示"
@@ -31,6 +36,8 @@
     "previousMilestone": "前のマイルストーン",
     "previousMilestoneTooltip": "前のマイルストーン (Alt + ←)",
     "recommendations": "推奨",
+    "resetGuide": "ガイドをリセット",
+    "resetGuideTooltip": "すべてのインタラクティブステップをリセットします",
     "showMoreTabs_other": "さらに {{count}} 個のタブを表示",
     "switchToTab": "{{title}} に切り替え"
   },

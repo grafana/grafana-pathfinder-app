@@ -185,6 +185,19 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     return unsubscribe;
   }, [debouncedRefresh]);
 
+  // Listen for progress cleared events to refresh recommendations
+  useEffect(() => {
+    const handleProgressCleared = () => {
+      // Refresh recommendations to update completion percentages
+      debouncedRefresh();
+    };
+
+    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
+    return () => {
+      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
+    };
+  }, [debouncedRefresh]);
+
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
   useEffect(() => {

@@ -7,6 +7,7 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
+import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
@@ -286,7 +287,7 @@ export class ContextService {
         };
       }
 
-      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData, pluginConfig);
+      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       if (!isRecommenderEnabled(pluginConfig)) {
         const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
         return {
@@ -301,7 +302,7 @@ export class ContextService {
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
       console.warn('Failed to fetch recommendations:', error);
-      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData, pluginConfig);
+      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
@@ -1204,10 +1205,10 @@ export class ContextService {
    * Get bundled interactive recommendations from index.json file
    * Filters based on current URL to show contextually relevant interactives
    */
-  private static getBundledInteractiveRecommendations(
+  private static async getBundledInteractiveRecommendations(
     contextData: ContextData,
     pluginConfig: DocsPluginConfig
-  ): Recommendation[] {
+  ): Promise<Recommendation[]> {
     const bundledRecommendations: Recommendation[] = [];
 
     try {
@@ -1240,15 +1241,22 @@ export class ContextService {
           return true;
         });
 
-        relevantInteractives.forEach((interactive: BundledInteractive) => {
-          bundledRecommendations.push({
-            title: interactive.title,
-            url: `bundled:${interactive.id}`,
-            type: 'interactive',
-            summary: interactive.summary,
-            matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
-          });
-        });
+        // Build recommendations with completion percentage
+        const recommendations = await Promise.all(
+          relevantInteractives.map(async (interactive: BundledInteractive) => {
+            const contentKey = `bundled:${interactive.id}`;
+            const completionPercentage = await interactiveCompletionStorage.get(contentKey);
+            return {
+              title: interactive.title,
+              url: contentKey,
+              type: 'interactive' as const,
+              summary: interactive.summary,
+              matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
+              completionPercentage,
+            };
+          })
+        );
+        bundledRecommendations.push(...recommendations);
       }
     } catch (error) {
       console.warn('Failed to load bundled interactives index.json:', error);

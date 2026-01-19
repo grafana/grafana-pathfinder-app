@@ -1,16 +1,21 @@
 {
   "contextPanel": {
     "failedToLoad": "Misslyckades att ladda rekommendationer: {{error}}",
+    "giveFeedback": "Ge feedback",
     "items_one": "{{count}} objekt",
     "items_other": "{{count}} objekt",
+    "menuAriaLabel": "Fler alternativ",
+    "menuTooltip": "Fler alternativ",
     "milestones": "Milstolpar:",
     "noRecommendations": "Inga rekommendationer tillgängliga för din nuvarande kontext",
     "otherDocumentation": "Annan Dokumentation",
     "percentComplete": "{{percent}}% slutförd",
-    "recommendedDocumentation": "Rekommenderad Dokumentation",
+    "recommendedLearning": "Rekommenderad Dokumentation",
+    "resume": "Fortsätt",
+    "settings": "Inställningar",
     "start": "Starta",
     "startLearningJourney": "Starta Lärresa",
-    "subtitle": "Baserat på din nuvarande kontext, här är några lärresor och dokumentation som kan vara fördelaktiga.",
+    "subtitle": "Interaktiva guider och resurser baserat på vad du arbetar med.",
     "summary": "Sammanfattning",
     "view": "Visa",
     "viewDocumentation": "Visa Dokumentation"
@@ -34,6 +39,8 @@
     "previousMilestone": "Föregående milstolpe",
     "previousMilestoneTooltip": "Föregående milstolpe (Alt + ←)",
     "recommendations": "Rekommendationer",
+    "resetGuide": "Återställ guide",
+    "resetGuideTooltip": "Återställer alla interaktiva steg",
     "showMoreTabs_one": "Visa {{count}} flik till",
     "showMoreTabs_other": "Visa {{count}} flikar till",
     "switchToTab": "Växla till {{title}}"

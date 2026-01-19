@@ -1,11 +1,10 @@
 import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge, Alert, Dropdown, Menu, IconButton } from '@grafana/ui';
 import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
-import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
 import { locationService, config } from '@grafana/runtime';
@@ -29,10 +28,14 @@ const getRecommendationIcon = (type?: string): IconName => {
   return 'map-marker'; // learning-journey default - suggests a journey path
 };
 
-/** Get short button text based on recommendation type */
-const getRecommendationButtonText = (type?: string): string => {
+/** Get short button text based on recommendation type and progress */
+const getRecommendationButtonText = (type?: string, completionPercentage?: number): string => {
   if (type === 'docs-page') {
     return t('contextPanel.view', 'View');
+  }
+  // Show "Resume" if user has started but not completed
+  if (completionPercentage && completionPercentage > 0 && completionPercentage < 100) {
+    return t('contextPanel.resume', 'Resume');
   }
   if (type === 'interactive') {
     return t('contextPanel.tryIt', 'Try it');
@@ -53,6 +56,9 @@ const getRecommendationCtaText = (type?: string): string => {
 
 /** Check if recommendation type is docs-only (static documentation, not action-oriented) */
 const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page';
+
+/** Check if recommendation should use openDocsPage (docs-like content: docs-page or interactive) */
+const shouldUseDocsPageOpener = (type?: string): boolean => type === 'docs-page' || type === 'interactive';
 
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
@@ -240,7 +246,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                             });
 
                             // Open the appropriate content type
-                            if (recommendation.type === 'docs-page') {
+                            if (shouldUseDocsPageOpener(recommendation.type)) {
                               openDocsPage(recommendation.url, recommendation.title);
                             } else {
                               openLearningJourney(recommendation.url, recommendation.title);
@@ -251,7 +257,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                           }
                         >
                           <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
-                          {getRecommendationButtonText(recommendation.type)}
+                          {getRecommendationButtonText(recommendation.type, recommendation.completionPercentage)}
                         </button>
                       </div>
                     </div>
@@ -373,7 +379,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                   });
 
                                   // Open the appropriate content type
-                                  if (recommendation.type === 'docs-page') {
+                                  if (shouldUseDocsPageOpener(recommendation.type)) {
                                     openDocsPage(recommendation.url, recommendation.title);
                                   } else {
                                     openLearningJourney(recommendation.url, recommendation.title);
@@ -445,7 +451,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                           });
 
                           // Open the appropriate content type
-                          if (recommendation.type === 'docs-page') {
+                          if (shouldUseDocsPageOpener(recommendation.type)) {
                             openDocsPage(recommendation.url, recommendation.title);
                           } else {
                             openLearningJourney(recommendation.url, recommendation.title);
@@ -457,7 +463,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                         data-testid={testIds.contextPanel.recommendationStartButton(index)}
                       >
                         <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
-                        {getRecommendationButtonText(recommendation.type)}
+                        {getRecommendationButtonText(recommendation.type, recommendation.completionPercentage)}
                       </button>
                     </div>
                   </div>
@@ -590,7 +596,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                 });
 
                                 // Open the appropriate content type
-                                if (recommendation.type === 'docs-page') {
+                                if (shouldUseDocsPageOpener(recommendation.type)) {
                                   openDocsPage(recommendation.url, recommendation.title);
                                 } else {
                                   openLearningJourney(recommendation.url, recommendation.title);
@@ -742,19 +748,62 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
         <div className={styles.contextSections}>
           {/* Header Section - Always Visible */}
           <div className={styles.sectionHeader}>
+            {/* Dropdown menu for feedback and settings */}
+            <Dropdown
+              placement="bottom-end"
+              overlay={
+                <Menu>
+                  <Menu.Item
+                    label={t('contextPanel.giveFeedback', 'Give feedback')}
+                    icon="comment-alt-message"
+                    onClick={() => {
+                      // Analytics: matches FeedbackButton pattern
+                      reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                        interaction_location: 'context_panel_menu_feedback',
+                        panel_type: 'context_panel',
+                      });
+                      // Use exact URL from FeedbackButton component
+                      setTimeout(() => {
+                        window.open(
+                          'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                          '_blank',
+                          'noopener,noreferrer'
+                        );
+                      }, 100); // Small delay ensures analytics event is sent
+                    }}
+                  />
+                  <Menu.Item
+                    label={t('contextPanel.settings', 'Settings')}
+                    icon="cog"
+                    onClick={() => {
+                      // Analytics: matches existing settings button pattern
+                      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                        action: 'navigate_to_config',
+                        source: 'context_panel_menu_settings',
+                      });
+                      locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
+                    }}
+                  />
+                </Menu>
+              }
+            >
+              <IconButton
+                name="ellipsis-v"
+                size="md"
+                className={styles.menuButton}
+                aria-label={t('contextPanel.menuAriaLabel', 'More options')}
+                tooltip={t('contextPanel.menuTooltip', 'More options')}
+              />
+            </Dropdown>
             <div className={styles.titleContainer}>
               <h2 className={styles.sectionTitle} data-testid={testIds.contextPanel.heading}>
-                {t('contextPanel.recommendedDocumentation', 'Recommended Documentation')}
+                {t('contextPanel.recommendedLearning', 'Recommended learning')}
               </h2>
               <Badge text="Beta" color="blue" className={styles.betaBadge} />
             </div>
             <p className={styles.sectionSubtitle}>
-              {t(
-                'contextPanel.subtitle',
-                'Based on your current context, here are some learning journeys and documentation that may be beneficial.'
-              )}
+              {t('contextPanel.subtitle', "Interactive guides and resources based on what you're working on.")}
             </p>
-            <FeedbackButton variant="secondary" interactionLocation="context_panel_feedback_button" />
           </div>
 
           {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}

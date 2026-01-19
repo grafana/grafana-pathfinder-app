@@ -1,16 +1,21 @@
 {
   "contextPanel": {
     "failedToLoad": "Fehler beim Laden der Empfehlungen: {{error}}",
+    "giveFeedback": "Feedback geben",
     "items_one": "{{count}} Element",
     "items_other": "{{count}} Elemente",
+    "menuAriaLabel": "Weitere Optionen",
+    "menuTooltip": "Weitere Optionen",
     "milestones": "Meilensteine:",
     "noRecommendations": "Keine Empfehlungen für Ihren aktuellen Kontext verfügbar",
     "otherDocumentation": "Weitere Dokumentation",
     "percentComplete": "{{percent}}% abgeschlossen",
-    "recommendedDocumentation": "Empfohlene Dokumentation",
+    "recommendedLearning": "Empfohlene Dokumentation",
+    "resume": "Fortsetzen",
+    "settings": "Einstellungen",
     "start": "Starten",
     "startLearningJourney": "Lernreise starten",
-    "subtitle": "Basierend auf Ihrem aktuellen Kontext finden Sie hier einige Lernreisen und Dokumentationen, die nützlich sein könnten.",
+    "subtitle": "Interaktive Anleitungen und Ressourcen basierend auf Ihrer aktuellen Arbeit.",
     "summary": "Zusammenfassung",
     "view": "Anzeigen",
     "viewDocumentation": "Dokumentation anzeigen"
@@ -34,6 +39,8 @@
     "previousMilestone": "Vorheriger Meilenstein",
     "previousMilestoneTooltip": "Vorheriger Meilenstein (Alt + ←)",
     "recommendations": "Empfehlungen",
+    "resetGuide": "Anleitung zurücksetzen",
+    "resetGuideTooltip": "Setzt alle interaktiven Schritte zurück",
     "showMoreTabs_one": "{{count}} weiteren Tab anzeigen",
     "showMoreTabs_other": "{{count}} weitere Tabs anzeigen",
     "switchToTab": "Zu {{title}} wechseln"

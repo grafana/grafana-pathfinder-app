@@ -1,15 +1,20 @@
 {
   "contextPanel": {
     "failedToLoad": "추천 로드 실패: {{error}}",
+    "giveFeedback": "피드백 보내기",
     "items_other": "{{count}}개 항목",
+    "menuAriaLabel": "추가 옵션",
+    "menuTooltip": "추가 옵션",
     "milestones": "마일스톤:",
     "noRecommendations": "현재 컨텍스트에 대한 추천이 없습니다",
     "otherDocumentation": "다른 문서",
     "percentComplete": "{{percent}}% 완료",
-    "recommendedDocumentation": "추천 문서",
+    "recommendedLearning": "추천 문서",
+    "resume": "이어서",
+    "settings": "설정",
     "start": "시작",
     "startLearningJourney": "학습 여정 시작",
-    "subtitle": "현재 컨텍스트를 기반으로 도움이 될 수 있는 학습 여정과 문서를 소개합니다.",
+    "subtitle": "작업 중인 내용을 기반으로 한 대화형 가이드 및 리소스.",
     "summary": "요약",
     "view": "보기",
     "viewDocumentation": "문서 보기"
@@ -31,6 +36,8 @@
     "previousMilestone": "이전 마일스톤",
     "previousMilestoneTooltip": "이전 마일스톤 (Alt + ←)",
     "recommendations": "추천",
+    "resetGuide": "가이드 재설정",
+    "resetGuideTooltip": "모든 대화형 단계를 재설정합니다",
     "showMoreTabs_other": "{{count}}개 탭 더 보기",
     "switchToTab": "{{title}}로 전환"
   },

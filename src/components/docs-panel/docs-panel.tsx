@@ -28,7 +28,13 @@ import {
   UserInteraction,
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
-import { tabStorage, useUserStorage, learningProgressStorage } from '../../lib/user-storage';
+import {
+  tabStorage,
+  useUserStorage,
+  learningProgressStorage,
+  interactiveStepStorage,
+  interactiveCompletionStorage,
+} from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -283,6 +289,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
       if (activeTabId) {
         const tabExists = tabs.some((t) => t.id === activeTabId);
+
+        // Restore the stored tab if it exists (including devtools - it should persist like normal tabs)
+        // The closeTab method ensures that when all tabs are closed, 'recommendations' is saved to storage
+        // So if storage has 'devtools', it means the user was legitimately on devtools when they refreshed
         return tabExists ? activeTabId : 'recommendations';
       }
     } catch (error) {
@@ -457,6 +467,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       }
     }
 
+    // Check if only default tabs remain (recommendations and possibly devtools)
+    // If so, always default to recommendations
+    const onlyDefaultTabsRemaining = newTabs.every((t) => t.id === 'recommendations' || t.id === 'devtools');
+    if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations') {
+      newActiveTabId = 'recommendations';
+    }
+
     this.setState({
       tabs: newTabs,
       activeTabId: newActiveTabId,
@@ -611,14 +628,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       // Check if fetch succeeded or failed
       if (result.content) {
         // Success: set content and clear error
+        // Also sync tab type with fetched content type (important for bundled interactives)
+        const fetchedContent = result.content;
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
             ? {
                 ...t,
-                content: result.content,
+                content: fetchedContent,
                 isLoading: false,
                 error: null,
                 currentUrl: url,
+                // Sync tab type with content type - docs-like types stay docs-like
+                type: fetchedContent.type === 'interactive' ? 'interactive' : t.type,
               }
             : t
         );
@@ -699,6 +720,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [badgeCelebrationQueue, setBadgeCelebrationQueue] = React.useState<string[]>([]);
   const [currentCelebrationBadge, setCurrentCelebrationBadge] = React.useState<string | null>(null);
   const isProcessingQueueRef = React.useRef(false);
+
+  // Interactive progress state - shows reset button when user has completed steps
+  const [hasInteractiveProgress, setHasInteractiveProgress] = React.useState(false);
 
   // Process the badge queue - show next badge toast
   React.useEffect(() => {
@@ -920,6 +944,40 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
+
+  // Check for interactive progress when content changes to show reset button
+  // Use content URL (not tab ID) so progress persists across tab sessions
+  const progressKey = activeTab?.content?.url || activeTab?.baseUrl || '';
+
+  // Helper to check and update progress state
+  const checkProgress = React.useCallback(() => {
+    if (progressKey) {
+      interactiveStepStorage.hasProgress(progressKey).then(setHasInteractiveProgress);
+    } else {
+      setHasInteractiveProgress(false);
+    }
+  }, [progressKey]);
+
+  // Check progress when content key changes
+  React.useEffect(() => {
+    checkProgress();
+  }, [checkProgress]);
+
+  // Listen for progress saved events to update reset button reactively
+  React.useEffect(() => {
+    const handleProgressSaved = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      // Only update if this event is for the current tab's content
+      if (detail?.contentKey === progressKey && detail?.hasProgress) {
+        setHasInteractiveProgress(true);
+      }
+    };
+
+    window.addEventListener('interactive-progress-saved', handleProgressSaved);
+    return () => {
+      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
+    };
+  }, [progressKey]);
 
   const styles = useStyles2(getStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
@@ -1865,11 +1923,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   </div>
                 )}
 
-                {/* Content Meta for docs - now includes secondary open-in-new button */}
+                {/* Content Meta for docs/interactive - now includes secondary open-in-new button */}
                 {isDocsLikeTab(activeTab.type) && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
-                      <span>{t('docsPanel.documentation', 'Documentation')}</span>
+                      <span>
+                        {activeTab.type === 'interactive'
+                          ? t('docsPanel.interactiveGuide', 'Interactive guide')
+                          : t('docsPanel.documentation', 'Documentation')}
+                      </span>
                     </div>
                     <div
                       style={{
@@ -1934,6 +1996,49 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             }
                           }}
                         />
+                      )}
+                      {hasInteractiveProgress && (
+                        <button
+                          className={styles.secondaryActionButton}
+                          aria-label={t('docsPanel.resetGuide', 'Reset guide')}
+                          title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                          onClick={async () => {
+                            if (progressKey) {
+                              // Track analytics (use content URL for analytics, not internal storage key)
+                              const analyticsUrl = activeTab?.content?.url || activeTab?.baseUrl || '';
+                              reportAppInteraction(UserInteraction.ResetProgressClick, {
+                                content_url: analyticsUrl,
+                                content_type: getContentTypeForAnalytics(analyticsUrl, activeTab?.type || 'docs'),
+                                interaction_location: 'docs_content_meta_header',
+                              });
+
+                              // Clear all progress for this content (use content URL to match storage)
+                              await interactiveStepStorage.clearAllForContent(progressKey);
+                              // Also clear the completion percentage so recommendations show updated state
+                              await interactiveCompletionStorage.clear(progressKey);
+                              setHasInteractiveProgress(false);
+
+                              // Dispatch event to notify context panel to refresh recommendations
+                              window.dispatchEvent(
+                                new CustomEvent('interactive-progress-cleared', {
+                                  detail: { contentKey: progressKey },
+                                })
+                              );
+
+                              // Reload content to reset UI state
+                              if (activeTab) {
+                                if (isDocsLikeTab(activeTab.type)) {
+                                  model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                                } else {
+                                  model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                                }
+                              }
+                            }
+                          }}
+                        >
+                          <Icon name="history-alt" size="sm" />
+                          <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
+                        </button>
                       )}
                       <FeedbackButton
                         variant="secondary"

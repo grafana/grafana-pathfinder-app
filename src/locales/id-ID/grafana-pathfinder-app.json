@@ -1,15 +1,20 @@
 {
   "contextPanel": {
     "failedToLoad": "Gagal memuat rekomendasi: {{error}}",
+    "giveFeedback": "Berikan masukan",
     "items_other": "{{count}} item",
+    "menuAriaLabel": "Opsi lainnya",
+    "menuTooltip": "Opsi lainnya",
     "milestones": "Pencapaian:",
     "noRecommendations": "Tidak ada rekomendasi yang tersedia untuk konteks Anda saat ini",
     "otherDocumentation": "Dokumentasi Lainnya",
     "percentComplete": "{{percent}}% selesai",
-    "recommendedDocumentation": "Dokumentasi yang Direkomendasikan",
+    "recommendedLearning": "Dokumentasi yang Direkomendasikan",
+    "resume": "Lanjutkan",
+    "settings": "Pengaturan",
     "start": "Mulai",
     "startLearningJourney": "Mulai Perjalanan Belajar",
-    "subtitle": "Berdasarkan konteks Anda saat ini, berikut adalah beberapa perjalanan belajar dan dokumentasi yang mungkin bermanfaat.",
+    "subtitle": "Panduan interaktif dan sumber daya berdasarkan apa yang sedang Anda kerjakan.",
     "summary": "Ringkasan",
     "view": "Lihat",
     "viewDocumentation": "Lihat Dokumentasi"
@@ -31,6 +36,8 @@
     "previousMilestone": "Pencapaian sebelumnya",
     "previousMilestoneTooltip": "Pencapaian sebelumnya (Alt + ←)",
     "recommendations": "Rekomendasi",
+    "resetGuide": "Atur ulang panduan",
+    "resetGuideTooltip": "Mengatur ulang semua langkah interaktif",
     "showMoreTabs_other": "Tampilkan {{count}} tab lagi",
     "switchToTab": "Beralih ke {{title}}"
   },
