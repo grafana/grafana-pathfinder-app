@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.4.1
+
+### Added
+
+- **Interactive content type support**: Added 'interactive' as a first-class content type alongside 'docs-page' and 'learning-journey' (#472)
+  - Context panel now handles interactive recommendations with appropriate icons and button text
+  - Improved type definitions and analytics tracking for interactive content
+- **Interactive progress tracking**: Shows completion percentage for interactive guides in recommendation buttons (#474)
+  - Added dropdown menu for feedback and settings in context panel
+  - Improved state management for interactive progress with reset functionality
+- **Category labels**: Added visual category labels and styles for recommendation types in the context panel (#475)
+
+### Changed
+
+- **Unified Markdown rendering**: Replaced custom Markdown parsers with `renderMarkdown` from `@grafana/data` using the Marked library (#473)
+  - Configured Tiptap rich text editor to use Marked for consistent Markdown support
+  - Simplified and standardized Markdown handling across the codebase
+- **Improved recommendation UX**: Refactored recommendation button text and icons for better clarity (#475)
+  - Added dropdown menu for feedback and settings in the docs panel
+
+### Fixed
+
+- Improved localization support for new UI elements across all supported languages (#474, #475)
+
 ## 1.4.0
 
 ### Added
