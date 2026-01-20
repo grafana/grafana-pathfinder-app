@@ -1,7 +1,7 @@
 import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Badge, Alert, Dropdown, Menu, IconButton } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
 import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -22,10 +22,8 @@ const getRecommendationIcon = (type?: string): IconName => {
   if (type === 'docs-page') {
     return 'file-alt';
   }
-  if (type === 'interactive') {
-    return 'rocket';
-  }
-  return 'map-marker'; // learning-journey default - suggests a journey path
+  // Both interactive guides and learning journeys use the rocket icon
+  return 'rocket';
 };
 
 /** Get short button text based on recommendation type and progress */
@@ -37,9 +35,7 @@ const getRecommendationButtonText = (type?: string, completionPercentage?: numbe
   if (completionPercentage && completionPercentage > 0 && completionPercentage < 100) {
     return t('contextPanel.resume', 'Resume');
   }
-  if (type === 'interactive') {
-    return t('contextPanel.tryIt', 'Try it');
-  }
+  // Both learning journeys and interactive guides use "Start"
   return t('contextPanel.start', 'Start');
 };
 
@@ -49,9 +45,31 @@ const getRecommendationCtaText = (type?: string): string => {
     return t('contextPanel.viewDocumentation', 'View documentation');
   }
   if (type === 'interactive') {
-    return t('contextPanel.tryInteractiveGuide', 'Try interactive guide');
+    return t('contextPanel.startInteractiveGuide', 'Start interactive guide');
   }
   return t('contextPanel.startLearningJourney', 'Start learning journey');
+};
+
+/** Get category label for display as a tag below the title */
+const getCategoryLabel = (type?: string): string => {
+  if (type === 'interactive') {
+    return t('contextPanel.categoryInteractiveGuide', 'Interactive guide');
+  }
+  if (type === 'docs-page') {
+    return t('contextPanel.categoryDocsPage', 'Docs page');
+  }
+  return t('contextPanel.categoryLearningJourney', 'Learning journey');
+};
+
+/** Get category tag style class name based on recommendation type */
+const getCategoryTagStyle = (styles: ReturnType<typeof getStyles>, type?: string): string => {
+  if (type === 'interactive') {
+    return styles.categoryTagInteractive;
+  }
+  if (type === 'docs-page') {
+    return styles.categoryTagDocs;
+  }
+  return styles.categoryTagJourney;
 };
 
 /** Check if recommendation type is docs-only (static documentation, not action-oriented) */
@@ -223,7 +241,12 @@ const RecommendationsSection = memo(function RecommendationsSection({
                         recommendation.type === 'docs-page' ? styles.compactHeader : ''
                       }`}
                     >
-                      <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                      <div className={styles.cardTitleSection}>
+                        <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                        <span className={getCategoryTagStyle(styles, recommendation.type)}>
+                          {getCategoryLabel(recommendation.type)}
+                        </span>
+                      </div>
                       <div
                         className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
                       >
@@ -252,9 +275,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                               openLearningJourney(recommendation.url, recommendation.title);
                             }
                           }}
-                          className={
-                            isDocsOnlyRecommendation(recommendation.type) ? styles.secondaryButton : styles.startButton
-                          }
+                          className={styles.startButton}
                         >
                           <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
                           {getRecommendationButtonText(recommendation.type, recommendation.completionPercentage)}
@@ -423,12 +444,17 @@ const RecommendationsSection = memo(function RecommendationsSection({
                       isDocsOnlyRecommendation(recommendation.type) ? styles.compactHeader : ''
                     }`}
                   >
-                    <h3
-                      className={styles.recommendationCardTitle}
-                      data-testid={testIds.contextPanel.recommendationTitle(index)}
-                    >
-                      {recommendation.title}
-                    </h3>
+                    <div className={styles.cardTitleSection}>
+                      <h3
+                        className={styles.recommendationCardTitle}
+                        data-testid={testIds.contextPanel.recommendationTitle(index)}
+                      >
+                        {recommendation.title}
+                      </h3>
+                      <span className={getCategoryTagStyle(styles, recommendation.type)}>
+                        {getCategoryLabel(recommendation.type)}
+                      </span>
+                    </div>
                     <div
                       className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
                     >
@@ -457,9 +483,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                             openLearningJourney(recommendation.url, recommendation.title);
                           }
                         }}
-                        className={
-                          isDocsOnlyRecommendation(recommendation.type) ? styles.secondaryButton : styles.startButton
-                        }
+                        className={styles.startButton}
                         data-testid={testIds.contextPanel.recommendationStartButton(index)}
                       >
                         <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
@@ -748,53 +772,6 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
         <div className={styles.contextSections}>
           {/* Header Section - Always Visible */}
           <div className={styles.sectionHeader}>
-            {/* Dropdown menu for feedback and settings */}
-            <Dropdown
-              placement="bottom-end"
-              overlay={
-                <Menu>
-                  <Menu.Item
-                    label={t('contextPanel.giveFeedback', 'Give feedback')}
-                    icon="comment-alt-message"
-                    onClick={() => {
-                      // Analytics: matches FeedbackButton pattern
-                      reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
-                        interaction_location: 'context_panel_menu_feedback',
-                        panel_type: 'context_panel',
-                      });
-                      // Use exact URL from FeedbackButton component
-                      setTimeout(() => {
-                        window.open(
-                          'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
-                          '_blank',
-                          'noopener,noreferrer'
-                        );
-                      }, 100); // Small delay ensures analytics event is sent
-                    }}
-                  />
-                  <Menu.Item
-                    label={t('contextPanel.settings', 'Settings')}
-                    icon="cog"
-                    onClick={() => {
-                      // Analytics: matches existing settings button pattern
-                      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                        action: 'navigate_to_config',
-                        source: 'context_panel_menu_settings',
-                      });
-                      locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
-                    }}
-                  />
-                </Menu>
-              }
-            >
-              <IconButton
-                name="ellipsis-v"
-                size="md"
-                className={styles.menuButton}
-                aria-label={t('contextPanel.menuAriaLabel', 'More options')}
-                tooltip={t('contextPanel.menuTooltip', 'More options')}
-              />
-            </Dropdown>
             <div className={styles.titleContainer}>
               <h2 className={styles.sectionTitle} data-testid={testIds.contextPanel.heading}>
                 {t('contextPanel.recommendedLearning', 'Recommended learning')}

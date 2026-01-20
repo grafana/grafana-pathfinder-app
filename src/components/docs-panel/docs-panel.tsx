@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense, lazy, Component, ReactNode } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -1751,22 +1751,50 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             </div>
           )}
 
-        {/* Settings and close actions */}
+        {/* Menu and close actions */}
         <div className={styles.tabBarActions}>
-          <IconButton
-            name="cog"
-            size="sm"
-            tooltip={t('docsPanel.settings', 'Plugin settings')}
-            onClick={() => {
-              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                action: 'navigate_to_config',
-                source: 'header_settings_button',
-              });
-              locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
-            }}
-            aria-label={t('docsPanel.settings', 'Plugin settings')}
-            data-testid={testIds.docsPanel.settingsButton}
-          />
+          <Dropdown
+            placement="bottom-end"
+            overlay={
+              <Menu>
+                <Menu.Item
+                  label={t('docsPanel.giveFeedback', 'Give feedback')}
+                  icon="comment-alt-message"
+                  onClick={() => {
+                    reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                      interaction_location: 'header_menu_feedback',
+                      panel_type: 'docs_panel',
+                    });
+                    setTimeout(() => {
+                      window.open(
+                        'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                        '_blank',
+                        'noopener,noreferrer'
+                      );
+                    }, 100);
+                  }}
+                />
+                <Menu.Item
+                  label={t('docsPanel.settings', 'Settings')}
+                  icon="cog"
+                  onClick={() => {
+                    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                      action: 'navigate_to_config',
+                      source: 'header_menu_settings',
+                    });
+                    locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
+                  }}
+                />
+              </Menu>
+            }
+          >
+            <IconButton
+              name="ellipsis-v"
+              size="sm"
+              aria-label={t('docsPanel.menuAriaLabel', 'More options')}
+              tooltip={t('docsPanel.menuTooltip', 'More options')}
+            />
+          </Dropdown>
           <IconButton
             name="times"
             size="sm"
