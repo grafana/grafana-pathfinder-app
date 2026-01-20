@@ -1,17 +1,18 @@
 /**
  * Markdown Block Form
  *
- * Rich WYSIWYG markdown editor using TipTap.
- * Stores content as markdown while providing rich editing experience.
+ * Rich WYSIWYG Markdown editor using TipTap.
+ * Stores content as Markdown while providing rich editing experience.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button, Field, IconButton, useStyles2, Menu, Dropdown, Switch, Select, Input } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
+import { Markdown } from '@tiptap/markdown';
 import { getBlockFormStyles } from '../block-editor.styles';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonMarkdownBlock } from '../../../types/json-guide.types';
@@ -25,273 +26,10 @@ const ASSISTANT_TYPE_OPTIONS: Array<SelectableValue<'query' | 'config' | 'code' 
 ];
 
 /**
- * Type guard for markdown blocks
+ * Type guard for Markdown blocks
  */
 function isMarkdownBlock(block: JsonBlock): block is JsonMarkdownBlock {
   return block.type === 'markdown';
-}
-
-// ============================================================================
-// Markdown ↔ HTML Converters
-// ============================================================================
-
-/**
- * Convert markdown to HTML for TipTap editor
- * Uses placeholder tokens to protect code blocks from other transformations
- */
-function markdownToHtml(markdown: string): string {
-  if (!markdown.trim()) {
-    return '<p></p>';
-  }
-
-  // Store code blocks with placeholders to protect them
-  const codeBlocks: string[] = [];
-  const inlineCodes: string[] = [];
-
-  let html = markdown;
-
-  // Extract and protect code blocks first (handles ``` with or without language)
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_match, lang, code) => {
-    // Trim the code content to remove leading/trailing whitespace
-    const trimmedCode = code.trim();
-    const escaped = trimmedCode.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const langAttr = lang ? ` class="language-${lang}"` : '';
-    codeBlocks.push(`<pre><code${langAttr}>${escaped}</code></pre>`);
-    return `%%CODEBLOCK_${codeBlocks.length - 1}%%`;
-  });
-
-  // Extract and protect inline code
-  html = html.replace(/`([^`\n]+)`/g, (_match, code) => {
-    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    inlineCodes.push(`<code>${escaped}</code>`);
-    return `%%INLINECODE_${inlineCodes.length - 1}%%`;
-  });
-
-  // Now escape remaining HTML
-  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-  // Headers (in order of precedence)
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // Bold and italic (order matters)
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-
-  // Horizontal rules
-  html = html.replace(/^---$/gm, '<hr>');
-
-  // Blockquotes
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote><p>$1</p></blockquote>');
-
-  // Process line by line for lists and paragraphs
-  const lines = html.split('\n');
-  const result: string[] = [];
-  let inUl = false;
-  let inOl = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Skip empty lines but close any open lists
-    if (!trimmed) {
-      if (inUl) {
-        result.push('</ul>');
-        inUl = false;
-      }
-      if (inOl) {
-        result.push('</ol>');
-        inOl = false;
-      }
-      continue;
-    }
-
-    // Check for list items
-    const ulMatch = trimmed.match(/^[\-\*] (.+)$/);
-    const olMatch = trimmed.match(/^\d+\. (.+)$/);
-
-    if (ulMatch) {
-      if (inOl) {
-        result.push('</ol>');
-        inOl = false;
-      }
-      if (!inUl) {
-        result.push('<ul>');
-        inUl = true;
-      }
-      result.push(`<li><p>${ulMatch[1]}</p></li>`);
-    } else if (olMatch) {
-      if (inUl) {
-        result.push('</ul>');
-        inUl = false;
-      }
-      if (!inOl) {
-        result.push('<ol>');
-        inOl = true;
-      }
-      result.push(`<li><p>${olMatch[1]}</p></li>`);
-    } else {
-      // Close any open lists
-      if (inUl) {
-        result.push('</ul>');
-        inUl = false;
-      }
-      if (inOl) {
-        result.push('</ol>');
-        inOl = false;
-      }
-
-      // Check if already wrapped in block element or is a placeholder
-      if (
-        trimmed.startsWith('<h') ||
-        trimmed.startsWith('<hr') ||
-        trimmed.startsWith('<blockquote') ||
-        trimmed.startsWith('%%CODEBLOCK_')
-      ) {
-        result.push(trimmed);
-      } else {
-        result.push(`<p>${trimmed}</p>`);
-      }
-    }
-  }
-
-  // Close any remaining open lists
-  if (inUl) {
-    result.push('</ul>');
-  }
-  if (inOl) {
-    result.push('</ol>');
-  }
-
-  html = result.join('');
-
-  // Restore code blocks and inline code
-  codeBlocks.forEach((block, i) => {
-    html = html.replace(`%%CODEBLOCK_${i}%%`, block);
-    // Also handle if it got wrapped in <p>
-    html = html.replace(`<p>%%CODEBLOCK_${i}%%</p>`, block);
-  });
-
-  inlineCodes.forEach((code, i) => {
-    html = html.replace(new RegExp(`%%INLINECODE_${i}%%`, 'g'), code);
-  });
-
-  return html || '<p></p>';
-}
-
-/**
- * Convert HTML from TipTap to markdown
- * Handles TipTap's specific HTML output format
- */
-function htmlToMarkdown(html: string): string {
-  if (!html.trim()) {
-    return '';
-  }
-
-  let md = html;
-
-  // First, handle code blocks - TipTap wraps them in <pre><code>
-  // The code content may have HTML entities that need decoding
-  md = md.replace(/<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/gi, (_match, lang, code) => {
-    // Decode HTML entities in code
-    const decoded = code
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      .replace(/&nbsp;/g, ' ')
-      .trim(); // Remove leading/trailing whitespace from code content
-    const langTag = lang || '';
-    return `\`\`\`${langTag}\n${decoded}\n\`\`\``;
-  });
-
-  // Handle inline code - must be after code blocks
-  md = md.replace(/<code>([^<]*)<\/code>/gi, (_match, code) => {
-    const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-    return `\`${decoded}\``;
-  });
-
-  // Headers - TipTap may include content with nested tags
-  md = md.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_m, content) => `# ${stripTags(content)}\n\n`);
-  md = md.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_m, content) => `## ${stripTags(content)}\n\n`);
-  md = md.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_m, content) => `### ${stripTags(content)}\n\n`);
-  md = md.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_m, content) => `#### ${stripTags(content)}\n\n`);
-
-  // Bold and italic - handle nested cases
-  md = md.replace(/<strong><em>([\s\S]*?)<\/em><\/strong>/gi, '***$1***');
-  md = md.replace(/<em><strong>([\s\S]*?)<\/strong><\/em>/gi, '***$1***');
-  md = md.replace(/<strong>([\s\S]*?)<\/strong>/gi, '**$1**');
-  md = md.replace(/<em>([\s\S]*?)<\/em>/gi, '*$1*');
-
-  // Links
-  md = md.replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
-
-  // Horizontal rules
-  md = md.replace(/<hr\s*\/?>/gi, '\n---\n');
-
-  // Blockquotes - TipTap nests paragraphs inside
-  md = md.replace(/<blockquote>([\s\S]*?)<\/blockquote>/gi, (_match, content) => {
-    const text = stripTags(content).trim();
-    return `> ${text}\n\n`;
-  });
-
-  // Lists - handle TipTap's structure with nested p tags
-  md = md.replace(/<ul>([\s\S]*?)<\/ul>/gi, (_match, content: string) => {
-    const items = content.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
-    return (
-      items
-        .map((item) => {
-          const text = stripTags(item.replace(/<\/?li[^>]*>/gi, '')).trim();
-          return `- ${text}`;
-        })
-        .join('\n') + '\n\n'
-    );
-  });
-
-  md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_match, content: string) => {
-    const items = content.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
-    return (
-      items
-        .map((item, i) => {
-          const text = stripTags(item.replace(/<\/?li[^>]*>/gi, '')).trim();
-          return `${i + 1}. ${text}`;
-        })
-        .join('\n') + '\n\n'
-    );
-  });
-
-  // Paragraphs
-  md = md.replace(/<p>([\s\S]*?)<\/p>/gi, '$1\n\n');
-
-  // Line breaks
-  md = md.replace(/<br\s*\/?>/gi, '\n');
-
-  // Clean up any remaining tags
-  md = md.replace(/<[^>]+>/g, '');
-
-  // Decode remaining HTML entities
-  md = md.replace(/&amp;/g, '&');
-  md = md.replace(/&lt;/g, '<');
-  md = md.replace(/&gt;/g, '>');
-  md = md.replace(/&nbsp;/g, ' ');
-  md = md.replace(/&quot;/g, '"');
-
-  // Clean up excessive whitespace
-  md = md.replace(/\n{3,}/g, '\n\n').trim();
-
-  return md;
-}
-
-/**
- * Strip HTML tags from content, preserving text
- */
-function stripTags(html: string): string {
-  return html.replace(/<[^>]+>/g, '');
 }
 
 // ============================================================================
@@ -735,7 +473,7 @@ export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing =
 
   // Initialize from existing data or defaults
   const initial = initialData && isMarkdownBlock(initialData) ? initialData : null;
-  const initialHtml = useMemo(() => markdownToHtml(initial?.content ?? ''), [initial?.content]);
+  const initialMarkdown = initial?.content ?? '';
 
   // Track if content has been modified for validation
   const [hasContent, setHasContent] = useState(Boolean(initial?.content?.trim()));
@@ -752,9 +490,9 @@ export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing =
 
   // Rich/Raw mode toggle
   const [editMode, setEditMode] = useState<'rich' | 'raw'>('rich');
-  const [rawContent, setRawContent] = useState(initial?.content ?? '');
+  const [rawContent, setRawContent] = useState(initialMarkdown);
 
-  // Initialize TipTap editor
+  // Initialize TipTap editor with Markdown extension
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -767,8 +505,17 @@ export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing =
           rel: 'noopener noreferrer',
         },
       }),
+      Markdown.configure({
+        markedOptions: {
+          // Use GitHub flavored Markdown which Grafana also uses.
+          // https://github.com/grafana/grafana/blob/fda47eb3af61034b1e28bec932c06298d85b7743/packages/grafana-data/src/text/markdown.ts#L15
+          gfm: true,
+        },
+      }),
     ],
-    content: initialHtml,
+
+    content: initialMarkdown,
+    contentType: 'markdown',
     onUpdate: ({ editor: ed }) => {
       // Check if there's actual content
       const text = ed.getText();
@@ -791,21 +538,19 @@ export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing =
     },
   });
 
-  // Switch to raw mode - sync content from editor
+  // Switch to raw mode - get Markdown from editor
   const handleSwitchToRaw = useCallback(() => {
     if (editor) {
-      const html = editor.getHTML();
-      const markdown = htmlToMarkdown(html);
+      const markdown = editor.getMarkdown() || editor.getText();
       setRawContent(markdown);
     }
     setEditMode('raw');
   }, [editor]);
 
-  // Switch to rich mode - sync content to editor
+  // Switch to rich mode - set Markdown content in editor
   const handleSwitchToRich = useCallback(() => {
     if (editor && rawContent) {
-      const html = markdownToHtml(rawContent);
-      editor.commands.setContent(html);
+      editor.commands.setContent(rawContent, { contentType: 'markdown' });
     }
     setEditMode('rich');
   }, [editor, rawContent]);
@@ -818,8 +563,7 @@ export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing =
       if (editMode === 'raw') {
         markdown = rawContent.trim();
       } else if (editor) {
-        const html = editor.getHTML();
-        markdown = htmlToMarkdown(html);
+        markdown = editor.getMarkdown() || editor.getText();
       } else {
         return;
       }

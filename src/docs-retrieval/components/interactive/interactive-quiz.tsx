@@ -5,7 +5,6 @@ import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
-import { ParsedElement } from '../../content.types';
 import { testIds } from '../../../components/testIds';
 
 // ============ Types ============
@@ -13,7 +12,6 @@ import { testIds } from '../../../components/testIds';
 export interface QuizChoice {
   id: string;
   text: string;
-  textElements?: ParsedElement[];
   correct: boolean;
   hint?: string;
 }
