@@ -179,6 +179,14 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     marginBottom: theme.spacing(0.5), // Reduced bottom margin for docs pages
     alignItems: 'center', // Center align for cleaner look
   }),
+  cardTitleSection: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 'calc(100% - 100px)',
+  }),
   recommendationCardTitle: css({
     margin: 0,
     fontSize: theme.typography.h5.fontSize,
@@ -186,13 +194,59 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.primary,
     lineHeight: 1.3,
     wordBreak: 'break-word',
-    flex: 1,
-    minWidth: 0,
-    maxWidth: 'calc(100% - 100px)',
     display: '-webkit-box',
     '-webkit-line-clamp': '2',
     '-webkit-box-orient': 'vertical',
     overflow: 'hidden',
+  }),
+  // Category tag base styles - shared by all tag variants
+  categoryTagBase: css({
+    display: 'inline-block',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightMedium,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.pill,
+    width: 'fit-content',
+    lineHeight: 1.4,
+  }),
+  // Interactive guide tag - orange color (action-oriented)
+  categoryTagInteractive: css({
+    display: 'inline-block',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightMedium,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.pill,
+    width: 'fit-content',
+    lineHeight: 1.4,
+    backgroundColor: theme.isDark ? 'rgba(255, 152, 48, 0.15)' : 'rgba(255, 152, 48, 0.15)',
+    border: `1px solid ${theme.isDark ? 'rgba(255, 152, 48, 0.25)' : 'rgba(255, 152, 48, 0.25)'}`,
+    color: theme.isDark ? '#ffb366' : '#b35c00',
+  }),
+  // Learning journey tag - purple color (exploration)
+  categoryTagJourney: css({
+    display: 'inline-block',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightMedium,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.pill,
+    width: 'fit-content',
+    lineHeight: 1.4,
+    backgroundColor: theme.isDark ? 'rgba(138, 43, 226, 0.15)' : 'rgba(138, 43, 226, 0.15)',
+    border: `1px solid ${theme.isDark ? 'rgba(138, 43, 226, 0.25)' : 'rgba(138, 43, 226, 0.25)'}`,
+    color: theme.isDark ? '#b380e0' : '#6b21a8',
+  }),
+  // Docs page tag - blue color (informational)
+  categoryTagDocs: css({
+    display: 'inline-block',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightMedium,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.pill,
+    width: 'fit-content',
+    lineHeight: 1.4,
+    backgroundColor: theme.isDark ? 'rgba(110, 159, 255, 0.15)' : 'rgba(110, 159, 255, 0.15)',
+    border: `1px solid ${theme.isDark ? 'rgba(110, 159, 255, 0.25)' : 'rgba(110, 159, 255, 0.25)'}`,
+    color: theme.isDark ? '#8ab8ff' : '#1f62c0',
   }),
   cardActions: css({
     display: 'flex',
