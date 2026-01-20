@@ -15,7 +15,9 @@ export function VideoRenderer({ src, type, baseUrl, onClick, start, end, ...prop
   // Handle start and end times
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      return;
+    }
 
     // Set start time when video metadata is loaded
     const handleLoadedMetadata = () => {
