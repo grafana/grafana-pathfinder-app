@@ -35,6 +35,8 @@ export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
   const [src, setSrc] = useState(initial?.src ?? '');
   const [provider, setProvider] = useState<'youtube' | 'native'>(initial?.provider ?? 'youtube');
   const [title, setTitle] = useState(initial?.title ?? '');
+  const [start, setStart] = useState(initial?.start?.toString() ?? '');
+  const [end, setEnd] = useState(initial?.end?.toString() ?? '');
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -44,10 +46,12 @@ export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
         src: src.trim(),
         ...(provider && { provider }),
         ...(title.trim() && { title: title.trim() }),
+        ...(start.trim() && !isNaN(Number(start)) && Number(start) >= 0 && { start: Number(start) }),
+        ...(end.trim() && !isNaN(Number(end)) && Number(end) >= 0 && { end: Number(end) }),
       };
       onSubmit(block);
     },
-    [src, provider, title, onSubmit]
+    [src, provider, title, start, end, onSubmit]
   );
 
   const handleProviderChange = useCallback((option: SelectableValue<'youtube' | 'native'>) => {
@@ -89,6 +93,28 @@ export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
 
       <Field label="Title" description="Video title for accessibility">
         <Input value={title} onChange={(e) => setTitle(e.currentTarget.value)} placeholder="Video title" />
+      </Field>
+
+      <Field label="Start time (seconds)" description="Optional start time in seconds">
+        <Input
+          type="number"
+          min="0"
+          step="0.1"
+          value={start}
+          onChange={(e) => setStart(e.currentTarget.value)}
+          placeholder="0"
+        />
+      </Field>
+
+      <Field label="End time (seconds)" description="Optional end time in seconds">
+        <Input
+          type="number"
+          min="0"
+          step="0.1"
+          value={end}
+          onChange={(e) => setEnd(e.currentTarget.value)}
+          placeholder="0"
+        />
       </Field>
 
       {/* Preview for YouTube */}

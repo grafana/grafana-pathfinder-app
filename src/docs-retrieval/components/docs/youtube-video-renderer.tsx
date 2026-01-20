@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
+import { parseUrlSafely } from '../../../security/url-validator';
 
 export interface YouTubeVideoRendererProps {
   src: string;
@@ -7,6 +8,8 @@ export interface YouTubeVideoRendererProps {
   height?: string | number;
   title?: string;
   className?: string;
+  start?: number;
+  end?: number;
   [key: string]: any;
 }
 
@@ -27,6 +30,8 @@ export function YouTubeVideoRenderer({
   height = 315,
   title,
   className,
+  start,
+  end,
   ...props
 }: YouTubeVideoRendererProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -265,17 +270,34 @@ export function YouTubeVideoRenderer({
     );
   }
 
-  // Preserve original URL and simply append enablejsapi=1 if not present
+  // Preserve original URL and append enablejsapi=1 and start/end parameters if needed.
   const embedUrl = (() => {
-    // Check if enablejsapi is already in the URL
-    if (src.includes('enablejsapi=1')) {
-      return src; // Already has the API enabled
+    const url = parseUrlSafely(src);
+    if (!url) {
+      console.error('YouTubeVideoRenderer: Invalid URL provided, cannot safely construct embed URL', { src });
+      return null;
     }
 
-    // Add enablejsapi=1 to existing URL
-    const separator = src.includes('?') ? '&' : '?';
-    return `${src}${separator}enablejsapi=1`;
+    // Always enable JS API for analytics
+    url.searchParams.set('enablejsapi', '1');
+
+    // Add start parameter if provided
+    if (start !== undefined && start >= 0) {
+      url.searchParams.set('start', Math.floor(start).toString());
+    }
+
+    // Add end parameter if provided
+    if (end !== undefined && end >= 0) {
+      url.searchParams.set('end', Math.floor(end).toString());
+    }
+
+    return url.toString();
   })();
+
+  // SECURITY: Do not render iframe with invalid URL (F3)
+  if (!embedUrl) {
+    return <div style={{ padding: '1rem', color: 'var(--text-secondary)' }}>Invalid video URL provided</div>;
+  }
 
   return (
     <iframe

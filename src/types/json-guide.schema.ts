@@ -157,6 +157,8 @@ export const JsonVideoBlockSchema = z.object({
   src: SafeUrlSchema,
   provider: z.enum(['youtube', 'native']).optional(),
   title: z.string().optional(),
+  start: z.number().min(0).optional(),
+  end: z.number().min(0).optional(),
 });
 
 // ============ INTERACTIVE BLOCK SCHEMAS ============

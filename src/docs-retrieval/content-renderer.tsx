@@ -828,6 +828,8 @@ function renderParsedElement(
           src={element.props.src}
           baseUrl={element.props.baseUrl}
           onClick={element.props.onClick}
+          start={element.props.start}
+          end={element.props.end}
         />
       );
     case 'youtube-video':
@@ -839,6 +841,8 @@ function renderParsedElement(
           height={element.props.height}
           title={element.props.title}
           className={element.props.className}
+          start={element.props.start}
+          end={element.props.end}
           {...element.props}
         />
       );
