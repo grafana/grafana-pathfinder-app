@@ -54,10 +54,7 @@ test('should interact with docs panel tabs', async ({ page }) => {
   const recommendationsPanel = page.getByTestId(testIds.contextPanel.container);
   await expect(recommendationsPanel).toBeVisible();
 
-  // Verify header controls are present
-  const settingsButton = page.getByTestId(testIds.docsPanel.settingsButton);
-  await expect(settingsButton).toBeVisible();
-
+  // Verify header controls are present (settings moved to dropdown menu)
   const closeButton = page.getByTestId(testIds.docsPanel.closeButton);
   await expect(closeButton).toBeVisible();
 
