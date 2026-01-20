@@ -461,7 +461,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   markdown: new Set(['type', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
   html: new Set(['type', 'content']),
   image: new Set(['type', 'src', 'alt', 'width', 'height']),
-  video: new Set(['type', 'src', 'provider', 'title']),
+  video: new Set(['type', 'src', 'provider', 'title', 'start', 'end']),
   interactive: new Set([
     'type',
     'action',
