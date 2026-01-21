@@ -22,7 +22,6 @@ import { RecordModeOverlay } from './RecordModeOverlay';
 import { GitHubPRModal } from './GitHubPRModal';
 import { BlockEditorTour } from './BlockEditorTour';
 import { useActionRecorder } from '../../utils/devtools';
-import { copyGuideForWebsite } from '../../utils/guide-website-exporter';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
@@ -305,9 +304,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [editingBlock, editingNestedBlock, editor, handleBlockFormCancel]
   );
 
-  // Website export state
-  const [websiteCopied, setWebsiteCopied] = useState(false);
-
   // Handle copy to clipboard
   const handleCopy = useCallback(() => {
     const guide = editor.getGuide();
@@ -322,16 +318,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       });
     }
   }, [editor, onCopy]);
-
-  // Handle copy for website (shortcode format)
-  const handleCopyForWebsite = useCallback(async () => {
-    const guide = editor.getGuide();
-    const success = await copyGuideForWebsite(guide);
-    if (success) {
-      setWebsiteCopied(true);
-      setTimeout(() => setWebsiteCopied(false), 2000);
-    }
-  }, [editor]);
 
   // Handle download
   const handleDownload = useCallback(() => {
@@ -945,13 +931,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             onClick={handleCopy}
             tooltip="Copy JSON to clipboard"
             data-testid="copy-json-button"
-          />
-          <Button
-            variant={websiteCopied ? 'success' : 'secondary'}
-            size="sm"
-            icon={websiteCopied ? 'check' : 'document-info'}
-            onClick={handleCopyForWebsite}
-            tooltip="Copy as website shortcodes"
           />
           <Button
             variant="secondary"
