@@ -573,7 +573,18 @@ export function StepEditor({
                         menuPlacement="top"
                       />
                     </Field>
-                    {editAction !== 'noop' && (
+                    {/* Navigation path - for navigate actions only */}
+                    {editAction === 'navigate' && (
+                      <Field label="Path" style={{ marginBottom: 0, flex: 1 }}>
+                        <Input
+                          value={editReftarget}
+                          onChange={(e) => setEditReftarget(e.currentTarget.value)}
+                          placeholder="e.g., /dashboards, /d/abc123"
+                        />
+                      </Field>
+                    )}
+                    {/* Selector with picker - for actions that need a DOM element */}
+                    {editAction !== 'noop' && editAction !== 'navigate' && (
                       <>
                         <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
                           <Input
@@ -664,14 +675,17 @@ export function StepEditor({
                     </Field>
                   )}
 
-                  <Checkbox
-                    className={styles.checkbox}
-                    label="Element may be off-screen (scroll to find)"
-                    description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
-                    checked={editLazyRender}
-                    onChange={(e) => setEditLazyRender(e.currentTarget.checked)}
-                  />
-                  {editLazyRender && (
+                  {/* Lazy render only applies to actions with DOM elements */}
+                  {editAction !== 'navigate' && (
+                    <Checkbox
+                      className={styles.checkbox}
+                      label="Element may be off-screen (scroll to find)"
+                      description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
+                      checked={editLazyRender}
+                      onChange={(e) => setEditLazyRender(e.currentTarget.checked)}
+                    />
+                  )}
+                  {editLazyRender && editAction !== 'navigate' && (
                     <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
                       <div className={styles.addStepRow}>
                         <Input
@@ -840,7 +854,18 @@ export function StepEditor({
                 menuPlacement="top"
               />
             </Field>
-            {newAction !== 'noop' && (
+            {/* Navigation path - for navigate actions only */}
+            {newAction === 'navigate' && (
+              <Field label="Path" style={{ marginBottom: 0, flex: 1 }}>
+                <Input
+                  value={newReftarget}
+                  onChange={(e) => setNewReftarget(e.currentTarget.value)}
+                  placeholder="e.g., /dashboards, /d/abc123"
+                />
+              </Field>
+            )}
+            {/* Selector with picker - for actions that need a DOM element */}
+            {newAction !== 'noop' && newAction !== 'navigate' && (
               <>
                 <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
                   <Input
@@ -923,14 +948,17 @@ export function StepEditor({
             </Field>
           )}
 
-          <Checkbox
-            className={styles.checkbox}
-            label="Element may be off-screen (scroll to find)"
-            description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
-            checked={newLazyRender}
-            onChange={(e) => setNewLazyRender(e.currentTarget.checked)}
-          />
-          {newLazyRender && (
+          {/* Lazy render only applies to actions with DOM elements */}
+          {newAction !== 'navigate' && (
+            <Checkbox
+              className={styles.checkbox}
+              label="Element may be off-screen (scroll to find)"
+              description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
+              checked={newLazyRender}
+              onChange={(e) => setNewLazyRender(e.currentTarget.checked)}
+            />
+          )}
+          {newLazyRender && newAction !== 'navigate' && (
             <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
               <div className={styles.addStepRow}>
                 <Input
