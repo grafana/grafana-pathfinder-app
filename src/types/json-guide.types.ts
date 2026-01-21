@@ -121,6 +121,10 @@ export interface JsonVideoBlock {
   provider?: 'youtube' | 'native';
   /** Video title for accessibility */
   title?: string;
+  /** Start time in seconds */
+  start?: number;
+  /** End time in seconds */
+  end?: number;
 }
 
 /**

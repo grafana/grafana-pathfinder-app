@@ -157,6 +157,8 @@ export const JsonVideoBlockSchema = z.object({
   src: SafeUrlSchema,
   provider: z.enum(['youtube', 'native']).optional(),
   title: z.string().optional(),
+  start: z.number().min(0).optional(),
+  end: z.number().min(0).optional(),
 });
 
 // ============ INTERACTIVE BLOCK SCHEMAS ============
@@ -459,7 +461,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   markdown: new Set(['type', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
   html: new Set(['type', 'content']),
   image: new Set(['type', 'src', 'alt', 'width', 'height']),
-  video: new Set(['type', 'src', 'provider', 'title']),
+  video: new Set(['type', 'src', 'provider', 'title', 'start', 'end']),
   interactive: new Set([
     'type',
     'action',

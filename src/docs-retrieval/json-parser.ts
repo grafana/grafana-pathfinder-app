@@ -664,6 +664,8 @@ function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResul
         props: {
           src: block.src,
           title: block.title,
+          start: block.start,
+          end: block.end,
         },
         children: [],
       },
@@ -677,6 +679,8 @@ function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResul
       props: {
         src: block.src,
         title: block.title,
+        start: block.start,
+        end: block.end,
       },
       children: [],
     },

@@ -128,6 +128,8 @@ Embed YouTube or native HTML5 video.
 | `src`      | string                    | ✅       | Video URL (embed URL for YouTube)     |
 | `provider` | `"youtube"` \| `"native"` | ❌       | Video provider (default: `"youtube"`) |
 | `title`    | string                    | ❌       | Video title for accessibility         |
+| `start`    | number                    | ❌       | Start time in seconds                 |
+| `end`      | number                    | ❌       | End time in seconds                   |
 
 **YouTube Example:**
 
@@ -136,7 +138,9 @@ Embed YouTube or native HTML5 video.
   "type": "video",
   "src": "https://www.youtube.com/embed/dQw4w9WgXcQ",
   "provider": "youtube",
-  "title": "Getting Started with Grafana"
+  "title": "Getting Started with Grafana",
+  "start": 10,
+  "end": 120
 }
 ```
 
@@ -147,7 +151,9 @@ Embed YouTube or native HTML5 video.
   "type": "video",
   "src": "https://example.com/tutorial.mp4",
   "provider": "native",
-  "title": "Tutorial Video"
+  "title": "Tutorial Video",
+  "start": 5,
+  "end": 60
 }
 ```
 
