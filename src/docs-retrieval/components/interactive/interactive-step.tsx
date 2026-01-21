@@ -50,10 +50,17 @@ async function executeWithLazyScroll(
   action: () => Promise<void>,
   targetAction?: string
 ): Promise<LazyScrollResult> {
+  // Navigate and noop actions don't target DOM elements - execute immediately without element checking
+  if (targetAction === 'navigate' || targetAction === 'noop') {
+    await action();
+    return { success: true, elementFound: true };
+  }
+
+  // DOM-targeting actions: always check if element exists (provides user feedback if missing)
   // Resolve grafana: selectors
   const resolvedSelector = resolveSelector(refTarget);
 
-  // First check if element already exists
+  // Check if element exists
   // For button actions with text (not CSS selectors), use findButtonByText instead of querySelectorAllEnhanced
   let elementExists = false;
 
@@ -73,7 +80,7 @@ async function executeWithLazyScroll(
     return { success: true, elementFound: true };
   }
 
-  // Element not found - try lazy scroll if enabled
+  // Element not found - try lazy scroll discovery only if enabled
   if (lazyRender) {
     console.log(`[LazyScroll] Element not found, attempting scroll discovery: ${refTarget}`);
     const foundElement = await scrollUntilElementFound(refTarget, {
@@ -94,7 +101,7 @@ async function executeWithLazyScroll(
     };
   }
 
-  // lazyRender not enabled and element not found
+  // lazyRender not enabled and element not found - return clear error
   return {
     success: false,
     elementFound: false,

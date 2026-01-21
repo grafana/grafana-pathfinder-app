@@ -168,7 +168,9 @@ export function InteractiveBlockForm({
   }, []);
 
   // noop actions don't require a reftarget since they're informational only
+  // navigate actions use reftarget as a path, not a DOM selector
   const isNoop = action === 'noop';
+  const isNavigate = action === 'navigate';
   const isValid = (isNoop || reftarget.trim().length > 0) && content.trim().length > 0;
   const showTargetValue = action === 'formfill';
 
@@ -182,9 +184,20 @@ export function InteractiveBlockForm({
         <Select options={ACTION_OPTIONS} value={selectedAction} onChange={handleActionChange} />
       </Field>
 
-      {/* Target Selector with DOM Picker - hidden for noop actions */}
-      {!isNoop && (
-        <Field label="Target Selector" description="CSS selector or Grafana selector for the target element" required>
+      {/* Navigation path - for navigate actions only */}
+      {isNavigate && (
+        <Field label="Navigation path" description="URL path to navigate to (e.g., /dashboards or /d/abc123)" required>
+          <Input
+            value={reftarget}
+            onChange={(e) => setReftarget(e.currentTarget.value)}
+            placeholder="e.g., /dashboards, /d/abc123, /explore"
+          />
+        </Field>
+      )}
+
+      {/* Target Selector with DOM Picker - hidden for noop and navigate actions */}
+      {!isNoop && !isNavigate && (
+        <Field label="Target selector" description="CSS selector or Grafana selector for the target element" required>
           <div className={styles.selectorField}>
             <Input
               value={reftarget}
@@ -199,7 +212,7 @@ export function InteractiveBlockForm({
               icon="crosshair"
               tooltip="Click an element to capture its selector"
             >
-              Pick Element
+              Pick element
             </Button>
           </div>
         </Field>
@@ -279,7 +292,8 @@ export function InteractiveBlockForm({
       )}
 
       {/* Button Visibility - hidden for noop actions */}
-      {!isNoop && (
+      {/* Navigate actions always show "Go there" button, no "Show me" option */}
+      {!isNoop && !isNavigate && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Button visibility</div>
           <Stack direction="row" gap={2}>
@@ -318,18 +332,21 @@ export function InteractiveBlockForm({
                 checked={completeEarly}
                 onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
               />
-              <Checkbox
-                className={styles.checkbox}
-                label="Element may be off-screen (scroll to find)"
-                description="Enable if the target is in a long list that requires scrolling"
-                checked={lazyRender}
-                onChange={(e) => setLazyRender(e.currentTarget.checked)}
-              />
+              {/* Lazy render only applies to actions with DOM elements */}
+              {!isNavigate && (
+                <Checkbox
+                  className={styles.checkbox}
+                  label="Element may be off-screen (scroll to find)"
+                  description="Enable if the target is in a long list that requires scrolling"
+                  checked={lazyRender}
+                  onChange={(e) => setLazyRender(e.currentTarget.checked)}
+                />
+              )}
             </Stack>
           </div>
 
-          {/* Lazy Render Scroll Container */}
-          {lazyRender && (
+          {/* Lazy Render Scroll Container - only for non-navigate actions */}
+          {lazyRender && !isNavigate && (
             <Field
               label="Scroll container"
               description="CSS selector for the scroll container (default: .scrollbar-view)"
