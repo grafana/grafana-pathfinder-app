@@ -1,0 +1,88 @@
+name: Recording bug
+description: Report an issue with recording interactive tutorials
+title: "Unable to record <SOMETHING>"
+labels:
+  - bug
+  - recording
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a recording bug!
+        
+        Fill out the form below to help us reproduce and fix the issue.
+        
+  - type: input
+    id: instance
+    attributes:
+      label: Instance
+      description: The Grafana instance where you encountered the issue
+      placeholder: "For example, https://pathfinder.grafana-dev.net or local Docker Compose"
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Page URL
+      description: The URL or page where you tried to record
+      placeholder: "For example, /dashboards or https://pathfinder.grafana-dev.net/explore"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actions
+    attributes:
+      label: Steps to record
+      description: List the actions you tried to record (numbered list)
+      placeholder: |
+        1. Click on the **Add panel** button
+        2. Select **Time series** visualization
+      value: |
+        1. 
+        2. 
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: What happened when you tried to record these actions?
+      placeholder: "Describe what you observed - did recording fail, produce incorrect selectors, or something else?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: json
+    attributes:
+      label: Interactive JSON
+      description: Paste your interactive JSON so far (if any)
+      render: json
+
+  - type: textarea
+    id: console_logs
+    attributes:
+      label: Console logs
+      description: If you collected console logs,  attach them here.
+      placeholder: "Attach as a file."
+      render: shell
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this issue?
+      options:
+        - Low - Minor inconvenience
+        - Medium - Affects functionality but workaround exists
+        - High - Blocks recording workflow
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Any other information that might be helpful
+      placeholder: "For example, screenshots or plugins involved."
