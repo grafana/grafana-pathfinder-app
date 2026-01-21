@@ -190,6 +190,25 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const modalObserverRef = useRef<MutationObserver | null>(null);
   const pendingModalCheckRef = useRef<boolean>(false);
 
+  // REACT: Store callbacks in refs to avoid effect re-runs when they change (R2, R3)
+  // This allows the effect to always use the latest callback without re-attaching listeners
+  const onStepRecordedRef = useRef(onStepRecorded);
+  const onActionGroupCompletedRef = useRef(onActionGroupCompleted);
+  const excludeSelectorsRef = useRef(excludeSelectors);
+
+  // Keep refs updated with latest values
+  useEffect(() => {
+    onStepRecordedRef.current = onStepRecorded;
+  }, [onStepRecorded]);
+
+  useEffect(() => {
+    onActionGroupCompletedRef.current = onActionGroupCompleted;
+  }, [onActionGroupCompleted]);
+
+  useEffect(() => {
+    excludeSelectorsRef.current = excludeSelectors;
+  }, [excludeSelectors]);
+
   // Backward compatibility: isRecording is true when actively recording (not paused)
   const isRecording = recordingState === 'recording';
   const isPaused = recordingState === 'paused';
@@ -255,8 +274,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     if (modalSteps.length === 0) {
       // No actions inside modal - just record the trigger as a normal step
       setRecordedSteps((prev) => [...prev, triggerStep]);
-      if (onStepRecorded) {
-        onStepRecorded(triggerStep);
+      if (onStepRecordedRef.current) {
+        onStepRecordedRef.current(triggerStep);
       }
     } else {
       // We have a group! Add all steps with a shared groupId
@@ -271,21 +290,22 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
       // Notify about each step
       allSteps.forEach((step) => {
-        if (onStepRecorded) {
-          onStepRecorded(step);
+        if (onStepRecordedRef.current) {
+          onStepRecordedRef.current(step);
         }
       });
 
       // Also call onActionGroupCompleted if provided (for any other listeners)
-      if (onActionGroupCompleted) {
-        onActionGroupCompleted({
+      if (onActionGroupCompletedRef.current) {
+        onActionGroupCompletedRef.current({
           triggerStep,
           modalSteps,
           modalElement: document.body,
         });
       }
     }
-  }, [pendingGroupSteps, onActionGroupCompleted, onStepRecorded]);
+    // REACT: Removed onActionGroupCompleted and onStepRecorded - now using refs (R3)
+  }, [pendingGroupSteps]);
 
   const deleteStep = useCallback((index: number) => {
     setRecordedSteps((prev) => prev.filter((_, i) => i !== index));
@@ -408,8 +428,9 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         return;
       }
 
-      // Check exclusion selectors
-      const shouldExclude = excludeSelectors.some((selector) => target.closest(selector));
+      // Check exclusion selectors - use ref to avoid effect re-runs
+      const currentExcludeSelectors = excludeSelectorsRef.current;
+      const shouldExclude = currentExcludeSelectors.some((selector) => target.closest(selector));
       if (shouldExclude) {
         return;
       }
@@ -475,8 +496,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           // The previous click didn't trigger a modal - record it normally
           const prevStep = triggerStepRef.current;
           setRecordedSteps((prev) => [...prev, prevStep]);
-          if (onStepRecorded) {
-            onStepRecorded(prevStep);
+          if (onStepRecordedRef.current) {
+            onStepRecordedRef.current(prevStep);
           }
         }
 
@@ -511,8 +532,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
                 }
                 return [...prev, newStep];
               });
-              if (onStepRecorded) {
-                onStepRecorded(newStep);
+              if (onStepRecordedRef.current) {
+                onStepRecordedRef.current(newStep);
               }
             }
           }, MODAL_DETECTION_TIMEOUT);
@@ -528,8 +549,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           return prev;
         }
 
-        if (onStepRecorded) {
-          onStepRecorded(newStep);
+        if (onStepRecordedRef.current) {
+          onStepRecordedRef.current(newStep);
         }
 
         return [...prev, newStep];
@@ -543,8 +564,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         return;
       }
 
-      // Check exclusion selectors
-      const shouldExclude = excludeSelectors.some((selector) => target.closest(selector));
+      // Check exclusion selectors - use ref to avoid effect re-runs
+      const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
       if (shouldExclude) {
         return;
       }
@@ -569,8 +590,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         return;
       }
 
-      // Check exclusion selectors
-      const shouldExclude = excludeSelectors.some((selector) => target.closest(selector));
+      // Check exclusion selectors - use ref to avoid effect re-runs
+      const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
       if (shouldExclude) {
         return;
       }
@@ -637,8 +658,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
             return prev; // Skip duplicate
           }
 
-          if (onStepRecorded) {
-            onStepRecorded(newStep);
+          if (onStepRecordedRef.current) {
+            onStepRecordedRef.current(newStep);
           }
 
           return [...prev, newStep];
@@ -655,7 +676,9 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       document.removeEventListener('input', handleInput, true);
       document.removeEventListener('change', handleChange, true);
     };
-  }, [recordingState, excludeSelectors, onStepRecorded, enableModalDetection, activeModal, pendingGroupSteps]);
+    // REACT: Removed excludeSelectors and onStepRecorded from deps - now using refs (R3)
+    // This prevents excessive effect re-runs when callbacks change on every render
+  }, [recordingState, enableModalDetection, activeModal, pendingGroupSteps]);
 
   return {
     isRecording, // Backward compatibility

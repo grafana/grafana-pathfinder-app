@@ -296,6 +296,14 @@ export function BlockFormModal({
     recordGetStepCountRef.current = null;
   }, []);
 
+  // Don't dismiss if in overlay mode - clicks should go to page, not close modal
+  const handleDismiss = useCallback(() => {
+    if (isOverlayActive) {
+      return;
+    }
+    onCancel();
+  }, [isOverlayActive, onCancel]);
+
   if (!FormComponent) {
     return null;
   }
@@ -314,7 +322,7 @@ export function BlockFormModal({
         title={title}
         ariaLabel={isEditing ? `Edit ${meta.name} block` : `Add ${meta.name} block`}
         isOpen={true}
-        onDismiss={onCancel}
+        onDismiss={handleDismiss}
         className={`${styles.modal} ${isOverlayActive ? styles.modalHidden : ''}`}
       >
         {/* Wrapper with unique identifier so CSS :has() selector can target only our modal's overlay */}
