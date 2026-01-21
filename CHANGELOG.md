@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.3
+
+### Added
+
+- **Video block timestamps**: Added `start` and `end` timestamp support for video blocks to play specific segments (#477)
+
+### Fixed
+
+- Fixed issues with "Go there" navigation action in interactive steps (#481)
+
 ## 1.4.2
 
 ### Changed
