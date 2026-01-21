@@ -368,10 +368,9 @@ export function StepEditor({
     setEditingStepIndex(null);
   }, []);
 
-  // Action recorder for record mode - exclude our overlay UI
-  const { isRecording, startRecording, stopRecording, clearRecording } = useActionRecorder({
-    excludeSelectors: RECORD_EXCLUDE_SELECTORS,
-    onStepRecorded: (step) => {
+  // REACT: memoize onStepRecorded to prevent effect re-runs on every render (R12)
+  const handleStepRecorded = useCallback(
+    (step: { action: string; selector: string; value?: string }) => {
       // Convert recorded step to JsonStep and add to steps
       const jsonStep: JsonStep = {
         action: step.action as JsonInteractiveAction,
@@ -380,6 +379,13 @@ export function StepEditor({
       };
       onChange([...steps, jsonStep]);
     },
+    [onChange, steps]
+  );
+
+  // Action recorder for record mode - exclude our overlay UI
+  const { isRecording, startRecording, stopRecording, clearRecording } = useActionRecorder({
+    excludeSelectors: RECORD_EXCLUDE_SELECTORS,
+    onStepRecorded: handleStepRecorded,
   });
 
   // Handle adding a manual step

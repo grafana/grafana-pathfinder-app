@@ -6,7 +6,7 @@
  * State persists to localStorage automatically and survives page refreshes.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
@@ -85,9 +85,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
 
-  // Action recorder for section recording
-  const actionRecorder = useActionRecorder({
-    excludeSelectors: [
+  // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
+  const excludeSelectors = useMemo(
+    () => [
       '[class*="debug"]',
       '.context-container',
       '[data-devtools-panel]',
@@ -95,6 +95,12 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       '[data-testid="block-editor"]',
       '[data-record-overlay]', // Stop recording button and overlay elements
     ],
+    []
+  );
+
+  // Action recorder for section recording
+  const actionRecorder = useActionRecorder({
+    excludeSelectors,
     enableModalDetection: true,
   });
 
