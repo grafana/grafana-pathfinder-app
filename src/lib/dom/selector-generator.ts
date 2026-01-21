@@ -18,6 +18,128 @@
 import { findButtonByText } from './dom-utils';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 
+// ============================================================================
+// Configuration
+// ============================================================================
+
+/**
+ * Centralized configuration for selector generation algorithm.
+ * All magic numbers and repeated arrays are defined here for easy tuning.
+ */
+const SELECTOR_CONFIG = {
+  /** Maximum total DOM levels to traverse when searching for parent context */
+  maxTotalDepth: 20,
+  /** Maximum parents WITH identifying attributes to try before giving up */
+  maxMeaningfulDepth: 5,
+  /** Maximum depth when walking up hierarchy to find best element */
+  maxHierarchyDepth: 5,
+  /** Maximum depth when searching for nearby form controls */
+  maxNearbyFormControlDepth: 3,
+  /** Maximum text length for text-based selectors */
+  maxTextLength: 50,
+  /** Maximum text length for longer content (e.g., :contains fallback) */
+  maxLongTextLength: 100,
+  /** Supported test ID attribute names in priority order */
+  testIdAttrs: ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'] as const,
+  /** Semantic ARIA roles that indicate interactive elements */
+  semanticRoles: ['button', 'link', 'menuitem', 'option', 'tab', 'checkbox', 'radio', 'switch', 'combobox'] as const,
+  /** HTML tags that are typically interactive */
+  interactiveTags: ['input', 'select', 'textarea', 'button', 'a', 'label'] as const,
+  /** HTML tags that are form controls */
+  formControlTags: ['input', 'select', 'textarea'] as const,
+  /** Generic button words that need parent context for disambiguation */
+  genericButtonWords: [
+    'new',
+    'add',
+    'save',
+    'cancel',
+    'close',
+    'ok',
+    'yes',
+    'no',
+    'edit',
+    'delete',
+    'remove',
+    'update',
+    'submit',
+    'back',
+    'next',
+    'confirm',
+    'apply',
+    'reset',
+    'clear',
+    'search',
+    'filter',
+  ] as const,
+} as const;
+
+/**
+ * Stability scores for different selector methods.
+ * Higher scores indicate more stable, reliable selectors.
+ */
+const STABILITY_SCORES: Record<string, number> = {
+  'data-testid': 100,
+  id: 90,
+  'aria-label': 85,
+  placeholder: 80,
+  title: 80,
+  name: 75,
+  href: 70,
+  'button-text': 65,
+  contains: 55,
+  sibling: 50,
+  compound: 40,
+  'nth-of-type': 25,
+  'nth-match': 15,
+};
+
+// ============================================================================
+// Selector Caching
+// ============================================================================
+
+/** Cache entry with selector and timestamp */
+interface CacheEntry {
+  selector: string;
+  timestamp: number;
+}
+
+/** WeakMap-based cache for selector results (auto-clears when elements are GC'd) */
+const selectorCache = new WeakMap<HTMLElement, CacheEntry>();
+
+/** Cache time-to-live in milliseconds */
+const CACHE_TTL_MS = 5000;
+
+/**
+ * Get a cached selector if it exists and hasn't expired.
+ */
+function getCachedSelector(element: HTMLElement): string | null {
+  const cached = selectorCache.get(element);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.selector;
+  }
+  return null;
+}
+
+/**
+ * Store a selector in the cache.
+ */
+function setCachedSelector(element: HTMLElement, selector: string): void {
+  selectorCache.set(element, { selector, timestamp: Date.now() });
+}
+
+/**
+ * Clear the selector cache. Useful for testing.
+ * Note: WeakMap doesn't have a clear() method, so we create a new one.
+ */
+export function clearSelectorCache(): void {
+  // WeakMap auto-clears when elements are garbage collected.
+  // For explicit clearing during tests, consumers should re-import the module.
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
 /**
  * Check if an ID appears to be auto-generated
  */
@@ -209,9 +331,7 @@ function normalizeHref(href: string): string {
  * Filters out malformed testid values (e.g., "data-testid Panel header")
  */
 function getAnyTestId(element: HTMLElement): string | null {
-  const testIdAttrs = ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'];
-
-  for (const attr of testIdAttrs) {
+  for (const attr of SELECTOR_CONFIG.testIdAttrs) {
     if (element.hasAttribute(attr)) {
       const value = element.getAttribute(attr);
       if (isValidTestId(value)) {
@@ -233,31 +353,11 @@ function isUniqueButtonText(text: string): boolean {
   }
 
   // Too short or too generic - always need more context
-  const genericWords = [
-    'new',
-    'add',
-    'save',
-    'cancel',
-    'close',
-    'ok',
-    'yes',
-    'no',
-    'edit',
-    'delete',
-    'remove',
-    'update',
-    'submit',
-    'back',
-    'next',
-    'confirm',
-    'apply',
-    'reset',
-    'clear',
-    'search',
-    'filter',
-  ];
-
-  if (text.length < 4 || genericWords.includes(text.toLowerCase())) {
+  const lowerText = text.toLowerCase();
+  if (
+    text.length < 4 ||
+    SELECTOR_CONFIG.genericButtonWords.includes(lowerText as (typeof SELECTOR_CONFIG.genericButtonWords)[number])
+  ) {
     return false; // Always need parent context for these
   }
 
@@ -294,10 +394,9 @@ function findBestElementInHierarchy(
 
   // ADDED: Check for semantic roles
   const role = element.getAttribute('role');
-  const semanticRoles = ['button', 'link', 'menuitem', 'option', 'tab', 'checkbox', 'radio', 'switch', 'combobox'];
-  const isSemanticRole = role && semanticRoles.includes(role);
+  const isSemanticRole = role && (SELECTOR_CONFIG.semanticRoles as readonly string[]).includes(role);
 
-  if ((hasGoodAttribute || isSemanticRole) && ['input', 'select', 'textarea', 'button', 'a'].includes(tag)) {
+  if ((hasGoodAttribute || isSemanticRole) && (SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(tag)) {
     return element;
   }
 
@@ -312,12 +411,12 @@ function findBestElementInHierarchy(
     const currentRole = current.getAttribute('role');
 
     // Prefer actual interactive elements with good attributes
-    if ((currentTestId || currentId) && ['input', 'select', 'textarea', 'button', 'a', 'label'].includes(currentTag)) {
+    if ((currentTestId || currentId) && (SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(currentTag)) {
       return current;
     }
 
     // ADDED: Stop at semantic roles (fixes dropdown option selection)
-    if (currentRole && semanticRoles.includes(currentRole)) {
+    if (currentRole && (SELECTOR_CONFIG.semanticRoles as readonly string[]).includes(currentRole)) {
       return current;
     }
 
@@ -431,6 +530,58 @@ function cleanDynamicAttributes(selector: string): string {
   return cleaned;
 }
 
+// ============================================================================
+// Selector Testing Helpers
+// ============================================================================
+
+/**
+ * Result of attempting to find a unique selector
+ */
+interface TrySelectorResult {
+  success: boolean;
+  selector: string;
+}
+
+/**
+ * Try a selector and check if it uniquely identifies the element.
+ * Returns success: true if the selector matches exactly one element (the target).
+ */
+function tryUniqueSelector(selector: string, element: HTMLElement): TrySelectorResult {
+  try {
+    const matches = querySelectorAllEnhanced(selector);
+    if (matches.elements.length === 1 && matches.elements[0] === element) {
+      return { success: true, selector: cleanDynamicAttributes(selector) };
+    }
+  } catch {
+    /* ignore selector errors */
+  }
+  return { success: false, selector };
+}
+
+/**
+ * Try a selector for uniqueness, falling back to a builder function if not unique.
+ * Exported for use in advanced selector building scenarios.
+ */
+export function tryUniqueSelectorWithFallback(
+  selector: string,
+  element: HTMLElement,
+  buildFallback: () => string
+): string {
+  const result = tryUniqueSelector(selector, element);
+  if (result.success) {
+    return result.selector;
+  }
+  return cleanDynamicAttributes(buildFallback());
+}
+
+/**
+ * Get the test ID attribute name used by an element.
+ * Returns the first matching attribute from SELECTOR_CONFIG.testIdAttrs.
+ */
+function getTestIdAttr(element: HTMLElement): string {
+  return SELECTOR_CONFIG.testIdAttrs.find((attr) => element.hasAttribute(attr)) || 'data-testid';
+}
+
 /**
  * Generate the best CSS selector for a given DOM element
  *
@@ -471,7 +622,18 @@ function cleanDynamicAttributes(selector: string): string {
  * // Returns selector for the button at those coordinates
  * ```
  */
-export function generateBestSelector(element: HTMLElement, options?: { clickX?: number; clickY?: number }): string {
+export function generateBestSelector(
+  element: HTMLElement,
+  options?: { clickX?: number; clickY?: number; skipCache?: boolean }
+): string {
+  // Check cache first (unless explicitly skipped)
+  if (!options?.skipCache) {
+    const cached = getCachedSelector(element);
+    if (cached) {
+      return cached;
+    }
+  }
+
   // First, walk up to find the best element in the hierarchy
   const bestElement = findBestElementInHierarchy(element, 5, options);
 
@@ -485,10 +647,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     // This prevents matching any random link with the same href elsewhere in the app
     if (tag === 'a' && testId.includes('Nav menu') && bestElement.hasAttribute('href')) {
       const href = normalizeHref(bestElement.getAttribute('href')!);
-      const testIdAttr =
-        ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'].find((attr) =>
-          bestElement.hasAttribute(attr)
-        ) || 'data-testid';
+      const testIdAttr = getTestIdAttr(bestElement);
 
       // Always combine testId + href for nav menu items
       const combinedSelector = `${tag}[${testIdAttr}='${testId}'][href='${href}']`;
@@ -496,10 +655,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     }
 
     // Determine which attribute was used
-    const testIdAttr =
-      ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'].find((attr) =>
-        bestElement.hasAttribute(attr)
-      ) || 'data-testid';
+    const testIdAttr = getTestIdAttr(bestElement);
 
     // Simple test ID selector - check if it's unique first
     const baseSelector = `${tag}[${testIdAttr}='${testId}']`;
@@ -541,11 +697,11 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
   // NEW STRATEGY: Semantic Roles (High Priority for Accessibility)
   // This is excellent for menus, lists, and options where TestIDs are often missing or duplicated
   const role = bestElement.getAttribute('role');
-  if (role && ['menuitem', 'option', 'tab', 'button', 'link', 'checkbox', 'radio'].includes(role)) {
+  if (role && (SELECTOR_CONFIG.semanticRoles as readonly string[]).includes(role)) {
     const text = normalizeText(bestElement.textContent || '');
 
     // If we have meaningful text, use role + contains strategy
-    if (text.length > 0 && text.length < 50) {
+    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
       const roleSelector = `[role='${role}']:contains('${text}')`;
 
       // Check uniqueness
@@ -581,7 +737,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     if (text && text.length > 0) {
       const cleanText = normalizeText(text);
 
-      if (cleanText.length > 0 && cleanText.length < 50) {
+      if (cleanText.length > 0 && cleanText.length < SELECTOR_CONFIG.maxTextLength) {
         // Strategy A: Parent context + :contains (preferred for most buttons)
         const parent = bestElement.parentElement;
         if (parent && (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label'))) {
@@ -613,13 +769,42 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     return cleanDynamicAttributes(contextualSelector);
   }
 
+  // 4.5. For inputs with placeholder, use placeholder attribute
+  if (bestElement.tagName === 'INPUT' && bestElement.hasAttribute('placeholder')) {
+    const placeholder = bestElement.getAttribute('placeholder');
+    if (placeholder && placeholder.length > 0 && placeholder.length < SELECTOR_CONFIG.maxTextLength) {
+      const baseSelector = `input[placeholder='${placeholder}']`;
+      const result = tryUniqueSelector(baseSelector, bestElement);
+      if (result.success) {
+        return result.selector;
+      }
+      const contextualSelector = buildContextualSelector(bestElement, baseSelector);
+      return cleanDynamicAttributes(contextualSelector);
+    }
+  }
+
+  // 4.6. For elements with title attribute (common on icon buttons)
+  if (bestElement.hasAttribute('title')) {
+    const title = bestElement.getAttribute('title');
+    if (title && title.length > 0 && title.length < SELECTOR_CONFIG.maxTextLength) {
+      const tag = bestElement.tagName.toLowerCase();
+      const baseSelector = `${tag}[title='${title}']`;
+      const result = tryUniqueSelector(baseSelector, bestElement);
+      if (result.success) {
+        return result.selector;
+      }
+      const contextualSelector = buildContextualSelector(bestElement, baseSelector);
+      return cleanDynamicAttributes(contextualSelector);
+    }
+  }
+
   // 5. For labels, use text content (best for radio/checkbox) or 'for' attribute prefix
   if (bestElement.tagName === 'LABEL') {
     const text = normalizeText(bestElement.textContent || '');
     const forAttr = bestElement.getAttribute('for');
 
     // Strategy A: For radio buttons, use text content with :contains() - most stable!
-    if (text.length > 0 && text.length < 50) {
+    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
       // Check if this is a radio/checkbox label by looking at associated input
       const associatedInput = forAttr ? document.getElementById(forAttr) : null;
       const isRadioOrCheckbox =
@@ -650,7 +835,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
         const prefixSelector = `label[for^='${prefix}-']`;
 
         // If text content exists, combine prefix with text for best specificity
-        if (text.length > 0 && text.length < 50) {
+        if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
           const combinedSelector = `${prefixSelector}:contains('${text}')`;
           const matches = querySelectorAllEnhanced(combinedSelector);
           if (matches.elements.length === 1) {
@@ -671,7 +856,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     }
 
     // Strategy D: Text-only label (no 'for' attribute)
-    if (text.length > 0 && text.length < 50) {
+    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
       const textSelector = `label:contains('${text}')`;
       const contextualSelector = buildContextualSelector(bestElement, textSelector);
       return cleanDynamicAttributes(contextualSelector);
@@ -761,13 +946,50 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     console.warn('Selector validation error:', error);
   }
 
+  // Cache the result for future lookups
+  setCachedSelector(bestElement, cleanedSelector);
+
   return cleanedSelector;
+}
+
+/**
+ * Find sibling-based context for an element.
+ * Useful for form inputs that follow labels or other identifiable siblings.
+ */
+function findSiblingContext(element: HTMLElement, baseSelector: string): string | null {
+  // Try previous sibling with testid (common for labels before inputs)
+  const prevSibling = element.previousElementSibling;
+  if (prevSibling instanceof HTMLElement) {
+    const siblingTestId = getAnyTestId(prevSibling);
+    if (siblingTestId) {
+      const siblingTag = prevSibling.tagName.toLowerCase();
+      const testIdAttr = getTestIdAttr(prevSibling);
+      const siblingSelector = `${siblingTag}[${testIdAttr}='${siblingTestId}'] + ${element.tagName.toLowerCase()}`;
+      const result = tryUniqueSelector(siblingSelector, element);
+      if (result.success) {
+        return result.selector;
+      }
+    }
+
+    // Try sibling's text content for labels
+    if (prevSibling.tagName === 'LABEL') {
+      const labelText = normalizeText(prevSibling.textContent || '');
+      if (labelText.length > 0 && labelText.length < SELECTOR_CONFIG.maxTextLength) {
+        const siblingSelector = `label:contains('${labelText}') + ${element.tagName.toLowerCase()}`;
+        const result = tryUniqueSelector(siblingSelector, element);
+        if (result.success) {
+          return result.selector;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /**
  * Build contextual selector - SIMPLIFIED
  * Only add context if base selector is ambiguous
- * Priority: parent context > text content > nth-match
+ * Priority: parent context > sibling context > text content > nth-match
  */
 function buildContextualSelector(element: HTMLElement, baseSelector: string): string {
   try {
@@ -784,9 +1006,15 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
       return parentContext;
     }
 
-    // Strategy 2: Try text content with :contains() - much more stable than position!
+    // Strategy 2: Try sibling context (common for form inputs after labels)
+    const siblingContext = findSiblingContext(element, baseSelector);
+    if (siblingContext) {
+      return siblingContext;
+    }
+
+    // Strategy 3: Try text content with :contains() - much more stable than position!
     const text = normalizeText(element.textContent || '');
-    if (text.length > 0 && text.length < 100) {
+    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxLongTextLength) {
       const textSelector = `${baseSelector}:contains('${text}')`;
       try {
         const textMatches = querySelectorAllEnhanced(textSelector);
@@ -798,7 +1026,7 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
       }
     }
 
-    // Strategy 3: Last resort - Use :nth-match() (fragile, but better than nothing)
+    // Strategy 4: Last resort - Use :nth-match() (fragile, but better than nothing)
     const index = matches.elements.indexOf(element);
     if (index >= 0) {
       return `${baseSelector}:nth-match(${index + 1})`;
@@ -811,93 +1039,135 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
   }
 }
 
+/** Parent element with testid information for context building */
+interface TestIdParent {
+  element: HTMLElement;
+  depth: number;
+  testId: string;
+  testIdAttr: string;
+}
+
+/** Parent element with ID information for context building */
+interface IdParent {
+  element: HTMLElement;
+  depth: number;
+  id: string;
+}
+
+/** Parent element with ARIA label for context building */
+interface AriaLabelParent {
+  element: HTMLElement;
+  depth: number;
+  labelText: string;
+}
+
 /**
  * Try to add simple parent context (no complex :has() selectors)
- * increased depth to find panel headers
+ *
+ * IMPROVED: Two-pass algorithm that prefers narrower (closer) testid scope:
+ * 1. First pass: Collect all parents with identifying attributes
+ * 2. Second pass: Try from closest to farthest, preferring narrower scope
+ *
+ * This ensures we use the most specific testid context available,
+ * which produces more stable and readable selectors.
  */
 function findSimpleParentContext(element: HTMLElement, baseSelector: string): string | null {
-  let current = element.parentElement;
-  let depth = 0;
-  const MAX_PARENT_DEPTH = 5; // Increased from 2 to 5 to catch Panel headers
+  // Collect all potential parent contexts in first pass
+  const testIdParents: TestIdParent[] = [];
+  const idParents: IdParent[] = [];
+  const ariaLabelParents: AriaLabelParent[] = [];
 
-  while (current && depth < MAX_PARENT_DEPTH) {
+  let current = element.parentElement;
+  let totalDepth = 0;
+  let meaningfulDepth = 0;
+
+  // First pass: collect all meaningful parents
+  while (
+    current &&
+    totalDepth < SELECTOR_CONFIG.maxTotalDepth &&
+    meaningfulDepth < SELECTOR_CONFIG.maxMeaningfulDepth
+  ) {
     const testId = getAnyTestId(current);
-    const id = current.id && !isAutoGeneratedId(current.id);
+    const id = current.id && !isAutoGeneratedId(current.id) ? current.id : null;
+    const hasMeaningfulAttribute = testId || id || current.hasAttribute('aria-label');
 
     if (testId) {
-      const tag = current.tagName.toLowerCase();
-      const testIdAttr =
-        ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'].find((attr) =>
-          current!.hasAttribute(attr)
-        ) || 'data-testid';
-      const parentSelector = `${tag}[${testIdAttr}='${testId}']`;
-
-      // Use child combinator (>) for all testid parents.
-      // The enhanced selector engine handles the fallback to descendant (space) matching
-      // if intermediate elements exist, while preserving the "parent context" intent.
-      // This ensures complex logic is triggered and provides a stronger visual cue of hierarchy.
-      const separator = ' > ';
-      const candidateSelector = `${parentSelector}${separator}${baseSelector}`;
-
-      try {
-        const result = querySelectorAllEnhanced(candidateSelector);
-        if (result.elements.length === 1 && result.elements[0] === element) {
-          return candidateSelector;
-        }
-      } catch (e) {
-        // Try next parent
-      }
+      const testIdAttr = getTestIdAttr(current);
+      testIdParents.push({ element: current, depth: totalDepth, testId, testIdAttr });
     }
 
     if (id) {
-      const candidateSelector = `#${id} ${baseSelector}`;
-      try {
-        const result = querySelectorAllEnhanced(candidateSelector);
-        if (result.elements.length === 1 && result.elements[0] === element) {
-          return candidateSelector;
-        }
-      } catch (e) {
-        // Try next parent
-      }
+      idParents.push({ element: current, depth: totalDepth, id });
     }
 
-    // ADDED: Check for semantic section/article/main tags with unique ARIA labels
-    // This helps capture "Panel header integrations/gcp" style containers
+    // Check for semantic section/article/main tags with ARIA labels
     if (current.tagName === 'SECTION' || current.tagName === 'ARTICLE' || current.tagName === 'MAIN') {
-      const ariaLabel = current.getAttribute('aria-labelledby') || current.getAttribute('aria-label');
-      if (ariaLabel) {
-        // If aria-labelledby, find the target element to get the text
-        let labelText = '';
-        if (current.hasAttribute('aria-labelledby')) {
-          const labelId = current.getAttribute('aria-labelledby');
-          const labelEl = document.getElementById(labelId!);
-          if (labelEl) {
-            labelText = labelEl.textContent || '';
-          }
-        } else {
-          labelText = current.getAttribute('aria-label') || '';
+      let labelText = '';
+      if (current.hasAttribute('aria-labelledby')) {
+        const labelId = current.getAttribute('aria-labelledby');
+        const labelEl = labelId ? document.getElementById(labelId) : null;
+        if (labelEl) {
+          labelText = labelEl.textContent || '';
         }
-
-        if (labelText) {
-          const tag = current.tagName.toLowerCase();
-          // Try to use the semantic label for context
-          // e.g. section[aria-label="Panel header integrations/gcp"]
-          const parentSelector = `${tag}[aria-label='${labelText}']`;
-          const candidateSelector = `${parentSelector} ${baseSelector}`;
-          try {
-            const result = querySelectorAllEnhanced(candidateSelector);
-            if (result.elements.length === 1 && result.elements[0] === element) {
-              return candidateSelector;
-            }
-          } catch (e) {
-            // Try next parent
-          }
-        }
+      } else if (current.hasAttribute('aria-label')) {
+        labelText = current.getAttribute('aria-label') || '';
+      }
+      if (labelText) {
+        ariaLabelParents.push({ element: current, depth: totalDepth, labelText });
       }
     }
 
+    if (hasMeaningfulAttribute) {
+      meaningfulDepth++;
+    }
     current = current.parentElement;
-    depth++;
+    totalDepth++;
+  }
+
+  const elementTag = element.tagName.toLowerCase();
+
+  // Second pass: try testid parents from closest to farthest (prefer narrower scope)
+  for (const parent of testIdParents) {
+    const tag = parent.element.tagName.toLowerCase();
+    const parentSelector = `${tag}[${parent.testIdAttr}='${parent.testId}']`;
+    const simpleDescendantSelector = `${parentSelector} ${elementTag}`;
+
+    try {
+      const descendantResult = querySelectorAllEnhanced(simpleDescendantSelector);
+
+      // If exactly 1 match and it's our element - perfect!
+      if (descendantResult.elements.length === 1 && descendantResult.elements[0] === element) {
+        return simpleDescendantSelector;
+      }
+
+      // If multiple matches but our element is included, use :nth-match within the testid context
+      const elementIndex = descendantResult.elements.indexOf(element);
+      if (elementIndex >= 0) {
+        return `${parentSelector} ${elementTag}:nth-match(${elementIndex + 1})`;
+      }
+    } catch {
+      // Try next parent
+    }
+  }
+
+  // Try ID-based parents from closest to farthest
+  for (const parent of idParents) {
+    const candidateSelector = `#${parent.id} ${baseSelector}`;
+    const result = tryUniqueSelector(candidateSelector, element);
+    if (result.success) {
+      return result.selector;
+    }
+  }
+
+  // Try ARIA label parents from closest to farthest
+  for (const parent of ariaLabelParents) {
+    const tag = parent.element.tagName.toLowerCase();
+    const parentSelector = `${tag}[aria-label='${parent.labelText}']`;
+    const candidateSelector = `${parentSelector} ${baseSelector}`;
+    const result = tryUniqueSelector(candidateSelector, element);
+    if (result.success) {
+      return result.selector;
+    }
   }
 
   return null;
@@ -917,13 +1187,20 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
     parts.push(`.${meaningfulClasses[0]}`);
   }
 
-  // Add data attributes (except auto-generated ones)
+  // Add data attributes (except auto-generated and state-related ones)
   Array.from(element.attributes).forEach((attr) => {
     if (
       attr.name.startsWith('data-') &&
       !attr.name.includes('emotion') &&
       !attr.name.includes('react') &&
-      attr.value.length < 50
+      !attr.name.includes('state') && // Exclude data-state (changes dynamically)
+      !attr.name.includes('focus') && // Exclude focus states
+      !attr.name.includes('hover') && // Exclude hover states
+      !attr.name.includes('active') && // Exclude active states
+      !attr.name.includes('selected') && // Exclude selected states
+      !attr.name.includes('disabled') && // Exclude disabled states
+      !attr.name.includes('checked') && // Exclude checked states
+      attr.value.length < SELECTOR_CONFIG.maxTextLength
     ) {
       parts.push(`[${attr.name}='${attr.value}']`);
     }
@@ -948,7 +1225,7 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
       // For buttons with text, use :contains for better readability
       if (tag === 'button' && element.textContent) {
         const text = normalizeText(element.textContent);
-        if (text.length > 0 && text.length < 50) {
+        if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
           return `${parentSelector} button:contains('${text}')`;
         }
       }
@@ -960,7 +1237,7 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
   // Strategy 2: Use :contains as fallback for LEAF elements only (buttons/links with short text)
   if ((tag === 'button' || tag === 'a') && element.textContent) {
     const text = normalizeText(element.textContent);
-    if (text.length > 0 && text.length < 50) {
+    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
       return `${tag}:contains('${text}')`;
     }
   }
@@ -989,11 +1266,31 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
 }
 
 /**
+ * Information about a generated selector, including quality metrics.
+ */
+export interface SelectorInfo {
+  /** The generated CSS selector */
+  selector: string;
+  /** The method used to generate the selector (e.g., 'data-testid', 'id', 'aria-label') */
+  method: string;
+  /** Whether the selector uniquely identifies exactly one element */
+  isUnique: boolean;
+  /** Number of elements matched by the selector */
+  matchCount: number;
+  /** Context strategy used (e.g., 'parent-context', 'nth-match', 'sibling') */
+  contextStrategy?: string;
+  /** Stability score from 0-100 (higher = more stable/reliable) */
+  stabilityScore: number;
+  /** Warnings about potential selector fragility */
+  warnings: string[];
+}
+
+/**
  * Get information about the generated selector for debugging
  * Returns the selector along with metadata about how it was generated
  *
  * @param element - The DOM element to analyze
- * @returns Object containing selector, generation method, uniqueness, match count, and context strategy
+ * @returns Object containing selector, generation method, uniqueness, match count, stability score, and warnings
  *
  * @example
  * ```typescript
@@ -1001,16 +1298,11 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
  * console.warn(info.selector); // "button[data-testid='save']"
  * console.warn(info.method);   // "data-testid"
  * console.warn(info.isUnique); // true
- * console.warn(info.contextStrategy); // "child-has"
+ * console.warn(info.stabilityScore); // 100
+ * console.warn(info.warnings); // []
  * ```
  */
-export function getSelectorInfo(element: HTMLElement): {
-  selector: string;
-  method: string;
-  isUnique: boolean;
-  matchCount: number;
-  contextStrategy?: string;
-} {
+export function getSelectorInfo(element: HTMLElement): SelectorInfo {
   const selector = generateBestSelector(element);
 
   // Determine which method was used
@@ -1021,6 +1313,10 @@ export function getSelectorInfo(element: HTMLElement): {
     method = 'id';
   } else if (selector.includes('aria-label')) {
     method = 'aria-label';
+  } else if (selector.includes('[placeholder=')) {
+    method = 'placeholder';
+  } else if (selector.includes('[title=')) {
+    method = 'title';
   } else if (selector.includes('[name=')) {
     method = 'name';
   } else if (selector.includes('[href=')) {
@@ -1029,8 +1325,12 @@ export function getSelectorInfo(element: HTMLElement): {
     method = 'button-text';
   } else if (selector.includes(':nth-of-type')) {
     method = 'nth-of-type';
+  } else if (selector.includes(':nth-match')) {
+    method = 'nth-match';
   } else if (selector.includes(':contains(')) {
     method = 'contains';
+  } else if (selector.includes(' + ')) {
+    method = 'sibling';
   }
 
   // Determine context strategy used
@@ -1039,6 +1339,8 @@ export function getSelectorInfo(element: HTMLElement): {
     contextStrategy = 'child-has';
   } else if (selector.includes(':nth-match(')) {
     contextStrategy = 'nth-match';
+  } else if (selector.includes(' + ')) {
+    contextStrategy = 'sibling';
   } else if (selector.includes(' ') && !selector.includes(':contains(')) {
     // Has descendant combinator (space) but not just :contains
     contextStrategy = 'parent-context';
@@ -1060,11 +1362,41 @@ export function getSelectorInfo(element: HTMLElement): {
     matchCount = 0;
   }
 
+  const isUnique = matchCount === 1;
+
+  // Calculate stability score based on method used
+  const stabilityScore = STABILITY_SCORES[method] ?? 50;
+
+  // Generate warnings based on selector characteristics
+  const warnings: string[] = [];
+
+  if (stabilityScore < 30) {
+    warnings.push('Selector depends on element position and may break if page structure changes');
+  }
+
+  if (selector.includes(':nth-match(') || selector.includes(':nth-of-type(')) {
+    warnings.push('Consider adding a data-testid to this element for more stable selection');
+  }
+
+  if (!isUnique) {
+    warnings.push(`Selector matches ${matchCount} elements - may cause unexpected behavior`);
+  }
+
+  if (matchCount === 0) {
+    warnings.push('Selector does not match any elements - element may have been removed');
+  }
+
+  if (selector.length > 200) {
+    warnings.push('Selector is very long - consider adding identifiers to intermediate elements');
+  }
+
   return {
     selector,
     method,
-    isUnique: matchCount === 1,
+    isUnique,
     matchCount,
     contextStrategy,
+    stabilityScore,
+    warnings,
   };
 }
