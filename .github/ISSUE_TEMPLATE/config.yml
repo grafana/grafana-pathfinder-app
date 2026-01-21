@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/grafana/docs-plugin/blob/main/README.md
+    about: Refer to the README for project information
