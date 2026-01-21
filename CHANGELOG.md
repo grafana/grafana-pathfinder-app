@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.2
+
+### Changed
+
+- **Simplified website export**: Removed separate copy for website button since block editor now uses the same JSON format (#478)
+
+### Fixed
+
+- Fixed issue with block editor record mode failing to initialize properly (#480)
+
+### Chore
+
+- Added GitHub issue templates for bugs and feature requests (#479)
+
 ## 1.4.1
 
 ### Added
