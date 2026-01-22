@@ -9,6 +9,7 @@ import { Button, Field, Input, TextArea, Checkbox, Badge, useStyles2, Alert } fr
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock, JsonStep } from '../types';
 import type { JsonGuidedBlock } from '../../../types/json-guide.types';
 
@@ -31,6 +32,7 @@ export function GuidedBlockForm({
   onRecordModeChange,
   onSplitToBlocks,
   onConvertType,
+  onSwitchBlockType,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -189,18 +191,19 @@ export function GuidedBlockForm({
 
       <div className={styles.footer}>
         {/* Conversion options - only when editing */}
-        {isEditing && (onSplitToBlocks || onConvertType) && (
+        {isEditing && (onSplitToBlocks || onConvertType || onSwitchBlockType) && (
           <div className={styles.footerLeft}>
+            {onSwitchBlockType && (
+              <TypeSwitchDropdown currentType="guided" onSwitch={onSwitchBlockType} blockData={initialData} />
+            )}
             {onSplitToBlocks && steps.length > 0 && (
               <Button
                 variant="secondary"
                 onClick={onSplitToBlocks}
                 type="button"
                 icon="layers-alt"
-                tooltip="Split this guided block into individual interactive blocks"
-              >
-                Split into blocks
-              </Button>
+                tooltip="Split into individual interactive blocks"
+              />
             )}
             {onConvertType && (
               <Button
@@ -209,9 +212,7 @@ export function GuidedBlockForm({
                 type="button"
                 icon="exchange-alt"
                 tooltip="Convert to multistep block (automated execution)"
-              >
-                Convert to multistep
-              </Button>
+              />
             )}
           </div>
         )}

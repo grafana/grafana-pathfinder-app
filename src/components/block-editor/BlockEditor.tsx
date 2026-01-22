@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
@@ -25,6 +26,7 @@ import { useActionRecorder } from '../../utils/devtools';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
+import { convertBlockType } from './utils/block-conversion';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -310,6 +312,57 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       handleBlockFormCancel();
     },
     [editingBlock, editingNestedBlock, editor, handleBlockFormCancel]
+  );
+
+  // Handle switch block type (for all block types, not just multistep/guided)
+  const handleSwitchBlockType = useCallback(
+    (newType: BlockType) => {
+      const sourceBlock = editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
+      if (!sourceBlock) {
+        console.warn('handleSwitchBlockType called with no active block');
+        return;
+      }
+
+      try {
+        const convertedBlock = convertBlockType(sourceBlock, newType);
+
+        // Update in-place based on context
+        if (editingConditionalBranchBlock) {
+          editor.updateConditionalBranchBlock(
+            editingConditionalBranchBlock.conditionalId,
+            editingConditionalBranchBlock.branch,
+            editingConditionalBranchBlock.nestedIndex,
+            convertedBlock
+          );
+          setEditingConditionalBranchBlock({
+            ...editingConditionalBranchBlock,
+            block: convertedBlock,
+          });
+        } else if (editingNestedBlock) {
+          editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
+          setEditingNestedBlock({
+            ...editingNestedBlock,
+            block: convertedBlock,
+          });
+        } else if (editingBlock) {
+          editor.updateBlock(editingBlock.id, convertedBlock);
+          setEditingBlock({
+            ...editingBlock,
+            block: convertedBlock,
+          });
+        }
+
+        // Update block type - triggers form remount via key prop change
+        setEditingBlockType(newType);
+      } catch (error) {
+        console.error('Failed to convert block type:', error);
+        getAppEvents().publish({
+          type: 'alert-error',
+          payload: ['Conversion failed', 'Could not convert to the selected block type.'],
+        });
+      }
+    },
+    [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor]
   );
 
   // Handle copy to clipboard
@@ -1081,6 +1134,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
               ? handleConvertType
               : undefined
+          }
+          onSwitchBlockType={
+            editingBlock || editingNestedBlock || editingConditionalBranchBlock ? handleSwitchBlockType : undefined
           }
         />
       )}

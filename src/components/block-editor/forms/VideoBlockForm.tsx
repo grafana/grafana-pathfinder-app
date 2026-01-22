@@ -5,10 +5,12 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, Select, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, Select, Alert, useStyles2 } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { VIDEO_PROVIDERS } from '../constants';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { PLACEHOLDER_URL } from '../utils';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonVideoBlock } from '../../../types/json-guide.types';
 
@@ -27,12 +29,21 @@ const PROVIDER_OPTIONS: Array<SelectableValue<'youtube' | 'native'>> = VIDEO_PRO
 /**
  * Video block form component
  */
-export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function VideoBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSwitchBlockType,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
   // Initialize from existing data or defaults
+  // Clear placeholder URL so user sees an empty field to fill in
   const initial = initialData && isVideoBlock(initialData) ? initialData : null;
-  const [src, setSrc] = useState(initial?.src ?? '');
+  const initialSrc = initial?.src === PLACEHOLDER_URL ? '' : (initial?.src ?? '');
+  const needsUrl = initial?.src === PLACEHOLDER_URL;
+  const [src, setSrc] = useState(initialSrc);
   const [provider, setProvider] = useState<'youtube' | 'native'>(initial?.provider ?? 'youtube');
   const [title, setTitle] = useState(initial?.title ?? '');
   const [start, setStart] = useState(initial?.start?.toString() ?? '');
@@ -72,6 +83,12 @@ export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
+      {needsUrl && (
+        <Alert title="Video URL required" severity="info">
+          Please provide a video URL to complete this block.
+        </Alert>
+      )}
+
       <Field label="Video Provider" description="Select the video source type">
         <Select
           options={PROVIDER_OPTIONS}
@@ -141,11 +158,16 @@ export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
       )}
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="video" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>

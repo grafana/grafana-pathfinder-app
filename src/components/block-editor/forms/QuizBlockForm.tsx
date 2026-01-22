@@ -23,6 +23,7 @@ import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonQuizBlock, JsonQuizChoice } from '../../../types/json-guide.types';
 
@@ -156,7 +157,13 @@ const getQuizFormStyles = (theme: GrafanaTheme2) => ({
 /**
  * Quiz block form component
  */
-export function QuizBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function QuizBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSwitchBlockType,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
   const quizStyles = useStyles2(getQuizFormStyles);
 
@@ -489,6 +496,11 @@ export function QuizBlockForm({ initialData, onSubmit, onCancel, isEditing = fal
       </div>
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="quiz" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>

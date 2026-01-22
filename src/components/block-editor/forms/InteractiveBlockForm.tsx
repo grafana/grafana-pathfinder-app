@@ -10,6 +10,7 @@ import { SelectableValue } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock, JsonInteractiveAction } from '../types';
 import type { JsonInteractiveBlock } from '../../../types/json-guide.types';
 
@@ -43,6 +44,7 @@ export function InteractiveBlockForm({
   onCancel,
   isEditing = false,
   onPickerModeChange,
+  onSwitchBlockType,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -441,11 +443,16 @@ export function InteractiveBlockForm({
       </div>
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="interactive" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>

@@ -9,6 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, Field, Input, TextArea, RadioButtonGroup, Checkbox, Badge, useStyles2, Alert } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonInputBlock } from '../../../types/json-guide.types';
 
@@ -35,7 +36,13 @@ function isValidVariableName(name: string): boolean {
 /**
  * Input block form component
  */
-export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function InputBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSwitchBlockType,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
   // Initialize from existing data or defaults
@@ -278,6 +285,11 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
       )}
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="input" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>

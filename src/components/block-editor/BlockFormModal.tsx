@@ -3,16 +3,30 @@
  *
  * Modal wrapper that renders the appropriate form for each block type.
  * Hides when element picker is active to allow clicking on page elements.
+ * Handles type switch confirmation at the modal level to avoid nested modal timing bugs.
+ *
+ * ## Type Switch Architecture
+ *
+ * The ConfirmModal for type switch warnings is rendered at this level
+ * (not inside TypeSwitchDropdown) because:
+ *
+ * 1. When type switches occur, the form component unmounts and remounts
+ * 2. Grafana's Modal cleanup during unmount can trigger dismiss events
+ * 3. Keeping ConfirmModal here ensures it survives form component unmounts
+ *
+ * Flow: FormComponent -> TypeSwitchDropdown -> handleTypeSwitchRequest ->
+ *       (if warning) pendingSwitch state -> ConfirmModal -> onSwitchBlockType
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Modal, useStyles2 } from '@grafana/ui';
+import { Modal, ConfirmModal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA } from './constants';
 import { ElementPicker } from './ElementPicker';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import type { BlockType, JsonBlock, BlockFormProps } from './types';
+import type { ConversionWarning } from './forms/TypeSwitchDropdown';
 
 // Unique identifier for our modal - used to find and manipulate only our modal's overlay
 const BLOCK_EDITOR_MODAL_ATTR = 'data-block-editor-modal';
@@ -48,6 +62,22 @@ const getStyles = (theme: GrafanaTheme2) => ({
   modalIcon: css({
     fontSize: '20px',
   }),
+  warningDetails: css({
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.warning.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.warning.border}`,
+  }),
+  warningFields: css({
+    marginTop: theme.spacing(1),
+    paddingLeft: theme.spacing(2),
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    '& li': {
+      marginBottom: theme.spacing(0.5),
+    },
+  }),
 });
 
 export interface BlockFormModalProps {
@@ -67,6 +97,8 @@ export interface BlockFormModalProps {
   onSplitToBlocks?: () => void;
   /** Called when user wants to convert between multistep and guided */
   onConvertType?: (newType: 'multistep' | 'guided') => void;
+  /** Called when user wants to switch to a different block type */
+  onSwitchBlockType?: (newType: BlockType) => void;
 }
 
 // Map block types to form components - defined outside render
@@ -96,6 +128,7 @@ export function BlockFormModal({
   isEditing = false,
   onSplitToBlocks,
   onConvertType,
+  onSwitchBlockType,
 }: BlockFormModalProps) {
   const styles = useStyles2(getStyles);
   const meta = BLOCK_TYPE_METADATA[blockType];
@@ -107,6 +140,12 @@ export function BlockFormModal({
   const [pendingMultiStepCount, setPendingMultiStepCount] = useState(0);
   const [isGroupingMultiStep, setIsGroupingMultiStep] = useState(false);
   const [isMultiStepGroupingEnabled, setIsMultiStepGroupingEnabled] = useState(true);
+
+  // State for type switch confirmation - lifted from TypeSwitchDropdown to avoid nested modal timing bugs
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    type: BlockType;
+    warning: ConversionWarning;
+  } | null>(null);
 
   // Store a callback to receive the selected element
   const pickerCallbackRef = useRef<((selector: string) => void) | null>(null);
@@ -360,6 +399,42 @@ export function BlockFormModal({
     onCancel();
   }, [isOverlayActive, onCancel]);
 
+  /**
+   * Handle type switch request from TypeSwitchDropdown.
+   * If there's a warning (data loss), show confirmation dialog.
+   * Otherwise, proceed directly with the type switch.
+   */
+  const handleTypeSwitchRequest = useCallback(
+    (newType: BlockType, warning?: ConversionWarning) => {
+      if (warning) {
+        // Show confirmation dialog at modal level - survives form component unmount
+        setPendingSwitch({ type: newType, warning });
+      } else {
+        // No data loss - proceed directly
+        onSwitchBlockType?.(newType);
+      }
+    },
+    [onSwitchBlockType]
+  );
+
+  /**
+   * Handle confirmation from the type switch warning dialog.
+   */
+  const handleTypeSwitchConfirm = useCallback(() => {
+    const type = pendingSwitch?.type;
+    setPendingSwitch(null);
+    if (type) {
+      onSwitchBlockType?.(type);
+    }
+  }, [pendingSwitch, onSwitchBlockType]);
+
+  /**
+   * Handle cancellation of the type switch warning dialog.
+   */
+  const handleTypeSwitchCancel = useCallback(() => {
+    setPendingSwitch(null);
+  }, []);
+
   if (!FormComponent) {
     return null;
   }
@@ -370,6 +445,8 @@ export function BlockFormModal({
       <span>{isEditing ? `Edit ${meta.name} Block` : `Add ${meta.name} Block`}</span>
     </div>
   );
+
+  const pendingTypeMeta = pendingSwitch ? BLOCK_TYPE_METADATA[pendingSwitch.type] : null;
 
   return (
     <>
@@ -393,9 +470,35 @@ export function BlockFormModal({
             onRecordModeChange={handleRecordModeChange}
             onSplitToBlocks={blockType === 'multistep' || blockType === 'guided' ? onSplitToBlocks : undefined}
             onConvertType={blockType === 'multistep' || blockType === 'guided' ? onConvertType : undefined}
+            onSwitchBlockType={onSwitchBlockType ? handleTypeSwitchRequest : undefined}
           />
         </div>
       </Modal>
+
+      {/* Type switch confirmation modal - rendered at BlockFormModal level to survive form unmount */}
+      <ConfirmModal
+        isOpen={pendingSwitch !== null}
+        title={`Convert to ${pendingTypeMeta?.name}?`}
+        body={
+          <div>
+            <p>{pendingSwitch?.warning.message}</p>
+            {pendingSwitch && pendingSwitch.warning.lostFields.length > 0 && (
+              <div className={styles.warningDetails}>
+                <strong>Fields that will be lost:</strong>
+                <ul className={styles.warningFields}>
+                  {pendingSwitch.warning.lostFields.map((field, i) => (
+                    <li key={i}>{field}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        }
+        confirmText="Convert anyway"
+        dismissText="Cancel"
+        onConfirm={handleTypeSwitchConfirm}
+        onDismiss={handleTypeSwitchCancel}
+      />
 
       {/* Element picker - rendered outside the modal so it stays mounted */}
       {isPickerActive && <ElementPicker onSelect={handleElementSelect} onCancel={handlePickerCancel} />}

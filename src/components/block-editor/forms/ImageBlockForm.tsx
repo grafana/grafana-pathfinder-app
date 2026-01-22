@@ -5,8 +5,10 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, Alert, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { PLACEHOLDER_URL } from '../utils';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonImageBlock } from '../../../types/json-guide.types';
 
@@ -20,12 +22,21 @@ function isImageBlock(block: JsonBlock): block is JsonImageBlock {
 /**
  * Image block form component
  */
-export function ImageBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function ImageBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSwitchBlockType,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
   // Initialize from existing data or defaults
+  // Clear placeholder URL so user sees an empty field to fill in
   const initial = initialData && isImageBlock(initialData) ? initialData : null;
-  const [src, setSrc] = useState(initial?.src ?? '');
+  const initialSrc = initial?.src === PLACEHOLDER_URL ? '' : (initial?.src ?? '');
+  const needsUrl = initial?.src === PLACEHOLDER_URL;
+  const [src, setSrc] = useState(initialSrc);
   const [alt, setAlt] = useState(initial?.alt ?? '');
   const [width, setWidth] = useState(initial?.width?.toString() ?? '');
   const [height, setHeight] = useState(initial?.height?.toString() ?? '');
@@ -49,6 +60,12 @@ export function ImageBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
+      {needsUrl && (
+        <Alert title="Image URL required" severity="info">
+          Please provide an image URL to complete this block.
+        </Alert>
+      )}
+
       <Field label="Image URL" description="Full URL to the image" required>
         <Input
           value={src}
@@ -113,11 +130,16 @@ export function ImageBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
       )}
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="image" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>
