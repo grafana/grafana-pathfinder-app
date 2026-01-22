@@ -341,10 +341,20 @@ export class FormFillHandler {
       await sleep(stageDelay);
     }
 
-    // Defocus: send Escape to close any menus, then blur
-    element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
-    element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', bubbles: true }));
+    // Defocus: close dropdown menu and blur
+    // CRITICAL FIX: Avoid dispatching Escape events that bubble to parent modals
+    // When formfill runs inside a modal (e.g., "Add to dashboard" modal), a bubbling
+    // Escape event would close the modal before the next multi-step action can execute.
+    //
+    // Strategy: Most modern dropdowns (including Grafana UI components) close on blur.
+    // We dispatch a non-bubbling Escape directly to the element (for components that
+    // listen on the element itself), then rely on blur for the rest.
+    element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: false }));
+    element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', bubbles: false }));
+
     await sleep(stageDelay);
+
+    // Blur triggers dropdown close on most components and properly defocuses the field
     element.blur();
     element.dispatchEvent(new Event('blur', { bubbles: true }));
   }
