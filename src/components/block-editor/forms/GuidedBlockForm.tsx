@@ -202,10 +202,8 @@ export function GuidedBlockForm({
                 onClick={onSplitToBlocks}
                 type="button"
                 icon="layers-alt"
-                tooltip="Split this guided block into individual interactive blocks"
-              >
-                Split into blocks
-              </Button>
+                tooltip="Split into individual interactive blocks"
+              />
             )}
             {onConvertType && (
               <Button
@@ -214,9 +212,7 @@ export function GuidedBlockForm({
                 type="button"
                 icon="exchange-alt"
                 tooltip="Convert to multistep block (automated execution)"
-              >
-                Convert to multistep
-              </Button>
+              />
             )}
           </div>
         )}
