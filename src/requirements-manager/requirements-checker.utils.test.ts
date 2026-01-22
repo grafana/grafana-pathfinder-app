@@ -200,7 +200,7 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
       expect(result.error[0].pass).toBe(true);
-      expect(mockBackend.post).toHaveBeenCalledWith('/api/datasources/1/test');
+      expect(mockBackend.post).toHaveBeenCalledWith('/api/datasources/uid/prom-uid/test');
     });
 
     it('should fail when data source test fails', async () => {
