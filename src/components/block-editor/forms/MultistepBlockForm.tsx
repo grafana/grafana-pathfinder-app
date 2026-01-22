@@ -33,7 +33,6 @@ export function MultistepBlockForm({
   onSplitToBlocks,
   onConvertType,
   onSwitchBlockType,
-  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -161,12 +160,7 @@ export function MultistepBlockForm({
         {isEditing && (onSplitToBlocks || onConvertType || onSwitchBlockType) && (
           <div className={styles.footerLeft}>
             {onSwitchBlockType && (
-              <TypeSwitchDropdown
-                currentType="multistep"
-                onSwitch={onSwitchBlockType}
-                blockData={initialData}
-                onPrepareTypeSwitch={onPrepareTypeSwitch}
-              />
+              <TypeSwitchDropdown currentType="multistep" onSwitch={onSwitchBlockType} blockData={initialData} />
             )}
             {onSplitToBlocks && steps.length > 0 && (
               <Button

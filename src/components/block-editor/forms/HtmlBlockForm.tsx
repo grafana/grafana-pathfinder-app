@@ -27,7 +27,6 @@ export function HtmlBlockForm({
   onCancel,
   isEditing = false,
   onSwitchBlockType,
-  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -76,12 +75,7 @@ export function HtmlBlockForm({
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>
-            <TypeSwitchDropdown
-              currentType="html"
-              onSwitch={onSwitchBlockType}
-              blockData={initialData}
-              onPrepareTypeSwitch={onPrepareTypeSwitch}
-            />
+            <TypeSwitchDropdown currentType="html" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
         <Button variant="secondary" onClick={onCancel} type="button">

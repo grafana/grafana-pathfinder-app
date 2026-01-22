@@ -34,7 +34,6 @@ export function VideoBlockForm({
   onCancel,
   isEditing = false,
   onSwitchBlockType,
-  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -151,12 +150,7 @@ export function VideoBlockForm({
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>
-            <TypeSwitchDropdown
-              currentType="video"
-              onSwitch={onSwitchBlockType}
-              blockData={initialData}
-              onPrepareTypeSwitch={onPrepareTypeSwitch}
-            />
+            <TypeSwitchDropdown currentType="video" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
         <Button variant="secondary" onClick={onCancel} type="button">

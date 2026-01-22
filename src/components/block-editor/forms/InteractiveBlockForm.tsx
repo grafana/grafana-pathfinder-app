@@ -45,7 +45,6 @@ export function InteractiveBlockForm({
   isEditing = false,
   onPickerModeChange,
   onSwitchBlockType,
-  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -446,12 +445,7 @@ export function InteractiveBlockForm({
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>
-            <TypeSwitchDropdown
-              currentType="interactive"
-              onSwitch={onSwitchBlockType}
-              blockData={initialData}
-              onPrepareTypeSwitch={onPrepareTypeSwitch}
-            />
+            <TypeSwitchDropdown currentType="interactive" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
         <Button variant="secondary" onClick={onCancel} type="button">

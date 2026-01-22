@@ -27,7 +27,6 @@ export function ImageBlockForm({
   onCancel,
   isEditing = false,
   onSwitchBlockType,
-  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -123,12 +122,7 @@ export function ImageBlockForm({
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>
-            <TypeSwitchDropdown
-              currentType="image"
-              onSwitch={onSwitchBlockType}
-              blockData={initialData}
-              onPrepareTypeSwitch={onPrepareTypeSwitch}
-            />
+            <TypeSwitchDropdown currentType="image" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
         <Button variant="secondary" onClick={onCancel} type="button">

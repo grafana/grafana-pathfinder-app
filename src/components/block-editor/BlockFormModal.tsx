@@ -3,16 +3,18 @@
  *
  * Modal wrapper that renders the appropriate form for each block type.
  * Hides when element picker is active to allow clicking on page elements.
+ * Handles type switch confirmation at the modal level to avoid nested modal timing bugs.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Modal, useStyles2 } from '@grafana/ui';
+import { Modal, ConfirmModal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA } from './constants';
 import { ElementPicker } from './ElementPicker';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import type { BlockType, JsonBlock, BlockFormProps } from './types';
+import type { ConversionWarning } from './forms/TypeSwitchDropdown';
 
 // Unique identifier for our modal - used to find and manipulate only our modal's overlay
 const BLOCK_EDITOR_MODAL_ATTR = 'data-block-editor-modal';
@@ -47,6 +49,22 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   modalIcon: css({
     fontSize: '20px',
+  }),
+  warningDetails: css({
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.warning.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.warning.border}`,
+  }),
+  warningFields: css({
+    marginTop: theme.spacing(1),
+    paddingLeft: theme.spacing(2),
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    '& li': {
+      marginBottom: theme.spacing(0.5),
+    },
   }),
 });
 
@@ -108,32 +126,11 @@ export function BlockFormModal({
   const [recordStepCount, setRecordStepCount] = useState(0);
   const [recordStartUrl, setRecordStartUrl] = useState<string | null>(null);
 
-  /**
-   * Guard to prevent dismiss during type switch operations.
-   *
-   * IMPORTANT: This ref exists because of a subtle timing bug with Grafana's nested modals.
-   *
-   * When a user switches block types via TypeSwitchDropdown:
-   * 1. If there's a data loss warning, a ConfirmModal opens (nested inside this modal)
-   * 2. When user confirms, ConfirmModal closes (isOpen becomes false)
-   * 3. During ConfirmModal's unmount, Grafana's modal cleanup can trigger events
-   *    (focus restoration, backdrop cleanup, etc.) that call THIS modal's onDismiss
-   * 4. Without this guard, the parent modal (BlockFormModal) would close unexpectedly
-   *
-   * The guard is set SYNCHRONOUSLY via handlePrepareTypeSwitch BEFORE any React state
-   * updates that would cause ConfirmModal to unmount. This ensures handleDismiss can
-   * check the guard and reject spurious dismiss events during the type switch.
-   *
-   * We use a ref instead of state because:
-   * - State updates are batched and may not be visible synchronously
-   * - The guard check in handleDismiss must see the value immediately
-   * - Refs update synchronously and are visible immediately to all readers
-   *
-   * @see handlePrepareTypeSwitch - sets this guard
-   * @see handleDismiss - checks this guard
-   * @see TypeSwitchDropdown.handleConfirm - triggers the sequence
-   */
-  const isTypeSwitchPendingRef = useRef(false);
+  // State for type switch confirmation - lifted from TypeSwitchDropdown to avoid nested modal timing bugs
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    type: BlockType;
+    warning: ConversionWarning;
+  } | null>(null);
 
   // Store a callback to receive the selected element
   const pickerCallbackRef = useRef<((selector: string) => void) | null>(null);
@@ -327,70 +324,51 @@ export function BlockFormModal({
   }, []);
 
   /**
-   * Dismiss handler with guard check.
-   *
-   * This can be called by Grafana's modal in various scenarios:
-   * - User clicks backdrop
-   * - User presses Escape
-   * - Nested modal cleanup triggers parent events (the bug we're protecting against)
-   *
-   * We reject dismiss events when:
-   * - Element picker or record mode overlay is active (user is interacting with page)
-   * - Type switch is pending (guard set by handlePrepareTypeSwitch)
+   * Dismiss handler.
+   * Rejects dismiss events when element picker or record mode overlay is active.
    */
   const handleDismiss = useCallback(() => {
-    if (isOverlayActive || isTypeSwitchPendingRef.current) {
+    if (isOverlayActive) {
       return;
     }
     onCancel();
   }, [isOverlayActive, onCancel]);
 
   /**
-   * Called SYNCHRONOUSLY by TypeSwitchDropdown before any React state updates.
-   *
-   * This is the critical fix for the nested modal timing bug. The sequence is:
-   *
-   *   TypeSwitchDropdown.handleConfirm():
-   *     1. onPrepareTypeSwitch() → THIS FUNCTION → sets guard to true
-   *     2. setPendingType(null) → schedules React update
-   *     3. React update runs → ConfirmModal gets isOpen=false → unmounts
-   *     4. Grafana cleanup might call handleDismiss → guard check returns early!
-   *     5. setTimeout fires → onSwitchBlockType called → type changes
-   *     6. After stabilization → guard resets to false
-   *
-   * Without step 1, the guard wouldn't be set until after step 4, and the
-   * modal would close unexpectedly during nested modal cleanup.
+   * Handle type switch request from TypeSwitchDropdown.
+   * If there's a warning (data loss), show confirmation dialog.
+   * Otherwise, proceed directly with the type switch.
    */
-  const handlePrepareTypeSwitch = useCallback(() => {
-    isTypeSwitchPendingRef.current = true;
-  }, []);
-
-  /**
-   * Performs the actual type switch after guard is already set.
-   *
-   * The guard was set earlier by handlePrepareTypeSwitch (called synchronously
-   * from TypeSwitchDropdown before its ConfirmModal closes). This function just
-   * needs to:
-   * 1. Call the parent's type switch handler
-   * 2. Reset the guard after the modal has stabilized
-   */
-  const handleSwitchBlockTypeWithGuard = useCallback(
-    (newType: BlockType) => {
-      if (!onSwitchBlockType) {
-        return;
+  const handleTypeSwitchRequest = useCallback(
+    (newType: BlockType, warning?: ConversionWarning) => {
+      if (warning) {
+        // Show confirmation dialog at modal level - survives form component unmount
+        setPendingSwitch({ type: newType, warning });
+      } else {
+        // No data loss - proceed directly
+        onSwitchBlockType?.(newType);
       }
-      // Guard is already set by handlePrepareTypeSwitch - proceed with switch
-      onSwitchBlockType(newType);
-      // Reset guard after TWO animation frames to ensure React has reconciled
-      // and any modal cleanup events have fired
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          isTypeSwitchPendingRef.current = false;
-        });
-      });
     },
     [onSwitchBlockType]
   );
+
+  /**
+   * Handle confirmation from the type switch warning dialog.
+   */
+  const handleTypeSwitchConfirm = useCallback(() => {
+    const type = pendingSwitch?.type;
+    setPendingSwitch(null);
+    if (type) {
+      onSwitchBlockType?.(type);
+    }
+  }, [pendingSwitch, onSwitchBlockType]);
+
+  /**
+   * Handle cancellation of the type switch warning dialog.
+   */
+  const handleTypeSwitchCancel = useCallback(() => {
+    setPendingSwitch(null);
+  }, []);
 
   if (!FormComponent) {
     return null;
@@ -402,6 +380,8 @@ export function BlockFormModal({
       <span>{isEditing ? `Edit ${meta.name} Block` : `Add ${meta.name} Block`}</span>
     </div>
   );
+
+  const pendingTypeMeta = pendingSwitch ? BLOCK_TYPE_METADATA[pendingSwitch.type] : null;
 
   return (
     <>
@@ -425,11 +405,35 @@ export function BlockFormModal({
             onRecordModeChange={handleRecordModeChange}
             onSplitToBlocks={blockType === 'multistep' || blockType === 'guided' ? onSplitToBlocks : undefined}
             onConvertType={blockType === 'multistep' || blockType === 'guided' ? onConvertType : undefined}
-            onSwitchBlockType={onSwitchBlockType ? handleSwitchBlockTypeWithGuard : undefined}
-            onPrepareTypeSwitch={onSwitchBlockType ? handlePrepareTypeSwitch : undefined}
+            onSwitchBlockType={onSwitchBlockType ? handleTypeSwitchRequest : undefined}
           />
         </div>
       </Modal>
+
+      {/* Type switch confirmation modal - rendered at BlockFormModal level to survive form unmount */}
+      <ConfirmModal
+        isOpen={pendingSwitch !== null}
+        title={`Convert to ${pendingTypeMeta?.name}?`}
+        body={
+          <div>
+            <p>{pendingSwitch?.warning.message}</p>
+            {pendingSwitch && pendingSwitch.warning.lostFields.length > 0 && (
+              <div className={styles.warningDetails}>
+                <strong>Fields that will be lost:</strong>
+                <ul className={styles.warningFields}>
+                  {pendingSwitch.warning.lostFields.map((field, i) => (
+                    <li key={i}>{field}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        }
+        confirmText="Convert anyway"
+        dismissText="Cancel"
+        onConfirm={handleTypeSwitchConfirm}
+        onDismiss={handleTypeSwitchCancel}
+      />
 
       {/* Element picker - rendered outside the modal so it stays mounted */}
       {isPickerActive && <ElementPicker onSelect={handleElementSelect} onCancel={handlePickerCancel} />}
