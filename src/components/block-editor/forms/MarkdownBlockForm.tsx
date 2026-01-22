@@ -14,6 +14,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import { Markdown } from '@tiptap/markdown';
 import { getBlockFormStyles } from '../block-editor.styles';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonMarkdownBlock } from '../../../types/json-guide.types';
 
@@ -467,7 +468,13 @@ const getEditorStyles = (theme: GrafanaTheme2) => ({
 /**
  * Markdown block form component with rich text editing
  */
-export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function MarkdownBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSwitchBlockType,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
   const editorStyles = useStyles2(getEditorStyles);
 
@@ -669,11 +676,16 @@ code block
       </div>
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="markdown" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!hasContent}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>

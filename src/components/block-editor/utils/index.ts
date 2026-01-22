@@ -20,3 +20,5 @@ export {
   importGuideFromFile,
   type ImportValidationResult,
 } from './block-import';
+
+export { getAvailableConversions, getConversionWarning, convertBlockType, type ConversionWarning } from './block-conversion';

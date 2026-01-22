@@ -9,6 +9,7 @@ import { Button, Field, Input, TextArea, Checkbox, Badge, useStyles2, Alert } fr
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock, JsonStep } from '../types';
 import type { JsonMultistepBlock } from '../../../types/json-guide.types';
 
@@ -31,6 +32,7 @@ export function MultistepBlockForm({
   onRecordModeChange,
   onSplitToBlocks,
   onConvertType,
+  onSwitchBlockType,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -155,8 +157,11 @@ export function MultistepBlockForm({
 
       <div className={styles.footer}>
         {/* Conversion options - only when editing */}
-        {isEditing && (onSplitToBlocks || onConvertType) && (
+        {isEditing && (onSplitToBlocks || onConvertType || onSwitchBlockType) && (
           <div className={styles.footerLeft}>
+            {onSwitchBlockType && (
+              <TypeSwitchDropdown currentType="multistep" onSwitch={onSwitchBlockType} blockData={initialData} />
+            )}
             {onSplitToBlocks && steps.length > 0 && (
               <Button
                 variant="secondary"

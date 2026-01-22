@@ -7,6 +7,7 @@
 import React, { useState, useCallback } from 'react';
 import { Button, Field, Input, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonImageBlock } from '../../../types/json-guide.types';
 
@@ -20,7 +21,13 @@ function isImageBlock(block: JsonBlock): block is JsonImageBlock {
 /**
  * Image block form component
  */
-export function ImageBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function ImageBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSwitchBlockType,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
   // Initialize from existing data or defaults
@@ -113,11 +120,16 @@ export function ImageBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
       )}
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="image" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>

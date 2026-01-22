@@ -103,6 +103,11 @@ export interface BlockFormProps<T extends JsonBlock = JsonBlock> {
    * Only shown when editing existing multistep/guided blocks.
    */
   onConvertType?: (newType: 'multistep' | 'guided') => void;
+  /**
+   * Called when user wants to switch to a different block type.
+   * The conversion utility handles field mapping and validation.
+   */
+  onSwitchBlockType?: (newType: BlockType) => void;
 }
 
 /**

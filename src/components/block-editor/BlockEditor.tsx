@@ -25,6 +25,7 @@ import { useActionRecorder } from '../../utils/devtools';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
+import { convertBlockType } from './utils/block-conversion';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -308,6 +309,54 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       handleBlockFormCancel();
     },
     [editingBlock, editingNestedBlock, editor, handleBlockFormCancel]
+  );
+
+  // Handle switch block type (for all block types, not just multistep/guided)
+  const handleSwitchBlockType = useCallback(
+    (newType: BlockType) => {
+      const sourceBlock =
+        editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
+      if (!sourceBlock) {
+        return;
+      }
+
+      try {
+        const convertedBlock = convertBlockType(sourceBlock, newType);
+
+        // Update in-place based on context
+        if (editingConditionalBranchBlock) {
+          editor.updateConditionalBranchBlock(
+            editingConditionalBranchBlock.conditionalId,
+            editingConditionalBranchBlock.branch,
+            editingConditionalBranchBlock.nestedIndex,
+            convertedBlock
+          );
+          setEditingConditionalBranchBlock({
+            ...editingConditionalBranchBlock,
+            block: convertedBlock,
+          });
+        } else if (editingNestedBlock) {
+          editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
+          setEditingNestedBlock({
+            ...editingNestedBlock,
+            block: convertedBlock,
+          });
+        } else if (editingBlock) {
+          editor.updateBlock(editingBlock.id, convertedBlock);
+          setEditingBlock({
+            ...editingBlock,
+            block: convertedBlock,
+          });
+        }
+
+        // Update block type - triggers form remount via key prop change
+        setEditingBlockType(newType);
+      } catch (error) {
+        console.error('Failed to convert block type:', error);
+        // Could add error toast/notification here
+      }
+    },
+    [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor]
   );
 
   // Handle copy to clipboard
@@ -1062,6 +1111,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
       {isBlockFormOpen && editingBlockType && (
         <BlockFormModal
+          key={`${editingBlockType}-${editingBlock?.id ?? editingNestedBlock?.sectionId ?? editingConditionalBranchBlock?.conditionalId ?? 'new'}`}
           blockType={editingBlockType}
           initialData={editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block}
           onSubmit={handleBlockFormSubmitWithSection}
@@ -1078,6 +1128,11 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
             (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
               ? handleConvertType
+              : undefined
+          }
+          onSwitchBlockType={
+            (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
+              ? handleSwitchBlockType
               : undefined
           }
         />

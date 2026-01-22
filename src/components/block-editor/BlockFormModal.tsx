@@ -67,6 +67,8 @@ export interface BlockFormModalProps {
   onSplitToBlocks?: () => void;
   /** Called when user wants to convert between multistep and guided */
   onConvertType?: (newType: 'multistep' | 'guided') => void;
+  /** Called when user wants to switch to a different block type */
+  onSwitchBlockType?: (newType: BlockType) => void;
 }
 
 // Map block types to form components - defined outside render
@@ -96,6 +98,7 @@ export function BlockFormModal({
   isEditing = false,
   onSplitToBlocks,
   onConvertType,
+  onSwitchBlockType,
 }: BlockFormModalProps) {
   const styles = useStyles2(getStyles);
   const meta = BLOCK_TYPE_METADATA[blockType];
@@ -337,6 +340,7 @@ export function BlockFormModal({
             onRecordModeChange={handleRecordModeChange}
             onSplitToBlocks={blockType === 'multistep' || blockType === 'guided' ? onSplitToBlocks : undefined}
             onConvertType={blockType === 'multistep' || blockType === 'guided' ? onConvertType : undefined}
+            onSwitchBlockType={onSwitchBlockType}
           />
         </div>
       </Modal>

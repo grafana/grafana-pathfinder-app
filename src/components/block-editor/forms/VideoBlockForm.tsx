@@ -9,6 +9,7 @@ import { Button, Field, Input, Select, useStyles2 } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { VIDEO_PROVIDERS } from '../constants';
+import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonVideoBlock } from '../../../types/json-guide.types';
 
@@ -27,7 +28,13 @@ const PROVIDER_OPTIONS: Array<SelectableValue<'youtube' | 'native'>> = VIDEO_PRO
 /**
  * Video block form component
  */
-export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function VideoBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSwitchBlockType,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
   // Initialize from existing data or defaults
@@ -141,11 +148,16 @@ export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
       )}
 
       <div className={styles.footer}>
+        {isEditing && onSwitchBlockType && (
+          <div className={styles.footerLeft}>
+            <TypeSwitchDropdown currentType="video" onSwitch={onSwitchBlockType} blockData={initialData} />
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>
