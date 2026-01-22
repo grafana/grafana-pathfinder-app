@@ -20,10 +20,7 @@ jest.mock('./forms/MarkdownBlockForm', () => ({
     initialData?: { type: string };
   }) => (
     <div data-testid="markdown-form">
-      <button
-        data-testid="switch-no-warning"
-        onClick={() => onSwitchBlockType?.('html')}
-      >
+      <button data-testid="switch-no-warning" onClick={() => onSwitchBlockType?.('html')}>
         Switch to HTML (no warning)
       </button>
       <button

@@ -67,14 +67,7 @@ export function TypeSwitchDropdown({ currentType, onSwitch, blockData }: TypeSwi
     <Menu>
       {availableTypes.map((type) => {
         const meta = BLOCK_TYPE_METADATA[type];
-        return (
-          <Menu.Item
-            key={type}
-            label={meta.name}
-            icon={meta.grafanaIcon}
-            onClick={() => handleSelect(type)}
-          />
-        );
+        return <Menu.Item key={type} label={meta.name} icon={meta.grafanaIcon} onClick={() => handleSelect(type)} />;
       })}
     </Menu>
   );

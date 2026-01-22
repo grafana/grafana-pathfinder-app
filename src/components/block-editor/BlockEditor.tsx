@@ -317,8 +317,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   // Handle switch block type (for all block types, not just multistep/guided)
   const handleSwitchBlockType = useCallback(
     (newType: BlockType) => {
-      const sourceBlock =
-        editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
+      const sourceBlock = editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
       if (!sourceBlock) {
         console.warn('handleSwitchBlockType called with no active block');
         return;
@@ -1137,9 +1136,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
               : undefined
           }
           onSwitchBlockType={
-            (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
-              ? handleSwitchBlockType
-              : undefined
+            editingBlock || editingNestedBlock || editingConditionalBranchBlock ? handleSwitchBlockType : undefined
           }
         />
       )}
