@@ -5,11 +5,12 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, Select, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, Select, Alert, useStyles2 } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { VIDEO_PROVIDERS } from '../constants';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { PLACEHOLDER_URL } from '../utils';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonVideoBlock } from '../../../types/json-guide.types';
 
@@ -38,8 +39,11 @@ export function VideoBlockForm({
   const styles = useStyles2(getBlockFormStyles);
 
   // Initialize from existing data or defaults
+  // Clear placeholder URL so user sees an empty field to fill in
   const initial = initialData && isVideoBlock(initialData) ? initialData : null;
-  const [src, setSrc] = useState(initial?.src ?? '');
+  const initialSrc = initial?.src === PLACEHOLDER_URL ? '' : (initial?.src ?? '');
+  const needsUrl = initial?.src === PLACEHOLDER_URL;
+  const [src, setSrc] = useState(initialSrc);
   const [provider, setProvider] = useState<'youtube' | 'native'>(initial?.provider ?? 'youtube');
   const [title, setTitle] = useState(initial?.title ?? '');
   const [start, setStart] = useState(initial?.start?.toString() ?? '');
@@ -79,6 +83,12 @@ export function VideoBlockForm({
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
+      {needsUrl && (
+        <Alert title="Video URL required" severity="info">
+          Please provide a video URL to complete this block.
+        </Alert>
+      )}
+
       <Field label="Video Provider" description="Select the video source type">
         <Select
           options={PROVIDER_OPTIONS}

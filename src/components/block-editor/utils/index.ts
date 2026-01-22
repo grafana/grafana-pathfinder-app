@@ -21,4 +21,10 @@ export {
   type ImportValidationResult,
 } from './block-import';
 
-export { getAvailableConversions, getConversionWarning, convertBlockType, type ConversionWarning } from './block-conversion';
+export {
+  getAvailableConversions,
+  getConversionWarning,
+  convertBlockType,
+  PLACEHOLDER_URL,
+  type ConversionWarning,
+} from './block-conversion';

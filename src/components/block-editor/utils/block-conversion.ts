@@ -54,14 +54,21 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
 };
 
 /**
+ * Placeholder URL used when converting to image/video types.
+ * Uses the .invalid TLD (RFC 2606) which will never resolve.
+ * Forms should detect this and show a validation warning.
+ */
+export const PLACEHOLDER_URL = 'https://placeholder.invalid/replace-me';
+
+/**
  * Required defaults when converting TO these types.
  * Provides sensible defaults for required fields that don't have a source mapping.
  */
 const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   quiz: { choices: [{ id: 'a', text: 'Option A', correct: true }] },
   input: { inputType: 'text', variableName: 'userInput' },
-  image: { src: '', alt: '' },
-  video: { src: '' },
+  image: { src: PLACEHOLDER_URL, alt: '' },
+  video: { src: PLACEHOLDER_URL },
   interactive: { action: 'noop' },
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
   guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },

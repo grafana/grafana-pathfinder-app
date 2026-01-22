@@ -260,16 +260,19 @@ describe('convertBlockType', () => {
       expect(inputResult.variableName).toBe('userInput');
     });
 
-    it('should throw when converting to image without src (requires user input)', () => {
-      // Converting to image requires a src field, which must be provided by the user
+    it('should apply placeholder URL when converting to image', () => {
       const source: JsonBlock = { type: 'markdown', content: 'Test' };
-      expect(() => convertBlockType(source, 'image')).toThrow(/failed validation/);
+      const result = convertBlockType(source, 'image');
+      const imageResult = result as { src: string; alt?: string };
+      expect(imageResult.src).toBe('https://placeholder.invalid/replace-me');
+      expect(imageResult.alt).toBe('');
     });
 
-    it('should throw when converting to video without src (requires user input)', () => {
-      // Converting to video requires a src field, which must be provided by the user
+    it('should apply placeholder URL when converting to video', () => {
       const source: JsonBlock = { type: 'markdown', content: 'Test' };
-      expect(() => convertBlockType(source, 'video')).toThrow(/failed validation/);
+      const result = convertBlockType(source, 'video');
+      const videoResult = result as { src: string };
+      expect(videoResult.src).toBe('https://placeholder.invalid/replace-me');
     });
 
     it('should apply default action when converting to interactive', () => {
@@ -327,26 +330,18 @@ describe('convertBlockType', () => {
   });
 
   describe('schema validation', () => {
-    it('should produce valid blocks that pass schema validation', () => {
+    it('should produce valid blocks that pass schema validation for all types', () => {
       const source: JsonBlock = { type: 'markdown', content: 'Test content' };
 
-      // These should not throw - conversion produces valid blocks
+      // All conversions should produce valid blocks (image/video use placeholder URLs)
       expect(() => convertBlockType(source, 'html')).not.toThrow();
       expect(() => convertBlockType(source, 'interactive')).not.toThrow();
       expect(() => convertBlockType(source, 'multistep')).not.toThrow();
       expect(() => convertBlockType(source, 'guided')).not.toThrow();
       expect(() => convertBlockType(source, 'quiz')).not.toThrow();
       expect(() => convertBlockType(source, 'input')).not.toThrow();
-      // Note: image and video require src field which must be provided by user
-      // These throw validation errors when converted without a source URL
-    });
-
-    it('should throw for image/video when no src is available', () => {
-      const source: JsonBlock = { type: 'markdown', content: 'Test content' };
-
-      // Image and video require src field - throws when converting from blocks without one
-      expect(() => convertBlockType(source, 'image')).toThrow(/failed validation/);
-      expect(() => convertBlockType(source, 'video')).toThrow(/failed validation/);
+      expect(() => convertBlockType(source, 'image')).not.toThrow();
+      expect(() => convertBlockType(source, 'video')).not.toThrow();
     });
   });
 });
