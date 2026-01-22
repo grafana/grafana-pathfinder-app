@@ -683,3 +683,95 @@ function handleNthMatchSelector(selector: string): SelectorResult {
     };
   }
 }
+
+// ============================================================================
+// Visibility-Aware Matching
+// ============================================================================
+
+/**
+ * Check if an element is currently displayed in the DOM.
+ * This is a basic visibility check focused on CSS display properties.
+ * For more comprehensive visibility checking (including ancestors),
+ * use isElementVisible from element-validator.ts.
+ *
+ * An element is considered displayed if:
+ * - display is not 'none'
+ * - visibility is not 'hidden'
+ * - opacity is not '0'
+ * - element has a layout (offsetParent is not null, unless it's fixed/sticky positioned)
+ *
+ * @param element - The element to check
+ * @returns true if the element is displayed
+ */
+function isElementDisplayed(element: HTMLElement): boolean {
+  if (!element) {
+    return false;
+  }
+
+  // Check if element is in the DOM
+  if (!element.isConnected) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(element);
+
+  // Check display
+  if (style.display === 'none') {
+    return false;
+  }
+
+  // Check visibility
+  if (style.visibility === 'hidden') {
+    return false;
+  }
+
+  // Check opacity
+  if (style.opacity === '0') {
+    return false;
+  }
+
+  // Check if element has layout (offsetParent check)
+  // Note: offsetParent is null for fixed/sticky positioned elements, so check those separately
+  const position = style.position;
+  if (element.offsetParent === null && position !== 'fixed' && position !== 'sticky') {
+    // Could be hidden or not in layout - check if it has dimensions
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Enhanced querySelectorAll that returns only visible elements.
+ * Useful for overlay/portal contexts where hidden duplicates may exist in the DOM.
+ *
+ * @param selector - CSS selector (supports enhanced pseudo-selectors)
+ * @returns SelectorResult with only visible elements
+ */
+export function querySelectorAllEnhancedVisible(selector: string): SelectorResult {
+  const result = querySelectorAllEnhanced(selector);
+  const visibleElements = result.elements.filter(isElementDisplayed);
+
+  return {
+    ...result,
+    elements: visibleElements,
+    effectiveSelector: result.effectiveSelector
+      ? `${result.effectiveSelector} (visible only)`
+      : `${selector} (visible only)`,
+  };
+}
+
+/**
+ * Count visible matches for a selector.
+ * Useful for uniqueness checking in overlay contexts.
+ *
+ * @param selector - CSS selector (supports enhanced pseudo-selectors)
+ * @returns Number of visible elements matching the selector
+ */
+export function countVisibleMatches(selector: string): number {
+  const result = querySelectorAllEnhancedVisible(selector);
+  return result.elements.length;
+}

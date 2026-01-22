@@ -25,19 +25,20 @@ export interface ActionGroup {
 }
 
 // Selectors for detecting modals, dialogs, dropdowns, and popovers
+// NOTE: [data-floating-ui-portal] was removed - too aggressive, matches drilldown menus and tooltips
 const MODAL_SELECTORS = [
   '[role="dialog"]',
   '[role="menu"]',
   '[role="listbox"]',
   '[role="alertdialog"]',
-  '[role="tooltip"]',
+  // '[role="tooltip"]', // Removed - tooltips should not trigger grouping
   '.modal',
   '.ReactModal__Content',
   '.ReactModal__Overlay',
   '[data-popper-placement]',
   '.dropdown-menu',
   '[data-radix-popper-content-wrapper]',
-  '[data-floating-ui-portal]',
+  // '[data-floating-ui-portal]', // Removed - too broad, matches drilldowns/tooltips
   '.grafana-portal', // Grafana-specific portals
   '[class*="dropdown"]', // Catch various dropdown implementations
   '[class*="popover"]', // Catch popovers

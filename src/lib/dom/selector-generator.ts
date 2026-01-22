@@ -16,7 +16,7 @@
  */
 
 import { findButtonByText } from './dom-utils';
-import { querySelectorAllEnhanced } from './enhanced-selector';
+import { querySelectorAllEnhanced, querySelectorAllEnhancedVisible } from './enhanced-selector';
 
 // ============================================================================
 // Configuration
@@ -94,46 +94,41 @@ const STABILITY_SCORES: Record<string, number> = {
 };
 
 // ============================================================================
-// Selector Caching
+// Stability Flag Types
 // ============================================================================
 
-/** Cache entry with selector and timestamp */
-interface CacheEntry {
-  selector: string;
-  timestamp: number;
-}
-
-/** WeakMap-based cache for selector results (auto-clears when elements are GC'd) */
-const selectorCache = new WeakMap<HTMLElement, CacheEntry>();
-
-/** Cache time-to-live in milliseconds */
-const CACHE_TTL_MS = 5000;
-
 /**
- * Get a cached selector if it exists and hasn't expired.
+ * Stability flags indicate potential sources of selector fragility.
+ * These provide structured metadata for programmatic use.
  */
-function getCachedSelector(element: HTMLElement): string | null {
-  const cached = selectorCache.get(element);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.selector;
-  }
-  return null;
-}
+export type StabilityFlag =
+  | 'i18n-sensitive' // Uses translatable attributes (aria-label, title, placeholder)
+  | 'session-unstable' // Uses framework-generated IDs
+  | 'environment-unstable' // Uses instance-specific data (UIDs, service names)
+  | 'structural' // Relies on DOM position (nth-of-type, nth-match)
+  | 'portal-scoped'; // Only valid within overlay context
 
 /**
- * Store a selector in the cache.
+ * Quality rating for selectors.
+ * - good: i18n-stable, session-stable attribute selectors
+ * - medium: translatable text, session-specific values, or structural scoping
+ * - poor: CSS path fallback (fragile)
  */
-function setCachedSelector(element: HTMLElement, selector: string): void {
-  selectorCache.set(element, { selector, timestamp: Date.now() });
-}
+export type SelectorQuality = 'good' | 'medium' | 'poor';
 
 /**
- * Clear the selector cache. Useful for testing.
- * Note: WeakMap doesn't have a clear() method, so we create a new one.
+ * ARIA roles that indicate overlay/portal contexts.
+ * Selectors inside these containers may need scoping for uniqueness.
+ */
+const OVERLAY_ROLES = ['dialog', 'alertdialog', 'menu', 'listbox', 'tooltip', 'combobox'] as const;
+
+/**
+ * Clear the selector cache.
+ * @deprecated Caching has been removed - this is now a no-op for backward compatibility
  */
 export function clearSelectorCache(): void {
-  // WeakMap auto-clears when elements are garbage collected.
-  // For explicit clearing during tests, consumers should re-import the module.
+  // No-op - caching has been removed per feedback that it caused issues
+  // with multi-step forms where elements are accessed over longer periods
 }
 
 // ============================================================================
@@ -182,6 +177,110 @@ function isValidTestId(value: string | null): boolean {
   }
 
   return true;
+}
+
+// ============================================================================
+// Portal/Overlay Detection
+// ============================================================================
+
+/**
+ * Find the nearest overlay/portal ancestor for an element.
+ * Used to scope selectors to their containing overlay context.
+ *
+ * @param element - The element to check
+ * @returns The overlay element if found, null otherwise
+ */
+function findOverlayContext(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element;
+
+  while (current) {
+    const role = current.getAttribute('role');
+
+    // Check for ARIA overlay roles
+    if (role && (OVERLAY_ROLES as readonly string[]).includes(role)) {
+      return current;
+    }
+
+    // Check for common overlay patterns without explicit role
+    if (current.classList.contains('modal') || current.hasAttribute('aria-modal') || current.tagName === 'DIALOG') {
+      return current;
+    }
+
+    // Check for Grafana-specific overlay patterns
+    if (
+      current.classList.contains('dropdown-menu') ||
+      current.classList.contains('portal') ||
+      current.getAttribute('data-popper-placement')
+    ) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
+/**
+ * Build a selector scoped to an overlay context.
+ * Adds the overlay's role or tag as a prefix for disambiguation.
+ *
+ * @param overlay - The overlay element
+ * @param baseSelector - The base selector to scope
+ * @returns Scoped selector string
+ */
+function buildOverlayScopedSelector(overlay: HTMLElement, baseSelector: string): string {
+  const role = overlay.getAttribute('role');
+
+  // Prefer role-based scoping (most semantic)
+  if (role) {
+    return `[role="${role}"] ${baseSelector}`;
+  }
+
+  // Use dialog tag for native dialogs
+  if (overlay.tagName === 'DIALOG') {
+    return `dialog ${baseSelector}`;
+  }
+
+  // Use aria-modal for modal dialogs without role
+  if (overlay.hasAttribute('aria-modal')) {
+    return `[aria-modal="true"] ${baseSelector}`;
+  }
+
+  // Fallback: use a generic overlay class if present
+  if (overlay.classList.contains('modal')) {
+    return `.modal ${baseSelector}`;
+  }
+
+  // Last resort: return base selector without scoping
+  return baseSelector;
+}
+
+/**
+ * Get the role of an overlay element for metadata purposes.
+ *
+ * @param overlay - The overlay element
+ * @returns The overlay's role or a descriptive string
+ */
+function getOverlayRole(overlay: HTMLElement | null): string | undefined {
+  if (!overlay) {
+    return undefined;
+  }
+
+  const role = overlay.getAttribute('role');
+  if (role) {
+    return role;
+  }
+
+  if (overlay.tagName === 'DIALOG') {
+    return 'dialog';
+  }
+
+  if (overlay.hasAttribute('aria-modal')) {
+    return 'modal';
+  }
+
+  return 'overlay';
 }
 
 /**
@@ -546,9 +645,11 @@ interface TrySelectorResult {
  * Try a selector and check if it uniquely identifies the element.
  * Returns success: true if the selector matches exactly one element (the target).
  */
-function tryUniqueSelector(selector: string, element: HTMLElement): TrySelectorResult {
+function tryUniqueSelector(selector: string, element: HTMLElement, useVisibilityMatching = false): TrySelectorResult {
   try {
-    const matches = querySelectorAllEnhanced(selector);
+    // Use visibility-aware matching for overlay contexts
+    const matchFn = useVisibilityMatching ? querySelectorAllEnhancedVisible : querySelectorAllEnhanced;
+    const matches = matchFn(selector);
     if (matches.elements.length === 1 && matches.elements[0] === element) {
       return { success: true, selector: cleanDynamicAttributes(selector) };
     }
@@ -622,18 +723,7 @@ function getTestIdAttr(element: HTMLElement): string {
  * // Returns selector for the button at those coordinates
  * ```
  */
-export function generateBestSelector(
-  element: HTMLElement,
-  options?: { clickX?: number; clickY?: number; skipCache?: boolean }
-): string {
-  // Check cache first (unless explicitly skipped)
-  if (!options?.skipCache) {
-    const cached = getCachedSelector(element);
-    if (cached) {
-      return cached;
-    }
-  }
-
+export function generateBestSelector(element: HTMLElement, options?: { clickX?: number; clickY?: number }): string {
   // First, walk up to find the best element in the hierarchy
   const bestElement = findBestElementInHierarchy(element, 5, options);
 
@@ -946,9 +1036,6 @@ export function generateBestSelector(
     console.warn('Selector validation error:', error);
   }
 
-  // Cache the result for future lookups
-  setCachedSelector(bestElement, cleanedSelector);
-
   return cleanedSelector;
 }
 
@@ -993,7 +1080,11 @@ function findSiblingContext(element: HTMLElement, baseSelector: string): string 
  */
 function buildContextualSelector(element: HTMLElement, baseSelector: string): string {
   try {
-    const matches = querySelectorAllEnhanced(baseSelector);
+    // Check if element is inside an overlay - use visibility-aware matching if so
+    const overlayContext = findOverlayContext(element);
+    const matchFn = overlayContext ? querySelectorAllEnhancedVisible : querySelectorAllEnhanced;
+
+    const matches = matchFn(baseSelector);
 
     // Already unique or no matches - return as-is
     if (matches.elements.length <= 1) {
@@ -1012,12 +1103,26 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
       return siblingContext;
     }
 
-    // Strategy 3: Try text content with :contains() - much more stable than position!
+    // Strategy 3: Try overlay scoping (for elements inside dialogs, menus, etc.)
+    if (overlayContext) {
+      const overlayScopedSelector = buildOverlayScopedSelector(overlayContext, baseSelector);
+      try {
+        // Use visibility-aware matching for overlay contexts
+        const overlayMatches = querySelectorAllEnhancedVisible(overlayScopedSelector);
+        if (overlayMatches.elements.length === 1 && overlayMatches.elements[0] === element) {
+          return overlayScopedSelector;
+        }
+      } catch (e) {
+        // Overlay scoping failed, try next strategy
+      }
+    }
+
+    // Strategy 4: Try text content with :contains() - much more stable than position!
     const text = normalizeText(element.textContent || '');
     if (text.length > 0 && text.length < SELECTOR_CONFIG.maxLongTextLength) {
       const textSelector = `${baseSelector}:contains('${text}')`;
       try {
-        const textMatches = querySelectorAllEnhanced(textSelector);
+        const textMatches = matchFn(textSelector);
         if (textMatches.elements.length === 1 && textMatches.elements[0] === element) {
           return textSelector;
         }
@@ -1026,9 +1131,29 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
       }
     }
 
-    // Strategy 4: Last resort - Use :nth-match() (fragile, but better than nothing)
+    // Strategy 5: For overlays, try overlay-scoped with text content
+    if (overlayContext) {
+      const text = normalizeText(element.textContent || '');
+      if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
+        const overlayScopedWithText = buildOverlayScopedSelector(overlayContext, `${baseSelector}:contains('${text}')`);
+        try {
+          const combinedMatches = querySelectorAllEnhancedVisible(overlayScopedWithText);
+          if (combinedMatches.elements.length === 1 && combinedMatches.elements[0] === element) {
+            return overlayScopedWithText;
+          }
+        } catch (e) {
+          // Combined strategy failed
+        }
+      }
+    }
+
+    // Strategy 6: Last resort - Use :nth-match() (fragile, but better than nothing)
+    // For overlays, scope the nth-match to the overlay
     const index = matches.elements.indexOf(element);
     if (index >= 0) {
+      if (overlayContext) {
+        return buildOverlayScopedSelector(overlayContext, `${baseSelector}:nth-match(${index + 1})`);
+      }
       return `${baseSelector}:nth-match(${index + 1})`;
     }
 
@@ -1283,6 +1408,121 @@ export interface SelectorInfo {
   stabilityScore: number;
   /** Warnings about potential selector fragility */
   warnings: string[];
+  /** Overall quality rating: good, medium, or poor */
+  quality: SelectorQuality;
+  /** Stability flags indicating potential sources of fragility */
+  flags: StabilityFlag[];
+  /** Whether the selector is scoped to a portal/overlay context */
+  isPortalScoped: boolean;
+  /** The ARIA role of the containing overlay, if any */
+  overlayRole?: string;
+  /** Number of visible matches (useful for overlay debugging) */
+  visibleMatchCount?: number;
+}
+
+// ============================================================================
+// Stability Flag Computation
+// ============================================================================
+
+/**
+ * Compute stability flags for a selector based on its characteristics.
+ * Flags indicate potential sources of fragility.
+ *
+ * @param selector - The CSS selector to analyze
+ * @param method - The primary method used to generate the selector
+ * @returns Array of stability flags
+ */
+function computeStabilityFlags(selector: string, method: string): StabilityFlag[] {
+  const flags: StabilityFlag[] = [];
+
+  // i18n-sensitive: uses translatable attributes
+  if (
+    selector.includes('aria-label') ||
+    selector.includes('placeholder') ||
+    selector.includes("title='") ||
+    selector.includes('title="') ||
+    selector.includes(':contains(')
+  ) {
+    flags.push('i18n-sensitive');
+  }
+
+  // session-unstable: uses framework-generated IDs or session-specific values
+  // Check for patterns that suggest framework-generated IDs
+  if (
+    /react-[a-z0-9]+/i.test(selector) ||
+    /radix-[a-z0-9]+/i.test(selector) ||
+    /headlessui-[a-z0-9]+/i.test(selector) ||
+    /mui-[a-z0-9]+/i.test(selector) ||
+    /:r[0-9a-z]+:/i.test(selector) || // React useId pattern
+    /id-\d+/.test(selector)
+  ) {
+    flags.push('session-unstable');
+  }
+
+  // structural: relies on DOM position
+  if (
+    selector.includes(':nth-of-type') ||
+    selector.includes(':nth-match') ||
+    selector.includes(':nth-child') ||
+    method === 'nth-of-type' ||
+    method === 'nth-match'
+  ) {
+    flags.push('structural');
+  }
+
+  // portal-scoped: scoped to overlay context
+  if (
+    selector.includes('[role="dialog"]') ||
+    selector.includes('[role="alertdialog"]') ||
+    selector.includes('[role="menu"]') ||
+    selector.includes('[role="listbox"]') ||
+    selector.includes('[role="tooltip"]') ||
+    selector.includes('[role="combobox"]') ||
+    selector.includes('[aria-modal="true"]') ||
+    selector.includes('dialog ')
+  ) {
+    flags.push('portal-scoped');
+  }
+
+  // environment-unstable: contains UIDs, dynamic paths, or instance-specific data
+  if (
+    /[a-f0-9]{8,}/i.test(selector) || // Hex hash (8+ chars)
+    /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(selector) || // UUID
+    selector.includes('/d/') || // Dashboard UID path
+    selector.includes('orgId=') || // Org-specific
+    selector.includes('uid=') // Generic UID parameter
+  ) {
+    flags.push('environment-unstable');
+  }
+
+  return flags;
+}
+
+/**
+ * Compute the overall quality rating for a selector.
+ *
+ * Quality levels:
+ * - good: High stability score with no structural dependency
+ * - medium: Medium stability or has structural/i18n concerns
+ * - poor: Low stability score or heavily position-dependent
+ *
+ * @param stabilityScore - The numeric stability score (0-100)
+ * @param flags - The computed stability flags
+ * @returns Quality rating
+ */
+function computeQuality(stabilityScore: number, flags: StabilityFlag[]): SelectorQuality {
+  // Poor quality: low score or heavily structural
+  if (stabilityScore < 40 || (flags.includes('structural') && stabilityScore < 60)) {
+    return 'poor';
+  }
+
+  // Good quality: high score without problematic flags
+  if (stabilityScore >= 80 && !flags.includes('structural') && !flags.includes('session-unstable')) {
+    return 'good';
+  }
+
+  // Medium quality: everything else
+  return 'medium';
 }
 
 /**
@@ -1304,6 +1544,15 @@ export interface SelectorInfo {
  */
 export function getSelectorInfo(element: HTMLElement): SelectorInfo {
   const selector = generateBestSelector(element);
+
+  // Detect overlay context for the element
+  const overlayContext = findOverlayContext(element);
+  const isPortalScoped =
+    overlayContext !== null ||
+    selector.includes('[role="dialog"]') ||
+    selector.includes('[role="menu"]') ||
+    selector.includes('[aria-modal="true"]');
+  const overlayRole = getOverlayRole(overlayContext);
 
   // Determine which method was used
   let method = 'compound';
@@ -1341,6 +1590,8 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     contextStrategy = 'nth-match';
   } else if (selector.includes(' + ')) {
     contextStrategy = 'sibling';
+  } else if (isPortalScoped) {
+    contextStrategy = 'portal-scoped';
   } else if (selector.includes(' ') && !selector.includes(':contains(')) {
     // Has descendant combinator (space) but not just :contains
     contextStrategy = 'parent-context';
@@ -1348,6 +1599,8 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
 
   // Check uniqueness using enhanced selector for :contains() and :has() support
   let matchCount = 0;
+  let visibleMatchCount: number | undefined;
+
   try {
     if (method === 'button-text') {
       matchCount = findButtonByText(selector).length;
@@ -1355,8 +1608,20 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
       // Use enhanced selector for complex pseudo-selectors
       const result = querySelectorAllEnhanced(selector);
       matchCount = result.elements.length;
+
+      // For overlay contexts, also count visible matches
+      if (overlayContext) {
+        const visibleResult = querySelectorAllEnhancedVisible(selector);
+        visibleMatchCount = visibleResult.elements.length;
+      }
     } else {
       matchCount = document.querySelectorAll(selector).length;
+
+      // For overlay contexts, also count visible matches
+      if (overlayContext) {
+        const visibleResult = querySelectorAllEnhancedVisible(selector);
+        visibleMatchCount = visibleResult.elements.length;
+      }
     }
   } catch (error) {
     matchCount = 0;
@@ -1366,6 +1631,12 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
 
   // Calculate stability score based on method used
   const stabilityScore = STABILITY_SCORES[method] ?? 50;
+
+  // Compute stability flags
+  const flags = computeStabilityFlags(selector, method);
+
+  // Compute quality rating
+  const quality = computeQuality(stabilityScore, flags);
 
   // Generate warnings based on selector characteristics
   const warnings: string[] = [];
@@ -1390,6 +1661,19 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     warnings.push('Selector is very long - consider adding identifiers to intermediate elements');
   }
 
+  // Add warnings based on flags
+  if (flags.includes('i18n-sensitive')) {
+    warnings.push('Selector uses translatable text - may break in different locales');
+  }
+
+  if (flags.includes('session-unstable')) {
+    warnings.push('Selector uses framework-generated ID - may change between sessions');
+  }
+
+  if (flags.includes('environment-unstable')) {
+    warnings.push('Selector contains instance-specific data - may not work in different environments');
+  }
+
   return {
     selector,
     method,
@@ -1398,5 +1682,10 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     contextStrategy,
     stabilityScore,
     warnings,
+    quality,
+    flags,
+    isPortalScoped,
+    overlayRole,
+    visibleMatchCount,
   };
 }
