@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.4
+
+### Added
+
+- **Enhanced block selection**: Block selection logic now includes multistep and guided blocks with improved merging consistency (#485)
+
+### Changed
+
+- **DOM selector logic**: Updated DOM selector logic in dev tools for improved element targeting (#482)
+
+### Fixed
+
+- Fixed defocus behavior in form-fill handler to prevent modal closure during multi-step actions (#484)
+  - Dispatches non-bubbling Escape events to avoid closing parent modals
+  - Relies on blur for dropdown closure instead
+
 ## 1.4.3
 
 ### Added
