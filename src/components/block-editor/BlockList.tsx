@@ -449,8 +449,9 @@ function NestedBlockItem({
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
 
-  // Only interactive blocks can be selected for merging
-  const isSelectable = isSelectionMode && block.type === 'interactive';
+  // Interactive, multistep, and guided blocks can be selected for merging
+  const isSelectable =
+    isSelectionMode && (block.type === 'interactive' || block.type === 'multistep' || block.type === 'guided');
 
   // Get preview content - same logic as BlockItem
   const getPreview = (): string => {
@@ -486,7 +487,13 @@ function NestedBlockItem({
         <div
           className={styles.selectionCheckbox}
           onClick={handleCheckboxClick}
-          title={isSelectable ? (isSelected ? 'Deselect' : 'Select') : 'Only interactive blocks can be selected'}
+          title={
+            isSelectable
+              ? isSelected
+                ? 'Deselect'
+                : 'Select'
+              : 'Only interactive, multistep, and guided blocks can be selected'
+          }
         >
           <Checkbox value={isSelected} disabled={!isSelectable} onChange={onToggleSelect} />
         </div>
