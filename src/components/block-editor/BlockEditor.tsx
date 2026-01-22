@@ -1111,7 +1111,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
       {isBlockFormOpen && editingBlockType && (
         <BlockFormModal
-          key={`${editingBlockType}-${editingBlock?.id ?? editingNestedBlock?.sectionId ?? editingConditionalBranchBlock?.conditionalId ?? 'new'}`}
+          key={`${editingBlock?.id ?? editingNestedBlock?.sectionId ?? editingConditionalBranchBlock?.conditionalId ?? 'new'}`}
           blockType={editingBlockType}
           initialData={editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block}
           onSubmit={handleBlockFormSubmitWithSection}

@@ -163,6 +163,7 @@ export function QuizBlockForm({
   onCancel,
   isEditing = false,
   onSwitchBlockType,
+  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
   const quizStyles = useStyles2(getQuizFormStyles);
@@ -498,7 +499,12 @@ export function QuizBlockForm({
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>
-            <TypeSwitchDropdown currentType="quiz" onSwitch={onSwitchBlockType} blockData={initialData} />
+            <TypeSwitchDropdown
+              currentType="quiz"
+              onSwitch={onSwitchBlockType}
+              blockData={initialData}
+              onPrepareTypeSwitch={onPrepareTypeSwitch}
+            />
           </div>
         )}
         <Button variant="secondary" onClick={onCancel} type="button">

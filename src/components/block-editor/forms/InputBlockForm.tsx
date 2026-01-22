@@ -42,6 +42,7 @@ export function InputBlockForm({
   onCancel,
   isEditing = false,
   onSwitchBlockType,
+  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -287,7 +288,12 @@ export function InputBlockForm({
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>
-            <TypeSwitchDropdown currentType="input" onSwitch={onSwitchBlockType} blockData={initialData} />
+            <TypeSwitchDropdown
+              currentType="input"
+              onSwitch={onSwitchBlockType}
+              blockData={initialData}
+              onPrepareTypeSwitch={onPrepareTypeSwitch}
+            />
           </div>
         )}
         <Button variant="secondary" onClick={onCancel} type="button">

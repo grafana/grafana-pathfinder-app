@@ -474,6 +474,7 @@ export function MarkdownBlockForm({
   onCancel,
   isEditing = false,
   onSwitchBlockType,
+  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
   const editorStyles = useStyles2(getEditorStyles);
@@ -678,7 +679,12 @@ code block
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>
-            <TypeSwitchDropdown currentType="markdown" onSwitch={onSwitchBlockType} blockData={initialData} />
+            <TypeSwitchDropdown
+              currentType="markdown"
+              onSwitch={onSwitchBlockType}
+              blockData={initialData}
+              onPrepareTypeSwitch={onPrepareTypeSwitch}
+            />
           </div>
         )}
         <Button variant="secondary" onClick={onCancel} type="button">

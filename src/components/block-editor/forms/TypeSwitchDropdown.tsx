@@ -44,14 +44,36 @@ export interface TypeSwitchDropdownProps {
   onSwitch: (newType: BlockType) => void;
   /** Current block data - used to check for lossy conversions */
   blockData?: JsonBlock;
+  /**
+   * Called synchronously BEFORE type switch begins, to set dismiss guard.
+   *
+   * This prevents a race condition where Grafana's nested modal cleanup
+   * can trigger the parent modal's onDismiss before the type switch completes.
+   * Must be called BEFORE any React state updates that would close the ConfirmModal.
+   *
+   * @see BlockFormProps.onPrepareTypeSwitch for detailed explanation
+   */
+  onPrepareTypeSwitch?: () => void;
 }
 
 /**
  * Dropdown for switching between compatible block types.
  * Only shows types that can be sensibly converted from the current type.
  * Shows a confirmation dialog when conversion may result in data loss.
+ *
+ * IMPORTANT: This component handles a tricky nested modal timing issue.
+ * When the ConfirmModal closes, Grafana's modal cleanup can trigger dismiss
+ * events on the parent modal. The onPrepareTypeSwitch callback must be called
+ * SYNCHRONOUSLY before any state changes to set a dismiss guard in the parent.
+ *
+ * @see TypeSwitchDropdownProps.onPrepareTypeSwitch for the full explanation
  */
-export function TypeSwitchDropdown({ currentType, onSwitch, blockData }: TypeSwitchDropdownProps) {
+export function TypeSwitchDropdown({
+  currentType,
+  onSwitch,
+  blockData,
+  onPrepareTypeSwitch,
+}: TypeSwitchDropdownProps) {
   const styles = useStyles2(getStyles);
 
   // State for confirmation modal
@@ -73,7 +95,7 @@ export function TypeSwitchDropdown({ currentType, onSwitch, blockData }: TypeSwi
       if (blockData) {
         const warning = getConversionWarning(blockData, type);
         if (warning) {
-          // Show confirmation dialog
+          // Show confirmation dialog - no guard needed yet, user must confirm first
           setPendingType(type);
           setWarningMessage(warning.message);
           setWarningFields(warning.lostFields);
@@ -82,20 +104,51 @@ export function TypeSwitchDropdown({ currentType, onSwitch, blockData }: TypeSwi
       }
 
       // No data loss - proceed directly
-      onSwitch(type);
+      // CRITICAL: Set dismiss guard BEFORE any deferred operations.
+      // Even without ConfirmModal, the Dropdown closing could trigger events.
+      onPrepareTypeSwitch?.();
+      // Defer to next tick so Dropdown can close before form remounts
+      setTimeout(() => onSwitch(type), 0);
     },
-    [currentType, blockData, onSwitch]
+    [currentType, blockData, onSwitch, onPrepareTypeSwitch]
   );
 
-  // Handle confirmation
+  /**
+   * Handle confirmation from the data loss warning dialog.
+   *
+   * CRITICAL TIMING: This function must set the dismiss guard SYNCHRONOUSLY
+   * before clearing pendingType. Here's why:
+   *
+   * The execution order is:
+   *   1. onPrepareTypeSwitch() - sets guard in parent (SYNCHRONOUS)
+   *   2. setPendingType(null) - schedules React update
+   *   3. React batched update runs - ConfirmModal receives isOpen=false
+   *   4. ConfirmModal unmounts, Grafana cleanup runs
+   *   5. Cleanup might trigger parent's handleDismiss - but guard is already set!
+   *   6. setTimeout fires, type switch proceeds
+   *
+   * Without step 1, the guard wouldn't be set until step 6, and the parent
+   * modal would close at step 5.
+   */
   const handleConfirm = useCallback(() => {
-    if (pendingType) {
-      onSwitch(pendingType);
-    }
+    const typeToSwitch = pendingType;
+
+    // CRITICAL: Set dismiss guard SYNCHRONOUSLY, BEFORE any state changes.
+    // This must happen before setPendingType(null) which triggers React update
+    // and ConfirmModal unmount. Grafana's modal cleanup during unmount can
+    // fire onDismiss on the parent modal - the guard prevents that dismissal.
+    onPrepareTypeSwitch?.();
+
+    // Now safe to close the ConfirmModal - guard is already set
     setPendingType(null);
     setWarningMessage(null);
     setWarningFields([]);
-  }, [pendingType, onSwitch]);
+
+    // Defer the actual switch to next tick so modal closes gracefully before form remounts
+    if (typeToSwitch) {
+      setTimeout(() => onSwitch(typeToSwitch), 0);
+    }
+  }, [pendingType, onSwitch, onPrepareTypeSwitch]);
 
   // Handle cancel
   const handleCancel = useCallback(() => {

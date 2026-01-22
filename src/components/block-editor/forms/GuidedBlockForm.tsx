@@ -33,6 +33,7 @@ export function GuidedBlockForm({
   onSplitToBlocks,
   onConvertType,
   onSwitchBlockType,
+  onPrepareTypeSwitch,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -194,7 +195,12 @@ export function GuidedBlockForm({
         {isEditing && (onSplitToBlocks || onConvertType || onSwitchBlockType) && (
           <div className={styles.footerLeft}>
             {onSwitchBlockType && (
-              <TypeSwitchDropdown currentType="guided" onSwitch={onSwitchBlockType} blockData={initialData} />
+              <TypeSwitchDropdown
+                currentType="guided"
+                onSwitch={onSwitchBlockType}
+                blockData={initialData}
+                onPrepareTypeSwitch={onPrepareTypeSwitch}
+              />
             )}
             {onSplitToBlocks && steps.length > 0 && (
               <Button

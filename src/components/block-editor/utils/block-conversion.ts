@@ -63,8 +63,8 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   image: { src: 'https://example.com/placeholder.png', alt: 'Placeholder image' },
   video: { src: 'https://example.com/placeholder.mp4' },
   interactive: { action: 'noop' },
-  multistep: { steps: [{ action: 'noop' }] },
-  guided: { steps: [{ action: 'noop' }] },
+  multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
+  guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },
 };
 
 // ============ Public API ============

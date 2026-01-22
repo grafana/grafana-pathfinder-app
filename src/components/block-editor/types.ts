@@ -108,6 +108,32 @@ export interface BlockFormProps<T extends JsonBlock = JsonBlock> {
    * The conversion utility handles field mapping and validation.
    */
   onSwitchBlockType?: (newType: BlockType) => void;
+  /**
+   * IMPORTANT: Called synchronously BEFORE a type switch begins.
+   *
+   * This callback exists to solve a subtle timing bug with nested modals:
+   *
+   * When switching block types with a confirmation dialog (ConfirmModal), there's a race
+   * condition where Grafana's modal cleanup can trigger the parent modal's onDismiss handler.
+   * The sequence is:
+   *
+   *   1. User clicks "Confirm" in ConfirmModal
+   *   2. ConfirmModal state clears (isOpen=false) → React schedules update
+   *   3. React update runs → ConfirmModal unmounts
+   *   4. Grafana's modal cleanup fires (focus restoration, backdrop cleanup, etc.)
+   *   5. This can trigger onDismiss on the PARENT modal (BlockFormModal)
+   *   6. Only AFTER this does the setTimeout fire to actually perform the type switch
+   *
+   * The problem: if a dismiss guard isn't set before step 3, the parent modal closes.
+   *
+   * Solution: TypeSwitchDropdown calls onPrepareTypeSwitch() SYNCHRONOUSLY before
+   * clearing its state, allowing BlockFormModal to set its dismiss guard before
+   * any React updates trigger modal cleanup.
+   *
+   * @see BlockFormModal.handlePrepareTypeSwitch - sets isTypeSwitchPendingRef
+   * @see TypeSwitchDropdown.handleConfirm - calls this before setPendingType(null)
+   */
+  onPrepareTypeSwitch?: () => void;
 }
 
 /**
