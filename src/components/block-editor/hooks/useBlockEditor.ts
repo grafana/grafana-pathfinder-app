@@ -39,6 +39,20 @@ const isInteractiveBlock = (block: JsonBlock): block is JsonInteractiveBlock => 
 };
 
 /**
+ * Type guard for multistep blocks
+ */
+const isMultistepBlock = (block: JsonBlock): block is JsonMultistepBlock => {
+  return block.type === 'multistep';
+};
+
+/**
+ * Type guard for guided blocks
+ */
+const isGuidedBlock = (block: JsonBlock): block is JsonGuidedBlock => {
+  return block.type === 'guided';
+};
+
+/**
  * Generate a unique ID for a block
  */
 const generateBlockId = (): string => {
@@ -1146,54 +1160,83 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
   const parseBlockId = (
     id: string,
     blocks: EditorBlock[]
-  ): { isNested: boolean; sectionId?: string; nestedIndex?: number; block?: JsonBlock } => {
+  ): {
+    isNested: boolean;
+    sectionId?: string;
+    nestedIndex?: number;
+    block?: JsonBlock;
+    rootIndex?: number;
+    sectionRootIndex?: number;
+  } => {
     // Check if it's a nested block ID
     const nestedMatch = id.match(/^(.+)-nested-(\d+)$/);
     if (nestedMatch) {
       const sectionId = nestedMatch[1];
       const nestedIndex = parseInt(nestedMatch[2], 10);
-      const section = blocks.find((b) => b.id === sectionId);
+      const sectionRootIndex = blocks.findIndex((b) => b.id === sectionId);
+      const section = sectionRootIndex >= 0 ? blocks[sectionRootIndex] : undefined;
       if (section && isSectionBlock(section.block)) {
         const nestedBlock = section.block.blocks[nestedIndex];
         if (nestedBlock) {
-          return { isNested: true, sectionId, nestedIndex, block: nestedBlock };
+          return { isNested: true, sectionId, nestedIndex, block: nestedBlock, sectionRootIndex };
         }
       }
-      return { isNested: true };
+      return { isNested: true, sectionRootIndex: sectionRootIndex >= 0 ? sectionRootIndex : undefined };
     }
 
     // It's a root-level block
-    const editorBlock = blocks.find((b) => b.id === id);
-    if (editorBlock) {
-      return { isNested: false, block: editorBlock.block };
+    const rootIndex = blocks.findIndex((b) => b.id === id);
+    if (rootIndex >= 0) {
+      return { isNested: false, block: blocks[rootIndex].block, rootIndex };
     }
     return { isNested: false };
   };
 
-  // Merge interactive blocks into a Multistep block
+  // Merge interactive/multistep/guided blocks into a Multistep block
   const mergeBlocksToMultistep = useCallback(
     (blockIds: string[]) => {
       setState((prev) => {
-        // Parse all block IDs and collect interactive blocks
+        // Parse all block IDs and collect mergeable blocks (interactive, multistep, guided)
         const parsedBlocks = blockIds
           .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
-          .filter((p) => p.block && isInteractiveBlock(p.block));
+          .filter(
+            (p) => p.block && (isInteractiveBlock(p.block) || isMultistepBlock(p.block) || isGuidedBlock(p.block))
+          );
 
         if (parsedBlocks.length < 2) {
           return prev;
         }
 
-        // Convert interactive blocks to multistep steps
-        const steps: JsonStep[] = parsedBlocks.map((p) => {
-          const interactive = p.block as JsonInteractiveBlock;
-          return {
-            action: interactive.action,
-            reftarget: interactive.reftarget,
-            ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-            // Use tooltip if available, otherwise use content
-            ...(interactive.tooltip && { tooltip: interactive.tooltip }),
-            ...(!interactive.tooltip && interactive.content && { tooltip: interactive.content }),
-          };
+        // Sort by document position: root blocks by index, nested by section position + nested index
+        parsedBlocks.sort((a, b) => {
+          // Get effective position for sorting
+          const aPos = a.isNested
+            ? (a.sectionRootIndex ?? 0) * 10000 + (a.nestedIndex ?? 0)
+            : (a.rootIndex ?? 0) * 10000;
+          const bPos = b.isNested
+            ? (b.sectionRootIndex ?? 0) * 10000 + (b.nestedIndex ?? 0)
+            : (b.rootIndex ?? 0) * 10000;
+          return aPos - bPos;
+        });
+
+        // Convert blocks to steps, extracting steps from multistep/guided blocks
+        const steps: JsonStep[] = parsedBlocks.flatMap((p) => {
+          if (isInteractiveBlock(p.block!)) {
+            const interactive = p.block as JsonInteractiveBlock;
+            return [
+              {
+                action: interactive.action,
+                reftarget: interactive.reftarget,
+                ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
+                // Use tooltip if available, otherwise use content
+                ...(interactive.tooltip && { tooltip: interactive.tooltip }),
+                ...(!interactive.tooltip && interactive.content && { tooltip: interactive.content }),
+              },
+            ];
+          }
+          // For multistep/guided blocks, extract their steps
+          const stepsBlock = p.block as JsonMultistepBlock | JsonGuidedBlock;
+          return stepsBlock.steps;
         });
 
         // Create the multistep block
@@ -1277,28 +1320,49 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange]
   );
 
-  // Merge interactive blocks into a Guided block
+  // Merge interactive/multistep/guided blocks into a Guided block
   const mergeBlocksToGuided = useCallback(
     (blockIds: string[]) => {
       setState((prev) => {
-        // Parse all block IDs and collect interactive blocks
+        // Parse all block IDs and collect mergeable blocks (interactive, multistep, guided)
         const parsedBlocks = blockIds
           .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
-          .filter((p) => p.block && isInteractiveBlock(p.block));
+          .filter(
+            (p) => p.block && (isInteractiveBlock(p.block) || isMultistepBlock(p.block) || isGuidedBlock(p.block))
+          );
 
         if (parsedBlocks.length < 2) {
           return prev;
         }
 
-        // Convert interactive blocks to guided steps
-        const steps: JsonStep[] = parsedBlocks.map((p) => {
-          const interactive = p.block as JsonInteractiveBlock;
-          return {
-            action: interactive.action,
-            reftarget: interactive.reftarget,
-            ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-            ...(interactive.content && { description: interactive.content }),
-          };
+        // Sort by document position: root blocks by index, nested by section position + nested index
+        parsedBlocks.sort((a, b) => {
+          // Get effective position for sorting
+          const aPos = a.isNested
+            ? (a.sectionRootIndex ?? 0) * 10000 + (a.nestedIndex ?? 0)
+            : (a.rootIndex ?? 0) * 10000;
+          const bPos = b.isNested
+            ? (b.sectionRootIndex ?? 0) * 10000 + (b.nestedIndex ?? 0)
+            : (b.rootIndex ?? 0) * 10000;
+          return aPos - bPos;
+        });
+
+        // Convert blocks to steps, extracting steps from multistep/guided blocks
+        const steps: JsonStep[] = parsedBlocks.flatMap((p) => {
+          if (isInteractiveBlock(p.block!)) {
+            const interactive = p.block as JsonInteractiveBlock;
+            return [
+              {
+                action: interactive.action,
+                reftarget: interactive.reftarget,
+                ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
+                ...(interactive.content && { description: interactive.content }),
+              },
+            ];
+          }
+          // For multistep/guided blocks, extract their steps
+          const stepsBlock = p.block as JsonMultistepBlock | JsonGuidedBlock;
+          return stepsBlock.steps;
         });
 
         // Create the guided block
