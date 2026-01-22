@@ -7,6 +7,7 @@
 
 export interface DataSource {
   id: number;
+  uid: string;
   name: string;
   type: string;
   url?: string;
