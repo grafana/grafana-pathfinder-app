@@ -76,6 +76,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
   const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
   const pendingSectionIdRef = useRef<string | null>(null);
+  // Multi-step grouping toggle for section recording
+  const [isSectionMultiStepGroupingEnabled, setIsSectionMultiStepGroupingEnabled] = useState(true);
 
   // Conditional branch recording state
   const [recordingIntoConditionalBranch, setRecordingIntoConditionalBranch] = useState<{
@@ -103,7 +105,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   // Action recorder for section recording
   const actionRecorder = useActionRecorder({
     excludeSelectors,
-    enableModalDetection: true,
+    enableModalDetection: isSectionMultiStepGroupingEnabled,
   });
 
   // Callback to restore recording state after page refresh
@@ -1180,6 +1182,10 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
               : `Conditional branch (${recordingIntoConditionalBranch?.branch === 'whenTrue' ? 'pass' : 'fail'})`
           }
           startingUrl={recordingStartUrl ?? undefined}
+          pendingMultiStepCount={actionRecorder.pendingGroupSteps.length}
+          isGroupingMultiStep={actionRecorder.activeModal !== null}
+          isMultiStepGroupingEnabled={isSectionMultiStepGroupingEnabled}
+          onToggleMultiStepGrouping={() => setIsSectionMultiStepGroupingEnabled((prev) => !prev)}
         />
       )}
 

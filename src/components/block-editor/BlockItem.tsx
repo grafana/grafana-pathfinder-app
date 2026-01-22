@@ -158,8 +158,9 @@ export function BlockItem({
     [handleToggleSelect]
   );
 
-  // Only allow selection of interactive blocks
-  const isSelectable = isSelectionMode && isInteractiveBlock(block.block);
+  // Allow selection of interactive, multistep, and guided blocks (for merging)
+  const isSelectable =
+    isSelectionMode && (isInteractiveBlock(block.block) || isMultistepBlock(block.block) || isGuidedBlock(block.block));
 
   const containerClass = [
     styles.container,
@@ -176,7 +177,13 @@ export function BlockItem({
         <div
           className={styles.selectionCheckbox}
           onClick={handleCheckboxClick}
-          title={isSelectable ? (isSelected ? 'Deselect' : 'Select') : 'Only interactive blocks can be selected'}
+          title={
+            isSelectable
+              ? isSelected
+                ? 'Deselect'
+                : 'Select'
+              : 'Only interactive, multistep, and guided blocks can be selected'
+          }
         >
           <Checkbox value={isSelected} disabled={!isSelectable} onChange={handleToggleSelect} />
         </div>

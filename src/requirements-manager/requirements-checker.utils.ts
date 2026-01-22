@@ -1171,7 +1171,7 @@ async function dashboardExistsCheck(check: string): Promise<CheckResultError> {
  *
  * How it works:
  * - Finds data source by name or type (case-insensitive)
- * - Calls Grafana's /api/datasources/{id}/test endpoint
+ * - Calls Grafana's /api/datasources/uid/{uid}/test endpoint
  * - Only passes if test returns status: 'success'
  *
  * Example usage:
@@ -1227,7 +1227,7 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
 
     try {
       // Use the data source test API
-      const testResult = await getBackendSrv().post(`/api/datasources/${targetDataSource.id}/test`);
+      const testResult = await getBackendSrv().post(`/api/datasources/uid/${targetDataSource.uid}/test`);
 
       const isConfigured = testResult && testResult.status === 'success';
 

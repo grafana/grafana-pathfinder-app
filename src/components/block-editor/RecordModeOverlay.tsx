@@ -52,6 +52,57 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
   }),
+  multiStepIndicator: css({
+    backgroundColor: theme.colors.warning.main,
+    color: theme.colors.warning.contrastText,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    animation: 'pulse-indicator 1.5s ease-in-out infinite',
+    '@keyframes pulse-indicator': {
+      '0%, 100%': { opacity: 1 },
+      '50%': { opacity: 0.7 },
+    },
+  }),
+  multiStepIcon: css({
+    fontSize: '12px',
+  }),
+  toggleButton: css({
+    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    border: '1px solid rgba(255, 255, 255, 0.3)',
+    borderRadius: theme.shape.radius.default,
+    color: theme.colors.error.contrastText,
+    cursor: 'pointer',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.15s ease',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+
+    '&:hover': {
+      backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    },
+  }),
+  toggleButtonEnabled: css({
+    backgroundColor: theme.colors.success.main,
+    borderColor: theme.colors.success.border,
+    color: theme.colors.success.contrastText,
+
+    '&:hover': {
+      backgroundColor: theme.colors.success.shade,
+    },
+  }),
+  toggleButtonDisabled: css({
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    opacity: 0.8,
+  }),
   bannerButton: css({
     padding: `${theme.spacing(0.25)} ${theme.spacing(1.5)}`,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -93,6 +144,14 @@ export interface RecordModeOverlayProps {
   sectionName?: string;
   /** URL where recording started - used for "Return to start" button */
   startingUrl?: string;
+  /** Number of steps pending in a multi-step group (modal/dropdown detected) */
+  pendingMultiStepCount?: number;
+  /** Whether currently grouping steps into a multi-step */
+  isGroupingMultiStep?: boolean;
+  /** Whether multi-step grouping is enabled */
+  isMultiStepGroupingEnabled?: boolean;
+  /** Called when user toggles multi-step grouping */
+  onToggleMultiStepGrouping?: () => void;
 }
 
 /**
@@ -104,6 +163,10 @@ export function RecordModeOverlay({
   isRecording = true,
   sectionName,
   startingUrl,
+  pendingMultiStepCount = 0,
+  isGroupingMultiStep = false,
+  isMultiStepGroupingEnabled = true,
+  onToggleMultiStepGrouping,
 }: RecordModeOverlayProps) {
   const styles = useStyles2(getStyles);
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
@@ -209,6 +272,16 @@ export function RecordModeOverlay({
     [startingUrl]
   );
 
+  // Handle toggle multi-step grouping button click
+  const handleToggleMultiStepGrouping = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      onToggleMultiStepGrouping?.();
+    },
+    [onToggleMultiStepGrouping]
+  );
+
   // Set up event listeners - NOTE: we do NOT capture clicks, they propagate naturally
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove, { passive: true });
@@ -252,6 +325,31 @@ export function RecordModeOverlay({
           {stepCount} {sectionName ? 'block' : 'step'}
           {stepCount !== 1 ? 's' : ''}
         </span>
+        {/* Multi-step grouping indicator - only show when enabled and actively grouping */}
+        {isMultiStepGroupingEnabled && isGroupingMultiStep && (
+          <span
+            className={styles.multiStepIndicator}
+            title="A dropdown or modal was detected - steps are being grouped"
+          >
+            <span className={styles.multiStepIcon}>📦</span>
+            Grouping: {pendingMultiStepCount} step{pendingMultiStepCount !== 1 ? 's' : ''}
+          </span>
+        )}
+        {/* Multi-step grouping toggle button */}
+        {onToggleMultiStepGrouping && (
+          <button
+            className={`${styles.toggleButton} ${isMultiStepGroupingEnabled ? styles.toggleButtonEnabled : styles.toggleButtonDisabled}`}
+            onClick={handleToggleMultiStepGrouping}
+            type="button"
+            title={
+              isMultiStepGroupingEnabled
+                ? 'Multi-step grouping is ON: Dropdown/modal clicks will be grouped together. Click to disable.'
+                : 'Multi-step grouping is OFF: All clicks recorded individually. Click to enable.'
+            }
+          >
+            {isMultiStepGroupingEnabled ? '📦 Auto-group' : '📦 No grouping'}
+          </button>
+        )}
         {startingUrl && (
           <button
             className={styles.bannerButton}
