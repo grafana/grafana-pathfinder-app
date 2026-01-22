@@ -4,6 +4,18 @@
  * Modal wrapper that renders the appropriate form for each block type.
  * Hides when element picker is active to allow clicking on page elements.
  * Handles type switch confirmation at the modal level to avoid nested modal timing bugs.
+ *
+ * ## Type Switch Architecture
+ *
+ * The ConfirmModal for type switch warnings is rendered at this level
+ * (not inside TypeSwitchDropdown) because:
+ *
+ * 1. When type switches occur, the form component unmounts and remounts
+ * 2. Grafana's Modal cleanup during unmount can trigger dismiss events
+ * 3. Keeping ConfirmModal here ensures it survives form component unmounts
+ *
+ * Flow: FormComponent -> TypeSwitchDropdown -> handleTypeSwitchRequest ->
+ *       (if warning) pendingSwitch state -> ConfirmModal -> onSwitchBlockType
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';

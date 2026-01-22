@@ -71,7 +71,7 @@ export function TypeSwitchDropdown({ currentType, onSwitch, blockData }: TypeSwi
           <Menu.Item
             key={type}
             label={meta.name}
-            icon={meta.grafanaIcon as 'file-alt'}
+            icon={meta.grafanaIcon}
             onClick={() => handleSelect(type)}
           />
         );

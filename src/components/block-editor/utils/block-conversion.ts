@@ -60,8 +60,8 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
 const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   quiz: { choices: [{ id: 'a', text: 'Option A', correct: true }] },
   input: { inputType: 'text', variableName: 'userInput' },
-  image: { src: 'https://example.com/placeholder.png', alt: 'Placeholder image' },
-  video: { src: 'https://example.com/placeholder.mp4' },
+  image: { src: '', alt: '' },
+  video: { src: '' },
   interactive: { action: 'noop' },
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
   guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },

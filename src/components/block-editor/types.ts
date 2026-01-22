@@ -4,6 +4,7 @@
  * Types for the block-based JSON guide editor.
  */
 
+import type { IconName } from '@grafana/ui';
 import type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction } from '../../types/json-guide.types';
 
 /**
@@ -28,7 +29,7 @@ export type BlockType =
 export interface BlockTypeMetadata {
   type: BlockType;
   icon: string;
-  grafanaIcon: string;
+  grafanaIcon: IconName;
   name: string;
   description: string;
 }

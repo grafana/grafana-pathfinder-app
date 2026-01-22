@@ -21,7 +21,7 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
   html: {
     type: 'html',
     icon: '🔧',
-    grafanaIcon: 'code',
+    grafanaIcon: 'brackets-curly',
     name: 'HTML',
     description: 'Raw HTML content (sanitized)',
   },
@@ -35,7 +35,7 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
   video: {
     type: 'video',
     icon: '🎬',
-    grafanaIcon: 'video',
+    grafanaIcon: 'gf-layout-simple',
     name: 'Video',
     description: 'YouTube or native video embed',
   },

@@ -260,20 +260,16 @@ describe('convertBlockType', () => {
       expect(inputResult.variableName).toBe('userInput');
     });
 
-    it('should apply default src and alt when converting to image', () => {
+    it('should throw when converting to image without src (requires user input)', () => {
+      // Converting to image requires a src field, which must be provided by the user
       const source: JsonBlock = { type: 'markdown', content: 'Test' };
-      const result = convertBlockType(source, 'image');
-      const imageResult = result as { src: string; alt?: string };
-      expect(imageResult.src).toBeDefined();
-      expect(imageResult.src.length).toBeGreaterThan(0);
+      expect(() => convertBlockType(source, 'image')).toThrow(/failed validation/);
     });
 
-    it('should apply default src when converting to video', () => {
+    it('should throw when converting to video without src (requires user input)', () => {
+      // Converting to video requires a src field, which must be provided by the user
       const source: JsonBlock = { type: 'markdown', content: 'Test' };
-      const result = convertBlockType(source, 'video');
-      const videoResult = result as { src: string };
-      expect(videoResult.src).toBeDefined();
-      expect(videoResult.src.length).toBeGreaterThan(0);
+      expect(() => convertBlockType(source, 'video')).toThrow(/failed validation/);
     });
 
     it('should apply default action when converting to interactive', () => {
@@ -341,8 +337,16 @@ describe('convertBlockType', () => {
       expect(() => convertBlockType(source, 'guided')).not.toThrow();
       expect(() => convertBlockType(source, 'quiz')).not.toThrow();
       expect(() => convertBlockType(source, 'input')).not.toThrow();
-      expect(() => convertBlockType(source, 'image')).not.toThrow();
-      expect(() => convertBlockType(source, 'video')).not.toThrow();
+      // Note: image and video require src field which must be provided by user
+      // These throw validation errors when converted without a source URL
+    });
+
+    it('should throw for image/video when no src is available', () => {
+      const source: JsonBlock = { type: 'markdown', content: 'Test content' };
+
+      // Image and video require src field - throws when converting from blocks without one
+      expect(() => convertBlockType(source, 'image')).toThrow(/failed validation/);
+      expect(() => convertBlockType(source, 'video')).toThrow(/failed validation/);
     });
   });
 });

@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
@@ -317,6 +318,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       const sourceBlock =
         editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
       if (!sourceBlock) {
+        console.warn('handleSwitchBlockType called with no active block');
         return;
       }
 
@@ -353,7 +355,10 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         setEditingBlockType(newType);
       } catch (error) {
         console.error('Failed to convert block type:', error);
-        // Could add error toast/notification here
+        getAppEvents().publish({
+          type: 'alert-error',
+          payload: ['Conversion failed', 'Could not convert to the selected block type.'],
+        });
       }
     },
     [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor]
@@ -1111,7 +1116,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
       {isBlockFormOpen && editingBlockType && (
         <BlockFormModal
-          key={`${editingBlock?.id ?? editingNestedBlock?.sectionId ?? editingConditionalBranchBlock?.conditionalId ?? 'new'}`}
           blockType={editingBlockType}
           initialData={editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block}
           onSubmit={handleBlockFormSubmitWithSection}
