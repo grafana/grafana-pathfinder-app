@@ -104,6 +104,9 @@ export function BlockFormModal({
   const [isRecordModeActive, setIsRecordModeActive] = useState(false);
   const [recordStepCount, setRecordStepCount] = useState(0);
   const [recordStartUrl, setRecordStartUrl] = useState<string | null>(null);
+  const [pendingMultiStepCount, setPendingMultiStepCount] = useState(0);
+  const [isGroupingMultiStep, setIsGroupingMultiStep] = useState(false);
+  const [isMultiStepGroupingEnabled, setIsMultiStepGroupingEnabled] = useState(true);
 
   // Store a callback to receive the selected element
   const pickerCallbackRef = useRef<((selector: string) => void) | null>(null);
@@ -111,20 +114,42 @@ export function BlockFormModal({
   // Store callbacks for record mode
   const recordStopCallbackRef = useRef<(() => void) | null>(null);
   const recordGetStepCountRef = useRef<(() => number) | null>(null);
+  const recordGetPendingMultiStepCountRef = useRef<(() => number) | null>(null);
+  const recordIsGroupingMultiStepRef = useRef<(() => boolean) | null>(null);
+  const recordIsMultiStepGroupingEnabledRef = useRef<(() => boolean) | null>(null);
+  const recordToggleMultiStepGroupingRef = useRef<(() => void) | null>(null);
 
-  // Update step count periodically while recording
+  // Update step count and multi-step grouping state periodically while recording
   useEffect(() => {
     if (!isRecordModeActive || !recordGetStepCountRef.current) {
       return;
     }
 
-    // Update step count immediately
+    // Update state immediately
     setRecordStepCount(recordGetStepCountRef.current());
+    if (recordGetPendingMultiStepCountRef.current) {
+      setPendingMultiStepCount(recordGetPendingMultiStepCountRef.current());
+    }
+    if (recordIsGroupingMultiStepRef.current) {
+      setIsGroupingMultiStep(recordIsGroupingMultiStepRef.current());
+    }
+    if (recordIsMultiStepGroupingEnabledRef.current) {
+      setIsMultiStepGroupingEnabled(recordIsMultiStepGroupingEnabledRef.current());
+    }
 
     // Update periodically while recording
     const interval = setInterval(() => {
       if (recordGetStepCountRef.current) {
         setRecordStepCount(recordGetStepCountRef.current());
+      }
+      if (recordGetPendingMultiStepCountRef.current) {
+        setPendingMultiStepCount(recordGetPendingMultiStepCountRef.current());
+      }
+      if (recordIsGroupingMultiStepRef.current) {
+        setIsGroupingMultiStep(recordIsGroupingMultiStepRef.current());
+      }
+      if (recordIsMultiStepGroupingEnabledRef.current) {
+        setIsMultiStepGroupingEnabled(recordIsMultiStepGroupingEnabledRef.current());
       }
     }, 100);
 
@@ -269,17 +294,41 @@ export function BlockFormModal({
 
   // Called by forms when they want to start/stop record mode
   const handleRecordModeChange = useCallback(
-    (isActive: boolean, options?: { onStop: () => void; getStepCount: () => number }) => {
+    (
+      isActive: boolean,
+      options?: {
+        onStop: () => void;
+        getStepCount: () => number;
+        getPendingMultiStepCount?: () => number;
+        isGroupingMultiStep?: () => boolean;
+        isMultiStepGroupingEnabled?: () => boolean;
+        toggleMultiStepGrouping?: () => void;
+      }
+    ) => {
       setIsRecordModeActive(isActive);
       if (isActive && options) {
         recordStopCallbackRef.current = options.onStop;
         recordGetStepCountRef.current = options.getStepCount;
+        recordGetPendingMultiStepCountRef.current = options.getPendingMultiStepCount ?? null;
+        recordIsGroupingMultiStepRef.current = options.isGroupingMultiStep ?? null;
+        recordIsMultiStepGroupingEnabledRef.current = options.isMultiStepGroupingEnabled ?? null;
+        recordToggleMultiStepGroupingRef.current = options.toggleMultiStepGrouping ?? null;
         setRecordStepCount(options.getStepCount());
+        setPendingMultiStepCount(options.getPendingMultiStepCount?.() ?? 0);
+        setIsGroupingMultiStep(options.isGroupingMultiStep?.() ?? false);
+        setIsMultiStepGroupingEnabled(options.isMultiStepGroupingEnabled?.() ?? true);
         setRecordStartUrl(window.location.href);
       } else if (!isActive) {
         recordStopCallbackRef.current = null;
         recordGetStepCountRef.current = null;
+        recordGetPendingMultiStepCountRef.current = null;
+        recordIsGroupingMultiStepRef.current = null;
+        recordIsMultiStepGroupingEnabledRef.current = null;
+        recordToggleMultiStepGroupingRef.current = null;
         setRecordStepCount(0);
+        setPendingMultiStepCount(0);
+        setIsGroupingMultiStep(false);
+        setIsMultiStepGroupingEnabled(true);
         setRecordStartUrl(null);
       }
     },
@@ -294,6 +343,13 @@ export function BlockFormModal({
     setIsRecordModeActive(false);
     recordStopCallbackRef.current = null;
     recordGetStepCountRef.current = null;
+  }, []);
+
+  // Called when user toggles multi-step grouping via overlay
+  const handleToggleMultiStepGrouping = useCallback(() => {
+    if (recordToggleMultiStepGroupingRef.current) {
+      recordToggleMultiStepGroupingRef.current();
+    }
   }, []);
 
   // Don't dismiss if in overlay mode - clicks should go to page, not close modal
@@ -350,6 +406,10 @@ export function BlockFormModal({
           onStop={handleRecordStop}
           stepCount={recordStepCount}
           startingUrl={recordStartUrl ?? undefined}
+          pendingMultiStepCount={pendingMultiStepCount}
+          isGroupingMultiStep={isGroupingMultiStep}
+          isMultiStepGroupingEnabled={isMultiStepGroupingEnabled}
+          onToggleMultiStepGrouping={handleToggleMultiStepGrouping}
         />
       )}
     </>

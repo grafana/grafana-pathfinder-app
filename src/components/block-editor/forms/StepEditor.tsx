@@ -5,7 +5,7 @@
  * Includes record mode integration for capturing steps automatically.
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { Button, Field, Input, Select, Badge, IconButton, Checkbox, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -211,10 +211,24 @@ export interface StepEditorProps {
   onPickerModeChange?: (isActive: boolean, onSelect?: (selector: string) => void) => void;
   /**
    * Called when record mode starts/stops.
-   * When starting (isActive=true), provides onStop callback and getStepCount function.
+   * When starting (isActive=true), provides callbacks so parent can control the overlay.
    * The parent should render RecordModeOverlay and call onStop when user clicks stop.
    */
-  onRecordModeChange?: (isActive: boolean, options?: { onStop: () => void; getStepCount: () => number }) => void;
+  onRecordModeChange?: (
+    isActive: boolean,
+    options?: {
+      onStop: () => void;
+      getStepCount: () => number;
+      /** Get number of steps pending in multi-step group (modal/dropdown detected) */
+      getPendingMultiStepCount?: () => number;
+      /** Check if currently grouping steps into a multi-step */
+      isGroupingMultiStep?: () => boolean;
+      /** Check if multi-step grouping is enabled */
+      isMultiStepGroupingEnabled?: () => boolean;
+      /** Toggle multi-step grouping on/off */
+      toggleMultiStepGrouping?: () => void;
+    }
+  ) => void;
 }
 
 /**
@@ -382,11 +396,35 @@ export function StepEditor({
     [onChange, steps]
   );
 
+  // State to control multi-step grouping on/off during recording
+  const [isMultiStepGroupingEnabled, setIsMultiStepGroupingEnabled] = useState(true);
+
   // Action recorder for record mode - exclude our overlay UI
-  const { isRecording, startRecording, stopRecording, clearRecording } = useActionRecorder({
-    excludeSelectors: RECORD_EXCLUDE_SELECTORS,
-    onStepRecorded: handleStepRecorded,
-  });
+  const { isRecording, startRecording, stopRecording, clearRecording, activeModal, pendingGroupSteps } =
+    useActionRecorder({
+      excludeSelectors: RECORD_EXCLUDE_SELECTORS,
+      onStepRecorded: handleStepRecorded,
+      enableModalDetection: isMultiStepGroupingEnabled, // Controlled by toggle
+    });
+
+  // Keep refs for multi-step grouping state so getters always return fresh values
+  const activeModalRef = useRef(activeModal);
+  const pendingGroupStepsRef = useRef(pendingGroupSteps);
+  const isMultiStepGroupingEnabledRef = useRef(isMultiStepGroupingEnabled);
+
+  // REACT: use useLayoutEffect to update refs synchronously after render
+  // This ensures polling reads the correct values before next paint
+  useLayoutEffect(() => {
+    activeModalRef.current = activeModal;
+  }, [activeModal]);
+
+  useLayoutEffect(() => {
+    pendingGroupStepsRef.current = pendingGroupSteps;
+  }, [pendingGroupSteps]);
+
+  useLayoutEffect(() => {
+    isMultiStepGroupingEnabledRef.current = isMultiStepGroupingEnabled;
+  }, [isMultiStepGroupingEnabled]);
 
   // Handle adding a manual step
   const handleAddStep = useCallback(() => {
@@ -509,6 +547,20 @@ export function StepEditor({
   // Get current step count (for overlay display) - uses ref so it always returns fresh value
   const getStepCount = useCallback(() => stepsLengthRef.current, []);
 
+  // Get pending multi-step count (for overlay display) - uses ref so it always returns fresh value
+  const getPendingMultiStepCount = useCallback(() => pendingGroupStepsRef.current.length, []);
+
+  // Check if currently grouping steps into a multi-step
+  const isGroupingMultiStep = useCallback(() => activeModalRef.current !== null, []);
+
+  // Check if multi-step grouping is enabled
+  const getIsMultiStepGroupingEnabled = useCallback(() => isMultiStepGroupingEnabledRef.current, []);
+
+  // Toggle multi-step grouping on/off
+  const toggleMultiStepGrouping = useCallback(() => {
+    setIsMultiStepGroupingEnabled((prev) => !prev);
+  }, []);
+
   // Stop record mode - notify parent to hide overlay
   const handleStopRecord = useCallback(() => {
     stopRecording();
@@ -519,10 +571,29 @@ export function StepEditor({
   const handleStartRecord = useCallback(() => {
     clearRecording();
     startRecording();
+    // Reset multi-step grouping to enabled when starting a new recording
+    setIsMultiStepGroupingEnabled(true);
     // Pass callbacks so parent can control the overlay
     // getStepCount uses a ref so it always returns fresh value
-    onRecordModeChange?.(true, { onStop: handleStopRecord, getStepCount });
-  }, [clearRecording, startRecording, onRecordModeChange, handleStopRecord, getStepCount]);
+    onRecordModeChange?.(true, {
+      onStop: handleStopRecord,
+      getStepCount,
+      getPendingMultiStepCount,
+      isGroupingMultiStep,
+      isMultiStepGroupingEnabled: getIsMultiStepGroupingEnabled,
+      toggleMultiStepGrouping,
+    });
+  }, [
+    clearRecording,
+    startRecording,
+    onRecordModeChange,
+    handleStopRecord,
+    getStepCount,
+    getPendingMultiStepCount,
+    isGroupingMultiStep,
+    getIsMultiStepGroupingEnabled,
+    toggleMultiStepGrouping,
+  ]);
 
   const getActionEmoji = (action: JsonInteractiveAction) => {
     const found = INTERACTIVE_ACTIONS.find((a) => {
