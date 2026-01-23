@@ -14,3 +14,13 @@ export type {
   UseRecordingPersistenceReturn,
   PersistedRecordingState,
 } from './useRecordingPersistence';
+
+export { useBlockListDrag } from './useBlockListDrag';
+export type {
+  UseBlockListDragOptions,
+  UseBlockListDragReturn,
+  DraggedNestedBlock,
+  DraggedConditionalBlock,
+  DragOverNestedZone,
+  DragOverConditionalZone,
+} from './useBlockListDrag';
