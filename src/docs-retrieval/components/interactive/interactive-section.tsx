@@ -142,6 +142,13 @@ export function InteractiveSection({
     return typeof window !== 'undefined' ? window.location.pathname : 'unknown';
   }, []);
 
+  // Detect if we're in preview mode (block editor preview)
+  // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
+  const isPreviewMode = useMemo(() => {
+    const contentKey = getContentKey();
+    return contentKey.indexOf("devtools") > -1 || contentKey.startsWith('block-editor://preview/');
+  }, [getContentKey]);
+
   // Persist completed steps using new user storage system
   const persistCompletedSteps = useCallback(
     (ids: Set<string>, totalSteps?: number) => {
@@ -166,23 +173,30 @@ export function InteractiveSection({
     [getContentKey, sectionId]
   );
 
-  // Toggle collapse state and persist to storage
+  // Toggle collapse state and persist to storage (skip persistence in preview mode)
   const toggleCollapse = useCallback(() => {
     const newCollapseState = !isCollapsed;
     setIsCollapsed(newCollapseState);
-    const contentKey = getContentKey();
-    sectionCollapseStorage.set(contentKey, sectionId, newCollapseState);
-  }, [isCollapsed, getContentKey, sectionId]);
+    // Only persist collapse state for non-preview mode to avoid polluting localStorage
+    if (!isPreviewMode) {
+      const contentKey = getContentKey();
+      sectionCollapseStorage.set(contentKey, sectionId, newCollapseState);
+    }
+  }, [isCollapsed, getContentKey, sectionId, isPreviewMode]);
 
-  // Restore collapse state from storage on mount
+  // Restore collapse state from storage on mount (skip in preview mode)
   useEffect(() => {
+    // Don't restore collapse state in preview mode - always start expanded
+    if (isPreviewMode) {
+      return;
+    }
     const restoreCollapseState = async () => {
       const contentKey = getContentKey();
       const savedCollapseState = await sectionCollapseStorage.get(contentKey, sectionId);
       setIsCollapsed(savedCollapseState);
     };
     restoreCollapseState();
-  }, [getContentKey, sectionId]);
+  }, [getContentKey, sectionId, isPreviewMode]);
 
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
@@ -489,7 +503,11 @@ export function InteractiveSection({
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
   // Auto-collapse section when it becomes complete (but only once, don't override manual expansion)
+  // Skip auto-collapse in preview mode - guide authors want to control collapse manually
   useEffect(() => {
+    if (isPreviewMode) {
+      return; // Don't auto-collapse in preview mode
+    }
     if (isCompleted && !hasAutoCollapsedRef.current) {
       hasAutoCollapsedRef.current = true;
       setIsCollapsed(true);
@@ -499,7 +517,7 @@ export function InteractiveSection({
       // Reset the flag when section becomes incomplete (e.g., after reset)
       hasAutoCollapsedRef.current = false;
     }
-  }, [isCompleted, getContentKey, sectionId]);
+  }, [isCompleted, getContentKey, sectionId, isPreviewMode]);
 
   // Get plugin configuration to determine if auto-detection is enabled
   const pluginContext = usePluginContext();
@@ -1396,7 +1414,8 @@ export function InteractiveSection({
       data-interactive-section="true"
     >
       <div className={`interactive-section-header${isCollapsed ? ' collapsed' : ''}`}>
-        {isCompleted && (
+        {/* Show collapse toggle when completed OR when in preview mode (for guide authors) */}
+        {(isCompleted || isPreviewMode) && (
           <button
             className="interactive-section-toggle-button"
             onClick={toggleCollapse}
