@@ -227,8 +227,9 @@ export interface ScrollTrackingTab {
   baseUrl?: string;
 }
 
-// Global tracking set to prevent duplicate events across all instances
+// Global tracking sets to prevent duplicate events across all instances
 const scrolledPages = new Set<string>();
+const bottomReachedPages = new Set<string>();
 
 /**
  * Sets up scroll tracking for a content element that fires analytics once per unique page
@@ -259,16 +260,30 @@ export function setupScrollTracking(
     scrollTimer = setTimeout(() => {
       const pageIdentifier = determinePageIdentifier(activeTab, isRecommendationsTab);
 
-      // Exit early if no valid page identifier or already tracked
-      if (!pageIdentifier || scrolledPages.has(pageIdentifier)) {
+      // Exit early if no valid page identifier
+      if (!pageIdentifier) {
         return;
       }
 
-      // Mark page as tracked and fire analytics
-      scrolledPages.add(pageIdentifier);
+      // Track "started scrolling" - fires once per document with scrolled_to_bottom: false
+      if (!scrolledPages.has(pageIdentifier)) {
+        scrolledPages.add(pageIdentifier);
+        const properties = buildScrollEventProperties(activeTab, isRecommendationsTab, pageIdentifier);
+        reportAppInteraction(UserInteraction.PanelScroll, { ...properties, scrolled_to_bottom: false });
+      }
 
-      const properties = buildScrollEventProperties(activeTab, isRecommendationsTab, pageIdentifier);
-      reportAppInteraction(UserInteraction.PanelScroll, properties);
+      // Track "reached bottom" - fires once per document with scrolled_to_bottom: true
+      if (!bottomReachedPages.has(pageIdentifier)) {
+        const threshold = 50; // pixels from absolute bottom
+        const isAtBottom =
+          contentElement.scrollTop + contentElement.clientHeight >= contentElement.scrollHeight - threshold;
+
+        if (isAtBottom) {
+          bottomReachedPages.add(pageIdentifier);
+          const properties = buildScrollEventProperties(activeTab, isRecommendationsTab, pageIdentifier);
+          reportAppInteraction(UserInteraction.PanelScroll, { ...properties, scrolled_to_bottom: true });
+        }
+      }
     }, 150); // 150ms debounce to balance responsiveness and performance
   };
 
@@ -344,6 +359,7 @@ function buildScrollEventProperties(
  */
 export function clearScrollTrackingCache(): void {
   scrolledPages.clear();
+  bottomReachedPages.clear();
 }
 
 // ============================================================================
