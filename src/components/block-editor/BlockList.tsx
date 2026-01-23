@@ -82,6 +82,16 @@ const getNestedStyles = (theme: GrafanaTheme2) => ({
     marginBottom: theme.spacing(0.5),
     backgroundColor: theme.isDark ? 'rgba(74, 144, 226, 0.03)' : 'rgba(74, 144, 226, 0.02)',
     borderRadius: `0 ${theme.shape.radius.default} ${theme.shape.radius.default} 0`,
+    overflow: 'hidden',
+    transition: 'max-height 0.2s ease-out, opacity 0.2s ease-out, padding 0.2s ease-out',
+  }),
+  nestedContainerCollapsed: css({
+    maxHeight: '0 !important',
+    padding: '0 !important',
+    marginTop: '0 !important',
+    marginBottom: '0 !important',
+    opacity: 0,
+    overflow: 'hidden',
   }),
   dropZone: css({
     minHeight: '56px',
@@ -147,6 +157,15 @@ const getConditionalStyles = (theme: GrafanaTheme2) => ({
     marginLeft: theme.spacing(3),
     marginTop: theme.spacing(0.5),
     marginBottom: theme.spacing(0.5),
+    overflow: 'hidden',
+    transition: 'max-height 0.2s ease-out, opacity 0.2s ease-out',
+  }),
+  conditionalContainerCollapsed: css({
+    maxHeight: '0 !important',
+    marginTop: '0 !important',
+    marginBottom: '0 !important',
+    opacity: 0,
+    overflow: 'hidden',
   }),
   branchContainer: css({
     padding: theme.spacing(1),
@@ -591,6 +610,22 @@ export function BlockList({
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
   const conditionalStyles = useStyles2(getConditionalStyles);
+
+  // Collapse state for sections and conditional blocks
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  // Toggle collapse state for a section or conditional block
+  const toggleCollapse = useCallback((blockId: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(blockId)) {
+        next.delete(blockId);
+      } else {
+        next.add(blockId);
+      }
+      return next;
+    });
+  }, []);
   const [hoveredInsertIndex, setHoveredInsertIndex] = useState<number | null>(null);
   const [draggedBlockId, setDraggedBlockId] = useState<string | null>(null);
   const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null);
@@ -899,7 +934,11 @@ export function BlockList({
 
       {blocks.map((block, index) => {
         const isSection = checkIsSectionBlock(block.block);
+        const isConditional = checkIsConditionalBlock(block.block);
         const sectionBlocks: JsonBlock[] = isSection ? (block.block as JsonSectionBlock).blocks : [];
+        const conditionalChildCount = isConditional
+          ? (block.block as JsonConditionalBlock).whenTrue.length + (block.block as JsonConditionalBlock).whenFalse.length
+          : 0;
 
         return (
           <React.Fragment key={block.id}>
@@ -921,18 +960,26 @@ export function BlockList({
                 isSelectionMode={isSelectionMode}
                 isSelected={selectedBlockIds.has(block.id)}
                 onToggleSelect={onToggleBlockSelection ? () => onToggleBlockSelection(block.id) : undefined}
+                isCollapsible={isSection || isConditional}
+                isCollapsed={collapsedSections.has(block.id)}
+                onToggleCollapse={() => toggleCollapse(block.id)}
+                childCount={isSection ? sectionBlocks.length : conditionalChildCount}
               />
             </div>
 
             {/* Render conditional block branches */}
             {checkIsConditionalBlock(block.block) && (
-              <div className={conditionalStyles.conditionalContainer}>
-                {/* Conditions badge */}
-                <div className={conditionalStyles.conditionsBadge}>
-                  Conditions: {(block.block as JsonConditionalBlock).conditions.join(', ')}
-                </div>
+              <>
+                {/* Conditional container - hidden when collapsed */}
+                <div
+                  className={`${conditionalStyles.conditionalContainer} ${collapsedSections.has(block.id) ? conditionalStyles.conditionalContainerCollapsed : ''}`}
+                >
+                  {/* Conditions badge */}
+                  <div className={conditionalStyles.conditionsBadge}>
+                    Conditions: {(block.block as JsonConditionalBlock).conditions.join(', ')}
+                  </div>
 
-                {/* True branch - when conditions pass */}
+                  {/* True branch - when conditions pass */}
                 <div className={`${conditionalStyles.branchContainer} ${conditionalStyles.trueBranch}`}>
                   <div className={`${conditionalStyles.branchHeader} ${conditionalStyles.branchHeaderTrue}`}>
                     <span className={conditionalStyles.branchIcon}>✓</span>
@@ -1411,14 +1458,19 @@ export function BlockList({
                   )}
                 </div>
               </div>
+              </>
             )}
 
             {/* Render nested blocks for sections */}
             {isSection && (
-              <div className={nestedStyles.nestedContainer}>
-                {sectionBlocks.length === 0 ? (
-                  <div className={nestedStyles.emptySection}>Drag blocks here or click + Add Block below</div>
-                ) : (
+              <>
+                {/* Nested container - hidden when collapsed */}
+                <div
+                  className={`${nestedStyles.nestedContainer} ${collapsedSections.has(block.id) ? nestedStyles.nestedContainerCollapsed : ''}`}
+                >
+                  {sectionBlocks.length === 0 ? (
+                    <div className={nestedStyles.emptySection}>Drag blocks here or click + Add Block below</div>
+                  ) : (
                   sectionBlocks.map((nestedBlock: JsonBlock, nestedIndex: number) => {
                     const isDropZoneActive =
                       dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex;
@@ -1559,6 +1611,7 @@ export function BlockList({
                   )}
                 </div>
               </div>
+              </>
             )}
 
             {/* Insert zone after each block */}

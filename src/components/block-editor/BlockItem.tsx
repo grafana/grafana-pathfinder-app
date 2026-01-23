@@ -45,6 +45,14 @@ export interface BlockItemProps {
   isSelected?: boolean;
   /** Called to toggle selection */
   onToggleSelect?: () => void;
+  /** Whether this block can be collapsed (sections/conditionals) */
+  isCollapsible?: boolean;
+  /** Whether the block is currently collapsed */
+  isCollapsed?: boolean;
+  /** Called to toggle collapse state */
+  onToggleCollapse?: () => void;
+  /** Number of child blocks (for tooltip) */
+  childCount?: number;
 }
 
 /**
@@ -104,6 +112,10 @@ export function BlockItem({
   isSelectionMode = false,
   isSelected = false,
   onToggleSelect,
+  isCollapsible = false,
+  isCollapsed = false,
+  onToggleCollapse,
+  childCount = 0,
 }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
@@ -156,6 +168,14 @@ export function BlockItem({
       handleToggleSelect();
     },
     [handleToggleSelect]
+  );
+
+  const handleToggleCollapse = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onToggleCollapse?.();
+    },
+    [onToggleCollapse]
   );
 
   // Allow selection of interactive, multistep, and guided blocks (for merging)
@@ -264,6 +284,19 @@ export function BlockItem({
           />
         </div>
       </div>
+
+      {/* Collapse toggle for sections/conditionals */}
+      {isCollapsible && (
+        <IconButton
+          name="angle-down"
+          size="md"
+          className={`${styles.collapseButton} ${isCollapsed ? styles.collapseButtonRotated : ''}`}
+          onClick={handleToggleCollapse}
+          tooltip={isCollapsed ? `Expand (${childCount} ${childCount === 1 ? 'block' : 'blocks'})` : 'Collapse'}
+          aria-expanded={!isCollapsed}
+          aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+        />
+      )}
     </div>
   );
 }

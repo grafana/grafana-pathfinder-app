@@ -439,6 +439,31 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.primary.transparent,
     boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
   }),
+
+  // Collapse button for sections/conditionals
+  collapseButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: theme.spacing(0.5),
+    color: theme.colors.text.secondary,
+    transition: 'all 0.15s ease',
+
+    '&:hover': {
+      color: theme.colors.text.primary,
+      backgroundColor: theme.colors.action.hover,
+    },
+
+    '& svg': {
+      transition: 'transform 0.2s ease',
+    },
+  }),
+
+  collapseButtonRotated: css({
+    '& svg': {
+      transform: 'rotate(-90deg)',
+    },
+  }),
 });
 
 /**
