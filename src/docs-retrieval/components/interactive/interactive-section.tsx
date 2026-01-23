@@ -146,7 +146,7 @@ export function InteractiveSection({
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
   const isPreviewMode = useMemo(() => {
     const contentKey = getContentKey();
-    return contentKey.indexOf("devtools") > -1 || contentKey.startsWith('block-editor://preview/');
+    return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
   }, [getContentKey]);
 
   // Persist completed steps using new user storage system
