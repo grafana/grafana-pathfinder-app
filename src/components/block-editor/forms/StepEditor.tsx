@@ -10,6 +10,7 @@ import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMe
 import { Button, Field, Input, Select, Badge, IconButton, Checkbox, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css, cx } from '@emotion/css';
+// @dnd-kit
 import {
   DndContext,
   DragEndEvent,
@@ -20,7 +21,12 @@ import {
   closestCenter,
   MeasuringStrategy,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
