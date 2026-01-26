@@ -74,11 +74,11 @@ export function ConditionalBranches({
   const conditionalBlock = block.block as JsonConditionalBlock;
 
   return (
-    <div className={`${conditionalStyles.conditionalContainer} ${isCollapsed ? conditionalStyles.conditionalContainerCollapsed : ''}`}>
+    <div
+      className={`${conditionalStyles.conditionalContainer} ${isCollapsed ? conditionalStyles.conditionalContainerCollapsed : ''}`}
+    >
       {/* Conditions badge */}
-      <div className={conditionalStyles.conditionsBadge}>
-        Conditions: {conditionalBlock.conditions.join(', ')}
-      </div>
+      <div className={conditionalStyles.conditionsBadge}>Conditions: {conditionalBlock.conditions.join(', ')}</div>
 
       {/* True branch */}
       <ConditionalBranch
@@ -197,12 +197,16 @@ function ConditionalBranch({
     disabled: isDraggingUnNestable,
   });
 
-  const isRecording = recordingIntoConditionalBranch?.conditionalId === block.id && 
-                      recordingIntoConditionalBranch?.branch === branch;
+  const isRecording =
+    recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === branch;
 
   return (
-    <div className={`${conditionalStyles.branchContainer} ${isTrue ? conditionalStyles.trueBranch : conditionalStyles.falseBranch}`}>
-      <div className={`${conditionalStyles.branchHeader} ${isTrue ? conditionalStyles.branchHeaderTrue : conditionalStyles.branchHeaderFalse}`}>
+    <div
+      className={`${conditionalStyles.branchContainer} ${isTrue ? conditionalStyles.trueBranch : conditionalStyles.falseBranch}`}
+    >
+      <div
+        className={`${conditionalStyles.branchHeader} ${isTrue ? conditionalStyles.branchHeaderTrue : conditionalStyles.branchHeaderFalse}`}
+      >
         <span className={conditionalStyles.branchIcon}>{isTrue ? '✓' : '✗'}</span>
         <span>{isTrue ? 'When conditions pass' : 'When conditions fail'}</span>
         {onConditionalBranchRecord && (
@@ -234,13 +238,15 @@ function ConditionalBranch({
               )}
               <SortableBlock
                 id={`${block.id}-${branchKey}-${nestedIndex}`}
-                data={{
-                  type: 'conditional',
-                  blockType: nestedBlock.type,
-                  index: nestedIndex,
-                  conditionalId: block.id,
-                  branch,
-                } as DragData}
+                data={
+                  {
+                    type: 'conditional',
+                    blockType: nestedBlock.type,
+                    index: nestedIndex,
+                    conditionalId: block.id,
+                    branch,
+                  } as DragData
+                }
                 disabled={isSelectionMode}
               >
                 <div style={{ marginBottom: '8px' }}>
@@ -268,7 +274,7 @@ function ConditionalBranch({
       {activeId !== null && !isDraggingUnNestable && (
         <div
           ref={setDropRef}
-          className={`${nestedStyles.dropZone} ${(isDropOver || activeDropZone === dropZoneId) ? nestedStyles.dropZoneActive : ''}`}
+          className={`${nestedStyles.dropZone} ${isDropOver || activeDropZone === dropZoneId ? nestedStyles.dropZoneActive : ''}`}
           style={{ marginTop: '8px' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px' }}>

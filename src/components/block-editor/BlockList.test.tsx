@@ -39,7 +39,11 @@ const createMarkdownBlock = (id: string, content: string): EditorBlock => ({
   block: { type: 'markdown', content },
 });
 
-const createSectionBlock = (id: string, title: string, nestedBlocks: Array<EditorBlock['block']> = []): EditorBlock => ({
+const createSectionBlock = (
+  id: string,
+  title: string,
+  nestedBlocks: Array<EditorBlock['block']> = []
+): EditorBlock => ({
   id,
   block: {
     type: 'section',
@@ -94,9 +98,7 @@ describe('BlockList', () => {
 
     it('renders section blocks', () => {
       const blocks: EditorBlock[] = [
-        createSectionBlock('section-1', 'My Section', [
-          { type: 'markdown', content: 'Nested content' },
-        ]),
+        createSectionBlock('section-1', 'My Section', [{ type: 'markdown', content: 'Nested content' }]),
       ];
 
       render(<BlockList blocks={blocks} {...defaultProps} />);
@@ -163,4 +165,3 @@ describe('BlockList', () => {
     });
   });
 });
-

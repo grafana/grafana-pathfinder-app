@@ -187,12 +187,7 @@ export interface UseBlockEditorReturn {
     toIndex?: number
   ) => void;
   /** Move a block from one section to another */
-  moveBlockBetweenSections: (
-    fromSectionId: string,
-    fromIndex: number,
-    toSectionId: string,
-    toIndex?: number
-  ) => void;
+  moveBlockBetweenSections: (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => void;
 }
 
 /**
@@ -1229,8 +1224,9 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
   }, []);
 
   /**
-   * Parse a block ID to determine if it's a nested block
-   * Nested block IDs have format: `${sectionId}-nested-${nestedIndex}`
+   * Parse a block ID to determine if it's a nested block.
+   * Nested block IDs have format: `${sectionId}-nested-${nestedIndex}`.
+   * Uses string operations instead of regex for better performance and clarity.
    */
   const parseBlockId = (
     id: string,
@@ -1243,20 +1239,27 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     rootIndex?: number;
     sectionRootIndex?: number;
   } => {
+    const NESTED_MARKER = '-nested-';
+    const markerIndex = id.lastIndexOf(NESTED_MARKER);
+
     // Check if it's a nested block ID
-    const nestedMatch = id.match(/^(.+)-nested-(\d+)$/);
-    if (nestedMatch) {
-      const sectionId = nestedMatch[1];
-      const nestedIndex = parseInt(nestedMatch[2], 10);
-      const sectionRootIndex = blocks.findIndex((b) => b.id === sectionId);
-      const section = sectionRootIndex >= 0 ? blocks[sectionRootIndex] : undefined;
-      if (section && isSectionBlock(section.block)) {
-        const nestedBlock = section.block.blocks[nestedIndex];
-        if (nestedBlock) {
-          return { isNested: true, sectionId, nestedIndex, block: nestedBlock, sectionRootIndex };
+    if (markerIndex !== -1) {
+      const sectionId = id.slice(0, markerIndex);
+      const nestedIndexStr = id.slice(markerIndex + NESTED_MARKER.length);
+      const nestedIndex = parseInt(nestedIndexStr, 10);
+
+      // Validate the index is a valid number
+      if (!isNaN(nestedIndex) && nestedIndexStr === String(nestedIndex)) {
+        const sectionRootIndex = blocks.findIndex((b) => b.id === sectionId);
+        const section = sectionRootIndex >= 0 ? blocks[sectionRootIndex] : undefined;
+        if (section && isSectionBlock(section.block)) {
+          const nestedBlock = section.block.blocks[nestedIndex];
+          if (nestedBlock) {
+            return { isNested: true, sectionId, nestedIndex, block: nestedBlock, sectionRootIndex };
+          }
         }
+        return { isNested: true, sectionRootIndex: sectionRootIndex >= 0 ? sectionRootIndex : undefined };
       }
-      return { isNested: true, sectionRootIndex: sectionRootIndex >= 0 ? sectionRootIndex : undefined };
     }
 
     // It's a root-level block

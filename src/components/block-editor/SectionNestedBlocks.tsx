@@ -77,12 +77,14 @@ export function SectionNestedBlocks({
               )}
               <SortableBlock
                 id={`${block.id}-nested-${nestedIndex}`}
-                data={{
-                  type: 'nested',
-                  blockType: nestedBlock.type,
-                  index: nestedIndex,
-                  sectionId: block.id,
-                } as DragData}
+                data={
+                  {
+                    type: 'nested',
+                    blockType: nestedBlock.type,
+                    index: nestedIndex,
+                    sectionId: block.id,
+                  } as DragData
+                }
                 disabled={isSelectionMode}
               >
                 <div style={{ marginBottom: '8px' }}>

@@ -21,11 +21,7 @@ import {
   MeasuringStrategy,
   UniqueIdentifier,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { getBlockListStyles } from './block-editor.styles';
 import { getNestedStyles, getConditionalStyles } from './BlockList.styles';
 import { BlockItem } from './BlockItem';
@@ -221,37 +217,40 @@ export function BlockList({
     setActiveDragData(event.active.data.current as DragData | null);
   }, []);
 
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { over } = event;
-    if (!over) {
-      setActiveDropZone(null);
-      if (autoExpandTimeoutRef.current) {
-        clearTimeout(autoExpandTimeoutRef.current);
-        autoExpandTimeoutRef.current = null;
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { over } = event;
+      if (!over) {
+        setActiveDropZone(null);
+        if (autoExpandTimeoutRef.current) {
+          clearTimeout(autoExpandTimeoutRef.current);
+          autoExpandTimeoutRef.current = null;
+        }
+        return;
       }
-      return;
-    }
 
-    const overId = String(over.id);
-    setActiveDropZone(overId);
+      const overId = String(over.id);
+      setActiveDropZone(overId);
 
-    // Auto-expand collapsed sections/conditionals when hovering over their drop zones
-    const overData = over.data.current as DropZoneData | undefined;
-    const blockIdToExpand = overData?.sectionId ?? overData?.conditionalId;
-    
-    if (blockIdToExpand && collapsedSections.has(blockIdToExpand)) {
-      if (autoExpandTimeoutRef.current) {
-        clearTimeout(autoExpandTimeoutRef.current);
+      // Auto-expand collapsed sections/conditionals when hovering over their drop zones
+      const overData = over.data.current as DropZoneData | undefined;
+      const blockIdToExpand = overData?.sectionId ?? overData?.conditionalId;
+
+      if (blockIdToExpand && collapsedSections.has(blockIdToExpand)) {
+        if (autoExpandTimeoutRef.current) {
+          clearTimeout(autoExpandTimeoutRef.current);
+        }
+        autoExpandTimeoutRef.current = setTimeout(() => {
+          setCollapsedSections((prev) => {
+            const next = new Set(prev);
+            next.delete(blockIdToExpand);
+            return next;
+          });
+        }, 500);
       }
-      autoExpandTimeoutRef.current = setTimeout(() => {
-        setCollapsedSections((prev) => {
-          const next = new Set(prev);
-          next.delete(blockIdToExpand);
-          return next;
-        });
-      }, 500);
-    }
-  }, [collapsedSections]);
+    },
+    [collapsedSections]
+  );
 
   // ============================================================================
   // Drop Handlers - Decomposed for clarity and testability
@@ -272,7 +271,12 @@ export function BlockList({
         if (rootBlock) {
           onNestBlock(rootBlock.id, sectionId, insertIndex);
         }
-      } else if (activeData.type === 'nested' && activeData.sectionId && activeData.sectionId !== sectionId && onMoveBlockBetweenSections) {
+      } else if (
+        activeData.type === 'nested' &&
+        activeData.sectionId &&
+        activeData.sectionId !== sectionId &&
+        onMoveBlockBetweenSections
+      ) {
         onMoveBlockBetweenSections(activeData.sectionId, activeData.index, sectionId, insertIndex);
       } else if (activeData.type === 'nested' && activeData.sectionId === sectionId && onNestedBlockMove) {
         if (activeData.index !== insertIndex && activeData.index !== insertIndex - 1) {
@@ -288,7 +292,13 @@ export function BlockList({
    * Handle drop on conditional insert zone (specific position within branch)
    */
   const handleDropOnConditionalInsert = useCallback(
-    (activeId: string, activeData: DragData, conditionalId: string, branch: 'whenTrue' | 'whenFalse', insertIndex: number) => {
+    (
+      activeId: string,
+      activeData: DragData,
+      conditionalId: string,
+      branch: 'whenTrue' | 'whenFalse',
+      insertIndex: number
+    ) => {
       // Guard against nesting sections/conditionals
       if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
         return;
@@ -306,7 +316,13 @@ export function BlockList({
             onConditionalBranchBlockMove(conditionalId, branch, activeData.index, adjustedIndex);
           }
         } else if (activeData.branch && onMoveBlockBetweenConditionalBranches) {
-          onMoveBlockBetweenConditionalBranches(conditionalId, activeData.branch, activeData.index, branch, insertIndex);
+          onMoveBlockBetweenConditionalBranches(
+            conditionalId,
+            activeData.branch,
+            activeData.index,
+            branch,
+            insertIndex
+          );
         }
       }
     },
@@ -327,7 +343,12 @@ export function BlockList({
         if (rootBlock) {
           onNestBlock(rootBlock.id, sectionId);
         }
-      } else if (activeData.type === 'nested' && activeData.sectionId && activeData.sectionId !== sectionId && onMoveBlockBetweenSections) {
+      } else if (
+        activeData.type === 'nested' &&
+        activeData.sectionId &&
+        activeData.sectionId !== sectionId &&
+        onMoveBlockBetweenSections
+      ) {
         onMoveBlockBetweenSections(activeData.sectionId, activeData.index, sectionId);
       }
     },
@@ -360,7 +381,12 @@ export function BlockList({
     (activeData: DragData, insertIndex: number) => {
       if (activeData.type === 'nested' && activeData.sectionId && onUnnestBlock) {
         onUnnestBlock(`${activeData.sectionId}-${activeData.index}`, activeData.sectionId, insertIndex);
-      } else if (activeData.type === 'conditional' && activeData.conditionalId && activeData.branch && onUnnestBlockFromConditional) {
+      } else if (
+        activeData.type === 'conditional' &&
+        activeData.conditionalId &&
+        activeData.branch &&
+        onUnnestBlockFromConditional
+      ) {
         onUnnestBlockFromConditional(activeData.conditionalId, activeData.branch, activeData.index, insertIndex);
       }
     },
@@ -381,7 +407,13 @@ export function BlockList({
       }
 
       // Nested block reordering within same section
-      if (activeData.type === 'nested' && activeData.sectionId && overData.type === 'nested' && overData.sectionId === activeData.sectionId && onNestedBlockMove) {
+      if (
+        activeData.type === 'nested' &&
+        activeData.sectionId &&
+        overData.type === 'nested' &&
+        overData.sectionId === activeData.sectionId &&
+        onNestedBlockMove
+      ) {
         if (activeData.index !== overData.index) {
           onNestedBlockMove(activeData.sectionId, activeData.index, overData.index);
         }
@@ -389,7 +421,13 @@ export function BlockList({
       }
 
       // Conditional block reordering
-      if (activeData.type === 'conditional' && activeData.conditionalId && activeData.branch && overData.type === 'conditional' && overData.conditionalId === activeData.conditionalId) {
+      if (
+        activeData.type === 'conditional' &&
+        activeData.conditionalId &&
+        activeData.branch &&
+        overData.type === 'conditional' &&
+        overData.conditionalId === activeData.conditionalId
+      ) {
         if (activeData.branch === overData.branch && onConditionalBranchBlockMove) {
           if (activeData.index !== overData.index) {
             onConditionalBranchBlockMove(activeData.conditionalId, activeData.branch, activeData.index, overData.index);
@@ -431,74 +469,91 @@ export function BlockList({
   // Main Drag End Handler
   // ============================================================================
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-    setActiveDragData(null);
-    setActiveDropZone(null);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveId(null);
+      setActiveDragData(null);
+      setActiveDropZone(null);
 
-    if (autoExpandTimeoutRef.current) {
-      clearTimeout(autoExpandTimeoutRef.current);
-      autoExpandTimeoutRef.current = null;
-    }
+      if (autoExpandTimeoutRef.current) {
+        clearTimeout(autoExpandTimeoutRef.current);
+        autoExpandTimeoutRef.current = null;
+      }
 
-    if (!over) {
-      return;
-    }
+      if (!over) {
+        return;
+      }
 
-    const activeData = active.data.current as DragData | undefined;
-    const overData = over.data.current as DragData | DropZoneData | undefined;
+      const activeData = active.data.current as DragData | undefined;
+      const overData = over.data.current as DragData | DropZoneData | undefined;
 
-    if (!activeData || !overData) {
-      return;
-    }
+      if (!activeData || !overData) {
+        return;
+      }
 
-    // Defensive: verify source block still exists
-    if (!verifyBlockExists(String(active.id), activeData)) {
-      return;
-    }
+      // Defensive: verify source block still exists
+      if (!verifyBlockExists(String(active.id), activeData)) {
+        return;
+      }
 
-    const activeIdStr = String(active.id);
+      const activeIdStr = String(active.id);
 
-    // Route to appropriate handler based on drop zone type
-    switch (overData.type) {
-      case 'section-insert':
-        if (overData.sectionId !== undefined && overData.index !== undefined) {
-          handleDropOnSectionInsert(activeIdStr, activeData, overData.sectionId, overData.index);
-        }
-        break;
+      // Route to appropriate handler based on drop zone type
+      switch (overData.type) {
+        case 'section-insert':
+          if (overData.sectionId !== undefined && overData.index !== undefined) {
+            handleDropOnSectionInsert(activeIdStr, activeData, overData.sectionId, overData.index);
+          }
+          break;
 
-      case 'conditional-insert':
-        if (overData.conditionalId !== undefined && overData.branch !== undefined && overData.index !== undefined) {
-          handleDropOnConditionalInsert(activeIdStr, activeData, overData.conditionalId, overData.branch, overData.index);
-        }
-        break;
+        case 'conditional-insert':
+          if (overData.conditionalId !== undefined && overData.branch !== undefined && overData.index !== undefined) {
+            handleDropOnConditionalInsert(
+              activeIdStr,
+              activeData,
+              overData.conditionalId,
+              overData.branch,
+              overData.index
+            );
+          }
+          break;
 
-      case 'section-drop':
-        if (overData.sectionId !== undefined) {
-          handleDropOnSectionDrop(activeIdStr, activeData, overData.sectionId);
-        }
-        break;
+        case 'section-drop':
+          if (overData.sectionId !== undefined) {
+            handleDropOnSectionDrop(activeIdStr, activeData, overData.sectionId);
+          }
+          break;
 
-      case 'conditional-drop':
-        if (overData.conditionalId !== undefined && overData.branch !== undefined) {
-          handleDropOnConditionalDrop(activeIdStr, activeData, overData.conditionalId, overData.branch);
-        }
-        break;
+        case 'conditional-drop':
+          if (overData.conditionalId !== undefined && overData.branch !== undefined) {
+            handleDropOnConditionalDrop(activeIdStr, activeData, overData.conditionalId, overData.branch);
+          }
+          break;
 
-      case 'root-zone':
-        if (overData.index !== undefined) {
-          handleDropOnRootZone(activeData, overData.index);
-        }
-        break;
+        case 'root-zone':
+          if (overData.index !== undefined) {
+            handleDropOnRootZone(activeData, overData.index);
+          }
+          break;
 
-      case 'root':
-      case 'nested':
-      case 'conditional':
-        handleSortableReorder(activeData, overData as DragData);
-        break;
-    }
-  }, [verifyBlockExists, handleDropOnSectionInsert, handleDropOnConditionalInsert, handleDropOnSectionDrop, handleDropOnConditionalDrop, handleDropOnRootZone, handleSortableReorder]);
+        case 'root':
+        case 'nested':
+        case 'conditional':
+          handleSortableReorder(activeData, overData as DragData);
+          break;
+      }
+    },
+    [
+      verifyBlockExists,
+      handleDropOnSectionInsert,
+      handleDropOnConditionalInsert,
+      handleDropOnSectionDrop,
+      handleDropOnConditionalDrop,
+      handleDropOnRootZone,
+      handleSortableReorder,
+    ]
+  );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
@@ -529,16 +584,23 @@ export function BlockList({
   );
 
   // Derive drag state flags from stored activeDragData
-  const isDraggingNestable = activeDragData !== null && (activeDragData.type === 'nested' || activeDragData.type === 'conditional');
+  const isDraggingNestable =
+    activeDragData !== null && (activeDragData.type === 'nested' || activeDragData.type === 'conditional');
 
-  const isDraggingUnNestable = activeDragData !== null && activeDragData.type === 'root' && (activeDragData.blockType === 'section' || activeDragData.blockType === 'conditional');
+  const isDraggingUnNestable =
+    activeDragData !== null &&
+    activeDragData.type === 'root' &&
+    (activeDragData.blockType === 'section' || activeDragData.blockType === 'conditional');
 
-  const isDropZoneRedundant = useCallback((zoneIndex: number) => {
-    if (!activeDragData || activeDragData.type !== 'root') {
-      return false;
-    }
-    return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
-  }, [activeDragData]);
+  const isDropZoneRedundant = useCallback(
+    (zoneIndex: number) => {
+      if (!activeDragData || activeDragData.type !== 'root') {
+        return false;
+      }
+      return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
+    },
+    [activeDragData]
+  );
 
   return (
     <DndContext
@@ -565,7 +627,9 @@ export function BlockList({
             onMouseEnter={() => setHoveredInsertIndex(0)}
             onMouseLeave={() => setHoveredInsertIndex(null)}
           >
-            <div className={`${styles.insertZoneButton} ${hoveredInsertIndex === 0 ? styles.insertZoneButtonVisible : ''}`}>
+            <div
+              className={`${styles.insertZoneButton} ${hoveredInsertIndex === 0 ? styles.insertZoneButtonVisible : ''}`}
+            >
               <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
             </div>
           </div>
@@ -665,7 +729,9 @@ export function BlockList({
                     onMouseEnter={() => setHoveredInsertIndex(index + 1)}
                     onMouseLeave={() => setHoveredInsertIndex(null)}
                   >
-                    <div className={`${styles.insertZoneButton} ${hoveredInsertIndex === index + 1 ? styles.insertZoneButtonVisible : ''}`}>
+                    <div
+                      className={`${styles.insertZoneButton} ${hoveredInsertIndex === index + 1 ? styles.insertZoneButtonVisible : ''}`}
+                    >
                       <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
                     </div>
                   </div>

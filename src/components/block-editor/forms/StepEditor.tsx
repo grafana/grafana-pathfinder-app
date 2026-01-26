@@ -836,11 +836,7 @@ export function StepEditor({
                     </div>
                   ) : (
                     /* Display view for this step - sortable via @dnd-kit */
-                    <SortableStepItem
-                      id={stepIds[index]}
-                      index={index}
-                      disabled={editingStepIndex !== null}
-                    >
+                    <SortableStepItem id={stepIds[index]} index={index} disabled={editingStepIndex !== null}>
                       {/* Drag handle */}
                       <div className={styles.dragHandle} title="Drag to reorder">
                         <span style={{ fontSize: '12px' }}>⋮⋮</span>
