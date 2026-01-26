@@ -138,6 +138,13 @@ export interface BlockListProps {
     toBranch: 'whenTrue' | 'whenFalse',
     toIndex?: number
   ) => void;
+  /** Called to move a block from one section to another */
+  onMoveBlockBetweenSections?: (
+    fromSectionId: string,
+    fromIndex: number,
+    toSectionId: string,
+    toIndex?: number
+  ) => void;
 }
 
 /**
@@ -172,6 +179,7 @@ export function BlockList({
   onNestBlockInConditional,
   onUnnestBlockFromConditional,
   onMoveBlockBetweenConditionalBranches,
+  onMoveBlockBetweenSections,
 }: BlockListProps) {
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
@@ -348,6 +356,73 @@ export function BlockList({
 
     const overId = String(over.id);
 
+    // Handle section insert zones: section-insert-{sectionId}-{index}
+    if (overId.startsWith('section-insert-')) {
+      const match = overId.match(/^section-insert-(.+)-(\d+)$/);
+      if (match) {
+        const [, sectionId, indexStr] = match;
+        const insertIndex = parseInt(indexStr, 10);
+
+        // Guard against nesting sections/conditionals
+        if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+          return;
+        }
+
+        if (activeData.type === 'root' && onNestBlock) {
+          const rootBlock = blocks.find((b) => b.id === String(active.id));
+          if (rootBlock) {
+            onNestBlock(rootBlock.id, sectionId, insertIndex);
+          }
+        } else if (activeData.type === 'nested' && activeData.sectionId && activeData.sectionId !== sectionId && onMoveBlockBetweenSections) {
+          // Moving from one section to another at specific index
+          onMoveBlockBetweenSections(activeData.sectionId, activeData.index, sectionId, insertIndex);
+        } else if (activeData.type === 'nested' && activeData.sectionId && activeData.sectionId === sectionId && onNestedBlockMove) {
+          // Reordering within same section
+          if (activeData.index !== insertIndex && activeData.index !== insertIndex - 1) {
+            // Adjust target index if moving down (after removing from source position)
+            const adjustedIndex = activeData.index < insertIndex ? insertIndex - 1 : insertIndex;
+            onNestedBlockMove(sectionId, activeData.index, adjustedIndex);
+          }
+        }
+      }
+      return;
+    }
+
+    // Handle conditional insert zones: conditional-insert-{true|false}-{conditionalId}-{index}
+    if (overId.startsWith('conditional-insert-')) {
+      const match = overId.match(/^conditional-insert-(true|false)-(.+)-(\d+)$/);
+      if (match) {
+        const [, branchStr, conditionalId, indexStr] = match;
+        const branch = branchStr === 'true' ? 'whenTrue' : 'whenFalse';
+        const insertIndex = parseInt(indexStr, 10);
+
+        // Guard against nesting sections/conditionals
+        if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+          return;
+        }
+
+        if (activeData.type === 'root' && onNestBlockInConditional) {
+          const rootBlock = blocks.find((b) => b.id === String(active.id));
+          if (rootBlock) {
+            onNestBlockInConditional(rootBlock.id, conditionalId, branch, insertIndex);
+          }
+        } else if (activeData.type === 'conditional' && activeData.conditionalId === conditionalId) {
+          // Moving within the same conditional
+          if (activeData.branch === branch && onConditionalBranchBlockMove) {
+            // Same branch - reorder
+            if (activeData.index !== insertIndex && activeData.index !== insertIndex - 1) {
+              const adjustedIndex = activeData.index < insertIndex ? insertIndex - 1 : insertIndex;
+              onConditionalBranchBlockMove(conditionalId, branch, activeData.index, adjustedIndex);
+            }
+          } else if (activeData.branch && onMoveBlockBetweenConditionalBranches) {
+            // Different branch - move between branches at specific index
+            onMoveBlockBetweenConditionalBranches(conditionalId, activeData.branch, activeData.index, branch, insertIndex);
+          }
+        }
+      }
+      return;
+    }
+
     if (overId.startsWith('section-drop-')) {
       const sectionId = overId.replace('section-drop-', '');
       
@@ -360,8 +435,9 @@ export function BlockList({
         if (rootBlock) {
           onNestBlock(rootBlock.id, sectionId);
         }
-      } else if (activeData.type === 'nested' && activeData.sectionId !== sectionId && onUnnestBlock && onNestBlock) {
-        // Moving from one section to another - needs special handling
+      } else if (activeData.type === 'nested' && activeData.sectionId && activeData.sectionId !== sectionId && onMoveBlockBetweenSections) {
+        // Moving from one section to another
+        onMoveBlockBetweenSections(activeData.sectionId, activeData.index, sectionId);
       }
       return;
     }
@@ -437,7 +513,7 @@ export function BlockList({
         }
       }
     }
-  }, [blocks, onBlockMove, onNestBlock, onUnnestBlock, onNestedBlockMove, onNestBlockInConditional, onUnnestBlockFromConditional, onConditionalBranchBlockMove, onMoveBlockBetweenConditionalBranches]);
+  }, [blocks, onBlockMove, onNestBlock, onUnnestBlock, onNestedBlockMove, onNestBlockInConditional, onUnnestBlockFromConditional, onConditionalBranchBlockMove, onMoveBlockBetweenConditionalBranches, onMoveBlockBetweenSections]);
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);

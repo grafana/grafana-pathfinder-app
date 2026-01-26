@@ -186,6 +186,13 @@ export interface UseBlockEditorReturn {
     toBranch: 'whenTrue' | 'whenFalse',
     toIndex?: number
   ) => void;
+  /** Move a block from one section to another */
+  moveBlockBetweenSections: (
+    fromSectionId: string,
+    fromIndex: number,
+    toSectionId: string,
+    toIndex?: number
+  ) => void;
 }
 
 /**
@@ -1083,6 +1090,74 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange]
   );
 
+  // Move a block from one section to another
+  const moveBlockBetweenSections = useCallback(
+    (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => {
+      if (fromSectionId === toSectionId) {
+        // Same section - use moveNestedBlock instead
+        return;
+      }
+
+      setState((prev) => {
+        const fromSectionIndex = prev.blocks.findIndex((b) => b.id === fromSectionId);
+        const toSectionIndex = prev.blocks.findIndex((b) => b.id === toSectionId);
+
+        if (fromSectionIndex === -1 || toSectionIndex === -1) {
+          return prev;
+        }
+
+        const fromSectionEditorBlock = prev.blocks[fromSectionIndex];
+        const toSectionEditorBlock = prev.blocks[toSectionIndex];
+
+        if (!isSectionBlock(fromSectionEditorBlock.block) || !isSectionBlock(toSectionEditorBlock.block)) {
+          return prev;
+        }
+
+        const fromBlocks = fromSectionEditorBlock.block.blocks;
+        if (fromIndex < 0 || fromIndex >= fromBlocks.length) {
+          return prev;
+        }
+
+        // Get the block to move
+        const blockToMove = fromBlocks[fromIndex];
+
+        // Remove from source section
+        const newFromBlocks = fromBlocks.filter((_, i) => i !== fromIndex);
+
+        // Add to target section
+        const newToBlocks = [...toSectionEditorBlock.block.blocks];
+        const insertIdx = toIndex ?? newToBlocks.length;
+        newToBlocks.splice(insertIdx, 0, blockToMove);
+
+        // Update both sections
+        const newBlocks = [...prev.blocks];
+        newBlocks[fromSectionIndex] = {
+          ...fromSectionEditorBlock,
+          block: {
+            ...fromSectionEditorBlock.block,
+            blocks: newFromBlocks,
+          },
+        };
+        newBlocks[toSectionIndex] = {
+          ...toSectionEditorBlock,
+          block: {
+            ...toSectionEditorBlock.block,
+            blocks: newToBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
   // Toggle preview mode
   const togglePreviewMode = useCallback(() => {
     setState((prev) => ({
@@ -1480,6 +1555,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       nestBlockInConditional,
       unnestBlockFromConditional,
       moveBlockBetweenConditionalBranches,
+      moveBlockBetweenSections,
     }),
     [
       state,
@@ -1512,6 +1588,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       nestBlockInConditional,
       unnestBlockFromConditional,
       moveBlockBetweenConditionalBranches,
+      moveBlockBetweenSections,
     ]
   );
 }

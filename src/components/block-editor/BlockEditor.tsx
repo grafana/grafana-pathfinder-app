@@ -590,6 +590,14 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [editor]
   );
 
+  // Handle moving a block between sections
+  const handleMoveBlockBetweenSections = useCallback(
+    (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => {
+      editor.moveBlockBetweenSections(fromSectionId, fromIndex, toSectionId, toIndex);
+    },
+    [editor]
+  );
+
   // Handle section recording toggle
   const handleSectionRecord = useCallback(
     (sectionId: string) => {
@@ -1083,6 +1091,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             onNestBlockInConditional={handleNestBlockInConditional}
             onUnnestBlockFromConditional={handleUnnestBlockFromConditional}
             onMoveBlockBetweenConditionalBranches={handleMoveBlockBetweenConditionalBranches}
+            onMoveBlockBetweenSections={handleMoveBlockBetweenSections}
           />
         ) : (
           <div className={styles.emptyState}>

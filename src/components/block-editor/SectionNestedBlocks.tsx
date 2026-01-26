@@ -11,7 +11,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { getNestedStyles } from './BlockList.styles';
 import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
-import { SortableBlock, DragData } from './dnd-helpers';
+import { SortableBlock, DragData, DroppableInsertZone } from './dnd-helpers';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
 
 export interface SectionNestedBlocksProps {
@@ -64,33 +64,42 @@ export function SectionNestedBlocks({
       ) : (
         <SortableContext items={nestedBlockIds} strategy={verticalListSortingStrategy}>
           {sectionBlocks.map((nestedBlock, nestedIndex) => (
-            <SortableBlock
-              key={`${block.id}-nested-${nestedIndex}`}
-              id={`${block.id}-nested-${nestedIndex}`}
-              data={{
-                type: 'nested',
-                blockType: nestedBlock.type,
-                index: nestedIndex,
-                sectionId: block.id,
-              } as DragData}
-              disabled={isSelectionMode}
-            >
-              <div style={{ marginBottom: '8px' }}>
-                <NestedBlockItem
-                  block={nestedBlock}
-                  onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
-                  onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
-                  onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
-                  isSelectionMode={isSelectionMode}
-                  isSelected={selectedBlockIds.has(`${block.id}-nested-${nestedIndex}`)}
-                  onToggleSelect={
-                    onToggleBlockSelection
-                      ? () => onToggleBlockSelection(`${block.id}-nested-${nestedIndex}`)
-                      : undefined
-                  }
+            <React.Fragment key={`${block.id}-nested-${nestedIndex}`}>
+              {/* Insert zone before each block (during drag only) */}
+              {activeId !== null && !isDraggingUnNestable && (
+                <DroppableInsertZone
+                  id={`section-insert-${block.id}-${nestedIndex}`}
+                  isActive={activeDropZone === `section-insert-${block.id}-${nestedIndex}`}
+                  label="📍 Insert here"
                 />
-              </div>
-            </SortableBlock>
+              )}
+              <SortableBlock
+                id={`${block.id}-nested-${nestedIndex}`}
+                data={{
+                  type: 'nested',
+                  blockType: nestedBlock.type,
+                  index: nestedIndex,
+                  sectionId: block.id,
+                } as DragData}
+                disabled={isSelectionMode}
+              >
+                <div style={{ marginBottom: '8px' }}>
+                  <NestedBlockItem
+                    block={nestedBlock}
+                    onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
+                    onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
+                    onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedBlockIds.has(`${block.id}-nested-${nestedIndex}`)}
+                    onToggleSelect={
+                      onToggleBlockSelection
+                        ? () => onToggleBlockSelection(`${block.id}-nested-${nestedIndex}`)
+                        : undefined
+                    }
+                  />
+                </div>
+              </SortableBlock>
+            </React.Fragment>
           ))}
         </SortableContext>
       )}
