@@ -11,7 +11,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { getNestedStyles } from './BlockList.styles';
 import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
-import { SortableBlock, DragData, DroppableInsertZone } from './dnd-helpers';
+import { SortableBlock, DragData, DroppableInsertZone, DropZoneData } from './dnd-helpers';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
 
 export interface SectionNestedBlocksProps {
@@ -54,6 +54,7 @@ export function SectionNestedBlocks({
 
   const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({
     id: `section-drop-${block.id}`,
+    data: { type: 'section-drop', sectionId: block.id } as DropZoneData,
     disabled: isDraggingUnNestable,
   });
 
@@ -69,6 +70,7 @@ export function SectionNestedBlocks({
               {activeId !== null && !isDraggingUnNestable && (
                 <DroppableInsertZone
                   id={`section-insert-${block.id}-${nestedIndex}`}
+                  data={{ type: 'section-insert', sectionId: block.id, index: nestedIndex }}
                   isActive={activeDropZone === `section-insert-${block.id}-${nestedIndex}`}
                   label="📍 Insert here"
                 />

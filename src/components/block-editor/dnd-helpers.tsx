@@ -26,6 +26,18 @@ export interface DragData {
 }
 
 /**
+ * Data attached to droppable zones for @dnd-kit.
+ * Using structured data eliminates ID parsing and makes the implementation type-safe.
+ */
+export interface DropZoneData {
+  type: 'root-zone' | 'section-drop' | 'section-insert' | 'conditional-drop' | 'conditional-insert';
+  index?: number;
+  sectionId?: string;
+  conditionalId?: string;
+  branch?: 'whenTrue' | 'whenFalse';
+}
+
+/**
  * Styles for @dnd-kit sortable items
  */
 export const getSortableStyles = (theme: GrafanaTheme2) => ({
@@ -128,11 +140,21 @@ export function DropIndicator({ isActive, label }: { isActive: boolean; label: s
 /**
  * Droppable insert zone component using @dnd-kit
  */
-export function DroppableInsertZone({ id, isActive, label }: { id: string; isActive: boolean; label: string }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+export function DroppableInsertZone({
+  id,
+  data,
+  isActive,
+  label,
+}: {
+  id: string;
+  data: DropZoneData;
+  isActive: boolean;
+  label: string;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id, data });
 
   return (
-    <div ref={setNodeRef} style={{ padding: '4px 0' }}>
+    <div ref={setNodeRef} style={{ padding: '6px 0' }}>
       <DropIndicator isActive={isActive || isOver} label={label} />
     </div>
   );

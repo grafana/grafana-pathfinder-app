@@ -12,7 +12,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { getNestedStyles, getConditionalStyles } from './BlockList.styles';
 import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
-import { SortableBlock, DragData, DroppableInsertZone } from './dnd-helpers';
+import { SortableBlock, DragData, DroppableInsertZone, DropZoneData } from './dnd-helpers';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
 import { type JsonConditionalBlock } from '../../types/json-guide.types';
 
@@ -193,6 +193,7 @@ function ConditionalBranch({
 
   const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({
     id: dropZoneId,
+    data: { type: 'conditional-drop', conditionalId: block.id, branch } as DropZoneData,
     disabled: isDraggingUnNestable,
   });
 
@@ -226,6 +227,7 @@ function ConditionalBranch({
               {activeId !== null && !isDraggingUnNestable && (
                 <DroppableInsertZone
                   id={`conditional-insert-${branchKey}-${block.id}-${nestedIndex}`}
+                  data={{ type: 'conditional-insert', conditionalId: block.id, branch, index: nestedIndex }}
                   isActive={activeDropZone === `conditional-insert-${branchKey}-${block.id}-${nestedIndex}`}
                   label="📍 Insert here"
                 />
