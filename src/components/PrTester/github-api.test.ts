@@ -581,10 +581,7 @@ describe('fetchPrContentFilesFromUrl', () => {
         json: () => Promise.resolve(filesResponse),
       });
 
-    await fetchPrContentFilesFromUrl(
-      'https://github.com/grafana/interactive-tutorials/pull/70',
-      controller.signal
-    );
+    await fetchPrContentFilesFromUrl('https://github.com/grafana/interactive-tutorials/pull/70', controller.signal);
 
     // Verify signal was passed through
     expect(global.fetch).toHaveBeenCalledWith(

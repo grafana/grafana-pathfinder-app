@@ -42,9 +42,7 @@ interface GitHubPrFileEntry {
 }
 
 /** Result type for PR content file fetching */
-export type FetchPrFilesResult =
-  | { success: true; files: PrContentFile[] }
-  | { success: false; error: GitHubApiError };
+export type FetchPrFilesResult = { success: true; files: PrContentFile[] } | { success: false; error: GitHubApiError };
 
 // Pattern to extract owner, repo, and PR number from GitHub PR URL
 const PR_URL_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
@@ -102,7 +100,13 @@ export function isValidPrUrl(url: string): boolean {
  */
 function extractDirectoryName(filePath: string): string {
   // Remove the content.json suffix and any trailing slashes
-  return filePath.replace(/\/?content\.json$/, '').split('/').filter(Boolean).join('/') || filePath;
+  return (
+    filePath
+      .replace(/\/?content\.json$/, '')
+      .split('/')
+      .filter(Boolean)
+      .join('/') || filePath
+  );
 }
 
 /**
@@ -303,10 +307,7 @@ export async function fetchPrContentFiles(
  * @param signal - Optional AbortSignal for request cancellation
  * @returns Result containing files or error
  */
-export async function fetchPrContentFilesFromUrl(
-  prUrl: string,
-  signal?: AbortSignal
-): Promise<FetchPrFilesResult> {
+export async function fetchPrContentFilesFromUrl(prUrl: string, signal?: AbortSignal): Promise<FetchPrFilesResult> {
   const parsed = parsePrUrl(prUrl);
 
   if (!parsed) {

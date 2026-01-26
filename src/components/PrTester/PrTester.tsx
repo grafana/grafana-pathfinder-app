@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { Box, Button, Icon, Input, Select, useStyles2 } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getPrTesterStyles } from './pr-tester.styles';
@@ -49,6 +49,22 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   // Success feedback for test action
   const [testSuccess, setTestSuccess] = useState(false);
 
+  // REACT: refs for cleanup on unmount (R1, R4)
+  const abortControllerRef = useRef<AbortController>();
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cancel any in-flight fetch request
+      abortControllerRef.current?.abort();
+      // Clear any pending success message timeout
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Persist PR URL to localStorage
   useEffect(() => {
     try {
@@ -95,10 +111,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   );
 
   // Get currently selected file object
-  const currentFile = useMemo(
-    () => files.find((f) => f.directoryName === selectedFile),
-    [files, selectedFile]
-  );
+  const currentFile = useMemo(() => files.find((f) => f.directoryName === selectedFile), [files, selectedFile]);
 
   // Handle fetch PR action
   const handleFetchPr = useCallback(async () => {
@@ -110,11 +123,20 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       return;
     }
 
+    // REACT: abort any in-flight request before starting new one (R4, R7)
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
     setFetchState('fetching');
     setError(null);
     setFiles([]);
 
-    const result = await fetchPrContentFilesFromUrl(cleanedUrl);
+    const result = await fetchPrContentFilesFromUrl(cleanedUrl, abortControllerRef.current.signal);
+
+    // Ignore aborted results - component may have unmounted or URL changed
+    if (!result.success && result.error.type === 'aborted') {
+      return;
+    }
 
     if (result.success) {
       setFiles(result.files);
@@ -134,8 +156,8 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     onOpenDocsPage(currentFile.rawUrl, currentFile.directoryName);
     setTestSuccess(true);
 
-    // Clear success message after 2 seconds
-    setTimeout(() => setTestSuccess(false), 2000);
+    // REACT: track timeout for cleanup on unmount (R1)
+    successTimeoutRef.current = setTimeout(() => setTestSuccess(false), 2000);
   }, [currentFile, onOpenDocsPage]);
 
   // Handle URL input change - reset state when URL changes
