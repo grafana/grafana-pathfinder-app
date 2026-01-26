@@ -39,6 +39,8 @@ describe('Condition Validator', () => {
         ['var-policyAccepted:true', ParameterizedRequirementPrefix.VARIABLE],
         ['var-datasourceName:*', ParameterizedRequirementPrefix.VARIABLE],
         ['var-region:us-east-1', ParameterizedRequirementPrefix.VARIABLE],
+        ['renderer:pathfinder', ParameterizedRequirementPrefix.RENDERER],
+        ['renderer:website', ParameterizedRequirementPrefix.RENDERER],
       ];
 
       it.each(validParameterizedConditions)('accepts parameterized: %s', (condition) => {
@@ -165,6 +167,15 @@ describe('Condition Validator', () => {
         expect(issues).toHaveLength(1);
         expect(issues[0].code).toBe('invalid_format');
         expect(issues[0].condition).toBe('has-role:ADMIN');
+      });
+
+      it('rejects renderer with invalid value', () => {
+        const issues = validateConditionString('renderer:invalid', ['test']);
+        expect(issues).toHaveLength(1);
+        expect(issues[0].code).toBe('invalid_format');
+        expect(issues[0].condition).toBe('renderer:invalid');
+        expect(issues[0].message).toContain('pathfinder');
+        expect(issues[0].message).toContain('website');
       });
     });
 
@@ -402,6 +413,7 @@ describe('Condition Types Coverage', () => {
     ParameterizedRequirementPrefix.MIN_VERSION,
     ParameterizedRequirementPrefix.SECTION_COMPLETED,
     ParameterizedRequirementPrefix.VARIABLE,
+    ParameterizedRequirementPrefix.RENDERER,
   ]);
 
   it('all FixedRequirementType values should be tested', () => {

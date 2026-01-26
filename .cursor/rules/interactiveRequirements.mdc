@@ -106,6 +106,11 @@ the docs-plugin could check that condition was true.
 - **Usage**: Looks for a DOM element with the specified ID and checks if it has the `completed` CSS class
 - **Example**: `data-requirements="section-completed:setup-datasource"`
 
+#### `renderer:value`
+- **Purpose**: Conditionally shows content based on renderer context (app vs website)
+- **Usage**: Supports `renderer:pathfinder` (always true in app) or `renderer:website` (always false in app). Different tools evaluate this differently to render different content in different contexts.
+- **Example**: `data-requirements="renderer:pathfinder"` - only show in pathfinder app context
+
 ### Combining Requirements
 
 Multiple requirements can be combined:

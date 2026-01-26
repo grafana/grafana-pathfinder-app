@@ -31,6 +31,8 @@ export enum ParameterizedRequirementPrefix {
   SECTION_COMPLETED = 'section-completed:',
   /** Guide response variable check (e.g., var-policyAccepted:true) */
   VARIABLE = 'var-',
+  /** Renderer context check (e.g., renderer:pathfinder, renderer:website) */
+  RENDERER = 'renderer:',
 }
 
 // Helper type for parameterized requirements
