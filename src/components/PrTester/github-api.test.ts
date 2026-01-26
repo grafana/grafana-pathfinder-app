@@ -330,6 +330,187 @@ describe('fetchPrContentFiles', () => {
       expect(result.error.message).toContain('head SHA');
     }
   });
+
+  it('should return forbidden error for 403 without rate limit on PR fetch', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: {
+        get: (name: string) => (name === 'X-RateLimit-Remaining' ? '50' : null), // Not rate limited
+      },
+    });
+
+    const result = await fetchPrContentFiles('org', 'private-repo', 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe('forbidden');
+      expect(result.error.message).toContain('Access denied');
+    }
+  });
+
+  it('should return forbidden error for 403 without rate limit on files fetch', async () => {
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        headers: {
+          get: (name: string) => (name === 'X-RateLimit-Remaining' ? '50' : null), // Not rate limited
+        },
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe('forbidden');
+      expect(result.error.message).toContain('Access denied');
+    }
+  });
+
+  it('should return aborted error when request is cancelled', async () => {
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+
+    (global.fetch as jest.Mock).mockRejectedValueOnce(abortError);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe('aborted');
+      expect(result.error.message).toBe('Request cancelled');
+    }
+  });
+
+  it('should pass AbortSignal to fetch calls', async () => {
+    const controller = new AbortController();
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const filesResponse = [{ filename: 'guide/content.json', status: 'added' }];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    await fetchPrContentFiles('org', 'repo', 1, controller.signal);
+
+    // Verify signal was passed to both fetch calls
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal })
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal })
+    );
+  });
+
+  it('should return api_error when files response is not an array', async () => {
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const malformedResponse = { error: 'something went wrong' }; // Not an array
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(malformedResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe('api_error');
+      expect(result.error.message).toContain('Unexpected API response format');
+    }
+  });
+
+  it('should limit returned files to 5 content.json files maximum', async () => {
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    // Create 8 content.json files
+    const filesResponse = Array.from({ length: 8 }, (_, i) => ({
+      filename: `guide-${i + 1}/content.json`,
+      status: 'added',
+    }));
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(5);
+      // Verify first 5 files are returned
+      expect(result.files[0].directoryName).toBe('guide-1');
+      expect(result.files[4].directoryName).toBe('guide-5');
+    }
+  });
+
+  it('should handle files with invalid filename gracefully', async () => {
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const filesResponse = [
+      { filename: 'valid/content.json', status: 'added' },
+      { filename: null, status: 'added' }, // Invalid filename
+      { status: 'added' }, // Missing filename
+      { filename: 123, status: 'added' }, // Non-string filename
+      { filename: 'another/content.json', status: 'modified' },
+    ];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Only valid content.json files should be included
+      expect(result.files).toHaveLength(2);
+      expect(result.files[0].directoryName).toBe('valid');
+      expect(result.files[1].directoryName).toBe('another');
+    }
+  });
 });
 
 describe('fetchPrContentFilesFromUrl', () => {
@@ -380,6 +561,35 @@ describe('fetchPrContentFilesFromUrl', () => {
     expect(global.fetch).toHaveBeenCalledWith(
       'https://api.github.com/repos/grafana/interactive-tutorials/pulls/70',
       expect.any(Object)
+    );
+  });
+
+  it('should forward AbortSignal to fetchPrContentFiles', async () => {
+    const controller = new AbortController();
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const filesResponse = [{ filename: 'guide/content.json', status: 'added' }];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    await fetchPrContentFilesFromUrl(
+      'https://github.com/grafana/interactive-tutorials/pull/70',
+      controller.signal
+    );
+
+    // Verify signal was passed through
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal })
     );
   });
 });

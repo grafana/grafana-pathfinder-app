@@ -24,9 +24,22 @@ export type GitHubApiError =
   | { type: 'invalid_url'; message: string }
   | { type: 'not_found'; message: string }
   | { type: 'rate_limited'; message: string }
+  | { type: 'forbidden'; message: string }
+  | { type: 'aborted'; message: string }
   | { type: 'network_error'; message: string }
   | { type: 'api_error'; message: string; status: number }
   | { type: 'no_files'; message: string };
+
+/** GitHub API response for PR metadata */
+interface GitHubPrMetadata {
+  head?: { sha?: string };
+}
+
+/** GitHub API response for a file in a PR */
+interface GitHubPrFileEntry {
+  filename: string;
+  status: string;
+}
 
 /** Result type for PR content file fetching */
 export type FetchPrFilesResult =
@@ -35,6 +48,15 @@ export type FetchPrFilesResult =
 
 // Pattern to extract owner, repo, and PR number from GitHub PR URL
 const PR_URL_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
+
+/**
+ * Maximum content.json files to return from a PR.
+ *
+ * This is a deliberate limitation. The PR Tester is designed for testing
+ * individual guides during development, not for bulk review of large PRs.
+ * Supporting more files would require pagination and create poor UX.
+ */
+const MAX_CONTENT_FILES = 5;
 
 /**
  * Parse a GitHub PR URL and extract components
@@ -90,15 +112,20 @@ function extractDirectoryName(filePath: string): string {
  * 1. GET /repos/{owner}/{repo}/pulls/{number} - Get head SHA
  * 2. GET /repos/{owner}/{repo}/pulls/{number}/files - Get changed files
  *
+ * Note: Returns at most MAX_CONTENT_FILES (5) files. This is a deliberate
+ * limitation for this dev tool.
+ *
  * @param owner - Repository owner
  * @param repo - Repository name
  * @param prNumber - Pull request number
+ * @param signal - Optional AbortSignal for request cancellation
  * @returns Result containing files or error
  */
 export async function fetchPrContentFiles(
   owner: string,
   repo: string,
-  prNumber: number
+  prNumber: number,
+  signal?: AbortSignal
 ): Promise<FetchPrFilesResult> {
   const baseUrl = 'https://api.github.com';
 
@@ -108,6 +135,7 @@ export async function fetchPrContentFiles(
       headers: {
         Accept: 'application/vnd.github.v3+json',
       },
+      signal,
     });
 
     if (prResponse.status === 404) {
@@ -131,6 +159,14 @@ export async function fetchPrContentFiles(
           },
         };
       }
+      // Not rate limited - likely access denied (private repo)
+      return {
+        success: false,
+        error: {
+          type: 'forbidden',
+          message: 'Access denied. The repository may be private.',
+        },
+      };
     }
 
     if (!prResponse.ok) {
@@ -144,7 +180,7 @@ export async function fetchPrContentFiles(
       };
     }
 
-    const prData = await prResponse.json();
+    const prData: GitHubPrMetadata = await prResponse.json();
     const headSha = prData.head?.sha;
 
     if (!headSha) {
@@ -163,6 +199,7 @@ export async function fetchPrContentFiles(
       headers: {
         Accept: 'application/vnd.github.v3+json',
       },
+      signal,
     });
 
     if (filesResponse.status === 403) {
@@ -176,6 +213,14 @@ export async function fetchPrContentFiles(
           },
         };
       }
+      // Not rate limited - likely access denied
+      return {
+        success: false,
+        error: {
+          type: 'forbidden',
+          message: 'Access denied. The repository may be private.',
+        },
+      };
     }
 
     if (!filesResponse.ok) {
@@ -189,12 +234,25 @@ export async function fetchPrContentFiles(
       };
     }
 
-    const filesData = await filesResponse.json();
+    const filesData: unknown = await filesResponse.json();
 
-    // Filter for content.json files and construct raw URLs
-    const contentFiles: PrContentFile[] = filesData
-      .filter((file: { filename: string }) => file.filename.endsWith('content.json'))
-      .map((file: { filename: string; status: string }) => ({
+    // Runtime validation: ensure response is an array
+    if (!Array.isArray(filesData)) {
+      return {
+        success: false,
+        error: {
+          type: 'api_error',
+          message: 'Unexpected API response format',
+          status: 0,
+        },
+      };
+    }
+
+    // Filter for content.json files, limit to MAX_CONTENT_FILES, and construct raw URLs
+    const contentFiles: PrContentFile[] = (filesData as GitHubPrFileEntry[])
+      .filter((file) => typeof file.filename === 'string' && file.filename.endsWith('content.json'))
+      .slice(0, MAX_CONTENT_FILES) // Deliberate limit - see MAX_CONTENT_FILES comment
+      .map((file) => ({
         directoryName: extractDirectoryName(file.filename),
         rawUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${headSha}/${file.filename}`,
         status: file.status as PrContentFile['status'],
@@ -215,6 +273,16 @@ export async function fetchPrContentFiles(
       files: contentFiles,
     };
   } catch (error) {
+    // Handle abort errors separately
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        success: false,
+        error: {
+          type: 'aborted',
+          message: 'Request cancelled',
+        },
+      };
+    }
     // Network errors (offline, DNS failure, etc.)
     return {
       success: false,
@@ -232,9 +300,13 @@ export async function fetchPrContentFiles(
  * Convenience function that combines URL parsing and API fetching.
  *
  * @param prUrl - GitHub PR URL
+ * @param signal - Optional AbortSignal for request cancellation
  * @returns Result containing files or error
  */
-export async function fetchPrContentFilesFromUrl(prUrl: string): Promise<FetchPrFilesResult> {
+export async function fetchPrContentFilesFromUrl(
+  prUrl: string,
+  signal?: AbortSignal
+): Promise<FetchPrFilesResult> {
   const parsed = parsePrUrl(prUrl);
 
   if (!parsed) {
@@ -247,5 +319,5 @@ export async function fetchPrContentFilesFromUrl(prUrl: string): Promise<FetchPr
     };
   }
 
-  return fetchPrContentFiles(parsed.owner, parsed.repo, parsed.prNumber);
+  return fetchPrContentFiles(parsed.owner, parsed.repo, parsed.prNumber, signal);
 }
