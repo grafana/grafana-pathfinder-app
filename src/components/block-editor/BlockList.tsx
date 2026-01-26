@@ -57,7 +57,7 @@ export interface BlockListProps {
   /** Called to nest a block into a section */
   onNestBlock?: (blockId: string, sectionId: string, insertIndex?: number) => void;
   /** Called to unnest a block from a section */
-  onUnnestBlock?: (nestedBlockId: string, sectionId: string) => void;
+  onUnnestBlock?: (nestedBlockId: string, sectionId: string, insertAtRootIndex?: number) => void;
   /** Called to insert a block directly into a section */
   onInsertBlockInSection?: (type: BlockType, sectionId: string, index?: number) => void;
   /** Called to edit a nested block */
@@ -316,9 +316,34 @@ export function BlockList({
       return;
     }
 
-    const activeData = getDragData(active.id);
+    // Use @dnd-kit's data prop directly instead of parsing IDs
+    const activeData = active.data.current as DragData | undefined;
     if (!activeData) {
       return;
+    }
+
+    // Defensive: verify source block still exists for root blocks
+    if (activeData.type === 'root') {
+      const blockExists = blocks.some((b) => b.id === String(active.id));
+      if (!blockExists) {
+        return;
+      }
+    }
+
+    // Defensive: verify section still exists for nested blocks
+    if (activeData.type === 'nested' && activeData.sectionId) {
+      const sectionExists = blocks.some((b) => b.id === activeData.sectionId);
+      if (!sectionExists) {
+        return;
+      }
+    }
+
+    // Defensive: verify conditional still exists for conditional blocks
+    if (activeData.type === 'conditional' && activeData.conditionalId) {
+      const conditionalExists = blocks.some((b) => b.id === activeData.conditionalId);
+      if (!conditionalExists) {
+        return;
+      }
     }
 
     const overId = String(over.id);
@@ -365,7 +390,7 @@ export function BlockList({
       const insertIndex = parseInt(overId.replace('root-zone-', ''), 10);
 
       if (activeData.type === 'nested' && activeData.sectionId && onUnnestBlock) {
-        onUnnestBlock(`${activeData.sectionId}-${activeData.index}`, activeData.sectionId);
+        onUnnestBlock(`${activeData.sectionId}-${activeData.index}`, activeData.sectionId, insertIndex);
       } else if (activeData.type === 'conditional' && activeData.conditionalId && activeData.branch && onUnnestBlockFromConditional) {
         onUnnestBlockFromConditional(activeData.conditionalId, activeData.branch, activeData.index, insertIndex);
       }
@@ -373,7 +398,8 @@ export function BlockList({
     }
 
     if (activeData.type === 'root') {
-      const overData = getDragData(over.id);
+      // Use @dnd-kit's data prop directly instead of parsing IDs
+      const overData = over.data.current as DragData | undefined;
       if (overData?.type === 'root' && activeData.index !== overData.index) {
         onBlockMove(activeData.index, overData.index);
       }
@@ -381,42 +407,37 @@ export function BlockList({
     }
 
     if (activeData.type === 'nested' && activeData.sectionId) {
-      const overIdMatch = overId.match(/^(.+)-nested-(\d+)$/);
-      if (overIdMatch && overIdMatch[1] === activeData.sectionId && onNestedBlockMove) {
-        const toIndex = parseInt(overIdMatch[2], 10);
+      // Use @dnd-kit's data prop directly instead of parsing IDs
+      const overData = over.data.current as DragData | undefined;
+      if (overData?.type === 'nested' && overData.sectionId === activeData.sectionId && onNestedBlockMove) {
+        const toIndex = overData.index;
         if (activeData.index !== toIndex) {
-          const adjustedTo = toIndex > activeData.index ? toIndex : toIndex;
-          onNestedBlockMove(activeData.sectionId, activeData.index, adjustedTo);
+          onNestedBlockMove(activeData.sectionId, activeData.index, toIndex);
         }
       }
       return;
     }
 
     if (activeData.type === 'conditional' && activeData.conditionalId && activeData.branch) {
-      const overMatch = overId.match(/^(.+)-(true|false)-(\d+)$/);
-      if (overMatch) {
-        const [, overConditionalId, overBranchStr, overIndexStr] = overMatch;
-        const overBranch = overBranchStr === 'true' ? 'whenTrue' : 'whenFalse';
-        const overIndex = parseInt(overIndexStr, 10);
-
-        if (overConditionalId === activeData.conditionalId) {
-          if (activeData.branch === overBranch && onConditionalBranchBlockMove) {
-            if (activeData.index !== overIndex) {
-              onConditionalBranchBlockMove(activeData.conditionalId, activeData.branch, activeData.index, overIndex);
-            }
-          } else if (onMoveBlockBetweenConditionalBranches) {
-            onMoveBlockBetweenConditionalBranches(
-              activeData.conditionalId,
-              activeData.branch,
-              activeData.index,
-              overBranch,
-              overIndex
-            );
+      // Use @dnd-kit's data prop directly instead of parsing IDs
+      const overData = over.data.current as DragData | undefined;
+      if (overData?.type === 'conditional' && overData.conditionalId === activeData.conditionalId) {
+        if (activeData.branch === overData.branch && onConditionalBranchBlockMove) {
+          if (activeData.index !== overData.index) {
+            onConditionalBranchBlockMove(activeData.conditionalId, activeData.branch, activeData.index, overData.index);
           }
+        } else if (overData.branch && onMoveBlockBetweenConditionalBranches) {
+          onMoveBlockBetweenConditionalBranches(
+            activeData.conditionalId,
+            activeData.branch,
+            activeData.index,
+            overData.branch,
+            overData.index
+          );
         }
       }
     }
-  }, [blocks, getDragData, onBlockMove, onNestBlock, onUnnestBlock, onNestedBlockMove, onNestBlockInConditional, onUnnestBlockFromConditional, onConditionalBranchBlockMove, onMoveBlockBetweenConditionalBranches]);
+  }, [blocks, onBlockMove, onNestBlock, onUnnestBlock, onNestedBlockMove, onNestBlockInConditional, onUnnestBlockFromConditional, onConditionalBranchBlockMove, onMoveBlockBetweenConditionalBranches]);
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);

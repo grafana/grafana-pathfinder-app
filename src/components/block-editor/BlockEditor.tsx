@@ -442,8 +442,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
   // Handle unnesting a block from a section
   const handleUnnestBlock = useCallback(
-    (nestedBlockId: string, sectionId: string) => {
-      editor.unnestBlockFromSection(nestedBlockId, sectionId);
+    (nestedBlockId: string, sectionId: string, insertAtRootIndex?: number) => {
+      editor.unnestBlockFromSection(nestedBlockId, sectionId, insertAtRootIndex);
     },
     [editor]
   );

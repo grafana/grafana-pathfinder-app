@@ -96,7 +96,7 @@ export interface UseBlockEditorReturn {
   /** Move a block into a section at a specific index */
   nestBlockInSection: (blockId: string, sectionId: string, insertIndex?: number) => void;
   /** Move a block out of a section back to root level */
-  unnestBlockFromSection: (blockId: string, sectionId: string, insertAfterSection?: boolean) => void;
+  unnestBlockFromSection: (blockId: string, sectionId: string, insertAtRootIndex?: number) => void;
   /** Add a new block directly to a section */
   addBlockToSection: (block: JsonBlock, sectionId: string, index?: number) => string;
   /** Update a nested block */
@@ -419,7 +419,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
   // Unnest a block from a section back to root level
   const unnestBlockFromSection = useCallback(
-    (blockId: string, sectionId: string, insertAfterSection = true) => {
+    (blockId: string, sectionId: string, insertAtRootIndex?: number) => {
       setState((prev) => {
         const sectionIndex = prev.blocks.findIndex((b) => b.id === sectionId);
         if (sectionIndex === -1) {
@@ -451,13 +451,13 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           },
         };
 
-        // Create new EditorBlock and insert after section
+        // Create new EditorBlock and insert at specified index (or after section if not specified)
         const newEditorBlock: EditorBlock = {
           id: generateBlockId(),
           block: blockToMove,
         };
 
-        const insertIdx = insertAfterSection ? sectionIndex + 1 : sectionIndex;
+        const insertIdx = insertAtRootIndex ?? sectionIndex + 1;
         newBlocks.splice(insertIdx, 0, newEditorBlock);
 
         const newState = {
