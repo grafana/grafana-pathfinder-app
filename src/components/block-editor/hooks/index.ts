@@ -1,5 +1,8 @@
 /**
  * Block Editor Hooks
+ *
+ * Note: useBlockListDrag has been removed as part of the @dnd-kit migration.
+ * Drag-and-drop functionality is now handled by @dnd-kit components in the dnd/ folder.
  */
 
 export { useBlockEditor } from './useBlockEditor';
@@ -14,13 +17,3 @@ export type {
   UseRecordingPersistenceReturn,
   PersistedRecordingState,
 } from './useRecordingPersistence';
-
-export { useBlockListDrag } from './useBlockListDrag';
-export type {
-  UseBlockListDragOptions,
-  UseBlockListDragReturn,
-  DraggedNestedBlock,
-  DraggedConditionalBlock,
-  DragOverNestedZone,
-  DragOverConditionalZone,
-} from './useBlockListDrag';

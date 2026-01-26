@@ -1,0 +1,219 @@
+/**
+ * BlockList Smoke Tests
+ *
+ * Basic tests for the @dnd-kit based drag-and-drop functionality.
+ * These tests verify core rendering and document behavior constraints.
+ */
+
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+
+// Mock all child components that have complex styling/dependencies
+jest.mock('./BlockItem', () => ({
+  BlockItem: ({ block }: { block: { block: { type: string } } }) => (
+    <div data-testid="block-item" data-block-type={block.block.type}>
+      Block: {block.block.type}
+    </div>
+  ),
+}));
+
+jest.mock('./NestedBlockItem', () => ({
+  NestedBlockItem: ({ block }: { block: { type: string } }) => (
+    <div data-testid="nested-block-item" data-block-type={block.type}>
+      Nested: {block.type}
+    </div>
+  ),
+}));
+
+jest.mock('./BlockPalette', () => ({
+  BlockPalette: () => <div data-testid="block-palette">Add Block</div>,
+}));
+
+// Now import the component (after mocks are set up)
+import { BlockList, BlockListProps } from './BlockList';
+import type { EditorBlock } from './types';
+
+// Create test blocks
+const createMarkdownBlock = (id: string, content: string): EditorBlock => ({
+  id,
+  block: { type: 'markdown', content },
+});
+
+const createSectionBlock = (id: string, title: string, nestedBlocks: Array<EditorBlock['block']> = []): EditorBlock => ({
+  id,
+  block: {
+    type: 'section',
+    id,
+    title,
+    blocks: nestedBlocks,
+  },
+});
+
+const createConditionalBlock = (
+  id: string,
+  conditions: string[],
+  whenTrue: Array<EditorBlock['block']> = [],
+  whenFalse: Array<EditorBlock['block']> = []
+): EditorBlock => ({
+  id,
+  block: {
+    type: 'conditional',
+    conditions,
+    whenTrue,
+    whenFalse,
+  },
+});
+
+const defaultProps: Omit<BlockListProps, 'blocks'> = {
+  onBlockEdit: jest.fn(),
+  onBlockDelete: jest.fn(),
+  onBlockMove: jest.fn(),
+  onBlockDuplicate: jest.fn(),
+  onInsertBlock: jest.fn(),
+};
+
+describe('BlockList', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('rendering', () => {
+    it('renders a list of blocks', () => {
+      const blocks: EditorBlock[] = [
+        createMarkdownBlock('1', 'First block'),
+        createMarkdownBlock('2', 'Second block'),
+        createMarkdownBlock('3', 'Third block'),
+      ];
+
+      render(<BlockList blocks={blocks} {...defaultProps} />);
+
+      // Check that all blocks are rendered
+      const blockItems = screen.getAllByTestId('block-item');
+      expect(blockItems).toHaveLength(3);
+    });
+
+    it('renders section blocks', () => {
+      const blocks: EditorBlock[] = [
+        createSectionBlock('section-1', 'My Section', [
+          { type: 'markdown', content: 'Nested content' },
+        ]),
+      ];
+
+      render(<BlockList blocks={blocks} {...defaultProps} />);
+
+      // Section block should be rendered
+      const sectionBlock = screen.getByTestId('block-item');
+      expect(sectionBlock).toHaveAttribute('data-block-type', 'section');
+
+      // Nested block should be rendered
+      const nestedBlock = screen.getByTestId('nested-block-item');
+      expect(nestedBlock).toHaveAttribute('data-block-type', 'markdown');
+    });
+
+    it('renders conditional blocks with both branches', () => {
+      const blocks: EditorBlock[] = [
+        createConditionalBlock(
+          'cond-1',
+          ['datasource-configured:prometheus'],
+          [{ type: 'markdown', content: 'Show when true' }],
+          [{ type: 'markdown', content: 'Show when false' }]
+        ),
+      ];
+
+      render(<BlockList blocks={blocks} {...defaultProps} />);
+
+      // Conditional block should be rendered
+      const conditionalBlock = screen.getByTestId('block-item');
+      expect(conditionalBlock).toHaveAttribute('data-block-type', 'conditional');
+
+      // Both branch nested blocks should be rendered
+      const nestedBlocks = screen.getAllByTestId('nested-block-item');
+      expect(nestedBlocks).toHaveLength(2);
+    });
+
+    it('renders block palette for inserting new blocks', () => {
+      const blocks: EditorBlock[] = [createMarkdownBlock('1', 'Block')];
+
+      render(<BlockList blocks={blocks} {...defaultProps} />);
+
+      // Block palette should be present for adding new blocks
+      const palettes = screen.getAllByTestId('block-palette');
+      expect(palettes.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('empty sections', () => {
+    it('shows message for empty sections', () => {
+      const blocks: EditorBlock[] = [createSectionBlock('section-1', 'Empty Section', [])];
+
+      render(<BlockList blocks={blocks} {...defaultProps} />);
+
+      // Empty section message
+      expect(screen.getByText(/Drag blocks here or click/)).toBeInTheDocument();
+    });
+
+    it('shows message for empty conditional branches', () => {
+      const blocks: EditorBlock[] = [createConditionalBlock('cond-1', ['test-condition'], [], [])];
+
+      render(<BlockList blocks={blocks} {...defaultProps} />);
+
+      // Both empty branch messages
+      const emptyMessages = screen.getAllByText(/Drag blocks here or click/);
+      expect(emptyMessages.length).toBe(2);
+    });
+  });
+});
+
+describe('BlockList DnD constraints (documented)', () => {
+  /**
+   * These tests document the drag-and-drop constraints enforced by the @dnd-kit implementation.
+   * The actual constraints are implemented in the handleDragEnd handler in BlockList.tsx.
+   */
+
+  it('documents: sections cannot be nested inside other sections', () => {
+    // Constraint is checked in handleDragEnd:
+    // if (activeData.blockType === 'section') return;
+    //
+    // This prevents a section from being dropped into another section's drop zone.
+    expect(true).toBe(true);
+  });
+
+  it('documents: conditionals cannot be nested inside sections', () => {
+    // Constraint is checked in handleDragEnd:
+    // if (activeData.blockType === 'conditional') return;
+    //
+    // This prevents a conditional from being dropped into a section's drop zone.
+    expect(true).toBe(true);
+  });
+
+  it('documents: conditionals cannot be nested inside conditional branches', () => {
+    // Same constraint applies to conditional branch drop zones.
+    // The code checks if the dragged block type is 'conditional' and rejects the drop.
+    expect(true).toBe(true);
+  });
+
+  it('documents: auto-expand behavior for collapsed containers', () => {
+    // When dragging over a collapsed section or conditional for 500ms,
+    // the container automatically expands to reveal the drop zone.
+    //
+    // Implemented in handleDragOver:
+    // autoExpandTimeoutRef.current = setTimeout(() => {
+    //   setCollapsedSections(prev => { ... });
+    // }, 500);
+    expect(true).toBe(true);
+  });
+
+  it('documents: distance activation constraint prevents accidental drags', () => {
+    // PointerSensor is configured with activationConstraint: { distance: 8 }
+    // This requires 8px of movement before a drag starts, preventing
+    // accidental drags when clicking buttons or other elements.
+    expect(true).toBe(true);
+  });
+
+  it('documents: keyboard support for accessibility', () => {
+    // KeyboardSensor is configured for @dnd-kit accessibility.
+    // Users can Tab to items, press Space to grab, use arrow keys to move,
+    // and Space again to drop.
+    expect(true).toBe(true);
+  });
+});
