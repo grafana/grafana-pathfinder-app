@@ -2,6 +2,7 @@ import React, { useState, useCallback, lazy, Suspense } from 'react';
 import { Button, Badge, Icon, useStyles2, Stack } from '@grafana/ui';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { UrlTester } from 'components/UrlTester';
+import { PrTester } from 'components/PrTester';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 // Lazy load BlockEditor to keep it out of main bundle when not needed
@@ -20,6 +21,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Section expansion state
   const [blockEditorExpanded, setBlockEditorExpanded] = useState(true); // Main authoring tool - expanded by default
+  const [prTesterExpanded, setPrTesterExpanded] = useState(false);
   const [UrlTesterExpanded, setUrlTesterExpanded] = useState(false);
 
   // Handle leaving dev mode
@@ -77,6 +79,22 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
             <Suspense fallback={<SkeletonLoader type="recommendations" />}>
               <BlockEditor />
             </Suspense>
+          </div>
+        )}
+      </div>
+
+      {/* PR tester */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setPrTesterExpanded(!prTesterExpanded)}>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="code-branch" />
+            <h4 className={styles.sectionTitle}>PR tester</h4>
+          </Stack>
+          <Icon name={prTesterExpanded ? 'angle-up' : 'angle-down'} />
+        </div>
+        {prTesterExpanded && onOpenDocsPage && (
+          <div className={styles.sectionContent}>
+            <PrTester onOpenDocsPage={onOpenDocsPage} />
           </div>
         )}
       </div>
