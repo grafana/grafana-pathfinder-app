@@ -1643,11 +1643,12 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Interactive comment box - child of highlight, offset positioning */
+    /* Interactive comment box - body-attached, absolute positioning
+     * top and left are set directly in JS via inline styles
+     */
     .interactive-comment-box {
       position: absolute;
-      left: var(--comment-offset-x);
-      top: var(--comment-offset-y);
+      /* top and left are set via inline styles in navigation-manager.ts */
       width: 420px;
       max-width: calc(100vw - 32px);
       pointer-events: none;

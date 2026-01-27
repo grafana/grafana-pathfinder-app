@@ -184,26 +184,35 @@ export class NavigationManager {
           const dotLeft = elementRect.left + scrollLeft + elementRect.width / 2;
           highlightStyle.setProperty('--highlight-top', `${dotTop}px`);
           highlightStyle.setProperty('--highlight-left', `${dotLeft}px`);
-
-          // Update comment box position (on body, not child of dot)
-          if (this.driftDetectionComment) {
-            this.driftDetectionComment.style.top = `${dotTop + INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY}px`;
-            this.driftDetectionComment.style.left = `${dotLeft}px`;
-          }
         } else {
           // Update bounding box position
           highlightStyle.setProperty('--highlight-top', `${elementRect.top + scrollTop - 4}px`);
           highlightStyle.setProperty('--highlight-left', `${elementRect.left + scrollLeft - 4}px`);
           highlightStyle.setProperty('--highlight-width', `${elementRect.width + 8}px`);
           highlightStyle.setProperty('--highlight-height', `${elementRect.height + 8}px`);
+        }
 
-          // Update comment box offsets (child of highlight, uses CSS offsets)
-          if (this.driftDetectionComment) {
-            const commentHeight = this.driftDetectionComment.offsetHeight;
-            const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
-            this.driftDetectionComment.style.setProperty('--comment-offset-x', `${offsetX}px`);
-            this.driftDetectionComment.style.setProperty('--comment-offset-y', `${offsetY}px`);
-          }
+        // Update comment box position (always body-attached, always absolute)
+        if (this.driftDetectionComment) {
+          const highlightRect = this.driftDetectionIsDotMode
+            ? {
+                top: elementRect.top + scrollTop + elementRect.height / 2,
+                left: elementRect.left + scrollLeft + elementRect.width / 2,
+                width: 0,
+                height: 0,
+              }
+            : {
+                top: elementRect.top + scrollTop - 4,
+                left: elementRect.left + scrollLeft - 4,
+                width: elementRect.width + 8,
+                height: elementRect.height + 8,
+              };
+
+          const commentHeight = this.driftDetectionComment.offsetHeight;
+          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
+
+          this.driftDetectionComment.style.top = `${highlightRect.top + offsetY}px`;
+          this.driftDetectionComment.style.left = `${highlightRect.left + offsetX}px`;
         }
       }
 
@@ -309,20 +318,27 @@ export class NavigationManager {
           highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
         }
 
-        // Update comment box offsets if it exists (recalculate in case viewport changed)
+        // Update comment box position (always body-attached, always absolute)
         if (commentBox) {
-          if (isDotMode) {
-            // For dot mode, comment is on document.body - update absolute position directly
-            const dotTop = rect.top + scrollTop + rect.height / 2;
-            const dotLeft = rect.left + scrollLeft + rect.width / 2;
-            commentBox.style.top = `${dotTop + INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY}px`;
-            commentBox.style.left = `${dotLeft}px`;
-          } else {
-            const commentHeight = commentBox.offsetHeight;
-            const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
-            commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-            commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
-          }
+          const highlightRect = isDotMode
+            ? {
+                top: rect.top + scrollTop + rect.height / 2,
+                left: rect.left + scrollLeft + rect.width / 2,
+                width: 0,
+                height: 0,
+              }
+            : {
+                top: rect.top + scrollTop - 4,
+                left: rect.left + scrollLeft - 4,
+                width: rect.width + 8,
+                height: rect.height + 8,
+              };
+
+          const commentHeight = commentBox.offsetHeight;
+          const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
+
+          commentBox.style.top = `${highlightRect.top + offsetY}px`;
+          commentBox.style.left = `${highlightRect.left + offsetX}px`;
         }
       }, INTERACTIVE_CONFIG.positionTracking.debounceMs);
     };
@@ -673,7 +689,7 @@ export class NavigationManager {
     document.body.appendChild(highlightElement);
 
     // Create comment box if comment is provided OR if any callback is provided
-    // Comment box is now a CHILD of the highlight, positioned via CSS
+    // Comment box is always attached to body with absolute positioning
     let commentBox: HTMLElement | null = null;
     if (
       (effectiveComment && effectiveComment.trim()) ||
@@ -682,37 +698,43 @@ export class NavigationManager {
       onNextCallback ||
       onPreviousCallback
     ) {
+      // Calculate highlight rect in absolute document coordinates
+      const highlightRect = useDotIndicator
+        ? {
+            top: rect.top + scrollTop + rect.height / 2,
+            left: rect.left + scrollLeft + rect.width / 2,
+            width: 0,
+            height: 0,
+          }
+        : {
+            top: rect.top + scrollTop - 4,
+            left: rect.left + scrollLeft - 4,
+            width: rect.width + 8,
+            height: rect.height + 8,
+          };
+
       commentBox = this.createCommentBox(
         effectiveComment || '',
         rect,
+        highlightRect,
         stepInfo,
         onSkipCallback,
         onCancelCallback,
         onNextCallback,
         onPreviousCallback,
-        options,
-        useDotIndicator
+        options
       );
 
-      if (useDotIndicator) {
-        // For dot mode, append to body to avoid inheriting dot's scale animation
-        // Position is set absolutely based on dot coordinates
-        const dotTop = rect.top + window.scrollY + rect.height / 2;
-        const dotLeft = rect.left + window.scrollX + rect.width / 2;
-        commentBox.style.position = 'absolute';
-        commentBox.style.top = `${dotTop + INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY}px`;
-        commentBox.style.left = `${dotLeft}px`;
-        commentBox.style.setProperty('--comment-offset-x', '0px');
-        commentBox.style.setProperty('--comment-offset-y', '0px');
-        document.body.appendChild(commentBox);
-      } else {
-        // Append as child of highlight - follows automatically when highlight moves
-        highlightElement.appendChild(commentBox);
-      }
+      // Always append to body (unified positioning)
+      document.body.appendChild(commentBox);
     }
 
     // GUARDRAIL: Auto-remove highlight after fixed duration
     // CSS handles visual fade, this is the cleanup failsafe
+    //
+    // Guided mode (!enableAutoCleanup): CSS animations run to completion but
+    // DOM element persists until clearAllHighlights() is called by the guided
+    // interaction flow. This is intentional - guides control their own lifecycle.
     if (useDotIndicator) {
       const dotRemovalTimeout = setTimeout(() => {
         if (highlightElement.isConnected) {
@@ -762,14 +784,15 @@ export class NavigationManager {
 
   /**
    * Create a themed comment box positioned near the highlighted element.
-   * Uses offset positioning relative to highlight parent, clamped to viewport.
+   * Uses absolute positioning attached to document.body, clamped to viewport.
    * Uses a clean, polished card design for both tour and guided modes.
    *
-   * @param isDotMode - When true, use fixed positioning below-right of dot
+   * @param highlightRect - The absolute document coordinates of the highlight element
    */
   private createCommentBox(
     comment: string,
     targetRect: DOMRect,
+    highlightRect: { top: number; left: number; width: number; height: number },
     stepInfo?: { current: number; total: number; completedSteps: number[] },
     onSkipCallback?: () => void,
     onCancelCallback?: () => void,
@@ -779,8 +802,7 @@ export class NavigationManager {
       showKeyboardHint?: boolean;
       stepTitle?: string;
       skipAnimations?: boolean;
-    },
-    isDotMode = false
+    }
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
@@ -1009,19 +1031,17 @@ export class NavigationManager {
     commentBox.style.left = '';
 
     // NOW calculate position with the REAL height
-    if (isDotMode) {
-      // For dot mode, use fixed positioning below-right of dot
-      const offsetX = 0;
-      const offsetY = INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY;
-      commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-      commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
-      commentBox.setAttribute('data-position', 'bottom');
-    } else {
-      const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
-      commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-      commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
-      commentBox.setAttribute('data-position', position);
-    }
+    // Calculate position offsets relative to highlight
+    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
+
+    // Convert to absolute document coordinates (always body-attached)
+    const absoluteTop = highlightRect.top + offsetY;
+    const absoluteLeft = highlightRect.left + offsetX;
+
+    commentBox.style.position = 'absolute';
+    commentBox.style.top = `${absoluteTop}px`;
+    commentBox.style.left = `${absoluteLeft}px`;
+    commentBox.setAttribute('data-position', position);
 
     return commentBox;
   }

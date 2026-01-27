@@ -351,7 +351,7 @@ describe('NavigationManager', () => {
     });
 
     describe('small elements (< minDimensionForBox, 10px)', () => {
-      it('should use dot indicator for elements with width < 20px', async () => {
+      it('should use dot indicator for elements with width < 10px', async () => {
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
           top: 100,
           left: 100,
@@ -368,7 +368,7 @@ describe('NavigationManager', () => {
         expect(dot).not.toBeNull();
       });
 
-      it('should use dot indicator for elements with height < 20px', async () => {
+      it('should use dot indicator for elements with height < 10px', async () => {
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
           top: 100,
           left: 100,
@@ -447,6 +447,62 @@ describe('NavigationManager', () => {
         const commentBox = document.querySelector('.interactive-comment-box');
         expect(commentBox?.textContent).toContain('Item hidden');
         expect(commentBox?.textContent).toContain('Original comment');
+      });
+    });
+
+    describe('highlight cleanup', () => {
+      it('should cancel pending cleanup when new highlight is created', async () => {
+        jest.useFakeTimers();
+
+        try {
+          // Create first highlight (dot mode - 4000ms timeout)
+          mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+            top: 100,
+            left: 100,
+            bottom: 105,
+            right: 105,
+            width: 5,
+            height: 5, // triggers dot mode
+          });
+          await navigationManager.highlightWithComment(mockElement, 'First');
+
+          // Verify first highlight exists
+          expect(document.querySelectorAll('.interactive-highlight-dot')).toHaveLength(1);
+
+          // Create second highlight immediately (outline mode - 5000ms timeout)
+          // This should clear the first highlight AND cancel its pending timeout
+          const secondElement = document.createElement('div');
+          secondElement.getBoundingClientRect = jest.fn().mockReturnValue({
+            top: 200,
+            left: 200,
+            bottom: 250,
+            right: 250,
+            width: 50,
+            height: 50,
+          });
+          document.body.appendChild(secondElement);
+          secondElement.scrollIntoView = jest.fn();
+          await navigationManager.highlightWithComment(secondElement, 'Second');
+
+          // Second highlight should exist, first should be gone
+          expect(document.querySelectorAll('.interactive-highlight-outline')).toHaveLength(1);
+          expect(document.querySelectorAll('.interactive-highlight-dot')).toHaveLength(0);
+
+          // Advance past where first highlight's timeout WOULD have fired (4000ms)
+          // but not past second highlight's timeout (5000ms)
+          jest.advanceTimersByTime(4500);
+
+          // Second highlight should still remain (its 5000ms timeout hasn't fired yet)
+          // This proves the first timeout was properly cancelled and didn't interfere
+          const highlights = document.querySelectorAll('.interactive-highlight-outline, .interactive-highlight-dot');
+          expect(highlights).toHaveLength(1);
+          expect(document.querySelectorAll('.interactive-highlight-outline')).toHaveLength(1);
+
+          // Clean up
+          document.body.removeChild(secondElement);
+        } finally {
+          jest.useRealTimers();
+        }
       });
     });
 
