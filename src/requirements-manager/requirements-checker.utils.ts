@@ -159,6 +159,11 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
     return guideVariableCheck(check);
   }
 
+  // Renderer context checks (e.g., renderer:pathfinder, renderer:website)
+  if (check.startsWith('renderer:')) {
+    return rendererCheck(check);
+  }
+
   // This should never be reached due to type validation above, but keeping as fallback
   console.error(
     `Unexpected requirement type reached end of router: '${check}'. This indicates a bug in the type validation.`
@@ -1368,6 +1373,69 @@ async function guideVariableCheck(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: false,
       error: `Variable check failed: ${error}`,
+      context: { error: String(error) },
+    };
+  }
+}
+
+/**
+ * Renderer context checking - verifies the current renderer context
+ *
+ * Use cases:
+ * - Conditional content: show different content based on renderer context
+ * - Context-specific features: enable features only in specific renderers
+ * - Multi-renderer support: adapt behavior for different rendering contexts
+ *
+ * How it works:
+ * - Checks renderer value from requirement string
+ * - Returns true for renderer:pathfinder (always true in app context)
+ * - Returns false for renderer:website (always false in app context)
+ * - Other renderer values are treated as unknown and fail
+ *
+ * Example usage:
+ * - data-requirements="renderer:pathfinder" - only in pathfinder app
+ * - data-requirements="renderer:website" - only in website context (always false in app)
+ *
+ * Renderer values:
+ * - pathfinder: Grafana Pathfinder app context (always true)
+ * - website: Website/public documentation context (always false in app)
+ *
+ * Note: This requirement is evaluated differently by different tools to render
+ * different content in different contexts.
+ */
+async function rendererCheck(check: string): Promise<CheckResultError> {
+  try {
+    const rendererValue = check.replace('renderer:', '').toLowerCase();
+
+    if (rendererValue === 'pathfinder') {
+      return {
+        requirement: check,
+        pass: true,
+        error: undefined,
+        context: { renderer: rendererValue, context: 'app' },
+      };
+    }
+
+    if (rendererValue === 'website') {
+      return {
+        requirement: check,
+        pass: false,
+        error: `Renderer requirement '${check}' is not satisfied (website context is not available in app)`,
+        context: { renderer: rendererValue, context: 'app' },
+      };
+    }
+
+    return {
+      requirement: check,
+      pass: false,
+      error: `Unknown renderer value: '${rendererValue}'. Supported values: 'pathfinder', 'website'`,
+      context: { renderer: rendererValue, supported: ['pathfinder', 'website'] },
+    };
+  } catch (error) {
+    return {
+      requirement: check,
+      pass: false,
+      error: `Renderer check failed: ${error}`,
       context: { error: String(error) },
     };
   }

@@ -651,6 +651,56 @@ describe('requirements-checker.utils', () => {
     });
   });
 
+  describe('renderer requirement', () => {
+    it('should pass for renderer:pathfinder (always true in app)', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: 'renderer:pathfinder',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+      expect(result.error[0].pass).toBe(true);
+      expect(result.error[0].context?.renderer).toBe('pathfinder');
+      expect(result.error[0].context?.context).toBe('app');
+    });
+
+    it('should fail for renderer:website (always false in app)', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: 'renderer:website',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].pass).toBe(false);
+      expect(result.error[0].error).toContain('website context is not available in app');
+      expect(result.error[0].context?.renderer).toBe('website');
+      expect(result.error[0].context?.context).toBe('app');
+    });
+
+    it('should fail for unknown renderer values', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: 'renderer:unknown',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].pass).toBe(false);
+      expect(result.error[0].error).toContain("Unknown renderer value: 'unknown'");
+      expect(result.error[0].context?.renderer).toBe('unknown');
+      expect(result.error[0].context?.supported).toEqual(['pathfinder', 'website']);
+    });
+
+    it('should handle case-insensitive renderer values', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: 'renderer:PATHFINDER',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+      expect(result.error[0].pass).toBe(true);
+    });
+  });
+
   describe('unknown requirements', () => {
     it('should pass unknown requirements with warning (fail open approach)', async () => {
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();

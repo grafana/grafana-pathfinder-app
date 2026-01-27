@@ -169,6 +169,11 @@ export function InteractiveConditional({
   const childrenToRender = conditionsPassed ? whenTrueChildren : whenFalseChildren;
   const sectionConfig = conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
 
+  // If the selected branch has no children, skip rendering entirely
+  if (childrenToRender.length === 0) {
+    return null;
+  }
+
   // Render as section if display mode is 'section'
   // Uses the full InteractiveSection component for "Do Section" button, step tracking, etc.
   if (display === 'section') {

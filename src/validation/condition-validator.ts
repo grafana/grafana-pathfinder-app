@@ -152,6 +152,20 @@ function validateArgumentFormat(
         };
       }
       break;
+
+    case ParameterizedRequirementPrefix.RENDERER:
+      // Renderer should be one of the supported values
+      const validRenderers = ['pathfinder', 'website'];
+      const normalizedRenderer = argument.toLowerCase();
+      if (!validRenderers.includes(normalizedRenderer)) {
+        return {
+          condition: fullCondition,
+          message: `Renderer should be one of: ${validRenderers.join(', ')}`,
+          code: 'invalid_format',
+          path,
+        };
+      }
+      break;
   }
 
   return null;
