@@ -445,7 +445,7 @@ describe('NavigationManager', () => {
         await navigationManager.highlightWithComment(mockElement, 'Original comment');
 
         const commentBox = document.querySelector('.interactive-comment-box');
-        expect(commentBox?.textContent).toContain('Item hidden');
+        expect(commentBox?.textContent).toContain('Item may be hidden');
         expect(commentBox?.textContent).toContain('Original comment');
       });
     });
