@@ -755,6 +755,10 @@ export class NavigationManager {
         if (highlightElement.isConnected) {
           highlightElement.remove();
         }
+        // Also remove comment box (body-attached)
+        if (commentBox?.isConnected) {
+          commentBox.remove();
+        }
       }, INTERACTIVE_CONFIG.highlighting.outlineDurationMs);
 
       // Store timeout for cleanup if clearAllHighlights is called early
