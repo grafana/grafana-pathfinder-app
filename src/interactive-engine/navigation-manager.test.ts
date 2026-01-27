@@ -466,8 +466,9 @@ describe('NavigationManager', () => {
           });
           await navigationManager.highlightWithComment(mockElement, 'First');
 
-          // Verify first highlight exists
+          // Verify first highlight and comment box exist
           expect(document.querySelectorAll('.interactive-highlight-dot')).toHaveLength(1);
+          expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(1);
 
           // Create second highlight immediately (outline mode - 5000ms timeout)
           // This should clear the first highlight AND cancel its pending timeout
@@ -487,6 +488,8 @@ describe('NavigationManager', () => {
           // Second highlight should exist, first should be gone
           expect(document.querySelectorAll('.interactive-highlight-outline')).toHaveLength(1);
           expect(document.querySelectorAll('.interactive-highlight-dot')).toHaveLength(0);
+          // Only one comment box should exist (the second one)
+          expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(1);
 
           // Advance past where first highlight's timeout WOULD have fired (4000ms)
           // but not past second highlight's timeout (5000ms)
@@ -497,12 +500,63 @@ describe('NavigationManager', () => {
           const highlights = document.querySelectorAll('.interactive-highlight-outline, .interactive-highlight-dot');
           expect(highlights).toHaveLength(1);
           expect(document.querySelectorAll('.interactive-highlight-outline')).toHaveLength(1);
+          // Comment box should still exist
+          expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(1);
 
           // Clean up
           document.body.removeChild(secondElement);
         } finally {
           jest.useRealTimers();
         }
+      });
+
+      it('should remove comment box when highlight is cleared', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        // Verify both highlight and comment box exist
+        expect(document.querySelectorAll('.interactive-highlight-outline')).toHaveLength(1);
+        expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(1);
+
+        // Clear all highlights
+        navigationManager.clearAllHighlights();
+
+        // Both should be removed
+        expect(document.querySelectorAll('.interactive-highlight-outline')).toHaveLength(0);
+        expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(0);
+      });
+
+      it('should remove dot indicator and comment box when cleared', async () => {
+        // Small element triggers dot mode
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 105,
+          right: 105,
+          width: 5,
+          height: 5,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        // Verify both dot and comment box exist
+        expect(document.querySelectorAll('.interactive-highlight-dot')).toHaveLength(1);
+        expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(1);
+
+        // Clear all highlights
+        navigationManager.clearAllHighlights();
+
+        // Both should be removed
+        expect(document.querySelectorAll('.interactive-highlight-dot')).toHaveLength(0);
+        expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(0);
       });
     });
 

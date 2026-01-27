@@ -131,8 +131,6 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     dotDurationMs: 4000,
     // Outline: ~1s draw + 2 breathes @ 1.5s (3s) + 0.5s fade = 4.5s CSS, 5000ms JS
     outlineDurationMs: 5000,
-    // Offset for comment box below dot indicator (used in navigation-manager.ts)
-    dotCommentOffsetY: 24,
   },
   // Guided step interaction timing
   guided: {

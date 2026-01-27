@@ -194,19 +194,12 @@ export class NavigationManager {
 
         // Update comment box position (always body-attached, always absolute)
         if (this.driftDetectionComment) {
-          const highlightRect = this.driftDetectionIsDotMode
-            ? {
-                top: elementRect.top + scrollTop + elementRect.height / 2,
-                left: elementRect.left + scrollLeft + elementRect.width / 2,
-                width: 0,
-                height: 0,
-              }
-            : {
-                top: elementRect.top + scrollTop - 4,
-                left: elementRect.left + scrollLeft - 4,
-                width: elementRect.width + 8,
-                height: elementRect.height + 8,
-              };
+          const highlightRect = this.calculateHighlightRect(
+            elementRect,
+            scrollTop,
+            scrollLeft,
+            this.driftDetectionIsDotMode
+          );
 
           const commentHeight = this.driftDetectionComment.offsetHeight;
           const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
@@ -238,6 +231,39 @@ export class NavigationManager {
     this.driftDetectionComment = null;
     this.driftDetectionLastCheck = 0;
     this.driftDetectionIsDotMode = false;
+  }
+
+  /**
+   * Calculate highlight rect in absolute document coordinates.
+   * For dot mode, returns a zero-dimension rect at element center.
+   * For bounding box, returns padded rect around element.
+   *
+   * @param rect - The element's bounding client rect
+   * @param scrollTop - Current vertical scroll offset
+   * @param scrollLeft - Current horizontal scroll offset
+   * @param isDotMode - Whether using dot indicator (true) or bounding box (false)
+   * @returns Highlight rect with top, left, width, height in document coordinates
+   */
+  private calculateHighlightRect(
+    rect: DOMRect,
+    scrollTop: number,
+    scrollLeft: number,
+    isDotMode: boolean
+  ): { top: number; left: number; width: number; height: number } {
+    if (isDotMode) {
+      return {
+        top: rect.top + scrollTop + rect.height / 2,
+        left: rect.left + scrollLeft + rect.width / 2,
+        width: 0,
+        height: 0,
+      };
+    }
+    return {
+      top: rect.top + scrollTop - 4,
+      left: rect.left + scrollLeft - 4,
+      width: rect.width + 8,
+      height: rect.height + 8,
+    };
   }
 
   /**
@@ -320,19 +346,7 @@ export class NavigationManager {
 
         // Update comment box position (always body-attached, always absolute)
         if (commentBox) {
-          const highlightRect = isDotMode
-            ? {
-                top: rect.top + scrollTop + rect.height / 2,
-                left: rect.left + scrollLeft + rect.width / 2,
-                width: 0,
-                height: 0,
-              }
-            : {
-                top: rect.top + scrollTop - 4,
-                left: rect.left + scrollLeft - 4,
-                width: rect.width + 8,
-                height: rect.height + 8,
-              };
+          const highlightRect = this.calculateHighlightRect(rect, scrollTop, scrollLeft, isDotMode);
 
           const commentHeight = commentBox.offsetHeight;
           const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
@@ -659,7 +673,7 @@ export class NavigationManager {
     // For hidden elements, ALWAYS prepend warning to comment (regardless of size)
     let effectiveComment = comment;
     if (isHiddenElement) {
-      const hiddenWarning = 'Item hidden due to screen size; enlarge to see.\n\n';
+      const hiddenWarning = 'Item may be hidden due to screen size; enlarge to see.\n\n';
       effectiveComment = effectiveComment ? hiddenWarning + effectiveComment : hiddenWarning;
     }
 
@@ -699,19 +713,7 @@ export class NavigationManager {
       onPreviousCallback
     ) {
       // Calculate highlight rect in absolute document coordinates
-      const highlightRect = useDotIndicator
-        ? {
-            top: rect.top + scrollTop + rect.height / 2,
-            left: rect.left + scrollLeft + rect.width / 2,
-            width: 0,
-            height: 0,
-          }
-        : {
-            top: rect.top + scrollTop - 4,
-            left: rect.left + scrollLeft - 4,
-            width: rect.width + 8,
-            height: rect.height + 8,
-          };
+      const highlightRect = this.calculateHighlightRect(rect, scrollTop, scrollLeft, useDotIndicator);
 
       commentBox = this.createCommentBox(
         effectiveComment || '',
@@ -735,7 +737,7 @@ export class NavigationManager {
     // Guided mode (!enableAutoCleanup): CSS animations run to completion but
     // DOM element persists until clearAllHighlights() is called by the guided
     // interaction flow. This is intentional - guides control their own lifecycle.
-    if (useDotIndicator) {
+    if (useDotIndicator && enableAutoCleanup) {
       const dotRemovalTimeout = setTimeout(() => {
         if (highlightElement.isConnected) {
           highlightElement.remove();
@@ -748,7 +750,7 @@ export class NavigationManager {
 
       // Store timeout for cleanup if clearAllHighlights is called early
       this.activeCleanupHandlers.push(() => clearTimeout(dotRemovalTimeout));
-    } else if (enableAutoCleanup) {
+    } else if (!useDotIndicator && enableAutoCleanup) {
       // GUARDRAIL: Auto-remove bounding box after animation completes (non-guided mode only)
       // CSS handles visual fade-out, this ensures cleanup after animation finishes
       const outlineRemovalTimeout = setTimeout(() => {

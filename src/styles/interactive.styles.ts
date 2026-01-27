@@ -1332,6 +1332,26 @@ export const addGlobalInteractiveStyles = () => {
   }
   const style = document.createElement('style');
   style.id = interactiveStyleId;
+
+  // ============================================================
+  // ANIMATION TIMING CONSTANTS
+  // ============================================================
+  // These must stay synchronized with INTERACTIVE_CONFIG.highlighting in interactive-config.ts
+  // See that file for the authoritative timing documentation.
+  //
+  // DOT INDICATOR:
+  //   CSS: breatheCycleMs × breatheCount (3.0s) + fadeMs (0.5s) = 3.5s total
+  //   JS:  dotDurationMs = 4000ms (500ms buffer for cleanup)
+  //
+  // BOUNDING BOX OUTLINE:
+  //   CSS: drawMs (~1s) + breatheCycleMs × breatheCount (3.0s) + fadeMs (0.5s) = ~4.5s total
+  //   JS:  outlineDurationMs = 5000ms (500ms buffer for cleanup)
+  // ============================================================
+  const breatheCycleMs = 1500;
+  const breatheCount = 2;
+  const fadeMs = 500;
+  const breatheTotalMs = breatheCycleMs * breatheCount; // 3000ms
+
   // Align highlight animation timing with configured technical highlight delay
   const highlightMs = INTERACTIVE_CONFIG.delays.technical.highlight;
   // Slower, more readable draw animation (no fade-out since highlights persist)
@@ -1422,8 +1442,8 @@ export const addGlobalInteractiveStyles = () => {
        */
       animation:
         interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,
-        interactive-glow-breathe 1.5s ease-in-out ${drawMs}ms 2,
-        interactive-outline-fade 0.5s ease-out ${drawMs + 3000}ms forwards;
+        interactive-glow-breathe ${breatheCycleMs}ms ease-in-out ${drawMs}ms ${breatheCount},
+        interactive-outline-fade ${fadeMs}ms ease-out ${drawMs + breatheTotalMs}ms forwards;
     }
 
     /* Subtle variant to reuse animation cadence for blocked areas */
@@ -1504,12 +1524,14 @@ export const addGlobalInteractiveStyles = () => {
      */
     .interactive-highlight-outline--instant {
       animation: 
-        interactive-glow-breathe 1.5s ease-in-out 2,
-        interactive-outline-fade 0.5s ease-out 3s forwards !important;
+        interactive-glow-breathe ${breatheCycleMs}ms ease-in-out ${breatheCount},
+        interactive-outline-fade ${fadeMs}ms ease-out ${breatheTotalMs}ms forwards !important;
       background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100% !important;
     }
 
-    /* Pulsing dot indicator for small/hidden elements (< 20px) */
+    /* Pulsing dot indicator for small/hidden elements (< 10px width or height)
+     * Threshold defined in INTERACTIVE_CONFIG.highlighting.minDimensionForBox
+     */
     .interactive-highlight-dot {
       position: absolute;
       top: var(--highlight-top);
@@ -1526,8 +1548,8 @@ export const addGlobalInteractiveStyles = () => {
        * JS cleanup at 4000ms (500ms buffer after CSS completes)
        */
       animation: 
-        interactive-dot-pulse 1.5s ease-in-out 2,
-        interactive-dot-fade 0.5s ease-out 3s forwards;
+        interactive-dot-pulse ${breatheCycleMs}ms ease-in-out ${breatheCount},
+        interactive-dot-fade ${fadeMs}ms ease-out ${breatheTotalMs}ms forwards;
     }
 
     @keyframes interactive-dot-pulse {
