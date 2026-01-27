@@ -442,8 +442,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
   // Handle unnesting a block from a section
   const handleUnnestBlock = useCallback(
-    (nestedBlockId: string, sectionId: string) => {
-      editor.unnestBlockFromSection(nestedBlockId, sectionId);
+    (nestedBlockId: string, sectionId: string, insertAtRootIndex?: number) => {
+      editor.unnestBlockFromSection(nestedBlockId, sectionId, insertAtRootIndex);
     },
     [editor]
   );
@@ -586,6 +586,14 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       toIndex?: number
     ) => {
       editor.moveBlockBetweenConditionalBranches(conditionalId, fromBranch, fromIndex, toBranch, toIndex);
+    },
+    [editor]
+  );
+
+  // Handle moving a block between sections
+  const handleMoveBlockBetweenSections = useCallback(
+    (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => {
+      editor.moveBlockBetweenSections(fromSectionId, fromIndex, toSectionId, toIndex);
     },
     [editor]
   );
@@ -1083,6 +1091,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             onNestBlockInConditional={handleNestBlockInConditional}
             onUnnestBlockFromConditional={handleUnnestBlockFromConditional}
             onMoveBlockBetweenConditionalBranches={handleMoveBlockBetweenConditionalBranches}
+            onMoveBlockBetweenSections={handleMoveBlockBetweenSections}
           />
         ) : (
           <div className={styles.emptyState}>

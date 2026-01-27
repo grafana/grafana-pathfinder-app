@@ -19,6 +19,9 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 - **localStorage Tab Persistence**: Browser-like multi-tab experience survives page reloads
 - **Context-Aware Recommendations**: Analyzes current Grafana state (page, datasources, dashboard) to suggest relevant content
 - **Interactive Elements System**: Custom `data-targetaction` attributes enable "Show me"/"Do it" automation of Grafana UI actions
+- **@dnd-kit for Drag-and-Drop**: All sortable/draggable interactions should use @dnd-kit library for built-in accessibility, touch device support, smooth animations, and consistency.
+
+**Important**: Do NOT implement drag-and-drop using native HTML5 DnD or other libraries. Always use the @dnd-kit components to maintain consistency and accessibility
 
 ## Component Relationships
 

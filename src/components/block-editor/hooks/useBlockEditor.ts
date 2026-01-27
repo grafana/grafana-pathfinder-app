@@ -96,7 +96,7 @@ export interface UseBlockEditorReturn {
   /** Move a block into a section at a specific index */
   nestBlockInSection: (blockId: string, sectionId: string, insertIndex?: number) => void;
   /** Move a block out of a section back to root level */
-  unnestBlockFromSection: (blockId: string, sectionId: string, insertAfterSection?: boolean) => void;
+  unnestBlockFromSection: (blockId: string, sectionId: string, insertAtRootIndex?: number) => void;
   /** Add a new block directly to a section */
   addBlockToSection: (block: JsonBlock, sectionId: string, index?: number) => string;
   /** Update a nested block */
@@ -186,6 +186,8 @@ export interface UseBlockEditorReturn {
     toBranch: 'whenTrue' | 'whenFalse',
     toIndex?: number
   ) => void;
+  /** Move a block from one section to another */
+  moveBlockBetweenSections: (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => void;
 }
 
 /**
@@ -419,7 +421,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
   // Unnest a block from a section back to root level
   const unnestBlockFromSection = useCallback(
-    (blockId: string, sectionId: string, insertAfterSection = true) => {
+    (blockId: string, sectionId: string, insertAtRootIndex?: number) => {
       setState((prev) => {
         const sectionIndex = prev.blocks.findIndex((b) => b.id === sectionId);
         if (sectionIndex === -1) {
@@ -451,13 +453,13 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           },
         };
 
-        // Create new EditorBlock and insert after section
+        // Create new EditorBlock and insert at specified index (or after section if not specified)
         const newEditorBlock: EditorBlock = {
           id: generateBlockId(),
           block: blockToMove,
         };
 
-        const insertIdx = insertAfterSection ? sectionIndex + 1 : sectionIndex;
+        const insertIdx = insertAtRootIndex ?? sectionIndex + 1;
         newBlocks.splice(insertIdx, 0, newEditorBlock);
 
         const newState = {
@@ -1083,6 +1085,74 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange]
   );
 
+  // Move a block from one section to another
+  const moveBlockBetweenSections = useCallback(
+    (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => {
+      if (fromSectionId === toSectionId) {
+        // Same section - use moveNestedBlock instead
+        return;
+      }
+
+      setState((prev) => {
+        const fromSectionIndex = prev.blocks.findIndex((b) => b.id === fromSectionId);
+        const toSectionIndex = prev.blocks.findIndex((b) => b.id === toSectionId);
+
+        if (fromSectionIndex === -1 || toSectionIndex === -1) {
+          return prev;
+        }
+
+        const fromSectionEditorBlock = prev.blocks[fromSectionIndex];
+        const toSectionEditorBlock = prev.blocks[toSectionIndex];
+
+        if (!isSectionBlock(fromSectionEditorBlock.block) || !isSectionBlock(toSectionEditorBlock.block)) {
+          return prev;
+        }
+
+        const fromBlocks = fromSectionEditorBlock.block.blocks;
+        if (fromIndex < 0 || fromIndex >= fromBlocks.length) {
+          return prev;
+        }
+
+        // Get the block to move
+        const blockToMove = fromBlocks[fromIndex];
+
+        // Remove from source section
+        const newFromBlocks = fromBlocks.filter((_, i) => i !== fromIndex);
+
+        // Add to target section
+        const newToBlocks = [...toSectionEditorBlock.block.blocks];
+        const insertIdx = toIndex ?? newToBlocks.length;
+        newToBlocks.splice(insertIdx, 0, blockToMove);
+
+        // Update both sections
+        const newBlocks = [...prev.blocks];
+        newBlocks[fromSectionIndex] = {
+          ...fromSectionEditorBlock,
+          block: {
+            ...fromSectionEditorBlock.block,
+            blocks: newFromBlocks,
+          },
+        };
+        newBlocks[toSectionIndex] = {
+          ...toSectionEditorBlock,
+          block: {
+            ...toSectionEditorBlock.block,
+            blocks: newToBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
   // Toggle preview mode
   const togglePreviewMode = useCallback(() => {
     setState((prev) => ({
@@ -1154,8 +1224,9 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
   }, []);
 
   /**
-   * Parse a block ID to determine if it's a nested block
-   * Nested block IDs have format: `${sectionId}-nested-${nestedIndex}`
+   * Parse a block ID to determine if it's a nested block.
+   * Nested block IDs have format: `${sectionId}-nested-${nestedIndex}`.
+   * Uses string operations instead of regex for better performance and clarity.
    */
   const parseBlockId = (
     id: string,
@@ -1168,20 +1239,27 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     rootIndex?: number;
     sectionRootIndex?: number;
   } => {
+    const NESTED_MARKER = '-nested-';
+    const markerIndex = id.lastIndexOf(NESTED_MARKER);
+
     // Check if it's a nested block ID
-    const nestedMatch = id.match(/^(.+)-nested-(\d+)$/);
-    if (nestedMatch) {
-      const sectionId = nestedMatch[1];
-      const nestedIndex = parseInt(nestedMatch[2], 10);
-      const sectionRootIndex = blocks.findIndex((b) => b.id === sectionId);
-      const section = sectionRootIndex >= 0 ? blocks[sectionRootIndex] : undefined;
-      if (section && isSectionBlock(section.block)) {
-        const nestedBlock = section.block.blocks[nestedIndex];
-        if (nestedBlock) {
-          return { isNested: true, sectionId, nestedIndex, block: nestedBlock, sectionRootIndex };
+    if (markerIndex !== -1) {
+      const sectionId = id.slice(0, markerIndex);
+      const nestedIndexStr = id.slice(markerIndex + NESTED_MARKER.length);
+      const nestedIndex = parseInt(nestedIndexStr, 10);
+
+      // Validate the index is a valid number
+      if (!isNaN(nestedIndex) && nestedIndexStr === String(nestedIndex)) {
+        const sectionRootIndex = blocks.findIndex((b) => b.id === sectionId);
+        const section = sectionRootIndex >= 0 ? blocks[sectionRootIndex] : undefined;
+        if (section && isSectionBlock(section.block)) {
+          const nestedBlock = section.block.blocks[nestedIndex];
+          if (nestedBlock) {
+            return { isNested: true, sectionId, nestedIndex, block: nestedBlock, sectionRootIndex };
+          }
         }
+        return { isNested: true, sectionRootIndex: sectionRootIndex >= 0 ? sectionRootIndex : undefined };
       }
-      return { isNested: true, sectionRootIndex: sectionRootIndex >= 0 ? sectionRootIndex : undefined };
     }
 
     // It's a root-level block
@@ -1480,6 +1558,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       nestBlockInConditional,
       unnestBlockFromConditional,
       moveBlockBetweenConditionalBranches,
+      moveBlockBetweenSections,
     }),
     [
       state,
@@ -1512,6 +1591,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       nestBlockInConditional,
       unnestBlockFromConditional,
       moveBlockBetweenConditionalBranches,
+      moveBlockBetweenSections,
     ]
   );
 }

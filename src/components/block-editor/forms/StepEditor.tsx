@@ -2,13 +2,32 @@
  * Step Editor Component
  *
  * Shared component for editing steps in multistep and guided blocks.
+ * Uses @dnd-kit for drag-and-drop reordering.
  * Includes record mode integration for capturing steps automatically.
  */
 
-import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { Button, Field, Input, Select, Badge, IconButton, Checkbox, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
-import { css } from '@emotion/css';
+import { css, cx } from '@emotion/css';
+// @dnd-kit
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  MeasuringStrategy,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
@@ -31,7 +50,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   stepsList: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(1), // Match BlockList spacing (gap + insertZone height)
+    gap: theme.spacing(1),
     maxHeight: '300px',
     overflowY: 'auto',
     padding: theme.spacing(1),
@@ -50,14 +69,19 @@ const getStyles = (theme: GrafanaTheme2) => ({
     cursor: 'grab',
     transition: 'all 0.15s ease',
     userSelect: 'none',
+    touchAction: 'none',
 
     '&:hover': {
       borderColor: theme.colors.border.medium,
       boxShadow: theme.shadows.z1,
     },
+
+    '&:active': {
+      cursor: 'grabbing',
+    },
   }),
   stepItemDragging: css({
-    opacity: 0.5,
+    opacity: 0.4,
     cursor: 'grabbing',
   }),
   // Drag handle - matches BlockItem
@@ -69,38 +93,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.disabled,
     flexShrink: 0,
     pointerEvents: 'none',
-  }),
-  // Drop zone styles - matches BlockList drop indicator pattern
-  dropZone: css({
-    position: 'relative',
-    padding: theme.spacing(0.5),
-    transition: 'all 0.15s ease',
-  }),
-  dropZoneLine: css({
-    height: '2px',
-    backgroundColor: theme.colors.border.medium,
-    borderRadius: '2px',
-    transition: 'all 0.15s ease',
-  }),
-  dropZoneLineActive: css({
-    height: '4px',
-    backgroundColor: theme.colors.primary.main,
-    boxShadow: `0 0 8px ${theme.colors.primary.main}`,
-  }),
-  dropZoneLabel: css({
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    transform: 'translate(-50%, -50%)',
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
-    backgroundColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
-    borderRadius: theme.shape.radius.pill,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    whiteSpace: 'nowrap',
-    boxShadow: theme.shadows.z2,
-    zIndex: 1,
   }),
   stepContent: css({
     flex: 1,
@@ -232,6 +224,45 @@ export interface StepEditorProps {
 }
 
 /**
+ * Sortable step item wrapper using @dnd-kit
+ */
+function SortableStepItem({
+  id,
+  index,
+  children,
+  disabled,
+}: {
+  id: string;
+  index: number;
+  children: React.ReactNode;
+  disabled: boolean;
+}) {
+  const styles = useStyles2(getStyles);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    data: { type: 'step', index },
+    disabled,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cx(styles.stepItem, isDragging && styles.stepItemDragging)}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * Step editor component
  */
 export function StepEditor({
@@ -272,18 +303,45 @@ export function StepEditor({
   const [editRequirements, setEditRequirements] = useState('');
   const [editSkippable, setEditSkippable] = useState(false);
 
-  // Drag/drop state
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
-  // Ref to track drag state without causing re-renders during drag start
-  const dragStateRef = useRef<number | null>(null);
-
   // Keep a ref to current steps length so getStepCount always returns fresh value
   const stepsLengthRef = useRef(steps.length);
   // REACT: update ref in effect, not during render (R2)
   useEffect(() => {
     stepsLengthRef.current = steps.length;
   }, [steps.length]);
+
+  // Configure @dnd-kit sensors
+  const pointerSensor = useSensor(PointerSensor, {
+    activationConstraint: { distance: 8 },
+  });
+  const keyboardSensor = useSensor(KeyboardSensor, {
+    coordinateGetter: sortableKeyboardCoordinates,
+  });
+  const sensors = useSensors(pointerSensor, keyboardSensor);
+
+  // Generate stable IDs for sortable items
+  const stepIds = useMemo(() => steps.map((_, i) => `step-${i}`), [steps]);
+
+  // Handle drag end - reorder steps
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) {
+        return;
+      }
+
+      const activeIndex = stepIds.indexOf(String(active.id));
+      const overIndex = stepIds.indexOf(String(over.id));
+
+      if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
+        const newSteps = [...steps];
+        const [removed] = newSteps.splice(activeIndex, 1);
+        newSteps.splice(overIndex, 0, removed);
+        onChange(newSteps);
+      }
+    },
+    [steps, stepIds, onChange]
+  );
 
   // Start element picker for new step - pass callback to receive selected element
   const startPicker = useCallback(() => {
@@ -503,47 +561,6 @@ export function StepEditor({
     [steps, onChange]
   );
 
-  // Drag/drop handlers for reordering steps
-  // Uses deferred state update to avoid re-render during drag start (which can cancel the drag)
-  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
-    // Set up drag data FIRST - before any state changes
-    e.dataTransfer.setData('text/plain', `step:${index}`);
-    e.dataTransfer.dropEffect = 'move';
-    e.dataTransfer.effectAllowed = 'move';
-
-    // Store in ref immediately (no re-render)
-    dragStateRef.current = index;
-
-    // Defer state update to next frame to avoid re-render during drag start
-    requestAnimationFrame(() => {
-      setDraggedIndex(index);
-    });
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    const draggedIdx = dragStateRef.current;
-    if (draggedIdx !== null && dropTargetIndex !== null && draggedIdx !== dropTargetIndex) {
-      const newSteps = [...steps];
-      const [removed] = newSteps.splice(draggedIdx, 1);
-      // Adjust target index if dropping after the dragged item
-      const adjustedTarget = dropTargetIndex > draggedIdx ? dropTargetIndex - 1 : dropTargetIndex;
-      newSteps.splice(adjustedTarget, 0, removed);
-      onChange(newSteps);
-    }
-    dragStateRef.current = null;
-    setDraggedIndex(null);
-    setDropTargetIndex(null);
-  }, [dropTargetIndex, steps, onChange]);
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDropTargetIndex(index);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setDropTargetIndex(null);
-  }, []);
-
   // Get current step count (for overlay display) - uses ref so it always returns fresh value
   const getStepCount = useCallback(() => stepsLengthRef.current, []);
 
@@ -602,311 +619,286 @@ export function StepEditor({
     return found?.label.split(' ')[0] ?? '⚡';
   };
 
-  // Check if a drop zone would be redundant (same position or position right after dragged item)
-  const isDropZoneRedundant = (zoneIndex: number) => {
-    if (draggedIndex === null) {
-      return false;
-    }
-    // Zone at draggedIndex or draggedIndex + 1 would result in same position
-    return zoneIndex === draggedIndex || zoneIndex === draggedIndex + 1;
-  };
-
   return (
     <div className={styles.container}>
-      {/* Steps list */}
+      {/* Steps list with @dnd-kit */}
       {steps.length > 0 ? (
-        <div className={styles.stepsList}>
-          {steps.map((step, index) => (
-            <React.Fragment key={index}>
-              {/* Drop zone before this item - only show when dragging and not redundant */}
-              {draggedIndex !== null && !isDropZoneRedundant(index) && (
-                <div
-                  className={styles.dropZone}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDragLeave={handleDragLeave}
-                >
-                  <div
-                    className={`${styles.dropZoneLine} ${dropTargetIndex === index ? styles.dropZoneLineActive : ''}`}
-                  />
-                  {dropTargetIndex === index && <div className={styles.dropZoneLabel}>📍 Move here</div>}
-                </div>
-              )}
-              {editingStepIndex === index ? (
-                /* Edit form for this step */
-                <div className={styles.addStepForm}>
-                  <div style={{ fontWeight: 500, marginBottom: '8px' }}>Edit Step {index + 1}</div>
-                  <div className={styles.addStepRow}>
-                    <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
-                      <Select
-                        options={ACTION_OPTIONS}
-                        value={ACTION_OPTIONS.find((o) => o.value === editAction)}
-                        onChange={(opt) => opt.value && setEditAction(opt.value)}
-                        menuPlacement="top"
-                      />
-                    </Field>
-                    {/* Navigation path - for navigate actions only */}
-                    {editAction === 'navigate' && (
-                      <Field label="Path" style={{ marginBottom: 0, flex: 1 }}>
-                        <Input
-                          value={editReftarget}
-                          onChange={(e) => setEditReftarget(e.currentTarget.value)}
-                          placeholder="e.g., /dashboards, /d/abc123"
-                        />
-                      </Field>
-                    )}
-                    {/* Selector with picker - for actions that need a DOM element */}
-                    {editAction !== 'noop' && editAction !== 'navigate' && (
-                      <>
-                        <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
-                          <Input
-                            value={editReftarget}
-                            onChange={(e) => setEditReftarget(e.currentTarget.value)}
-                            placeholder="Click Pick or enter selector"
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
+            <div className={styles.stepsList}>
+              {steps.map((step, index) => (
+                <React.Fragment key={stepIds[index]}>
+                  {editingStepIndex === index ? (
+                    /* Edit form for this step */
+                    <div className={styles.addStepForm}>
+                      <div style={{ fontWeight: 500, marginBottom: '8px' }}>Edit step {index + 1}</div>
+                      <div className={styles.addStepRow}>
+                        <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
+                          <Select
+                            options={ACTION_OPTIONS}
+                            value={ACTION_OPTIONS.find((o) => o.value === editAction)}
+                            onChange={(opt) => opt.value && setEditAction(opt.value)}
+                            menuPlacement="top"
                           />
                         </Field>
-                        <Button
-                          variant="secondary"
-                          onClick={startEditPicker}
-                          icon="crosshair"
-                          style={{ marginTop: '22px' }}
-                        >
-                          Pick
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                        {/* Navigation path - for navigate actions only */}
+                        {editAction === 'navigate' && (
+                          <Field label="Path" style={{ marginBottom: 0, flex: 1 }}>
+                            <Input
+                              value={editReftarget}
+                              onChange={(e) => setEditReftarget(e.currentTarget.value)}
+                              placeholder="e.g., /dashboards, /d/abc123"
+                            />
+                          </Field>
+                        )}
+                        {/* Selector with picker - for actions that need a DOM element */}
+                        {editAction !== 'noop' && editAction !== 'navigate' && (
+                          <>
+                            <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
+                              <Input
+                                value={editReftarget}
+                                onChange={(e) => setEditReftarget(e.currentTarget.value)}
+                                placeholder="Click Pick or enter selector"
+                              />
+                            </Field>
+                            <Button
+                              variant="secondary"
+                              onClick={startEditPicker}
+                              icon="crosshair"
+                              style={{ marginTop: '22px' }}
+                            >
+                              Pick
+                            </Button>
+                          </>
+                        )}
+                      </div>
 
-                  {editAction === 'formfill' && (
-                    <>
-                      {/* For multistep: always show value field (it's what gets auto-filled) */}
-                      {/* For guided: show value field only when validation is enabled */}
-                      {!isGuided && (
-                        <Field
-                          label="Value to fill"
-                          description="The value that will be automatically entered into the form field"
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Input
-                            value={editTargetvalue}
-                            onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
-                            placeholder="Value to automatically fill"
-                          />
-                        </Field>
-                      )}
-                      {isGuided && (
+                      {editAction === 'formfill' && (
                         <>
-                          <Checkbox
-                            className={styles.checkbox}
-                            label="Validate input (require value/pattern match)"
-                            description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
-                            checked={editValidateInput}
-                            onChange={(e) => setEditValidateInput(e.currentTarget.checked)}
-                          />
-                          {editValidateInput && (
+                          {/* For multistep: always show value field (it's what gets auto-filled) */}
+                          {/* For guided: show value field only when validation is enabled */}
+                          {!isGuided && (
+                            <Field
+                              label="Value to fill"
+                              description="The value that will be automatically entered into the form field"
+                              style={{ marginBottom: 0 }}
+                            >
+                              <Input
+                                value={editTargetvalue}
+                                onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
+                                placeholder="Value to automatically fill"
+                              />
+                            </Field>
+                          )}
+                          {isGuided && (
                             <>
-                              <Field
-                                label="Expected value (supports regex: ^pattern, /pattern/)"
-                                style={{ marginBottom: 0 }}
-                              >
-                                <Input
-                                  value={editTargetvalue}
-                                  onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
-                                  placeholder="Value or regex pattern to validate against"
-                                />
-                              </Field>
-                              <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
-                                <Input
-                                  value={editFormHint}
-                                  onChange={(e) => setEditFormHint(e.currentTarget.value)}
-                                  placeholder="Hint when validation fails"
-                                />
-                              </Field>
+                              <Checkbox
+                                className={styles.checkbox}
+                                label="Validate input (require value/pattern match)"
+                                description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
+                                checked={editValidateInput}
+                                onChange={(e) => setEditValidateInput(e.currentTarget.checked)}
+                              />
+                              {editValidateInput && (
+                                <>
+                                  <Field
+                                    label="Expected value (supports regex: ^pattern, /pattern/)"
+                                    style={{ marginBottom: 0 }}
+                                  >
+                                    <Input
+                                      value={editTargetvalue}
+                                      onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
+                                      placeholder="Value or regex pattern to validate against"
+                                    />
+                                  </Field>
+                                  <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
+                                    <Input
+                                      value={editFormHint}
+                                      onChange={(e) => setEditFormHint(e.currentTarget.value)}
+                                      placeholder="Hint when validation fails"
+                                    />
+                                  </Field>
+                                </>
+                              )}
                             </>
                           )}
                         </>
                       )}
-                    </>
-                  )}
 
-                  {isGuided ? (
-                    <Field label="Description (optional)" style={{ marginBottom: 0 }}>
-                      <Input
-                        value={editDescription}
-                        onChange={(e) => setEditDescription(e.currentTarget.value)}
-                        placeholder="Description shown in the steps panel"
-                      />
-                    </Field>
-                  ) : (
-                    <Field label="Tooltip (optional)" style={{ marginBottom: 0 }}>
-                      <Input
-                        value={editTooltip}
-                        onChange={(e) => setEditTooltip(e.currentTarget.value)}
-                        placeholder="Tooltip shown during this step"
-                      />
-                    </Field>
-                  )}
+                      {isGuided ? (
+                        <Field label="Description (optional)" style={{ marginBottom: 0 }}>
+                          <Input
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.currentTarget.value)}
+                            placeholder="Description shown in the steps panel"
+                          />
+                        </Field>
+                      ) : (
+                        <Field label="Tooltip (optional)" style={{ marginBottom: 0 }}>
+                          <Input
+                            value={editTooltip}
+                            onChange={(e) => setEditTooltip(e.currentTarget.value)}
+                            placeholder="Tooltip shown during this step"
+                          />
+                        </Field>
+                      )}
 
-                  {/* Lazy render only applies to actions with DOM elements */}
-                  {editAction !== 'navigate' && (
-                    <Checkbox
-                      className={styles.checkbox}
-                      label="Element may be off-screen (scroll to find)"
-                      description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
-                      checked={editLazyRender}
-                      onChange={(e) => setEditLazyRender(e.currentTarget.checked)}
-                    />
-                  )}
-                  {editLazyRender && editAction !== 'navigate' && (
-                    <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
-                      <div className={styles.addStepRow}>
-                        <Input
-                          value={editScrollContainer}
-                          onChange={(e) => setEditScrollContainer(e.currentTarget.value)}
-                          placeholder=".scrollbar-view (default)"
-                          style={{ flex: 1 }}
+                      {/* Lazy render only applies to actions with DOM elements */}
+                      {editAction !== 'navigate' && (
+                        <Checkbox
+                          className={styles.checkbox}
+                          label="Element may be off-screen (scroll to find)"
+                          description="Enable if the target is in a long list that requires scrolling. The system will scroll until the element is found."
+                          checked={editLazyRender}
+                          onChange={(e) => setEditLazyRender(e.currentTarget.checked)}
                         />
+                      )}
+                      {editLazyRender && editAction !== 'navigate' && (
+                        <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
+                          <div className={styles.addStepRow}>
+                            <Input
+                              value={editScrollContainer}
+                              onChange={(e) => setEditScrollContainer(e.currentTarget.value)}
+                              placeholder=".scrollbar-view (default)"
+                              style={{ flex: 1 }}
+                            />
+                            <Button
+                              variant="secondary"
+                              onClick={() => {
+                                onPickerModeChange?.(true, (selector: string) => {
+                                  setEditScrollContainer(selector);
+                                });
+                              }}
+                              icon="crosshair"
+                            >
+                              Pick
+                            </Button>
+                          </div>
+                        </Field>
+                      )}
+
+                      {/* Per-step requirements */}
+                      <Field
+                        label="Step requirements (optional)"
+                        description="Conditions checked before this step executes (comma-separated)"
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input
+                          value={editRequirements}
+                          onChange={(e) => setEditRequirements(e.currentTarget.value)}
+                          placeholder="e.g., exists-reftarget, navmenu-open"
+                        />
+                      </Field>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
+                        {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
+                          <Badge
+                            key={req}
+                            text={req}
+                            color="blue"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => {
+                              setEditRequirements((prev) =>
+                                prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req
+                              );
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Per-step skippable (guided only) */}
+                      {isGuided && (
+                        <Checkbox
+                          className={styles.checkbox}
+                          label="Skippable (user can skip this step)"
+                          description="Allow user to proceed without completing this step"
+                          checked={editSkippable}
+                          onChange={(e) => setEditSkippable(e.currentTarget.checked)}
+                        />
+                      )}
+
+                      <div className={styles.addStepRow}>
+                        <Button variant="secondary" onClick={handleCancelEdit}>
+                          Cancel
+                        </Button>
                         <Button
-                          variant="secondary"
-                          onClick={() => {
-                            onPickerModeChange?.(true, (selector: string) => {
-                              setEditScrollContainer(selector);
-                            });
-                          }}
-                          icon="crosshair"
+                          variant="primary"
+                          onClick={handleSaveEdit}
+                          disabled={editAction !== 'noop' && !editReftarget.trim()}
                         >
-                          Pick
+                          Save changes
                         </Button>
                       </div>
-                    </Field>
-                  )}
-
-                  {/* Per-step requirements */}
-                  <Field
-                    label="Step requirements (optional)"
-                    description="Conditions checked before this step executes (comma-separated)"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Input
-                      value={editRequirements}
-                      onChange={(e) => setEditRequirements(e.currentTarget.value)}
-                      placeholder="e.g., exists-reftarget, navmenu-open"
-                    />
-                  </Field>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
-                    {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
-                      <Badge
-                        key={req}
-                        text={req}
-                        color="blue"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => {
-                          setEditRequirements((prev) => (prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req));
-                        }}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Per-step skippable (guided only) */}
-                  {isGuided && (
-                    <Checkbox
-                      className={styles.checkbox}
-                      label="Skippable (user can skip this step)"
-                      description="Allow user to proceed without completing this step"
-                      checked={editSkippable}
-                      onChange={(e) => setEditSkippable(e.currentTarget.checked)}
-                    />
-                  )}
-
-                  <div className={styles.addStepRow}>
-                    <Button variant="secondary" onClick={handleCancelEdit}>
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="primary"
-                      onClick={handleSaveEdit}
-                      disabled={editAction !== 'noop' && !editReftarget.trim()}
-                    >
-                      Save Changes
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                /* Display view for this step - draggable */
-                <div
-                  className={`${styles.stepItem} ${draggedIndex === index ? styles.stepItemDragging : ''}`}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragEnd={handleDragEnd}
-                >
-                  {/* Drag handle */}
-                  <div className={styles.dragHandle} title="Drag to reorder">
-                    <span style={{ fontSize: '12px' }}>⋮⋮</span>
-                  </div>
-
-                  {/* Content */}
-                  <div className={styles.stepContent}>
-                    <div className={styles.stepHeader}>
-                      <span>{getActionEmoji(step.action)}</span>
-                      <Badge text={step.action} color="blue" />
-                      {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
                     </div>
-                    {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop) */}
-                    <div className={styles.stepSelector} title={step.reftarget}>
-                      {step.action === 'noop'
-                        ? isGuided
-                          ? step.description || 'Informational step'
-                          : step.tooltip || 'Informational step'
-                        : isGuided
-                          ? step.description || step.reftarget
-                          : step.tooltip || step.reftarget}
-                    </div>
-                  </div>
+                  ) : (
+                    /* Display view for this step - sortable via @dnd-kit */
+                    <SortableStepItem id={stepIds[index]} index={index} disabled={editingStepIndex !== null}>
+                      {/* Drag handle */}
+                      <div className={styles.dragHandle} title="Drag to reorder">
+                        <span style={{ fontSize: '12px' }}>⋮⋮</span>
+                      </div>
 
-                  {/* Actions */}
-                  <div className={styles.stepActions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-                    <IconButton
-                      name="edit"
-                      size="md"
-                      aria-label="Edit"
-                      onClick={() => handleStartEdit(index)}
-                      className={styles.editButton}
-                      tooltip="Edit step"
-                    />
-                    <IconButton
-                      name="copy"
-                      size="md"
-                      aria-label="Duplicate"
-                      onClick={() => handleDuplicateStep(index)}
-                      className={styles.actionButton}
-                      tooltip="Duplicate step"
-                    />
-                    <IconButton
-                      name="trash-alt"
-                      size="md"
-                      aria-label="Remove"
-                      onClick={() => handleRemoveStep(index)}
-                      className={styles.deleteButton}
-                      tooltip="Remove step"
-                    />
-                  </div>
-                </div>
-              )}
-            </React.Fragment>
-          ))}
-          {/* Drop zone at end of list - only show when dragging and not redundant */}
-          {draggedIndex !== null && !isDropZoneRedundant(steps.length) && (
-            <div
-              className={styles.dropZone}
-              onDragOver={(e) => handleDragOver(e, steps.length)}
-              onDragLeave={handleDragLeave}
-            >
-              <div
-                className={`${styles.dropZoneLine} ${dropTargetIndex === steps.length ? styles.dropZoneLineActive : ''}`}
-              />
-              {dropTargetIndex === steps.length && <div className={styles.dropZoneLabel}>📍 Move here</div>}
+                      {/* Content */}
+                      <div className={styles.stepContent}>
+                        <div className={styles.stepHeader}>
+                          <span>{getActionEmoji(step.action)}</span>
+                          <Badge text={step.action} color="blue" />
+                          {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
+                        </div>
+                        {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop) */}
+                        <div className={styles.stepSelector} title={step.reftarget}>
+                          {step.action === 'noop'
+                            ? isGuided
+                              ? step.description || 'Informational step'
+                              : step.tooltip || 'Informational step'
+                            : isGuided
+                              ? step.description || step.reftarget
+                              : step.tooltip || step.reftarget}
+                        </div>
+                      </div>
+
+                      {/* Actions - stop propagation to prevent drag when clicking buttons */}
+                      <div
+                        className={styles.stepActions}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <IconButton
+                          name="edit"
+                          size="md"
+                          aria-label="Edit"
+                          onClick={() => handleStartEdit(index)}
+                          className={styles.editButton}
+                          tooltip="Edit step"
+                        />
+                        <IconButton
+                          name="copy"
+                          size="md"
+                          aria-label="Duplicate"
+                          onClick={() => handleDuplicateStep(index)}
+                          className={styles.actionButton}
+                          tooltip="Duplicate step"
+                        />
+                        <IconButton
+                          name="trash-alt"
+                          size="md"
+                          aria-label="Remove"
+                          onClick={() => handleRemoveStep(index)}
+                          className={styles.deleteButton}
+                          tooltip="Remove step"
+                        />
+                      </div>
+                    </SortableStepItem>
+                  )}
+                </React.Fragment>
+              ))}
             </div>
-          )}
-        </div>
+          </SortableContext>
+        </DndContext>
       ) : (
         <div className={styles.emptyState}>
           <p>No steps yet. Add steps manually or use Record Mode.</p>

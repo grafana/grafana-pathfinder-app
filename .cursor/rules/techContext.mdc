@@ -35,6 +35,7 @@ description: Describes technologies, frameworks, and other tools used in this re
 - `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/scenes` (12.2.1)
 - `react` + `react-dom` (18.3.1), `react-router-dom` (6.28.0)
 - `@emotion/css` (11.13.5) for styling
+- `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop
 
 **Development**:
 - `typescript` (5.9.3), `webpack` (5.102.1) + loaders, `jest` (30.2.0) + testing utilities
@@ -56,6 +57,7 @@ description: Describes technologies, frameworks, and other tools used in this re
 - **Testing Strategy**: Unit tests with Jest, component tests with RTL, E2E with Playwright
 - **Code Organization**: Engine-based modules with clear separation of concerns (interactive-engine, context-engine, requirements-manager)
 - **Build Pipeline**: Development with watch mode, production with optimization and signing
+- **Drag-and-Drop**: @dnd-kit library for all sortable/draggable interactions (see `src/components/block-editor/dnd/`)
 
 ## Current Architecture & Data Flow Overviews
 

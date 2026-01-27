@@ -1,18 +1,34 @@
 /**
  * Block List
  *
- * Renders the list of blocks with insert zones between them.
- * Supports drag-and-drop nesting into section blocks.
+ * Renders the list of blocks with drag-and-drop reordering using @dnd-kit.
+ * Supports nesting into section blocks and conditional branches.
  */
 
-import React, { useCallback, useState } from 'react';
-import { useStyles2, IconButton } from '@grafana/ui';
+import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
+import { useStyles2 } from '@grafana/ui';
+// @dnd-kit
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  pointerWithin,
+  MeasuringStrategy,
+  UniqueIdentifier,
+} from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { getBlockListStyles } from './block-editor.styles';
-import { getDropIndicatorStyles, getNestedStyles, getConditionalStyles } from './BlockList.styles';
+import { getNestedStyles, getConditionalStyles } from './BlockList.styles';
 import { BlockItem } from './BlockItem';
 import { BlockPalette } from './BlockPalette';
-import { NestedBlockItem } from './NestedBlockItem';
-import { useBlockListDrag } from './hooks/useBlockListDrag';
+import { SortableBlock, DroppableInsertZone, DragData, DropZoneData } from './dnd-helpers';
+import { SectionNestedBlocks } from './SectionNestedBlocks';
+import { ConditionalBranches } from './ConditionalBranches';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
 import {
   isSectionBlock as checkIsSectionBlock,
@@ -20,20 +36,6 @@ import {
   type JsonSectionBlock,
   type JsonConditionalBlock,
 } from '../../types/json-guide.types';
-
-/**
- * Visual drop indicator component - shows a blue line where the drop will happen
- */
-function DropIndicator({ isActive, label }: { isActive: boolean; label: string }) {
-  const styles = useStyles2(getDropIndicatorStyles);
-
-  return (
-    <div className={styles.container}>
-      <div className={`${styles.line} ${!isActive ? styles.lineInactive : ''}`} />
-      {isActive && <div className={styles.label}>{label}</div>}
-    </div>
-  );
-}
 
 export interface BlockListProps {
   /** List of blocks to render */
@@ -51,7 +53,7 @@ export interface BlockListProps {
   /** Called to nest a block into a section */
   onNestBlock?: (blockId: string, sectionId: string, insertIndex?: number) => void;
   /** Called to unnest a block from a section */
-  onUnnestBlock?: (nestedBlockId: string, sectionId: string) => void;
+  onUnnestBlock?: (nestedBlockId: string, sectionId: string, insertAtRootIndex?: number) => void;
   /** Called to insert a block directly into a section */
   onInsertBlockInSection?: (type: BlockType, sectionId: string, index?: number) => void;
   /** Called to edit a nested block */
@@ -132,10 +134,17 @@ export interface BlockListProps {
     toBranch: 'whenTrue' | 'whenFalse',
     toIndex?: number
   ) => void;
+  /** Called to move a block from one section to another */
+  onMoveBlockBetweenSections?: (
+    fromSectionId: string,
+    fromIndex: number,
+    toSectionId: string,
+    toIndex?: number
+  ) => void;
 }
 
 /**
- * Block list component with insert zones
+ * Block list component with @dnd-kit drag-and-drop
  */
 export function BlockList({
   blocks,
@@ -166,15 +175,19 @@ export function BlockList({
   onNestBlockInConditional,
   onUnnestBlockFromConditional,
   onMoveBlockBetweenConditionalBranches,
+  onMoveBlockBetweenSections,
 }: BlockListProps) {
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
   const conditionalStyles = useStyles2(getConditionalStyles);
 
-  // Collapse state for sections and conditional blocks
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+  const [activeDragData, setActiveDragData] = useState<DragData | null>(null);
+  const [hoveredInsertIndex, setHoveredInsertIndex] = useState<number | null>(null);
+  const autoExpandTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Toggle collapse state for a section or conditional block
   const toggleCollapse = useCallback((blockId: string) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
@@ -187,20 +200,380 @@ export function BlockList({
     });
   }, []);
 
-  // Use the drag hook for all drag-and-drop state and handlers
-  const drag = useBlockListDrag({
-    blocks,
-    onBlockMove,
-    onNestBlock,
-    onUnnestBlock,
-    onNestedBlockMove,
-    onNestBlockInConditional,
-    onUnnestBlockFromConditional,
-    onConditionalBranchBlockMove,
-    onMoveBlockBetweenConditionalBranches,
+  const pointerSensor = useSensor(PointerSensor, {
+    activationConstraint: { distance: 8 },
   });
+  const keyboardSensor = useSensor(KeyboardSensor, {
+    coordinateGetter: sortableKeyboardCoordinates,
+  });
+  const sensors = useSensors(pointerSensor, keyboardSensor);
+  const activeSensors = useMemo(() => (isSelectionMode ? [] : sensors), [isSelectionMode, sensors]);
 
-  // Handle inserting block in section
+  const rootBlockIds = useMemo(() => blocks.map((b) => b.id), [blocks]);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id);
+    // Store active drag data for use in render-time calculations
+    setActiveDragData(event.active.data.current as DragData | null);
+  }, []);
+
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { over } = event;
+      if (!over) {
+        setActiveDropZone(null);
+        if (autoExpandTimeoutRef.current) {
+          clearTimeout(autoExpandTimeoutRef.current);
+          autoExpandTimeoutRef.current = null;
+        }
+        return;
+      }
+
+      const overId = String(over.id);
+      setActiveDropZone(overId);
+
+      // Auto-expand collapsed sections/conditionals when hovering over their drop zones
+      const overData = over.data.current as DropZoneData | undefined;
+      const blockIdToExpand = overData?.sectionId ?? overData?.conditionalId;
+
+      if (blockIdToExpand && collapsedSections.has(blockIdToExpand)) {
+        if (autoExpandTimeoutRef.current) {
+          clearTimeout(autoExpandTimeoutRef.current);
+        }
+        autoExpandTimeoutRef.current = setTimeout(() => {
+          setCollapsedSections((prev) => {
+            const next = new Set(prev);
+            next.delete(blockIdToExpand);
+            return next;
+          });
+        }, 500);
+      }
+    },
+    [collapsedSections]
+  );
+
+  // ============================================================================
+  // Drop Handlers - Decomposed for clarity and testability
+  // ============================================================================
+
+  /**
+   * Handle drop on section insert zone (specific position within section)
+   */
+  const handleDropOnSectionInsert = useCallback(
+    (activeId: string, activeData: DragData, sectionId: string, insertIndex: number) => {
+      // Guard against nesting sections/conditionals
+      if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+        return;
+      }
+
+      if (activeData.type === 'root' && onNestBlock) {
+        const rootBlock = blocks.find((b) => b.id === activeId);
+        if (rootBlock) {
+          onNestBlock(rootBlock.id, sectionId, insertIndex);
+        }
+      } else if (
+        activeData.type === 'nested' &&
+        activeData.sectionId &&
+        activeData.sectionId !== sectionId &&
+        onMoveBlockBetweenSections
+      ) {
+        onMoveBlockBetweenSections(activeData.sectionId, activeData.index, sectionId, insertIndex);
+      } else if (activeData.type === 'nested' && activeData.sectionId === sectionId && onNestedBlockMove) {
+        if (activeData.index !== insertIndex && activeData.index !== insertIndex - 1) {
+          const adjustedIndex = activeData.index < insertIndex ? insertIndex - 1 : insertIndex;
+          onNestedBlockMove(sectionId, activeData.index, adjustedIndex);
+        }
+      }
+    },
+    [blocks, onNestBlock, onMoveBlockBetweenSections, onNestedBlockMove]
+  );
+
+  /**
+   * Handle drop on conditional insert zone (specific position within branch)
+   */
+  const handleDropOnConditionalInsert = useCallback(
+    (
+      activeId: string,
+      activeData: DragData,
+      conditionalId: string,
+      branch: 'whenTrue' | 'whenFalse',
+      insertIndex: number
+    ) => {
+      // Guard against nesting sections/conditionals
+      if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+        return;
+      }
+
+      if (activeData.type === 'root' && onNestBlockInConditional) {
+        const rootBlock = blocks.find((b) => b.id === activeId);
+        if (rootBlock) {
+          onNestBlockInConditional(rootBlock.id, conditionalId, branch, insertIndex);
+        }
+      } else if (activeData.type === 'conditional' && activeData.conditionalId === conditionalId) {
+        if (activeData.branch === branch && onConditionalBranchBlockMove) {
+          if (activeData.index !== insertIndex && activeData.index !== insertIndex - 1) {
+            const adjustedIndex = activeData.index < insertIndex ? insertIndex - 1 : insertIndex;
+            onConditionalBranchBlockMove(conditionalId, branch, activeData.index, adjustedIndex);
+          }
+        } else if (activeData.branch && onMoveBlockBetweenConditionalBranches) {
+          onMoveBlockBetweenConditionalBranches(
+            conditionalId,
+            activeData.branch,
+            activeData.index,
+            branch,
+            insertIndex
+          );
+        }
+      }
+    },
+    [blocks, onNestBlockInConditional, onConditionalBranchBlockMove, onMoveBlockBetweenConditionalBranches]
+  );
+
+  /**
+   * Handle drop on section drop zone (append to section)
+   */
+  const handleDropOnSectionDrop = useCallback(
+    (activeId: string, activeData: DragData, sectionId: string) => {
+      if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+        return;
+      }
+
+      if (activeData.type === 'root' && onNestBlock) {
+        const rootBlock = blocks.find((b) => b.id === activeId);
+        if (rootBlock) {
+          onNestBlock(rootBlock.id, sectionId);
+        }
+      } else if (
+        activeData.type === 'nested' &&
+        activeData.sectionId &&
+        activeData.sectionId !== sectionId &&
+        onMoveBlockBetweenSections
+      ) {
+        onMoveBlockBetweenSections(activeData.sectionId, activeData.index, sectionId);
+      }
+    },
+    [blocks, onNestBlock, onMoveBlockBetweenSections]
+  );
+
+  /**
+   * Handle drop on conditional drop zone (append to branch)
+   */
+  const handleDropOnConditionalDrop = useCallback(
+    (activeId: string, activeData: DragData, conditionalId: string, branch: 'whenTrue' | 'whenFalse') => {
+      if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+        return;
+      }
+
+      if (activeData.type === 'root' && onNestBlockInConditional) {
+        const rootBlock = blocks.find((b) => b.id === activeId);
+        if (rootBlock) {
+          onNestBlockInConditional(rootBlock.id, conditionalId, branch);
+        }
+      }
+    },
+    [blocks, onNestBlockInConditional]
+  );
+
+  /**
+   * Handle drop on root zone (unnesting from section/conditional)
+   */
+  const handleDropOnRootZone = useCallback(
+    (activeData: DragData, insertIndex: number) => {
+      if (activeData.type === 'nested' && activeData.sectionId && onUnnestBlock) {
+        onUnnestBlock(`${activeData.sectionId}-${activeData.index}`, activeData.sectionId, insertIndex);
+      } else if (
+        activeData.type === 'conditional' &&
+        activeData.conditionalId &&
+        activeData.branch &&
+        onUnnestBlockFromConditional
+      ) {
+        onUnnestBlockFromConditional(activeData.conditionalId, activeData.branch, activeData.index, insertIndex);
+      }
+    },
+    [onUnnestBlock, onUnnestBlockFromConditional]
+  );
+
+  /**
+   * Handle sortable-to-sortable reordering (root, nested, or conditional blocks)
+   */
+  const handleSortableReorder = useCallback(
+    (activeData: DragData, overData: DragData) => {
+      // Root block reordering
+      if (activeData.type === 'root' && overData.type === 'root') {
+        if (activeData.index !== overData.index) {
+          onBlockMove(activeData.index, overData.index);
+        }
+        return;
+      }
+
+      // Nested block reordering within same section
+      if (
+        activeData.type === 'nested' &&
+        activeData.sectionId &&
+        overData.type === 'nested' &&
+        overData.sectionId === activeData.sectionId &&
+        onNestedBlockMove
+      ) {
+        if (activeData.index !== overData.index) {
+          onNestedBlockMove(activeData.sectionId, activeData.index, overData.index);
+        }
+        return;
+      }
+
+      // Conditional block reordering
+      if (
+        activeData.type === 'conditional' &&
+        activeData.conditionalId &&
+        activeData.branch &&
+        overData.type === 'conditional' &&
+        overData.conditionalId === activeData.conditionalId
+      ) {
+        if (activeData.branch === overData.branch && onConditionalBranchBlockMove) {
+          if (activeData.index !== overData.index) {
+            onConditionalBranchBlockMove(activeData.conditionalId, activeData.branch, activeData.index, overData.index);
+          }
+        } else if (overData.branch && onMoveBlockBetweenConditionalBranches) {
+          onMoveBlockBetweenConditionalBranches(
+            activeData.conditionalId,
+            activeData.branch,
+            activeData.index,
+            overData.branch,
+            overData.index
+          );
+        }
+      }
+    },
+    [onBlockMove, onNestedBlockMove, onConditionalBranchBlockMove, onMoveBlockBetweenConditionalBranches]
+  );
+
+  /**
+   * Verify the dragged block still exists in its container
+   */
+  const verifyBlockExists = useCallback(
+    (activeId: string, activeData: DragData): boolean => {
+      if (activeData.type === 'root') {
+        return blocks.some((b) => b.id === activeId);
+      }
+      if (activeData.type === 'nested' && activeData.sectionId) {
+        return blocks.some((b) => b.id === activeData.sectionId);
+      }
+      if (activeData.type === 'conditional' && activeData.conditionalId) {
+        return blocks.some((b) => b.id === activeData.conditionalId);
+      }
+      return false;
+    },
+    [blocks]
+  );
+
+  // ============================================================================
+  // Main Drag End Handler
+  // ============================================================================
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveId(null);
+      setActiveDragData(null);
+      setActiveDropZone(null);
+
+      if (autoExpandTimeoutRef.current) {
+        clearTimeout(autoExpandTimeoutRef.current);
+        autoExpandTimeoutRef.current = null;
+      }
+
+      if (!over) {
+        return;
+      }
+
+      const activeData = active.data.current as DragData | undefined;
+      const overData = over.data.current as DragData | DropZoneData | undefined;
+
+      if (!activeData || !overData) {
+        return;
+      }
+
+      // Defensive: verify source block still exists
+      if (!verifyBlockExists(String(active.id), activeData)) {
+        return;
+      }
+
+      const activeIdStr = String(active.id);
+
+      // Route to appropriate handler based on drop zone type
+      switch (overData.type) {
+        case 'section-insert':
+          if (overData.sectionId !== undefined && overData.index !== undefined) {
+            handleDropOnSectionInsert(activeIdStr, activeData, overData.sectionId, overData.index);
+          }
+          break;
+
+        case 'conditional-insert':
+          if (overData.conditionalId !== undefined && overData.branch !== undefined && overData.index !== undefined) {
+            handleDropOnConditionalInsert(
+              activeIdStr,
+              activeData,
+              overData.conditionalId,
+              overData.branch,
+              overData.index
+            );
+          }
+          break;
+
+        case 'section-drop':
+          if (overData.sectionId !== undefined) {
+            handleDropOnSectionDrop(activeIdStr, activeData, overData.sectionId);
+          }
+          break;
+
+        case 'conditional-drop':
+          if (overData.conditionalId !== undefined && overData.branch !== undefined) {
+            handleDropOnConditionalDrop(activeIdStr, activeData, overData.conditionalId, overData.branch);
+          }
+          break;
+
+        case 'root-zone':
+          if (overData.index !== undefined) {
+            handleDropOnRootZone(activeData, overData.index);
+          }
+          break;
+
+        case 'root':
+        case 'nested':
+        case 'conditional':
+          handleSortableReorder(activeData, overData as DragData);
+          break;
+      }
+    },
+    [
+      verifyBlockExists,
+      handleDropOnSectionInsert,
+      handleDropOnConditionalInsert,
+      handleDropOnSectionDrop,
+      handleDropOnConditionalDrop,
+      handleDropOnRootZone,
+      handleSortableReorder,
+    ]
+  );
+
+  const handleDragCancel = useCallback(() => {
+    setActiveId(null);
+    setActiveDragData(null);
+    setActiveDropZone(null);
+    if (autoExpandTimeoutRef.current) {
+      clearTimeout(autoExpandTimeoutRef.current);
+      autoExpandTimeoutRef.current = null;
+    }
+  }, []);
+
+  // REACT: cleanup timeout on unmount (R1)
+  useEffect(() => {
+    return () => {
+      if (autoExpandTimeoutRef.current) {
+        clearTimeout(autoExpandTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleInsertInSection = useCallback(
     (type: BlockType, sectionId: string) => {
       if (onInsertBlockInSection) {
@@ -210,825 +583,166 @@ export function BlockList({
     [onInsertBlockInSection]
   );
 
+  // Derive drag state flags from stored activeDragData
+  const isDraggingNestable =
+    activeDragData !== null && (activeDragData.type === 'nested' || activeDragData.type === 'conditional');
+
+  const isDraggingUnNestable =
+    activeDragData !== null &&
+    activeDragData.type === 'root' &&
+    (activeDragData.blockType === 'section' || activeDragData.blockType === 'conditional');
+
+  const isDropZoneRedundant = useCallback(
+    (zoneIndex: number) => {
+      if (!activeDragData || activeDragData.type !== 'root') {
+        return false;
+      }
+      return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
+    },
+    [activeDragData]
+  );
+
   return (
-    <div className={styles.list}>
-      {/* Insert zone at the top */}
-      {/* When dragging: show drop indicator. When not dragging: show add block on hover (as overlay) */}
-      {!(drag.draggedBlockIndex === 0) &&
-        (drag.isDragging ? (
-          <div
-            style={{ padding: '4px 0' }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (drag.draggedNestedBlock || drag.draggedConditionalBlock) {
-                drag.handleDragOverRootZone(e, 0);
-              } else if (drag.draggedBlockId) {
-                drag.handleDragOverReorder(e, 0);
-              }
-            }}
-            onDragLeave={() => {
-              drag.handleDragLeaveRootZone();
-              drag.handleDragLeaveReorder();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (drag.draggedNestedBlock || drag.draggedConditionalBlock) {
-                drag.handleDropOnRootZone(0);
-              } else if (drag.draggedBlockId) {
-                drag.handleDropReorder(0);
-              }
-            }}
-          >
-            <DropIndicator
-              isActive={drag.dragOverRootZone === 0 || drag.dragOverReorderZone === 0}
-              label={drag.draggedNestedBlock || drag.draggedConditionalBlock ? '📤 Move out' : '📍 Move here'}
-            />
-          </div>
-        ) : (
+    <DndContext
+      sensors={activeSensors}
+      collisionDetection={pointerWithin}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className={styles.list}>
+        {activeId !== null && !isDropZoneRedundant(0) && (
+          <DroppableInsertZone
+            id="root-zone-0"
+            data={{ type: 'root-zone', index: 0 }}
+            isActive={activeDropZone === 'root-zone-0'}
+            label={isDraggingNestable ? '📤 Move out' : '📍 Move here'}
+          />
+        )}
+        {activeId === null && (
           <div
             className={styles.insertZone}
-            onMouseEnter={() => drag.setHoveredInsertIndex(0)}
-            onMouseLeave={() => drag.setHoveredInsertIndex(null)}
+            onMouseEnter={() => setHoveredInsertIndex(0)}
+            onMouseLeave={() => setHoveredInsertIndex(null)}
           >
             <div
-              className={`${styles.insertZoneButton} ${drag.hoveredInsertIndex === 0 ? styles.insertZoneButtonVisible : ''}`}
+              className={`${styles.insertZoneButton} ${hoveredInsertIndex === 0 ? styles.insertZoneButtonVisible : ''}`}
             >
               <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
             </div>
           </div>
-        ))}
+        )}
 
-      {blocks.map((block, index) => {
-        const isSection = checkIsSectionBlock(block.block);
-        const isConditional = checkIsConditionalBlock(block.block);
-        const sectionBlocks: JsonBlock[] = isSection ? (block.block as JsonSectionBlock).blocks : [];
-        const conditionalChildCount = isConditional
-          ? (block.block as JsonConditionalBlock).whenTrue.length +
-            (block.block as JsonConditionalBlock).whenFalse.length
-          : 0;
+        <SortableContext items={rootBlockIds} strategy={verticalListSortingStrategy}>
+          {blocks.map((block, index) => {
+            const isSection = checkIsSectionBlock(block.block);
+            const isConditional = checkIsConditionalBlock(block.block);
+            const sectionBlocks: JsonBlock[] = isSection ? (block.block as JsonSectionBlock).blocks : [];
+            const conditionalChildCount = isConditional
+              ? (block.block as JsonConditionalBlock).whenTrue.length +
+                (block.block as JsonConditionalBlock).whenFalse.length
+              : 0;
 
-        return (
-          <React.Fragment key={block.id}>
-            <div
-              draggable
-              onDragStart={(e) => drag.handleDragStart(e, block.id, block.block.type, index)}
-              onDragEnd={drag.handleDragEnd}
-              style={{ cursor: 'grab' }}
-            >
-              <BlockItem
-                block={block}
-                index={index}
-                totalBlocks={blocks.length}
-                onEdit={() => onBlockEdit(block)}
-                onDelete={() => onBlockDelete(block.id)}
-                onDuplicate={() => onBlockDuplicate(block.id)}
-                onRecord={isSection && onSectionRecord ? () => onSectionRecord(block.id) : undefined}
-                isRecording={isSection && recordingIntoSection === block.id}
-                isSelectionMode={isSelectionMode}
-                isSelected={selectedBlockIds.has(block.id)}
-                onToggleSelect={onToggleBlockSelection ? () => onToggleBlockSelection(block.id) : undefined}
-                isCollapsible={isSection || isConditional}
-                isCollapsed={collapsedSections.has(block.id)}
-                onToggleCollapse={() => toggleCollapse(block.id)}
-                childCount={isSection ? sectionBlocks.length : conditionalChildCount}
-              />
-            </div>
-
-            {/* Render conditional block branches */}
-            {checkIsConditionalBlock(block.block) && (
-              <>
-                {/* Conditional container - hidden when collapsed */}
-                <div
-                  className={`${conditionalStyles.conditionalContainer} ${collapsedSections.has(block.id) ? conditionalStyles.conditionalContainerCollapsed : ''}`}
-                >
-                  {/* Conditions badge */}
-                  <div className={conditionalStyles.conditionsBadge}>
-                    Conditions: {(block.block as JsonConditionalBlock).conditions.join(', ')}
-                  </div>
-
-                  {/* True branch - when conditions pass */}
-                  <div className={`${conditionalStyles.branchContainer} ${conditionalStyles.trueBranch}`}>
-                    <div className={`${conditionalStyles.branchHeader} ${conditionalStyles.branchHeaderTrue}`}>
-                      <span className={conditionalStyles.branchIcon}>✓</span>
-                      <span>When conditions pass</span>
-                      {onConditionalBranchRecord && (
-                        <IconButton
-                          name={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenTrue'
-                              ? 'square-shape'
-                              : 'circle'
-                          }
-                          size="sm"
-                          aria-label={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenTrue'
-                              ? 'Stop recording'
-                              : 'Record into branch'
-                          }
-                          onClick={() => onConditionalBranchRecord(block.id, 'whenTrue')}
-                          className={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenTrue'
-                              ? conditionalStyles.recordingButton
-                              : conditionalStyles.recordButton
-                          }
-                          tooltip={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenTrue'
-                              ? 'Stop recording'
-                              : 'Record into branch'
-                          }
-                        />
-                      )}
-                    </div>
-                    {(block.block as JsonConditionalBlock).whenTrue.length === 0 ? (
-                      <div className={conditionalStyles.emptyBranch}>Drag blocks here or click + Add block below</div>
-                    ) : (
-                      (block.block as JsonConditionalBlock).whenTrue.map(
-                        (nestedBlock: JsonBlock, nestedIndex: number) => {
-                          const isDropZoneActive =
-                            drag.dragOverConditionalZone?.conditionalId === block.id &&
-                            drag.dragOverConditionalZone?.branch === 'whenTrue' &&
-                            drag.dragOverConditionalZone?.index === nestedIndex;
-                          const isRedundantDropZone =
-                            drag.draggedConditionalBlock?.conditionalId === block.id &&
-                            drag.draggedConditionalBlock?.branch === 'whenTrue' &&
-                            (nestedIndex === drag.draggedConditionalBlock.index ||
-                              nestedIndex === drag.draggedConditionalBlock.index + 1);
-
-                          return (
-                            <React.Fragment key={`${block.id}-true-${nestedIndex}`}>
-                              {/* Drop zone before each nested block */}
-                              {drag.isDragging && !isRedundantDropZone && (
-                                <div
-                                  style={{ padding: '4px 0', marginBottom: '4px' }}
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    // Accept drags from same conditional (either branch) or root blocks
-                                    if (drag.draggedConditionalBlock?.conditionalId === block.id) {
-                                      drag.setDragOverConditionalZone({
-                                        conditionalId: block.id,
-                                        branch: 'whenTrue',
-                                        index: nestedIndex,
-                                      });
-                                    } else if (drag.draggedBlockId) {
-                                      const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                                      if (
-                                        draggedBlock?.block.type !== 'section' &&
-                                        draggedBlock?.block.type !== 'conditional'
-                                      ) {
-                                        drag.setDragOverConditionalZone({
-                                          conditionalId: block.id,
-                                          branch: 'whenTrue',
-                                          index: nestedIndex,
-                                        });
-                                      }
-                                    }
-                                  }}
-                                  onDragLeave={() => drag.setDragOverConditionalZone(null)}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    if (drag.draggedConditionalBlock?.conditionalId === block.id) {
-                                      if (
-                                        drag.draggedConditionalBlock.branch === 'whenTrue' &&
-                                        onConditionalBranchBlockMove
-                                      ) {
-                                        // Same branch move
-                                        const adjustedTarget =
-                                          nestedIndex > drag.draggedConditionalBlock.index
-                                            ? nestedIndex - 1
-                                            : nestedIndex;
-                                        onConditionalBranchBlockMove(
-                                          block.id,
-                                          'whenTrue',
-                                          drag.draggedConditionalBlock.index,
-                                          adjustedTarget
-                                        );
-                                      } else if (
-                                        drag.draggedConditionalBlock.branch === 'whenFalse' &&
-                                        onMoveBlockBetweenConditionalBranches
-                                      ) {
-                                        // Cross-branch move from whenFalse to whenTrue
-                                        onMoveBlockBetweenConditionalBranches(
-                                          block.id,
-                                          'whenFalse',
-                                          drag.draggedConditionalBlock.index,
-                                          'whenTrue',
-                                          nestedIndex
-                                        );
-                                      }
-                                    } else if (drag.draggedBlockId && onNestBlockInConditional) {
-                                      const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                                      if (
-                                        draggedBlock?.block.type !== 'section' &&
-                                        draggedBlock?.block.type !== 'conditional'
-                                      ) {
-                                        onNestBlockInConditional(
-                                          drag.draggedBlockId,
-                                          block.id,
-                                          'whenTrue',
-                                          nestedIndex
-                                        );
-                                      }
-                                    }
-                                    drag.setDraggedBlockId(null);
-                                    drag.setDraggedBlockIndex(null);
-                                    drag.setDraggedConditionalBlock(null);
-                                    drag.setDragOverConditionalZone(null);
-                                  }}
-                                >
-                                  <DropIndicator isActive={isDropZoneActive} label="📍 Move here" />
-                                </div>
-                              )}
-                              <div
-                                draggable
-                                onDragStart={(e) =>
-                                  drag.handleConditionalDragStart(e, block.id, 'whenTrue', nestedIndex)
-                                }
-                                onDragEnd={drag.handleConditionalDragEnd}
-                                style={{ cursor: 'grab', marginBottom: '8px' }}
-                              >
-                                <NestedBlockItem
-                                  block={nestedBlock}
-                                  onEdit={() =>
-                                    onConditionalBranchBlockEdit?.(block.id, 'whenTrue', nestedIndex, nestedBlock)
-                                  }
-                                  onDelete={() => onConditionalBranchBlockDelete?.(block.id, 'whenTrue', nestedIndex)}
-                                  onDuplicate={() =>
-                                    onConditionalBranchBlockDuplicate?.(block.id, 'whenTrue', nestedIndex)
-                                  }
-                                  isSelectionMode={isSelectionMode}
-                                  isSelected={selectedBlockIds.has(`${block.id}-true-${nestedIndex}`)}
-                                  onToggleSelect={
-                                    onToggleBlockSelection
-                                      ? () => onToggleBlockSelection(`${block.id}-true-${nestedIndex}`)
-                                      : undefined
-                                  }
-                                />
-                              </div>
-                            </React.Fragment>
-                          );
-                        }
-                      )
-                    )}
-                    {/* Drop indicator at end of branch - show for any draggable block except if it's already last in this branch */}
-                    {drag.isDragging &&
-                      !(
-                        drag.draggedConditionalBlock?.conditionalId === block.id &&
-                        drag.draggedConditionalBlock?.branch === 'whenTrue' &&
-                        drag.draggedConditionalBlock?.index ===
-                          (block.block as JsonConditionalBlock).whenTrue.length - 1
-                      ) && (
-                        <div
-                          style={{ padding: '4px 0', marginTop: '8px' }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            // Accept any valid drag
-                            if (drag.draggedConditionalBlock?.conditionalId === block.id || drag.draggedBlockId) {
-                              const draggedBlock = drag.draggedBlockId
-                                ? blocks.find((b) => b.id === drag.draggedBlockId)
-                                : null;
-                              if (
-                                !draggedBlock ||
-                                (draggedBlock.block.type !== 'section' && draggedBlock.block.type !== 'conditional')
-                              ) {
-                                drag.setDragOverConditionalZone({
-                                  conditionalId: block.id,
-                                  branch: 'whenTrue',
-                                  index: (block.block as JsonConditionalBlock).whenTrue.length,
-                                });
-                              }
-                            }
-                          }}
-                          onDragLeave={() => drag.setDragOverConditionalZone(null)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const branchLen = (block.block as JsonConditionalBlock).whenTrue.length;
-                            if (drag.draggedConditionalBlock?.conditionalId === block.id) {
-                              if (drag.draggedConditionalBlock.branch === 'whenTrue' && onConditionalBranchBlockMove) {
-                                onConditionalBranchBlockMove(
-                                  block.id,
-                                  'whenTrue',
-                                  drag.draggedConditionalBlock.index,
-                                  branchLen
-                                );
-                              } else if (
-                                drag.draggedConditionalBlock.branch === 'whenFalse' &&
-                                onMoveBlockBetweenConditionalBranches
-                              ) {
-                                onMoveBlockBetweenConditionalBranches(
-                                  block.id,
-                                  'whenFalse',
-                                  drag.draggedConditionalBlock.index,
-                                  'whenTrue',
-                                  branchLen
-                                );
-                              }
-                            } else if (drag.draggedBlockId && onNestBlockInConditional) {
-                              const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                              if (
-                                draggedBlock?.block.type !== 'section' &&
-                                draggedBlock?.block.type !== 'conditional'
-                              ) {
-                                onNestBlockInConditional(drag.draggedBlockId, block.id, 'whenTrue', branchLen);
-                              }
-                            }
-                            drag.setDraggedBlockId(null);
-                            drag.setDraggedBlockIndex(null);
-                            drag.setDraggedConditionalBlock(null);
-                            drag.setDragOverConditionalZone(null);
-                          }}
-                        >
-                          <DropIndicator
-                            isActive={
-                              drag.dragOverConditionalZone?.conditionalId === block.id &&
-                              drag.dragOverConditionalZone?.branch === 'whenTrue' &&
-                              drag.dragOverConditionalZone?.index ===
-                                (block.block as JsonConditionalBlock).whenTrue.length
-                            }
-                            label="📍 Move here"
-                          />
-                        </div>
-                      )}
-                    {/* Add block palette when not dragging */}
-                    {!drag.isDragging && (
-                      <div className={nestedStyles.dropZone} style={{ marginTop: '8px' }}>
-                        <BlockPalette
-                          onSelect={(type) => onInsertBlockInConditional?.(type, block.id, 'whenTrue')}
-                          excludeTypes={['section', 'conditional']}
-                          embedded
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* False branch - when conditions fail */}
-                  <div className={`${conditionalStyles.branchContainer} ${conditionalStyles.falseBranch}`}>
-                    <div className={`${conditionalStyles.branchHeader} ${conditionalStyles.branchHeaderFalse}`}>
-                      <span className={conditionalStyles.branchIcon}>✗</span>
-                      <span>When conditions fail</span>
-                      {onConditionalBranchRecord && (
-                        <IconButton
-                          name={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenFalse'
-                              ? 'square-shape'
-                              : 'circle'
-                          }
-                          size="sm"
-                          aria-label={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenFalse'
-                              ? 'Stop recording'
-                              : 'Record into branch'
-                          }
-                          onClick={() => onConditionalBranchRecord(block.id, 'whenFalse')}
-                          className={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenFalse'
-                              ? conditionalStyles.recordingButton
-                              : conditionalStyles.recordButton
-                          }
-                          tooltip={
-                            recordingIntoConditionalBranch?.conditionalId === block.id &&
-                            recordingIntoConditionalBranch?.branch === 'whenFalse'
-                              ? 'Stop recording'
-                              : 'Record into branch'
-                          }
-                        />
-                      )}
-                    </div>
-                    {(block.block as JsonConditionalBlock).whenFalse.length === 0 ? (
-                      <div className={conditionalStyles.emptyBranch}>Drag blocks here or click + Add block below</div>
-                    ) : (
-                      (block.block as JsonConditionalBlock).whenFalse.map(
-                        (nestedBlock: JsonBlock, nestedIndex: number) => {
-                          const isDropZoneActive =
-                            drag.dragOverConditionalZone?.conditionalId === block.id &&
-                            drag.dragOverConditionalZone?.branch === 'whenFalse' &&
-                            drag.dragOverConditionalZone?.index === nestedIndex;
-                          const isRedundantDropZone =
-                            drag.draggedConditionalBlock?.conditionalId === block.id &&
-                            drag.draggedConditionalBlock?.branch === 'whenFalse' &&
-                            (nestedIndex === drag.draggedConditionalBlock.index ||
-                              nestedIndex === drag.draggedConditionalBlock.index + 1);
-
-                          return (
-                            <React.Fragment key={`${block.id}-false-${nestedIndex}`}>
-                              {/* Drop zone before each nested block */}
-                              {drag.isDragging && !isRedundantDropZone && (
-                                <div
-                                  style={{ padding: '4px 0', marginBottom: '4px' }}
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    // Accept drags from same conditional (either branch) or root blocks
-                                    if (drag.draggedConditionalBlock?.conditionalId === block.id) {
-                                      drag.setDragOverConditionalZone({
-                                        conditionalId: block.id,
-                                        branch: 'whenFalse',
-                                        index: nestedIndex,
-                                      });
-                                    } else if (drag.draggedBlockId) {
-                                      const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                                      if (
-                                        draggedBlock?.block.type !== 'section' &&
-                                        draggedBlock?.block.type !== 'conditional'
-                                      ) {
-                                        drag.setDragOverConditionalZone({
-                                          conditionalId: block.id,
-                                          branch: 'whenFalse',
-                                          index: nestedIndex,
-                                        });
-                                      }
-                                    }
-                                  }}
-                                  onDragLeave={() => drag.setDragOverConditionalZone(null)}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    if (drag.draggedConditionalBlock?.conditionalId === block.id) {
-                                      if (
-                                        drag.draggedConditionalBlock.branch === 'whenFalse' &&
-                                        onConditionalBranchBlockMove
-                                      ) {
-                                        // Same branch move
-                                        const adjustedTarget =
-                                          nestedIndex > drag.draggedConditionalBlock.index
-                                            ? nestedIndex - 1
-                                            : nestedIndex;
-                                        onConditionalBranchBlockMove(
-                                          block.id,
-                                          'whenFalse',
-                                          drag.draggedConditionalBlock.index,
-                                          adjustedTarget
-                                        );
-                                      } else if (
-                                        drag.draggedConditionalBlock.branch === 'whenTrue' &&
-                                        onMoveBlockBetweenConditionalBranches
-                                      ) {
-                                        // Cross-branch move from whenTrue to whenFalse
-                                        onMoveBlockBetweenConditionalBranches(
-                                          block.id,
-                                          'whenTrue',
-                                          drag.draggedConditionalBlock.index,
-                                          'whenFalse',
-                                          nestedIndex
-                                        );
-                                      }
-                                    } else if (drag.draggedBlockId && onNestBlockInConditional) {
-                                      const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                                      if (
-                                        draggedBlock?.block.type !== 'section' &&
-                                        draggedBlock?.block.type !== 'conditional'
-                                      ) {
-                                        onNestBlockInConditional(
-                                          drag.draggedBlockId,
-                                          block.id,
-                                          'whenFalse',
-                                          nestedIndex
-                                        );
-                                      }
-                                    }
-                                    drag.setDraggedBlockId(null);
-                                    drag.setDraggedBlockIndex(null);
-                                    drag.setDraggedConditionalBlock(null);
-                                    drag.setDragOverConditionalZone(null);
-                                  }}
-                                >
-                                  <DropIndicator isActive={isDropZoneActive} label="📍 Move here" />
-                                </div>
-                              )}
-                              <div
-                                draggable
-                                onDragStart={(e) =>
-                                  drag.handleConditionalDragStart(e, block.id, 'whenFalse', nestedIndex)
-                                }
-                                onDragEnd={drag.handleConditionalDragEnd}
-                                style={{ cursor: 'grab', marginBottom: '8px' }}
-                              >
-                                <NestedBlockItem
-                                  block={nestedBlock}
-                                  onEdit={() =>
-                                    onConditionalBranchBlockEdit?.(block.id, 'whenFalse', nestedIndex, nestedBlock)
-                                  }
-                                  onDelete={() => onConditionalBranchBlockDelete?.(block.id, 'whenFalse', nestedIndex)}
-                                  onDuplicate={() =>
-                                    onConditionalBranchBlockDuplicate?.(block.id, 'whenFalse', nestedIndex)
-                                  }
-                                  isSelectionMode={isSelectionMode}
-                                  isSelected={selectedBlockIds.has(`${block.id}-false-${nestedIndex}`)}
-                                  onToggleSelect={
-                                    onToggleBlockSelection
-                                      ? () => onToggleBlockSelection(`${block.id}-false-${nestedIndex}`)
-                                      : undefined
-                                  }
-                                />
-                              </div>
-                            </React.Fragment>
-                          );
-                        }
-                      )
-                    )}
-                    {/* Drop indicator at end of branch - show for any draggable block except if it's already last in this branch */}
-                    {drag.isDragging &&
-                      !(
-                        drag.draggedConditionalBlock?.conditionalId === block.id &&
-                        drag.draggedConditionalBlock?.branch === 'whenFalse' &&
-                        drag.draggedConditionalBlock?.index ===
-                          (block.block as JsonConditionalBlock).whenFalse.length - 1
-                      ) && (
-                        <div
-                          style={{ padding: '4px 0', marginTop: '8px' }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            // Accept any valid drag
-                            if (drag.draggedConditionalBlock?.conditionalId === block.id || drag.draggedBlockId) {
-                              const draggedBlock = drag.draggedBlockId
-                                ? blocks.find((b) => b.id === drag.draggedBlockId)
-                                : null;
-                              if (
-                                !draggedBlock ||
-                                (draggedBlock.block.type !== 'section' && draggedBlock.block.type !== 'conditional')
-                              ) {
-                                drag.setDragOverConditionalZone({
-                                  conditionalId: block.id,
-                                  branch: 'whenFalse',
-                                  index: (block.block as JsonConditionalBlock).whenFalse.length,
-                                });
-                              }
-                            }
-                          }}
-                          onDragLeave={() => drag.setDragOverConditionalZone(null)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const branchLen = (block.block as JsonConditionalBlock).whenFalse.length;
-                            if (drag.draggedConditionalBlock?.conditionalId === block.id) {
-                              if (drag.draggedConditionalBlock.branch === 'whenFalse' && onConditionalBranchBlockMove) {
-                                onConditionalBranchBlockMove(
-                                  block.id,
-                                  'whenFalse',
-                                  drag.draggedConditionalBlock.index,
-                                  branchLen
-                                );
-                              } else if (
-                                drag.draggedConditionalBlock.branch === 'whenTrue' &&
-                                onMoveBlockBetweenConditionalBranches
-                              ) {
-                                onMoveBlockBetweenConditionalBranches(
-                                  block.id,
-                                  'whenTrue',
-                                  drag.draggedConditionalBlock.index,
-                                  'whenFalse',
-                                  branchLen
-                                );
-                              }
-                            } else if (drag.draggedBlockId && onNestBlockInConditional) {
-                              const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                              if (
-                                draggedBlock?.block.type !== 'section' &&
-                                draggedBlock?.block.type !== 'conditional'
-                              ) {
-                                onNestBlockInConditional(drag.draggedBlockId, block.id, 'whenFalse', branchLen);
-                              }
-                            }
-                            drag.setDraggedBlockId(null);
-                            drag.setDraggedBlockIndex(null);
-                            drag.setDraggedConditionalBlock(null);
-                            drag.setDragOverConditionalZone(null);
-                          }}
-                        >
-                          <DropIndicator
-                            isActive={
-                              drag.dragOverConditionalZone?.conditionalId === block.id &&
-                              drag.dragOverConditionalZone?.branch === 'whenFalse' &&
-                              drag.dragOverConditionalZone?.index ===
-                                (block.block as JsonConditionalBlock).whenFalse.length
-                            }
-                            label="📍 Move here"
-                          />
-                        </div>
-                      )}
-                    {/* Add block palette when not dragging */}
-                    {!drag.isDragging && (
-                      <div className={nestedStyles.dropZone} style={{ marginTop: '8px' }}>
-                        <BlockPalette
-                          onSelect={(type) => onInsertBlockInConditional?.(type, block.id, 'whenFalse')}
-                          excludeTypes={['section', 'conditional']}
-                          embedded
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Render nested blocks for sections */}
-            {isSection && (
-              <>
-                {/* Nested container - hidden when collapsed */}
-                <div
-                  className={`${nestedStyles.nestedContainer} ${collapsedSections.has(block.id) ? nestedStyles.nestedContainerCollapsed : ''}`}
-                >
-                  {sectionBlocks.length === 0 ? (
-                    <div className={nestedStyles.emptySection}>Drag blocks here or click + Add Block below</div>
-                  ) : (
-                    sectionBlocks.map((nestedBlock: JsonBlock, nestedIndex: number) => {
-                      const isDropZoneActive =
-                        drag.dragOverNestedZone?.sectionId === block.id &&
-                        drag.dragOverNestedZone?.index === nestedIndex;
-                      // Don't show drop zone if it would result in same position (before dragged item or after it)
-                      const isRedundantDropZone =
-                        drag.draggedNestedBlock?.sectionId === block.id &&
-                        (nestedIndex === drag.draggedNestedBlock.index ||
-                          nestedIndex === drag.draggedNestedBlock.index + 1);
-
-                      return (
-                        <React.Fragment key={`${block.id}-${nestedIndex}`}>
-                          {/* Drop zone before each nested block - accepts both nested reordering and root blocks (but not sections) */}
-                          {drag.isDragging && !isRedundantDropZone && (
-                            <div
-                              style={{
-                                padding: '4px 0',
-                                marginBottom: '4px',
-                              }}
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                if (drag.draggedNestedBlock) {
-                                  drag.handleDragOverNestedReorder(e, block.id, nestedIndex);
-                                } else if (drag.draggedBlockId) {
-                                  // Check if dragged block is a section - don't allow nesting
-                                  const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                                  if (draggedBlock?.block.type !== 'section') {
-                                    drag.setDragOverNestedZone({ sectionId: block.id, index: nestedIndex });
-                                  }
-                                }
-                              }}
-                              onDragLeave={() => {
-                                drag.handleDragLeaveNestedReorder();
-                                drag.setDragOverNestedZone(null);
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                if (drag.draggedNestedBlock) {
-                                  drag.handleDropNestedReorder(block.id, nestedIndex);
-                                } else if (drag.draggedBlockId && onNestBlock) {
-                                  // Check if dragged block is a section - don't allow nesting
-                                  const draggedBlock = blocks.find((b) => b.id === drag.draggedBlockId);
-                                  if (draggedBlock?.block.type === 'section') {
-                                    return;
-                                  }
-                                  onNestBlock(drag.draggedBlockId, block.id, nestedIndex);
-                                  drag.setDraggedBlockId(null);
-                                  drag.setDraggedBlockIndex(null);
-                                  drag.setDragOverNestedZone(null);
-                                }
-                              }}
-                            >
-                              <DropIndicator isActive={isDropZoneActive} label="📍 Move here" />
-                            </div>
-                          )}
-                          <div
-                            draggable
-                            onDragStart={(e) => drag.handleNestedDragStart(e, block.id, nestedIndex)}
-                            onDragEnd={drag.handleNestedDragEnd}
-                            style={{ cursor: 'grab', marginBottom: '8px' }}
-                          >
-                            <NestedBlockItem
-                              block={nestedBlock}
-                              onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
-                              onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
-                              onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
-                              isSelectionMode={isSelectionMode}
-                              isSelected={selectedBlockIds.has(`${block.id}-nested-${nestedIndex}`)}
-                              onToggleSelect={
-                                onToggleBlockSelection
-                                  ? () => onToggleBlockSelection(`${block.id}-nested-${nestedIndex}`)
-                                  : undefined
-                              }
-                            />
-                          </div>
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-
-                  {/* Drop zone at the end for reordering - hide if dragged item is last */}
-                  {drag.draggedNestedBlock &&
-                    drag.draggedNestedBlock.sectionId === block.id &&
-                    drag.draggedNestedBlock.index !== sectionBlocks.length - 1 && (
-                      <div
-                        style={{
-                          padding: '4px 0',
-                          marginBottom: '8px',
-                        }}
-                        onDragOver={(e) => drag.handleDragOverNestedReorder(e, block.id, sectionBlocks.length)}
-                        onDragLeave={drag.handleDragLeaveNestedReorder}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          drag.handleDropNestedReorder(block.id, sectionBlocks.length);
-                        }}
-                      >
-                        <DropIndicator
-                          isActive={
-                            drag.dragOverNestedZone?.sectionId === block.id &&
-                            drag.dragOverNestedZone?.index === sectionBlocks.length
-                          }
-                          label="📍 Move here"
-                        />
-                      </div>
-                    )}
-
-                  {/* Drop zone for section - accepts both root blocks and nested blocks from other sections */}
-                  <div
-                    className={`${nestedStyles.dropZone} ${drag.dragOverSectionId === block.id ? nestedStyles.dropZoneActive : ''}`}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      drag.handleDragOverSection(e, block.id);
-                    }}
-                    onDragLeave={drag.handleDragLeaveSection}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      drag.handleDropOnSection(block.id);
-                    }}
-                  >
-                    {drag.isDragging ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px' }}>
-                        {drag.dragOverSectionId === block.id ? (
-                          <>
-                            <span style={{ fontSize: '20px' }}>📥</span>
-                            <span style={{ fontWeight: 500 }}>Release to add to this section</span>
-                          </>
-                        ) : (
-                          <>
-                            <span style={{ fontSize: '16px' }}>📥</span>
-                            <span>Drop here to add to section</span>
-                          </>
-                        )}
-                      </div>
-                    ) : (
-                      <BlockPalette
-                        onSelect={(type) => handleInsertInSection(type, block.id)}
-                        excludeTypes={['section', 'conditional']}
-                        embedded
-                      />
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Insert zone after each block */}
-            {/* When dragging: show drop indicator. When not dragging: show add block on hover (as overlay) */}
-            {!drag.isRootDropZoneRedundant(index + 1) &&
-              (drag.isDragging ? (
-                <div
-                  style={{ padding: '4px 0' }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    if (drag.draggedNestedBlock || drag.draggedConditionalBlock) {
-                      drag.handleDragOverRootZone(e, index + 1);
-                    } else if (drag.draggedBlockId) {
-                      drag.handleDragOverReorder(e, index + 1);
-                    }
+            return (
+              <React.Fragment key={block.id}>
+                <SortableBlock
+                  id={block.id}
+                  data={{
+                    type: 'root',
+                    blockType: block.block.type,
+                    index,
                   }}
-                  onDragLeave={() => {
-                    drag.handleDragLeaveRootZone();
-                    drag.handleDragLeaveReorder();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (drag.draggedNestedBlock || drag.draggedConditionalBlock) {
-                      drag.handleDropOnRootZone(index + 1);
-                    } else if (drag.draggedBlockId) {
-                      drag.handleDropReorder(index + 1);
-                    }
-                  }}
+                  disabled={isSelectionMode}
                 >
-                  <DropIndicator
-                    isActive={drag.dragOverRootZone === index + 1 || drag.dragOverReorderZone === index + 1}
-                    label={drag.draggedNestedBlock || drag.draggedConditionalBlock ? '📤 Move out' : '📍 Move here'}
+                  <BlockItem
+                    block={block}
+                    index={index}
+                    totalBlocks={blocks.length}
+                    onEdit={() => onBlockEdit(block)}
+                    onDelete={() => onBlockDelete(block.id)}
+                    onDuplicate={() => onBlockDuplicate(block.id)}
+                    onRecord={isSection && onSectionRecord ? () => onSectionRecord(block.id) : undefined}
+                    isRecording={isSection && recordingIntoSection === block.id}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedBlockIds.has(block.id)}
+                    onToggleSelect={onToggleBlockSelection ? () => onToggleBlockSelection(block.id) : undefined}
+                    isCollapsible={isSection || isConditional}
+                    isCollapsed={collapsedSections.has(block.id)}
+                    onToggleCollapse={() => toggleCollapse(block.id)}
+                    childCount={isSection ? sectionBlocks.length : conditionalChildCount}
                   />
-                </div>
-              ) : (
-                <div
-                  className={styles.insertZone}
-                  onMouseEnter={() => drag.setHoveredInsertIndex(index + 1)}
-                  onMouseLeave={() => drag.setHoveredInsertIndex(null)}
-                >
+                </SortableBlock>
+
+                {isConditional && (
+                  <ConditionalBranches
+                    block={block}
+                    isCollapsed={collapsedSections.has(block.id)}
+                    conditionalStyles={conditionalStyles}
+                    nestedStyles={nestedStyles}
+                    activeId={activeId}
+                    activeDropZone={activeDropZone}
+                    isDraggingUnNestable={isDraggingUnNestable}
+                    isSelectionMode={isSelectionMode}
+                    selectedBlockIds={selectedBlockIds}
+                    onToggleBlockSelection={onToggleBlockSelection}
+                    onConditionalBranchRecord={onConditionalBranchRecord}
+                    recordingIntoConditionalBranch={recordingIntoConditionalBranch}
+                    onConditionalBranchBlockEdit={onConditionalBranchBlockEdit}
+                    onConditionalBranchBlockDelete={onConditionalBranchBlockDelete}
+                    onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
+                    onInsertBlockInConditional={onInsertBlockInConditional}
+                  />
+                )}
+
+                {isSection && (
+                  <SectionNestedBlocks
+                    block={block}
+                    sectionBlocks={sectionBlocks}
+                    isCollapsed={collapsedSections.has(block.id)}
+                    nestedStyles={nestedStyles}
+                    activeId={activeId}
+                    activeDropZone={activeDropZone}
+                    isDraggingUnNestable={isDraggingUnNestable}
+                    isSelectionMode={isSelectionMode}
+                    selectedBlockIds={selectedBlockIds}
+                    onToggleBlockSelection={onToggleBlockSelection}
+                    onNestedBlockEdit={onNestedBlockEdit}
+                    onNestedBlockDelete={onNestedBlockDelete}
+                    onNestedBlockDuplicate={onNestedBlockDuplicate}
+                    handleInsertInSection={handleInsertInSection}
+                  />
+                )}
+
+                {activeId !== null && !isDropZoneRedundant(index + 1) && (
+                  <DroppableInsertZone
+                    id={`root-zone-${index + 1}`}
+                    data={{ type: 'root-zone', index: index + 1 }}
+                    isActive={activeDropZone === `root-zone-${index + 1}`}
+                    label={isDraggingNestable ? '📤 Move out' : '📍 Move here'}
+                  />
+                )}
+                {activeId === null && (
                   <div
-                    className={`${styles.insertZoneButton} ${drag.hoveredInsertIndex === index + 1 ? styles.insertZoneButtonVisible : ''}`}
+                    className={styles.insertZone}
+                    onMouseEnter={() => setHoveredInsertIndex(index + 1)}
+                    onMouseLeave={() => setHoveredInsertIndex(null)}
                   >
-                    <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
+                    <div
+                      className={`${styles.insertZoneButton} ${hoveredInsertIndex === index + 1 ? styles.insertZoneButtonVisible : ''}`}
+                    >
+                      <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
+                    </div>
                   </div>
-                </div>
-              ))}
-          </React.Fragment>
-        );
-      })}
-    </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </SortableContext>
+      </div>
+    </DndContext>
   );
 }
 
-// Add display name for debugging
 BlockList.displayName = 'BlockList';

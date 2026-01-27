@@ -2,48 +2,12 @@
  * BlockList Styles
  *
  * Theme-aware styles for BlockList component and its sub-components.
+ * Note: Drop indicator styles have been moved inline to BlockList.tsx
+ * as part of the @dnd-kit migration.
  */
 
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-
-/**
- * Drop indicator styles - visual feedback during drag operations
- */
-export const getDropIndicatorStyles = (theme: GrafanaTheme2) => ({
-  container: css({
-    position: 'relative',
-    padding: theme.spacing(0.5),
-    transition: 'all 0.15s ease',
-  }),
-  line: css({
-    height: '4px',
-    backgroundColor: theme.colors.primary.main,
-    borderRadius: '2px',
-    boxShadow: `0 0 8px ${theme.colors.primary.main}`,
-    transition: 'all 0.15s ease',
-  }),
-  lineInactive: css({
-    height: '2px',
-    backgroundColor: theme.colors.border.medium,
-    boxShadow: 'none',
-  }),
-  label: css({
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    transform: 'translate(-50%, -50%)',
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
-    backgroundColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
-    borderRadius: theme.shape.radius.pill,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    whiteSpace: 'nowrap',
-    boxShadow: theme.shadows.z2,
-    zIndex: 1,
-  }),
-});
 
 /**
  * Styles for nested blocks within sections
