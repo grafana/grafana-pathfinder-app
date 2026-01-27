@@ -187,7 +187,7 @@ export class NavigationManager {
 
           // Update comment box position (on body, not child of dot)
           if (this.driftDetectionComment) {
-            this.driftDetectionComment.style.top = `${dotTop + 24}px`;
+            this.driftDetectionComment.style.top = `${dotTop + INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY}px`;
             this.driftDetectionComment.style.left = `${dotLeft}px`;
           }
         } else {
@@ -315,7 +315,7 @@ export class NavigationManager {
             // For dot mode, comment is on document.body - update absolute position directly
             const dotTop = rect.top + scrollTop + rect.height / 2;
             const dotLeft = rect.left + scrollLeft + rect.width / 2;
-            commentBox.style.top = `${dotTop + 24}px`; // 24px below dot center
+            commentBox.style.top = `${dotTop + INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY}px`;
             commentBox.style.left = `${dotLeft}px`;
           } else {
             const commentHeight = commentBox.offsetHeight;
@@ -700,7 +700,7 @@ export class NavigationManager {
         const dotTop = rect.top + window.scrollY + rect.height / 2;
         const dotLeft = rect.left + window.scrollX + rect.width / 2;
         commentBox.style.position = 'absolute';
-        commentBox.style.top = `${dotTop + 24}px`; // 24px below dot center
+        commentBox.style.top = `${dotTop + INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY}px`;
         commentBox.style.left = `${dotLeft}px`;
         commentBox.style.setProperty('--comment-offset-x', '0px');
         commentBox.style.setProperty('--comment-offset-y', '0px');
@@ -1012,7 +1012,7 @@ export class NavigationManager {
     if (isDotMode) {
       // For dot mode, use fixed positioning below-right of dot
       const offsetX = 0;
-      const offsetY = 24; // Position comment 24px below the dot
+      const offsetY = INTERACTIVE_CONFIG.highlighting.dotCommentOffsetY;
       commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
       commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
       commentBox.setAttribute('data-position', 'bottom');

@@ -106,11 +106,33 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     checkIntervalMs: 100, // Throttle interval for RAF-based drift checks
     debounceMs: 150, // Debounce for position updates in NavigationManager
   },
-  // Highlighting configuration for visual feedback
+  // ============================================================
+  // HIGHLIGHT TIMING ALIGNMENT
+  // ============================================================
+  // CSS and JS timeouts must stay synchronized. When changing:
+  //
+  // DOT INDICATOR:
+  //   CSS: interactive-dot-pulse × 2 cycles @ 1.5s = 3.0s
+  //        interactive-dot-fade @ 0.5s (starts at 3.0s) = 3.5s total
+  //   JS:  dotDurationMs = 4000ms (500ms buffer for cleanup)
+  //
+  // BOUNDING BOX OUTLINE:
+  //   CSS: interactive-draw-border @ ~1s (drawMs)
+  //        interactive-glow-breathe × 2 cycles @ 1.5s = 3.0s
+  //        interactive-outline-fade @ 0.5s = 4.5s total
+  //   JS:  outlineDurationMs = 5000ms (500ms buffer for cleanup)
+  //
+  // See src/styles/interactive.styles.ts for CSS animation definitions
+  // ============================================================
   highlighting: {
     minDimensionForBox: 10, // Below this width/height, use dot indicator instead of bounding box
-    dotDurationMs: 5000, // Auto-remove dot after this duration (failsafe for orphaned dots)
-    outlineDurationMs: 5000, // Auto-remove bounding box after this duration (draw + breathe + fade)
+    // Timing aligned with CSS animations - see interactive.styles.ts
+    // Dot: 2 pulses @ 1.5s (3s) + 0.5s fade = 3.5s CSS, 4000ms JS (500ms buffer)
+    dotDurationMs: 4000,
+    // Outline: ~1s draw + 2 breathes @ 1.5s (3s) + 0.5s fade = 4.5s CSS, 5000ms JS
+    outlineDurationMs: 5000,
+    // Offset for comment box below dot indicator (used in navigation-manager.ts)
+    dotCommentOffsetY: 24,
   },
   // Guided step interaction timing
   guided: {

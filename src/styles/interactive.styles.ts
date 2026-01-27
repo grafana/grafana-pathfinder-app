@@ -1416,11 +1416,14 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
-      /* Draw border animation, then breathing glow (3 cycles), then fade out */
+      /* Draw border animation, then breathing glow (2 cycles), then fade out
+       * Total: ~1s draw + 3s breathe + 0.5s fade = 4.5s
+       * JS cleanup at 5000ms (500ms buffer after CSS completes)
+       */
       animation:
         interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,
-        interactive-glow-breathe 2s ease-in-out ${drawMs}ms 3,
-        interactive-outline-fade 0.5s ease-out ${drawMs + 6000}ms forwards;
+        interactive-glow-breathe 1.5s ease-in-out ${drawMs}ms 2,
+        interactive-outline-fade 0.5s ease-out ${drawMs + 3000}ms forwards;
     }
 
     /* Subtle variant to reuse animation cadence for blocked areas */
@@ -1496,11 +1499,13 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Instant highlight - no draw animation, just breathing glow then fade */
+    /* Instant highlight - no draw animation, just breathing glow then fade
+     * Instant: 2 breathe cycles (3s) + 0.5s fade = 3.5s
+     */
     .interactive-highlight-outline--instant {
       animation: 
-        interactive-glow-breathe 2s ease-in-out 3,
-        interactive-outline-fade 0.5s ease-out 6s forwards !important;
+        interactive-glow-breathe 1.5s ease-in-out 2,
+        interactive-outline-fade 0.5s ease-out 3s forwards !important;
       background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100% !important;
     }
 
@@ -1517,10 +1522,12 @@ export const addGlobalInteractiveStyles = () => {
       z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
       transform: translate(-50%, -50%); /* Center on the point */
       box-shadow: 0 0 12px 4px rgba(255, 136, 0, 0.5);
-      /* Finite animation: 3 pulse cycles (4.5s) then fade out (0.5s) */
+      /* Finite animation: 2 pulse cycles (3s) then fade out (0.5s) = 3.5s total
+       * JS cleanup at 4000ms (500ms buffer after CSS completes)
+       */
       animation: 
-        interactive-dot-pulse 1.5s ease-in-out 3,
-        interactive-dot-fade 0.5s ease-out 4.5s forwards;
+        interactive-dot-pulse 1.5s ease-in-out 2,
+        interactive-dot-fade 0.5s ease-out 3s forwards;
     }
 
     @keyframes interactive-dot-pulse {

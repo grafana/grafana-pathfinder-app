@@ -271,7 +271,7 @@ describe('NavigationManager', () => {
       navigationManager.clearAllHighlights();
     });
 
-    describe('normal elements (>= 20px)', () => {
+    describe('normal elements (>= minDimensionForBox, 10px)', () => {
       it('should create bounding box highlight for visible element', async () => {
         // Element with normal dimensions
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
@@ -350,7 +350,7 @@ describe('NavigationManager', () => {
       });
     });
 
-    describe('small elements (< 20px)', () => {
+    describe('small elements (< minDimensionForBox, 10px)', () => {
       it('should use dot indicator for elements with width < 20px', async () => {
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
           top: 100,
