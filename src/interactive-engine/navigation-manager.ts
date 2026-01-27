@@ -33,7 +33,9 @@ export class NavigationManager {
     this.cleanupAutoHandlers();
 
     // Remove all existing highlight outlines and dot indicators
-    document.querySelectorAll('.interactive-highlight-outline, .interactive-highlight-dot').forEach((el) => el.remove());
+    document
+      .querySelectorAll('.interactive-highlight-outline, .interactive-highlight-dot')
+      .forEach((el) => el.remove());
 
     // Remove all existing comment boxes
     document.querySelectorAll('.interactive-comment-box').forEach((el) => el.remove());
