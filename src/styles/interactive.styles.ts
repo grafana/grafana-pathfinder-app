@@ -1416,10 +1416,11 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
-      /* Draw border animation, then breathing glow activates after draw completes */
+      /* Draw border animation, then breathing glow (3 cycles), then fade out */
       animation:
         interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,
-        interactive-glow-breathe 2s ease-in-out ${drawMs}ms infinite;
+        interactive-glow-breathe 2s ease-in-out ${drawMs}ms 3,
+        interactive-outline-fade 0.5s ease-out ${drawMs + 6000}ms forwards;
     }
 
     /* Subtle variant to reuse animation cadence for blocked areas */
@@ -1483,9 +1484,23 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Instant highlight - no draw animation, just breathing glow */
+    /* Fade out animation for bounding box after breathing completes */
+    @keyframes interactive-outline-fade {
+      from {
+        opacity: 0.95;
+        box-shadow: 0 0 8px 2px rgba(255, 136, 0, 0.3);
+      }
+      to {
+        opacity: 0;
+        box-shadow: 0 0 4px 1px rgba(255, 136, 0, 0);
+      }
+    }
+
+    /* Instant highlight - no draw animation, just breathing glow then fade */
     .interactive-highlight-outline--instant {
-      animation: interactive-glow-breathe 2s ease-in-out infinite !important;
+      animation: 
+        interactive-glow-breathe 2s ease-in-out 3,
+        interactive-outline-fade 0.5s ease-out 6s forwards !important;
       background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100% !important;
     }
 

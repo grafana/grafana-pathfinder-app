@@ -108,8 +108,9 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
   },
   // Highlighting configuration for visual feedback
   highlighting: {
-    minDimensionForBox: 20, // Below this width/height, use dot indicator instead of bounding box
+    minDimensionForBox: 10, // Below this width/height, use dot indicator instead of bounding box
     dotDurationMs: 5000, // Auto-remove dot after this duration (failsafe for orphaned dots)
+    outlineDurationMs: 5000, // Auto-remove bounding box after this duration (draw + breathe + fade)
   },
   // Guided step interaction timing
   guided: {
