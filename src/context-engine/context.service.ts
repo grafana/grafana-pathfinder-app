@@ -41,6 +41,13 @@ export class ContextService {
   private static readonly STATIC_LINK_ACCURACY = 0.7;
   private static readonly BUNDLED_INTERACTIVE_ACCURACY = 0.8;
 
+  // Content type priority for sorting (lower number = higher priority)
+  private static readonly TYPE_PRIORITY: Record<string, number> = {
+    interactive: 0,
+    'learning-journey': 1,
+    'docs-page': 2,
+  };
+
   // Event buffer to handle missed events when plugin is closed/reopened
   private static eventBuffer: Array<{
     datasourceType?: string;
@@ -517,7 +524,7 @@ export class ContextService {
 
         // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
-        const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
+        const sortedRecommendations = this.sortRecommendations(filteredRecommendations);
 
         // Featured recommendations are curated by the server, so don't filter by confidence
         // Just keep the server order and all items
@@ -1042,11 +1049,20 @@ export class ContextService {
   }
 
   /**
-   * Sort recommendations by accuracy only
-   * No longer prioritizes learning journeys over docs - all sorted by confidence descending
+   * Sort recommendations by content type priority, then by accuracy
+   * Priority: interactive > learning-journey > docs-page
    */
-  private static sortRecommendationsByAccuracy(recommendations: Recommendation[]): Recommendation[] {
+  private static sortRecommendations(recommendations: Recommendation[]): Recommendation[] {
     return recommendations.sort((a, b) => {
+      // Primary: sort by content type priority
+      const priorityA = this.TYPE_PRIORITY[a.type ?? 'docs-page'] ?? 2;
+      const priorityB = this.TYPE_PRIORITY[b.type ?? 'docs-page'] ?? 2;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      // Secondary: sort by accuracy descending
       const accuracyA = a.matchAccuracy ?? 0;
       const accuracyB = b.matchAccuracy ?? 0;
       return accuracyB - accuracyA;

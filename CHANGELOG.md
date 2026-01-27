@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.4.5
+
+### Added
+
+- **Renderer requirement**: New `renderer` requirement type for conditional rendering based on presentation context (in-Grafana vs website) (#493)
+- **PR review tool**: New dev tools feature to review PRs from interactive-tutorials repository, allowing quick testing of content.json files (#494)
+- **Collapsible sections**: Section and conditional blocks in the block editor now support collapse/expand with smooth animations (#488)
+- **Block type switching**: Users can now convert blocks between types (e.g., markdown → interactive) while preserving compatible data (#486)
+
+### Changed
+
+- **Recommendation sorting**: Recommendations are now sorted by content type priority (interactive > learning-journey > docs-page), then by match accuracy within each type
+- **Drag and drop improvements**: Migrated block editor drag-and-drop from custom HTML5 implementation to @dnd-kit library for improved reliability and cross-section moves (#495)
+- **Datasource API migration**: Switched requirements checker to use datasource UIDs instead of numeric IDs for compatibility with recent Grafana APIs (#487)
+
+### Fixed
+
+- Fixed scroll tracking issues
+
 ## 1.4.4
 
 ### Added
