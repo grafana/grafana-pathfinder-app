@@ -4,6 +4,14 @@ import * as elementValidator from '../lib/dom';
 // Mock the element validator functions
 jest.mock('../lib/dom');
 
+// Mock ResizeObserver which is not available in jsdom
+class MockResizeObserver {
+  observe = jest.fn();
+  unobserve = jest.fn();
+  disconnect = jest.fn();
+}
+global.ResizeObserver = MockResizeObserver as any;
+
 const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFunction<
   typeof elementValidator.isElementVisible
 >;
@@ -13,6 +21,9 @@ const mockHasFixedPosition = elementValidator.hasFixedPosition as jest.MockedFun
 const mockIsInViewport = elementValidator.isInViewport as jest.MockedFunction<typeof elementValidator.isInViewport>;
 const mockGetScrollParent = elementValidator.getScrollParent as jest.MockedFunction<
   typeof elementValidator.getScrollParent
+>;
+const mockGetStickyHeaderOffset = elementValidator.getStickyHeaderOffset as jest.MockedFunction<
+  typeof elementValidator.getStickyHeaderOffset
 >;
 
 // Mock console.warn to avoid noise in tests
@@ -229,6 +240,283 @@ describe('NavigationManager', () => {
       expect(element.classList.contains('interactive-guided-active')).toBe(false);
 
       document.body.removeChild(element);
+    });
+
+    it('should remove dot indicators in addition to outlines', () => {
+      const outline = document.createElement('div');
+      outline.className = 'interactive-highlight-outline';
+      const dot = document.createElement('div');
+      dot.className = 'interactive-highlight-dot';
+
+      document.body.appendChild(outline);
+      document.body.appendChild(dot);
+
+      navigationManager.clearAllHighlights();
+
+      expect(document.querySelectorAll('.interactive-highlight-outline').length).toBe(0);
+      expect(document.querySelectorAll('.interactive-highlight-dot').length).toBe(0);
+    });
+  });
+
+  describe('highlightWithComment', () => {
+    beforeEach(() => {
+      // Reset mocks for highlight tests
+      mockIsElementVisible.mockReturnValue(true);
+      mockGetScrollParent.mockReturnValue(document.documentElement);
+      mockGetStickyHeaderOffset.mockReturnValue(0);
+    });
+
+    afterEach(() => {
+      // Clean up any highlights after each test
+      navigationManager.clearAllHighlights();
+    });
+
+    describe('normal elements (>= 20px)', () => {
+      it('should create bounding box highlight for visible element', async () => {
+        // Element with normal dimensions
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        const highlight = document.querySelector('.interactive-highlight-outline');
+        expect(highlight).not.toBeNull();
+        expect(highlight?.className).toBe('interactive-highlight-outline');
+      });
+
+      it('should position box with 4px padding around element', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 150,
+          right: 150,
+          width: 50,
+          height: 50,
+        });
+
+        await navigationManager.highlightWithComment(mockElement);
+
+        const highlight = document.querySelector('.interactive-highlight-outline') as HTMLElement;
+        expect(highlight).not.toBeNull();
+
+        // Should have padding of 4px on each side, total 8px added to dimensions
+        const width = highlight?.style.getPropertyValue('--highlight-width');
+        const height = highlight?.style.getPropertyValue('--highlight-height');
+        expect(width).toBe('58px'); // 50 + 8
+        expect(height).toBe('58px'); // 50 + 8
+      });
+
+      it('should create comment box when comment provided', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        const commentBox = document.querySelector('.interactive-comment-box');
+        expect(commentBox).not.toBeNull();
+      });
+
+      it('should reject elements with no valid position (0,0,0,0)', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 0,
+          left: 0,
+          bottom: 0,
+          right: 0,
+          width: 0,
+          height: 0,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        // Should NOT create highlight for invalid element
+        const highlight = document.querySelector('.interactive-highlight-outline');
+        expect(highlight).toBeNull();
+        expect(mockConsoleWarn).toHaveBeenCalledWith(
+          'Cannot highlight element: invalid position or dimensions',
+          expect.any(Object)
+        );
+      });
+    });
+
+    describe('small elements (< 20px)', () => {
+      it('should use dot indicator for elements with width < 20px', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 110,
+          right: 101, // 1px wide (like Monaco textarea)
+          width: 1,
+          height: 10,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        // Should create dot indicator instead of bounding box
+        const dot = document.querySelector('.interactive-highlight-dot');
+        expect(dot).not.toBeNull();
+      });
+
+      it('should use dot indicator for elements with height < 20px', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 105,
+          right: 200,
+          width: 100,
+          height: 5, // Very short element
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        const dot = document.querySelector('.interactive-highlight-dot');
+        expect(dot).not.toBeNull();
+      });
+
+      it('should position dot at element center', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 200,
+          bottom: 110,
+          right: 201,
+          width: 1,
+          height: 10,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        const dot = document.querySelector('.interactive-highlight-dot') as HTMLElement;
+        expect(dot).not.toBeNull();
+
+        // Dot should be positioned at center of element
+        const dotTop = dot?.style.getPropertyValue('--highlight-top');
+        const dotLeft = dot?.style.getPropertyValue('--highlight-left');
+        // Center: top + height/2 = 100 + 5 = 105, left + width/2 = 200 + 0.5 = 200.5
+        expect(dotTop).toBe('105px');
+        expect(dotLeft).toBe('200.5px');
+      });
+    });
+
+    describe('hidden elements', () => {
+      it('should use dot indicator and show warning for hidden elements', async () => {
+        mockIsElementVisible.mockReturnValue(false);
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        // Should use dot indicator for hidden elements
+        const dot = document.querySelector('.interactive-highlight-dot');
+        expect(dot).not.toBeNull();
+
+        // Comment should include hidden warning
+        const commentBox = document.querySelector('.interactive-comment-box');
+        expect(commentBox?.textContent).toContain('hidden');
+      });
+
+      it('should prepend hidden warning even for normal-sized hidden elements', async () => {
+        mockIsElementVisible.mockReturnValue(false);
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, 'Original comment');
+
+        const commentBox = document.querySelector('.interactive-comment-box');
+        expect(commentBox?.textContent).toContain('Item hidden');
+        expect(commentBox?.textContent).toContain('Original comment');
+      });
+    });
+
+    describe('position tracking', () => {
+      it('should update highlight position when element moves', async () => {
+        // Initial position
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement);
+
+        const highlight = document.querySelector('.interactive-highlight-outline') as HTMLElement;
+        expect(highlight).not.toBeNull();
+
+        // Verify initial position
+        expect(highlight.style.getPropertyValue('--highlight-top')).toBe('96px'); // 100 - 4
+
+        // Simulate element moving (window resize)
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 200, // Moved down
+          left: 100,
+          bottom: 300,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        // Trigger resize event
+        window.dispatchEvent(new Event('resize'));
+
+        // Wait for debounced update
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Position should be updated
+        expect(highlight.style.getPropertyValue('--highlight-top')).toBe('196px'); // 200 - 4
+      });
+
+      it('should hide highlight when element is removed from DOM', async () => {
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement);
+
+        const highlight = document.querySelector('.interactive-highlight-outline') as HTMLElement;
+        expect(highlight).not.toBeNull();
+
+        // Remove element from DOM
+        mockElement.parentElement?.removeChild(mockElement);
+
+        // Trigger resize to trigger position check
+        window.dispatchEvent(new Event('resize'));
+
+        // Wait for debounced update
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Highlight should be hidden
+        expect(highlight.style.display).toBe('none');
+      });
     });
   });
 });

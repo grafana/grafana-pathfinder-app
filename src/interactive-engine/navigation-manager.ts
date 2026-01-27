@@ -31,8 +31,8 @@ export class NavigationManager {
     // Cleanup any active auto-cleanup handlers (ResizeObserver, event listeners, etc.)
     this.cleanupAutoHandlers();
 
-    // Remove all existing highlight outlines
-    document.querySelectorAll('.interactive-highlight-outline').forEach((el) => el.remove());
+    // Remove all existing highlight outlines and dot indicators
+    document.querySelectorAll('.interactive-highlight-outline, .interactive-highlight-dot').forEach((el) => el.remove());
 
     // Remove all existing comment boxes
     document.querySelectorAll('.interactive-comment-box').forEach((el) => el.remove());
@@ -207,15 +207,17 @@ export class NavigationManager {
    * Updates highlight position when element moves (resize, dynamic content, etc.)
    *
    * @param element - The target element being highlighted
-   * @param highlightOutline - The highlight outline element
+   * @param highlightElement - The highlight element (outline or dot)
    * @param commentBox - Optional comment box element
    * @param enableDriftDetection - Enable active drift detection (for guided mode)
+   * @param isDotMode - Whether the highlight is using dot indicator (skip dimension validation)
    */
   private setupPositionTracking(
     element: HTMLElement,
-    highlightOutline: HTMLElement,
+    highlightElement: HTMLElement,
     commentBox: HTMLElement | null,
-    enableDriftDetection = false
+    enableDriftDetection = false,
+    isDotMode = false
   ): void {
     let updateTimeout: NodeJS.Timeout | null = null;
 
@@ -229,7 +231,7 @@ export class NavigationManager {
         // Check if element is still connected to DOM
         if (!element.isConnected) {
           // Element was removed from DOM - hide highlight
-          highlightOutline.style.display = 'none';
+          highlightElement.style.display = 'none';
           if (commentBox) {
             commentBox.style.display = 'none';
           }
@@ -243,13 +245,14 @@ export class NavigationManager {
         // Check for invalid positions:
         // 1. Element has collapsed to 0,0 (disappeared)
         // 2. Element is at top-left corner (0,0) with no scroll offset
-        // 3. Element has zero or near-zero dimensions
+        // 3. Element has zero or near-zero dimensions (skip for dot mode - dots work with any dimensions)
         const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
         const hasNoDimensions = rect.width < 1 || rect.height < 1;
 
-        if (isAtOrigin || hasNoDimensions) {
+        // Skip dimension check for dot mode - dots work even for very small elements
+        if (isAtOrigin || (!isDotMode && hasNoDimensions)) {
           // Element is in invalid state - hide highlight
-          highlightOutline.style.display = 'none';
+          highlightElement.style.display = 'none';
           if (commentBox) {
             commentBox.style.display = 'none';
           }
@@ -257,23 +260,38 @@ export class NavigationManager {
         }
 
         // Element is valid - ensure highlight is visible and update position
-        highlightOutline.style.display = '';
+        highlightElement.style.display = '';
         if (commentBox) {
           commentBox.style.display = '';
         }
 
-        // Update highlight position - comment follows automatically as it's a child
-        highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-        highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
-        highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
-        highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+        // Update highlight position based on mode
+        if (isDotMode) {
+          // For dots, position at element's center
+          const dotTop = rect.top + scrollTop + rect.height / 2;
+          const dotLeft = rect.left + scrollLeft + rect.width / 2;
+          highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
+          highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
+        } else {
+          // For bounding box, position with 4px padding
+          highlightElement.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
+          highlightElement.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+          highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
+          highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+        }
 
         // Update comment box offsets if it exists (recalculate in case viewport changed)
         if (commentBox) {
-          const commentHeight = commentBox.offsetHeight;
-          const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
-          commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-          commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+          if (isDotMode) {
+            // For dot mode, use fixed positioning below-right of dot
+            commentBox.style.setProperty('--comment-offset-x', '0px');
+            commentBox.style.setProperty('--comment-offset-y', '24px');
+          } else {
+            const commentHeight = commentBox.offsetHeight;
+            const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
+            commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
+            commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+          }
         }
       }, INTERACTIVE_CONFIG.positionTracking.debounceMs);
     };
@@ -317,7 +335,7 @@ export class NavigationManager {
     // Start drift detection for guided mode (more responsive than event-based tracking alone)
     // This catches slow DOM renders and position changes that don't trigger resize/scroll events
     if (enableDriftDetection) {
-      this.startDriftDetection(element, highlightOutline, commentBox);
+      this.startDriftDetection(element, highlightElement, commentBox);
     }
   }
 
@@ -568,60 +586,97 @@ export class NavigationManager {
     // No DOM settling delay needed - scrollend event ensures scroll is complete
     // and DOM is stable. Highlight immediately for better responsiveness!
 
-    // Create a highlight outline element
-    const highlightOutline = document.createElement('div');
-    highlightOutline.className = 'interactive-highlight-outline';
-
-    // Note: We always show the highlight draw animation (looks good)
-    // skipAnimations only affects the comment box transition
-
     // Position the outline around the target element using CSS custom properties
     const rect = element.getBoundingClientRect();
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
-    // Validate element position and dimensions before creating highlight
-    const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
-    const hasNoDimensions = rect.width < 1 || rect.height < 1;
-
-    if (isAtOrigin || hasNoDimensions) {
-      // Element is in invalid state - don't show highlight
+    // Check if element has no valid position at all (truly invalid)
+    const hasNoPosition = rect.top === 0 && rect.left === 0 && rect.width === 0 && rect.height === 0;
+    if (hasNoPosition) {
       console.warn('Cannot highlight element: invalid position or dimensions', {
         rect,
         scrollTop,
         scrollLeft,
       });
-      // Return early without creating highlight
       return element;
     }
 
-    // Use CSS custom properties instead of inline styles to avoid CSP violations
-    highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-    highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
-    highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
-    highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+    // Determine if we should use dot indicator instead of bounding box
+    const isSmallElement =
+      rect.width < INTERACTIVE_CONFIG.highlighting.minDimensionForBox ||
+      rect.height < INTERACTIVE_CONFIG.highlighting.minDimensionForBox;
+    const isHiddenElement = !isElementVisible(element);
+    const useDotIndicator = isSmallElement || isHiddenElement;
+
+    // For hidden elements, ALWAYS prepend warning to comment (regardless of size)
+    let effectiveComment = comment;
+    if (isHiddenElement) {
+      const hiddenWarning = '**Item hidden due to screen size; enlarge to see.**\n\n';
+      effectiveComment = effectiveComment ? hiddenWarning + effectiveComment : hiddenWarning;
+    }
+
+    // Create highlight element (dot or bounding box)
+    const highlightElement = document.createElement('div');
+
+    if (useDotIndicator) {
+      highlightElement.className = 'interactive-highlight-dot';
+      // Position at element's center
+      const dotTop = rect.top + scrollTop + rect.height / 2;
+      const dotLeft = rect.left + scrollLeft + rect.width / 2;
+      highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
+      highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
+    } else {
+      highlightElement.className = 'interactive-highlight-outline';
+      // Note: We always show the highlight draw animation (looks good)
+      // skipAnimations only affects the comment box transition
+      highlightElement.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
+      highlightElement.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+      highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
+      highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+    }
 
     // Clear old highlights RIGHT BEFORE adding new one for seamless transition
     this.clearAllHighlights();
 
-    document.body.appendChild(highlightOutline);
+    document.body.appendChild(highlightElement);
 
     // Create comment box if comment is provided OR if any callback is provided
     // Comment box is now a CHILD of the highlight, positioned via CSS
     let commentBox: HTMLElement | null = null;
-    if ((comment && comment.trim()) || onSkipCallback || onCancelCallback || onNextCallback || onPreviousCallback) {
+    if (
+      (effectiveComment && effectiveComment.trim()) ||
+      onSkipCallback ||
+      onCancelCallback ||
+      onNextCallback ||
+      onPreviousCallback
+    ) {
       commentBox = this.createCommentBox(
-        comment || '',
+        effectiveComment || '',
         rect,
         stepInfo,
         onSkipCallback,
         onCancelCallback,
         onNextCallback,
         onPreviousCallback,
-        options
+        options,
+        useDotIndicator
       );
       // Append as child of highlight - follows automatically when highlight moves
-      highlightOutline.appendChild(commentBox);
+      highlightElement.appendChild(commentBox);
+    }
+
+    // GUARDRAIL: Auto-remove dot after fixed duration
+    // CSS handles visual fade, this is the cleanup failsafe
+    if (useDotIndicator) {
+      const dotRemovalTimeout = setTimeout(() => {
+        if (highlightElement.isConnected) {
+          highlightElement.remove();
+        }
+      }, INTERACTIVE_CONFIG.highlighting.dotDurationMs);
+
+      // Store timeout for cleanup if clearAllHighlights is called early
+      this.activeCleanupHandlers.push(() => clearTimeout(dotRemovalTimeout));
     }
 
     // Highlights and comments now persist until explicitly cleared
@@ -635,7 +690,7 @@ export class NavigationManager {
     // Always set up position tracking (efficient with ResizeObserver)
     // Enable drift detection for guided mode (!enableAutoCleanup) for more responsive tracking
     const enableDriftDetection = !enableAutoCleanup;
-    this.setupPositionTracking(element, highlightOutline, commentBox, enableDriftDetection);
+    this.setupPositionTracking(element, highlightElement, commentBox, enableDriftDetection, useDotIndicator);
 
     // Set up smart auto-cleanup (unless disabled for guided mode)
     if (enableAutoCleanup) {
@@ -649,6 +704,8 @@ export class NavigationManager {
    * Create a themed comment box positioned near the highlighted element.
    * Uses offset positioning relative to highlight parent, clamped to viewport.
    * Uses a clean, polished card design for both tour and guided modes.
+   *
+   * @param isDotMode - When true, use fixed positioning below-right of dot
    */
   private createCommentBox(
     comment: string,
@@ -662,7 +719,8 @@ export class NavigationManager {
       showKeyboardHint?: boolean;
       stepTitle?: string;
       skipAnimations?: boolean;
-    }
+    },
+    isDotMode = false
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
@@ -891,10 +949,19 @@ export class NavigationManager {
     commentBox.style.left = '';
 
     // NOW calculate position with the REAL height
-    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
-    commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-    commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
-    commentBox.setAttribute('data-position', position);
+    if (isDotMode) {
+      // For dot mode, use fixed positioning below-right of dot
+      const offsetX = 0;
+      const offsetY = 24; // Position comment 24px below the dot
+      commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
+      commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+      commentBox.setAttribute('data-position', 'bottom');
+    } else {
+      const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
+      commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
+      commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+      commentBox.setAttribute('data-position', position);
+    }
 
     return commentBox;
   }

@@ -1489,6 +1489,47 @@ export const addGlobalInteractiveStyles = () => {
       background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100% !important;
     }
 
+    /* Pulsing dot indicator for small/hidden elements (< 20px) */
+    .interactive-highlight-dot {
+      position: absolute;
+      top: var(--highlight-top);
+      left: var(--highlight-left);
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(255, 136, 0, 0.9);
+      pointer-events: none;
+      z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
+      transform: translate(-50%, -50%); /* Center on the point */
+      box-shadow: 0 0 12px 4px rgba(255, 136, 0, 0.5);
+      /* Finite animation: 3 pulse cycles (4.5s) then fade out (0.5s) */
+      animation: 
+        interactive-dot-pulse 1.5s ease-in-out 3,
+        interactive-dot-fade 0.5s ease-out 4.5s forwards;
+    }
+
+    @keyframes interactive-dot-pulse {
+      0%, 100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.9;
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: 1;
+      }
+    }
+
+    @keyframes interactive-dot-fade {
+      from {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1);
+      }
+      to {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+      }
+    }
+
     /* Enhanced comment box animations */
     @keyframes fadeInComment {
       0% {

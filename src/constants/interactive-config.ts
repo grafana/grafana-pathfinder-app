@@ -106,6 +106,11 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     checkIntervalMs: 100, // Throttle interval for RAF-based drift checks
     debounceMs: 150, // Debounce for position updates in NavigationManager
   },
+  // Highlighting configuration for visual feedback
+  highlighting: {
+    minDimensionForBox: 20, // Below this width/height, use dot indicator instead of bounding box
+    dotDurationMs: 5000, // Auto-remove dot after this duration (failsafe for orphaned dots)
+  },
   // Guided step interaction timing
   guided: {
     hoverDwell: 500, // Duration user must hover for completion (ms)
