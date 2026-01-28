@@ -107,11 +107,13 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
     // REACT: cleanup terminal on unmount (R1)
     return () => {
+      // Disconnect to reset connection state when terminal is disposed
+      disconnect();
       terminal.dispose();
       terminalInstanceRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [isExpanded]);
+  }, [isExpanded, disconnect]);
 
   // Handle resize when expanded/height changes
   const handleFit = useCallback(() => {
@@ -152,17 +154,20 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
       const startY = e.clientY;
       const startHeight = height;
+      // Track the current height during resize to avoid stale closure in handleMouseUp
+      let currentHeight = height;
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
         // Dragging up increases height, dragging down decreases
         const deltaY = startY - moveEvent.clientY;
         const newHeight = Math.min(Math.max(startHeight + deltaY, MIN_HEIGHT), MAX_HEIGHT);
+        currentHeight = newHeight;
         setHeight(newHeight);
       };
 
       const handleMouseUp = () => {
         setIsResizing(false);
-        setTerminalHeight(height);
+        setTerminalHeight(currentHeight);
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
