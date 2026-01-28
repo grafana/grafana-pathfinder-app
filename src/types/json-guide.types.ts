@@ -385,13 +385,14 @@ export interface JsonQuizChoice {
  * - As requirements (e.g., "var-policyAccepted:true")
  * - As variable substitution in content (e.g., "{{datasourceName}}")
  * - As targetvalue in interactive blocks
+ * - As variable substitution in reftarget selectors (e.g., "button:contains({{myDatasource}})")
  */
 export interface JsonInputBlock {
   type: 'input';
   /** The prompt/question text (supports markdown) */
   prompt: string;
-  /** Input type determines the UI */
-  inputType: 'text' | 'boolean';
+  /** Input type determines the UI: text input, checkbox, or datasource picker */
+  inputType: 'text' | 'boolean' | 'datasource';
   /** Variable name for storing/referencing the response */
   variableName: string;
   /** Placeholder text (for text input) */
@@ -410,6 +411,8 @@ export interface JsonInputBlock {
   requirements?: string[];
   /** Whether this input can be skipped */
   skippable?: boolean;
+  /** Filter datasources by type (e.g., 'prometheus', 'loki'). Only used when inputType is 'datasource'. */
+  datasourceFilter?: string;
 }
 
 // ============ TYPE GUARDS ============

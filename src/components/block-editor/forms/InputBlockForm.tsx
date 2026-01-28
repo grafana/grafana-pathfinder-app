@@ -2,7 +2,7 @@
  * Input Block Form
  *
  * Form for creating/editing input blocks that collect user responses.
- * Supports text and boolean input types with validation options.
+ * Supports text, boolean, and datasource input types with validation options.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -24,6 +24,7 @@ function isInputBlock(block: JsonBlock): block is JsonInputBlock {
 const INPUT_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' as const },
   { label: 'Checkbox', value: 'boolean' as const },
+  { label: 'Datasource', value: 'datasource' as const },
 ];
 
 /**
@@ -49,7 +50,7 @@ export function InputBlockForm({
   const initial = initialData && isInputBlock(initialData) ? initialData : null;
 
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
-  const [inputType, setInputType] = useState<'text' | 'boolean'>(initial?.inputType ?? 'text');
+  const [inputType, setInputType] = useState<'text' | 'boolean' | 'datasource'>(initial?.inputType ?? 'text');
   const [variableName, setVariableName] = useState(initial?.variableName ?? '');
   const [placeholder, setPlaceholder] = useState(initial?.placeholder ?? '');
   const [checkboxLabel, setCheckboxLabel] = useState(initial?.checkboxLabel ?? '');
@@ -59,6 +60,7 @@ export function InputBlockForm({
   const [validationMessage, setValidationMessage] = useState(initial?.validationMessage ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
+  const [datasourceFilter, setDatasourceFilter] = useState(initial?.datasourceFilter ?? '');
 
   // Handle requirement quick-add
   const handleRequirementClick = useCallback((req: string) => {
@@ -87,6 +89,7 @@ export function InputBlockForm({
         inputType,
         variableName: variableName.trim(),
         ...(inputType === 'text' && placeholder.trim() && { placeholder: placeholder.trim() }),
+        ...(inputType === 'datasource' && placeholder.trim() && { placeholder: placeholder.trim() }),
         ...(inputType === 'boolean' && checkboxLabel.trim() && { checkboxLabel: checkboxLabel.trim() }),
         ...(inputType === 'text' &&
           typeof defaultValue === 'string' &&
@@ -97,6 +100,7 @@ export function InputBlockForm({
         ...(validationMessage.trim() && { validationMessage: validationMessage.trim() }),
         ...(reqArray.length > 0 && { requirements: reqArray }),
         ...(skippable && { skippable }),
+        ...(inputType === 'datasource' && datasourceFilter.trim() && { datasourceFilter: datasourceFilter.trim() }),
       };
 
       onSubmit(block);
@@ -113,6 +117,7 @@ export function InputBlockForm({
       validationMessage,
       requirements,
       skippable,
+      datasourceFilter,
       onSubmit,
     ]
   );
@@ -126,7 +131,7 @@ export function InputBlockForm({
     <form onSubmit={handleSubmit} className={styles.form}>
       <Alert title="Input block" severity="info">
         Collect user responses that can be used as variables elsewhere in the guide. Use{' '}
-        <code>{'{{variableName}}'}</code> in content or <code>var-variableName:value</code> in requirements.
+        <code>{'{{variableName}}'}</code> in content, selectors, or <code>var-variableName:value</code> in requirements.
       </Alert>
 
       {/* Prompt */}
@@ -135,12 +140,19 @@ export function InputBlockForm({
           value={prompt}
           onChange={(e) => setPrompt(e.currentTarget.value)}
           rows={2}
-          placeholder="e.g., What is the name of your Prometheus data source?"
+          placeholder={
+            inputType === 'datasource'
+              ? 'e.g., Select the data source you want to use for this guide:'
+              : 'e.g., What is the name of your Prometheus data source?'
+          }
         />
       </Field>
 
       {/* Input Type */}
-      <Field label="Input type" description="Text for free-form input, checkbox for yes/no acceptance">
+      <Field
+        label="Input type"
+        description="Text for free-form input, checkbox for yes/no, datasource for selecting from available data sources"
+      >
         <RadioButtonGroup options={INPUT_TYPE_OPTIONS} value={inputType} onChange={setInputType} />
       </Field>
 
@@ -159,7 +171,7 @@ export function InputBlockForm({
         <Input
           value={variableName}
           onChange={(e) => setVariableName(e.currentTarget.value)}
-          placeholder="e.g., prometheusDataSource"
+          placeholder={inputType === 'datasource' ? 'e.g., selectedDatasource' : 'e.g., prometheusDataSource'}
         />
       </Field>
 
@@ -224,6 +236,30 @@ export function InputBlockForm({
         </>
       )}
 
+      {/* Datasource-specific fields */}
+      {inputType === 'datasource' && (
+        <>
+          <Field label="Placeholder" description="Hint text shown in the dropdown">
+            <Input
+              value={placeholder}
+              onChange={(e) => setPlaceholder(e.currentTarget.value)}
+              placeholder="e.g., Select a data source..."
+            />
+          </Field>
+
+          <Field
+            label="Datasource filter"
+            description="Filter data sources by plugin type (e.g., prometheus, loki, testdata). Partial matches supported. Leave empty to show all."
+          >
+            <Input
+              value={datasourceFilter}
+              onChange={(e) => setDatasourceFilter(e.currentTarget.value)}
+              placeholder="e.g., prometheus, testdata"
+            />
+          </Field>
+        </>
+      )}
+
       {/* Required */}
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Options</div>
@@ -271,6 +307,9 @@ export function InputBlockForm({
           <div className={styles.codePreview}>
             <div>
               In content: <code>{`{{${variableName.trim()}}}`}</code>
+            </div>
+            <div>
+              In selector: <code>{`button:contains({{${variableName.trim()}}})`}</code>
             </div>
             <div>
               As requirement: <code>{`var-${variableName.trim()}:*`}</code> (any value)

@@ -743,6 +743,7 @@ function convertInputBlock(block: JsonInputBlock, path: string): ConversionResul
         validationMessage: block.validationMessage,
         requirements,
         skippable: block.skippable ?? false,
+        datasourceFilter: block.datasourceFilter,
       },
       children: promptElements,
     },

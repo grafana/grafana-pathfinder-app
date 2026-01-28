@@ -687,6 +687,16 @@ function renderParsedElement(
         : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses)
     );
 
+  // Helper to substitute variables in internal actions (for multistep/guided blocks)
+  // Uses generic to preserve the input array type (InternalAction[], GuidedAction[], etc.)
+  const subInternalActions = <T extends { refTarget?: string; targetValue?: string }>(actions: T[]): T[] => {
+    return actions.map((action) => ({
+      ...action,
+      refTarget: sub(action.refTarget) ?? action.refTarget,
+      targetValue: sub(action.targetValue),
+    }));
+  };
+
   // Handle special cases first
   switch (element.type) {
     case 'badge':
@@ -737,7 +747,7 @@ function renderParsedElement(
         <InteractiveStep
           key={key}
           targetAction={element.props.targetAction}
-          refTarget={element.props.refTarget}
+          refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
           targetValue={sub(element.props.targetValue)}
           hints={element.props.hints}
           targetComment={element.props.targetComment}
@@ -760,7 +770,7 @@ function renderParsedElement(
       return (
         <InteractiveMultiStep
           key={key}
-          internalActions={element.props.internalActions}
+          internalActions={subInternalActions(element.props.internalActions ?? [])}
           skippable={element.props.skippable}
           completeEarly={element.props.completeEarly}
           requirements={element.props.requirements}
@@ -775,7 +785,7 @@ function renderParsedElement(
       return (
         <InteractiveGuided
           key={key}
-          internalActions={element.props.internalActions}
+          internalActions={subInternalActions(element.props.internalActions ?? [])}
           stepTimeout={element.props.stepTimeout}
           skippable={element.props.skippable}
           completeEarly={element.props.completeEarly}
@@ -817,6 +827,7 @@ function renderParsedElement(
           validationMessage={sub(element.props.validationMessage)}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
+          datasourceFilter={element.props.datasourceFilter}
         >
           {renderChildren(element.children)}
         </InputBlock>

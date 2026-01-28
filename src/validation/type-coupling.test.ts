@@ -11,6 +11,7 @@ import {
   JsonSectionBlockSchema,
   JsonQuizBlockSchema,
   JsonAssistantBlockSchema,
+  JsonInputBlockSchema,
   KNOWN_FIELDS,
   type InferredJsonGuide,
 } from '../types/json-guide.schema';
@@ -141,5 +142,9 @@ describe('KNOWN_FIELDS sync', () => {
 
   it('should match assistant schema fields', () => {
     verifyFields(JsonAssistantBlockSchema, 'assistant');
+  });
+
+  it('should match input schema fields', () => {
+    verifyFields(JsonInputBlockSchema, 'input');
   });
 });

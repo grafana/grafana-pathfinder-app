@@ -262,7 +262,7 @@ export const JsonQuizBlockSchema = z.object({
 export const JsonInputBlockSchema = z.object({
   type: z.literal('input'),
   prompt: z.string().min(1, 'Input prompt is required'),
-  inputType: z.enum(['text', 'boolean']),
+  inputType: z.enum(['text', 'boolean', 'datasource']),
   variableName: z
     .string()
     .min(1, 'Variable name is required')
@@ -275,6 +275,7 @@ export const JsonInputBlockSchema = z.object({
   validationMessage: z.string().optional(),
   requirements: z.array(z.string()).optional(),
   skippable: z.boolean().optional(),
+  datasourceFilter: z.string().optional(),
 });
 
 // ============ BLOCK UNION (Non-recursive blocks) ============
@@ -531,6 +532,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'validationMessage',
     'requirements',
     'skippable',
+    'datasourceFilter',
   ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
 };
