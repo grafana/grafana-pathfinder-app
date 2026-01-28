@@ -109,6 +109,10 @@ export function InteractiveSection({
     checking: boolean;
     passed: boolean;
     error?: string;
+    explanation?: string;
+    canFix?: boolean;
+    fixType?: string;
+    targetHref?: string;
   }>({ checking: !!requirements, passed: !requirements }); // If no requirements, default to passed
 
   // Track if user has manually scrolled to avoid fighting with auto-scroll
@@ -310,10 +314,24 @@ export function InteractiveSection({
       const result = await checkRequirementsFromData(sectionRequirementsData);
 
       if (sectionMountedRef.current) {
+        // Extract fix information from the first error that has fix details
+        const firstError = result.error?.[0];
+        const canFix = firstError?.canFix || false;
+        const fixType = firstError?.fixType;
+        const targetHref = firstError?.targetHref;
+
+        // Generate user-friendly explanation using the same logic as steps
+        const { getRequirementExplanation } = await import('../../../requirements-manager/requirements-explanations');
+        const explanation = getRequirementExplanation(requirements, hints, firstError?.error);
+
         setSectionRequirementsStatus({
           checking: false,
           passed: result.pass,
-          error: result.error?.[0]?.error || (result.pass ? undefined : 'Requirements not met'),
+          error: firstError?.error || (result.pass ? undefined : 'Requirements not met'),
+          explanation,
+          canFix,
+          fixType,
+          targetHref,
         });
       }
     } catch (error) {
@@ -323,7 +341,33 @@ export function InteractiveSection({
         setSectionRequirementsStatus({ checking: false, passed: true });
       }
     }
-  }, [requirements, sectionId, title, checkRequirementsFromData]);
+  }, [requirements, sectionId, title, hints, checkRequirementsFromData]);
+
+  // Handle fixing section requirements
+  const handleFixSectionRequirements = useCallback(async () => {
+    if (!sectionRequirementsStatus.canFix) {
+      return;
+    }
+
+    try {
+      const { NavigationManager } = await import('../../../interactive-engine');
+      const navigationManager = new NavigationManager();
+
+      if (sectionRequirementsStatus.fixType === 'expand-parent-navigation' && sectionRequirementsStatus.targetHref) {
+        await navigationManager.expandParentNavigationSection(sectionRequirementsStatus.targetHref);
+      } else if (sectionRequirementsStatus.fixType === 'location' && sectionRequirementsStatus.targetHref) {
+        await navigationManager.fixLocationRequirement(sectionRequirementsStatus.targetHref);
+      } else if (requirements?.includes('navmenu-open')) {
+        await navigationManager.fixNavigationRequirements();
+      }
+
+      // Recheck requirements after fix attempt
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      checkSectionRequirements();
+    } catch (error) {
+      console.warn('Failed to fix section requirements:', error);
+    }
+  }, [sectionRequirementsStatus.canFix, sectionRequirementsStatus.fixType, sectionRequirementsStatus.targetHref, requirements, checkSectionRequirements]);
 
   // Initial requirements check and re-check on relevant events
   useEffect(() => {
@@ -1443,8 +1487,25 @@ export function InteractiveSection({
       {/* Section requirements status banner */}
       {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
         <div className="interactive-section-requirements-banner">
-          <span className="interactive-section-requirements-icon">🔒</span>
-          <span className="interactive-section-requirements-message">Requirements not yet met</span>
+          <div className="interactive-section-requirements-content">
+            <span className="interactive-section-requirements-icon">🔒</span>
+            <span className="interactive-section-requirements-message">
+              {sectionRequirementsStatus.explanation || 'Requirements not yet met'}
+            </span>
+            {sectionRequirementsStatus.checking && <span className="interactive-requirement-spinner">⟳</span>}
+          </div>
+          {sectionRequirementsStatus.canFix && (
+            <Button
+              onClick={handleFixSectionRequirements}
+              disabled={sectionRequirementsStatus.checking}
+              size="sm"
+              variant="primary"
+              className="interactive-section-fix-btn"
+              data-testid={testIds.interactive.requirementFixButton(sectionId)}
+            >
+              Fix this
+            </Button>
+          )}
         </div>
       )}
 
