@@ -257,6 +257,19 @@ export const getBlockListStyles = (theme: GrafanaTheme2) => ({
   insertZoneActive: css({
     // Keep height fixed even during drag
   }),
+
+  // Drag overlay for sections/conditionals with nested content
+  dragOverlay: css({
+    opacity: 0.95,
+    cursor: 'grabbing',
+    boxShadow: theme.shadows.z3,
+    borderRadius: theme.shape.radius.default,
+    backgroundColor: theme.colors.background.primary,
+    border: `2px solid ${theme.colors.primary.main}`,
+    maxHeight: '500px',
+    overflow: 'hidden',
+    pointerEvents: 'none',
+  }),
 });
 
 /**
@@ -438,6 +451,21 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     borderColor: theme.colors.primary.border,
     backgroundColor: theme.colors.primary.transparent,
     boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
+  }),
+
+  // Just-dropped highlight animation
+  justDroppedContainer: css({
+    animation: 'dropHighlight 1.5s ease-out',
+    '@keyframes dropHighlight': {
+      '0%': {
+        borderColor: theme.colors.primary.main,
+        boxShadow: `0 0 0 3px ${theme.colors.primary.transparent}, 0 0 8px ${theme.colors.primary.main}`,
+      },
+      '100%': {
+        borderColor: theme.colors.border.weak,
+        boxShadow: 'none',
+      },
+    },
   }),
 
   // Collapse button for sections/conditionals

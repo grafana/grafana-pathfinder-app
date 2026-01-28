@@ -12,7 +12,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { getNestedStyles, getConditionalStyles } from './BlockList.styles';
 import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
-import { SortableBlock, DragData, DroppableInsertZone, DropZoneData } from './dnd-helpers';
+import { SortableBlock, DragData, DroppableInsertZone, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
 import { type JsonConditionalBlock } from '../../types/json-guide.types';
 
@@ -23,6 +23,7 @@ export interface ConditionalBranchesProps {
   nestedStyles: ReturnType<typeof getNestedStyles>;
   activeId: UniqueIdentifier | null;
   activeDropZone: string | null;
+  activeDragData: DragData | null;
   isDraggingUnNestable: boolean;
   isSelectionMode: boolean;
   selectedBlockIds: Set<string>;
@@ -51,6 +52,8 @@ export interface ConditionalBranchesProps {
     branch: 'whenTrue' | 'whenFalse',
     index?: number
   ) => void;
+  /** ID of the block that was just dropped (for highlight animation) */
+  justDroppedId?: string | null;
 }
 
 export function ConditionalBranches({
@@ -60,6 +63,7 @@ export function ConditionalBranches({
   nestedStyles,
   activeId,
   activeDropZone,
+  activeDragData,
   isDraggingUnNestable,
   isSelectionMode,
   selectedBlockIds,
@@ -70,12 +74,14 @@ export function ConditionalBranches({
   onConditionalBranchBlockDelete,
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
+  justDroppedId,
 }: ConditionalBranchesProps) {
   const conditionalBlock = block.block as JsonConditionalBlock;
 
   return (
     <div
       className={`${conditionalStyles.conditionalContainer} ${isCollapsed ? conditionalStyles.conditionalContainerCollapsed : ''}`}
+      style={isDraggingUnNestable ? { pointerEvents: 'none' } : undefined}
     >
       {/* Conditions badge */}
       <div className={conditionalStyles.conditionsBadge}>Conditions: {conditionalBlock.conditions.join(', ')}</div>
@@ -89,6 +95,7 @@ export function ConditionalBranches({
         nestedStyles={nestedStyles}
         activeId={activeId}
         activeDropZone={activeDropZone}
+        activeDragData={activeDragData}
         isDraggingUnNestable={isDraggingUnNestable}
         isSelectionMode={isSelectionMode}
         selectedBlockIds={selectedBlockIds}
@@ -99,6 +106,7 @@ export function ConditionalBranches({
         onConditionalBranchBlockDelete={onConditionalBranchBlockDelete}
         onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
         onInsertBlockInConditional={onInsertBlockInConditional}
+        justDroppedId={justDroppedId}
       />
 
       {/* False branch */}
@@ -110,6 +118,7 @@ export function ConditionalBranches({
         nestedStyles={nestedStyles}
         activeId={activeId}
         activeDropZone={activeDropZone}
+        activeDragData={activeDragData}
         isDraggingUnNestable={isDraggingUnNestable}
         isSelectionMode={isSelectionMode}
         selectedBlockIds={selectedBlockIds}
@@ -120,6 +129,7 @@ export function ConditionalBranches({
         onConditionalBranchBlockDelete={onConditionalBranchBlockDelete}
         onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
         onInsertBlockInConditional={onInsertBlockInConditional}
+        justDroppedId={justDroppedId}
       />
     </div>
   );
@@ -133,6 +143,7 @@ interface ConditionalBranchProps {
   nestedStyles: ReturnType<typeof getNestedStyles>;
   activeId: UniqueIdentifier | null;
   activeDropZone: string | null;
+  activeDragData: DragData | null;
   isDraggingUnNestable: boolean;
   isSelectionMode: boolean;
   selectedBlockIds: Set<string>;
@@ -161,6 +172,8 @@ interface ConditionalBranchProps {
     branch: 'whenTrue' | 'whenFalse',
     index?: number
   ) => void;
+  /** ID of the block that was just dropped (for highlight animation) */
+  justDroppedId?: string | null;
 }
 
 function ConditionalBranch({
@@ -171,6 +184,7 @@ function ConditionalBranch({
   nestedStyles,
   activeId,
   activeDropZone,
+  activeDragData,
   isDraggingUnNestable,
   isSelectionMode,
   selectedBlockIds,
@@ -181,6 +195,7 @@ function ConditionalBranch({
   onConditionalBranchBlockDelete,
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
+  justDroppedId,
 }: ConditionalBranchProps) {
   const isTrue = branch === 'whenTrue';
   const branchKey = isTrue ? 'true' : 'false';
@@ -225,48 +240,60 @@ function ConditionalBranch({
         <div className={conditionalStyles.emptyBranch}>Drag blocks here or click + Add block below</div>
       ) : (
         <SortableContext items={nestedBlockIds} strategy={verticalListSortingStrategy}>
-          {blocks.map((nestedBlock, nestedIndex) => (
-            <React.Fragment key={`${block.id}-${branchKey}-${nestedIndex}`}>
-              {/* Insert zone before each block (during drag only) */}
-              {activeId !== null && !isDraggingUnNestable && (
-                <DroppableInsertZone
-                  id={`conditional-insert-${branchKey}-${block.id}-${nestedIndex}`}
-                  data={{ type: 'conditional-insert', conditionalId: block.id, branch, index: nestedIndex }}
-                  isActive={activeDropZone === `conditional-insert-${branchKey}-${block.id}-${nestedIndex}`}
-                  label="📍 Insert here"
-                />
-              )}
-              <SortableBlock
-                id={`${block.id}-${branchKey}-${nestedIndex}`}
-                data={
-                  {
-                    type: 'conditional',
-                    blockType: nestedBlock.type,
-                    index: nestedIndex,
-                    conditionalId: block.id,
-                    branch,
-                  } as DragData
-                }
-                disabled={isSelectionMode}
-              >
-                <div style={{ marginBottom: '8px' }}>
-                  <NestedBlockItem
-                    block={nestedBlock}
-                    onEdit={() => onConditionalBranchBlockEdit?.(block.id, branch, nestedIndex, nestedBlock)}
-                    onDelete={() => onConditionalBranchBlockDelete?.(block.id, branch, nestedIndex)}
-                    onDuplicate={() => onConditionalBranchBlockDuplicate?.(block.id, branch, nestedIndex)}
-                    isSelectionMode={isSelectionMode}
-                    isSelected={selectedBlockIds.has(`${block.id}-${branchKey}-${nestedIndex}`)}
-                    onToggleSelect={
-                      onToggleBlockSelection
-                        ? () => onToggleBlockSelection(`${block.id}-${branchKey}-${nestedIndex}`)
-                        : undefined
-                    }
+          {blocks.map((nestedBlock, nestedIndex) => {
+            const isZoneRedundant = isInsertZoneRedundant(
+              activeDragData,
+              'conditional-insert',
+              nestedIndex,
+              undefined,
+              block.id,
+              branch
+            );
+            return (
+              <React.Fragment key={`${block.id}-${branchKey}-${nestedIndex}`}>
+                {/* Insert zone before each block (during drag only, skip redundant zones) */}
+                {activeId !== null && !isDraggingUnNestable && !isZoneRedundant && (
+                  <DroppableInsertZone
+                    id={`conditional-insert-${branchKey}-${block.id}-${nestedIndex}`}
+                    data={{ type: 'conditional-insert', conditionalId: block.id, branch, index: nestedIndex }}
+                    isActive={activeDropZone === `conditional-insert-${branchKey}-${block.id}-${nestedIndex}`}
+                    label="📍 Insert here"
                   />
-                </div>
-              </SortableBlock>
-            </React.Fragment>
-          ))}
+                )}
+                <SortableBlock
+                  id={`${block.id}-${branchKey}-${nestedIndex}`}
+                  data={
+                    {
+                      type: 'conditional',
+                      blockType: nestedBlock.type,
+                      index: nestedIndex,
+                      conditionalId: block.id,
+                      branch,
+                    } as DragData
+                  }
+                  disabled={isSelectionMode}
+                  passThrough={isDraggingUnNestable}
+                >
+                  <div style={{ marginBottom: '8px' }}>
+                    <NestedBlockItem
+                      block={nestedBlock}
+                      onEdit={() => onConditionalBranchBlockEdit?.(block.id, branch, nestedIndex, nestedBlock)}
+                      onDelete={() => onConditionalBranchBlockDelete?.(block.id, branch, nestedIndex)}
+                      onDuplicate={() => onConditionalBranchBlockDuplicate?.(block.id, branch, nestedIndex)}
+                      isSelectionMode={isSelectionMode}
+                      isSelected={selectedBlockIds.has(`${block.id}-${branchKey}-${nestedIndex}`)}
+                      onToggleSelect={
+                        onToggleBlockSelection
+                          ? () => onToggleBlockSelection(`${block.id}-${branchKey}-${nestedIndex}`)
+                          : undefined
+                      }
+                      isJustDropped={justDroppedId === `${block.id}-${branchKey}-${nestedIndex}`}
+                    />
+                  </div>
+                </SortableBlock>
+              </React.Fragment>
+            );
+          })}
         </SortableContext>
       )}
 
