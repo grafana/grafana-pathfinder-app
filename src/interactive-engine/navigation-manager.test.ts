@@ -453,6 +453,45 @@ describe('NavigationManager', () => {
         expect(commentBox?.textContent).toContain('Item may be hidden');
         expect(commentBox?.textContent).toContain('Original comment');
       });
+
+      it('should check visibility on highlightTarget, not original element (dropdown input fix)', async () => {
+        // Simulate a hidden input inside a dropdown - getVisibleHighlightTarget returns visible parent
+        const visibleParent = document.createElement('div');
+        visibleParent.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+        visibleParent.scrollIntoView = jest.fn();
+        document.body.appendChild(visibleParent);
+
+        // Original element is "hidden" (would fail isElementVisible)
+        // but getVisibleHighlightTarget returns the visible parent
+        mockGetVisibleHighlightTarget.mockReturnValue(visibleParent);
+
+        // isElementVisible will be called with highlightTarget (visibleParent), not element
+        // So we need to make it return true for visibleParent
+        mockIsElementVisible.mockImplementation((el) => el === visibleParent);
+
+        await navigationManager.highlightWithComment(mockElement, 'Test comment');
+
+        // Should use bounding box (not dot) since visibleParent is visible and large enough
+        const outline = document.querySelector('.interactive-highlight-outline');
+        const dot = document.querySelector('.interactive-highlight-dot');
+        expect(outline).not.toBeNull();
+        expect(dot).toBeNull();
+
+        // Should NOT show hidden warning since highlightTarget is visible
+        const commentBox = document.querySelector('.interactive-comment-box');
+        expect(commentBox?.textContent).not.toContain('Item may be hidden');
+        expect(commentBox?.textContent).toContain('Test comment');
+
+        // Clean up
+        document.body.removeChild(visibleParent);
+      });
     });
 
     describe('highlight cleanup', () => {

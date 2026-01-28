@@ -672,7 +672,7 @@ export class NavigationManager {
     const isSmallElement =
       rect.width < INTERACTIVE_CONFIG.highlighting.minDimensionForBox ||
       rect.height < INTERACTIVE_CONFIG.highlighting.minDimensionForBox;
-    const isHiddenElement = !isElementVisible(element);
+    const isHiddenElement = !isElementVisible(highlightTarget);
     const useDotIndicator = isSmallElement || isHiddenElement;
 
     // For hidden elements, ALWAYS prepend warning to comment (regardless of size)

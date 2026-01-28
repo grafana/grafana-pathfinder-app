@@ -1344,8 +1344,9 @@ export const addGlobalInteractiveStyles = () => {
   //   JS:  dotDurationMs = 4000ms (500ms buffer for cleanup)
   //
   // BOUNDING BOX OUTLINE:
-  //   CSS: drawMs (~1s) + breatheCycleMs × breatheCount (3.0s) + fadeMs (0.5s) = ~4.5s total
-  //   JS:  outlineDurationMs = 5000ms (500ms buffer for cleanup)
+  //   drawMs = Math.max(500, Math.round(highlightMs * 0.65)) = 1625ms (when highlightMs = 2500)
+  //   CSS: drawMs (1625ms) + breatheCycleMs × breatheCount (3.0s) + fadeMs (0.5s) = 5.125s total
+  //   JS:  outlineDurationMs = 5625ms (500ms buffer for cleanup)
   // ============================================================
   const breatheCycleMs = 1500;
   const breatheCount = 2;
@@ -1437,8 +1438,8 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
       /* Draw border animation, then breathing glow (2 cycles), then fade out
-       * Total: ~1s draw + 3s breathe + 0.5s fade = 4.5s
-       * JS cleanup at 5000ms (500ms buffer after CSS completes)
+       * Total: 1625ms draw + 3s breathe + 0.5s fade = 5.125s
+       * JS cleanup at 5625ms (500ms buffer after CSS completes)
        */
       animation:
         interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,
