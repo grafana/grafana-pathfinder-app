@@ -1332,6 +1332,27 @@ export const addGlobalInteractiveStyles = () => {
   }
   const style = document.createElement('style');
   style.id = interactiveStyleId;
+
+  // ============================================================
+  // ANIMATION TIMING CONSTANTS
+  // ============================================================
+  // These must stay synchronized with INTERACTIVE_CONFIG.highlighting in interactive-config.ts
+  // See that file for the authoritative timing documentation.
+  //
+  // DOT INDICATOR:
+  //   CSS: breatheCycleMs × breatheCount (3.0s) + fadeMs (0.5s) = 3.5s total
+  //   JS:  dotDurationMs = 4000ms (500ms buffer for cleanup)
+  //
+  // BOUNDING BOX OUTLINE:
+  //   drawMs = Math.max(500, Math.round(highlightMs * 0.65)) = 1625ms (when highlightMs = 2500)
+  //   CSS: drawMs (1625ms) + breatheCycleMs × breatheCount (3.0s) + fadeMs (0.5s) = 5.125s total
+  //   JS:  outlineDurationMs = 5625ms (500ms buffer for cleanup)
+  // ============================================================
+  const breatheCycleMs = 1500;
+  const breatheCount = 2;
+  const fadeMs = 500;
+  const breatheTotalMs = breatheCycleMs * breatheCount; // 3000ms
+
   // Align highlight animation timing with configured technical highlight delay
   const highlightMs = INTERACTIVE_CONFIG.delays.technical.highlight;
   // Slower, more readable draw animation (no fade-out since highlights persist)
@@ -1416,10 +1437,14 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
-      /* Draw border animation, then breathing glow activates after draw completes */
+      /* Draw border animation, then breathing glow (2 cycles), then fade out
+       * Total: 1625ms draw + 3s breathe + 0.5s fade = 5.125s
+       * JS cleanup at 5625ms (500ms buffer after CSS completes)
+       */
       animation:
         interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,
-        interactive-glow-breathe 2s ease-in-out ${drawMs}ms infinite;
+        interactive-glow-breathe ${breatheCycleMs}ms ease-in-out ${drawMs}ms ${breatheCount},
+        interactive-outline-fade ${fadeMs}ms ease-out ${drawMs + breatheTotalMs}ms forwards;
     }
 
     /* Subtle variant to reuse animation cadence for blocked areas */
@@ -1483,10 +1508,71 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Instant highlight - no draw animation, just breathing glow */
+    /* Fade out animation for bounding box after breathing completes */
+    @keyframes interactive-outline-fade {
+      from {
+        opacity: 0.95;
+        box-shadow: 0 0 8px 2px rgba(255, 136, 0, 0.3);
+      }
+      to {
+        opacity: 0;
+        box-shadow: 0 0 4px 1px rgba(255, 136, 0, 0);
+      }
+    }
+
+    /* Instant highlight - no draw animation, just breathing glow then fade
+     * Instant: 2 breathe cycles (3s) + 0.5s fade = 3.5s
+     */
     .interactive-highlight-outline--instant {
-      animation: interactive-glow-breathe 2s ease-in-out infinite !important;
+      animation: 
+        interactive-glow-breathe ${breatheCycleMs}ms ease-in-out ${breatheCount},
+        interactive-outline-fade ${fadeMs}ms ease-out ${breatheTotalMs}ms forwards !important;
       background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100% !important;
+    }
+
+    /* Pulsing dot indicator for small/hidden elements (< 10px width or height)
+     * Threshold defined in INTERACTIVE_CONFIG.highlighting.minDimensionForBox
+     */
+    .interactive-highlight-dot {
+      position: absolute;
+      top: var(--highlight-top);
+      left: var(--highlight-left);
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(255, 136, 0, 0.9);
+      pointer-events: none;
+      z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
+      transform: translate(-50%, -50%); /* Center on the point */
+      box-shadow: 0 0 12px 4px rgba(255, 136, 0, 0.5);
+      /* Finite animation: 2 pulse cycles (3s) then fade out (0.5s) = 3.5s total
+       * JS cleanup at 4000ms (500ms buffer after CSS completes)
+       */
+      animation: 
+        interactive-dot-pulse ${breatheCycleMs}ms ease-in-out ${breatheCount},
+        interactive-dot-fade ${fadeMs}ms ease-out ${breatheTotalMs}ms forwards;
+    }
+
+    @keyframes interactive-dot-pulse {
+      0%, 100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.9;
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: 1;
+      }
+    }
+
+    @keyframes interactive-dot-fade {
+      from {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1);
+      }
+      to {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+      }
     }
 
     /* Enhanced comment box animations */
@@ -1580,11 +1666,12 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Interactive comment box - child of highlight, offset positioning */
+    /* Interactive comment box - body-attached, absolute positioning
+     * top and left are set directly in JS via inline styles
+     */
     .interactive-comment-box {
       position: absolute;
-      left: var(--comment-offset-x);
-      top: var(--comment-offset-y);
+      /* top and left are set via inline styles in navigation-manager.ts */
       width: 420px;
       max-width: calc(100vw - 32px);
       pointer-events: none;

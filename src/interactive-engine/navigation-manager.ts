@@ -19,6 +19,7 @@ export class NavigationManager {
   private driftDetectionElement: HTMLElement | null = null;
   private driftDetectionHighlight: HTMLElement | null = null;
   private driftDetectionComment: HTMLElement | null = null;
+  private driftDetectionIsDotMode = false;
 
   /**
    * Clear all existing highlights and comment boxes from the page
@@ -31,8 +32,10 @@ export class NavigationManager {
     // Cleanup any active auto-cleanup handlers (ResizeObserver, event listeners, etc.)
     this.cleanupAutoHandlers();
 
-    // Remove all existing highlight outlines
-    document.querySelectorAll('.interactive-highlight-outline').forEach((el) => el.remove());
+    // Remove all existing highlight outlines and dot indicators
+    document
+      .querySelectorAll('.interactive-highlight-outline, .interactive-highlight-dot')
+      .forEach((el) => el.remove());
 
     // Remove all existing comment boxes
     document.querySelectorAll('.interactive-comment-box').forEach((el) => el.remove());
@@ -107,7 +110,8 @@ export class NavigationManager {
   private startDriftDetection(
     element: HTMLElement,
     highlightOutline: HTMLElement,
-    commentBox: HTMLElement | null
+    commentBox: HTMLElement | null,
+    isDotMode = false
   ): void {
     // Stop any existing drift detection
     this.stopDriftDetection();
@@ -117,6 +121,7 @@ export class NavigationManager {
     this.driftDetectionHighlight = highlightOutline;
     this.driftDetectionComment = commentBox;
     this.driftDetectionLastCheck = 0;
+    this.driftDetectionIsDotMode = isDotMode;
 
     const { driftThreshold, checkIntervalMs } = INTERACTIVE_CONFIG.positionTracking;
 
@@ -148,14 +153,25 @@ export class NavigationManager {
       const highlightStyle = this.driftDetectionHighlight.style;
       const highlightTop = parseFloat(highlightStyle.getPropertyValue('--highlight-top')) || 0;
       const highlightLeft = parseFloat(highlightStyle.getPropertyValue('--highlight-left')) || 0;
-      const highlightWidth = parseFloat(highlightStyle.getPropertyValue('--highlight-width')) || 0;
-      const highlightHeight = parseFloat(highlightStyle.getPropertyValue('--highlight-height')) || 0;
 
       // Calculate highlight center (accounting for scroll)
       const scrollTop = window.scrollY || document.documentElement.scrollTop;
       const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
-      const highlightCenterX = highlightLeft - scrollLeft + highlightWidth / 2;
-      const highlightCenterY = highlightTop - scrollTop + highlightHeight / 2;
+
+      let highlightCenterX: number;
+      let highlightCenterY: number;
+
+      if (this.driftDetectionIsDotMode) {
+        // For dot mode, highlight position IS the center (dot is centered at that point)
+        highlightCenterX = highlightLeft - scrollLeft;
+        highlightCenterY = highlightTop - scrollTop;
+      } else {
+        // For bounding box, calculate center from dimensions
+        const highlightWidth = parseFloat(highlightStyle.getPropertyValue('--highlight-width')) || 0;
+        const highlightHeight = parseFloat(highlightStyle.getPropertyValue('--highlight-height')) || 0;
+        highlightCenterX = highlightLeft - scrollLeft + highlightWidth / 2;
+        highlightCenterY = highlightTop - scrollTop + highlightHeight / 2;
+      }
 
       // Calculate drift distance
       const driftX = Math.abs(elementCenterX - highlightCenterX);
@@ -164,18 +180,34 @@ export class NavigationManager {
 
       // If drift exceeds threshold, update position immediately
       if (totalDrift > driftThreshold) {
-        // Update highlight position - comment follows automatically as it's a child
-        highlightStyle.setProperty('--highlight-top', `${elementRect.top + scrollTop - 4}px`);
-        highlightStyle.setProperty('--highlight-left', `${elementRect.left + scrollLeft - 4}px`);
-        highlightStyle.setProperty('--highlight-width', `${elementRect.width + 8}px`);
-        highlightStyle.setProperty('--highlight-height', `${elementRect.height + 8}px`);
+        if (this.driftDetectionIsDotMode) {
+          // Update dot position at element center
+          const dotTop = elementRect.top + scrollTop + elementRect.height / 2;
+          const dotLeft = elementRect.left + scrollLeft + elementRect.width / 2;
+          highlightStyle.setProperty('--highlight-top', `${dotTop}px`);
+          highlightStyle.setProperty('--highlight-left', `${dotLeft}px`);
+        } else {
+          // Update bounding box position
+          highlightStyle.setProperty('--highlight-top', `${elementRect.top + scrollTop - 4}px`);
+          highlightStyle.setProperty('--highlight-left', `${elementRect.left + scrollLeft - 4}px`);
+          highlightStyle.setProperty('--highlight-width', `${elementRect.width + 8}px`);
+          highlightStyle.setProperty('--highlight-height', `${elementRect.height + 8}px`);
+        }
 
-        // Update comment box offsets if it exists (recalculate in case viewport changed)
+        // Update comment box position (always body-attached, always absolute)
         if (this.driftDetectionComment) {
+          const highlightRect = this.calculateHighlightRect(
+            elementRect,
+            scrollTop,
+            scrollLeft,
+            this.driftDetectionIsDotMode
+          );
+
           const commentHeight = this.driftDetectionComment.offsetHeight;
           const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
-          this.driftDetectionComment.style.setProperty('--comment-offset-x', `${offsetX}px`);
-          this.driftDetectionComment.style.setProperty('--comment-offset-y', `${offsetY}px`);
+
+          this.driftDetectionComment.style.top = `${highlightRect.top + offsetY}px`;
+          this.driftDetectionComment.style.left = `${highlightRect.left + offsetX}px`;
         }
       }
 
@@ -200,6 +232,40 @@ export class NavigationManager {
     this.driftDetectionHighlight = null;
     this.driftDetectionComment = null;
     this.driftDetectionLastCheck = 0;
+    this.driftDetectionIsDotMode = false;
+  }
+
+  /**
+   * Calculate highlight rect in absolute document coordinates.
+   * For dot mode, returns a zero-dimension rect at element center.
+   * For bounding box, returns padded rect around element.
+   *
+   * @param rect - The element's bounding client rect
+   * @param scrollTop - Current vertical scroll offset
+   * @param scrollLeft - Current horizontal scroll offset
+   * @param isDotMode - Whether using dot indicator (true) or bounding box (false)
+   * @returns Highlight rect with top, left, width, height in document coordinates
+   */
+  private calculateHighlightRect(
+    rect: DOMRect,
+    scrollTop: number,
+    scrollLeft: number,
+    isDotMode: boolean
+  ): { top: number; left: number; width: number; height: number } {
+    if (isDotMode) {
+      return {
+        top: rect.top + scrollTop + rect.height / 2,
+        left: rect.left + scrollLeft + rect.width / 2,
+        width: 0,
+        height: 0,
+      };
+    }
+    return {
+      top: rect.top + scrollTop - 4,
+      left: rect.left + scrollLeft - 4,
+      width: rect.width + 8,
+      height: rect.height + 8,
+    };
   }
 
   /**
@@ -207,15 +273,17 @@ export class NavigationManager {
    * Updates highlight position when element moves (resize, dynamic content, etc.)
    *
    * @param element - The target element being highlighted
-   * @param highlightOutline - The highlight outline element
+   * @param highlightElement - The highlight element (outline or dot)
    * @param commentBox - Optional comment box element
    * @param enableDriftDetection - Enable active drift detection (for guided mode)
+   * @param isDotMode - Whether the highlight is using dot indicator (skip dimension validation)
    */
   private setupPositionTracking(
     element: HTMLElement,
-    highlightOutline: HTMLElement,
+    highlightElement: HTMLElement,
     commentBox: HTMLElement | null,
-    enableDriftDetection = false
+    enableDriftDetection = false,
+    isDotMode = false
   ): void {
     let updateTimeout: NodeJS.Timeout | null = null;
 
@@ -229,7 +297,7 @@ export class NavigationManager {
         // Check if element is still connected to DOM
         if (!element.isConnected) {
           // Element was removed from DOM - hide highlight
-          highlightOutline.style.display = 'none';
+          highlightElement.style.display = 'none';
           if (commentBox) {
             commentBox.style.display = 'none';
           }
@@ -243,13 +311,14 @@ export class NavigationManager {
         // Check for invalid positions:
         // 1. Element has collapsed to 0,0 (disappeared)
         // 2. Element is at top-left corner (0,0) with no scroll offset
-        // 3. Element has zero or near-zero dimensions
+        // 3. Element has zero or near-zero dimensions (skip for dot mode - dots work with any dimensions)
         const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
         const hasNoDimensions = rect.width < 1 || rect.height < 1;
 
-        if (isAtOrigin || hasNoDimensions) {
+        // Skip dimension check for dot mode - dots work even for very small elements
+        if (isAtOrigin || (!isDotMode && hasNoDimensions)) {
           // Element is in invalid state - hide highlight
-          highlightOutline.style.display = 'none';
+          highlightElement.style.display = 'none';
           if (commentBox) {
             commentBox.style.display = 'none';
           }
@@ -257,23 +326,35 @@ export class NavigationManager {
         }
 
         // Element is valid - ensure highlight is visible and update position
-        highlightOutline.style.display = '';
+        highlightElement.style.display = '';
         if (commentBox) {
           commentBox.style.display = '';
         }
 
-        // Update highlight position - comment follows automatically as it's a child
-        highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-        highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
-        highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
-        highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+        // Update highlight position based on mode
+        if (isDotMode) {
+          // For dots, position at element's center
+          const dotTop = rect.top + scrollTop + rect.height / 2;
+          const dotLeft = rect.left + scrollLeft + rect.width / 2;
+          highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
+          highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
+        } else {
+          // For bounding box, position with 4px padding
+          highlightElement.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
+          highlightElement.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+          highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
+          highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+        }
 
-        // Update comment box offsets if it exists (recalculate in case viewport changed)
+        // Update comment box position (always body-attached, always absolute)
         if (commentBox) {
+          const highlightRect = this.calculateHighlightRect(rect, scrollTop, scrollLeft, isDotMode);
+
           const commentHeight = commentBox.offsetHeight;
           const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
-          commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-          commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+
+          commentBox.style.top = `${highlightRect.top + offsetY}px`;
+          commentBox.style.left = `${highlightRect.left + offsetX}px`;
         }
       }, INTERACTIVE_CONFIG.positionTracking.debounceMs);
     };
@@ -317,7 +398,7 @@ export class NavigationManager {
     // Start drift detection for guided mode (more responsive than event-based tracking alone)
     // This catches slow DOM renders and position changes that don't trigger resize/scroll events
     if (enableDriftDetection) {
-      this.startDriftDetection(element, highlightOutline, commentBox);
+      this.startDriftDetection(element, highlightElement, commentBox, isDotMode);
     }
   }
 
@@ -568,13 +649,6 @@ export class NavigationManager {
     // No DOM settling delay needed - scrollend event ensures scroll is complete
     // and DOM is stable. Highlight immediately for better responsiveness!
 
-    // Create a highlight outline element
-    const highlightOutline = document.createElement('div');
-    highlightOutline.className = 'interactive-highlight-outline';
-
-    // Note: We always show the highlight draw animation (looks good)
-    // skipAnimations only affects the comment box transition
-
     // If selector targeted a hidden input (common in dropdowns), highlight the visible parent instead
     const highlightTarget = getVisibleHighlightTarget(element);
 
@@ -583,39 +657,73 @@ export class NavigationManager {
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
-    // Validate element position and dimensions before creating highlight
-    const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
-    const hasNoDimensions = rect.width < 1 || rect.height < 1;
-
-    if (isAtOrigin || hasNoDimensions) {
-      // Element is in invalid state - don't show highlight
+    // Check if element has no valid position at all (truly invalid)
+    const hasNoPosition = rect.top === 0 && rect.left === 0 && rect.width === 0 && rect.height === 0;
+    if (hasNoPosition) {
       console.warn('Cannot highlight element: invalid position or dimensions', {
         rect,
         scrollTop,
         scrollLeft,
       });
-      // Return early without creating highlight
       return element;
     }
 
-    // Use CSS custom properties instead of inline styles to avoid CSP violations
-    highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-    highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
-    highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
-    highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+    // Determine if we should use dot indicator instead of bounding box
+    const isSmallElement =
+      rect.width < INTERACTIVE_CONFIG.highlighting.minDimensionForBox ||
+      rect.height < INTERACTIVE_CONFIG.highlighting.minDimensionForBox;
+    const isHiddenElement = !isElementVisible(highlightTarget);
+    const useDotIndicator = isSmallElement || isHiddenElement;
+
+    // For hidden elements, ALWAYS prepend warning to comment (regardless of size)
+    let effectiveComment = comment;
+    if (isHiddenElement) {
+      const hiddenWarning = 'Item may be hidden due to screen size; enlarge to see.\n\n';
+      effectiveComment = effectiveComment ? hiddenWarning + effectiveComment : hiddenWarning;
+    }
+
+    // Create highlight element (dot or bounding box)
+    const highlightElement = document.createElement('div');
+
+    if (useDotIndicator) {
+      highlightElement.className = 'interactive-highlight-dot';
+      // Position at element's center
+      const dotTop = rect.top + scrollTop + rect.height / 2;
+      const dotLeft = rect.left + scrollLeft + rect.width / 2;
+      highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
+      highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
+    } else {
+      highlightElement.className = 'interactive-highlight-outline';
+      // Note: We always show the highlight draw animation (looks good)
+      // skipAnimations only affects the comment box transition
+      highlightElement.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
+      highlightElement.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+      highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
+      highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+    }
 
     // Clear old highlights RIGHT BEFORE adding new one for seamless transition
     this.clearAllHighlights();
 
-    document.body.appendChild(highlightOutline);
+    document.body.appendChild(highlightElement);
 
     // Create comment box if comment is provided OR if any callback is provided
-    // Comment box is now a CHILD of the highlight, positioned via CSS
+    // Comment box is always attached to body with absolute positioning
     let commentBox: HTMLElement | null = null;
-    if ((comment && comment.trim()) || onSkipCallback || onCancelCallback || onNextCallback || onPreviousCallback) {
+    if (
+      (effectiveComment && effectiveComment.trim()) ||
+      onSkipCallback ||
+      onCancelCallback ||
+      onNextCallback ||
+      onPreviousCallback
+    ) {
+      // Calculate highlight rect in absolute document coordinates
+      const highlightRect = this.calculateHighlightRect(rect, scrollTop, scrollLeft, useDotIndicator);
+
       commentBox = this.createCommentBox(
-        comment || '',
+        effectiveComment || '',
         rect,
+        highlightRect,
         stepInfo,
         onSkipCallback,
         onCancelCallback,
@@ -623,8 +731,45 @@ export class NavigationManager {
         onPreviousCallback,
         options
       );
-      // Append as child of highlight - follows automatically when highlight moves
-      highlightOutline.appendChild(commentBox);
+
+      // Always append to body (unified positioning)
+      document.body.appendChild(commentBox);
+    }
+
+    // GUARDRAIL: Auto-remove highlight after fixed duration
+    // CSS handles visual fade, this is the cleanup failsafe
+    //
+    // Guided mode (!enableAutoCleanup): CSS animations run to completion but
+    // DOM element persists until clearAllHighlights() is called by the guided
+    // interaction flow. This is intentional - guides control their own lifecycle.
+    if (useDotIndicator && enableAutoCleanup) {
+      const dotRemovalTimeout = setTimeout(() => {
+        if (highlightElement.isConnected) {
+          highlightElement.remove();
+        }
+        // Also remove comment box (now on body, not child of dot)
+        if (commentBox?.isConnected) {
+          commentBox.remove();
+        }
+      }, INTERACTIVE_CONFIG.highlighting.dotDurationMs);
+
+      // Store timeout for cleanup if clearAllHighlights is called early
+      this.activeCleanupHandlers.push(() => clearTimeout(dotRemovalTimeout));
+    } else if (!useDotIndicator && enableAutoCleanup) {
+      // GUARDRAIL: Auto-remove bounding box after animation completes (non-guided mode only)
+      // CSS handles visual fade-out, this ensures cleanup after animation finishes
+      const outlineRemovalTimeout = setTimeout(() => {
+        if (highlightElement.isConnected) {
+          highlightElement.remove();
+        }
+        // Also remove comment box (body-attached)
+        if (commentBox?.isConnected) {
+          commentBox.remove();
+        }
+      }, INTERACTIVE_CONFIG.highlighting.outlineDurationMs);
+
+      // Store timeout for cleanup if clearAllHighlights is called early
+      this.activeCleanupHandlers.push(() => clearTimeout(outlineRemovalTimeout));
     }
 
     // Highlights and comments now persist until explicitly cleared
@@ -639,7 +784,7 @@ export class NavigationManager {
     // Enable drift detection for guided mode (!enableAutoCleanup) for more responsive tracking
     // FIX: Track the highlightTarget (visible parent) instead of original element
     const enableDriftDetection = !enableAutoCleanup;
-    this.setupPositionTracking(highlightTarget, highlightOutline, commentBox, enableDriftDetection);
+    this.setupPositionTracking(highlightTarget, highlightElement, commentBox, enableDriftDetection, useDotIndicator);
 
     // Set up smart auto-cleanup (unless disabled for guided mode)
     // FIX: Use highlightTarget for auto-cleanup detection
@@ -652,12 +797,15 @@ export class NavigationManager {
 
   /**
    * Create a themed comment box positioned near the highlighted element.
-   * Uses offset positioning relative to highlight parent, clamped to viewport.
+   * Uses absolute positioning attached to document.body, clamped to viewport.
    * Uses a clean, polished card design for both tour and guided modes.
+   *
+   * @param highlightRect - The absolute document coordinates of the highlight element
    */
   private createCommentBox(
     comment: string,
     targetRect: DOMRect,
+    highlightRect: { top: number; left: number; width: number; height: number },
     stepInfo?: { current: number; total: number; completedSteps: number[] },
     onSkipCallback?: () => void,
     onCancelCallback?: () => void,
@@ -896,9 +1044,16 @@ export class NavigationManager {
     commentBox.style.left = '';
 
     // NOW calculate position with the REAL height
+    // Calculate position offsets relative to highlight
     const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
-    commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
-    commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+
+    // Convert to absolute document coordinates (always body-attached)
+    const absoluteTop = highlightRect.top + offsetY;
+    const absoluteLeft = highlightRect.left + offsetX;
+
+    commentBox.style.position = 'absolute';
+    commentBox.style.top = `${absoluteTop}px`;
+    commentBox.style.left = `${absoluteLeft}px`;
     commentBox.setAttribute('data-position', position);
 
     return commentBox;
