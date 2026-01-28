@@ -25,6 +25,9 @@ export const DEFAULT_OPEN_PANEL_ON_LAUNCH = false; // Experimental opt-in featur
 // Live Sessions defaults
 export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled by default for stability
 
+// Coda Terminal defaults (experimental dev feature)
+export const DEFAULT_ENABLE_CODA_TERMINAL = false; // Experimental - disabled by default
+
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
 export const DEFAULT_PEERJS_PORT = 9000;
@@ -80,6 +83,8 @@ export interface DocsPluginConfig {
   peerjsHost?: string;
   peerjsPort?: number;
   peerjsKey?: string;
+  // Coda Terminal (Experimental dev feature for interactive sandbox)
+  enableCodaTerminal?: boolean;
 }
 
 // Helper functions to get configuration values with defaults
@@ -109,6 +114,8 @@ export const getConfigWithDefaults = (
   peerjsHost: config.peerjsHost || DEFAULT_PEERJS_HOST,
   peerjsPort: config.peerjsPort ?? DEFAULT_PEERJS_PORT,
   peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
+  // Coda Terminal
+  enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
 });
 
 /**
