@@ -13,6 +13,7 @@ import {
   DEFAULT_PEERJS_HOST,
   DEFAULT_PEERJS_PORT,
   DEFAULT_PEERJS_KEY,
+  DEFAULT_ENABLE_CODA_TERMINAL,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -34,6 +35,8 @@ type State = {
   peerjsHost: string;
   peerjsPort: number;
   peerjsKey: string;
+  // Coda terminal (experimental)
+  enableCodaTerminal: boolean;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -55,6 +58,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
     peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
+    enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
   }));
   const [isSaving, setIsSaving] = useState(false);
 
@@ -173,6 +177,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onToggleCodaTerminal = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      enableCodaTerminal: event.target.checked,
+    });
+  };
+
   const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
@@ -211,6 +222,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsHost: state.peerjsHost,
         peerjsPort: state.peerjsPort,
         peerjsKey: state.peerjsKey,
+        enableCodaTerminal: state.enableCodaTerminal,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -488,6 +500,56 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   <strong>Note:</strong> This feature uses peer-to-peer connections and may have stability issues
                   depending on network configuration. Enable only if you understand the limitations and have tested it
                   in your environment.
+                </Text>
+              </Alert>
+            )}
+          </FieldSet>
+        )}
+
+        {/* Coda Terminal (interactive sandbox) - Dev Mode Only */}
+        {devModeEnabledForUser && (
+          <FieldSet
+            label={
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Coda terminal (interactive sandbox)
+                <Badge text="Experimental - Dev Mode Only" color="orange" />
+              </div>
+            }
+            className={s.marginTopXl}
+          >
+            <div className={s.toggleSection}>
+              <Switch id="enable-coda-terminal" value={state.enableCodaTerminal} onChange={onToggleCodaTerminal} />
+              <div className={s.toggleLabels}>
+                <Text variant="body" weight="medium">
+                  Enable Coda terminal in sidebar (Experimental)
+                </Text>
+                <Text variant="body" color="secondary">
+                  Show a collapsible terminal panel at the bottom of the Interactive learning sidebar for running
+                  commands in a sandbox environment
+                </Text>
+              </div>
+            </div>
+
+            {state.enableCodaTerminal && (
+              <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
+                <Text variant="body">
+                  <strong>This feature is experimental and requires backend infrastructure.</strong> The terminal panel
+                  will be visible in the sidebar but connection functionality requires a separate backend service to be
+                  running. This is intended for development and testing purposes only.
+                </Text>
+              </Alert>
+            )}
+
+            {!state.enableCodaTerminal && (
+              <Alert severity="info" title="Feature overview" className={s.marginTop}>
+                <Text variant="body">
+                  The Coda terminal provides an interactive sandbox environment directly within the Interactive learning
+                  sidebar. When enabled, a collapsible terminal panel appears at the bottom of the sidebar, allowing you
+                  to run commands while following along with tutorials.
+                  <br />
+                  <br />
+                  <strong>Note:</strong> This feature requires backend infrastructure to function. Enable only if you
+                  have the necessary backend services configured.
                 </Text>
               </Alert>
             )}

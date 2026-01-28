@@ -12,6 +12,14 @@ const SelectorDebugPanel = lazy(() =>
     default: module.SelectorDebugPanel,
   }))
 );
+
+// Lazy load Coda Terminal to keep it out of production bundles
+// Only loaded when dev mode is enabled and terminal feature is enabled
+const TerminalPanel = lazy(() =>
+  import('../../integrations/coda').then((module) => ({
+    default: module.TerminalPanel,
+  }))
+);
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults } from '../../constants';
@@ -2229,6 +2237,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           return null;
         })()}
       </div>
+
+      {/* Coda Terminal Panel - only shown in dev mode with terminal feature enabled */}
+      {isDevMode && pluginConfig.enableCodaTerminal && (
+        <Suspense fallback={null}>
+          <TerminalPanel />
+        </Suspense>
+      )}
+
       {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement, my-learning has its own */}
       {!isRecommendationsTab && activeTabId !== 'my-learning' && !isDocsLikeTab(activeTab?.type) && (
         <>

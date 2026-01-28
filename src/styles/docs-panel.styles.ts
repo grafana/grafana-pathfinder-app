@@ -130,6 +130,7 @@ export const getContainerStyles = (theme: GrafanaTheme2) => ({
     overflow: 'auto',
     display: 'flex',
     flexDirection: 'column',
+    minHeight: 0, // Allow flex item to shrink below content size (needed for terminal panel)
   }),
   loadingContainer: css({
     display: 'flex',
