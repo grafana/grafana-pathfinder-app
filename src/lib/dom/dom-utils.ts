@@ -360,6 +360,101 @@ export async function scrollUntilElementFound(
 }
 
 /**
+ * Debug flag for getVisibleHighlightTarget logging
+ * Enable via browser console: window.DEBUG_HIGHLIGHT_TARGET = true
+ */
+const isDebugEnabled = () => (window as any).DEBUG_HIGHLIGHT_TARGET === true;
+
+/**
+ * Find the best element to highlight for visual feedback
+ *
+ * Specifically handles React Select / Grafana dropdowns where the selector targets
+ * a hidden grid-overlaid input instead of the visible wrapper.
+ *
+ * @param element - The initially selected element
+ * @returns The element that should be highlighted (may be the original or input-wrapper parent)
+ *
+ * @example
+ * ```typescript
+ * // Selector targets: div[data-testid='collector-os-selection'] input
+ * // Input has grid-area positioning and empty value
+ * // Returns: The parent div with class containing '-input-wrapper'
+ * const input = document.querySelector('div[data-testid="collector-os-selection"] input');
+ * const highlightTarget = getVisibleHighlightTarget(input);
+ * ```
+ *
+ * @debug Enable debug logging via browser console:
+ * ```javascript
+ * window.DEBUG_HIGHLIGHT_TARGET = true
+ * ```
+ */
+export function getVisibleHighlightTarget(element: HTMLElement): HTMLElement {
+  const tagName = element.tagName.toLowerCase();
+
+  // Only apply to input elements
+  if (tagName !== 'input') {
+    return element;
+  }
+
+  // Check for grid overlay pattern (React Select, Grafana dropdowns)
+  const computedStyle = window.getComputedStyle(element);
+  const usesGridOverlay = computedStyle.gridArea !== 'auto' && computedStyle.gridArea.includes(' / ');
+  const hasEmptyValue = (element as HTMLInputElement).value === '';
+  const isHiddenViaGrid = usesGridOverlay && hasEmptyValue;
+
+  if (isDebugEnabled()) {
+    console.log('[VisibleHighlight] Checking input element:', {
+      element,
+      gridArea: computedStyle.gridArea,
+      usesGridOverlay,
+      hasEmptyValue,
+      isHiddenViaGrid,
+    });
+  }
+
+  // If not using grid overlay pattern, use element as-is.
+  if (!isHiddenViaGrid) {
+    if (isDebugEnabled()) {
+      console.log('[VisibleHighlight] Not hidden via grid, using element as-is');
+    }
+    return element;
+  }
+
+  // Look for parent with class ending in -input-wrapper.
+  let current: HTMLElement | null = element.parentElement;
+  let depth = 0;
+  const maxDepth = 5;
+
+  while (current && depth < maxDepth) {
+    const hasInputWrapperClass = Array.from(current.classList).some((cls) => cls.endsWith('-input-wrapper'));
+
+    if (isDebugEnabled()) {
+      console.log(`[VisibleHighlight] Level ${depth + 1}:`, {
+        element: current,
+        classList: Array.from(current.classList),
+        hasInputWrapperClass,
+      });
+    }
+
+    if (hasInputWrapperClass) {
+      if (isDebugEnabled()) {
+        console.log('[VisibleHighlight] ✓ Found input-wrapper parent:', current);
+      }
+      return current;
+    }
+
+    current = current.parentElement;
+    depth++;
+  }
+
+  // No input-wrapper found, use original element
+  if (isDebugEnabled()) {
+    console.log('[VisibleHighlight] No input-wrapper found, using original element');
+  }
+  return element;
+}
+
+/**
  * Check if the navigation menu is open by trying various selectors
  * Based on Grafana's HTML structure, tries selectors in order of preference
  */
