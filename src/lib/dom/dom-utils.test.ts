@@ -5,6 +5,7 @@ import {
   resetValueTracker,
   reftargetExistsCheck,
   navmenuOpenCheck,
+  getVisibleHighlightTarget,
 } from './dom-utils';
 
 // Mock console methods to avoid noise in tests
@@ -553,5 +554,200 @@ describe('scrollUntilElementFound', () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe('getVisibleHighlightTarget', () => {
+  let container: HTMLDivElement;
+
+  // Helper to mock element dimensions
+  const mockDimensions = (element: HTMLElement, width: number, height: number) => {
+    element.getBoundingClientRect = jest.fn(() => ({
+      width,
+      height,
+      top: 0,
+      left: 0,
+      right: width,
+      bottom: height,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }));
+  };
+
+  // Helper to mock computed style
+  const mockComputedStyle = (element: HTMLElement, styles: Partial<CSSStyleDeclaration>) => {
+    const originalGetComputedStyle = window.getComputedStyle;
+    window.getComputedStyle = jest.fn((el) => {
+      if (el === element) {
+        return styles as CSSStyleDeclaration;
+      }
+      return originalGetComputedStyle(el);
+    });
+  };
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body = document.createElement('body');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    if (document.body) {
+      document.body.innerHTML = '';
+    }
+    jest.restoreAllMocks();
+  });
+
+  it('should return non-input elements as-is', () => {
+    const button = document.createElement('button');
+    button.textContent = 'Click me';
+    container.appendChild(button);
+
+    const result = getVisibleHighlightTarget(button);
+
+    expect(result).toBe(button);
+  });
+
+  it('should return div elements as-is', () => {
+    const div = document.createElement('div');
+    container.appendChild(div);
+
+    const result = getVisibleHighlightTarget(div);
+
+    expect(result).toBe(div);
+  });
+
+  it('should return input without grid pattern as-is', () => {
+    const input = document.createElement('input');
+    input.value = 'some value';
+    container.appendChild(input);
+
+    mockComputedStyle(input, { gridArea: 'auto' } as any);
+
+    const result = getVisibleHighlightTarget(input);
+
+    // No grid pattern, return as-is
+    expect(result).toBe(input);
+  });
+
+  it('should return input with grid but non-empty value as-is', () => {
+    const input = document.createElement('input');
+    input.value = 'user typing';
+    container.appendChild(input);
+
+    mockComputedStyle(input, { gridArea: '1 / 2' } as any);
+
+    const result = getVisibleHighlightTarget(input);
+
+    // Has grid but not empty, return as-is
+    expect(result).toBe(input);
+  });
+
+  it('should find input-wrapper for grid-overlaid empty input', () => {
+    // Simulate Grafana/React Select structure with input-wrapper
+    const outerContainer = document.createElement('div');
+    outerContainer.setAttribute('data-testid', 'collector-os-selection');
+    outerContainer.style.width = '250px';
+    outerContainer.style.height = '38px';
+
+    const inputWrapper = document.createElement('div');
+    inputWrapper.className = 'css-1us8eja-input-wrapper css-1age63q';
+    inputWrapper.style.width = '250px';
+    inputWrapper.style.height = '38px';
+
+    const input = document.createElement('input');
+    input.style.gridArea = '1 / 2';
+    input.value = '';
+
+    inputWrapper.appendChild(input);
+    outerContainer.appendChild(inputWrapper);
+    container.appendChild(outerContainer);
+
+    mockDimensions(input, 2, 20);
+    mockDimensions(inputWrapper, 250, 38);
+    mockDimensions(outerContainer, 250, 38);
+    mockComputedStyle(input, { gridArea: '1 / 2' } as any);
+
+    const result = getVisibleHighlightTarget(input);
+
+    // Should use fast path and return the input-wrapper directly
+    expect(result).toBe(inputWrapper);
+    expect(result.className).toContain('input-wrapper');
+  });
+
+  it('should return original input if no input-wrapper found', () => {
+    // Grid-overlaid input but no input-wrapper parent
+    const dropdown = document.createElement('div');
+    dropdown.setAttribute('data-testid', 'collector-os-selection');
+
+    const input = document.createElement('input');
+    input.value = '';
+
+    dropdown.appendChild(input);
+    container.appendChild(dropdown);
+
+    mockComputedStyle(input, { gridArea: '1 / 2' } as any);
+
+    const result = getVisibleHighlightTarget(input);
+
+    // No input-wrapper class found, return original
+    expect(result).toBe(input);
+  });
+
+  it('should find input-wrapper within 5 levels', () => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'css-abc-input-wrapper';
+
+    const middle1 = document.createElement('div');
+    const middle2 = document.createElement('div');
+    const middle3 = document.createElement('div');
+    const middle4 = document.createElement('div');
+
+    const input = document.createElement('input');
+    input.value = '';
+
+    middle4.appendChild(input);
+    middle3.appendChild(middle4);
+    middle2.appendChild(middle3);
+    middle1.appendChild(middle2);
+    wrapper.appendChild(middle1);
+    container.appendChild(wrapper);
+
+    mockComputedStyle(input, { gridArea: '1 / 2' } as any);
+
+    const result = getVisibleHighlightTarget(input);
+
+    expect(result).toBe(wrapper);
+  });
+
+  it('should not search beyond 5 levels', () => {
+    // Wrapper is 6 levels up (too far)
+    const wrapper = document.createElement('div');
+    wrapper.className = 'css-abc-input-wrapper';
+
+    const middle1 = document.createElement('div');
+    const middle2 = document.createElement('div');
+    const middle3 = document.createElement('div');
+    const middle4 = document.createElement('div');
+    const middle5 = document.createElement('div');
+
+    const input = document.createElement('input');
+    input.value = '';
+
+    middle5.appendChild(input);
+    middle4.appendChild(middle5);
+    middle3.appendChild(middle4);
+    middle2.appendChild(middle3);
+    middle1.appendChild(middle2);
+    wrapper.appendChild(middle1);
+    container.appendChild(wrapper);
+
+    mockComputedStyle(input, { gridArea: '1 / 2' } as any);
+
+    const result = getVisibleHighlightTarget(input);
+
+    // Should not find wrapper (beyond maxDepth=5), return original
+    expect(result).toBe(input);
   });
 });
