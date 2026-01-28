@@ -204,7 +204,7 @@ export class NavigationManager {
           );
 
           const commentHeight = this.driftDetectionComment.offsetHeight;
-          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
+          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight, this.driftDetectionIsDotMode);
 
           this.driftDetectionComment.style.top = `${highlightRect.top + offsetY}px`;
           this.driftDetectionComment.style.left = `${highlightRect.left + offsetX}px`;
@@ -351,7 +351,7 @@ export class NavigationManager {
           const highlightRect = this.calculateHighlightRect(rect, scrollTop, scrollLeft, isDotMode);
 
           const commentHeight = commentBox.offsetHeight;
-          const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
+          const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight, isDotMode);
 
           commentBox.style.top = `${highlightRect.top + offsetY}px`;
           commentBox.style.left = `${highlightRect.left + offsetX}px`;
@@ -729,7 +729,7 @@ export class NavigationManager {
         onCancelCallback,
         onNextCallback,
         onPreviousCallback,
-        options
+        { ...options, isDotMode: useDotIndicator }
       );
 
       // Always append to body (unified positioning)
@@ -815,6 +815,7 @@ export class NavigationManager {
       showKeyboardHint?: boolean;
       stepTitle?: string;
       skipAnimations?: boolean;
+      isDotMode?: boolean; // Whether highlight is a dot at element center
     }
   ): HTMLElement {
     const commentBox = document.createElement('div');
@@ -1045,7 +1046,7 @@ export class NavigationManager {
 
     // NOW calculate position with the REAL height
     // Calculate position offsets relative to highlight
-    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
+    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight, options?.isDotMode);
 
     // Convert to absolute document coordinates (always body-attached)
     const absoluteTop = highlightRect.top + offsetY;
@@ -1064,10 +1065,12 @@ export class NavigationManager {
    * Returns offsets relative to the highlight parent, clamped to stay on screen.
    * @param targetRect - The bounding rectangle of the highlighted element
    * @param actualCommentHeight - The measured height of the comment box
+   * @param isDotMode - Whether the highlight is a dot at element center (vs bounding box)
    */
   private calculateCommentPosition(
     targetRect: DOMRect,
-    actualCommentHeight: number
+    actualCommentHeight: number,
+    isDotMode = false
   ): {
     offsetX: number;
     offsetY: number;
@@ -1083,6 +1086,14 @@ export class NavigationManager {
     // Highlight dimensions (with 4px padding on each side = 8px total)
     const highlightWidth = targetRect.width + 8;
     const highlightHeight = targetRect.height + 8;
+
+    // In dot mode, highlightRect is positioned at element center instead of bounding box top-left.
+    // Calculate adjustment to convert bounding-box-relative offsets to dot-relative offsets.
+    // Bounding box top-left: (targetRect.left - 4, targetRect.top - 4)
+    // Dot center: (targetRect.left + width/2, targetRect.top + height/2)
+    // Difference: (width/2 + 4, height/2 + 4)
+    const dotAdjustX = isDotMode ? targetRect.width / 2 + 4 : 0;
+    const dotAdjustY = isDotMode ? targetRect.height / 2 + 4 : 0;
 
     // Calculate available space on each side
     const highlightRight = targetRect.right + 4;
@@ -1166,7 +1177,7 @@ export class NavigationManager {
         if (offsetX < highlightWidth) {
           offsetX = highlightWidth + gap;
         }
-        return { offsetX, offsetY, position: 'right' };
+        return { offsetX: offsetX - dotAdjustX, offsetY: offsetY - dotAdjustY, position: 'right' };
       }
     }
 
@@ -1189,7 +1200,7 @@ export class NavigationManager {
         if (offsetX + commentWidth > 0) {
           offsetX = -commentWidth - gap;
         }
-        return { offsetX, offsetY, position: 'left' };
+        return { offsetX: offsetX - dotAdjustX, offsetY: offsetY - dotAdjustY, position: 'left' };
       }
     }
 
@@ -1200,9 +1211,9 @@ export class NavigationManager {
       const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
       // Verify no vertical overlap: tooltip top edge (offsetY) must be >= highlight bottom edge (highlightHeight)
       if (offsetY < highlightHeight) {
-        return { offsetX, offsetY: highlightHeight + gap, position: 'bottom' };
+        return { offsetX: offsetX - dotAdjustX, offsetY: highlightHeight + gap - dotAdjustY, position: 'bottom' };
       }
-      return { offsetX, offsetY, position: 'bottom' };
+      return { offsetX: offsetX - dotAdjustX, offsetY: offsetY - dotAdjustY, position: 'bottom' };
     }
 
     // TOP position: offset above highlight
@@ -1212,9 +1223,9 @@ export class NavigationManager {
       const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
       // Verify no vertical overlap: tooltip bottom edge (offsetY + commentHeight) must be <= 0 (highlight top edge)
       if (offsetY + commentHeight > 0) {
-        return { offsetX, offsetY: -commentHeight - gap, position: 'top' };
+        return { offsetX: offsetX - dotAdjustX, offsetY: -commentHeight - gap - dotAdjustY, position: 'top' };
       }
-      return { offsetX, offsetY, position: 'top' };
+      return { offsetX: offsetX - dotAdjustX, offsetY: offsetY - dotAdjustY, position: 'top' };
     }
 
     // Fallback: use side with most space
@@ -1223,13 +1234,17 @@ export class NavigationManager {
     if (maxSpace === spaceBottom || maxSpace === spaceTop) {
       const offsetY = maxSpace === spaceBottom ? highlightHeight + gap : -commentHeight - gap;
       const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
-      return { offsetX, offsetY, position: maxSpace === spaceBottom ? 'bottom' : 'top' };
+      return {
+        offsetX: offsetX - dotAdjustX,
+        offsetY: offsetY - dotAdjustY,
+        position: maxSpace === spaceBottom ? 'bottom' : 'top',
+      };
     }
 
     // For LEFT/RIGHT fallback, align to top (not center) to avoid overlap
     const offsetX = maxSpace === spaceRight ? highlightWidth + gap : -commentWidth - gap;
     const offsetY = clampVertical(0);
-    return { offsetX, offsetY, position: maxSpace === spaceRight ? 'right' : 'left' };
+    return { offsetX: offsetX - dotAdjustX, offsetY: offsetY - dotAdjustY, position: maxSpace === spaceRight ? 'right' : 'left' };
   }
 
   /**
