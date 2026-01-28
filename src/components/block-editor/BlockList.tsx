@@ -531,8 +531,14 @@ export function BlockList({
         case 'section-insert':
           if (overData.sectionId !== undefined && overData.index !== undefined) {
             handleDropOnSectionInsert(activeIdStr, activeData, overData.sectionId, overData.index);
-            // Block lands at overData.index in the target section
-            triggerDropHighlight(`${overData.sectionId}-nested-${overData.index}`);
+            // For same-section reorders, calculate adjusted index where block actually lands
+            const sectionHighlightIndex =
+              activeData.type === 'nested' &&
+              activeData.sectionId === overData.sectionId &&
+              activeData.index < overData.index
+                ? overData.index - 1
+                : overData.index;
+            triggerDropHighlight(`${overData.sectionId}-nested-${sectionHighlightIndex}`);
           }
           break;
 
@@ -545,9 +551,16 @@ export function BlockList({
               overData.branch,
               overData.index
             );
-            // Block lands at overData.index in the target branch
+            // For same-branch reorders, calculate adjusted index where block actually lands
+            const conditionalHighlightIndex =
+              activeData.type === 'conditional' &&
+              activeData.conditionalId === overData.conditionalId &&
+              activeData.branch === overData.branch &&
+              activeData.index < overData.index
+                ? overData.index - 1
+                : overData.index;
             const branchKey = overData.branch === 'whenTrue' ? 'true' : 'false';
-            triggerDropHighlight(`${overData.conditionalId}-${branchKey}-${overData.index}`);
+            triggerDropHighlight(`${overData.conditionalId}-${branchKey}-${conditionalHighlightIndex}`);
           }
           break;
 
@@ -632,11 +645,14 @@ export function BlockList({
     }
   }, []);
 
-  // REACT: cleanup timeout on unmount (R1)
+  // REACT: cleanup timeouts on unmount (R1)
   useEffect(() => {
     return () => {
       if (autoExpandTimeoutRef.current) {
         clearTimeout(autoExpandTimeoutRef.current);
+      }
+      if (dropHighlightTimeoutRef.current) {
+        clearTimeout(dropHighlightTimeoutRef.current);
       }
     };
   }, []);

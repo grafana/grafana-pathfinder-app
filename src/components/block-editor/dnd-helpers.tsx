@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { useStyles2 } from '@grafana/ui';
-import { DragOverlay, useDroppable } from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { css, cx } from '@emotion/css';
@@ -216,43 +216,7 @@ export function isInsertZoneRedundant(
   return false;
 }
 
-/**
- * Drag overlay component for rendering a ghost preview during drag
- */
-export function BlockDragOverlay({
-  activeId,
-  children,
-}: {
-  activeId: string | number | null;
-  children: React.ReactNode;
-}) {
-  const styles = useStyles2(getDragOverlayStyles);
-
-  if (!activeId) {
-    return null;
-  }
-
-  return (
-    <DragOverlay dropAnimation={null}>
-      <div className={styles.overlay}>{children}</div>
-    </DragOverlay>
-  );
-}
-
-const getDragOverlayStyles = (theme: GrafanaTheme2) => ({
-  overlay: css({
-    opacity: 0.9,
-    cursor: 'grabbing',
-    boxShadow: theme.shadows.z3,
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.primary,
-    border: `2px solid ${theme.colors.primary.main}`,
-    transform: 'scale(1.02)',
-  }),
-});
-
 // Add display names for debugging
 SortableBlock.displayName = 'SortableBlock';
 DropIndicator.displayName = 'DropIndicator';
 DroppableInsertZone.displayName = 'DroppableInsertZone';
-BlockDragOverlay.displayName = 'BlockDragOverlay';
