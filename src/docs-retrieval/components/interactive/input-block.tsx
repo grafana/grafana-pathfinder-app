@@ -298,9 +298,9 @@ export function InputBlock({
       if (!validateDatasourceInput(datasourceValue)) {
         return;
       }
-      if (responseContext && datasourceValue) {
+      if (responseContext) {
         const wasAlreadySaved = isSaved;
-        responseContext.setResponse(variableName, datasourceValue);
+        responseContext.setResponse(variableName, datasourceValue ?? '');
         setIsSaved(true);
 
         // Track submission (no input values captured for privacy)
