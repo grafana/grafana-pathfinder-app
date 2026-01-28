@@ -120,16 +120,25 @@ export function useTerminalLive({ sessionId, terminalRef }: UseTerminalLiveOptio
   const [error, setError] = useState<string | null>(null);
   const terminalDataDisposer = useRef<{ dispose: () => void } | null>(null);
   const commandBufferRef = useRef<string>('');
+  // REACT: store timer IDs to cancel pending connection timeouts (R1)
+  const connectionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+
+  // Helper to clear all pending connection timers
+  const clearConnectionTimers = useCallback(() => {
+    connectionTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    connectionTimersRef.current = [];
+  }, []);
 
   // REACT: cleanup on unmount (R1)
   useEffect(() => {
     return () => {
+      clearConnectionTimers();
       if (terminalDataDisposer.current) {
         terminalDataDisposer.current.dispose();
         terminalDataDisposer.current = null;
       }
     };
-  }, []);
+  }, [clearConnectionTimers]);
 
   // Execute a fake command - defined before connect to satisfy React hooks rules
   // Returns true if we should show prompt after, false if command handles it (like exit)
@@ -186,121 +195,135 @@ export function useTerminalLive({ sessionId, terminalRef }: UseTerminalLiveOptio
     setError(null);
     commandBufferRef.current = '';
 
+    // Clear any pending timers from previous connection attempts
+    clearConnectionTimers();
+
     // Simulate connection delay with progress
+    // REACT: store timer IDs to allow cancellation on disconnect (R1)
     terminal.writeln('\x1b[33mProvisioning sandbox VM...\x1b[0m');
 
-    setTimeout(() => {
-      const term = terminalRef.current;
-      if (!term) {
-        return;
-      }
-      term.writeln('\x1b[90m  → Allocating resources...\x1b[0m');
-    }, 300);
-
-    setTimeout(() => {
-      const term = terminalRef.current;
-      if (!term) {
-        return;
-      }
-      term.writeln('\x1b[90m  → Starting container...\x1b[0m');
-    }, 700);
-
-    setTimeout(() => {
-      const term = terminalRef.current;
-      if (!term) {
-        return;
-      }
-      term.writeln('\x1b[90m  → Configuring environment...\x1b[0m');
-    }, 1100);
-
-    setTimeout(() => {
-      const currentTerminal = terminalRef.current;
-      if (!currentTerminal) {
-        setError('Terminal instance no longer available');
-        setStatus('error');
-        return;
-      }
-
-      setStatus('connected');
-
-      // Write welcome banner
-      currentTerminal.writeln('');
-      currentTerminal.writeln('\x1b[32m✓ Connected to Grafana Sandbox\x1b[0m');
-      currentTerminal.writeln('');
-      currentTerminal.writeln('\x1b[36m╔══════════════════════════════════════════════════════════╗\x1b[0m');
-      currentTerminal.writeln(
-        '\x1b[36m║\x1b[0m  \x1b[1;33mWelcome to Grafana Pathfinder Sandbox\x1b[0m                    \x1b[36m║\x1b[0m'
-      );
-      currentTerminal.writeln(
-        '\x1b[36m║\x1b[0m                                                          \x1b[36m║\x1b[0m'
-      );
-      currentTerminal.writeln(
-        '\x1b[36m║\x1b[0m  \x1b[90mThis is a simulated environment for learning.\x1b[0m           \x1b[36m║\x1b[0m'
-      );
-      currentTerminal.writeln(
-        '\x1b[36m║\x1b[0m  \x1b[90mType \x1b[37mhelp\x1b[90m to see available commands.\x1b[0m                    \x1b[36m║\x1b[0m'
-      );
-      currentTerminal.writeln('\x1b[36m╚══════════════════════════════════════════════════════════╝\x1b[0m');
-      currentTerminal.writeln('');
-      currentTerminal.write('\x1b[32mgrafana-sandbox\x1b[0m:\x1b[34m~\x1b[0m$ ');
-
-      // Set up command handler
-      // REACT: cleanup subscription (R1)
-      if (terminalDataDisposer.current) {
-        terminalDataDisposer.current.dispose();
-      }
-
-      terminalDataDisposer.current = currentTerminal.onData((data) => {
+    connectionTimersRef.current.push(
+      setTimeout(() => {
         const term = terminalRef.current;
         if (!term) {
           return;
         }
+        term.writeln('\x1b[90m  → Allocating resources...\x1b[0m');
+      }, 300)
+    );
 
-        // Handle special keys
-        if (data === '\r') {
-          // Enter key - execute command
-          term.writeln('');
-          const command = commandBufferRef.current.trim();
-          commandBufferRef.current = '';
-
-          let showPrompt = true;
-          if (command) {
-            showPrompt = executeCommand(term, command);
-          }
-
-          if (showPrompt) {
-            term.write('\x1b[32mgrafana-sandbox\x1b[0m:\x1b[34m~\x1b[0m$ ');
-          }
-        } else if (data === '\x7f') {
-          // Backspace
-          if (commandBufferRef.current.length > 0) {
-            commandBufferRef.current = commandBufferRef.current.slice(0, -1);
-            term.write('\b \b');
-          }
-        } else if (data === '\x03') {
-          // Ctrl+C
-          commandBufferRef.current = '';
-          term.writeln('^C');
-          term.write('\x1b[32mgrafana-sandbox\x1b[0m:\x1b[34m~\x1b[0m$ ');
-        } else if (data === '\x1b[A' || data === '\x1b[B') {
-          // Arrow up/down - ignore for now (history not implemented)
-        } else if (data >= ' ' || data === '\t') {
-          // Printable characters
-          commandBufferRef.current += data;
-          term.write(data);
+    connectionTimersRef.current.push(
+      setTimeout(() => {
+        const term = terminalRef.current;
+        if (!term) {
+          return;
         }
-      });
-    }, 1500);
-  }, [terminalRef, executeCommand]);
+        term.writeln('\x1b[90m  → Starting container...\x1b[0m');
+      }, 700)
+    );
+
+    connectionTimersRef.current.push(
+      setTimeout(() => {
+        const term = terminalRef.current;
+        if (!term) {
+          return;
+        }
+        term.writeln('\x1b[90m  → Configuring environment...\x1b[0m');
+      }, 1100)
+    );
+
+    connectionTimersRef.current.push(
+      setTimeout(() => {
+        const currentTerminal = terminalRef.current;
+        if (!currentTerminal) {
+          setError('Terminal instance no longer available');
+          setStatus('error');
+          return;
+        }
+
+        setStatus('connected');
+
+        // Write welcome banner
+        currentTerminal.writeln('');
+        currentTerminal.writeln('\x1b[32m✓ Connected to Grafana Sandbox\x1b[0m');
+        currentTerminal.writeln('');
+        currentTerminal.writeln('\x1b[36m╔══════════════════════════════════════════════════════════╗\x1b[0m');
+        currentTerminal.writeln(
+          '\x1b[36m║\x1b[0m  \x1b[1;33mWelcome to Grafana Pathfinder Sandbox\x1b[0m                    \x1b[36m║\x1b[0m'
+        );
+        currentTerminal.writeln(
+          '\x1b[36m║\x1b[0m                                                          \x1b[36m║\x1b[0m'
+        );
+        currentTerminal.writeln(
+          '\x1b[36m║\x1b[0m  \x1b[90mThis is a simulated environment for learning.\x1b[0m           \x1b[36m║\x1b[0m'
+        );
+        currentTerminal.writeln(
+          '\x1b[36m║\x1b[0m  \x1b[90mType \x1b[37mhelp\x1b[90m to see available commands.\x1b[0m                    \x1b[36m║\x1b[0m'
+        );
+        currentTerminal.writeln('\x1b[36m╚══════════════════════════════════════════════════════════╝\x1b[0m');
+        currentTerminal.writeln('');
+        currentTerminal.write('\x1b[32mgrafana-sandbox\x1b[0m:\x1b[34m~\x1b[0m$ ');
+
+        // Set up command handler
+        // REACT: cleanup subscription (R1)
+        if (terminalDataDisposer.current) {
+          terminalDataDisposer.current.dispose();
+        }
+
+        terminalDataDisposer.current = currentTerminal.onData((data) => {
+          const term = terminalRef.current;
+          if (!term) {
+            return;
+          }
+
+          // Handle special keys
+          if (data === '\r') {
+            // Enter key - execute command
+            term.writeln('');
+            const command = commandBufferRef.current.trim();
+            commandBufferRef.current = '';
+
+            let showPrompt = true;
+            if (command) {
+              showPrompt = executeCommand(term, command);
+            }
+
+            if (showPrompt) {
+              term.write('\x1b[32mgrafana-sandbox\x1b[0m:\x1b[34m~\x1b[0m$ ');
+            }
+          } else if (data === '\x7f') {
+            // Backspace
+            if (commandBufferRef.current.length > 0) {
+              commandBufferRef.current = commandBufferRef.current.slice(0, -1);
+              term.write('\b \b');
+            }
+          } else if (data === '\x03') {
+            // Ctrl+C
+            commandBufferRef.current = '';
+            term.writeln('^C');
+            term.write('\x1b[32mgrafana-sandbox\x1b[0m:\x1b[34m~\x1b[0m$ ');
+          } else if (data === '\x1b[A' || data === '\x1b[B') {
+            // Arrow up/down - ignore for now (history not implemented)
+          } else if (data >= ' ' || data === '\t') {
+            // Printable characters
+            commandBufferRef.current += data;
+            term.write(data);
+          }
+        });
+      }, 1500)
+    );
+  }, [terminalRef, executeCommand, clearConnectionTimers]);
 
   const disconnect = useCallback(() => {
+    // REACT: cancel pending connection timers to prevent stale state updates (R1)
+    clearConnectionTimers();
     if (terminalDataDisposer.current) {
       terminalDataDisposer.current.dispose();
       terminalDataDisposer.current = null;
     }
     setStatus('disconnected');
     setError(null);
-  }, []);
+  }, [clearConnectionTimers]);
 
   const resize = useCallback(
     (rows: number, cols: number) => {

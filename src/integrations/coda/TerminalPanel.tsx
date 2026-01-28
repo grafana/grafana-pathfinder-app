@@ -152,17 +152,21 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
       const startY = e.clientY;
       const startHeight = height;
+      // REACT: track current height to avoid stale closure in handleMouseUp (R2)
+      let currentHeight = startHeight;
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
         // Dragging up increases height, dragging down decreases
         const deltaY = startY - moveEvent.clientY;
         const newHeight = Math.min(Math.max(startHeight + deltaY, MIN_HEIGHT), MAX_HEIGHT);
+        currentHeight = newHeight;
         setHeight(newHeight);
       };
 
       const handleMouseUp = () => {
         setIsResizing(false);
-        setTerminalHeight(height);
+        // REACT: use tracked value instead of stale closure (R2)
+        setTerminalHeight(currentHeight);
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
@@ -176,9 +180,19 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   // Toggle expand/collapse
   const handleToggleExpand = useCallback(() => {
     const newExpanded = !isExpanded;
+
+    // REACT: disconnect when collapsing to prevent stale onData handlers
+    // on disposed terminal instances (R1)
+    if (!newExpanded && (status === 'connected' || status === 'connecting')) {
+      if (terminalInstanceRef.current) {
+        terminalInstanceRef.current.writeln('\r\n\x1b[33mTerminal collapsed - session disconnected.\x1b[0m');
+      }
+      disconnect();
+    }
+
     setIsExpanded(newExpanded);
     setTerminalOpen(newExpanded);
-  }, [isExpanded]);
+  }, [isExpanded, status, disconnect]);
 
   // Connect handler
   const handleConnect = useCallback(() => {
