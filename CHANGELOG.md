@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.6
+
+### Added
+
+- **Datasource input block type**: New block type for collecting datasource selections within interactive guides (#499)
+- **Terminal mock UI**: Added terminal mock interface for Coda integration (dev mode only) (#498)
+
+### Changed
+
+- **Improved element highlighting**: Highlights meaningful parent elements for better visibility during interactive steps (#497)
+- **Disabled auto-grouping**: Stopped automatic grouping in multistep and record mode to give content creators more control (#502)
+
+### Fixed
+
+- Fixed drag and drop issues in dev mode block editor (#500)
+- Fixed screen highlighting for hidden or responsive elements that weren't visible on screen (#496)
+
 ## 1.4.5
 
 ### Added
