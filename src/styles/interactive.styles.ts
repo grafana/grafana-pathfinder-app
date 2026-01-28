@@ -1437,8 +1437,8 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
       /* Draw border animation, then breathing glow (2 cycles), then fade out
-       * Total: ~1s draw + 3s breathe + 0.5s fade = 4.5s
-       * JS cleanup at 5000ms (500ms buffer after CSS completes)
+       * Total: ~1.6s draw + 3s breathe + 0.5s fade = ~5.1s
+       * JS cleanup at 5600ms (500ms buffer after CSS completes)
        */
       animation:
         interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,

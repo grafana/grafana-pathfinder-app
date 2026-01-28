@@ -117,10 +117,11 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
   //   JS:  dotDurationMs = 4000ms (500ms buffer for cleanup)
   //
   // BOUNDING BOX OUTLINE:
-  //   CSS: interactive-draw-border @ ~1s (drawMs)
+  //   CSS: interactive-draw-border @ drawMs = max(500, highlight * 0.65) = ~1.6s
   //        interactive-glow-breathe × 2 cycles @ 1.5s = 3.0s
-  //        interactive-outline-fade @ 0.5s = 4.5s total
-  //   JS:  outlineDurationMs = 5000ms (500ms buffer for cleanup)
+  //        interactive-outline-fade @ 0.5s
+  //        Total: ~1.6s + 3.0s + 0.5s = ~5.1s
+  //   JS:  outlineDurationMs = 5600ms (500ms buffer for cleanup)
   //
   // See src/styles/interactive.styles.ts for CSS animation definitions
   // ============================================================
@@ -129,8 +130,8 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     // Timing aligned with CSS animations - see interactive.styles.ts
     // Dot: 2 pulses @ 1.5s (3s) + 0.5s fade = 3.5s CSS, 4000ms JS (500ms buffer)
     dotDurationMs: 4000,
-    // Outline: ~1s draw + 2 breathes @ 1.5s (3s) + 0.5s fade = 4.5s CSS, 5000ms JS
-    outlineDurationMs: 5000,
+    // Outline: ~1.6s draw + 2 breathes @ 1.5s (3s) + 0.5s fade = ~5.1s CSS, 5600ms JS
+    outlineDurationMs: 5600,
   },
   // Guided step interaction timing
   guided: {

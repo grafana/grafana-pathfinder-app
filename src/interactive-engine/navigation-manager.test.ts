@@ -25,6 +25,9 @@ const mockGetScrollParent = elementValidator.getScrollParent as jest.MockedFunct
 const mockGetStickyHeaderOffset = elementValidator.getStickyHeaderOffset as jest.MockedFunction<
   typeof elementValidator.getStickyHeaderOffset
 >;
+const mockGetVisibleHighlightTarget = elementValidator.getVisibleHighlightTarget as jest.MockedFunction<
+  typeof elementValidator.getVisibleHighlightTarget
+>;
 
 // Mock console.warn to avoid noise in tests
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -48,6 +51,8 @@ describe('NavigationManager', () => {
     mockHasFixedPosition.mockReturnValue(false);
     mockIsInViewport.mockReturnValue(false);
     mockGetScrollParent.mockReturnValue(document.documentElement);
+    // Return the element unchanged by default (no visible parent substitution)
+    mockGetVisibleHighlightTarget.mockImplementation((el) => el);
 
     // Mock scrollIntoView
     mockElement.scrollIntoView = jest.fn();
