@@ -265,4 +265,181 @@ describe('JsonGuideSchema', () => {
       expect(result.warnings.length).toBeGreaterThan(0);
     });
   });
+
+  describe('input block validation', () => {
+    it('should validate a text input block', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Enter your name:',
+            inputType: 'text',
+            variableName: 'userName',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should validate a boolean input block', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Accept the terms?',
+            inputType: 'boolean',
+            variableName: 'termsAccepted',
+            checkboxLabel: 'I accept',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should validate a datasource input block', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Select your data source:',
+            inputType: 'datasource',
+            variableName: 'selectedDatasource',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should validate a datasource input block with filter', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Select your Prometheus data source:',
+            inputType: 'datasource',
+            variableName: 'promDatasource',
+            datasourceFilter: 'prometheus',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should validate a text input block with all optional fields', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Enter data source name:',
+            inputType: 'text',
+            variableName: 'datasourceName',
+            placeholder: 'e.g., prometheus',
+            defaultValue: 'my-datasource',
+            required: true,
+            pattern: '^[a-z][a-z0-9-]*$',
+            validationMessage: 'Name must be lowercase',
+            skippable: false,
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject input block without prompt', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            inputType: 'text',
+            variableName: 'myVar',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject input block without inputType', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Test prompt',
+            variableName: 'myVar',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject input block without variableName', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Test prompt',
+            inputType: 'text',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject input block with invalid inputType', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Test prompt',
+            inputType: 'invalid',
+            variableName: 'myVar',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject input block with invalid variableName format', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'input',
+            prompt: 'Test prompt',
+            inputType: 'text',
+            variableName: '123invalid',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+  });
 });

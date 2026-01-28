@@ -2,13 +2,14 @@
  * Input Block Renderer
  *
  * Renders input blocks that collect user responses for use as variables.
- * Supports text input and boolean (checkbox) types with validation.
+ * Supports text input, boolean (checkbox), and datasource picker types.
  */
 
 import React, { useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { css } from '@emotion/css';
-import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Select } from '@grafana/ui';
+import { GrafanaTheme2, SelectableValue } from '@grafana/data';
+import { getDataSourceSrv } from '@grafana/runtime';
 import { useGuideResponsesOptional } from '../../../lib/GuideResponseContext';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 
@@ -16,8 +17,8 @@ import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 export interface InputBlockProps {
   /** The prompt text (markdown supported) */
   prompt: string;
-  /** Input type: text or boolean */
-  inputType: 'text' | 'boolean';
+  /** Input type: text, boolean, or datasource */
+  inputType: 'text' | 'boolean' | 'datasource';
   /** Variable name for storing the response */
   variableName: string;
   /** Placeholder for text input */
@@ -38,6 +39,8 @@ export interface InputBlockProps {
   skippable?: boolean;
   /** Children elements (rendered prompt content) */
   children?: ReactNode;
+  /** Filter datasources by type (e.g., 'prometheus', 'loki'). Only used when inputType is 'datasource'. */
+  datasourceFilter?: string;
 }
 
 /** Get styles for the input block */
@@ -77,7 +80,44 @@ const getStyles = (theme: GrafanaTheme2) => ({
       cursor: 'pointer',
     },
   }),
+  selectContainer: css({
+    marginBottom: theme.spacing(2),
+  }),
+  noDataSourcesAlert: css({
+    marginBottom: theme.spacing(2),
+  }),
 });
+
+/**
+ * Get datasource options from the DataSourceSrv.
+ * Uses the modern synchronous API instead of the deprecated /api/datasources endpoint.
+ */
+function getDatasourceOptions(filter?: string): Array<SelectableValue<string>> {
+  try {
+    const datasourceSrv = getDataSourceSrv();
+    const datasources = datasourceSrv.getList();
+
+    // Filter by type if specified (case-insensitive)
+    // Supports exact match (e.g., "prometheus") or partial match where
+    // the datasource type contains the filter (e.g., "testdata" matches "grafana-testdata-datasource")
+    const filtered = filter
+      ? datasources.filter((ds) => {
+          const filterLower = filter.toLowerCase();
+          const typeLower = ds.type.toLowerCase();
+          return typeLower === filterLower || typeLower.includes(filterLower);
+        })
+      : datasources;
+
+    return filtered.map((ds) => ({
+      label: ds.name,
+      value: ds.name,
+      description: ds.type,
+    }));
+  } catch (error) {
+    console.warn('[InputBlock] Failed to get datasources:', error);
+    return [];
+  }
+}
 
 /**
  * Input Block component for collecting user responses.
@@ -94,9 +134,16 @@ export function InputBlock({
   validationMessage,
   skippable = false,
   children,
+  datasourceFilter,
 }: InputBlockProps) {
   const styles = useStyles2(getStyles);
   const responseContext = useGuideResponsesOptional();
+
+  // Get datasource options (memoized to avoid re-fetching on every render)
+  const datasourceOptions = useMemo(
+    () => (inputType === 'datasource' ? getDatasourceOptions(datasourceFilter) : []),
+    [inputType, datasourceFilter]
+  );
 
   // Local state for the input value
   const [textValue, setTextValue] = useState<string>(() => {
@@ -117,6 +164,16 @@ export function InputBlock({
     }
     // Fall back to default value
     return typeof defaultValue === 'boolean' ? defaultValue : false;
+  });
+
+  // State for datasource selection (stored as string name)
+  const [datasourceValue, setDatasourceValue] = useState<string | null>(() => {
+    const existing = responseContext?.getResponse(variableName);
+    if (existing !== undefined && typeof existing === 'string') {
+      return existing;
+    }
+    // Fall back to default value if it's a string
+    return typeof defaultValue === 'string' ? defaultValue : null;
   });
 
   const [isSaved, setIsSaved] = useState(() => {
@@ -155,6 +212,19 @@ export function InputBlock({
     [required, patternRegex, validationMessage]
   );
 
+  // Validate datasource selection
+  const validateDatasourceInput = useCallback(
+    (value: string | null): boolean => {
+      if (required && !value) {
+        setValidationError('Please select a data source');
+        return false;
+      }
+      setValidationError(null);
+      return true;
+    },
+    [required]
+  );
+
   // Handle text input change
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setTextValue(e.target.value);
@@ -169,6 +239,13 @@ export function InputBlock({
     setIsSaved(false); // Mark as unsaved when changed
   }, []);
 
+  // Handle datasource selection change
+  const handleDatasourceChange = useCallback((option: SelectableValue<string>) => {
+    setDatasourceValue(option?.value ?? null);
+    setIsSaved(false);
+    setValidationError(null);
+  }, []);
+
   // Handle reset/clear
   const handleReset = useCallback(() => {
     if (responseContext) {
@@ -177,8 +254,10 @@ export function InputBlock({
     // Reset to defaults
     if (inputType === 'text') {
       setTextValue(typeof defaultValue === 'string' ? defaultValue : '');
-    } else {
+    } else if (inputType === 'boolean') {
       setBoolValue(typeof defaultValue === 'boolean' ? defaultValue : false);
+    } else if (inputType === 'datasource') {
+      setDatasourceValue(typeof defaultValue === 'string' ? defaultValue : null);
     }
     setIsSaved(false);
     setValidationError(null);
@@ -202,7 +281,7 @@ export function InputBlock({
           is_update: wasAlreadySaved,
         });
       }
-    } else {
+    } else if (inputType === 'boolean') {
       if (responseContext) {
         const wasAlreadySaved = isSaved;
         responseContext.setResponse(variableName, boolValue);
@@ -215,8 +294,34 @@ export function InputBlock({
           is_update: wasAlreadySaved,
         });
       }
+    } else if (inputType === 'datasource') {
+      if (!validateDatasourceInput(datasourceValue)) {
+        return;
+      }
+      if (responseContext && datasourceValue) {
+        const wasAlreadySaved = isSaved;
+        responseContext.setResponse(variableName, datasourceValue);
+        setIsSaved(true);
+
+        // Track submission (no input values captured for privacy)
+        reportAppInteraction(UserInteraction.InputBlockSubmit, {
+          input_type: inputType,
+          variable_name: variableName,
+          is_update: wasAlreadySaved,
+        });
+      }
     }
-  }, [inputType, textValue, boolValue, validateTextInput, responseContext, variableName, isSaved]);
+  }, [
+    inputType,
+    textValue,
+    boolValue,
+    datasourceValue,
+    validateTextInput,
+    validateDatasourceInput,
+    responseContext,
+    variableName,
+    isSaved,
+  ]);
 
   // Handle skip
   const handleSkip = useCallback(() => {
@@ -243,12 +348,18 @@ export function InputBlock({
         // Response was cleared or doesn't exist - reset to defaults
         if (inputType === 'text') {
           setTextValue(typeof defaultValue === 'string' ? defaultValue : '');
-        } else {
+        } else if (inputType === 'boolean') {
           setBoolValue(typeof defaultValue === 'boolean' ? defaultValue : false);
+        } else if (inputType === 'datasource') {
+          setDatasourceValue(typeof defaultValue === 'string' ? defaultValue : null);
         }
         setIsSaved(false);
-      } else if (inputType === 'text' && typeof savedValue === 'string') {
-        setTextValue(savedValue);
+      } else if ((inputType === 'text' || inputType === 'datasource') && typeof savedValue === 'string') {
+        if (inputType === 'text') {
+          setTextValue(savedValue);
+        } else {
+          setDatasourceValue(savedValue);
+        }
         setIsSaved(true);
       } else if (inputType === 'boolean' && typeof savedValue === 'boolean') {
         setBoolValue(savedValue);
@@ -284,25 +395,62 @@ export function InputBlock({
     );
   }
 
+  // Render the appropriate input based on type
+  const renderInput = () => {
+    switch (inputType) {
+      case 'text':
+        return (
+          <div className={styles.inputContainer}>
+            <Field label="" invalid={!!validationError} error={validationError}>
+              <Input value={textValue} onChange={handleTextChange} placeholder={placeholder} />
+            </Field>
+          </div>
+        );
+
+      case 'boolean':
+        return (
+          <div className={styles.checkboxContainer}>
+            <Checkbox label={checkboxLabel || 'Yes'} checked={boolValue} onChange={handleBoolChange} />
+          </div>
+        );
+
+      case 'datasource':
+        if (datasourceOptions.length === 0) {
+          const filterMsg = datasourceFilter ? ` of type "${datasourceFilter}"` : '';
+          return (
+            <Alert title="No data sources available" severity="warning" className={styles.noDataSourcesAlert}>
+              No data sources{filterMsg} are configured in this Grafana instance.
+            </Alert>
+          );
+        }
+        return (
+          <div className={styles.selectContainer}>
+            <Field label="" invalid={!!validationError} error={validationError}>
+              <Select
+                options={datasourceOptions}
+                value={datasourceOptions.find((opt) => opt.value === datasourceValue)}
+                onChange={handleDatasourceChange}
+                placeholder={placeholder || 'Select a data source...'}
+                isClearable
+              />
+            </Field>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className={styles.container}>
       {/* Prompt/Question */}
       <div className={styles.promptContainer}>{children}</div>
 
       {/* Input field based on type */}
-      {inputType === 'text' ? (
-        <div className={styles.inputContainer}>
-          <Field label="" invalid={!!validationError} error={validationError}>
-            <Input value={textValue} onChange={handleTextChange} placeholder={placeholder} />
-          </Field>
-        </div>
-      ) : (
-        <div className={styles.checkboxContainer}>
-          <Checkbox label={checkboxLabel || 'Yes'} checked={boolValue} onChange={handleBoolChange} />
-        </div>
-      )}
+      {renderInput()}
 
-      {/* Actions - same for both input types */}
+      {/* Actions - same for all input types */}
       <div className={styles.buttonContainer}>
         {skippable && !required && !isSaved && (
           <Button variant="secondary" size="sm" onClick={handleSkip}>

@@ -20,6 +20,7 @@ import {
   isMultistepBlock,
   isGuidedBlock,
   isConditionalBlock,
+  isInputBlock,
 } from '../../types/json-guide.types';
 
 export interface BlockItemProps {
@@ -93,6 +94,11 @@ function getBlockPreview(block: EditorBlock['block']): string {
       return block.description;
     }
     return `If: ${block.conditions.join(', ')}`;
+  }
+  if (isInputBlock(block)) {
+    // Show the prompt text, truncated
+    const prompt = block.prompt.replace(/\n/g, ' ').trim();
+    return prompt.slice(0, 60) + (prompt.length > 60 ? '...' : '');
   }
   return '';
 }
@@ -223,6 +229,12 @@ export function BlockItem({
           <Badge text={meta.name} color="blue" />
           {isInteractiveBlock(block.block) && (
             <Badge text={block.block.action.charAt(0).toUpperCase() + block.block.action.slice(1)} color="purple" />
+          )}
+          {isInputBlock(block.block) && (
+            <Badge
+              text={block.block.inputType.charAt(0).toUpperCase() + block.block.inputType.slice(1)}
+              color="purple"
+            />
           )}
           {isSectionBlock(block.block) && block.block.title && (
             <span style={{ marginLeft: '8px', fontWeight: 500 }}>{block.block.title}</span>
