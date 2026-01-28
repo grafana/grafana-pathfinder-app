@@ -683,6 +683,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   const isEnabledRef = useRef(state.isEnabled);
   isEnabledRef.current = state.isEnabled;
 
+  // Track objectives in ref to avoid stale closure issues
+  const objectivesRef = useRef(objectives);
+  objectivesRef.current = objectives;
+
   // Subscribe to context changes (EchoSrv events) AND URL changes for blocked steps
   // This ensures steps in "requirements not met" state get rechecked when user performs actions
   useEffect(() => {
@@ -710,9 +714,19 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     // Shared recheck function that checks current state via refs
     const triggerRecheckIfBlocked = () => {
       // Use refs to get current state without causing re-subscription
-      const isBlocked = !isCompletedRef.current && !isEnabledRef.current;
+      const isCompleted = isCompletedRef.current;
+      const isEnabled = isEnabledRef.current;
+      const isChecking = isCheckingRef.current;
+      const currentObjectives = objectivesRef.current; // Get latest objectives from ref
 
-      if (isBlocked && !isCheckingRef.current) {
+      // Recheck if:
+      // 1. Step is blocked (not enabled) - might become enabled after navigation
+      // 2. Step is enabled with objectives - objectives might be satisfied after navigation
+      const isBlocked = !isCompleted && !isEnabled;
+      const hasObjectives = currentObjectives && currentObjectives.trim() !== '';
+      const shouldRecheck = !isCompleted && !isChecking && (isBlocked || (isEnabled && hasObjectives));
+
+      if (shouldRecheck) {
         checkStepRef.current();
       }
     };
@@ -757,7 +771,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       document.removeEventListener('grafana:location-changed', handleUrlChange);
       clearInterval(urlCheckInterval);
     };
-  }, [isEligibleForChecking, state.isCompleted, state.fixType, lazyRender, stepId]); // Only re-subscribe when eligibility, completion, or lazy-scroll state changes
+  }, [isEligibleForChecking, state.isCompleted, state.fixType, lazyRender, stepId]); // Only re-subscribe when eligibility, completion, or lazy-scroll state changes (objectives tracked via ref)
 
   // Scoped heartbeat recheck for fragile prerequisites
   useEffect(() => {
