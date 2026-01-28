@@ -1,7 +1,7 @@
 import { waitForReactUpdates } from '../requirements-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
-import { isElementVisible, getScrollParent, getStickyHeaderOffset } from '../lib/dom';
+import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
 import { sanitizeDocumentationHTML } from '../security';
 
 export interface NavigationOptions {
@@ -649,8 +649,11 @@ export class NavigationManager {
     // No DOM settling delay needed - scrollend event ensures scroll is complete
     // and DOM is stable. Highlight immediately for better responsiveness!
 
+    // If selector targeted a hidden input (common in dropdowns), highlight the visible parent instead
+    const highlightTarget = getVisibleHighlightTarget(element);
+
     // Position the outline around the target element using CSS custom properties
-    const rect = element.getBoundingClientRect();
+    const rect = highlightTarget.getBoundingClientRect();
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
@@ -779,12 +782,14 @@ export class NavigationManager {
 
     // Always set up position tracking (efficient with ResizeObserver)
     // Enable drift detection for guided mode (!enableAutoCleanup) for more responsive tracking
+    // FIX: Track the highlightTarget (visible parent) instead of original element
     const enableDriftDetection = !enableAutoCleanup;
-    this.setupPositionTracking(element, highlightElement, commentBox, enableDriftDetection, useDotIndicator);
+    this.setupPositionTracking(highlightTarget, highlightElement, commentBox, enableDriftDetection, useDotIndicator);
 
     // Set up smart auto-cleanup (unless disabled for guided mode)
+    // FIX: Use highlightTarget for auto-cleanup detection
     if (enableAutoCleanup) {
-      this.setupAutoCleanup(element);
+      this.setupAutoCleanup(highlightTarget);
     }
 
     return element;
