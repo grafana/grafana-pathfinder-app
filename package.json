@@ -127,5 +127,5 @@
   "overrides": {
     "@grafana/runtime": "^12.3.0-18562067081"
   },
-  "packageManager": "npm@11.6.4"
+  "packageManager": "npm@11.8.0"
 }
