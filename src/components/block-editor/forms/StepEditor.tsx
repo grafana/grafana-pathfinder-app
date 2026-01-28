@@ -454,21 +454,23 @@ export function StepEditor({
     [onChange, steps]
   );
 
-  // State to control multi-step grouping on/off during recording
-  const [isMultiStepGroupingEnabled, setIsMultiStepGroupingEnabled] = useState(true);
+  // Multi-step grouping is disabled for StepEditor recording because:
+  // - Recorded steps go directly into the steps array of a multistep/guided block
+  // - We can't have nested multistep blocks within a multistep's steps
+  const isMultiStepGroupingEnabled = false;
 
   // Action recorder for record mode - exclude our overlay UI
+  // Note: enableModalDetection is always false for StepEditor (no nested grouping)
   const { isRecording, startRecording, stopRecording, clearRecording, activeModal, pendingGroupSteps } =
     useActionRecorder({
       excludeSelectors: RECORD_EXCLUDE_SELECTORS,
       onStepRecorded: handleStepRecorded,
-      enableModalDetection: isMultiStepGroupingEnabled, // Controlled by toggle
+      enableModalDetection: isMultiStepGroupingEnabled,
     });
 
   // Keep refs for multi-step grouping state so getters always return fresh values
   const activeModalRef = useRef(activeModal);
   const pendingGroupStepsRef = useRef(pendingGroupSteps);
-  const isMultiStepGroupingEnabledRef = useRef(isMultiStepGroupingEnabled);
 
   // REACT: use useLayoutEffect to update refs synchronously after render
   // This ensures polling reads the correct values before next paint
@@ -479,10 +481,6 @@ export function StepEditor({
   useLayoutEffect(() => {
     pendingGroupStepsRef.current = pendingGroupSteps;
   }, [pendingGroupSteps]);
-
-  useLayoutEffect(() => {
-    isMultiStepGroupingEnabledRef.current = isMultiStepGroupingEnabled;
-  }, [isMultiStepGroupingEnabled]);
 
   // Handle adding a manual step
   const handleAddStep = useCallback(() => {
@@ -568,15 +566,8 @@ export function StepEditor({
   const getPendingMultiStepCount = useCallback(() => pendingGroupStepsRef.current.length, []);
 
   // Check if currently grouping steps into a multi-step
+  // Note: This will always be false since isMultiStepGroupingEnabled is disabled for StepEditor
   const isGroupingMultiStep = useCallback(() => activeModalRef.current !== null, []);
-
-  // Check if multi-step grouping is enabled
-  const getIsMultiStepGroupingEnabled = useCallback(() => isMultiStepGroupingEnabledRef.current, []);
-
-  // Toggle multi-step grouping on/off
-  const toggleMultiStepGrouping = useCallback(() => {
-    setIsMultiStepGroupingEnabled((prev) => !prev);
-  }, []);
 
   // Stop record mode - notify parent to hide overlay
   const handleStopRecord = useCallback(() => {
@@ -585,20 +576,21 @@ export function StepEditor({
   }, [stopRecording, onRecordModeChange]);
 
   // Start record mode - notify parent to show overlay with stop callback
+  // Note: Multi-step grouping is disabled for StepEditor (can't nest multisteps)
   const handleStartRecord = useCallback(() => {
     clearRecording();
     startRecording();
-    // Reset multi-step grouping to enabled when starting a new recording
-    setIsMultiStepGroupingEnabled(true);
     // Pass callbacks so parent can control the overlay
     // getStepCount uses a ref so it always returns fresh value
+    // Note: We don't pass toggleMultiStepGrouping or isMultiStepGroupingEnabled
+    // because grouping is disabled for step recording (can't have nested multisteps)
     onRecordModeChange?.(true, {
       onStop: handleStopRecord,
       getStepCount,
       getPendingMultiStepCount,
       isGroupingMultiStep,
-      isMultiStepGroupingEnabled: getIsMultiStepGroupingEnabled,
-      toggleMultiStepGrouping,
+      // isMultiStepGroupingEnabled and toggleMultiStepGrouping intentionally omitted
+      // to hide the toggle in the overlay - grouping isn't supported in this context
     });
   }, [
     clearRecording,
@@ -608,8 +600,6 @@ export function StepEditor({
     getStepCount,
     getPendingMultiStepCount,
     isGroupingMultiStep,
-    getIsMultiStepGroupingEnabled,
-    toggleMultiStepGrouping,
   ]);
 
   const getActionEmoji = (action: JsonInteractiveAction) => {

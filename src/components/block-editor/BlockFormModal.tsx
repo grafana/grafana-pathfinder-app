@@ -140,6 +140,8 @@ export function BlockFormModal({
   const [pendingMultiStepCount, setPendingMultiStepCount] = useState(0);
   const [isGroupingMultiStep, setIsGroupingMultiStep] = useState(false);
   const [isMultiStepGroupingEnabled, setIsMultiStepGroupingEnabled] = useState(true);
+  // Track whether the toggle callback is available (false when recording inside multistep/guided)
+  const [canToggleMultiStepGrouping, setCanToggleMultiStepGrouping] = useState(false);
 
   // State for type switch confirmation - lifted from TypeSwitchDropdown to avoid nested modal timing bugs
   const [pendingSwitch, setPendingSwitch] = useState<{
@@ -356,6 +358,8 @@ export function BlockFormModal({
         setPendingMultiStepCount(options.getPendingMultiStepCount?.() ?? 0);
         setIsGroupingMultiStep(options.isGroupingMultiStep?.() ?? false);
         setIsMultiStepGroupingEnabled(options.isMultiStepGroupingEnabled?.() ?? true);
+        // Track whether toggle is available (not available for step recording in multistep/guided)
+        setCanToggleMultiStepGrouping(options.toggleMultiStepGrouping !== undefined);
         setRecordStartUrl(window.location.href);
       } else if (!isActive) {
         recordStopCallbackRef.current = null;
@@ -368,6 +372,7 @@ export function BlockFormModal({
         setPendingMultiStepCount(0);
         setIsGroupingMultiStep(false);
         setIsMultiStepGroupingEnabled(true);
+        setCanToggleMultiStepGrouping(false);
         setRecordStartUrl(null);
       }
     },
@@ -512,7 +517,9 @@ export function BlockFormModal({
           pendingMultiStepCount={pendingMultiStepCount}
           isGroupingMultiStep={isGroupingMultiStep}
           isMultiStepGroupingEnabled={isMultiStepGroupingEnabled}
-          onToggleMultiStepGrouping={handleToggleMultiStepGrouping}
+          // Only show toggle when available (not available for step recording
+          // inside multistep/guided blocks since nested grouping isn't supported)
+          onToggleMultiStepGrouping={canToggleMultiStepGrouping ? handleToggleMultiStepGrouping : undefined}
         />
       )}
     </>
