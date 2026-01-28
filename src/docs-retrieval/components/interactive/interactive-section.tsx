@@ -367,7 +367,13 @@ export function InteractiveSection({
     } catch (error) {
       console.warn('Failed to fix section requirements:', error);
     }
-  }, [sectionRequirementsStatus.canFix, sectionRequirementsStatus.fixType, sectionRequirementsStatus.targetHref, requirements, checkSectionRequirements]);
+  }, [
+    sectionRequirementsStatus.canFix,
+    sectionRequirementsStatus.fixType,
+    sectionRequirementsStatus.targetHref,
+    requirements,
+    checkSectionRequirements,
+  ]);
 
   // Initial requirements check and re-check on relevant events
   useEffect(() => {
