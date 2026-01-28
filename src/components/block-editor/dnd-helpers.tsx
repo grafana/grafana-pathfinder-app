@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { useStyles2 } from '@grafana/ui';
-import { DragOverlay, useDroppable } from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { css, cx } from '@emotion/css';
@@ -44,21 +44,13 @@ export const getSortableStyles = (theme: GrafanaTheme2) => ({
   sortableItem: css({
     cursor: 'grab',
     touchAction: 'none',
-    userSelect: 'none',
     '&:active': {
       cursor: 'grabbing',
     },
   }),
   dragging: css({
-    // Original element becomes a faded placeholder showing "source position"
-    opacity: 0.5,
-    cursor: 'grabbing !important',
-    // Dashed border indicates this is where the item came from
-    outline: '2px dashed currentColor',
-    outlineOffset: '-2px',
-    '& *': {
-      cursor: 'grabbing !important',
-    },
+    opacity: 0.4,
+    cursor: 'grabbing',
   }),
   dropIndicator: css({
     position: 'relative',
@@ -74,7 +66,7 @@ export const getSortableStyles = (theme: GrafanaTheme2) => ({
   dropIndicatorLineActive: css({
     height: '4px',
     backgroundColor: theme.colors.primary.main,
-    boxShadow: `0 0 12px ${theme.colors.primary.main}, 0 0 4px ${theme.colors.primary.main}`,
+    boxShadow: `0 0 8px ${theme.colors.primary.main}`,
   }),
   dropIndicatorLabel: css({
     position: 'absolute',
@@ -107,24 +99,20 @@ export function SortableBlock({
   data: DragData;
   disabled: boolean;
   children: React.ReactNode;
-  /** When true, this block is invisible to collision detection (pointer events pass through) */
+  /** When true, disables pointer events so drops pass through to parent zones */
   passThrough?: boolean;
 }) {
   const sortableStyles = useStyles2(getSortableStyles);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     data,
-    disabled: disabled || passThrough,
+    disabled,
   });
 
-  // Don't apply sortable transforms - we use drop zones for positioning feedback instead
-  // This prevents the confusing "sortable reorder" visual that conflicts with drop zones
   const style: React.CSSProperties = {
-    // Only apply transform for nested blocks (within sections), not root blocks
-    // Root blocks use drop zones exclusively for position feedback
-    transform: data.type === 'root' ? undefined : CSS.Transform.toString(transform),
-    transition: data.type === 'root' ? undefined : transition,
-    ...(passThrough ? { pointerEvents: 'none' as const } : {}),
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(passThrough && { pointerEvents: 'none' as const }),
   };
 
   return (
@@ -132,7 +120,8 @@ export function SortableBlock({
       ref={setNodeRef}
       style={style}
       className={cx(sortableStyles.sortableItem, isDragging && sortableStyles.dragging)}
-      {...(passThrough ? {} : { ...attributes, ...listeners })}
+      {...attributes}
+      {...listeners}
     >
       {children}
     </div>
@@ -166,93 +155,66 @@ export function DroppableInsertZone({
   data: DropZoneData;
   isActive: boolean;
   label: string;
-  /** When true, increases the hit area for easier targeting (e.g., when dragging sections) */
+  /** When true, the zone has extra padding to make it easier to drop on */
   enlarged?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, data });
 
   return (
-    <div ref={setNodeRef} style={{ padding: enlarged ? '16px 0' : '6px 0' }}>
+    <div ref={setNodeRef} style={{ padding: enlarged ? '12px 0' : '6px 0' }}>
       <DropIndicator isActive={isActive || isOver} label={label} />
     </div>
   );
 }
 
 /**
- * Check if a drop zone is redundant (immediately before or after the dragged item)
- * This prevents showing "move here" markers that would result in no movement.
+ * Determines if an insert zone is redundant (dropping there wouldn't move the block).
+ * A zone is redundant if it's directly before or after the dragged item's current position.
  */
 export function isInsertZoneRedundant(
   activeDragData: DragData | null,
-  zoneType: 'section-insert' | 'conditional-insert' | 'root-zone',
+  zoneType: 'root-zone' | 'section-insert' | 'conditional-insert',
   zoneIndex: number,
-  zoneSectionId?: string,
-  zoneConditionalId?: string,
-  zoneBranch?: 'whenTrue' | 'whenFalse'
+  sectionId?: string,
+  conditionalId?: string,
+  branch?: 'whenTrue' | 'whenFalse'
 ): boolean {
   if (!activeDragData) {
     return false;
   }
 
-  // For root zones, check against root blocks
-  if (zoneType === 'root-zone' && activeDragData.type === 'root') {
+  // Root zone redundancy: only for root blocks
+  if (zoneType === 'root-zone') {
+    if (activeDragData.type !== 'root') {
+      return false;
+    }
     return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
   }
 
-  // For section insert zones, check against nested blocks in the same section
-  if (zoneType === 'section-insert' && activeDragData.type === 'nested') {
-    if (activeDragData.sectionId === zoneSectionId) {
-      return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
+  // Section insert zone redundancy: only for nested blocks in the same section
+  if (zoneType === 'section-insert') {
+    if (activeDragData.type !== 'nested' || activeDragData.sectionId !== sectionId) {
+      return false;
     }
+    return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
   }
 
-  // For conditional insert zones, check against blocks in the same conditional branch
-  if (zoneType === 'conditional-insert' && activeDragData.type === 'conditional') {
-    if (activeDragData.conditionalId === zoneConditionalId && activeDragData.branch === zoneBranch) {
-      return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
+  // Conditional insert zone redundancy: only for conditional blocks in the same branch
+  if (zoneType === 'conditional-insert') {
+    if (
+      activeDragData.type !== 'conditional' ||
+      activeDragData.conditionalId !== conditionalId ||
+      activeDragData.branch !== branch
+    ) {
+      return false;
     }
+    return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
   }
 
   return false;
 }
 
-/**
- * Drag overlay component for rendering a ghost preview during drag
- */
-export function BlockDragOverlay({
-  activeId,
-  children,
-}: {
-  activeId: string | number | null;
-  children: React.ReactNode;
-}) {
-  const styles = useStyles2(getDragOverlayStyles);
-
-  if (!activeId) {
-    return null;
-  }
-
-  return (
-    <DragOverlay dropAnimation={null}>
-      <div className={styles.overlay}>{children}</div>
-    </DragOverlay>
-  );
-}
-
-const getDragOverlayStyles = (theme: GrafanaTheme2) => ({
-  overlay: css({
-    opacity: 0.9,
-    cursor: 'grabbing',
-    boxShadow: theme.shadows.z3,
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.primary,
-    border: `2px solid ${theme.colors.primary.main}`,
-    transform: 'scale(1.02)',
-  }),
-});
-
 // Add display names for debugging
 SortableBlock.displayName = 'SortableBlock';
 DropIndicator.displayName = 'DropIndicator';
 DroppableInsertZone.displayName = 'DroppableInsertZone';
-BlockDragOverlay.displayName = 'BlockDragOverlay';

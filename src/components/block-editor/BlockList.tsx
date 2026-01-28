@@ -13,7 +13,6 @@ import {
   DragEndEvent,
   DragOverEvent,
   DragStartEvent,
-  DragOverlay,
   PointerSensor,
   KeyboardSensor,
   useSensor,
@@ -30,7 +29,6 @@ import { BlockPalette } from './BlockPalette';
 import { SortableBlock, DroppableInsertZone, DragData, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
 import { SectionNestedBlocks } from './SectionNestedBlocks';
 import { ConditionalBranches } from './ConditionalBranches';
-import { NestedBlockItem } from './NestedBlockItem';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
 import {
   isSectionBlock as checkIsSectionBlock,
@@ -531,8 +529,15 @@ export function BlockList({
         case 'section-insert':
           if (overData.sectionId !== undefined && overData.index !== undefined) {
             handleDropOnSectionInsert(activeIdStr, activeData, overData.sectionId, overData.index);
-            // Block lands at overData.index in the target section
-            triggerDropHighlight(`${overData.sectionId}-nested-${overData.index}`);
+            // Calculate the actual landing index (same logic as handler)
+            // When reordering within the same section, adjust for removal
+            const sectionHighlightIndex =
+              activeData.type === 'nested' &&
+              activeData.sectionId === overData.sectionId &&
+              activeData.index < overData.index
+                ? overData.index - 1
+                : overData.index;
+            triggerDropHighlight(`${overData.sectionId}-nested-${sectionHighlightIndex}`);
           }
           break;
 
@@ -545,9 +550,17 @@ export function BlockList({
               overData.branch,
               overData.index
             );
-            // Block lands at overData.index in the target branch
+            // Calculate the actual landing index (same logic as handler)
+            // When reordering within the same branch, adjust for removal
+            const conditionalHighlightIndex =
+              activeData.type === 'conditional' &&
+              activeData.conditionalId === overData.conditionalId &&
+              activeData.branch === overData.branch &&
+              activeData.index < overData.index
+                ? overData.index - 1
+                : overData.index;
             const branchKey = overData.branch === 'whenTrue' ? 'true' : 'false';
-            triggerDropHighlight(`${overData.conditionalId}-${branchKey}-${overData.index}`);
+            triggerDropHighlight(`${overData.conditionalId}-${branchKey}-${conditionalHighlightIndex}`);
           }
           break;
 
@@ -632,11 +645,14 @@ export function BlockList({
     }
   }, []);
 
-  // REACT: cleanup timeout on unmount (R1)
+  // REACT: cleanup timeouts on unmount (R1)
   useEffect(() => {
     return () => {
       if (autoExpandTimeoutRef.current) {
         clearTimeout(autoExpandTimeoutRef.current);
+      }
+      if (dropHighlightTimeoutRef.current) {
+        clearTimeout(dropHighlightTimeoutRef.current);
       }
     };
   }, []);
@@ -810,103 +826,6 @@ export function BlockList({
           })}
         </SortableContext>
       </div>
-
-      {/* DragOverlay provides a visual that follows the cursor regardless of collision detection */}
-      <DragOverlay dropAnimation={null}>
-        {activeId !== null &&
-          activeDragData?.type === 'root' &&
-          (() => {
-            const activeBlock = blocks.find((b) => b.id === activeId);
-            if (!activeBlock) {
-              return null;
-            }
-            const isSection = checkIsSectionBlock(activeBlock.block);
-            const isConditional = checkIsConditionalBlock(activeBlock.block);
-            const sectionBlocks: JsonBlock[] = isSection ? (activeBlock.block as JsonSectionBlock).blocks : [];
-            const conditionalBlock = isConditional ? (activeBlock.block as JsonConditionalBlock) : null;
-            const conditionalChildCount = conditionalBlock
-              ? conditionalBlock.whenTrue.length + conditionalBlock.whenFalse.length
-              : 0;
-            return (
-              <div className={styles.dragOverlay}>
-                <BlockItem
-                  block={activeBlock}
-                  index={activeDragData.index}
-                  totalBlocks={blocks.length}
-                  onEdit={() => {}}
-                  onDelete={() => {}}
-                  onDuplicate={() => {}}
-                  isSelectionMode={false}
-                  isSelected={false}
-                  isCollapsible={isSection || isConditional}
-                  isCollapsed={false}
-                  onToggleCollapse={() => {}}
-                  childCount={isSection ? sectionBlocks.length : conditionalChildCount}
-                />
-                {/* Show actual nested blocks for sections */}
-                {isSection && sectionBlocks.length > 0 && (
-                  <div className={nestedStyles.nestedContainer}>
-                    {sectionBlocks.map((nestedBlock, idx) => (
-                      <div key={idx} style={{ marginBottom: '8px', pointerEvents: 'none' }}>
-                        <NestedBlockItem
-                          block={nestedBlock}
-                          onEdit={() => {}}
-                          onDelete={() => {}}
-                          onDuplicate={() => {}}
-                          isSelectionMode={false}
-                          isSelected={false}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Show actual nested blocks for conditionals */}
-                {isConditional && conditionalBlock && (
-                  <div className={conditionalStyles.conditionalContainer}>
-                    {conditionalBlock.whenTrue.length > 0 && (
-                      <div className={`${conditionalStyles.branchContainer} ${conditionalStyles.trueBranch}`}>
-                        <div className={`${conditionalStyles.branchHeader} ${conditionalStyles.branchHeaderTrue}`}>
-                          ✓ When true
-                        </div>
-                        {conditionalBlock.whenTrue.map((nestedBlock, idx) => (
-                          <div key={`true-${idx}`} style={{ marginBottom: '8px', pointerEvents: 'none' }}>
-                            <NestedBlockItem
-                              block={nestedBlock}
-                              onEdit={() => {}}
-                              onDelete={() => {}}
-                              onDuplicate={() => {}}
-                              isSelectionMode={false}
-                              isSelected={false}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {conditionalBlock.whenFalse.length > 0 && (
-                      <div className={`${conditionalStyles.branchContainer} ${conditionalStyles.falseBranch}`}>
-                        <div className={`${conditionalStyles.branchHeader} ${conditionalStyles.branchHeaderFalse}`}>
-                          ✗ When false
-                        </div>
-                        {conditionalBlock.whenFalse.map((nestedBlock, idx) => (
-                          <div key={`false-${idx}`} style={{ marginBottom: '8px', pointerEvents: 'none' }}>
-                            <NestedBlockItem
-                              block={nestedBlock}
-                              onEdit={() => {}}
-                              onDelete={() => {}}
-                              onDuplicate={() => {}}
-                              isSelectionMode={false}
-                              isSelected={false}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-      </DragOverlay>
     </DndContext>
   );
 }

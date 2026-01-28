@@ -257,19 +257,6 @@ export const getBlockListStyles = (theme: GrafanaTheme2) => ({
   insertZoneActive: css({
     // Keep height fixed even during drag
   }),
-
-  // Drag overlay for sections/conditionals with nested content
-  dragOverlay: css({
-    opacity: 0.95,
-    cursor: 'grabbing',
-    boxShadow: theme.shadows.z3,
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.primary,
-    border: `2px solid ${theme.colors.primary.main}`,
-    maxHeight: '500px',
-    overflow: 'hidden',
-    pointerEvents: 'none',
-  }),
 });
 
 /**
