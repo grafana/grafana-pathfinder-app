@@ -93,11 +93,14 @@ export function SortableBlock({
   data,
   disabled,
   children,
+  passThrough = false,
 }: {
   id: string;
   data: DragData;
   disabled: boolean;
   children: React.ReactNode;
+  /** When true, disables pointer events so drops pass through to parent zones */
+  passThrough?: boolean;
 }) {
   const sortableStyles = useStyles2(getSortableStyles);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -109,6 +112,7 @@ export function SortableBlock({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
+    ...(passThrough && { pointerEvents: 'none' as const }),
   };
 
   return (
@@ -145,19 +149,69 @@ export function DroppableInsertZone({
   data,
   isActive,
   label,
+  enlarged = false,
 }: {
   id: string;
   data: DropZoneData;
   isActive: boolean;
   label: string;
+  /** When true, the zone has extra padding to make it easier to drop on */
+  enlarged?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, data });
 
   return (
-    <div ref={setNodeRef} style={{ padding: '6px 0' }}>
+    <div ref={setNodeRef} style={{ padding: enlarged ? '12px 0' : '6px 0' }}>
       <DropIndicator isActive={isActive || isOver} label={label} />
     </div>
   );
+}
+
+/**
+ * Determines if an insert zone is redundant (dropping there wouldn't move the block).
+ * A zone is redundant if it's directly before or after the dragged item's current position.
+ */
+export function isInsertZoneRedundant(
+  activeDragData: DragData | null,
+  zoneType: 'root-zone' | 'section-insert' | 'conditional-insert',
+  zoneIndex: number,
+  sectionId?: string,
+  conditionalId?: string,
+  branch?: 'whenTrue' | 'whenFalse'
+): boolean {
+  if (!activeDragData) {
+    return false;
+  }
+
+  // Root zone redundancy: only for root blocks
+  if (zoneType === 'root-zone') {
+    if (activeDragData.type !== 'root') {
+      return false;
+    }
+    return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
+  }
+
+  // Section insert zone redundancy: only for nested blocks in the same section
+  if (zoneType === 'section-insert') {
+    if (activeDragData.type !== 'nested' || activeDragData.sectionId !== sectionId) {
+      return false;
+    }
+    return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
+  }
+
+  // Conditional insert zone redundancy: only for conditional blocks in the same branch
+  if (zoneType === 'conditional-insert') {
+    if (
+      activeDragData.type !== 'conditional' ||
+      activeDragData.conditionalId !== conditionalId ||
+      activeDragData.branch !== branch
+    ) {
+      return false;
+    }
+    return zoneIndex === activeDragData.index || zoneIndex === activeDragData.index + 1;
+  }
+
+  return false;
 }
 
 // Add display names for debugging

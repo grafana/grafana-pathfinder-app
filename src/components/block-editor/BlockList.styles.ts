@@ -196,6 +196,20 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.primary.transparent,
     boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
   }),
+  // Just-dropped highlight animation
+  justDroppedContainer: css({
+    animation: 'dropHighlight 1.5s ease-out',
+    '@keyframes dropHighlight': {
+      '0%': {
+        borderColor: theme.colors.primary.main,
+        boxShadow: `0 0 0 3px ${theme.colors.primary.transparent}, 0 0 8px ${theme.colors.primary.main}`,
+      },
+      '100%': {
+        borderColor: theme.colors.border.weak,
+        boxShadow: 'none',
+      },
+    },
+  }),
   selectionCheckbox: css({
     display: 'flex',
     alignItems: 'center',

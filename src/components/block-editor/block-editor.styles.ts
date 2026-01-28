@@ -440,6 +440,21 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
   }),
 
+  // Just-dropped highlight animation
+  justDroppedContainer: css({
+    animation: 'dropHighlight 1.5s ease-out',
+    '@keyframes dropHighlight': {
+      '0%': {
+        borderColor: theme.colors.primary.main,
+        boxShadow: `0 0 0 3px ${theme.colors.primary.transparent}, 0 0 8px ${theme.colors.primary.main}`,
+      },
+      '100%': {
+        borderColor: theme.colors.border.weak,
+        boxShadow: 'none',
+      },
+    },
+  }),
+
   // Collapse button for sections/conditionals
   collapseButton: css({
     display: 'flex',

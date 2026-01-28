@@ -54,6 +54,8 @@ export interface BlockItemProps {
   onToggleCollapse?: () => void;
   /** Number of child blocks (for tooltip) */
   childCount?: number;
+  /** Whether this block was just dropped (triggers highlight animation) */
+  isJustDropped?: boolean;
 }
 
 /**
@@ -122,6 +124,7 @@ export function BlockItem({
   isCollapsed = false,
   onToggleCollapse,
   childCount = 0,
+  isJustDropped = false,
 }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
@@ -192,6 +195,7 @@ export function BlockItem({
     styles.container,
     (isSection || isConditional) && styles.sectionContainer,
     isSelected && styles.selectedContainer,
+    isJustDropped && styles.justDroppedContainer,
   ]
     .filter(Boolean)
     .join(' ');

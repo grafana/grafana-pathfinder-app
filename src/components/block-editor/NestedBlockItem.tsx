@@ -20,6 +20,8 @@ export interface NestedBlockItemProps {
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
+  /** Whether this block was just dropped (triggers highlight animation) */
+  isJustDropped?: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ export function NestedBlockItem({
   isSelectionMode = false,
   isSelected = false,
   onToggleSelect,
+  isJustDropped = false,
 }: NestedBlockItemProps) {
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
@@ -67,7 +70,13 @@ export function NestedBlockItem({
     [onToggleSelect]
   );
 
-  const containerClass = [styles.container, isSelected && styles.selectedContainer].filter(Boolean).join(' ');
+  const containerClass = [
+    styles.container,
+    isSelected && styles.selectedContainer,
+    isJustDropped && styles.justDroppedContainer,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div className={containerClass}>
