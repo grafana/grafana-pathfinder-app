@@ -1,0 +1,12 @@
+---
+alwaysApply: false
+description: Instructions for how agents are to carry out code / PR reviews
+---
+
+# How to review a PR
+
+1. Always start with a brief one paragraph description of what the code does, noting any major components that it adds, changes, or removes
+2. Always consider the code from the perspective of the rules found in @frontend-security.mdc and @react-antipatterns.mdc
+3. Always provide a one-line recommendation on disposition of the PR which can be to recommend approve to merge, approve with minor changes, or request changes.
+4. Look for evidence of vibe coding, to include excessively large components, duplicated logic, and excess verbosity.  PRs are not required to refactor components that they touch, but if they create new components that are excessively large with mixed responsibilities, you should call it out
+5. Review code as a Principal Engineer with an eye towards maintainability & testability over the long-haul

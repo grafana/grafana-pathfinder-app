@@ -27,26 +27,18 @@ This is a **React + TypeScript + Grafana Scenes** application built as a Grafana
 
 ## Getting started for AI agents
 
-### Essential reading (in order)
+### Project Context
 
-Before working on this codebase, you MUST read these files in `.cursor/rules/`:
+The following files are important sources of information:
 
-1. **`.cursor/rules/projectbrief.mdc`** - Start here to understand core requirements and goals
-2. **`.cursor/rules/techContext.mdc`** - Technologies, dependencies, and development setup
-3. **`.cursor/rules/systemPatterns.mdc`** - Architecture, design patterns, and critical implementation paths
-
-### Specialized documentation
-
-For specific work areas, consult these:
-
-- **`.cursor/rules/interactiveRequirements.mdc`** - Requirements and objectives system for interactive tutorials
-- **`.cursor/rules/multistepActions.mdc`** - Multi-step component design and implementation
-- **`.cursor/rules/frontend-security.mdc`** - Security rules for frontend code (ALWAYS apply)
-- **`.cursor/rules/instructions.mdc`** - Agent behavior, commands, and workflow patterns
-
-### Security first
-
-Always follow the security rules in `.cursor/rules/frontend-security.mdc`
+1. `.cursor/rules/projectbrief.mdc` - Start here to understand core requirements and goals
+2. `.cursor/rules/techContext.mdc` - Technologies, dependencies, and development setup
+3. `.cursor/rules/systemPatterns.mdc` - Architecture, design patterns, and critical implementation paths
+4. `.cursor/rules/interactiveRequirements.mdc` - Requirements and objectives system for interactive tutorials
+5. `.cursor/rules/multistepActions.mdc` - Multi-step component design and implementation
+6. `.cursor/rules/frontend-security.mdc` - Security rules for frontend code (ALWAYS apply)
+7. `.cursor/rules/instructions.mdc` - Agent behavior, commands, and workflow patterns
+8. `.cursor/rules/pr-reviews.mdc` - instructions for how to review a PR
 
 ## Local development commands
 
@@ -128,16 +120,3 @@ src/
 └── types/             # TypeScript type definitions
 ```
 
-## File creation policy
-
-Do NOT create summary `.md` files unless explicitly requested. This saves tokens and keeps the repository clean.
-
-## Getting help
-
-When uncertain about:
-
-- **Architecture decisions**: Review `.cursor/rules/systemPatterns.mdc`
-- **Security concerns**: Follow `.cursor/rules/frontend-security.mdc` and ask user to reach out in #security channel
-- **Interactive tutorials**: Consult `.cursor/rules/interactiveRequirements.mdc`
-- **Memory/context**: The agent instructions in `.cursor/rules/instructions.mdc` explain the memory bank system
-- **Commands such as /review, /secure, /test, /docs**: Command descriptions are in `.cursor/rules/instructions.mdc`
