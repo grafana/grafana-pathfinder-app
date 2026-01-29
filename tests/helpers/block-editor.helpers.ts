@@ -183,11 +183,7 @@ export async function stopRecording(page: Page): Promise<void> {
  * @param testId - The data-testid of the button to click
  * @param options - Optional index if there are multiple buttons with same testId
  */
-export async function clickBlockAction(
-  page: Page,
-  testId: string,
-  options?: { index?: number }
-): Promise<void> {
+export async function clickBlockAction(page: Page, testId: string, options?: { index?: number }): Promise<void> {
   const button = page.getByTestId(testId).nth(options?.index ?? 0);
   await button.scrollIntoViewIfNeeded();
   await button.hover();
