@@ -8,6 +8,13 @@
 // Main editor component
 export { BlockEditor } from './BlockEditor';
 
+// Extracted components
+export { BlockEditorContent } from './BlockEditorContent';
+export type { BlockEditorContentProps } from './BlockEditorContent';
+
+export { BlockEditorModals } from './BlockEditorModals';
+export type { BlockEditorModalsProps } from './BlockEditorModals';
+
 // Tour component
 export { BlockEditorTour } from './BlockEditorTour';
 
@@ -20,6 +27,7 @@ export type {
   BlockFormProps,
   StepEditorProps,
   OnBlockTypeSelect,
+  BlockOperations,
   JsonBlock,
   JsonGuide,
   JsonStep,

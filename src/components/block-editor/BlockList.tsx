@@ -29,7 +29,7 @@ import { BlockPalette } from './BlockPalette';
 import { SortableBlock, DroppableInsertZone, DragData, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
 import { SectionNestedBlocks } from './SectionNestedBlocks';
 import { ConditionalBranches } from './ConditionalBranches';
-import type { EditorBlock, BlockType, JsonBlock } from './types';
+import type { EditorBlock, JsonBlock, BlockOperations } from './types';
 import {
   isSectionBlock as checkIsSectionBlock,
   isConditionalBlock as checkIsConditionalBlock,
@@ -40,143 +40,45 @@ import {
 export interface BlockListProps {
   /** List of blocks to render */
   blocks: EditorBlock[];
-  /** Called when a block edit is requested */
-  onBlockEdit: (block: EditorBlock) => void;
-  /** Called when a block delete is requested */
-  onBlockDelete: (id: string) => void;
-  /** Called to move a block */
-  onBlockMove: (fromIndex: number, toIndex: number) => void;
-  /** Called to duplicate a block */
-  onBlockDuplicate: (id: string) => string | null;
-  /** Called when a new block should be inserted */
-  onInsertBlock: (type: BlockType, index?: number) => void;
-  /** Called to nest a block into a section */
-  onNestBlock?: (blockId: string, sectionId: string, insertIndex?: number) => void;
-  /** Called to unnest a block from a section */
-  onUnnestBlock?: (nestedBlockId: string, sectionId: string, insertAtRootIndex?: number) => void;
-  /** Called to insert a block directly into a section */
-  onInsertBlockInSection?: (type: BlockType, sectionId: string, index?: number) => void;
-  /** Called to edit a nested block */
-  onNestedBlockEdit?: (sectionId: string, nestedIndex: number, block: JsonBlock) => void;
-  /** Called to delete a nested block */
-  onNestedBlockDelete?: (sectionId: string, nestedIndex: number) => void;
-  /** Called to duplicate a nested block */
-  onNestedBlockDuplicate?: (sectionId: string, nestedIndex: number) => void;
-  /** Called to move a nested block within its section */
-  onNestedBlockMove?: (sectionId: string, fromIndex: number, toIndex: number) => void;
-  /** Called to start/stop recording into a section */
-  onSectionRecord?: (sectionId: string) => void;
-  /** ID of section currently being recorded into (if any) */
-  recordingIntoSection?: string | null;
-  /** Called to start/stop recording into a conditional branch */
-  onConditionalBranchRecord?: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
-  /** Branch currently being recorded into (if any) */
-  recordingIntoConditionalBranch?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse' } | null;
-  /** Whether selection mode is active */
-  isSelectionMode?: boolean;
-  /** IDs of currently selected blocks */
-  selectedBlockIds?: Set<string>;
-  /** Called to toggle selection of a block */
-  onToggleBlockSelection?: (blockId: string) => void;
-  // ---- Conditional block handlers ----
-  /** Called to insert a block into a conditional branch */
-  onInsertBlockInConditional?: (
-    type: BlockType,
-    conditionalId: string,
-    branch: 'whenTrue' | 'whenFalse',
-    index?: number
-  ) => void;
-  /** Called to edit a block within a conditional branch */
-  onConditionalBranchBlockEdit?: (
-    conditionalId: string,
-    branch: 'whenTrue' | 'whenFalse',
-    nestedIndex: number,
-    block: JsonBlock
-  ) => void;
-  /** Called to delete a block from a conditional branch */
-  onConditionalBranchBlockDelete?: (
-    conditionalId: string,
-    branch: 'whenTrue' | 'whenFalse',
-    nestedIndex: number
-  ) => void;
-  /** Called to duplicate a block within a conditional branch */
-  onConditionalBranchBlockDuplicate?: (
-    conditionalId: string,
-    branch: 'whenTrue' | 'whenFalse',
-    nestedIndex: number
-  ) => void;
-  /** Called to move a block within a conditional branch */
-  onConditionalBranchBlockMove?: (
-    conditionalId: string,
-    branch: 'whenTrue' | 'whenFalse',
-    fromIndex: number,
-    toIndex: number
-  ) => void;
-  /** Called to nest a root block into a conditional branch */
-  onNestBlockInConditional?: (
-    blockId: string,
-    conditionalId: string,
-    branch: 'whenTrue' | 'whenFalse',
-    insertIndex?: number
-  ) => void;
-  /** Called to unnest a block from a conditional branch */
-  onUnnestBlockFromConditional?: (
-    conditionalId: string,
-    branch: 'whenTrue' | 'whenFalse',
-    nestedIndex: number,
-    insertAtRootIndex?: number
-  ) => void;
-  /** Called to move a block between conditional branches */
-  onMoveBlockBetweenConditionalBranches?: (
-    conditionalId: string,
-    fromBranch: 'whenTrue' | 'whenFalse',
-    fromIndex: number,
-    toBranch: 'whenTrue' | 'whenFalse',
-    toIndex?: number
-  ) => void;
-  /** Called to move a block from one section to another */
-  onMoveBlockBetweenSections?: (
-    fromSectionId: string,
-    fromIndex: number,
-    toSectionId: string,
-    toIndex?: number
-  ) => void;
+  /** All block operations - consolidated interface */
+  operations: BlockOperations;
 }
 
 /**
  * Block list component with @dnd-kit drag-and-drop
  */
-export function BlockList({
-  blocks,
-  onBlockEdit,
-  onBlockDelete,
-  onBlockMove,
-  onBlockDuplicate,
-  onInsertBlock,
-  onNestBlock,
-  onUnnestBlock,
-  onInsertBlockInSection,
-  onNestedBlockEdit,
-  onNestedBlockDelete,
-  onNestedBlockDuplicate,
-  onNestedBlockMove,
-  onSectionRecord,
-  recordingIntoSection,
-  onConditionalBranchRecord,
-  recordingIntoConditionalBranch,
-  isSelectionMode = false,
-  selectedBlockIds = new Set(),
-  onToggleBlockSelection,
-  onInsertBlockInConditional,
-  onConditionalBranchBlockEdit,
-  onConditionalBranchBlockDelete,
-  onConditionalBranchBlockDuplicate,
-  onConditionalBranchBlockMove,
-  onNestBlockInConditional,
-  onUnnestBlockFromConditional,
-  onMoveBlockBetweenConditionalBranches,
-  onMoveBlockBetweenSections,
-}: BlockListProps) {
+export function BlockList({ blocks, operations }: BlockListProps) {
+  // Destructure operations for convenience
+  const {
+    onBlockEdit,
+    onBlockDelete,
+    onBlockMove,
+    onBlockDuplicate,
+    onInsertBlock,
+    onNestBlock,
+    onUnnestBlock,
+    onInsertBlockInSection,
+    onNestedBlockEdit,
+    onNestedBlockDelete,
+    onNestedBlockDuplicate,
+    onNestedBlockMove,
+    onSectionRecord,
+    recordingIntoSection,
+    onConditionalBranchRecord,
+    recordingIntoConditionalBranch,
+    isSelectionMode,
+    selectedBlockIds,
+    onToggleBlockSelection,
+    onInsertBlockInConditional,
+    onConditionalBranchBlockEdit,
+    onConditionalBranchBlockDelete,
+    onConditionalBranchBlockDuplicate,
+    onConditionalBranchBlockMove,
+    onNestBlockInConditional,
+    onUnnestBlockFromConditional,
+    onMoveBlockBetweenConditionalBranches,
+    onMoveBlockBetweenSections,
+  } = operations;
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
   const conditionalStyles = useStyles2(getConditionalStyles);
@@ -657,15 +559,6 @@ export function BlockList({
     };
   }, []);
 
-  const handleInsertInSection = useCallback(
-    (type: BlockType, sectionId: string) => {
-      if (onInsertBlockInSection) {
-        onInsertBlockInSection(type, sectionId);
-      }
-    },
-    [onInsertBlockInSection]
-  );
-
   // Derive drag state flags from stored activeDragData
   const isDraggingNestable =
     activeDragData !== null && (activeDragData.type === 'nested' || activeDragData.type === 'conditional');
@@ -794,7 +687,7 @@ export function BlockList({
                     onNestedBlockEdit={onNestedBlockEdit}
                     onNestedBlockDelete={onNestedBlockDelete}
                     onNestedBlockDuplicate={onNestedBlockDuplicate}
-                    handleInsertInSection={handleInsertInSection}
+                    onInsertBlockInSection={onInsertBlockInSection}
                     justDroppedId={justDroppedId}
                   />
                 )}

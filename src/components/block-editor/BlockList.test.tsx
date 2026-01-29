@@ -68,12 +68,39 @@ const createConditionalBlock = (
   },
 });
 
-const defaultProps: Omit<BlockListProps, 'blocks'> = {
+const defaultOperations = {
   onBlockEdit: jest.fn(),
   onBlockDelete: jest.fn(),
   onBlockMove: jest.fn(),
   onBlockDuplicate: jest.fn(),
   onInsertBlock: jest.fn(),
+  onNestBlock: jest.fn(),
+  onUnnestBlock: jest.fn(),
+  onInsertBlockInSection: jest.fn(),
+  onNestedBlockEdit: jest.fn(),
+  onNestedBlockDelete: jest.fn(),
+  onNestedBlockDuplicate: jest.fn(),
+  onNestedBlockMove: jest.fn(),
+  onSectionRecord: jest.fn(),
+  recordingIntoSection: null,
+  onConditionalBranchRecord: jest.fn(),
+  recordingIntoConditionalBranch: null,
+  isSelectionMode: false,
+  selectedBlockIds: new Set<string>(),
+  onToggleBlockSelection: jest.fn(),
+  onInsertBlockInConditional: jest.fn(),
+  onConditionalBranchBlockEdit: jest.fn(),
+  onConditionalBranchBlockDelete: jest.fn(),
+  onConditionalBranchBlockDuplicate: jest.fn(),
+  onConditionalBranchBlockMove: jest.fn(),
+  onNestBlockInConditional: jest.fn(),
+  onUnnestBlockFromConditional: jest.fn(),
+  onMoveBlockBetweenConditionalBranches: jest.fn(),
+  onMoveBlockBetweenSections: jest.fn(),
+};
+
+const defaultProps: Omit<BlockListProps, 'blocks'> = {
+  operations: defaultOperations,
 };
 
 describe('BlockList', () => {

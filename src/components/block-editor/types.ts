@@ -144,54 +144,118 @@ export type OnBlockTypeSelect = (type: BlockType, insertAtIndex?: number) => voi
 
 /**
  * Grouped operations interface to reduce prop drilling.
- * Used by extracted components to receive callbacks from BlockEditor.
+ * Consolidates 29+ individual callbacks into logical groups.
  *
- * Note: This interface is defined for use in Plan B refactoring.
- * It groups related operations to simplify component props.
+ * This interface serves as the contract between BlockEditor and its
+ * child components (BlockList, SectionNestedBlocks, ConditionalBranches).
  */
 export interface BlockOperations {
-  // Block CRUD
-  onAddBlock: (type: BlockType, index?: number) => void;
-  onEditBlock: (block: EditorBlock) => void;
-  onDeleteBlock: (id: string) => void;
-  onMoveBlock: (fromIndex: number, toIndex: number) => void;
+  // ============ ROOT BLOCK CRUD ============
+  /** Edit a root-level block */
+  onBlockEdit: (block: EditorBlock) => void;
+  /** Delete a root-level block by ID */
+  onBlockDelete: (id: string) => void;
+  /** Move a root-level block from one index to another */
+  onBlockMove: (fromIndex: number, toIndex: number) => void;
+  /** Duplicate a root-level block, returns new block ID or null */
+  onBlockDuplicate: (id: string) => string | null;
+  /** Insert a new block of given type at optional index */
+  onInsertBlock: (type: BlockType, index?: number) => void;
 
-  // Nested block operations (sections)
-  onAddNestedBlock: (sectionId: string, type: BlockType, index?: number) => void;
-  onEditNestedBlock: (sectionId: string, index: number, block: JsonBlock) => void;
-  onDeleteNestedBlock: (sectionId: string, index: number) => void;
+  // ============ SECTION NESTING ============
+  /** Nest a root block into a section */
+  onNestBlock: (blockId: string, sectionId: string, insertIndex?: number) => void;
+  /** Unnest a block from a section back to root level */
+  onUnnestBlock: (nestedBlockId: string, sectionId: string, insertAtRootIndex?: number) => void;
+  /** Insert a new block directly into a section */
+  onInsertBlockInSection: (type: BlockType, sectionId: string, index?: number) => void;
+  /** Edit a nested block within a section */
+  onNestedBlockEdit: (sectionId: string, nestedIndex: number, block: JsonBlock) => void;
+  /** Delete a nested block within a section */
+  onNestedBlockDelete: (sectionId: string, nestedIndex: number) => void;
+  /** Duplicate a nested block within a section */
+  onNestedBlockDuplicate: (sectionId: string, nestedIndex: number) => void;
+  /** Move a nested block within its section */
+  onNestedBlockMove: (sectionId: string, fromIndex: number, toIndex: number) => void;
 
-  // Conditional branch operations
-  onAddConditionalBlock: (
+  // ============ CONDITIONAL BRANCH OPERATIONS ============
+  /** Insert a new block into a conditional branch */
+  onInsertBlockInConditional: (
+    type: BlockType,
     conditionalId: string,
     branch: 'whenTrue' | 'whenFalse',
-    type: BlockType,
     index?: number
   ) => void;
-  onEditConditionalBlock: (
+  /** Edit a block within a conditional branch */
+  onConditionalBranchBlockEdit: (
     conditionalId: string,
     branch: 'whenTrue' | 'whenFalse',
-    index: number,
+    nestedIndex: number,
     block: JsonBlock
   ) => void;
-  onDeleteConditionalBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', index: number) => void;
+  /** Delete a block from a conditional branch */
+  onConditionalBranchBlockDelete: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number
+  ) => void;
+  /** Duplicate a block within a conditional branch */
+  onConditionalBranchBlockDuplicate: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number
+  ) => void;
+  /** Move a block within a conditional branch */
+  onConditionalBranchBlockMove: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    fromIndex: number,
+    toIndex: number
+  ) => void;
+  /** Nest a root block into a conditional branch */
+  onNestBlockInConditional: (
+    blockId: string,
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    insertIndex?: number
+  ) => void;
+  /** Unnest a block from a conditional branch back to root */
+  onUnnestBlockFromConditional: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number,
+    insertAtRootIndex?: number
+  ) => void;
+  /** Move a block between conditional branches */
+  onMoveBlockBetweenConditionalBranches: (
+    conditionalId: string,
+    fromBranch: 'whenTrue' | 'whenFalse',
+    fromIndex: number,
+    toBranch: 'whenTrue' | 'whenFalse',
+    toIndex?: number
+  ) => void;
 
-  // Selection operations
+  // ============ CROSS-CONTAINER MOVES ============
+  /** Move a block from one section to another */
+  onMoveBlockBetweenSections: (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => void;
+
+  // ============ SELECTION STATE ============
+  /** Whether selection mode is active */
   isSelectionMode: boolean;
+  /** Set of currently selected block IDs */
   selectedBlockIds: Set<string>;
-  onToggleSelectionMode: () => void;
+  /** Toggle selection of a block */
   onToggleBlockSelection: (blockId: string) => void;
-  onClearSelection: () => void;
-  onMergeToMultistep: () => void;
-  onMergeToGuided: () => void;
 
-  // Recording operations
-  isRecording: boolean;
-  recordingTargetId: string | null;
-  recordingTargetType: 'section' | 'conditional' | null;
-  onStartSectionRecording: (sectionId: string) => void;
-  onStartConditionalRecording: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
-  onStopRecording: () => void;
+  // ============ RECORDING STATE ============
+  /** ID of section currently being recorded into (if any) */
+  recordingIntoSection: string | null;
+  /** Branch currently being recorded into (if any) */
+  recordingIntoConditionalBranch: { conditionalId: string; branch: 'whenTrue' | 'whenFalse' } | null;
+  /** Start/stop recording into a section */
+  onSectionRecord: (sectionId: string) => void;
+  /** Start/stop recording into a conditional branch */
+  onConditionalBranchRecord: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
 }
 
 // Re-export JSON guide types for convenience

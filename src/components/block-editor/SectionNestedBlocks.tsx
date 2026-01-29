@@ -20,18 +20,20 @@ export interface SectionNestedBlocksProps {
   sectionBlocks: JsonBlock[];
   isCollapsed: boolean;
   nestedStyles: ReturnType<typeof getNestedStyles>;
+  // DnD state
   activeId: UniqueIdentifier | null;
   activeDropZone: string | null;
   activeDragData: DragData | null;
   isDraggingUnNestable: boolean;
+  // From operations
   isSelectionMode: boolean;
   selectedBlockIds: Set<string>;
   onToggleBlockSelection?: (blockId: string) => void;
   onNestedBlockEdit?: (sectionId: string, nestedIndex: number, block: JsonBlock) => void;
   onNestedBlockDelete?: (sectionId: string, nestedIndex: number) => void;
   onNestedBlockDuplicate?: (sectionId: string, nestedIndex: number) => void;
-  handleInsertInSection: (type: BlockType, sectionId: string) => void;
-  /** ID of the block that was just dropped (for highlight animation) */
+  onInsertBlockInSection: (type: BlockType, sectionId: string, index?: number) => void;
+  // Animation
   justDroppedId?: string | null;
 }
 
@@ -50,7 +52,7 @@ export function SectionNestedBlocks({
   onNestedBlockEdit,
   onNestedBlockDelete,
   onNestedBlockDuplicate,
-  handleInsertInSection,
+  onInsertBlockInSection,
   justDroppedId,
 }: SectionNestedBlocksProps) {
   const nestedBlockIds = useMemo(
@@ -147,7 +149,7 @@ export function SectionNestedBlocks({
           </div>
         ) : (
           <BlockPalette
-            onSelect={(type) => handleInsertInSection(type, block.id)}
+            onSelect={(type) => onInsertBlockInSection(type, block.id)}
             excludeTypes={['section', 'conditional']}
             embedded
           />
