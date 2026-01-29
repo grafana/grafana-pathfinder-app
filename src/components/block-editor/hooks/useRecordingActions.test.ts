@@ -242,6 +242,30 @@ describe('useRecordingActions', () => {
 
       expect(deps.state.setRecordingIntoConditionalBranch).toHaveBeenCalledWith(null);
     });
+
+    it('clears pending timeout on unmount', () => {
+      const deps = createMockDeps();
+      const block = { type: 'section' as const, title: 'Test', blocks: [] };
+      const { result, unmount } = renderHook(() => useRecordingActions(deps));
+
+      act(() => {
+        result.current.submitAndStartRecording(block);
+      });
+
+      // Block should be added immediately
+      expect(deps.editor.addBlock).toHaveBeenCalledWith(block, undefined);
+
+      // Unmount before timeout fires
+      unmount();
+
+      // Advance timers - callback should NOT run because it was cleaned up
+      act(() => {
+        jest.advanceTimersByTime(100);
+      });
+
+      // Recording should NOT have started (was cleaned up on unmount)
+      expect(deps.actionRecorder.startRecording).not.toHaveBeenCalled();
+    });
   });
 
   describe('pendingSectionIdRef', () => {

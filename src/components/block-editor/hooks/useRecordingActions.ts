@@ -10,7 +10,7 @@
  * 3. useRecordingActions - receives state and clear callback (this hook)
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { JsonBlock } from '../types';
 import type { RecordedStep } from '../../../utils/devtools';
 import type { RecordingState } from './useRecordingState';
@@ -91,6 +91,17 @@ export function useRecordingActions(deps: RecordingActionsDependencies): UseReco
 
   // Ref for pending section ID (for submit-and-record flow)
   const pendingSectionIdRef = useRef<string | null>(null);
+  // Ref for submit timeout (for cleanup on unmount)
+  const submitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // REACT: cleanup timeout on unmount (R1)
+  useEffect(() => {
+    return () => {
+      if (submitTimeoutRef.current) {
+        clearTimeout(submitTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Process recorded steps and add to section
   const processAndAddToSection = useCallback(
@@ -222,8 +233,8 @@ export function useRecordingActions(deps: RecordingActionsDependencies): UseReco
       pendingSectionIdRef.current = editorBlockId;
       const capturedUrl = window.location.href;
 
-      // Use setTimeout for timing - allows UI to update before starting recording
-      setTimeout(() => {
+      // REACT: store timeout ID for cleanup (R1)
+      submitTimeoutRef.current = setTimeout(() => {
         if (pendingSectionIdRef.current) {
           setRecordingIntoConditionalBranch(null);
           actionRecorder.clearRecording();
@@ -232,6 +243,7 @@ export function useRecordingActions(deps: RecordingActionsDependencies): UseReco
           setRecordingStartUrl(capturedUrl);
           pendingSectionIdRef.current = null;
         }
+        submitTimeoutRef.current = null;
       }, 100);
     },
     [editor, actionRecorder, setRecordingIntoSection, setRecordingIntoConditionalBranch, setRecordingStartUrl]
