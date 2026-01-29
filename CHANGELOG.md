@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.7
+
+### Added
+
+- **Section analytics completion tracking**: Move DoSectionButtonClick analytics to fire after section execution completes (success or cancel), with accurate step position tracking and a canceled boolean. (Grafana Cloud)
+
 ## 1.4.6
 
 ### Added
