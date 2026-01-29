@@ -13,6 +13,7 @@ import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
 import { SortableBlock, DragData, DroppableInsertZone, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
+import { testIds } from '../testIds';
 
 export interface SectionNestedBlocksProps {
   block: EditorBlock;
@@ -69,7 +70,9 @@ export function SectionNestedBlocks({
       style={isDraggingUnNestable ? { pointerEvents: 'none' } : undefined}
     >
       {sectionBlocks.length === 0 ? (
-        <div className={nestedStyles.emptySection}>Drag blocks here or click + Add block below</div>
+        <div className={nestedStyles.emptySection} data-testid={testIds.blockEditor.sectionEmptyState}>
+          Drag blocks here or click + Add block below
+        </div>
       ) : (
         <SortableContext items={nestedBlockIds} strategy={verticalListSortingStrategy}>
           {sectionBlocks.map((nestedBlock, nestedIndex) => {

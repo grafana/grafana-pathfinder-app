@@ -146,5 +146,8 @@ export const testIds = {
     sectionTitleInput: 'block-editor-section-title-input',
     sectionIdInput: 'block-editor-section-id-input',
     addAndRecordButton: 'block-editor-add-and-record-button',
+    // Section empty state and nested add button
+    sectionEmptyState: 'block-editor-section-empty-state',
+    sectionNestedAddButton: 'block-editor-section-add-nested-block',
   },
 };
