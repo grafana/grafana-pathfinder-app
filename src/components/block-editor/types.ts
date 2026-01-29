@@ -142,5 +142,57 @@ export interface StepEditorProps {
  */
 export type OnBlockTypeSelect = (type: BlockType, insertAtIndex?: number) => void;
 
+/**
+ * Grouped operations interface to reduce prop drilling.
+ * Used by extracted components to receive callbacks from BlockEditor.
+ *
+ * Note: This interface is defined for use in Plan B refactoring.
+ * It groups related operations to simplify component props.
+ */
+export interface BlockOperations {
+  // Block CRUD
+  onAddBlock: (type: BlockType, index?: number) => void;
+  onEditBlock: (block: EditorBlock) => void;
+  onDeleteBlock: (id: string) => void;
+  onMoveBlock: (fromIndex: number, toIndex: number) => void;
+
+  // Nested block operations (sections)
+  onAddNestedBlock: (sectionId: string, type: BlockType, index?: number) => void;
+  onEditNestedBlock: (sectionId: string, index: number, block: JsonBlock) => void;
+  onDeleteNestedBlock: (sectionId: string, index: number) => void;
+
+  // Conditional branch operations
+  onAddConditionalBlock: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    type: BlockType,
+    index?: number
+  ) => void;
+  onEditConditionalBlock: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    index: number,
+    block: JsonBlock
+  ) => void;
+  onDeleteConditionalBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', index: number) => void;
+
+  // Selection operations
+  isSelectionMode: boolean;
+  selectedBlockIds: Set<string>;
+  onToggleSelectionMode: () => void;
+  onToggleBlockSelection: (blockId: string) => void;
+  onClearSelection: () => void;
+  onMergeToMultistep: () => void;
+  onMergeToGuided: () => void;
+
+  // Recording operations
+  isRecording: boolean;
+  recordingTargetId: string | null;
+  recordingTargetType: 'section' | 'conditional' | null;
+  onStartSectionRecording: (sectionId: string) => void;
+  onStartConditionalRecording: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
+  onStopRecording: () => void;
+}
+
 // Re-export JSON guide types for convenience
 export type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction };

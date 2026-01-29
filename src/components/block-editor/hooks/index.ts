@@ -17,3 +17,9 @@ export type {
   UseRecordingPersistenceReturn,
   PersistedRecordingState,
 } from './useRecordingPersistence';
+
+export { useModalManager } from './useModalManager';
+export type { ModalName, UseModalManagerReturn } from './useModalManager';
+
+export { useBlockSelection } from './useBlockSelection';
+export type { UseBlockSelectionReturn } from './useBlockSelection';

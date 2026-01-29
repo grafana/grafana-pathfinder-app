@@ -28,3 +28,11 @@ export {
   PLACEHOLDER_URL,
   type ConversionWarning,
 } from './block-conversion';
+
+export {
+  groupRecordedStepsByGroupId,
+  convertStepToInteractiveBlock,
+  convertStepsToMultistepBlock,
+  convertProcessedStepsToBlocks,
+  type ProcessedStep,
+} from './recorded-steps-processor';

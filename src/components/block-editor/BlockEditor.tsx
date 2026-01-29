@@ -12,9 +12,10 @@ import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
+import { useModalManager } from './hooks/useModalManager';
+import { useBlockSelection } from './hooks/useBlockSelection';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { GuideMetadataForm } from './GuideMetadataForm';
-import { BlockPalette } from './BlockPalette';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
 import { BlockFormModal } from './BlockFormModal';
@@ -25,8 +26,14 @@ import { BlockEditorTour } from './BlockEditorTour';
 import { useActionRecorder } from '../../utils/devtools';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
-import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
+import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
 import { convertBlockType } from './utils/block-conversion';
+import {
+  groupRecordedStepsByGroupId,
+  convertStepToInteractiveBlock,
+  convertStepsToMultistepBlock,
+} from './utils/recorded-steps-processor';
+import { BlockEditorFooter } from './BlockEditorFooter';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -47,16 +54,13 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const editor = useBlockEditor({ initialGuide, onChange });
   const hasLoadedFromStorage = useRef(false);
 
-  // Modal state - declared early so persistence can check if modal is open
-  const [isMetadataOpen, setIsMetadataOpen] = useState(false);
+  // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
+  // Note: isBlockFormOpen stays separate as it coordinates with persistence
+  const modals = useModalManager();
   const [isBlockFormOpen, setIsBlockFormOpen] = useState(false);
   const [editingBlockType, setEditingBlockType] = useState<BlockType | null>(null);
   const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
   const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
-  const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isGitHubPRModalOpen, setIsGitHubPRModalOpen] = useState(false);
-  const [isTourOpen, setIsTourOpen] = useState(false);
   // State for editing nested blocks
   const [editingNestedBlock, setEditingNestedBlock] = useState<{
     sectionId: string;
@@ -86,8 +90,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   } | null>(null);
 
   // Block selection mode state (for merging blocks)
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
+  const selection = useBlockSelection();
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
   const excludeSelectors = useMemo(
@@ -415,16 +418,16 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     setRecordingIntoConditionalBranch(null);
     setRecordingStartUrl(null);
     editor.resetGuide(); // Reset editor state
-    setIsNewGuideConfirmOpen(false);
-  }, [editor, persistence, recordingPersistence, actionRecorder]);
+    modals.close('newGuideConfirm');
+  }, [editor, persistence, recordingPersistence, actionRecorder, modals]);
 
   // Handle import guide
   const handleImportGuide = useCallback(
     (guide: JsonGuide) => {
       editor.loadGuide(guide);
-      setIsImportModalOpen(false);
+      modals.close('import');
     },
-    [editor]
+    [editor, modals]
   );
 
   // Handle loading the example template guide
@@ -607,70 +610,15 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         const steps = actionRecorder.recordedSteps;
 
         // Group consecutive steps with the same groupId into multisteps
-        const processedSteps: Array<
-          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
-        > = [];
-
-        let currentGroup: typeof steps = [];
-        let currentGroupId: string | undefined;
-
-        steps.forEach((step) => {
-          if (step.groupId) {
-            if (step.groupId === currentGroupId) {
-              // Continue current group
-              currentGroup.push(step);
-            } else {
-              // End previous group if exists
-              if (currentGroup.length > 0) {
-                processedSteps.push({ type: 'group', steps: currentGroup });
-              }
-              // Start new group
-              currentGroupId = step.groupId;
-              currentGroup = [step];
-            }
-          } else {
-            // End current group if exists
-            if (currentGroup.length > 0) {
-              processedSteps.push({ type: 'group', steps: currentGroup });
-              currentGroup = [];
-              currentGroupId = undefined;
-            }
-            // Add single step
-            processedSteps.push({ type: 'single', step });
-          }
-        });
-
-        // Don't forget the last group
-        if (currentGroup.length > 0) {
-          processedSteps.push({ type: 'group', steps: currentGroup });
-        }
+        const processedSteps = groupRecordedStepsByGroupId(steps);
 
         // Convert to blocks and add to section
         processedSteps.forEach((item) => {
           if (item.type === 'single') {
-            // Single interactive block
-            const interactiveBlock: JsonInteractiveBlock = {
-              type: 'interactive',
-              action: item.step.action as JsonInteractiveBlock['action'],
-              reftarget: item.step.selector,
-              content: item.step.description || `${item.step.action} on element`,
-              ...(item.step.value && { targetvalue: item.step.value }),
-            };
+            const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]);
             editor.addBlockToSection(interactiveBlock, sectionId);
           } else {
-            // Group of steps - create multistep block
-            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
-              action: step.action as JsonStep['action'],
-              reftarget: step.selector,
-              ...(step.value && { targetvalue: step.value }),
-              tooltip: step.description || `${step.action} on element`,
-            }));
-
-            const multistepBlock: JsonMultistepBlock = {
-              type: 'multistep',
-              content: item.steps[0].description || 'Complete the following steps',
-              steps: multistepSteps,
-            };
+            const multistepBlock = convertStepsToMultistepBlock(item.steps);
             editor.addBlockToSection(multistepBlock, sectionId);
           }
         });
@@ -705,62 +653,15 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         const steps = actionRecorder.recordedSteps;
 
         // Group consecutive steps with the same groupId into multisteps
-        const processedSteps: Array<
-          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
-        > = [];
-
-        let currentGroup: typeof steps = [];
-        let currentGroupId: string | undefined;
-
-        steps.forEach((step) => {
-          if (step.groupId) {
-            if (step.groupId === currentGroupId) {
-              currentGroup.push(step);
-            } else {
-              if (currentGroup.length > 0) {
-                processedSteps.push({ type: 'group', steps: currentGroup });
-              }
-              currentGroupId = step.groupId;
-              currentGroup = [step];
-            }
-          } else {
-            if (currentGroup.length > 0) {
-              processedSteps.push({ type: 'group', steps: currentGroup });
-              currentGroup = [];
-              currentGroupId = undefined;
-            }
-            processedSteps.push({ type: 'single', step });
-          }
-        });
-
-        if (currentGroup.length > 0) {
-          processedSteps.push({ type: 'group', steps: currentGroup });
-        }
+        const processedSteps = groupRecordedStepsByGroupId(steps);
 
         // Convert to blocks and add to conditional branch
         processedSteps.forEach((item) => {
           if (item.type === 'single') {
-            const interactiveBlock: JsonInteractiveBlock = {
-              type: 'interactive',
-              action: item.step.action as JsonInteractiveBlock['action'],
-              reftarget: item.step.selector,
-              content: item.step.description || `${item.step.action} on element`,
-              ...(item.step.value && { targetvalue: item.step.value }),
-            };
+            const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]);
             editor.addBlockToConditionalBranch(conditionalId, branch, interactiveBlock);
           } else {
-            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
-              action: step.action as JsonStep['action'],
-              reftarget: step.selector,
-              ...(step.value && { targetvalue: step.value }),
-              tooltip: step.description || `${step.action} on element`,
-            }));
-
-            const multistepBlock: JsonMultistepBlock = {
-              type: 'multistep',
-              content: item.steps[0].description || 'Complete the following steps',
-              steps: multistepSteps,
-            };
+            const multistepBlock = convertStepsToMultistepBlock(item.steps);
             editor.addBlockToConditionalBranch(conditionalId, branch, multistepBlock);
           }
         });
@@ -821,51 +722,22 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [editor, insertAtIndex, actionRecorder]
   );
 
-  // Selection mode handlers
-  const handleToggleSelectionMode = useCallback(() => {
-    setIsSelectionMode((prev) => {
-      if (prev) {
-        // Exiting selection mode - clear selection
-        setSelectedBlockIds(new Set());
-      }
-      return !prev;
-    });
-  }, []);
-
-  const handleToggleBlockSelection = useCallback((blockId: string) => {
-    setSelectedBlockIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(blockId)) {
-        next.delete(blockId);
-      } else {
-        next.add(blockId);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleClearSelection = useCallback(() => {
-    setSelectedBlockIds(new Set());
-    setIsSelectionMode(false);
-  }, []);
-
+  // Merge handlers - use selection hook but need access to editor
   const handleMergeToMultistep = useCallback(() => {
-    if (selectedBlockIds.size < 2) {
+    if (selection.selectedBlockIds.size < 2) {
       return;
     }
-    editor.mergeBlocksToMultistep(Array.from(selectedBlockIds));
-    setSelectedBlockIds(new Set());
-    setIsSelectionMode(false);
-  }, [selectedBlockIds, editor]);
+    editor.mergeBlocksToMultistep(Array.from(selection.selectedBlockIds));
+    selection.clearSelection();
+  }, [selection, editor]);
 
   const handleMergeToGuided = useCallback(() => {
-    if (selectedBlockIds.size < 2) {
+    if (selection.selectedBlockIds.size < 2) {
       return;
     }
-    editor.mergeBlocksToGuided(Array.from(selectedBlockIds));
-    setSelectedBlockIds(new Set());
-    setIsSelectionMode(false);
-  }, [selectedBlockIds, editor]);
+    editor.mergeBlocksToGuided(Array.from(selection.selectedBlockIds));
+    selection.clearSelection();
+  }, [selection, editor]);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
@@ -945,7 +817,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             variant="secondary"
             size="sm"
             icon="cog"
-            onClick={() => setIsMetadataOpen(true)}
+            onClick={() => modals.open('metadata')}
             tooltip="Edit guide settings"
             data-testid="guide-metadata-button"
           />
@@ -957,7 +829,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             variant="secondary"
             size="sm"
             icon="question-circle"
-            onClick={() => setIsTourOpen(true)}
+            onClick={() => modals.open('tour')}
             tooltip="Take a tour of the guide editor"
           >
             Tour
@@ -988,7 +860,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             variant="secondary"
             size="sm"
             icon="upload"
-            onClick={() => setIsImportModalOpen(true)}
+            onClick={() => modals.open('import')}
             tooltip="Import JSON guide"
           />
 
@@ -1012,14 +884,14 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             variant="secondary"
             size="sm"
             icon="github"
-            onClick={() => setIsGitHubPRModalOpen(true)}
+            onClick={() => modals.open('githubPr')}
             tooltip="Create GitHub PR"
           />
           <Button
             variant="secondary"
             size="sm"
             icon="file-blank"
-            onClick={() => setIsNewGuideConfirmOpen(true)}
+            onClick={() => modals.open('newGuideConfirm')}
             tooltip="Start new guide"
           />
         </div>
@@ -1030,30 +902,32 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         {/* Selection controls - shown in edit mode, above blocks */}
         {!state.isPreviewMode && hasBlocks && (
           <div className={styles.selectionControls}>
-            {isSelectionMode && selectedBlockIds.size >= 2 ? (
+            {selection.isSelectionMode && selection.selectedBlockIds.size >= 2 ? (
               <>
-                <span className={styles.selectionCount}>{selectedBlockIds.size} blocks selected</span>
+                <span className={styles.selectionCount}>{selection.selectedBlockIds.size} blocks selected</span>
                 <Button variant="primary" size="sm" onClick={handleMergeToMultistep}>
                   Create multistep
                 </Button>
                 <Button variant="primary" size="sm" onClick={handleMergeToGuided}>
                   Create guided
                 </Button>
-                <Button variant="secondary" size="sm" onClick={handleClearSelection}>
+                <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
                   Cancel
                 </Button>
               </>
             ) : (
               <Button
-                variant={isSelectionMode ? 'primary' : 'secondary'}
+                variant={selection.isSelectionMode ? 'primary' : 'secondary'}
                 size="sm"
                 icon="check-square"
-                onClick={handleToggleSelectionMode}
+                onClick={selection.toggleSelectionMode}
                 tooltip={
-                  isSelectionMode ? 'Click to exit selection mode' : 'Select blocks to merge into multistep/guided'
+                  selection.isSelectionMode
+                    ? 'Click to exit selection mode'
+                    : 'Select blocks to merge into multistep/guided'
                 }
               >
-                {isSelectionMode ? 'Done selecting' : 'Select blocks'}
+                {selection.isSelectionMode ? 'Done selecting' : 'Select blocks'}
               </Button>
             )}
           </div>
@@ -1080,9 +954,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             recordingIntoSection={recordingIntoSection}
             onConditionalBranchRecord={handleConditionalBranchRecord}
             recordingIntoConditionalBranch={recordingIntoConditionalBranch}
-            isSelectionMode={isSelectionMode}
-            selectedBlockIds={selectedBlockIds}
-            onToggleBlockSelection={handleToggleBlockSelection}
+            isSelectionMode={selection.isSelectionMode}
+            selectedBlockIds={selection.selectedBlockIds}
+            onToggleBlockSelection={selection.toggleBlockSelection}
             onInsertBlockInConditional={handleInsertBlockInConditional}
             onConditionalBranchBlockEdit={handleConditionalBranchBlockEdit}
             onConditionalBranchBlockDelete={handleConditionalBranchBlockDelete}
@@ -1101,7 +975,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
               <Button variant="secondary" onClick={handleLoadTemplate} icon="file-alt">
                 Load example guide
               </Button>
-              <Button variant="secondary" onClick={() => setIsTourOpen(true)} icon="question-circle">
+              <Button variant="secondary" onClick={() => modals.open('tour')} icon="question-circle">
                 Take a tour
               </Button>
             </div>
@@ -1110,18 +984,14 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       </div>
 
       {/* Footer with add block button (only in edit mode) */}
-      {!state.isPreviewMode && (
-        <div className={styles.footer} data-testid="block-palette">
-          <BlockPalette onSelect={handleBlockTypeSelect} embedded />
-        </div>
-      )}
+      <BlockEditorFooter isPreviewMode={state.isPreviewMode} onBlockTypeSelect={handleBlockTypeSelect} />
 
       {/* Modals */}
       <GuideMetadataForm
-        isOpen={isMetadataOpen}
+        isOpen={modals.isOpen('metadata')}
         guide={state.guide}
         onUpdate={editor.updateGuideMetadata}
-        onClose={() => setIsMetadataOpen(false)}
+        onClose={() => modals.close('metadata')}
       />
 
       {isBlockFormOpen && editingBlockType && (
@@ -1151,26 +1021,26 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       )}
 
       <ConfirmModal
-        isOpen={isNewGuideConfirmOpen}
+        isOpen={modals.isOpen('newGuideConfirm')}
         title="Start New Guide"
         body="Are you sure you want to start a new guide? Your current work will be deleted and cannot be recovered."
         confirmText="Start New"
         dismissText="Cancel"
         onConfirm={handleNewGuide}
-        onDismiss={() => setIsNewGuideConfirmOpen(false)}
+        onDismiss={() => modals.close('newGuideConfirm')}
       />
 
       <ImportGuideModal
-        isOpen={isImportModalOpen}
+        isOpen={modals.isOpen('import')}
         onImport={handleImportGuide}
-        onClose={() => setIsImportModalOpen(false)}
+        onClose={() => modals.close('import')}
         hasUnsavedChanges={state.isDirty || state.blocks.length > 0}
       />
 
       <GitHubPRModal
-        isOpen={isGitHubPRModalOpen}
+        isOpen={modals.isOpen('githubPr')}
         guide={editor.getGuide()}
-        onClose={() => setIsGitHubPRModalOpen(false)}
+        onClose={() => modals.close('githubPr')}
       />
 
       {/* Record mode overlay for section/conditional recording */}
@@ -1196,7 +1066,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       )}
 
       {/* Block Editor Tour */}
-      {isTourOpen && <BlockEditorTour onClose={() => setIsTourOpen(false)} />}
+      {modals.isOpen('tour') && <BlockEditorTour onClose={() => modals.close('tour')} />}
     </div>
   );
 }
