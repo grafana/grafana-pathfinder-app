@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
+import { Button, useStyles2, ConfirmModal } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
@@ -32,6 +32,7 @@ import type { JsonGuide, BlockType, JsonBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
 import { convertBlockType } from './utils/block-conversion';
 import { BlockEditorFooter } from './BlockEditorFooter';
+import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
 
 export interface BlockEditorProps {
@@ -605,97 +606,26 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   return (
     <div className={styles.container} data-testid="block-editor">
       {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <h3 className={styles.guideTitle}>{state.guide.title}</h3>
-          {state.isDirty ? (
-            <Badge text="Auto-saving..." color="orange" icon="fa fa-spinner" />
-          ) : (
-            <Badge text="Saved" color="green" icon="check" />
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="cog"
-            onClick={() => modals.open('metadata')}
-            tooltip="Edit guide settings"
-            data-testid="guide-metadata-button"
-          />
-        </div>
-
-        <div className={styles.headerRight}>
-          {/* Tour button */}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="question-circle"
-            onClick={() => modals.open('tour')}
-            tooltip="Take a tour of the guide editor"
-          >
-            Tour
-          </Button>
-
-          {/* View mode toggle - icon only */}
-          <div className={styles.viewModeToggle} data-testid="view-mode-toggle">
-            <ButtonGroup>
-              <Button
-                variant={!state.isPreviewMode ? 'primary' : 'secondary'}
-                size="sm"
-                icon="pen"
-                onClick={() => editor.setPreviewMode(false)}
-                tooltip="Edit mode"
-              />
-              <Button
-                variant={state.isPreviewMode ? 'primary' : 'secondary'}
-                size="sm"
-                icon="eye"
-                onClick={() => editor.setPreviewMode(true)}
-                tooltip="Preview mode"
-              />
-            </ButtonGroup>
-          </div>
-
-          {/* Import button */}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="upload"
-            onClick={() => modals.open('import')}
-            tooltip="Import JSON guide"
-          />
-
-          {/* Export actions */}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="copy"
-            onClick={handleCopy}
-            tooltip="Copy JSON to clipboard"
-            data-testid="copy-json-button"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="download-alt"
-            onClick={handleDownload}
-            tooltip="Download JSON file"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="github"
-            onClick={() => modals.open('githubPr')}
-            tooltip="Create GitHub PR"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="file-blank"
-            onClick={() => modals.open('newGuideConfirm')}
-            tooltip="Start new guide"
-          />
-        </div>
-      </div>
+      <BlockEditorHeader
+        guideTitle={state.guide.title}
+        isDirty={state.isDirty}
+        isPreviewMode={state.isPreviewMode}
+        onSetPreviewMode={editor.setPreviewMode}
+        onOpenMetadata={() => modals.open('metadata')}
+        onOpenTour={() => modals.open('tour')}
+        onOpenImport={() => modals.open('import')}
+        onCopy={handleCopy}
+        onDownload={handleDownload}
+        onOpenGitHubPR={() => modals.open('githubPr')}
+        onNewGuide={() => modals.open('newGuideConfirm')}
+        styles={{
+          header: styles.header,
+          headerLeft: styles.headerLeft,
+          headerRight: styles.headerRight,
+          guideTitle: styles.guideTitle,
+          viewModeToggle: styles.viewModeToggle,
+        }}
+      />
 
       {/* Content */}
       <div className={styles.content} data-testid="block-editor-content">

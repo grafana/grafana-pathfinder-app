@@ -259,7 +259,6 @@ describe('useRecordingActions', () => {
         {
           action: 'button',
           selector: '[data-testid="btn"]',
-          timestamp: Date.now(),
           description: 'Click button',
         },
       ];
@@ -281,7 +280,6 @@ describe('useRecordingActions', () => {
         {
           action: 'button',
           selector: '[data-testid="submit"]',
-          timestamp: Date.now(),
           description: 'Submit form',
         },
       ];
