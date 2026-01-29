@@ -722,9 +722,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       // Recheck if:
       // 1. Step is blocked (not enabled) - might become enabled after navigation
       // 2. Step is enabled with objectives - objectives might be satisfied after navigation
-      const isBlocked = !isCompleted && !isEnabled;
       const hasObjectives = currentObjectives && currentObjectives.trim() !== '';
-      const shouldRecheck = !isCompleted && !isChecking && (isBlocked || (isEnabled && hasObjectives));
+      const shouldRecheck = !isCompleted && !isChecking && (!isEnabled || hasObjectives);
 
       if (shouldRecheck) {
         checkStepRef.current();
