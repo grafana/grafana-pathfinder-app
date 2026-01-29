@@ -37,7 +37,7 @@ interface BlockEditorContextValue {
   clearContext: () => void;
 }
 
-const BlockEditorContext = createContext<BlockEditorContextValue | null>(null);
+export const BlockEditorContext = createContext<BlockEditorContextValue | null>(null);
 
 interface BlockEditorContextProviderProps {
   children: ReactNode;

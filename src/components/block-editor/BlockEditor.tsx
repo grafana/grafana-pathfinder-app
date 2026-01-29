@@ -14,6 +14,7 @@ import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
 import { useModalManager } from './hooks/useModalManager';
 import { useBlockSelection } from './hooks/useBlockSelection';
+import { useBlockFormState } from './hooks/useBlockFormState';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { GuideMetadataForm } from './GuideMetadataForm';
 import { BlockList } from './BlockList';
@@ -25,7 +26,7 @@ import { GitHubPRModal } from './GitHubPRModal';
 import { BlockEditorTour } from './BlockEditorTour';
 import { useActionRecorder } from '../../utils/devtools';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
-import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
+import type { JsonGuide, BlockType, JsonBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
 import { convertBlockType } from './utils/block-conversion';
 import {
@@ -60,30 +61,25 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const hasLoadedFromStorage = useRef(false);
 
   // Block editor context - replaces window globals for section/conditional editing
-  const { sectionContext, conditionalContext, setSectionContext, setConditionalContext, clearContext } =
-    useBlockEditorContext();
+  const { sectionContext, conditionalContext } = useBlockEditorContext();
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
-  // Note: isBlockFormOpen stays separate as it coordinates with persistence
   const modals = useModalManager();
-  const [isBlockFormOpen, setIsBlockFormOpen] = useState(false);
-  const [editingBlockType, setEditingBlockType] = useState<BlockType | null>(null);
-  const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
-  const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
-  // State for editing nested blocks
-  const [editingNestedBlock, setEditingNestedBlock] = useState<{
-    sectionId: string;
-    nestedIndex: number;
-    block: JsonBlock;
-  } | null>(null);
 
-  // State for editing conditional branch blocks
-  const [editingConditionalBranchBlock, setEditingConditionalBranchBlock] = useState<{
-    conditionalId: string;
-    branch: 'whenTrue' | 'whenFalse';
-    nestedIndex: number;
-    block: JsonBlock;
-  } | null>(null);
+  // Block form state - manages form modal and editing context
+  const formState = useBlockFormState();
+  const {
+    isBlockFormOpen,
+    editingBlockType,
+    editingBlock,
+    insertAtIndex,
+    editingNestedBlock,
+    editingConditionalBranchBlock,
+    setEditingBlockType,
+    setEditingBlock,
+    setEditingNestedBlock,
+    setEditingConditionalBranchBlock,
+  } = formState;
 
   // Section recording state
   const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
@@ -187,32 +183,13 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   }, [initialGuide, persistence, editor]);
 
   // Handle block type selection from palette
-  const handleBlockTypeSelect = useCallback((type: BlockType, index?: number) => {
-    setEditingBlockType(type);
-    setEditingBlock(null);
-    setInsertAtIndex(index);
-    setIsBlockFormOpen(true);
-  }, []);
+  const handleBlockTypeSelect = formState.openNewBlockForm;
 
   // Handle block edit
-  const handleBlockEdit = useCallback((block: EditorBlock) => {
-    setEditingBlockType(block.block.type as BlockType);
-    setEditingBlock(block);
-    setInsertAtIndex(undefined);
-    setIsBlockFormOpen(true);
-  }, []);
+  const handleBlockEdit = formState.openEditBlockForm;
 
   // Handle form cancel
-  const handleBlockFormCancel = useCallback(() => {
-    setIsBlockFormOpen(false);
-    setEditingBlockType(null);
-    setEditingBlock(null);
-    setEditingNestedBlock(null);
-    setEditingConditionalBranchBlock(null);
-    setInsertAtIndex(undefined);
-    // Clear any section/conditional context
-    clearContext();
-  }, [clearContext]);
+  const handleBlockFormCancel = formState.closeBlockForm;
 
   // Handle split multistep/guided into individual interactive blocks
   const handleSplitToBlocks = useCallback(() => {
@@ -454,30 +431,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   );
 
   // Handle inserting a block directly into a section
-  const handleInsertBlockInSection = useCallback(
-    (type: BlockType, sectionId: string, index?: number) => {
-      // Open the form modal for this block type, but target the section
-      setEditingBlockType(type);
-      setEditingBlock(null);
-      // We'll need to handle section insertion differently
-      // For now, store the section ID and handle in submit
-      setInsertAtIndex(undefined);
-      setIsBlockFormOpen(true);
-
-      // Store section context for insertion
-      setSectionContext({ sectionId, index });
-    },
-    [setSectionContext]
-  );
+  const handleInsertBlockInSection = formState.openNestedBlockForm;
 
   // Handle editing a nested block
-  const handleNestedBlockEdit = useCallback((sectionId: string, nestedIndex: number, block: JsonBlock) => {
-    setEditingBlockType(block.type as BlockType);
-    setEditingBlock(null);
-    setEditingNestedBlock({ sectionId, nestedIndex, block });
-    setInsertAtIndex(undefined);
-    setIsBlockFormOpen(true);
-  }, []);
+  const handleNestedBlockEdit = formState.openEditNestedBlockForm;
 
   // Handle deleting a nested block
   const handleNestedBlockDelete = useCallback(
@@ -506,30 +463,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // ============ Conditional branch handlers ============
 
   // Handle inserting a block into a conditional branch
-  const handleInsertBlockInConditional = useCallback(
-    (type: BlockType, conditionalId: string, branch: 'whenTrue' | 'whenFalse', index?: number) => {
-      setEditingBlockType(type);
-      setEditingBlock(null);
-      setInsertAtIndex(undefined);
-      setIsBlockFormOpen(true);
-
-      // Store conditional context for insertion
-      setConditionalContext({ conditionalId, branch, index });
-    },
-    [setConditionalContext]
-  );
+  const handleInsertBlockInConditional = formState.openConditionalBlockForm;
 
   // Handle editing a block within a conditional branch
-  const handleConditionalBranchBlockEdit = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, block: JsonBlock) => {
-      setEditingBlockType(block.type as BlockType);
-      setEditingBlock(null);
-      setEditingConditionalBranchBlock({ conditionalId, branch, nestedIndex, block });
-      setInsertAtIndex(undefined);
-      setIsBlockFormOpen(true);
-    },
-    []
-  );
+  const handleConditionalBranchBlockEdit = formState.openEditConditionalBlockForm;
 
   // Handle deleting a block from a conditional branch
   const handleConditionalBranchBlockDelete = useCallback(
@@ -692,10 +629,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     (block: JsonBlock) => {
       // Add the section block - returns the EditorBlock ID (UUID)
       const editorBlockId = editor.addBlock(block, insertAtIndex);
-      setIsBlockFormOpen(false);
-      setEditingBlockType(null);
-      setEditingBlock(null);
-      setInsertAtIndex(undefined);
+      // Close the form
+      formState.closeBlockForm();
 
       // Start recording into this section after a brief delay to allow UI to update
       pendingSectionIdRef.current = editorBlockId;
@@ -711,7 +646,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         }
       }, 100);
     },
-    [editor, insertAtIndex, actionRecorder]
+    [editor, insertAtIndex, actionRecorder, formState]
   );
 
   // Merge handlers - use selection hook but need access to editor
@@ -742,11 +677,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           editingConditionalBranchBlock.nestedIndex,
           block
         );
-        setEditingConditionalBranchBlock(null);
       } else if (editingNestedBlock) {
         // Editing a nested block in a section
         editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, block);
-        setEditingNestedBlock(null);
       } else if (editingBlock) {
         editor.updateBlock(editingBlock.id, block);
       } else if (conditionalContext) {
@@ -757,19 +690,15 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           block,
           conditionalContext.index
         );
-        clearContext();
       } else if (sectionContext) {
         editor.addBlockToSection(block, sectionContext.sectionId, sectionContext.index);
-        clearContext();
       } else {
         editor.addBlock(block, insertAtIndex);
       }
-      setIsBlockFormOpen(false);
-      setEditingBlockType(null);
-      setEditingBlock(null);
-      setInsertAtIndex(undefined);
+      // Close form and clear all editing state
+      formState.closeBlockForm();
     },
-    [editor, editingBlock, editingNestedBlock, editingConditionalBranchBlock, insertAtIndex, sectionContext, conditionalContext, clearContext]
+    [editor, editingBlock, editingNestedBlock, editingConditionalBranchBlock, insertAtIndex, sectionContext, conditionalContext, formState]
   );
 
   const { state } = editor;

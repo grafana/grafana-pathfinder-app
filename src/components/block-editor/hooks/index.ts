@@ -23,3 +23,10 @@ export type { ModalName, UseModalManagerReturn } from './useModalManager';
 
 export { useBlockSelection } from './useBlockSelection';
 export type { UseBlockSelectionReturn } from './useBlockSelection';
+
+export { useBlockFormState } from './useBlockFormState';
+export type {
+  BlockFormState,
+  NestedBlockEditingState,
+  ConditionalBranchEditingState,
+} from './useBlockFormState';
