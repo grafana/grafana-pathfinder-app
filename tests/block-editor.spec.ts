@@ -10,7 +10,11 @@ import {
   waitForRecordingOverlay,
   stopRecording,
   waitForGrafanaReady,
+  clickBlockAction,
+  confirmDeleteBlock,
+  clickAddBlockInSection,
 } from './helpers/block-editor.helpers';
+import { TIMEOUTS } from './constants';
 
 /**
  * Block Editor E2E Tests
@@ -194,8 +198,11 @@ test.describe.serial('Block Editor', () => {
     const recordingOverlay = page.locator('[data-record-overlay="banner"]');
 
     // Click on a stable Grafana UI element (the Grafana logo/home link)
-    // Using dispatchEvent to bypass coordinate-based hit testing and dispatch
-    // directly to the element, ensuring the capture-phase listener receives it
+    // Recording uses capture-phase listeners that may not receive
+    // coordinate-based clicks. dispatchEvent ensures the event
+    // reaches the capture listener regardless of overlapping elements.
+    // Note: This tests the recording system's event handling, not
+    // pixel-perfect user interaction.
     const homeLink = page.locator('a[href="/"]').first();
     await homeLink.dispatchEvent('click');
 
@@ -233,12 +240,8 @@ test.describe.serial('Block Editor', () => {
     // Create a section block (without recording)
     await createSectionBlock(page, 'Nested Test Section');
 
-    // Find the section's nested area and click "Add Block" within it
-    // The empty section shows "Drag blocks here or click + Add block below"
-    const blockEditor = page.getByTestId('block-editor');
-    const sectionContainer = blockEditor.locator('text=Drag blocks here').locator('..');
-    const addBlockInSection = sectionContainer.locator('button').filter({ hasText: 'Add block' });
-    await addBlockInSection.click();
+    // Click add block button within the section using helper (uses testIds)
+    await clickAddBlockInSection(page);
 
     // Wait for block type modal
     const nestedBlockTypeModal = page.getByTestId(testIds.blockEditor.addBlockModal);
@@ -290,17 +293,12 @@ test.describe.serial('Block Editor', () => {
     const blockContent = page.getByTestId('block-editor-content');
     await expect(blockContent.locator('text=original-content')).toBeVisible();
 
-    // Use data-testid for more reliable button selection
-    const editButton = page.getByTestId('block-edit-button').first();
-    await expect(editButton).toBeVisible();
+    // Click edit button using helper (handles scroll/hover for dnd-kit overlays)
+    await clickBlockAction(page, 'block-edit-button');
 
-    // FORCE: Block action buttons may be covered by overlapping UI elements
-    // or have z-index issues. CSS investigation needed but force:true works for now
-    await editButton.click({ force: true });
-
-    // Wait for edit modal to appear - use testId selector
+    // Wait for edit modal to appear
     const editModal = page.getByTestId(testIds.blockEditor.blockFormModal);
-    await expect(editModal).toBeVisible({ timeout: 10000 });
+    await expect(editModal).toBeVisible({ timeout: TIMEOUTS.MODAL_VISIBLE });
 
     // Switch to Raw Markdown mode and modify content
     await page.getByTestId(testIds.blockEditor.rawMarkdownTab).click();
@@ -337,19 +335,11 @@ test.describe.serial('Block Editor', () => {
     let blocks = guide.blocks as Array<{ type: string; content?: string }>;
     expect(blocks).toHaveLength(2);
 
-    // Click delete button on the first block using data-testid
-    const deleteButton = page.getByTestId('block-delete-button').first();
-    await expect(deleteButton).toBeVisible();
+    // Click delete button on the first block using helper (handles scroll/hover for dnd-kit overlays)
+    await clickBlockAction(page, 'block-delete-button');
 
-    // FORCE: Block action buttons may be covered by overlapping UI elements
-    // or have z-index issues. CSS investigation needed but force:true works for now
-    await deleteButton.click({ force: true });
-
-    // Confirm deletion in the modal - title is "Delete Block"
-    const confirmModal = page.locator('[role="dialog"]').filter({ hasText: 'Delete Block' });
-    await expect(confirmModal).toBeVisible({ timeout: 10000 });
-    await confirmModal.locator('button').filter({ hasText: 'Yes, Delete' }).click();
-    await expect(confirmModal).not.toBeVisible();
+    // Confirm deletion using helper (locates modal by role and text)
+    await confirmDeleteBlock(page);
 
     // Verify only one block remains with correct content
     guide = await copyGuideJson(page);

@@ -8,16 +8,22 @@
 import type { Page } from '@playwright/test';
 import { expect } from '../fixtures';
 import { testIds } from '../../src/components/testIds';
+import { TIMEOUTS, STORAGE_KEYS } from '../constants';
 
 /**
- * Wait for Grafana UI to be ready by checking for network idle and Help button.
- * Uses both checks for maximum reliability.
+ * Wait for Grafana UI to be ready by checking for the navbar Help button.
+ * Uses element visibility as the primary signal with networkidle as secondary
+ * to ensure extension sidebar component is fully registered.
  */
 export async function waitForGrafanaReady(page: Page): Promise<void> {
-  // Wait for network to settle first
+  // Primary signal: Help button visible means UI is interactive
+  await page.locator('button[aria-label="Help"]').waitFor({
+    state: 'visible',
+    timeout: TIMEOUTS.UI_READY,
+  });
+  // Secondary: networkidle ensures extension sidebar is fully registered
+  // This is important because domcontentloaded fires before JS fully loads
   await page.waitForLoadState('networkidle');
-  // Then verify the Help button is visible (confirms UI is interactive)
-  await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 30000 });
 }
 
 /**
@@ -29,6 +35,7 @@ export async function openBlockEditor(page: Page): Promise<void> {
   await waitForGrafanaReady(page);
 
   // Open the docs panel via Help button
+  // In Grafana with extension sidebar registered, clicking Help toggles the sidebar
   await page.locator('button[aria-label="Help"]').click();
 
   // Wait for panel container to be visible
@@ -38,7 +45,7 @@ export async function openBlockEditor(page: Page): Promise<void> {
   // Wait for devtools tab to be visible (requires dev mode enabled)
   // Use longer timeout as dev mode settings need to propagate
   const devToolsTab = page.getByTestId(testIds.docsPanel.tab('devtools'));
-  await expect(devToolsTab).toBeVisible({ timeout: 15000 });
+  await expect(devToolsTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
   await devToolsTab.click();
 
   // Wait for block editor to be visible
@@ -107,11 +114,23 @@ export async function createSectionBlock(
 
 /**
  * Copy the guide JSON to clipboard and return the parsed object.
+ * Falls back to localStorage if clipboard API fails (CI reliability).
  */
 export async function copyGuideJson(page: Page): Promise<Record<string, unknown>> {
   await page.getByTestId('copy-json-button').click();
-  const text = await page.evaluate(() => navigator.clipboard.readText());
-  return JSON.parse(text) as Record<string, unknown>;
+
+  try {
+    const text = await page.evaluate(() => navigator.clipboard.readText());
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    // Fallback: read from localStorage if clipboard fails
+    const state = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEYS.BLOCK_EDITOR_STATE);
+    if (!state) {
+      throw new Error('No guide state in clipboard or localStorage');
+    }
+    const parsed = JSON.parse(state);
+    return parsed.guide as Record<string, unknown>;
+  }
 }
 
 /**
@@ -120,9 +139,9 @@ export async function copyGuideJson(page: Page): Promise<Record<string, unknown>
  */
 export async function waitForAutoSave(page: Page, expectedContent: string): Promise<void> {
   await expect(async () => {
-    const state = await page.evaluate(() => localStorage.getItem('pathfinder-block-editor-state'));
+    const state = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEYS.BLOCK_EDITOR_STATE);
     expect(state).toContain(expectedContent);
-  }).toPass({ timeout: 5000 });
+  }).toPass({ timeout: TIMEOUTS.AUTO_SAVE });
 }
 
 /**
@@ -154,4 +173,50 @@ export async function stopRecording(page: Page): Promise<void> {
   const stopButton = recordingOverlay.locator('button').filter({ hasText: 'Stop' });
   await stopButton.click();
   await expect(recordingOverlay).not.toBeVisible();
+}
+
+/**
+ * Click a block action button (edit, delete, etc.) ensuring proper visibility.
+ * Handles dnd-kit overlay issues by scrolling into view and hovering first.
+ *
+ * @param page - Playwright page
+ * @param testId - The data-testid of the button to click
+ * @param options - Optional index if there are multiple buttons with same testId
+ */
+export async function clickBlockAction(
+  page: Page,
+  testId: string,
+  options?: { index?: number }
+): Promise<void> {
+  const button = page.getByTestId(testId).nth(options?.index ?? 0);
+  await button.scrollIntoViewIfNeeded();
+  await button.hover();
+  await button.click();
+}
+
+/**
+ * Confirm a block deletion in the confirmation modal.
+ * Locates the modal by role and title text since Grafana's ConfirmModal
+ * doesn't support custom testIds.
+ */
+export async function confirmDeleteBlock(page: Page): Promise<void> {
+  const confirmModal = page.locator('[role="dialog"]').filter({ hasText: 'Delete Block' });
+  await expect(confirmModal).toBeVisible({ timeout: TIMEOUTS.MODAL_VISIBLE });
+  await confirmModal.locator('button').filter({ hasText: 'Yes, Delete' }).click();
+  await expect(confirmModal).not.toBeVisible();
+}
+
+/**
+ * Click the add block button within a section's empty state area.
+ * Uses the section empty state testId to scope the search.
+ */
+export async function clickAddBlockInSection(page: Page): Promise<void> {
+  const blockEditor = page.getByTestId('block-editor');
+  // Find the section container via the empty state testId
+  const sectionEmptyState = blockEditor.getByTestId(testIds.blockEditor.sectionEmptyState);
+  // The Add Block button is a sibling of the empty state div inside the same parent
+  // Use xpath to go up one level and find the button within that container
+  const parentContainer = sectionEmptyState.locator('xpath=..');
+  const addBlockButton = parentContainer.getByTestId(testIds.blockEditor.addBlockButton);
+  await addBlockButton.click();
 }
