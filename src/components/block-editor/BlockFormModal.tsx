@@ -25,6 +25,7 @@ import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA } from './constants';
 import { ElementPicker } from './ElementPicker';
 import { RecordModeOverlay } from './RecordModeOverlay';
+import { testIds } from '../testIds';
 import type { BlockType, JsonBlock, BlockFormProps } from './types';
 import type { ConversionWarning } from './forms/TypeSwitchDropdown';
 
@@ -464,7 +465,7 @@ export function BlockFormModal({
         className={`${styles.modal} ${isOverlayActive ? styles.modalHidden : ''}`}
       >
         {/* Wrapper with unique identifier so CSS :has() selector can target only our modal's overlay */}
-        <div {...{ [BLOCK_EDITOR_MODAL_ATTR]: 'true' }}>
+        <div {...{ [BLOCK_EDITOR_MODAL_ATTR]: 'true' }} data-testid={testIds.blockEditor.blockFormModal}>
           <FormComponent
             initialData={initialData}
             onSubmit={onSubmit}

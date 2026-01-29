@@ -10,6 +10,7 @@ import { Icon, Portal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER } from './constants';
+import { testIds } from '../testIds';
 import type { BlockType, OnBlockTypeSelect } from './types';
 
 // Styles for the palette modal
@@ -271,6 +272,7 @@ export function BlockPalette({
         type="button"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
+        data-testid={testIds.blockEditor.addBlockButton}
       >
         <Icon name="plus" size={compact ? 'sm' : 'md'} />
         <span>Add Block</span>
@@ -279,7 +281,13 @@ export function BlockPalette({
       {isOpen && (
         <Portal>
           <div className={styles.overlay} onClick={handleOverlayClick}>
-            <div className={styles.modal} role="dialog" aria-modal="true" aria-label="Add Block">
+            <div
+              className={styles.modal}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Add Block"
+              data-testid={testIds.blockEditor.addBlockModal}
+            >
               <div className={styles.header}>
                 <h3 className={styles.title}>Add Block</h3>
                 <button
@@ -296,7 +304,13 @@ export function BlockPalette({
                   {availableTypes.map((type) => {
                     const meta = BLOCK_TYPE_METADATA[type];
                     return (
-                      <button key={type} className={styles.item} onClick={() => handleSelect(type)} type="button">
+                      <button
+                        key={type}
+                        className={styles.item}
+                        onClick={() => handleSelect(type)}
+                        type="button"
+                        data-testid={testIds.blockEditor.blockTypeButton(type)}
+                      >
                         <span className={styles.itemIcon}>{meta.icon}</span>
                         <div className={styles.itemContent}>
                           <div className={styles.itemName}>{meta.name}</div>

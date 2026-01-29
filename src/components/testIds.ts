@@ -127,4 +127,24 @@ export const testIds = {
     submit: 'terms-submit',
     termsContent: 'terms-content',
   },
+
+  // Block Editor - E2E test selectors for dev tools block editor
+  blockEditor: {
+    // Modals
+    addBlockModal: 'block-editor-add-block-modal',
+    blockFormModal: 'block-editor-form-modal',
+    // Palette
+    addBlockButton: 'block-editor-add-block-button',
+    // Form controls
+    submitButton: 'block-editor-submit-button',
+    blockTypeButton: (type: string) => `block-editor-type-${type}`,
+    // Markdown form
+    rawMarkdownTab: 'block-editor-raw-markdown-tab',
+    richMarkdownTab: 'block-editor-rich-markdown-tab',
+    markdownTextarea: 'block-editor-markdown-textarea',
+    // Section form
+    sectionTitleInput: 'block-editor-section-title-input',
+    sectionIdInput: 'block-editor-section-id-input',
+    addAndRecordButton: 'block-editor-add-and-record-button',
+  },
 };
