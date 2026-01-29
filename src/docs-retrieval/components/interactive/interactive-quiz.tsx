@@ -4,7 +4,7 @@ import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../../requirements-manager';
-import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import { testIds } from '../../../components/testIds';
 
 // ============ Types ============
@@ -41,6 +41,12 @@ export interface InteractiveQuizProps {
   onStepComplete?: (stepId: string) => void;
   disabled?: boolean;
   resetTrigger?: number;
+
+  // Document-wide step position (passed from section)
+  stepIndex?: number;
+  totalSteps?: number;
+  sectionId?: string;
+  sectionTitle?: string;
 }
 
 // ============ Component ============
@@ -63,6 +69,10 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   onStepComplete,
   disabled = false,
   resetTrigger,
+  stepIndex,
+  totalSteps,
+  sectionId,
+  sectionTitle,
 }) => {
   const styles = useStyles2(getQuizStyles);
 
@@ -187,9 +197,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       // Truncate question if too long
       const truncatedQuestion = question.length > 200 ? question.slice(0, 200) + '...' : question;
 
-      return {
-        step_id: stepId,
-        content_type: 'interactive_guide',
+      // Quiz-specific properties
+      const quizProps = {
         quiz_question: truncatedQuestion,
         quiz_selected_answer: truncatedSelected,
         quiz_correct_answer: truncatedCorrect,
@@ -198,9 +207,20 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         quiz_multi_select: multiSelect,
         quiz_revealed: revealed,
         quiz_total_choices: choices.length,
+        target_action: 'quiz',
+        interaction_location: 'interactive_quiz',
       };
+
+      // Build complete analytics properties with document step context
+      return buildInteractiveStepProperties(quizProps, {
+        stepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      });
     },
-    [choices, selectedIds, question, stepId, multiSelect]
+    [choices, selectedIds, question, stepId, multiSelect, stepIndex, totalSteps, sectionId, sectionTitle]
   );
 
   // Handle check answer

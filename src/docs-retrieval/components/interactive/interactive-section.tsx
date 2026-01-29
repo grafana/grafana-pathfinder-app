@@ -8,7 +8,12 @@ import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
 import { InteractiveQuiz } from './interactive-quiz';
-import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getSourceDocument,
+  calculateStepCompletion,
+} from '../../../lib/analytics';
 import {
   interactiveStepStorage,
   sectionCollapseStorage,
@@ -767,16 +772,6 @@ export function InteractiveSection({
       return;
     }
 
-    // Track "Do Section" button click analytics
-    const docInfo = getSourceDocument(sectionId);
-    reportAppInteraction(UserInteraction.DoSectionButtonClick, {
-      ...docInfo,
-      content_type: 'interactive_guide',
-      section_title: title,
-      total_steps: stepComponents.length,
-      interaction_location: 'interactive_section',
-    });
-
     setIsRunning(true);
     setExecutingStepNumber(0); // Reset step counter
     userScrolledRef.current = false; // Reset user scroll tracking
@@ -887,6 +882,7 @@ export function InteractiveSection({
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
     let stoppedDueToRequirements = false;
+    let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
 
     try {
       for (let i = startIndex; i < stepComponents.length; i++) {
@@ -1046,6 +1042,9 @@ export function InteractiveSection({
         const success = await executeStep(stepInfo);
 
         if (success) {
+          // Track completed step for analytics
+          completedStepsCount = i + 1; // i is 0-indexed, so +1 gives count of completed steps
+
           // Mark step as completed immediately and persistently
           setCompletedSteps((prev) => {
             const newSet = new Set([...prev, stepInfo.stepId]);
@@ -1117,6 +1116,41 @@ export function InteractiveSection({
       isProgrammaticScrollRef.current = false;
       console.warn('[Section] Section finished, isProgrammaticScroll = false');
       // Keep isCancelled state for UI feedback, will be reset on next run
+
+      // Track "Do Section" analytics after completion (success or cancel)
+      const wasCanceled = isCancelledRef.current || stoppedDueToRequirements;
+      const docInfo = getSourceDocument(sectionId);
+
+      // Section-scoped metrics (completedStepsCount is the count of steps completed in this section)
+      const currentSectionStep = completedStepsCount;
+      const currentSectionPercentage = Math.round((completedStepsCount / stepComponents.length) * 100);
+
+      // Document-scoped metrics (use last completed step's index for position)
+      // If no steps completed, use 0 as the index; otherwise use completedStepsCount - 1
+      const lastCompletedStepIndex = completedStepsCount > 0 ? completedStepsCount - 1 : 0;
+      const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+        sectionId,
+        lastCompletedStepIndex
+      );
+      const documentCompletionPercentage = calculateStepCompletion(documentStepIndex, documentTotalSteps);
+
+      reportAppInteraction(UserInteraction.DoSectionButtonClick, {
+        ...docInfo,
+        content_type: 'interactive_guide',
+        section_title: title,
+        // Section-scoped
+        total_steps: stepComponents.length,
+        current_section_step: currentSectionStep,
+        current_section_percentage: currentSectionPercentage,
+        // Document-scoped
+        total_document_steps: documentTotalSteps,
+        current_step: documentStepIndex + 1, // 1-indexed for analytics
+        ...(documentCompletionPercentage !== undefined && { completion_percentage: documentCompletionPercentage }),
+        // Completion status
+        canceled: wasCanceled,
+        resumed: startIndex > 0, // true if user resumed from a previous position
+        interaction_location: 'interactive_section',
+      });
     }
   }, [
     disabled,
@@ -1372,6 +1406,12 @@ export function InteractiveSection({
         const isEligibleForChecking = stepEligibility[stepIndex];
         const isCompleted = completedSteps.has(stepInfo.stepId);
 
+        // Get document-wide step position
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          stepIndex
+        );
+
         // Increment step index for next step child
         stepIndex++;
 
@@ -1381,6 +1421,10 @@ export function InteractiveSection({
           isEligibleForChecking,
           isCompleted,
           onStepComplete: handleStepComplete,
+          stepIndex: documentStepIndex,
+          totalSteps: documentTotalSteps,
+          sectionId: sectionId,
+          sectionTitle: title,
           disabled: disabled,
           resetTrigger,
           key: stepInfo.stepId,

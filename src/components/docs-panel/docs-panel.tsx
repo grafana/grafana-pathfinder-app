@@ -35,6 +35,7 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
+  enrichWithStepContext,
 } from '../../lib/analytics';
 import {
   tabStorage,
@@ -2042,11 +2043,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             if (progressKey) {
                               // Track analytics (use content URL for analytics, not internal storage key)
                               const analyticsUrl = activeTab?.content?.url || activeTab?.baseUrl || '';
-                              reportAppInteraction(UserInteraction.ResetProgressClick, {
-                                content_url: analyticsUrl,
-                                content_type: getContentTypeForAnalytics(analyticsUrl, activeTab?.type || 'docs'),
-                                interaction_location: 'docs_content_meta_header',
-                              });
+                              reportAppInteraction(
+                                UserInteraction.ResetProgressClick,
+                                enrichWithStepContext({
+                                  content_url: analyticsUrl,
+                                  content_type: getContentTypeForAnalytics(analyticsUrl, activeTab?.type || 'docs'),
+                                  interaction_location: 'docs_content_meta_header',
+                                })
+                              );
 
                               // Clear all progress for this content (use content URL to match storage)
                               await interactiveStepStorage.clearAllForContent(progressKey);

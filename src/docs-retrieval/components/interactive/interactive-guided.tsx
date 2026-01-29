@@ -451,8 +451,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               ref_target: renderedStepId,
               interaction_location: 'interactive_guided_auto',
               completion_method: 'auto_detected',
-              step_number: currentStepIndex + 1,
-              total_steps: internalActions.length,
+              internal_step_number: currentStepIndex + 1,
+              internal_actions_count: internalActions.length,
             },
             analyticsStepMeta
           )
