@@ -38,6 +38,10 @@ export async function openBlockEditor(page: Page): Promise<void> {
   // In Grafana with extension sidebar registered, clicking Help toggles the sidebar
   await page.locator('button[aria-label="Help"]').click();
 
+  // Dismiss any tooltip that appeared on the Help button
+  // This prevents tooltip from intercepting pointer events in Grafana dev/preview versions
+  await page.keyboard.press('Escape');
+
   // Wait for panel container to be visible
   const panelContainer = page.getByTestId(testIds.docsPanel.container);
   await expect(panelContainer).toBeVisible();
