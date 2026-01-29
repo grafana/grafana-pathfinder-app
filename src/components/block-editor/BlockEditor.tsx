@@ -16,6 +16,7 @@ import { useModalManager } from './hooks/useModalManager';
 import { useBlockSelection } from './hooks/useBlockSelection';
 import { useBlockFormState } from './hooks/useBlockFormState';
 import { useRecordingState } from './hooks/useRecordingState';
+import { useRecordingActions } from './hooks/useRecordingActions';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { GuideMetadataForm } from './GuideMetadataForm';
 import { BlockList } from './BlockList';
@@ -30,11 +31,6 @@ import blockEditorTutorial from '../../bundled-interactives/block-editor-tutoria
 import type { JsonGuide, BlockType, JsonBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
 import { convertBlockType } from './utils/block-conversion';
-import {
-  groupRecordedStepsByGroupId,
-  convertStepToInteractiveBlock,
-  convertStepsToMultistepBlock,
-} from './utils/recorded-steps-processor';
 import { BlockEditorFooter } from './BlockEditorFooter';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
 
@@ -84,15 +80,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Recording state - pure state layer (no persistence dependencies)
   const recordingState = useRecordingState();
-  const {
-    recordingIntoSection,
-    recordingIntoConditionalBranch,
-    recordingStartUrl,
-    setRecordingIntoSection,
-    setRecordingIntoConditionalBranch,
-    setRecordingStartUrl,
-  } = recordingState;
-  const pendingSectionIdRef = useRef<string | null>(null);
+  const { recordingIntoSection, recordingIntoConditionalBranch, recordingStartUrl } = recordingState;
   // Multi-step grouping toggle for section recording
   const [isSectionMultiStepGroupingEnabled, setIsSectionMultiStepGroupingEnabled] = useState(true);
 
@@ -148,6 +136,18 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     recordingStartUrl,
     recordedSteps: actionRecorder.recordedSteps,
     onRestore: handleRestoreRecordingState,
+  });
+
+  // Recording actions - third layer that uses state and persistence
+  const recordingActions = useRecordingActions({
+    state: recordingState,
+    actionRecorder,
+    editor: {
+      addBlock: editor.addBlock,
+      addBlockToSection: editor.addBlockToSection,
+      addBlockToConditionalBranch: editor.addBlockToConditionalBranch,
+    },
+    onClear: recordingPersistence.clear,
   });
 
   // Memoized callback for persistence save - prevents unnecessary effect triggers
@@ -532,123 +532,19 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     [editor]
   );
 
-  // Handle section recording toggle
-  const handleSectionRecord = useCallback(
-    (sectionId: string) => {
-      if (recordingIntoSection === sectionId) {
-        // Stop recording - convert recorded steps to blocks and add to section
-        actionRecorder.stopRecording();
-        const steps = actionRecorder.recordedSteps;
-
-        // Group consecutive steps with the same groupId into multisteps
-        const processedSteps = groupRecordedStepsByGroupId(steps);
-
-        // Convert to blocks and add to section
-        processedSteps.forEach((item) => {
-          if (item.type === 'single') {
-            const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]);
-            editor.addBlockToSection(interactiveBlock, sectionId);
-          } else {
-            const multistepBlock = convertStepsToMultistepBlock(item.steps);
-            editor.addBlockToSection(multistepBlock, sectionId);
-          }
-        });
-
-        actionRecorder.clearRecording();
-        setRecordingIntoSection(null);
-        setRecordingStartUrl(null);
-        // Clear persisted recording state since recording is complete
-        recordingPersistence.clear();
-      } else {
-        // Start recording into this section (clear any conditional recording first)
-        setRecordingIntoConditionalBranch(null);
-        actionRecorder.clearRecording();
-        actionRecorder.startRecording();
-        setRecordingIntoSection(sectionId);
-        setRecordingStartUrl(window.location.href);
-      }
-    },
-    [recordingIntoSection, actionRecorder, editor, recordingPersistence]
-  );
-
-  // Handle conditional branch recording toggle
-  const handleConditionalBranchRecord = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => {
-      const isRecording =
-        recordingIntoConditionalBranch?.conditionalId === conditionalId &&
-        recordingIntoConditionalBranch?.branch === branch;
-
-      if (isRecording) {
-        // Stop recording - convert recorded steps to blocks and add to conditional branch
-        actionRecorder.stopRecording();
-        const steps = actionRecorder.recordedSteps;
-
-        // Group consecutive steps with the same groupId into multisteps
-        const processedSteps = groupRecordedStepsByGroupId(steps);
-
-        // Convert to blocks and add to conditional branch
-        processedSteps.forEach((item) => {
-          if (item.type === 'single') {
-            const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]);
-            editor.addBlockToConditionalBranch(conditionalId, branch, interactiveBlock);
-          } else {
-            const multistepBlock = convertStepsToMultistepBlock(item.steps);
-            editor.addBlockToConditionalBranch(conditionalId, branch, multistepBlock);
-          }
-        });
-
-        actionRecorder.clearRecording();
-        setRecordingIntoConditionalBranch(null);
-        setRecordingStartUrl(null);
-        // Clear persisted recording state since recording is complete
-        recordingPersistence.clear();
-      } else {
-        // Start recording into this conditional branch (clear any section recording first)
-        setRecordingIntoSection(null);
-        actionRecorder.clearRecording();
-        actionRecorder.startRecording();
-        setRecordingIntoConditionalBranch({ conditionalId, branch });
-        setRecordingStartUrl(window.location.href);
-      }
-    },
-    [recordingIntoConditionalBranch, actionRecorder, editor, recordingPersistence]
-  );
-
-  // Handle stop recording from overlay
-  const handleStopRecording = useCallback(() => {
-    if (recordingIntoSection) {
-      handleSectionRecord(recordingIntoSection);
-    } else if (recordingIntoConditionalBranch) {
-      handleConditionalBranchRecord(
-        recordingIntoConditionalBranch.conditionalId,
-        recordingIntoConditionalBranch.branch
-      );
-    }
-  }, [recordingIntoSection, handleSectionRecord, recordingIntoConditionalBranch, handleConditionalBranchRecord]);
+  // Recording handlers - delegate to recordingActions hook
+  const handleSectionRecord = recordingActions.toggleSectionRecording;
+  const handleConditionalBranchRecord = recordingActions.toggleConditionalRecording;
+  const handleStopRecording = recordingActions.stopRecording;
 
   // Handle "Add and Start Recording" for new sections
+  // This combines form closing with recording start
   const handleSubmitAndStartRecording = useCallback(
     (block: JsonBlock) => {
-      // Add the section block - returns the EditorBlock ID (UUID)
-      const editorBlockId = editor.addBlock(block, insertAtIndex);
-      // Close the form
+      recordingActions.submitAndStartRecording(block, insertAtIndex);
       formState.closeBlockForm();
-
-      // Start recording into this section after a brief delay to allow UI to update
-      pendingSectionIdRef.current = editorBlockId;
-      const capturedUrl = window.location.href;
-      setTimeout(() => {
-        if (pendingSectionIdRef.current) {
-          setRecordingIntoConditionalBranch(null); // Clear any conditional recording
-          actionRecorder.clearRecording();
-          actionRecorder.startRecording();
-          setRecordingIntoSection(pendingSectionIdRef.current);
-          setRecordingStartUrl(capturedUrl);
-          pendingSectionIdRef.current = null;
-        }
-      }, 100);
     },
-    [editor, insertAtIndex, actionRecorder, formState]
+    [recordingActions, insertAtIndex, formState]
   );
 
   // Merge handlers - use selection hook but need access to editor

@@ -38,3 +38,11 @@ export type {
   ConditionalRecordingTarget,
   RecordingState,
 } from './useRecordingState';
+
+export { useRecordingActions } from './useRecordingActions';
+export type {
+  UseRecordingActionsReturn,
+  RecordingActionsDependencies,
+  ActionRecorderInterface,
+  EditorBlockInterface,
+} from './useRecordingActions';
