@@ -30,3 +30,11 @@ export type {
   NestedBlockEditingState,
   ConditionalBranchEditingState,
 } from './useBlockFormState';
+
+export { useRecordingState } from './useRecordingState';
+export type {
+  UseRecordingStateReturn,
+  RecordingStateSnapshot,
+  ConditionalRecordingTarget,
+  RecordingState,
+} from './useRecordingState';

@@ -85,7 +85,7 @@ describe('useBlockFormState', () => {
       const { result } = renderHook(() => useBlockFormState(), { wrapper });
       const block = {
         type: 'interactive' as const,
-        action: 'click' as const,
+        action: 'button' as const,
         reftarget: '[data-testid="btn"]',
         content: 'Click the button',
       };

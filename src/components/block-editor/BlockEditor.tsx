@@ -15,6 +15,7 @@ import { useRecordingPersistence, type PersistedRecordingState } from './hooks/u
 import { useModalManager } from './hooks/useModalManager';
 import { useBlockSelection } from './hooks/useBlockSelection';
 import { useBlockFormState } from './hooks/useBlockFormState';
+import { useRecordingState } from './hooks/useRecordingState';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { GuideMetadataForm } from './GuideMetadataForm';
 import { BlockList } from './BlockList';
@@ -81,18 +82,19 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     setEditingConditionalBranchBlock,
   } = formState;
 
-  // Section recording state
-  const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
-  const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
+  // Recording state - pure state layer (no persistence dependencies)
+  const recordingState = useRecordingState();
+  const {
+    recordingIntoSection,
+    recordingIntoConditionalBranch,
+    recordingStartUrl,
+    setRecordingIntoSection,
+    setRecordingIntoConditionalBranch,
+    setRecordingStartUrl,
+  } = recordingState;
   const pendingSectionIdRef = useRef<string | null>(null);
   // Multi-step grouping toggle for section recording
   const [isSectionMultiStepGroupingEnabled, setIsSectionMultiStepGroupingEnabled] = useState(true);
-
-  // Conditional branch recording state
-  const [recordingIntoConditionalBranch, setRecordingIntoConditionalBranch] = useState<{
-    conditionalId: string;
-    branch: 'whenTrue' | 'whenFalse';
-  } | null>(null);
 
   // Block selection mode state (for merging blocks)
   const selection = useBlockSelection();
@@ -119,10 +121,12 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Callback to restore recording state after page refresh
   const handleRestoreRecordingState = useCallback(
     (state: PersistedRecordingState) => {
-      // Restore the recording context
-      setRecordingIntoSection(state.recordingIntoSection);
-      setRecordingIntoConditionalBranch(state.recordingIntoConditionalBranch);
-      setRecordingStartUrl(state.recordingStartUrl);
+      // Restore the recording context using the state hook's restore method
+      recordingState.restore({
+        recordingIntoSection: state.recordingIntoSection,
+        recordingIntoConditionalBranch: state.recordingIntoConditionalBranch,
+        recordingStartUrl: state.recordingStartUrl,
+      });
 
       // Restore recorded steps and resume recording
       if (state.recordedSteps.length > 0) {
@@ -134,7 +138,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         actionRecorder.startRecording();
       }
     },
-    [actionRecorder]
+    [recordingState, actionRecorder]
   );
 
   // Recording state persistence - survives page refreshes
@@ -393,12 +397,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     persistence.clear(); // Clear localStorage
     recordingPersistence.clear(); // Clear any persisted recording state
     actionRecorder.clearRecording(); // Stop any active recording
-    setRecordingIntoSection(null);
-    setRecordingIntoConditionalBranch(null);
-    setRecordingStartUrl(null);
+    recordingState.reset(); // Clear recording state
     editor.resetGuide(); // Reset editor state
     modals.close('newGuideConfirm');
-  }, [editor, persistence, recordingPersistence, actionRecorder, modals]);
+  }, [editor, persistence, recordingPersistence, actionRecorder, recordingState, modals]);
 
   // Handle import guide
   const handleImportGuide = useCallback(
