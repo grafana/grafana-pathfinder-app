@@ -115,13 +115,7 @@ export function BlockEditorHeader({
         </div>
 
         {/* Import button */}
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="upload"
-          onClick={onOpenImport}
-          tooltip="Import JSON guide"
-        />
+        <Button variant="secondary" size="sm" icon="upload" onClick={onOpenImport} tooltip="Import JSON guide" />
 
         {/* Export actions */}
         <Button
@@ -132,27 +126,9 @@ export function BlockEditorHeader({
           tooltip="Copy JSON to clipboard"
           data-testid="copy-json-button"
         />
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="download-alt"
-          onClick={onDownload}
-          tooltip="Download JSON file"
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="github"
-          onClick={onOpenGitHubPR}
-          tooltip="Create GitHub PR"
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="file-blank"
-          onClick={onNewGuide}
-          tooltip="Start new guide"
-        />
+        <Button variant="secondary" size="sm" icon="download-alt" onClick={onDownload} tooltip="Download JSON file" />
+        <Button variant="secondary" size="sm" icon="github" onClick={onOpenGitHubPR} tooltip="Create GitHub PR" />
+        <Button variant="secondary" size="sm" icon="file-blank" onClick={onNewGuide} tooltip="Start new guide" />
       </div>
     </div>
   );

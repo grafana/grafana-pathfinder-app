@@ -25,11 +25,7 @@ export { useBlockSelection } from './useBlockSelection';
 export type { UseBlockSelectionReturn } from './useBlockSelection';
 
 export { useBlockFormState } from './useBlockFormState';
-export type {
-  BlockFormState,
-  NestedBlockEditingState,
-  ConditionalBranchEditingState,
-} from './useBlockFormState';
+export type { BlockFormState, NestedBlockEditingState, ConditionalBranchEditingState } from './useBlockFormState';
 
 export { useRecordingState } from './useRecordingState';
 export type {

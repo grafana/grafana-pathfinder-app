@@ -3,7 +3,9 @@ import { useRecordingState } from './useRecordingState';
 import { useRecordingActions, type RecordingActionsDependencies } from './useRecordingActions';
 
 // Create mock dependencies
-const createMockDeps = (stateOverride?: Partial<ReturnType<typeof useRecordingState>>): RecordingActionsDependencies => {
+const createMockDeps = (
+  stateOverride?: Partial<ReturnType<typeof useRecordingState>>
+): RecordingActionsDependencies => {
   // Create a real recording state and let it be overridden
   const baseState = {
     recordingIntoSection: null as string | null,
@@ -290,11 +292,7 @@ describe('useRecordingActions', () => {
         result.current.toggleConditionalRecording('cond-1', 'whenTrue');
       });
 
-      expect(deps.editor.addBlockToConditionalBranch).toHaveBeenCalledWith(
-        'cond-1',
-        'whenTrue',
-        expect.any(Object)
-      );
+      expect(deps.editor.addBlockToConditionalBranch).toHaveBeenCalledWith('cond-1', 'whenTrue', expect.any(Object));
     });
   });
 });

@@ -606,7 +606,16 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       // Close form and clear all editing state
       formState.closeBlockForm();
     },
-    [editor, editingBlock, editingNestedBlock, editingConditionalBranchBlock, insertAtIndex, sectionContext, conditionalContext, formState]
+    [
+      editor,
+      editingBlock,
+      editingNestedBlock,
+      editingConditionalBranchBlock,
+      insertAtIndex,
+      sectionContext,
+      conditionalContext,
+      formState,
+    ]
   );
 
   const { state } = editor;
