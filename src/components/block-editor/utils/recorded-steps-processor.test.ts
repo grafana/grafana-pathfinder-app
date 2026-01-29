@@ -13,7 +13,6 @@ import type { RecordedStep } from '../../../utils/devtools';
 const makeStep = (overrides: Partial<RecordedStep> = {}): RecordedStep => ({
   action: 'click',
   selector: '[data-testid="button"]',
-  timestamp: Date.now(),
   description: 'Click the button',
   ...overrides,
 });
