@@ -34,6 +34,7 @@ import {
   convertStepsToMultistepBlock,
 } from './utils/recorded-steps-processor';
 import { BlockEditorFooter } from './BlockEditorFooter';
+import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -49,10 +50,18 @@ export interface BlockEditorProps {
 /**
  * Block-based JSON guide editor
  */
-export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
+/**
+ * Inner component that uses the context.
+ * Separated from the provider wrapper for clean hook usage.
+ */
+function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
   const hasLoadedFromStorage = useRef(false);
+
+  // Block editor context - replaces window globals for section/conditional editing
+  const { sectionContext, conditionalContext, setSectionContext, setConditionalContext, clearContext } =
+    useBlockEditorContext();
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   // Note: isBlockFormOpen stays separate as it coordinates with persistence
@@ -201,16 +210,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     setEditingNestedBlock(null);
     setEditingConditionalBranchBlock(null);
     setInsertAtIndex(undefined);
-    // Clear any section context
-    delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
-      .__blockEditorSectionContext;
-    // Clear any conditional context
-    delete (
-      window as unknown as {
-        __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
-      }
-    ).__blockEditorConditionalContext;
-  }, []);
+    // Clear any section/conditional context
+    clearContext();
+  }, [clearContext]);
 
   // Handle split multistep/guided into individual interactive blocks
   const handleSplitToBlocks = useCallback(() => {
@@ -452,23 +454,21 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   );
 
   // Handle inserting a block directly into a section
-  const handleInsertBlockInSection = useCallback((type: BlockType, sectionId: string, index?: number) => {
-    // Open the form modal for this block type, but target the section
-    setEditingBlockType(type);
-    setEditingBlock(null);
-    // We'll need to handle section insertion differently
-    // For now, store the section ID and handle in submit
-    setInsertAtIndex(undefined);
-    setIsBlockFormOpen(true);
+  const handleInsertBlockInSection = useCallback(
+    (type: BlockType, sectionId: string, index?: number) => {
+      // Open the form modal for this block type, but target the section
+      setEditingBlockType(type);
+      setEditingBlock(null);
+      // We'll need to handle section insertion differently
+      // For now, store the section ID and handle in submit
+      setInsertAtIndex(undefined);
+      setIsBlockFormOpen(true);
 
-    // Store section context for insertion
-    (
-      window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }
-    ).__blockEditorSectionContext = {
-      sectionId,
-      index,
-    };
-  }, []);
+      // Store section context for insertion
+      setSectionContext({ sectionId, index });
+    },
+    [setSectionContext]
+  );
 
   // Handle editing a nested block
   const handleNestedBlockEdit = useCallback((sectionId: string, nestedIndex: number, block: JsonBlock) => {
@@ -514,17 +514,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       setIsBlockFormOpen(true);
 
       // Store conditional context for insertion
-      (
-        window as unknown as {
-          __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
-        }
-      ).__blockEditorConditionalContext = {
-        conditionalId,
-        branch,
-        index,
-      };
+      setConditionalContext({ conditionalId, branch, index });
     },
-    []
+    [setConditionalContext]
   );
 
   // Handle editing a block within a conditional branch
@@ -742,16 +734,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
     (block: JsonBlock) => {
-      const sectionContext = (
-        window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }
-      ).__blockEditorSectionContext;
-
-      const conditionalContext = (
-        window as unknown as {
-          __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
-        }
-      ).__blockEditorConditionalContext;
-
       if (editingConditionalBranchBlock) {
         // Editing a block within a conditional branch
         editor.updateConditionalBranchBlock(
@@ -775,19 +757,10 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           block,
           conditionalContext.index
         );
-        delete (
-          window as unknown as {
-            __blockEditorConditionalContext?: {
-              conditionalId: string;
-              branch: 'whenTrue' | 'whenFalse';
-              index?: number;
-            };
-          }
-        ).__blockEditorConditionalContext;
+        clearContext();
       } else if (sectionContext) {
         editor.addBlockToSection(block, sectionContext.sectionId, sectionContext.index);
-        delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
-          .__blockEditorSectionContext;
+        clearContext();
       } else {
         editor.addBlock(block, insertAtIndex);
       }
@@ -796,7 +769,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       setEditingBlock(null);
       setInsertAtIndex(undefined);
     },
-    [editor, editingBlock, editingNestedBlock, editingConditionalBranchBlock, insertAtIndex]
+    [editor, editingBlock, editingNestedBlock, editingConditionalBranchBlock, insertAtIndex, sectionContext, conditionalContext, clearContext]
   );
 
   const { state } = editor;
@@ -1071,5 +1044,17 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   );
 }
 
+/**
+ * Block-based JSON guide editor with context provider.
+ */
+export function BlockEditor(props: BlockEditorProps) {
+  return (
+    <BlockEditorContextProvider>
+      <BlockEditorInner {...props} />
+    </BlockEditorContextProvider>
+  );
+}
+
 // Add display name for debugging
 BlockEditor.displayName = 'BlockEditor';
+BlockEditorInner.displayName = 'BlockEditorInner';
