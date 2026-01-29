@@ -349,7 +349,16 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         });
       }
     },
-    [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor]
+    [
+      editingBlock,
+      editingNestedBlock,
+      editingConditionalBranchBlock,
+      editor,
+      setEditingBlock,
+      setEditingBlockType,
+      setEditingConditionalBranchBlock,
+      setEditingNestedBlock,
+    ]
   );
 
   // Handle copy to clipboard
