@@ -46,6 +46,9 @@ export async function openBlockEditor(page: Page): Promise<void> {
   // Use longer timeout as dev mode settings need to propagate
   const devToolsTab = page.getByTestId(testIds.docsPanel.tab('devtools'));
   await expect(devToolsTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
+
+  // Hover before click to dismiss any tooltips that may intercept pointer events
+  await devToolsTab.hover();
   await devToolsTab.click();
 
   // Wait for block editor to be visible
