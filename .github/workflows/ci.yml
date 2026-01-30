@@ -16,6 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: '22'
+
 jobs:
   # Setup job installs dependencies and caches node_modules for parallel jobs
   setup:
@@ -30,7 +33,7 @@ jobs:
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
           persist-credentials: false
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm' # Cross-run npm cache (speeds up npm ci)
       - run: npm ci
       - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
@@ -53,7 +56,7 @@ jobs:
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
           persist-credentials: false
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: node_modules
@@ -75,7 +78,7 @@ jobs:
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
           persist-credentials: false
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: node_modules
@@ -97,7 +100,7 @@ jobs:
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
           persist-credentials: false
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: node_modules
@@ -119,7 +122,7 @@ jobs:
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
           persist-credentials: false
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: node_modules
@@ -154,7 +157,7 @@ jobs:
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
           persist-credentials: false
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: node_modules
@@ -316,7 +319,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
       - name: Install dev dependencies
