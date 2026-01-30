@@ -91,16 +91,6 @@ export function validateGuide(guide: JsonGuide): { isValid: boolean; errors: str
     });
   }
 
-  // Validate match metadata if present
-  if (guide.match) {
-    if (guide.match.urlPrefix && !Array.isArray(guide.match.urlPrefix)) {
-      errors.push('match.urlPrefix must be an array');
-    }
-    if (guide.match.tags && !Array.isArray(guide.match.tags)) {
-      errors.push('match.tags must be an array');
-    }
-  }
-
   return {
     isValid: errors.length === 0,
     errors,

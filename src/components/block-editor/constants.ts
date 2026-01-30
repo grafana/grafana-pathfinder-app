@@ -124,10 +124,6 @@ export const RECORDING_STATE_STORAGE_KEY = 'pathfinder-block-editor-recording-st
 export const DEFAULT_GUIDE_METADATA = {
   id: 'new-guide',
   title: 'New Guide',
-  match: {
-    urlPrefix: [],
-    tags: [],
-  },
 };
 
 /**

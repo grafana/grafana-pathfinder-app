@@ -35,17 +35,6 @@ const SafeUrlSchema = z
  */
 export const JsonInteractiveActionSchema = z.enum(['highlight', 'button', 'formfill', 'navigate', 'hover', 'noop']);
 
-// ============ MATCH METADATA ============
-
-/**
- * Schema for guide match metadata.
- * @coupling Type: JsonMatchMetadata
- */
-export const JsonMatchMetadataSchema = z.object({
-  urlPrefix: z.array(z.string()).optional(),
-  tags: z.array(z.string()).optional(),
-});
-
 // ============ QUIZ SCHEMAS ============
 
 /**
@@ -415,7 +404,6 @@ export const JsonGuideSchemaStrict = z.object({
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),
-  match: JsonMatchMetadataSchema.optional(),
 });
 
 /**
@@ -443,8 +431,7 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
  * Keep in sync with the schemas above.
  */
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
-  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'match']),
-  _match: new Set(['urlPrefix', 'tags']),
+  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks']),
   _step: new Set([
     'action',
     'reftarget',

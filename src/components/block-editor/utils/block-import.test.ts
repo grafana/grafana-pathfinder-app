@@ -557,50 +557,6 @@ describe('parseAndValidateGuide', () => {
     });
   });
 
-  describe('match metadata validation', () => {
-    it('should accept valid match metadata', () => {
-      const guide = JSON.stringify({
-        id: 'test',
-        title: 'Test',
-        blocks: [],
-        match: {
-          urlPrefix: ['/dashboards', '/explore'],
-          tags: ['beginner', 'tutorial'],
-        },
-      });
-      const result = parseAndValidateGuide(guide);
-      expect(result.isValid).toBe(true);
-    });
-
-    it('should reject non-array urlPrefix', () => {
-      const guide = JSON.stringify({
-        id: 'test',
-        title: 'Test',
-        blocks: [],
-        match: {
-          urlPrefix: '/dashboards', // should be array
-        },
-      });
-      const result = parseAndValidateGuide(guide);
-      expect(result.isValid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
-
-    it('should reject non-array tags', () => {
-      const guide = JSON.stringify({
-        id: 'test',
-        title: 'Test',
-        blocks: [],
-        match: {
-          tags: 'beginner', // should be array
-        },
-      });
-      const result = parseAndValidateGuide(guide);
-      expect(result.isValid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
-  });
-
   describe('warnings', () => {
     it('should warn about empty blocks array', () => {
       const guide = JSON.stringify({

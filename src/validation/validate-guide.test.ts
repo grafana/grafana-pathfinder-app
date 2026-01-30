@@ -31,20 +31,6 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(true);
     });
 
-    it('should validate a guide with match metadata', () => {
-      const guide = JSON.stringify({
-        id: 'matched-guide',
-        title: 'Matched Guide',
-        blocks: [{ type: 'markdown', content: 'Content' }],
-        match: {
-          urlPrefix: ['/dashboards', '/explore'],
-          tags: ['beginner', 'tutorial'],
-        },
-      });
-      const result = validateGuideFromString(guide);
-      expect(result.isValid).toBe(true);
-    });
-
     it('should validate all block types', () => {
       const guide = JSON.stringify({
         id: 'all-blocks',

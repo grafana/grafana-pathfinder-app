@@ -207,7 +207,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     guide: {
       id: initialGuide?.id ?? DEFAULT_GUIDE_METADATA.id,
       title: initialGuide?.title ?? DEFAULT_GUIDE_METADATA.title,
-      match: initialGuide?.match ?? DEFAULT_GUIDE_METADATA.match,
     },
     blocks: initialBlocks,
     isPreviewMode: false,
@@ -222,7 +221,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           id: newState.guide.id,
           title: newState.guide.title,
           blocks: newState.blocks.map((b) => b.block),
-          ...(newState.guide.match && { match: newState.guide.match }),
         };
         onChange(guide);
       }
@@ -1177,7 +1175,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       blocks: state.blocks.map((b) => {
         return b.block;
       }),
-      ...(state.guide.match && Object.keys(state.guide.match).length > 0 && { match: state.guide.match }),
     };
   }, [state.guide, state.blocks]);
 
@@ -1194,7 +1191,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       guide: {
         id: guide.id,
         title: guide.title,
-        match: guide.match,
       },
       blocks: newBlocks,
       isPreviewMode: false,
