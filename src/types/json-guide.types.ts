@@ -20,18 +20,6 @@ export interface JsonGuide {
   title: string;
   /** Content blocks that make up the guide */
   blocks: JsonBlock[];
-  /** Optional metadata for recommendation matching */
-  match?: JsonMatchMetadata;
-}
-
-/**
- * Metadata for determining when to recommend a guide.
- */
-export interface JsonMatchMetadata {
-  /** URL prefixes where this guide is relevant */
-  urlPrefix?: string[];
-  /** Tags for categorization and filtering */
-  tags?: string[];
 }
 
 // ============ BLOCK UNION ============

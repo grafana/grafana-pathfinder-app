@@ -52,10 +52,6 @@ export interface BlockEditorState {
   guide: {
     id: string;
     title: string;
-    match?: {
-      urlPrefix?: string[];
-      tags?: string[];
-    };
   };
   /** Blocks in the guide */
   blocks: EditorBlock[];
