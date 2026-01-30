@@ -278,18 +278,20 @@ export function BlockItem({
           <IconButton
             name="edit"
             size="md"
-            aria-label="Edit"
+            aria-label="Edit block"
             onClick={handleEdit}
             className={styles.editButton}
             tooltip="Edit block"
+            data-testid="block-edit-button"
           />
           <IconButton
             name="copy"
             size="md"
-            aria-label="Duplicate"
+            aria-label="Duplicate block"
             onClick={handleDuplicate}
             className={styles.actionButton}
             tooltip="Duplicate block"
+            data-testid="block-duplicate-button"
           />
           <ConfirmDeleteButton
             onConfirm={onDelete}

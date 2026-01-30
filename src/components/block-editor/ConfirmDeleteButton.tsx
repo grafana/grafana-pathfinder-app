@@ -71,6 +71,7 @@ export function ConfirmDeleteButton({
         onClick={handleClick}
         className={className ?? styles.deleteButton}
         tooltip={tooltip}
+        data-testid="block-delete-button"
       />
 
       <ConfirmModal
@@ -81,6 +82,7 @@ export function ConfirmDeleteButton({
         dismissText="Cancel"
         onConfirm={handleConfirm}
         onDismiss={handleDismiss}
+        confirmButtonVariant="destructive"
       />
     </>
   );

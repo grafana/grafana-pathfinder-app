@@ -17,3 +17,28 @@ export type {
   UseRecordingPersistenceReturn,
   PersistedRecordingState,
 } from './useRecordingPersistence';
+
+export { useModalManager } from './useModalManager';
+export type { ModalName, UseModalManagerReturn } from './useModalManager';
+
+export { useBlockSelection } from './useBlockSelection';
+export type { UseBlockSelectionReturn } from './useBlockSelection';
+
+export { useBlockFormState } from './useBlockFormState';
+export type { BlockFormState, NestedBlockEditingState, ConditionalBranchEditingState } from './useBlockFormState';
+
+export { useRecordingState } from './useRecordingState';
+export type {
+  UseRecordingStateReturn,
+  RecordingStateSnapshot,
+  ConditionalRecordingTarget,
+  RecordingState,
+} from './useRecordingState';
+
+export { useRecordingActions } from './useRecordingActions';
+export type {
+  UseRecordingActionsReturn,
+  RecordingActionsDependencies,
+  ActionRecorderInterface,
+  EditorBlockInterface,
+} from './useRecordingActions';

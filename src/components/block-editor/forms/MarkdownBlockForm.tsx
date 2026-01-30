@@ -15,6 +15,7 @@ import Link from '@tiptap/extension-link';
 import { Markdown } from '@tiptap/markdown';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { testIds } from '../../testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonMarkdownBlock } from '../../../types/json-guide.types';
 
@@ -598,6 +599,7 @@ export function MarkdownBlockForm({
               type="button"
               className={`${editorStyles.modeTab} ${editMode === 'rich' ? editorStyles.modeTabActive : ''}`}
               onClick={handleSwitchToRich}
+              data-testid={testIds.blockEditor.richMarkdownTab}
             >
               <span>✨</span> Rich
             </button>
@@ -605,6 +607,7 @@ export function MarkdownBlockForm({
               type="button"
               className={`${editorStyles.modeTab} ${editMode === 'raw' ? editorStyles.modeTabActive : ''}`}
               onClick={handleSwitchToRaw}
+              data-testid={testIds.blockEditor.rawMarkdownTab}
             >
               <span>📝</span> Raw Markdown
             </button>
@@ -636,6 +639,7 @@ Write your **markdown** content here.
 \`\`\`
 code block
 \`\`\``}
+              data-testid={testIds.blockEditor.markdownTextarea}
             />
           )}
         </div>
@@ -684,7 +688,7 @@ code block
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
-        <Button variant="primary" type="submit" disabled={!hasContent}>
+        <Button variant="primary" type="submit" disabled={!hasContent} data-testid={testIds.blockEditor.submitButton}>
           {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>

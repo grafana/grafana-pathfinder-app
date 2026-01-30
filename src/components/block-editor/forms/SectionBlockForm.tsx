@@ -9,6 +9,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Button, Field, Input, Badge, useStyles2, Alert } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { testIds } from '../../testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonSectionBlock } from '../../../types/json-guide.types';
 
@@ -143,6 +144,7 @@ export function SectionBlockForm({
           onBlur={handleTitleBlur}
           placeholder="e.g., Configure Data Source"
           autoFocus
+          data-testid={testIds.blockEditor.sectionTitleInput}
         />
       </Field>
 
@@ -152,6 +154,7 @@ export function SectionBlockForm({
           value={sectionId}
           onChange={(e) => handleIdChange(e.currentTarget.value)}
           placeholder="e.g., section-configure-datasource"
+          data-testid={testIds.blockEditor.sectionIdInput}
         />
       </Field>
 
@@ -195,11 +198,18 @@ export function SectionBlockForm({
           Cancel
         </Button>
         {!isEditing && onSubmitAndRecord && (
-          <Button variant="primary" type="button" disabled={!isValid} icon="circle" onClick={handleSubmitAndRecord}>
+          <Button
+            variant="primary"
+            type="button"
+            disabled={!isValid}
+            icon="circle"
+            onClick={handleSubmitAndRecord}
+            data-testid={testIds.blockEditor.addAndRecordButton}
+          >
             Add and start recording
           </Button>
         )}
-        <Button variant="primary" type="submit" disabled={!isValid}>
+        <Button variant="primary" type="submit" disabled={!isValid} data-testid={testIds.blockEditor.submitButton}>
           {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>

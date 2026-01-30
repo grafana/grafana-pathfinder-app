@@ -7,26 +7,29 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
+import { useStyles2 } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
+import { useModalManager } from './hooks/useModalManager';
+import { useBlockSelection } from './hooks/useBlockSelection';
+import { useBlockFormState } from './hooks/useBlockFormState';
+import { useRecordingState } from './hooks/useRecordingState';
+import { useRecordingActions } from './hooks/useRecordingActions';
 import { getBlockEditorStyles } from './block-editor.styles';
-import { GuideMetadataForm } from './GuideMetadataForm';
-import { BlockPalette } from './BlockPalette';
-import { BlockList } from './BlockList';
-import { BlockPreview } from './BlockPreview';
 import { BlockFormModal } from './BlockFormModal';
-import { ImportGuideModal } from './ImportGuideModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
-import { GitHubPRModal } from './GitHubPRModal';
-import { BlockEditorTour } from './BlockEditorTour';
 import { useActionRecorder } from '../../utils/devtools';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
-import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
-import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
+import type { JsonGuide, BlockType, JsonBlock, BlockOperations } from './types';
+import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
 import { convertBlockType } from './utils/block-conversion';
+import { BlockEditorFooter } from './BlockEditorFooter';
+import { BlockEditorHeader } from './BlockEditorHeader';
+import { BlockEditorContent } from './BlockEditorContent';
+import { BlockEditorModals } from './BlockEditorModals';
+import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -42,52 +45,44 @@ export interface BlockEditorProps {
 /**
  * Block-based JSON guide editor
  */
-export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
+/**
+ * Inner component that uses the context.
+ * Separated from the provider wrapper for clean hook usage.
+ */
+function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
   const hasLoadedFromStorage = useRef(false);
 
-  // Modal state - declared early so persistence can check if modal is open
-  const [isMetadataOpen, setIsMetadataOpen] = useState(false);
-  const [isBlockFormOpen, setIsBlockFormOpen] = useState(false);
-  const [editingBlockType, setEditingBlockType] = useState<BlockType | null>(null);
-  const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
-  const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
-  const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isGitHubPRModalOpen, setIsGitHubPRModalOpen] = useState(false);
-  const [isTourOpen, setIsTourOpen] = useState(false);
-  // State for editing nested blocks
-  const [editingNestedBlock, setEditingNestedBlock] = useState<{
-    sectionId: string;
-    nestedIndex: number;
-    block: JsonBlock;
-  } | null>(null);
+  // Block editor context - replaces window globals for section/conditional editing
+  const { sectionContext, conditionalContext } = useBlockEditorContext();
 
-  // State for editing conditional branch blocks
-  const [editingConditionalBranchBlock, setEditingConditionalBranchBlock] = useState<{
-    conditionalId: string;
-    branch: 'whenTrue' | 'whenFalse';
-    nestedIndex: number;
-    block: JsonBlock;
-  } | null>(null);
+  // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
+  const modals = useModalManager();
 
-  // Section recording state
-  const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
-  const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
-  const pendingSectionIdRef = useRef<string | null>(null);
+  // Block form state - manages form modal and editing context
+  const formState = useBlockFormState();
+  const {
+    isBlockFormOpen,
+    editingBlockType,
+    editingBlock,
+    insertAtIndex,
+    editingNestedBlock,
+    editingConditionalBranchBlock,
+    setEditingBlockType,
+    setEditingBlock,
+    setEditingNestedBlock,
+    setEditingConditionalBranchBlock,
+  } = formState;
+
+  // Recording state - pure state layer (no persistence dependencies)
+  const recordingState = useRecordingState();
+  const { recordingIntoSection, recordingIntoConditionalBranch, recordingStartUrl } = recordingState;
   // Multi-step grouping toggle for section recording
   const [isSectionMultiStepGroupingEnabled, setIsSectionMultiStepGroupingEnabled] = useState(true);
 
-  // Conditional branch recording state
-  const [recordingIntoConditionalBranch, setRecordingIntoConditionalBranch] = useState<{
-    conditionalId: string;
-    branch: 'whenTrue' | 'whenFalse';
-  } | null>(null);
-
   // Block selection mode state (for merging blocks)
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
+  const selection = useBlockSelection();
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
   const excludeSelectors = useMemo(
@@ -111,10 +106,12 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   // Callback to restore recording state after page refresh
   const handleRestoreRecordingState = useCallback(
     (state: PersistedRecordingState) => {
-      // Restore the recording context
-      setRecordingIntoSection(state.recordingIntoSection);
-      setRecordingIntoConditionalBranch(state.recordingIntoConditionalBranch);
-      setRecordingStartUrl(state.recordingStartUrl);
+      // Restore the recording context using the state hook's restore method
+      recordingState.restore({
+        recordingIntoSection: state.recordingIntoSection,
+        recordingIntoConditionalBranch: state.recordingIntoConditionalBranch,
+        recordingStartUrl: state.recordingStartUrl,
+      });
 
       // Restore recorded steps and resume recording
       if (state.recordedSteps.length > 0) {
@@ -126,7 +123,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         actionRecorder.startRecording();
       }
     },
-    [actionRecorder]
+    [recordingState, actionRecorder]
   );
 
   // Recording state persistence - survives page refreshes
@@ -137,6 +134,65 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     recordedSteps: actionRecorder.recordedSteps,
     onRestore: handleRestoreRecordingState,
   });
+
+  // Recording actions - third layer that uses state and persistence
+  const recordingActions = useRecordingActions({
+    state: recordingState,
+    actionRecorder,
+    editor: {
+      addBlock: editor.addBlock,
+      addBlockToSection: editor.addBlockToSection,
+      addBlockToConditionalBranch: editor.addBlockToConditionalBranch,
+    },
+    onClear: recordingPersistence.clear,
+  });
+
+  // Create BlockOperations for child components
+  // REACT: memoize object dependencies (R3)
+  const blockOperations: BlockOperations = useMemo(
+    () => ({
+      // Root block CRUD
+      onBlockEdit: formState.openEditBlockForm,
+      onBlockDelete: editor.removeBlock,
+      onBlockMove: editor.moveBlock,
+      onBlockDuplicate: editor.duplicateBlock,
+      onInsertBlock: formState.openNewBlockForm,
+
+      // Section nesting
+      onNestBlock: editor.nestBlockInSection,
+      onUnnestBlock: editor.unnestBlockFromSection,
+      onInsertBlockInSection: formState.openNestedBlockForm,
+      onNestedBlockEdit: formState.openEditNestedBlockForm,
+      onNestedBlockDelete: editor.deleteNestedBlock,
+      onNestedBlockDuplicate: editor.duplicateNestedBlock,
+      onNestedBlockMove: editor.moveNestedBlock,
+
+      // Conditional branch operations
+      onInsertBlockInConditional: formState.openConditionalBlockForm,
+      onConditionalBranchBlockEdit: formState.openEditConditionalBlockForm,
+      onConditionalBranchBlockDelete: editor.deleteConditionalBranchBlock,
+      onConditionalBranchBlockDuplicate: editor.duplicateConditionalBranchBlock,
+      onConditionalBranchBlockMove: editor.moveConditionalBranchBlock,
+      onNestBlockInConditional: editor.nestBlockInConditional,
+      onUnnestBlockFromConditional: editor.unnestBlockFromConditional,
+      onMoveBlockBetweenConditionalBranches: editor.moveBlockBetweenConditionalBranches,
+
+      // Cross-container moves
+      onMoveBlockBetweenSections: editor.moveBlockBetweenSections,
+
+      // Selection state
+      isSelectionMode: selection.isSelectionMode,
+      selectedBlockIds: selection.selectedBlockIds,
+      onToggleBlockSelection: selection.toggleBlockSelection,
+
+      // Recording state
+      recordingIntoSection,
+      recordingIntoConditionalBranch,
+      onSectionRecord: recordingActions.toggleSectionRecording,
+      onConditionalBranchRecord: recordingActions.toggleConditionalRecording,
+    }),
+    [formState, editor, selection, recordingIntoSection, recordingIntoConditionalBranch, recordingActions]
+  );
 
   // Memoized callback for persistence save - prevents unnecessary effect triggers
   const handlePersistenceSave = useCallback(() => {
@@ -175,39 +231,10 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   }, [initialGuide, persistence, editor]);
 
   // Handle block type selection from palette
-  const handleBlockTypeSelect = useCallback((type: BlockType, index?: number) => {
-    setEditingBlockType(type);
-    setEditingBlock(null);
-    setInsertAtIndex(index);
-    setIsBlockFormOpen(true);
-  }, []);
-
-  // Handle block edit
-  const handleBlockEdit = useCallback((block: EditorBlock) => {
-    setEditingBlockType(block.block.type as BlockType);
-    setEditingBlock(block);
-    setInsertAtIndex(undefined);
-    setIsBlockFormOpen(true);
-  }, []);
+  const handleBlockTypeSelect = formState.openNewBlockForm;
 
   // Handle form cancel
-  const handleBlockFormCancel = useCallback(() => {
-    setIsBlockFormOpen(false);
-    setEditingBlockType(null);
-    setEditingBlock(null);
-    setEditingNestedBlock(null);
-    setEditingConditionalBranchBlock(null);
-    setInsertAtIndex(undefined);
-    // Clear any section context
-    delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
-      .__blockEditorSectionContext;
-    // Clear any conditional context
-    delete (
-      window as unknown as {
-        __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
-      }
-    ).__blockEditorConditionalContext;
-  }, []);
+  const handleBlockFormCancel = formState.closeBlockForm;
 
   // Handle split multistep/guided into individual interactive blocks
   const handleSplitToBlocks = useCallback(() => {
@@ -362,7 +389,16 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         });
       }
     },
-    [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor]
+    [
+      editingBlock,
+      editingNestedBlock,
+      editingConditionalBranchBlock,
+      editor,
+      setEditingBlock,
+      setEditingBlockType,
+      setEditingConditionalBranchBlock,
+      setEditingNestedBlock,
+    ]
   );
 
   // Handle copy to clipboard
@@ -411,20 +447,18 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     persistence.clear(); // Clear localStorage
     recordingPersistence.clear(); // Clear any persisted recording state
     actionRecorder.clearRecording(); // Stop any active recording
-    setRecordingIntoSection(null);
-    setRecordingIntoConditionalBranch(null);
-    setRecordingStartUrl(null);
+    recordingState.reset(); // Clear recording state
     editor.resetGuide(); // Reset editor state
-    setIsNewGuideConfirmOpen(false);
-  }, [editor, persistence, recordingPersistence, actionRecorder]);
+    modals.close('newGuideConfirm');
+  }, [editor, persistence, recordingPersistence, actionRecorder, recordingState, modals]);
 
   // Handle import guide
   const handleImportGuide = useCallback(
     (guide: JsonGuide) => {
       editor.loadGuide(guide);
-      setIsImportModalOpen(false);
+      modals.close('import');
     },
-    [editor]
+    [editor, modals]
   );
 
   // Handle loading the example template guide
@@ -432,454 +466,39 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     editor.loadGuide(blockEditorTutorial as JsonGuide);
   }, [editor]);
 
-  // Handle nesting a block into a section
-  const handleNestBlock = useCallback(
-    (blockId: string, sectionId: string, insertIndex?: number) => {
-      editor.nestBlockInSection(blockId, sectionId, insertIndex);
-    },
-    [editor]
-  );
-
-  // Handle unnesting a block from a section
-  const handleUnnestBlock = useCallback(
-    (nestedBlockId: string, sectionId: string, insertAtRootIndex?: number) => {
-      editor.unnestBlockFromSection(nestedBlockId, sectionId, insertAtRootIndex);
-    },
-    [editor]
-  );
-
-  // Handle inserting a block directly into a section
-  const handleInsertBlockInSection = useCallback((type: BlockType, sectionId: string, index?: number) => {
-    // Open the form modal for this block type, but target the section
-    setEditingBlockType(type);
-    setEditingBlock(null);
-    // We'll need to handle section insertion differently
-    // For now, store the section ID and handle in submit
-    setInsertAtIndex(undefined);
-    setIsBlockFormOpen(true);
-
-    // Store section context for insertion
-    (
-      window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }
-    ).__blockEditorSectionContext = {
-      sectionId,
-      index,
-    };
-  }, []);
-
-  // Handle editing a nested block
-  const handleNestedBlockEdit = useCallback((sectionId: string, nestedIndex: number, block: JsonBlock) => {
-    setEditingBlockType(block.type as BlockType);
-    setEditingBlock(null);
-    setEditingNestedBlock({ sectionId, nestedIndex, block });
-    setInsertAtIndex(undefined);
-    setIsBlockFormOpen(true);
-  }, []);
-
-  // Handle deleting a nested block
-  const handleNestedBlockDelete = useCallback(
-    (sectionId: string, nestedIndex: number) => {
-      editor.deleteNestedBlock(sectionId, nestedIndex);
-    },
-    [editor]
-  );
-
-  // Handle duplicating a nested block
-  const handleNestedBlockDuplicate = useCallback(
-    (sectionId: string, nestedIndex: number) => {
-      editor.duplicateNestedBlock(sectionId, nestedIndex);
-    },
-    [editor]
-  );
-
-  // Handle moving a nested block within its section
-  const handleNestedBlockMove = useCallback(
-    (sectionId: string, fromIndex: number, toIndex: number) => {
-      editor.moveNestedBlock(sectionId, fromIndex, toIndex);
-    },
-    [editor]
-  );
-
-  // ============ Conditional branch handlers ============
-
-  // Handle inserting a block into a conditional branch
-  const handleInsertBlockInConditional = useCallback(
-    (type: BlockType, conditionalId: string, branch: 'whenTrue' | 'whenFalse', index?: number) => {
-      setEditingBlockType(type);
-      setEditingBlock(null);
-      setInsertAtIndex(undefined);
-      setIsBlockFormOpen(true);
-
-      // Store conditional context for insertion
-      (
-        window as unknown as {
-          __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
-        }
-      ).__blockEditorConditionalContext = {
-        conditionalId,
-        branch,
-        index,
-      };
-    },
-    []
-  );
-
-  // Handle editing a block within a conditional branch
-  const handleConditionalBranchBlockEdit = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, block: JsonBlock) => {
-      setEditingBlockType(block.type as BlockType);
-      setEditingBlock(null);
-      setEditingConditionalBranchBlock({ conditionalId, branch, nestedIndex, block });
-      setInsertAtIndex(undefined);
-      setIsBlockFormOpen(true);
-    },
-    []
-  );
-
-  // Handle deleting a block from a conditional branch
-  const handleConditionalBranchBlockDelete = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => {
-      editor.deleteConditionalBranchBlock(conditionalId, branch, nestedIndex);
-    },
-    [editor]
-  );
-
-  // Handle duplicating a block within a conditional branch
-  const handleConditionalBranchBlockDuplicate = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => {
-      editor.duplicateConditionalBranchBlock(conditionalId, branch, nestedIndex);
-    },
-    [editor]
-  );
-
-  // Handle moving a block within a conditional branch
-  const handleConditionalBranchBlockMove = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', fromIndex: number, toIndex: number) => {
-      editor.moveConditionalBranchBlock(conditionalId, branch, fromIndex, toIndex);
-    },
-    [editor]
-  );
-
-  // Handle nesting a root block into a conditional branch
-  const handleNestBlockInConditional = useCallback(
-    (blockId: string, conditionalId: string, branch: 'whenTrue' | 'whenFalse', insertIndex?: number) => {
-      editor.nestBlockInConditional(blockId, conditionalId, branch, insertIndex);
-    },
-    [editor]
-  );
-
-  // Handle unnesting a block from a conditional branch
-  const handleUnnestBlockFromConditional = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, insertAtRootIndex?: number) => {
-      editor.unnestBlockFromConditional(conditionalId, branch, nestedIndex, insertAtRootIndex);
-    },
-    [editor]
-  );
-
-  // Handle moving a block between conditional branches
-  const handleMoveBlockBetweenConditionalBranches = useCallback(
-    (
-      conditionalId: string,
-      fromBranch: 'whenTrue' | 'whenFalse',
-      fromIndex: number,
-      toBranch: 'whenTrue' | 'whenFalse',
-      toIndex?: number
-    ) => {
-      editor.moveBlockBetweenConditionalBranches(conditionalId, fromBranch, fromIndex, toBranch, toIndex);
-    },
-    [editor]
-  );
-
-  // Handle moving a block between sections
-  const handleMoveBlockBetweenSections = useCallback(
-    (fromSectionId: string, fromIndex: number, toSectionId: string, toIndex?: number) => {
-      editor.moveBlockBetweenSections(fromSectionId, fromIndex, toSectionId, toIndex);
-    },
-    [editor]
-  );
-
-  // Handle section recording toggle
-  const handleSectionRecord = useCallback(
-    (sectionId: string) => {
-      if (recordingIntoSection === sectionId) {
-        // Stop recording - convert recorded steps to blocks and add to section
-        actionRecorder.stopRecording();
-        const steps = actionRecorder.recordedSteps;
-
-        // Group consecutive steps with the same groupId into multisteps
-        const processedSteps: Array<
-          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
-        > = [];
-
-        let currentGroup: typeof steps = [];
-        let currentGroupId: string | undefined;
-
-        steps.forEach((step) => {
-          if (step.groupId) {
-            if (step.groupId === currentGroupId) {
-              // Continue current group
-              currentGroup.push(step);
-            } else {
-              // End previous group if exists
-              if (currentGroup.length > 0) {
-                processedSteps.push({ type: 'group', steps: currentGroup });
-              }
-              // Start new group
-              currentGroupId = step.groupId;
-              currentGroup = [step];
-            }
-          } else {
-            // End current group if exists
-            if (currentGroup.length > 0) {
-              processedSteps.push({ type: 'group', steps: currentGroup });
-              currentGroup = [];
-              currentGroupId = undefined;
-            }
-            // Add single step
-            processedSteps.push({ type: 'single', step });
-          }
-        });
-
-        // Don't forget the last group
-        if (currentGroup.length > 0) {
-          processedSteps.push({ type: 'group', steps: currentGroup });
-        }
-
-        // Convert to blocks and add to section
-        processedSteps.forEach((item) => {
-          if (item.type === 'single') {
-            // Single interactive block
-            const interactiveBlock: JsonInteractiveBlock = {
-              type: 'interactive',
-              action: item.step.action as JsonInteractiveBlock['action'],
-              reftarget: item.step.selector,
-              content: item.step.description || `${item.step.action} on element`,
-              ...(item.step.value && { targetvalue: item.step.value }),
-            };
-            editor.addBlockToSection(interactiveBlock, sectionId);
-          } else {
-            // Group of steps - create multistep block
-            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
-              action: step.action as JsonStep['action'],
-              reftarget: step.selector,
-              ...(step.value && { targetvalue: step.value }),
-              tooltip: step.description || `${step.action} on element`,
-            }));
-
-            const multistepBlock: JsonMultistepBlock = {
-              type: 'multistep',
-              content: item.steps[0].description || 'Complete the following steps',
-              steps: multistepSteps,
-            };
-            editor.addBlockToSection(multistepBlock, sectionId);
-          }
-        });
-
-        actionRecorder.clearRecording();
-        setRecordingIntoSection(null);
-        setRecordingStartUrl(null);
-        // Clear persisted recording state since recording is complete
-        recordingPersistence.clear();
-      } else {
-        // Start recording into this section (clear any conditional recording first)
-        setRecordingIntoConditionalBranch(null);
-        actionRecorder.clearRecording();
-        actionRecorder.startRecording();
-        setRecordingIntoSection(sectionId);
-        setRecordingStartUrl(window.location.href);
-      }
-    },
-    [recordingIntoSection, actionRecorder, editor, recordingPersistence]
-  );
-
-  // Handle conditional branch recording toggle
-  const handleConditionalBranchRecord = useCallback(
-    (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => {
-      const isRecording =
-        recordingIntoConditionalBranch?.conditionalId === conditionalId &&
-        recordingIntoConditionalBranch?.branch === branch;
-
-      if (isRecording) {
-        // Stop recording - convert recorded steps to blocks and add to conditional branch
-        actionRecorder.stopRecording();
-        const steps = actionRecorder.recordedSteps;
-
-        // Group consecutive steps with the same groupId into multisteps
-        const processedSteps: Array<
-          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
-        > = [];
-
-        let currentGroup: typeof steps = [];
-        let currentGroupId: string | undefined;
-
-        steps.forEach((step) => {
-          if (step.groupId) {
-            if (step.groupId === currentGroupId) {
-              currentGroup.push(step);
-            } else {
-              if (currentGroup.length > 0) {
-                processedSteps.push({ type: 'group', steps: currentGroup });
-              }
-              currentGroupId = step.groupId;
-              currentGroup = [step];
-            }
-          } else {
-            if (currentGroup.length > 0) {
-              processedSteps.push({ type: 'group', steps: currentGroup });
-              currentGroup = [];
-              currentGroupId = undefined;
-            }
-            processedSteps.push({ type: 'single', step });
-          }
-        });
-
-        if (currentGroup.length > 0) {
-          processedSteps.push({ type: 'group', steps: currentGroup });
-        }
-
-        // Convert to blocks and add to conditional branch
-        processedSteps.forEach((item) => {
-          if (item.type === 'single') {
-            const interactiveBlock: JsonInteractiveBlock = {
-              type: 'interactive',
-              action: item.step.action as JsonInteractiveBlock['action'],
-              reftarget: item.step.selector,
-              content: item.step.description || `${item.step.action} on element`,
-              ...(item.step.value && { targetvalue: item.step.value }),
-            };
-            editor.addBlockToConditionalBranch(conditionalId, branch, interactiveBlock);
-          } else {
-            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
-              action: step.action as JsonStep['action'],
-              reftarget: step.selector,
-              ...(step.value && { targetvalue: step.value }),
-              tooltip: step.description || `${step.action} on element`,
-            }));
-
-            const multistepBlock: JsonMultistepBlock = {
-              type: 'multistep',
-              content: item.steps[0].description || 'Complete the following steps',
-              steps: multistepSteps,
-            };
-            editor.addBlockToConditionalBranch(conditionalId, branch, multistepBlock);
-          }
-        });
-
-        actionRecorder.clearRecording();
-        setRecordingIntoConditionalBranch(null);
-        setRecordingStartUrl(null);
-        // Clear persisted recording state since recording is complete
-        recordingPersistence.clear();
-      } else {
-        // Start recording into this conditional branch (clear any section recording first)
-        setRecordingIntoSection(null);
-        actionRecorder.clearRecording();
-        actionRecorder.startRecording();
-        setRecordingIntoConditionalBranch({ conditionalId, branch });
-        setRecordingStartUrl(window.location.href);
-      }
-    },
-    [recordingIntoConditionalBranch, actionRecorder, editor, recordingPersistence]
-  );
-
-  // Handle stop recording from overlay
-  const handleStopRecording = useCallback(() => {
-    if (recordingIntoSection) {
-      handleSectionRecord(recordingIntoSection);
-    } else if (recordingIntoConditionalBranch) {
-      handleConditionalBranchRecord(
-        recordingIntoConditionalBranch.conditionalId,
-        recordingIntoConditionalBranch.branch
-      );
-    }
-  }, [recordingIntoSection, handleSectionRecord, recordingIntoConditionalBranch, handleConditionalBranchRecord]);
+  // Recording handlers - delegate to recordingActions hook
+  const handleStopRecording = recordingActions.stopRecording;
 
   // Handle "Add and Start Recording" for new sections
+  // This combines form closing with recording start
   const handleSubmitAndStartRecording = useCallback(
     (block: JsonBlock) => {
-      // Add the section block - returns the EditorBlock ID (UUID)
-      const editorBlockId = editor.addBlock(block, insertAtIndex);
-      setIsBlockFormOpen(false);
-      setEditingBlockType(null);
-      setEditingBlock(null);
-      setInsertAtIndex(undefined);
-
-      // Start recording into this section after a brief delay to allow UI to update
-      pendingSectionIdRef.current = editorBlockId;
-      const capturedUrl = window.location.href;
-      setTimeout(() => {
-        if (pendingSectionIdRef.current) {
-          setRecordingIntoConditionalBranch(null); // Clear any conditional recording
-          actionRecorder.clearRecording();
-          actionRecorder.startRecording();
-          setRecordingIntoSection(pendingSectionIdRef.current);
-          setRecordingStartUrl(capturedUrl);
-          pendingSectionIdRef.current = null;
-        }
-      }, 100);
+      recordingActions.submitAndStartRecording(block, insertAtIndex);
+      formState.closeBlockForm();
     },
-    [editor, insertAtIndex, actionRecorder]
+    [recordingActions, insertAtIndex, formState]
   );
 
-  // Selection mode handlers
-  const handleToggleSelectionMode = useCallback(() => {
-    setIsSelectionMode((prev) => {
-      if (prev) {
-        // Exiting selection mode - clear selection
-        setSelectedBlockIds(new Set());
-      }
-      return !prev;
-    });
-  }, []);
-
-  const handleToggleBlockSelection = useCallback((blockId: string) => {
-    setSelectedBlockIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(blockId)) {
-        next.delete(blockId);
-      } else {
-        next.add(blockId);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleClearSelection = useCallback(() => {
-    setSelectedBlockIds(new Set());
-    setIsSelectionMode(false);
-  }, []);
-
+  // Merge handlers - use selection hook but need access to editor
   const handleMergeToMultistep = useCallback(() => {
-    if (selectedBlockIds.size < 2) {
+    if (selection.selectedBlockIds.size < 2) {
       return;
     }
-    editor.mergeBlocksToMultistep(Array.from(selectedBlockIds));
-    setSelectedBlockIds(new Set());
-    setIsSelectionMode(false);
-  }, [selectedBlockIds, editor]);
+    editor.mergeBlocksToMultistep(Array.from(selection.selectedBlockIds));
+    selection.clearSelection();
+  }, [selection, editor]);
 
   const handleMergeToGuided = useCallback(() => {
-    if (selectedBlockIds.size < 2) {
+    if (selection.selectedBlockIds.size < 2) {
       return;
     }
-    editor.mergeBlocksToGuided(Array.from(selectedBlockIds));
-    setSelectedBlockIds(new Set());
-    setIsSelectionMode(false);
-  }, [selectedBlockIds, editor]);
+    editor.mergeBlocksToGuided(Array.from(selection.selectedBlockIds));
+    selection.clearSelection();
+  }, [selection, editor]);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
     (block: JsonBlock) => {
-      const sectionContext = (
-        window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }
-      ).__blockEditorSectionContext;
-
-      const conditionalContext = (
-        window as unknown as {
-          __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
-        }
-      ).__blockEditorConditionalContext;
-
       if (editingConditionalBranchBlock) {
         // Editing a block within a conditional branch
         editor.updateConditionalBranchBlock(
@@ -888,11 +507,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           editingConditionalBranchBlock.nestedIndex,
           block
         );
-        setEditingConditionalBranchBlock(null);
       } else if (editingNestedBlock) {
         // Editing a nested block in a section
         editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, block);
-        setEditingNestedBlock(null);
       } else if (editingBlock) {
         editor.updateBlock(editingBlock.id, block);
       } else if (conditionalContext) {
@@ -903,28 +520,24 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           block,
           conditionalContext.index
         );
-        delete (
-          window as unknown as {
-            __blockEditorConditionalContext?: {
-              conditionalId: string;
-              branch: 'whenTrue' | 'whenFalse';
-              index?: number;
-            };
-          }
-        ).__blockEditorConditionalContext;
       } else if (sectionContext) {
         editor.addBlockToSection(block, sectionContext.sectionId, sectionContext.index);
-        delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
-          .__blockEditorSectionContext;
       } else {
         editor.addBlock(block, insertAtIndex);
       }
-      setIsBlockFormOpen(false);
-      setEditingBlockType(null);
-      setEditingBlock(null);
-      setInsertAtIndex(undefined);
+      // Close form and clear all editing state
+      formState.closeBlockForm();
     },
-    [editor, editingBlock, editingNestedBlock, editingConditionalBranchBlock, insertAtIndex]
+    [
+      editor,
+      editingBlock,
+      editingNestedBlock,
+      editingConditionalBranchBlock,
+      insertAtIndex,
+      sectionContext,
+      conditionalContext,
+      formState,
+    ]
   );
 
   const { state } = editor;
@@ -933,197 +546,66 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   return (
     <div className={styles.container} data-testid="block-editor">
       {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <h3 className={styles.guideTitle}>{state.guide.title}</h3>
-          {state.isDirty ? (
-            <Badge text="Auto-saving..." color="orange" icon="fa fa-spinner" />
-          ) : (
-            <Badge text="Saved" color="green" icon="check" />
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="cog"
-            onClick={() => setIsMetadataOpen(true)}
-            tooltip="Edit guide settings"
-            data-testid="guide-metadata-button"
-          />
-        </div>
-
-        <div className={styles.headerRight}>
-          {/* Tour button */}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="question-circle"
-            onClick={() => setIsTourOpen(true)}
-            tooltip="Take a tour of the guide editor"
-          >
-            Tour
-          </Button>
-
-          {/* View mode toggle - icon only */}
-          <div className={styles.viewModeToggle} data-testid="view-mode-toggle">
-            <ButtonGroup>
-              <Button
-                variant={!state.isPreviewMode ? 'primary' : 'secondary'}
-                size="sm"
-                icon="pen"
-                onClick={() => editor.setPreviewMode(false)}
-                tooltip="Edit mode"
-              />
-              <Button
-                variant={state.isPreviewMode ? 'primary' : 'secondary'}
-                size="sm"
-                icon="eye"
-                onClick={() => editor.setPreviewMode(true)}
-                tooltip="Preview mode"
-              />
-            </ButtonGroup>
-          </div>
-
-          {/* Import button */}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="upload"
-            onClick={() => setIsImportModalOpen(true)}
-            tooltip="Import JSON guide"
-          />
-
-          {/* Export actions */}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="copy"
-            onClick={handleCopy}
-            tooltip="Copy JSON to clipboard"
-            data-testid="copy-json-button"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="download-alt"
-            onClick={handleDownload}
-            tooltip="Download JSON file"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="github"
-            onClick={() => setIsGitHubPRModalOpen(true)}
-            tooltip="Create GitHub PR"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="file-blank"
-            onClick={() => setIsNewGuideConfirmOpen(true)}
-            tooltip="Start new guide"
-          />
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className={styles.content} data-testid="block-editor-content">
-        {/* Selection controls - shown in edit mode, above blocks */}
-        {!state.isPreviewMode && hasBlocks && (
-          <div className={styles.selectionControls}>
-            {isSelectionMode && selectedBlockIds.size >= 2 ? (
-              <>
-                <span className={styles.selectionCount}>{selectedBlockIds.size} blocks selected</span>
-                <Button variant="primary" size="sm" onClick={handleMergeToMultistep}>
-                  Create multistep
-                </Button>
-                <Button variant="primary" size="sm" onClick={handleMergeToGuided}>
-                  Create guided
-                </Button>
-                <Button variant="secondary" size="sm" onClick={handleClearSelection}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant={isSelectionMode ? 'primary' : 'secondary'}
-                size="sm"
-                icon="check-square"
-                onClick={handleToggleSelectionMode}
-                tooltip={
-                  isSelectionMode ? 'Click to exit selection mode' : 'Select blocks to merge into multistep/guided'
-                }
-              >
-                {isSelectionMode ? 'Done selecting' : 'Select blocks'}
-              </Button>
-            )}
-          </div>
-        )}
-
-        {state.isPreviewMode ? (
-          <BlockPreview guide={editor.getGuide()} />
-        ) : hasBlocks ? (
-          <BlockList
-            blocks={state.blocks}
-            onBlockEdit={handleBlockEdit}
-            onBlockDelete={editor.removeBlock}
-            onBlockMove={editor.moveBlock}
-            onBlockDuplicate={editor.duplicateBlock}
-            onInsertBlock={handleBlockTypeSelect}
-            onNestBlock={handleNestBlock}
-            onUnnestBlock={handleUnnestBlock}
-            onInsertBlockInSection={handleInsertBlockInSection}
-            onNestedBlockEdit={handleNestedBlockEdit}
-            onNestedBlockDelete={handleNestedBlockDelete}
-            onNestedBlockDuplicate={handleNestedBlockDuplicate}
-            onNestedBlockMove={handleNestedBlockMove}
-            onSectionRecord={handleSectionRecord}
-            recordingIntoSection={recordingIntoSection}
-            onConditionalBranchRecord={handleConditionalBranchRecord}
-            recordingIntoConditionalBranch={recordingIntoConditionalBranch}
-            isSelectionMode={isSelectionMode}
-            selectedBlockIds={selectedBlockIds}
-            onToggleBlockSelection={handleToggleBlockSelection}
-            onInsertBlockInConditional={handleInsertBlockInConditional}
-            onConditionalBranchBlockEdit={handleConditionalBranchBlockEdit}
-            onConditionalBranchBlockDelete={handleConditionalBranchBlockDelete}
-            onConditionalBranchBlockDuplicate={handleConditionalBranchBlockDuplicate}
-            onConditionalBranchBlockMove={handleConditionalBranchBlockMove}
-            onNestBlockInConditional={handleNestBlockInConditional}
-            onUnnestBlockFromConditional={handleUnnestBlockFromConditional}
-            onMoveBlockBetweenConditionalBranches={handleMoveBlockBetweenConditionalBranches}
-            onMoveBlockBetweenSections={handleMoveBlockBetweenSections}
-          />
-        ) : (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyStateIcon}>📄</div>
-            <p className={styles.emptyStateText}>Your guide is empty. Add your first block to get started.</p>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-              <Button variant="secondary" onClick={handleLoadTemplate} icon="file-alt">
-                Load example guide
-              </Button>
-              <Button variant="secondary" onClick={() => setIsTourOpen(true)} icon="question-circle">
-                Take a tour
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Footer with add block button (only in edit mode) */}
-      {!state.isPreviewMode && (
-        <div className={styles.footer} data-testid="block-palette">
-          <BlockPalette onSelect={handleBlockTypeSelect} embedded />
-        </div>
-      )}
-
-      {/* Modals */}
-      <GuideMetadataForm
-        isOpen={isMetadataOpen}
-        guide={state.guide}
-        onUpdate={editor.updateGuideMetadata}
-        onClose={() => setIsMetadataOpen(false)}
+      <BlockEditorHeader
+        guideTitle={state.guide.title}
+        isDirty={state.isDirty}
+        isPreviewMode={state.isPreviewMode}
+        onSetPreviewMode={editor.setPreviewMode}
+        onOpenMetadata={() => modals.open('metadata')}
+        onOpenTour={() => modals.open('tour')}
+        onOpenImport={() => modals.open('import')}
+        onCopy={handleCopy}
+        onDownload={handleDownload}
+        onOpenGitHubPR={() => modals.open('githubPr')}
+        onNewGuide={() => modals.open('newGuideConfirm')}
+        styles={{
+          header: styles.header,
+          headerLeft: styles.headerLeft,
+          headerRight: styles.headerRight,
+          guideTitle: styles.guideTitle,
+          viewModeToggle: styles.viewModeToggle,
+        }}
       />
 
+      {/* Content */}
+      <BlockEditorContent
+        isPreviewMode={state.isPreviewMode}
+        blocks={state.blocks}
+        guide={editor.getGuide()}
+        operations={blockOperations}
+        hasBlocks={hasBlocks}
+        styles={{
+          content: styles.content,
+          selectionControls: styles.selectionControls,
+          selectionCount: styles.selectionCount,
+          emptyState: styles.emptyState,
+          emptyStateIcon: styles.emptyStateIcon,
+          emptyStateText: styles.emptyStateText,
+        }}
+        onToggleSelectionMode={selection.toggleSelectionMode}
+        onMergeToMultistep={handleMergeToMultistep}
+        onMergeToGuided={handleMergeToGuided}
+        onClearSelection={selection.clearSelection}
+        onLoadTemplate={handleLoadTemplate}
+        onOpenTour={() => modals.open('tour')}
+      />
+
+      {/* Footer with add block button (only in edit mode) */}
+      <BlockEditorFooter isPreviewMode={state.isPreviewMode} onBlockTypeSelect={handleBlockTypeSelect} />
+
+      {/* Modals */}
+      <BlockEditorModals
+        isModalOpen={modals.isOpen}
+        closeModal={modals.close}
+        guide={editor.getGuide()}
+        isDirty={state.isDirty}
+        hasBlocks={hasBlocks}
+        onUpdateGuideMetadata={editor.updateGuideMetadata}
+        onNewGuideConfirm={handleNewGuide}
+        onImportGuide={handleImportGuide}
+      />
+
+      {/* Block form modal - kept separate due to complex editing state dependencies */}
       {isBlockFormOpen && editingBlockType && (
         <BlockFormModal
           blockType={editingBlockType}
@@ -1150,29 +632,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         />
       )}
 
-      <ConfirmModal
-        isOpen={isNewGuideConfirmOpen}
-        title="Start New Guide"
-        body="Are you sure you want to start a new guide? Your current work will be deleted and cannot be recovered."
-        confirmText="Start New"
-        dismissText="Cancel"
-        onConfirm={handleNewGuide}
-        onDismiss={() => setIsNewGuideConfirmOpen(false)}
-      />
-
-      <ImportGuideModal
-        isOpen={isImportModalOpen}
-        onImport={handleImportGuide}
-        onClose={() => setIsImportModalOpen(false)}
-        hasUnsavedChanges={state.isDirty || state.blocks.length > 0}
-      />
-
-      <GitHubPRModal
-        isOpen={isGitHubPRModalOpen}
-        guide={editor.getGuide()}
-        onClose={() => setIsGitHubPRModalOpen(false)}
-      />
-
       {/* Record mode overlay for section/conditional recording */}
       {(recordingIntoSection || recordingIntoConditionalBranch) && (
         <RecordModeOverlay
@@ -1194,12 +653,21 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           onToggleMultiStepGrouping={() => setIsSectionMultiStepGroupingEnabled((prev) => !prev)}
         />
       )}
-
-      {/* Block Editor Tour */}
-      {isTourOpen && <BlockEditorTour onClose={() => setIsTourOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * Block-based JSON guide editor with context provider.
+ */
+export function BlockEditor(props: BlockEditorProps) {
+  return (
+    <BlockEditorContextProvider>
+      <BlockEditorInner {...props} />
+    </BlockEditorContextProvider>
   );
 }
 
 // Add display name for debugging
 BlockEditor.displayName = 'BlockEditor';
+BlockEditorInner.displayName = 'BlockEditorInner';
