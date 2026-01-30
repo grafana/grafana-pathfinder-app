@@ -17,15 +17,133 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build, lint and unit tests
+  # Setup job installs dependencies and caches node_modules for parallel jobs
+  setup:
+    name: Setup
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Read repository contents
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          persist-credentials: false
+          node-version: '22'
+          cache: 'npm' # Cross-run npm cache (speeds up npm ci)
+      - run: npm ci
+      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: node_modules
+          key: node-modules-${{ github.run_id }} # Intra-run sharing
+
+  # Parallel quality check jobs
+  lint:
+    name: Lint
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          persist-credentials: false
+          node-version: '22'
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: node_modules
+          key: node-modules-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - run: npm run lint
+
+  typecheck:
+    name: Typecheck
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          persist-credentials: false
+          node-version: '22'
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: node_modules
+          key: node-modules-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - run: npm run typecheck
+
+  prettier:
+    name: Prettier
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          persist-credentials: false
+          node-version: '22'
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: node_modules
+          key: node-modules-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - run: npm run prettier-test
+
+  test:
+    name: Test
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          persist-credentials: false
+          node-version: '22'
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: node_modules
+          key: node-modules-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - run: npm run test:ci
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: coverage-report # Must match existing artifact name
+          path: coverage/
+          retention-days: 14
+
+  # Build job runs in parallel with quality checks
+  build:
+    name: Build
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     outputs:
       plugin-id: ${{ steps.metadata.outputs.plugin-id }}
       plugin-version: ${{ steps.metadata.outputs.plugin-version }}
-      has-e2e: ${{ steps.check-for-e2e.outputs.has-e2e }}
       has-backend: ${{ steps.check-for-backend.outputs.has-backend }}
     env:
       GRAFANA_ACCESS_POLICY_TOKEN: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
@@ -33,39 +151,24 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false
-      - name: Setup Node.js environment
-        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
           persist-credentials: false
           node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check types
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
-      - name: Prettier
-        run: npm run prettier-test
-      - name: Unit tests with coverage
-        run: npm run test:ci
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 14
+          path: node_modules
+          key: node-modules-${{ github.run_id }}
+          fail-on-cache-miss: true
+
       - name: Build frontend
         run: npm run build
 
+      # --- Backend steps (conditional) ---
       - name: Check for backend
         id: check-for-backend
         run: |
-          if [ -f "Magefile.go" ]
-          then
+          if [ -f "Magefile.go" ]; then
             echo "has-backend=true" >> $GITHUB_OUTPUT
           fi
 
@@ -77,7 +180,6 @@ jobs:
 
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        # Pinned to mage 3.1.0
         uses: magefile/mage-action@6f50bbb8ea47d56e62dee92392788acbc8192d0b
         with:
           version: latest
@@ -85,20 +187,12 @@ jobs:
 
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        # Pinned to mage 3.1.0
         uses: magefile/mage-action@6f50bbb8ea47d56e62dee92392788acbc8192d0b
         with:
           version: latest
           args: buildAll
 
-      - name: Check for E2E
-        id: check-for-e2e
-        run: |
-          if [ -f "playwright.config.ts" ]
-          then
-            echo "has-e2e=true" >> $GITHUB_OUTPUT
-          fi
-
+      # --- Sign, package, validate, archive ---
       - name: Sign plugin
         run: npm run sign
         if: ${{ env.GRAFANA_ACCESS_POLICY_TOKEN != '' }}
@@ -122,6 +216,7 @@ jobs:
           mv dist ${{ steps.metadata.outputs.plugin-id }}
           zip ${{ steps.metadata.outputs.archive }} ${{ steps.metadata.outputs.plugin-id }} -r
 
+      # CRITICAL: Do not remove this validation step!
       - name: Check plugin.json
         run: |
           docker run --pull=always \
@@ -135,30 +230,69 @@ jobs:
           path: ${{ steps.metadata.outputs.plugin-id }}
           retention-days: 5
 
+  # CI gate job for branch protection - aggregates all required checks
+  ci-gate:
+    name: CI Gate
+    needs: [lint, typecheck, prettier, test, build]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {} # No permissions needed - only checks job results
+    steps:
+      - name: Check all jobs passed
+        run: |
+          echo "Lint: ${{ needs.lint.result }}"
+          echo "Typecheck: ${{ needs.typecheck.result }}"
+          echo "Prettier: ${{ needs.prettier.result }}"
+          echo "Test: ${{ needs.test.result }}"
+          echo "Build: ${{ needs.build.result }}"
+
+          if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.typecheck.result }}" != "success" ]] || \
+             [[ "${{ needs.prettier.result }}" != "success" ]] || \
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All required jobs passed!"
+
+  # Resolve E2E versions runs in parallel (no dependency on build)
   resolve-versions:
     name: Resolve e2e images
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    needs: build
-    if: ${{ needs.build.outputs.has-e2e == 'true' }}
+    permissions:
+      contents: read
     outputs:
       matrix: ${{ steps.resolve-versions.outputs.matrix }}
+      has-e2e: ${{ steps.check-for-e2e.outputs.has-e2e }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - name: Check for E2E
+        id: check-for-e2e
+        run: |
+          if [ -f "playwright.config.ts" ]; then
+            echo "has-e2e=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-e2e=false" >> $GITHUB_OUTPUT
+          fi
       - name: Resolve Grafana E2E versions
         id: resolve-versions
+        if: steps.check-for-e2e.outputs.has-e2e == 'true'
         uses: grafana/plugin-actions/e2e-version@e2e-version/v1.2.0
         with:
           skip-grafana-react-19-preview-image: false
 
   playwright-tests:
     needs: [resolve-versions, build]
+    if: ${{ needs.resolve-versions.outputs.has-e2e == 'true' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        GRAFANA_IMAGE: ${{fromJson(needs.resolve-versions.outputs.matrix)}}
+        GRAFANA_IMAGE: ${{ fromJson(needs.resolve-versions.outputs.matrix) }}
     name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
     runs-on: ubuntu-latest
     permissions:
