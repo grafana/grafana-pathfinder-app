@@ -499,4 +499,3 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     </div>
   );
 }
-

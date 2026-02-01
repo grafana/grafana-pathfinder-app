@@ -189,11 +189,85 @@ describe('getBadgeProgress', () => {
 
   describe('unknown trigger type', () => {
     it('returns null for unknown trigger type', () => {
-      const badge = createBadge({ type: 'unknown-type' } as Badge['trigger']);
+      const badge = createBadge({ type: 'unknown-type' } as unknown as Badge['trigger']);
 
       const result = getBadgeProgress(badge, [], 0, samplePaths);
 
       expect(result).toBeNull();
+    });
+  });
+});
+
+// ============================================================================
+// getBadgeRequirementText
+// ============================================================================
+
+describe('getBadgeRequirementText', () => {
+  describe('guide-completed trigger', () => {
+    it('returns specific guide text when guideId is provided', () => {
+      const badge = createBadge({ type: 'guide-completed', guideId: 'my-guide' });
+
+      const result = getBadgeRequirementText(badge);
+
+      expect(result).toBe('Complete the "my-guide" guide');
+    });
+
+    it('returns generic text when no guideId is specified', () => {
+      const badge = createBadge({ type: 'guide-completed' });
+
+      const result = getBadgeRequirementText(badge);
+
+      expect(result).toBe('Complete any learning guide');
+    });
+  });
+
+  describe('path-completed trigger', () => {
+    it('returns text with path title from paths data', () => {
+      // Uses real paths data - 'getting-started' should exist
+      const badge = createBadge({ type: 'path-completed', pathId: 'getting-started' });
+
+      const result = getBadgeRequirementText(badge);
+
+      expect(result).toContain('Complete all guides in the');
+      expect(result).toContain('learning path');
+    });
+
+    it('falls back to pathId when path not found in data', () => {
+      const badge = createBadge({ type: 'path-completed', pathId: 'non-existent-path' });
+
+      const result = getBadgeRequirementText(badge);
+
+      expect(result).toBe('Complete all guides in the "non-existent-path" learning path');
+    });
+  });
+
+  describe('streak trigger', () => {
+    it('returns streak requirement text with day count', () => {
+      const badge = createBadge({ type: 'streak', days: 7 });
+
+      const result = getBadgeRequirementText(badge);
+
+      expect(result).toBe('Maintain a 7-day learning streak');
+    });
+
+    it('handles different streak durations', () => {
+      const badge = createBadge({ type: 'streak', days: 30 });
+
+      const result = getBadgeRequirementText(badge);
+
+      expect(result).toBe('Maintain a 30-day learning streak');
+    });
+  });
+
+  describe('unknown trigger type', () => {
+    it('falls back to badge description for unknown types', () => {
+      const badge = createBadge({ type: 'unknown-type' } as unknown as Badge['trigger'], {
+        description: 'Custom badge description',
+      });
+
+      const result = getBadgeRequirementText(badge);
+
+      expect(result).toBe('Custom badge description');
     });
   });
 });
