@@ -48,6 +48,9 @@ The `provides` field enables a powerful pattern borrowed from Debian's "virtual 
 
 ## Test Environment Requirements
 
+> **Warning**: this section is notional, for design discussion; it may be over-specified, but
+> indicates directionally the kind of concerns that the approach will need to consider.
+
 Beyond inter-guide dependencies, guides may declare requirements for their test environment. This metadata enables the E2E runner to route guides to appropriate test infrastructure:
 
 - **Tier**: Which environment can run this guide (`local`, `managed`, or `cloud`)
