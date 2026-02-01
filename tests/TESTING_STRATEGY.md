@@ -4,7 +4,7 @@
 
 We are moving from a model of "static documentation" to **"Content as Code."** We see interactive guides as software artifacts that participate in the full DevOps lifecycle. They are versioned, tested, and monitored just like the product code they document.
 
-The content referred to can currently be found in [grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials)  
+The content referred to can currently be found in [grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials)
 
 This approach enables **"Enablement Observability"**: the ability to detect when a product change breaks enablement material, or when content drifts from the product reality.
 
@@ -19,22 +19,22 @@ All interactive guides are wired into the **Grafana Recommender** ([grafana/graf
 - Users only see content that the recommender determines is relevant
 - Content that fails tests can be de-prioritized or de-listed from recommendations
 - The recommender is the critical integration point between content quality and user experience
-- Where before, more content just means "more" (lists get longer), the new model is that in _any given 
-app context_ we want to show the best 5, with quality guaranteed via testing.
+- Where before, more content just means "more" (lists get longer), the new model is that in _any given
+  app context_ we want to show the best 5, with quality guaranteed via testing.
 
 ---
 
 ## Failure Classification
 
 Content breaks, and from a lot of experience with documentation, the breaks fall into several categories.
-The core of this is that _content is always coupled to product_, so testing is a way of managing that 
+The core of this is that _content is always coupled to product_, so testing is a way of managing that
 coupling.
 
-| Failure Type | Cause | Resolution | Ownership | Artifacts |
-|--------------|-------|------------|-----------|-----------|
-| Content Drift | Outdated content; product changed | Update the guide (Content PR). | Content Team | Screenshot of current UI vs. guide expectation. |
-| Product Regression | Product broke an implied contract, e.g. a UI element removed or renamed without content change | Fix the product (Engineering PR) or update Selector Registry. | Product Engineering | DOM snapshot, selector that failed, Grafana version. |
-| Test Infrastructure Failure & Flaky Tests | test env failure (network timeout, Docker crash, auth expired). | Retry or quarantine the test; fix infrastructure/root cause. | Interactive Learning Plugin Team or test author, if applicable | Console logs, network trace, exit code, failure rate over time, Playwright traces |
+| Failure Type                              | Cause                                                                                          | Resolution                                                    | Ownership                                                      | Artifacts                                                                         |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Content Drift                             | Outdated content; product changed                                                              | Update the guide (Content PR).                                | Content Team                                                   | Screenshot of current UI vs. guide expectation.                                   |
+| Product Regression                        | Product broke an implied contract, e.g. a UI element removed or renamed without content change | Fix the product (Engineering PR) or update Selector Registry. | Product Engineering                                            | DOM snapshot, selector that failed, Grafana version.                              |
+| Test Infrastructure Failure & Flaky Tests | test env failure (network timeout, Docker crash, auth expired).                                | Retry or quarantine the test; fix infrastructure/root cause.  | Interactive Learning Plugin Team or test author, if applicable | Console logs, network trace, exit code, failure rate over time, Playwright traces |
 
 ---
 
@@ -107,6 +107,18 @@ content.
 - **Speed:** 10-30 minutes or even hours
 - **Managed environments:** The Interactive Learning Plugin team will provide a limited number of managed test environments for automated testing. These environments support guides with complex prerequisites (specific data sources, plugins, or configurations) that cannot be tested locally or in basic CI.
 - **Author benefit:** Authors whose guides have complex requirements can rely on Layer 4 for automated validation rather than maintaining local test environments.
+
+#### Layer 4 prerequisites
+
+Layer 4 validation requires **guide-level dependency metadata** to route guides to appropriate test environments. This metadata follows a "Debian package" model where guides declare what they **require** and what they **provide**:
+
+- **Environment targeting**: Which environments can run this guide (local, managed, cloud)
+- **Dataset dependencies**: What pre-seeded data the guide expects (Prometheus metrics, Loki logs, etc.)
+- **Version requirements**: Minimum Grafana version needed
+- **Guide dependencies**: Which other guides must be completed first (learning path ordering)
+- **Capability abstraction**: Multiple guides can provide the same abstract capability, enabling flexible learning paths
+
+This structured metadata lives in a `dependencies` object at the guide root level, separate from block-level `requirements` (which remain string arrays for runtime gating). See [Guide Dependencies Design](./e2e-runner/design/guide-dependencies-design.md) for the detailed specification.
 
 ---
 
@@ -271,18 +283,23 @@ The E2E testing layer is the most complex component. Detailed design and impleme
 - [`src/validation/condition-validator.ts`](../src/validation/condition-validator.ts) - Requirements condition parser
 - [`src/cli/commands/validate.ts`](../src/cli/commands/validate.ts) - CLI command implementation
 
+### Layer 4 Prerequisites
+
+- **[Guide Dependencies Design](./e2e-runner/design/guide-dependencies-design.md)** - Guide-level metadata schema for environment targeting, dataset requirements, and inter-guide dependencies
+
 ---
 
 ## Document Authority
 
 This section establishes the authority hierarchy for E2E testing documentation, preventing duplication and ensuring single sources of truth.
 
-| Document                          | Purpose                                   | Authority                              |
-| --------------------------------- | ----------------------------------------- | -------------------------------------- |
-| TESTING_STRATEGY.md               | Vision, failure taxonomy, testing pyramid | Immutable principles                   |
-| e2e-test-runner-design.md         | Architecture, interfaces, specifications  | Single source of truth for specs       |
-| MILESTONES.md                     | Implementation tasks, acceptance criteria | References design doc for specs        |
-| L3-phase1-verification-results.md | Historical findings                       | Archived - findings merged into design |
+| Document                          | Purpose                                     | Authority                                |
+| --------------------------------- | ------------------------------------------- | ---------------------------------------- |
+| TESTING_STRATEGY.md               | Vision, failure taxonomy, testing pyramid   | Immutable principles                     |
+| e2e-test-runner-design.md         | Architecture, interfaces, specifications    | Single source of truth for specs         |
+| guide-dependencies-design.md      | Guide metadata schema, dependency semantics | Source of truth for guide-level metadata |
+| MILESTONES.md                     | Implementation tasks, acceptance criteria   | References design doc for specs          |
+| L3-phase1-verification-results.md | Historical findings                         | Archived - findings merged into design   |
 
 ### Guide failure ownership model
 
