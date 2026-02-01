@@ -2,10 +2,9 @@
 
 ## Vision: Content as Code
 
-We are moving from a model of "static documentation" to **"Content as Code."** In this paradigm, interactive guides are software artifacts that participate in a full DevOps lifecycle. They are versioned, tested, and monitored just like the product code they document.
+We are moving from a model of "static documentation" to **"Content as Code."** We see interactive guides as software artifacts that participate in the full DevOps lifecycle. They are versioned, tested, and monitored just like the product code they document.
 
-The content referred to is [https://github.com/grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials)  
-The plugin referred to is [https://github.com/grafana/grafana-pathfinder-app](https://github.com/grafana/grafana-pathfinder-app)
+The content referred to can currently be found in [grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials)  
 
 This approach enables **"Enablement Observability"**: the ability to detect when a product change breaks enablement material, or when content drifts from the product reality.
 
@@ -15,51 +14,34 @@ This approach enables **"Enablement Observability"**: the ability to detect when
 
 The content corpus currently includes approximately **24 interactive guides**, with expected growth to **100-200 guides** as authors across the organization contribute content for their products and features.
 
-All interactive guides are wired into the **Grafana Recommender** ([https://github.com/grafana/grafana-recommender](https://github.com/grafana/grafana-recommender)), which serves as the gating function for content distribution. The recommender determines which guides are surfaced to users based on context, user behavior, and content health signals. This architecture means:
+All interactive guides are wired into the **Grafana Recommender** ([grafana/grafana-recommender](https://github.com/grafana/grafana-recommender)), which serves as the gating function for content distribution. The recommender determines which guides are surfaced to users based on context, user behavior, and content health signals. This architecture means:
 
-- Users only see content that the recommender chooses to surface
+- Users only see content that the recommender determines is relevant
 - Content that fails tests can be de-prioritized or de-listed from recommendations
 - The recommender is the critical integration point between content quality and user experience
+- Where before, more content just means "more" (lists get longer), the new model is that in _any given 
+app context_ we want to show the best 5, with quality guaranteed via testing.
 
 ---
 
 ## Failure Classification
 
-A broken guide is a signal that requires investigation. The root cause falls into one of four categories:
+Content breaks, and from a lot of experience with documentation, the breaks fall into several categories.
+The core of this is that _content is always coupled to product_, so testing is a way of managing that 
+coupling.
 
-### 1\. Content Drift
-
-- **Cause:** The guide is outdated. The product has legitimately changed (e.g., a new improved workflow), and the guide no longer reflects the best path.
-- **Resolution:** Update the guide (Content PR).
-- **Ownership:** Content Team.
-- **Artifacts:** Screenshot of current UI vs. guide expectation.
-
-### 2\. Product Regression
-
-- **Cause:** The product broke a contract. A stable UI element (e.g., a navigation ID or button) was removed or renamed without cause, breaking the "API" that the guide relies on.
-- **Resolution:** Fix the product (Engineering PR) or update Selector Registry.
-- **Ownership:** Product Engineering Team.
-- **Artifacts:** DOM snapshot, selector that failed, Grafana version.
-
-### 3\. Test Infrastructure Failure
-
-- **Cause:** The test environment itself failed (network timeout, Docker crash, auth expired).
-- **Resolution:** Retry the test; fix infrastructure if persistent.
-- **Ownership:** Interactive Learning Plugin Team.
-- **Artifacts:** Console logs, network trace, exit code.
-
-### 4\. Flaky Test
-
-- **Cause:** Non-deterministic failure due to race conditions, timing issues, or environmental variance.
-- **Resolution:** Quarantine test, investigate root cause, add retry logic or wait conditions.
-- **Ownership:** Test author (initially), then Interactive Learning Plugin Team for systemic issues.
-- **Artifacts:** Failure rate over time, Playwright trace.
+| Failure Type | Cause | Resolution | Ownership | Artifacts |
+|--------------|-------|------------|-----------|-----------|
+| Content Drift | Outdated content; product changed | Update the guide (Content PR). | Content Team | Screenshot of current UI vs. guide expectation. |
+| Product Regression | Product broke an implied contract, e.g. a UI element removed or renamed without content change | Fix the product (Engineering PR) or update Selector Registry. | Product Engineering | DOM snapshot, selector that failed, Grafana version. |
+| Test Infrastructure Failure & Flaky Tests | test env failure (network timeout, Docker crash, auth expired). | Retry or quarantine the test; fix infrastructure/root cause. | Interactive Learning Plugin Team or test author, if applicable | Console logs, network trace, exit code, failure rate over time, Playwright traces |
 
 ---
 
 ## The Testing Pyramid
 
-We employ a layered testing strategy. This is the canonical pyramid.
+For software, we have a pyramid of testing: unit, integration, e2e, etc. We employ the same concepts for
+content.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -81,10 +63,9 @@ We employ a layered testing strategy. This is the canonical pyramid.
 
 - **Goal:** Instant feedback on structure and validity on every commit / save.
 - **Checks:**
-  - JSON Schema validation (implemented via TypeScript types and Zod-style validation)
+  - JSON Schema validation, unknown field detection
   - Reference integrity (do links point to real sections?)
   - Condition validation for interactive requirements
-  - Unknown field detection for guide JSON
 - **Implementation:**
   - [`src/validation/validate-guide.ts`](../src/validation/validate-guide.ts) - Core validation logic
   - [`src/validation/condition-validator.ts`](../src/validation/condition-validator.ts) - Requirements condition validation
