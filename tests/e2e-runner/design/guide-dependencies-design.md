@@ -17,14 +17,14 @@ We adopt the proven dependency semantics from the [Debian package system](https:
 
 ### Dependency types
 
-| Debian Term | Guide Field | Meaning for Guides |
-|-------------|-------------|-------------------|
-| **Depends** | `depends` | Guide A depends on Guide B if B **must be completed** before A is accessible. This is a hard prerequisite that gates access. |
-| **Recommends** | `recommends` | Guide A recommends Guide B if most users would benefit from completing B first, but it's **not strictly required**. The system may prompt users but won't block access. |
-| **Suggests** | `suggests` | Guide A suggests Guide B if B contains **related content that enhances** understanding of A. Purely informational; used for "you might also like" recommendations. |
-| **Conflicts** | `conflicts` | Guide A conflicts with Guide B when both **cannot be meaningfully used together**. Typically used when a guide is deprecated in favor of another, or when guides target mutually exclusive environments (e.g., OSS-only vs. Cloud-only). |
-| **Replaces** | `replaces` | Guide A replaces Guide B when A **supersedes B entirely**. Used for versioned content where a new guide completely obsoletes an older one. Completion of A may automatically mark B as unnecessary. |
-| **Provides** | `provides` | Guide A provides capability X when completing A **satisfies any dependency on X**. This enables virtual capabilities where multiple different guides can satisfy the same abstract requirement. |
+| Debian Term    | Guide Field  | Meaning for Guides                                                                                                                                                                                                                       |
+| -------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Depends**    | `depends`    | Guide A depends on Guide B if B **must be completed** before A is accessible. This is a hard prerequisite that gates access.                                                                                                             |
+| **Recommends** | `recommends` | Guide A recommends Guide B if most users would benefit from completing B first, but it's **not strictly required**. The system may prompt users but won't block access.                                                                  |
+| **Suggests**   | `suggests`   | Guide A suggests Guide B if B contains **related content that enhances** understanding of A. Purely informational; used for "you might also like" recommendations.                                                                       |
+| **Conflicts**  | `conflicts`  | Guide A conflicts with Guide B when both **cannot be meaningfully used together**. Typically used when a guide is deprecated in favor of another, or when guides target mutually exclusive environments (e.g., OSS-only vs. Cloud-only). |
+| **Replaces**   | `replaces`   | Guide A replaces Guide B when A **supersedes B entirely**. Used for versioned content where a new guide completely obsoletes an older one. Completion of A may automatically mark B as unnecessary.                                      |
+| **Provides**   | `provides`   | Guide A provides capability X when completing A **satisfies any dependency on X**. This enables virtual capabilities where multiple different guides can satisfy the same abstract requirement.                                          |
 
 We omit Debian's `Breaks` field as it maps to runtime conflicts, which are less relevant for educational content.
 
@@ -92,13 +92,13 @@ A complete example showing a guide with dependencies:
 
 ## Relationship to Block-Level Requirements
 
-| Concern | Block-Level `requirements` | Guide-Level `dependencies` |
-|---------|---------------------------|---------------------------|
-| **Scope** | Single step/block | Entire guide |
-| **Purpose** | Runtime gating ("can this step execute now?") | Structural metadata ("what does this guide need to be useful?") |
-| **Format** | String array (`["has-datasource:X"]`) | Structured object with named fields |
-| **Evaluation** | Real-time in browser during guide execution | Pre-flight by test runner; UI filtering for recommendations |
-| **Persistence** | No | Capabilities persist on guide completion |
+| Concern         | Block-Level `requirements`                    | Guide-Level `dependencies`                                      |
+| --------------- | --------------------------------------------- | --------------------------------------------------------------- |
+| **Scope**       | Single step/block                             | Entire guide                                                    |
+| **Purpose**     | Runtime gating ("can this step execute now?") | Structural metadata ("what does this guide need to be useful?") |
+| **Format**      | String array (`["has-datasource:X"]`)         | Structured object with named fields                             |
+| **Evaluation**  | Real-time in browser during guide execution   | Pre-flight by test runner; UI filtering for recommendations     |
+| **Persistence** | No                                            | Capabilities persist on guide completion                        |
 
 ## Related Documents
 
