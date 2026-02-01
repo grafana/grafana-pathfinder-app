@@ -19,6 +19,7 @@ This guide shows how to manually test the `bundled:e2e-test` JSON loading infras
 ### Steps:
 
 1. **Open Grafana in browser**
+
    ```
    http://localhost:3000
    ```
@@ -26,47 +27,46 @@ This guide shows how to manually test the `bundled:e2e-test` JSON loading infras
 2. **Open Browser DevTools Console** (F12 or Cmd+Option+I)
 
 3. **Inject a simple test guide into localStorage**:
+
    ```javascript
    const testGuide = {
-     id: "test-guide-1",
-     title: "Manual Test Guide",
+     id: 'test-guide-1',
+     title: 'Manual Test Guide',
      blocks: [
        {
-         type: "markdown",
-         content: "# Test Guide\n\nThis guide was loaded from localStorage!"
+         type: 'markdown',
+         content: '# Test Guide\n\nThis guide was loaded from localStorage!',
        },
        {
-         type: "interactive",
-         sectionId: "test-section",
-         title: "Test Section",
+         type: 'interactive',
+         sectionId: 'test-section',
+         title: 'Test Section',
          steps: [
            {
-             stepId: "step-1",
-             targetAction: "noop",
-             description: "This is a test step that auto-completes"
-           }
-         ]
-       }
-     ]
+             stepId: 'step-1',
+             targetAction: 'noop',
+             description: 'This is a test step that auto-completes',
+           },
+         ],
+       },
+     ],
    };
 
-   localStorage.setItem(
-     'grafana-pathfinder-app-e2e-test-guide',
-     JSON.stringify(testGuide)
-   );
+   localStorage.setItem('grafana-pathfinder-app-e2e-test-guide', JSON.stringify(testGuide));
 
    console.log('Test guide injected!');
    ```
 
 4. **Open the test guide**:
+
    ```javascript
    // Trigger the docs panel to open the E2E test guide
    document.dispatchEvent(
      new CustomEvent('pathfinder-auto-open-docs', {
        detail: {
          url: 'bundled:e2e-test',
-         title: 'E2E Test Guide'
-       }
+         title: 'E2E Test Guide',
+       },
      })
    );
    ```
@@ -86,18 +86,20 @@ This guide shows how to manually test the `bundled:e2e-test` JSON loading infras
 ### Steps:
 
 1. **Clear the localStorage key**:
+
    ```javascript
    localStorage.removeItem('grafana-pathfinder-app-e2e-test-guide');
    ```
 
 2. **Try to open the test guide**:
+
    ```javascript
    document.dispatchEvent(
      new CustomEvent('pathfinder-auto-open-docs', {
        detail: {
          url: 'bundled:e2e-test',
-         title: 'E2E Test Guide'
-       }
+         title: 'E2E Test Guide',
+       },
      })
    );
    ```
@@ -115,50 +117,49 @@ This guide shows how to manually test the `bundled:e2e-test` JSON loading infras
 ### Steps:
 
 1. **Inject a guide with requirements**:
+
    ```javascript
    const complexGuide = {
-     id: "complex-test",
-     title: "Complex Test Guide",
+     id: 'complex-test',
+     title: 'Complex Test Guide',
      blocks: [
        {
-         type: "interactive",
-         sectionId: "navigation-test",
-         title: "Navigation Test",
+         type: 'interactive',
+         sectionId: 'navigation-test',
+         title: 'Navigation Test',
          steps: [
            {
-             stepId: "nav-step-1",
-             targetAction: "navigate",
-             refTarget: "/dashboards",
-             description: "Navigate to dashboards page"
+             stepId: 'nav-step-1',
+             targetAction: 'navigate',
+             refTarget: '/dashboards',
+             description: 'Navigate to dashboards page',
            },
            {
-             stepId: "nav-step-2",
-             targetAction: "highlight",
+             stepId: 'nav-step-2',
+             targetAction: 'highlight',
              refTarget: "[data-testid='data-testid NavToolbar search-button']",
-             description: "Highlight the search button",
-             requirements: "on-page:/dashboards"
-           }
-         ]
-       }
-     ]
+             description: 'Highlight the search button',
+             requirements: 'on-page:/dashboards',
+           },
+         ],
+       },
+     ],
    };
 
-   localStorage.setItem(
-     'grafana-pathfinder-app-e2e-test-guide',
-     JSON.stringify(complexGuide)
-   );
+   localStorage.setItem('grafana-pathfinder-app-e2e-test-guide', JSON.stringify(complexGuide));
 
    console.log('Complex guide injected!');
    ```
 
 2. **Open the complex guide**:
+
    ```javascript
    document.dispatchEvent(
      new CustomEvent('pathfinder-auto-open-docs', {
        detail: {
          url: 'bundled:e2e-test',
-         title: 'Complex Test Guide'
-       }
+         title: 'Complex Test Guide',
+       },
      })
    );
    ```
@@ -178,46 +179,45 @@ This guide shows how to manually test the `bundled:e2e-test` JSON loading infras
 ### Steps:
 
 1. **Inject guide with noop step**:
+
    ```javascript
    const noopGuide = {
-     id: "noop-test",
-     title: "Noop Test Guide",
+     id: 'noop-test',
+     title: 'Noop Test Guide',
      blocks: [
        {
-         type: "interactive",
-         sectionId: "noop-section",
-         title: "Auto-Complete Test",
+         type: 'interactive',
+         sectionId: 'noop-section',
+         title: 'Auto-Complete Test',
          steps: [
            {
-             stepId: "noop-1",
-             targetAction: "noop",
-             description: "This step should auto-complete (no button)"
+             stepId: 'noop-1',
+             targetAction: 'noop',
+             description: 'This step should auto-complete (no button)',
            },
            {
-             stepId: "normal-1",
-             targetAction: "highlight",
-             refTarget: "button",
-             description: "This step has a Do it button"
-           }
-         ]
-       }
-     ]
+             stepId: 'normal-1',
+             targetAction: 'highlight',
+             refTarget: 'button',
+             description: 'This step has a Do it button',
+           },
+         ],
+       },
+     ],
    };
 
-   localStorage.setItem(
-     'grafana-pathfinder-app-e2e-test-guide',
-     JSON.stringify(noopGuide)
-   );
+   localStorage.setItem('grafana-pathfinder-app-e2e-test-guide', JSON.stringify(noopGuide));
    ```
 
 2. **Open the guide**:
+
    ```javascript
    document.dispatchEvent(
      new CustomEvent('pathfinder-auto-open-docs', {
        detail: {
          url: 'bundled:e2e-test',
-         title: 'Noop Test Guide'
-       }
+         title: 'Noop Test Guide',
+       },
      })
    );
    ```
@@ -237,6 +237,7 @@ This guide shows how to manually test the `bundled:e2e-test` JSON loading infras
 ### Steps:
 
 1. **Clear the test guide**:
+
    ```javascript
    localStorage.removeItem('grafana-pathfinder-app-e2e-test-guide');
    console.log('Test guide cleared');
@@ -255,8 +256,9 @@ This guide shows how to manually test the `bundled:e2e-test` JSON loading infras
 The manual tests above verify code in:
 
 1. **src/lib/user-storage.ts** (line 100)
+
    ```typescript
-   E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide'
+   E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide';
    ```
 
 2. **src/docs-retrieval/content-fetcher.ts** (lines 308-346)
@@ -274,19 +276,21 @@ The manual tests above verify code in:
 ### Issue: "Guide not loading"
 
 **Check**:
+
 1. Is localStorage item set correctly?
    ```javascript
-   localStorage.getItem('grafana-pathfinder-app-e2e-test-guide')
+   localStorage.getItem('grafana-pathfinder-app-e2e-test-guide');
    ```
 2. Is the JSON valid?
    ```javascript
-   JSON.parse(localStorage.getItem('grafana-pathfinder-app-e2e-test-guide'))
+   JSON.parse(localStorage.getItem('grafana-pathfinder-app-e2e-test-guide'));
    ```
 3. Check browser console for errors
 
 ### Issue: "Error message shown"
 
 **This is expected** if:
+
 - localStorage key is not set
 - JSON is invalid
 - Guide structure doesn't match schema
@@ -296,6 +300,7 @@ The manual tests above verify code in:
 ### Issue: "Interactive steps not rendering"
 
 **Check**:
+
 - Does the guide have a valid `interactive` block?
 - Does the section have a `sectionId`?
 - Do steps have `stepId` and `targetAction`?
@@ -317,6 +322,7 @@ The manual tests above verify code in:
 ## Next Steps
 
 Once manual verification passes:
+
 1. Proceed to **L3 Phase 2: CLI Scaffolding**
 2. Create `src/cli/commands/e2e.ts` (Milestone L3-2A)
 3. Implement Playwright integration (Milestone L3-2B)

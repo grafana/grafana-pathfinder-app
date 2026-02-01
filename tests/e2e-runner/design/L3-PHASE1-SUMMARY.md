@@ -15,6 +15,7 @@
 **Completed**: Comprehensive code analysis of all 10 unexamined assumptions (U1-U10)
 
 **Key Deliverable**: `L3-phase1-verification-results.md` - 500+ line detailed verification report with:
+
 - Code evidence for each assumption
 - Risk assessment and mitigation strategies
 - Required design changes for Milestones L3-3A, L3-3B, L3-4B
@@ -22,6 +23,7 @@
 - Complete implementation examples for critical changes
 
 **Verification Results**:
+
 - ✅ 2 assumptions verified true (U8, U9)
 - ⚠️ 4 assumptions partially true - require adjustments (U2, U5, U6, U10)
 - ❌ 4 assumptions falsified - require design changes (U1, U3, U4, U7)
@@ -35,6 +37,7 @@
 **Completed**: Full implementation of localStorage-based test guide injection
 
 **Files Modified**:
+
 1. `src/lib/user-storage.ts` (line 100):
    - Added `E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide'` storage key
 
@@ -44,6 +47,7 @@
    - Returns clear error if no content available
 
 **How It Works**:
+
 ```typescript
 // 1. Playwright injects guide JSON into localStorage
 await page.evaluate((jsonContent) => {
@@ -54,7 +58,7 @@ await page.evaluate((jsonContent) => {
 await page.evaluate(() => {
   document.dispatchEvent(
     new CustomEvent('pathfinder-auto-open-docs', {
-      detail: { url: 'bundled:e2e-test', title: 'E2E Test Guide' }
+      detail: { url: 'bundled:e2e-test', title: 'E2E Test Guide' },
     })
   );
 });
@@ -75,17 +79,19 @@ await page.evaluate(() => {
 **Discovery**: Steps can have `doIt: false` or be `noop` actions that auto-complete
 
 **Evidence**:
+
 - `src/docs-retrieval/components/interactive/interactive-step.tsx:146` - `doIt = true` is default but can be disabled
 - `src/docs-retrieval/components/interactive/interactive-step.tsx:289-306` - Noop steps auto-complete when eligible
 
 **Impact**: E2E runner will fail when trying to click non-existent buttons
 
 **Required Fix** (Milestone L3-3A - Step Discovery):
+
 ```typescript
 interface TestableStep {
   stepId: string;
-  hasDoItButton: boolean;       // NEW: Check button existence
-  isPreCompleted: boolean;       // NEW: Check if already done
+  hasDoItButton: boolean; // NEW: Check button existence
+  isPreCompleted: boolean; // NEW: Check if already done
   // ... existing fields
 }
 
@@ -95,7 +101,7 @@ async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
 
     // Check if "Do it" button exists
     const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
-    const hasDoItButton = await doItButton.count() > 0;
+    const hasDoItButton = (await doItButton.count()) > 0;
 
     // Check if already completed
     const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
@@ -114,12 +120,14 @@ async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
 **Discovery**: Sections enforce sequential dependencies via `isEligibleForChecking`
 
 **Evidence**:
+
 - `src/docs-retrieval/components/interactive/interactive-step.tsx:270-281` - Button enabled only when `finalIsEnabled` is true
 - `src/docs-retrieval/components/interactive/interactive-section.tsx:104` - Section tracks `completedSteps` state
 
 **Impact**: Clicking disabled buttons will fail or be ignored
 
 **Required Fix** (Milestone L3-3B - Step Execution):
+
 ```typescript
 async function executeStep(page: Page, step: TestableStep): Promise<StepTestResult> {
   const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
@@ -142,6 +150,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 **Discovery**: Steps with objectives or `completeEarly: true` complete before clicking
 
 **Required Fix** (Milestone L3-3B):
+
 - Check `testIds.interactive.stepCompleted(stepId)` visibility BEFORE clicking
 - Return `{ status: 'passed', note: 'Pre-completed (objectives)' }` if already done
 
@@ -150,6 +159,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 **Discovery**: Navigation fixes can timeout, requirements may be unfixable
 
 **Required Fix** (Milestone L3-4B):
+
 - Limit fix attempts to 3 (not 10 as in original design)
 - Add 10-second timeout per fix operation
 - Handle failures gracefully based on `skippable` flag
@@ -161,6 +171,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 ### 1. `MILESTONES.md`
 
 **Changes**:
+
 - ✅ Marked L3 Phase 1 as COMPLETED with summary
 - ✅ Updated Milestone L3-1A acceptance criteria (all checked)
 - ✅ Updated Milestone L3-1B acceptance criteria (all checked)
@@ -170,6 +181,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 ### 2. `e2e-test-runner-design.md`
 
 **Changes**:
+
 - ✅ Replaced "Unexamined Assumptions" section with "Verified Assumptions (L3 Phase 1 Complete)"
 - ✅ Added verification results table with status, design impact, and required actions
 - ✅ Updated main "Assumptions" section with "Corrected Assumptions" subsection
@@ -179,6 +191,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 ### 3. `tests/e2e-runner/design/L3-phase1-verification-results.md` (NEW)
 
 **Contents**:
+
 - Comprehensive 500+ line verification report
 - Code evidence for each of 10 assumptions
 - Detailed design impact analysis
@@ -219,6 +232,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 **L3 Phase 2: CLI Scaffolding** - No blockers
 
 Milestones ready for implementation:
+
 - Milestone L3-2A: CLI Command Skeleton
 - Milestone L3-2B: Playwright Spawning
 - Milestone L3-2C: Pre-flight Checks
@@ -228,6 +242,7 @@ Milestones ready for implementation:
 **L3 Phase 3: Step Discovery & Execution** - Apply L3 Phase 1 findings
 
 Required changes:
+
 - **Milestone L3-3A** (Step Discovery): Add `hasDoItButton` and `isPreCompleted` checks
 - **Milestone L3-3B** (Step Execution): Handle pre-completed steps, wait for `.toBeEnabled()`
 - **Milestone L3-3C** (Timing): Start with 30s timeout, collect empirical data
@@ -235,6 +250,7 @@ Required changes:
 **L3 Phase 4: Requirements Handling** - Apply L3 Phase 1 findings
 
 Required changes:
+
 - **Milestone L3-4B** (Fix Buttons): Add timeout (10s) and max attempts (3)
 
 ---

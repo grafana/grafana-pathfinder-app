@@ -817,20 +817,20 @@ The implementation should reuse:
 
 ## Design Decisions (Resolved)
 
-| Question               | Decision                           | Rationale                                                           |
-| ---------------------- | ---------------------------------- | ------------------------------------------------------------------- |
-| Step discovery         | DOM-based iteration                | Tests actual rendered UI, handles conditionals automatically        |
-| Show me vs Do it       | Skip "Show me", only click "Do it" | Faster, still validates execution                                   |
-| Multistep handling     | Single unit (pass/fail)            | Matches user experience; expand later                               |
-| Screenshots            | On failure only (MVP)              | Captures diagnostic state without storage overhead                  |
-| Test generation        | Dynamic (no static files)          | Cleaner, always current                                             |
-| Parallel vs sequential | Sequential only                    | Matches real user flow                                              |
-| Auth handling          | Modular, MVP uses existing         | Allows future swapping                                              |
-| Console error capture  | `console.error()` only             | Focused signal, less noise                                          |
-| Conditional branches   | Let plugin handle                  | Runner just iterates whatever is rendered                           |
-| Completion detection   | DOM polling only (MVP)             | Simpler; events deferred until polling proves inadequate            |
-| Error classification   | Hints only (MVP)                   | Only `infrastructure` auto-classified; others need human triage     |
-| Pre-flight checks      | Required before test run           | Fail fast with clear messages before wasting time                   |
+| Question               | Decision                           | Rationale                                                       |
+| ---------------------- | ---------------------------------- | --------------------------------------------------------------- |
+| Step discovery         | DOM-based iteration                | Tests actual rendered UI, handles conditionals automatically    |
+| Show me vs Do it       | Skip "Show me", only click "Do it" | Faster, still validates execution                               |
+| Multistep handling     | Single unit (pass/fail)            | Matches user experience; expand later                           |
+| Screenshots            | On failure only (MVP)              | Captures diagnostic state without storage overhead              |
+| Test generation        | Dynamic (no static files)          | Cleaner, always current                                         |
+| Parallel vs sequential | Sequential only                    | Matches real user flow                                          |
+| Auth handling          | Modular, MVP uses existing         | Allows future swapping                                          |
+| Console error capture  | `console.error()` only             | Focused signal, less noise                                      |
+| Conditional branches   | Let plugin handle                  | Runner just iterates whatever is rendered                       |
+| Completion detection   | DOM polling only (MVP)             | Simpler; events deferred until polling proves inadequate        |
+| Error classification   | Hints only (MVP)                   | Only `infrastructure` auto-classified; others need human triage |
+| Pre-flight checks      | Required before test run           | Fail fast with clear messages before wasting time               |
 
 ## Risks and Dependencies
 
@@ -857,6 +857,7 @@ The implementation should reuse:
 > **L3 Phase 1 Verification Complete** (2026-02-01): Core assumptions verified through code analysis. See "Verified Assumptions" section below for detailed results.
 
 **Operational Assumptions** (still valid):
+
 1. **Dev mode enabled**: E2E tests run against a Grafana instance with dev mode enabled
 2. **Admin auth available**: MVP assumes admin user authentication
 3. **Network stability**: Tests run against localhost (no network latency)
@@ -866,6 +867,7 @@ The implementation should reuse:
 7. **Conditional branches handled by plugin**: The plugin evaluates conditional logic based on app state; the test runner only sees the rendered result
 
 **Corrected Assumptions** (from L3 Phase 1 verification):
+
 1. ✅ **localStorage is reliable**: Robust handling with QuotaExceededError, fallbacks, and bidirectional sync with Grafana storage (U8 verified)
 2. ✅ **LazyRender steps exist and are testable**: Default disabled, but `executeWithLazyScroll()` handles scroll discovery when enabled (U9 verified)
 3. ⚠️ **Not all steps have "Do it" buttons**: Steps can have `doIt: false` or be `noop` actions that auto-complete (U1 falsified)
@@ -878,22 +880,23 @@ The implementation should reuse:
 
 > **L3 Phase 1 Completion**: All assumptions have been verified through code analysis (2026-02-01). See `tests/e2e-runner/design/L3-phase1-verification-results.md` for detailed findings.
 
-| #   | Assumption                                           | Verification Result | Design Impact | Status |
-| --- | ---------------------------------------------------- | ------------------- | ------------- | ------ |
-| U1  | **All steps have "Do it" buttons**                   | ❌ **FALSE** - Steps can have `doIt: false`; `noop` steps auto-complete | **HIGH** - Must check button existence before clicking | Required changes in Milestone L3-3A |
-| U2  | **Completion indicator appears after "Do it" click** | ⚠️ **PARTIAL** - Steps with `completeEarly: true` or objectives complete before/without clicking | **MEDIUM** - Check for pre-completion before clicking | Required changes in Milestone L3-3B |
-| U3  | **Steps are always clickable when discovered**       | ❌ **FALSE** - `isEligibleForChecking` controls sequential access; buttons may be disabled | **HIGH** - Must wait for `.toBeEnabled()` not just visible | Required changes in Milestone L3-3B |
-| U4  | **Fix buttons always succeed**                       | ❌ **FALSE** - Navigation/network failures possible; some requirements unfixable | **MEDIUM** - Add timeout and max retry logic | Required changes in Milestone L3-4B |
-| U5  | **Console.error() indicates real problems**          | ⚠️ **PARTIAL** - Grafana likely logs warnings/deprecations (needs empirical test) | **LOW** - Filter known false positives | Optional polish |
-| U6  | **Single DOM pass discovers all steps**              | ⚠️ **LIKELY TRUE** - All steps render on mount, but conditional rendering possible | **MEDIUM** - Re-check after major state changes defensively | Optional for MVP |
-| U7  | **SequentialRequirementsManager doesn't interfere**  | ❌ **FALSE** (but intentional) - Manager actively coordinates state across steps | **LOW** - Work with manager, not against it | No changes needed |
-| U8  | **localStorage is available and reliable**           | ✅ **TRUE** - Robust handling with QuotaExceededError, fallbacks, sync | **LOW** - No additional handling needed | ✅ Verified |
-| U9  | **LazyRender steps are rare/testable**               | ✅ **TRUE** - Default `false`, `executeWithLazyScroll()` handles scroll discovery | **LOW** - Use longer timeouts for lazy steps | ✅ Verified |
-| U10 | **Steps complete within 30 seconds**                 | ⚠️ **UNKNOWN** - Requires empirical testing with framework guide | **MEDIUM** - Use 30s default, adjust based on data | Testing needed in Milestone L3-3C |
+| #   | Assumption                                           | Verification Result                                                                              | Design Impact                                               | Status                              |
+| --- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- | ----------------------------------- |
+| U1  | **All steps have "Do it" buttons**                   | ❌ **FALSE** - Steps can have `doIt: false`; `noop` steps auto-complete                          | **HIGH** - Must check button existence before clicking      | Required changes in Milestone L3-3A |
+| U2  | **Completion indicator appears after "Do it" click** | ⚠️ **PARTIAL** - Steps with `completeEarly: true` or objectives complete before/without clicking | **MEDIUM** - Check for pre-completion before clicking       | Required changes in Milestone L3-3B |
+| U3  | **Steps are always clickable when discovered**       | ❌ **FALSE** - `isEligibleForChecking` controls sequential access; buttons may be disabled       | **HIGH** - Must wait for `.toBeEnabled()` not just visible  | Required changes in Milestone L3-3B |
+| U4  | **Fix buttons always succeed**                       | ❌ **FALSE** - Navigation/network failures possible; some requirements unfixable                 | **MEDIUM** - Add timeout and max retry logic                | Required changes in Milestone L3-4B |
+| U5  | **Console.error() indicates real problems**          | ⚠️ **PARTIAL** - Grafana likely logs warnings/deprecations (needs empirical test)                | **LOW** - Filter known false positives                      | Optional polish                     |
+| U6  | **Single DOM pass discovers all steps**              | ⚠️ **LIKELY TRUE** - All steps render on mount, but conditional rendering possible               | **MEDIUM** - Re-check after major state changes defensively | Optional for MVP                    |
+| U7  | **SequentialRequirementsManager doesn't interfere**  | ❌ **FALSE** (but intentional) - Manager actively coordinates state across steps                 | **LOW** - Work with manager, not against it                 | No changes needed                   |
+| U8  | **localStorage is available and reliable**           | ✅ **TRUE** - Robust handling with QuotaExceededError, fallbacks, sync                           | **LOW** - No additional handling needed                     | ✅ Verified                         |
+| U9  | **LazyRender steps are rare/testable**               | ✅ **TRUE** - Default `false`, `executeWithLazyScroll()` handles scroll discovery                | **LOW** - Use longer timeouts for lazy steps                | ✅ Verified                         |
+| U10 | **Steps complete within 30 seconds**                 | ⚠️ **UNKNOWN** - Requires empirical testing with framework guide                                 | **MEDIUM** - Use 30s default, adjust based on data          | Testing needed in Milestone L3-3C   |
 
 **Summary**: 2 verified true, 4 partially true (require adjustments), 4 falsified (require design changes). **No architectural blockers** - all findings improve design quality.
 
 **Key Design Changes Required**:
+
 1. **Step Discovery** (Milestone L3-3A): Add `hasDoItButton` and `isPreCompleted` fields to `TestableStep` interface
 2. **Step Execution** (Milestone L3-3B): Handle pre-completed steps, wait for buttons to be enabled (not just visible)
 3. **Fix Handling** (Milestone L3-4B): Add timeout (10s) and max attempts (3) for fix operations
@@ -1016,13 +1019,13 @@ const isCompletedWithObjectives =
 
 The following questions were identified during design and have been resolved:
 
-| Question | Resolution | Rationale |
-|----------|------------|-----------|
-| Disable SequentialRequirementsManager DOM monitoring? | No | It's part of what we're testing |
-| Pre-completed steps reporting? | `passed` with note | Guide is functioning correctly |
-| LazyRender retry with scroll? | Trust plugin handling, wait longer | Plugin handles transparently |
-| Max multistep timeout? | 30s base + 5s per action | Start generous, tune with data |
-| Verify guide completed all sections? | Post-MVP | Focus on step-level validation first |
+| Question                                              | Resolution                         | Rationale                            |
+| ----------------------------------------------------- | ---------------------------------- | ------------------------------------ |
+| Disable SequentialRequirementsManager DOM monitoring? | No                                 | It's part of what we're testing      |
+| Pre-completed steps reporting?                        | `passed` with note                 | Guide is functioning correctly       |
+| LazyRender retry with scroll?                         | Trust plugin handling, wait longer | Plugin handles transparently         |
+| Max multistep timeout?                                | 30s base + 5s per action           | Start generous, tune with data       |
+| Verify guide completed all sections?                  | Post-MVP                           | Focus on step-level validation first |
 
 ## Open Questions (Resolved)
 
@@ -1116,13 +1119,13 @@ jobs:
 
 This section consolidates key decisions made during design and implementation phases. These decisions are authoritative and should not be duplicated in other documents.
 
-| Decision | Value | Rationale |
-|----------|-------|-----------|
-| Max fix attempts | 3 | Fail fast in E2E tests; 10 was too slow |
-| Console error filtering | Hardcoded in runner | Known patterns (deprecations, DevTools) filtered out |
-| Auth strategies | Cloud SSO/Okta, username/password | MVP uses existing @grafana/plugin-e2e auth |
-| Artifact storage | Local files, GitHub Actions artifacts | Screenshots and DOM snapshots on failure |
-| Version matrix | Deferred | Guides may express compatibility metadata later |
+| Decision                | Value                                 | Rationale                                            |
+| ----------------------- | ------------------------------------- | ---------------------------------------------------- |
+| Max fix attempts        | 3                                     | Fail fast in E2E tests; 10 was too slow              |
+| Console error filtering | Hardcoded in runner                   | Known patterns (deprecations, DevTools) filtered out |
+| Auth strategies         | Cloud SSO/Okta, username/password     | MVP uses existing @grafana/plugin-e2e auth           |
+| Artifact storage        | Local files, GitHub Actions artifacts | Screenshots and DOM snapshots on failure             |
+| Version matrix          | Deferred                              | Guides may express compatibility metadata later      |
 
 ## Framework Test Guide
 
@@ -1145,11 +1148,13 @@ A special guide validates the E2E framework itself. This guide should **always p
 **Decide Later**: The exact sections and timing expectations will be determined empirically after running the E2E framework against 3-5 real bundled guides.
 
 **MVP scope**:
+
 - Create a minimal guide with 3-4 steps covering: highlight, button click, navigation
 - No timing assertions initially - collect timing data, analyze distribution, then set thresholds
 - No failure interpretation table - build this from actual failure patterns observed
 
 **Expansion criteria**: Expand the framework test guide when:
+
 1. MVP passes reliably for 2 weeks
 2. We have timing data from 100+ test runs
 3. We've observed 3+ distinct failure patterns that need coverage

@@ -13,18 +13,18 @@ This document presents the findings from verifying the 10 unexamined assumptions
 
 ## Verification Summary
 
-| # | Assumption | Status | Risk Level | Design Impact |
-|---|------------|--------|------------|---------------|
-| U1 | All steps have "Do it" buttons | ❌ **FALSE** | **HIGH** | Must handle steps without buttons |
-| U2 | Completion indicator appears after "Do it" click | ⚠️ **PARTIAL** | **MEDIUM** | Must handle pre-completion |
-| U3 | Steps always clickable when discovered | ❌ **FALSE** | **HIGH** | Must wait for eligibility |
-| U4 | Fix buttons always succeed | ❌ **FALSE** | **MEDIUM** | Need timeout/failure handling |
-| U5 | Console.error() indicates real problems | ⚠️ **PARTIAL** | **LOW** | May have false positives |
-| U6 | Single DOM pass discovers all steps | ⚠️ **PARTIAL** | **MEDIUM** | May need re-discovery |
-| U7 | SequentialRequirementsManager doesn't interfere | ❌ **FALSE** | **LOW** | Works with, not against it |
-| U8 | localStorage is available and reliable | ✅ **TRUE** | **LOW** | Well-handled in code |
-| U9 | LazyRender steps are rare/testable | ✅ **TRUE** | **LOW** | Exists but not common |
-| U10 | Steps complete within 30 seconds | ⚠️ **UNKNOWN** | **MEDIUM** | Needs empirical testing |
+| #   | Assumption                                       | Status         | Risk Level | Design Impact                     |
+| --- | ------------------------------------------------ | -------------- | ---------- | --------------------------------- |
+| U1  | All steps have "Do it" buttons                   | ❌ **FALSE**   | **HIGH**   | Must handle steps without buttons |
+| U2  | Completion indicator appears after "Do it" click | ⚠️ **PARTIAL** | **MEDIUM** | Must handle pre-completion        |
+| U3  | Steps always clickable when discovered           | ❌ **FALSE**   | **HIGH**   | Must wait for eligibility         |
+| U4  | Fix buttons always succeed                       | ❌ **FALSE**   | **MEDIUM** | Need timeout/failure handling     |
+| U5  | Console.error() indicates real problems          | ⚠️ **PARTIAL** | **LOW**    | May have false positives          |
+| U6  | Single DOM pass discovers all steps              | ⚠️ **PARTIAL** | **MEDIUM** | May need re-discovery             |
+| U7  | SequentialRequirementsManager doesn't interfere  | ❌ **FALSE**   | **LOW**    | Works with, not against it        |
+| U8  | localStorage is available and reliable           | ✅ **TRUE**    | **LOW**    | Well-handled in code              |
+| U9  | LazyRender steps are rare/testable               | ✅ **TRUE**    | **LOW**    | Exists but not common             |
+| U10 | Steps complete within 30 seconds                 | ⚠️ **UNKNOWN** | **MEDIUM** | Needs empirical testing           |
 
 ---
 
@@ -35,6 +35,7 @@ This document presents the findings from verifying the 10 unexamined assumptions
 **Status**: **VERIFIED - TRUE**
 
 **Evidence**:
+
 - `src/lib/user-storage.ts` implements comprehensive localStorage handling:
   - Lines 216-222: QuotaExceededError gracefully handled with cleanup
   - Lines 264-357: Hybrid storage with Grafana user storage fallback
@@ -53,6 +54,7 @@ This document presents the findings from verifying the 10 unexamined assumptions
 **Status**: **VERIFIED - TRUE**
 
 **Evidence**:
+
 - `src/docs-retrieval/components/interactive/interactive-step.tsx`:
   - Line 152: `lazyRender = false` (default is disabled)
   - Lines 46-110: `executeWithLazyScroll()` function implements scroll discovery
@@ -61,11 +63,13 @@ This document presents the findings from verifying the 10 unexamined assumptions
 - Well-tested pattern in existing interactive guides
 
 **Design Impact**: ✅ E2E runner can handle lazy render steps:
+
 - Wait for lazy scroll completion (lines 85-93 show it works)
 - Longer timeout for these steps (~10-15s instead of 5s)
 - Error if element never discovered is legitimate test failure
 
 **Recommendation**:
+
 - Detect `lazyRender` attribute on steps (if exposed to DOM or via data-attributes)
 - Allow 15-second timeout for lazy render steps vs 5s for normal steps
 - Log when lazy scroll discovery is triggered for diagnostics
@@ -77,6 +81,7 @@ This document presents the findings from verifying the 10 unexamined assumptions
 **Status**: **FALSIFIED - CRITICAL FINDING**
 
 **Evidence**:
+
 - `src/docs-retrieval/components/interactive/interactive-step.tsx`:
   - Line 146: `doIt = true` - **Default** is true, BUT can be explicitly disabled
   - Steps can set `doIt: false` to hide the "Do it" button entirely
@@ -87,6 +92,7 @@ This document presents the findings from verifying the 10 unexamined assumptions
   - Button selector assumes button exists, but it may not
 
 **Code Example**:
+
 ```typescript
 // From interactive-step.tsx:289-306
 if (isNoopAction && isEligibleForChecking && !disabled) {
@@ -101,6 +107,7 @@ if (isNoopAction && isEligibleForChecking && !disabled) {
 **Design Impact**: ❌ **MAJOR CHANGE REQUIRED**
 
 The E2E runner CANNOT assume all steps have "Do it" buttons. The current design (lines 452-473 of design doc) will fail when encountering:
+
 1. Steps with `doIt: false`
 2. Steps with `targetAction: 'noop'` (auto-complete)
 3. Steps that complete via objectives before user interaction
@@ -108,6 +115,7 @@ The E2E runner CANNOT assume all steps have "Do it" buttons. The current design 
 **Required Design Changes**:
 
 1. **Step Discovery Phase** - Detect step type:
+
 ```typescript
 async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
   const stepElements = await page.locator('[data-testid^="interactive-step-"]').all();
@@ -118,7 +126,7 @@ async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
 
     // Check if "Do it" button exists
     const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
-    const hasDoItButton = await doItButton.count() > 0;
+    const hasDoItButton = (await doItButton.count()) > 0;
 
     // Check if already completed (objectives or noop)
     const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
@@ -128,7 +136,7 @@ async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
       stepId,
       hasDoItButton,
       isPreCompleted,
-      element
+      element,
     });
   }
 
@@ -137,6 +145,7 @@ async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
 ```
 
 2. **Step Execution Logic** - Handle steps without buttons:
+
 ```typescript
 async function executeStep(page: Page, step: TestableStep): Promise<StepTestResult> {
   // Pre-completed steps (noop, objectives) - just verify and log
@@ -172,10 +181,12 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 **Status**: **PARTIALLY TRUE - REQUIRES HANDLING**
 
 **Evidence**:
+
 - `src/docs-retrieval/components/interactive/interactive-step.tsx`:
   - Line 149: `completeEarly = false` (default)
   - Lines 394-400: If `completeEarly: true`, step completes **BEFORE** action executes
   - Lines 264-268: Steps can complete via objectives **WITHOUT** clicking "Do it"
+
 ```typescript
 // Lines 394-400: CompleteEarly logic
 if (completeEarly) {
@@ -237,11 +248,13 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 **Status**: **FALSIFIED - CRITICAL FINDING**
 
 **Evidence**:
+
 - `src/docs-retrieval/components/interactive/interactive-step.tsx`:
   - Lines 270-281: Button enabled only when `finalIsEnabled` is true
   - `finalIsEnabled` requires BOTH:
     1. `isEligibleForChecking` (sequential dependency from section)
     2. `checker.isEnabled` (requirements satisfied)
+
 ```typescript
 // Lines 270-281: Eligibility calculation
 const finalIsEnabled = isPartOfSection
@@ -258,6 +271,7 @@ const finalIsEnabled = isPartOfSection
   - Lines 256-261: `isEligibleForChecking` passed down to each step
 
 **Sequential Dependency Example**:
+
 ```
 Section with 3 steps:
   Step 1: isEligibleForChecking = true  (first step always eligible)
@@ -284,6 +298,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 ```
 
 **Playwright's `.toBeEnabled()` matcher** checks:
+
 - Element is not disabled (no `disabled` attribute)
 - Element is not `aria-disabled="true"`
 - Element is visible and clickable
@@ -297,6 +312,7 @@ This aligns perfectly with Grafana UI's Button component behavior.
 **Status**: **FALSIFIED - REQUIRES ERROR HANDLING**
 
 **Evidence**:
+
 - `src/requirements-manager/step-checker.hook.ts`:
   - Lines 108-194: `checkRequirementsWithStateUpdates()` implements retry logic
   - Line 116: `maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries`
@@ -307,12 +323,11 @@ This aligns perfectly with Grafana UI's Button component behavior.
   - `lazy-scroll`: Element doesn't exist in virtualized container
 
 **Code showing retry logic**:
+
 ```typescript
 // Lines 150-157: Retry on failure
 if (retryCount < maxRetries) {
-  await new Promise(resolve =>
-    setTimeout(resolve, INTERACTIVE_CONFIG.delays.requirements.retryDelay)
-  );
+  await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.requirements.retryDelay));
   return attemptCheck(retryCount + 1);
 }
 ```
@@ -320,6 +335,7 @@ if (retryCount < maxRetries) {
 **Design Impact**: ⚠️ **MODERATE CHANGE REQUIRED**
 
 The E2E runner must:
+
 1. Limit fix attempts (design already specifies `maxFixes = 10`)
 2. Add timeout for individual fix operations
 3. Handle fix failures gracefully
@@ -327,7 +343,7 @@ The E2E runner must:
 ```typescript
 async function handleRequirements(page: Page, step: TestableStep): Promise<RequirementResult> {
   const fixButton = page.getByTestId(testIds.interactive.requirementFixButton(step.stepId));
-  const fixButtonExists = await fixButton.count() > 0;
+  const fixButtonExists = (await fixButton.count()) > 0;
 
   if (!fixButtonExists) {
     return { satisfied: false, canProceed: step.skippable };
@@ -346,7 +362,7 @@ async function handleRequirements(page: Page, step: TestableStep): Promise<Requi
 
       // Recheck requirements
       const requirementCheck = page.getByTestId(testIds.interactive.requirementCheck(step.stepId));
-      const passed = await requirementCheck.getAttribute('data-passed') === 'true';
+      const passed = (await requirementCheck.getAttribute('data-passed')) === 'true';
 
       if (passed) {
         return { satisfied: true, canProceed: true };
@@ -364,14 +380,14 @@ async function handleRequirements(page: Page, step: TestableStep): Promise<Requi
     return {
       satisfied: false,
       canProceed: true,
-      note: 'Skippable step with unfixable requirements'
+      note: 'Skippable step with unfixable requirements',
     };
   }
 
   return {
     satisfied: false,
     canProceed: false,
-    error: 'Requirements could not be satisfied after fix attempts'
+    error: 'Requirements could not be satisfied after fix attempts',
   };
 }
 ```
@@ -383,6 +399,7 @@ async function handleRequirements(page: Page, step: TestableStep): Promise<Requi
 **Status**: **LIKELY PARTIAL - NEEDS EMPIRICAL TESTING**
 
 **Evidence**:
+
 - No direct code evidence found in source
 - Grafana ecosystem is known to log:
   - Deprecation warnings
@@ -410,7 +427,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
   page.on('console', (msg) => {
     if (msg.type() === 'error') {
       const text = msg.text();
-      const isIgnored = IGNORED_PATTERNS.some(pattern => pattern.test(text));
+      const isIgnored = IGNORED_PATTERNS.some((pattern) => pattern.test(text));
       if (!isIgnored) {
         consoleErrors.push(text);
       }
@@ -428,6 +445,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 ```
 
 **Recommendation**:
+
 - Start with empty ignore list
 - Run framework test guide and collect common warnings
 - Build ignore list based on empirical data
@@ -439,6 +457,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 **Status**: **LIKELY TRUE BUT MAY NEED RE-DISCOVERY**
 
 **Evidence**:
+
 - Interactive sections render all steps on mount (from `interactive-section.tsx`)
 - Steps are React components - all rendered in initial tree
 - **However**: Conditional rendering is possible:
@@ -462,8 +481,7 @@ async function iterateSteps(page: Page): Promise<StepTestResult[]> {
 
     // After significant state changes (navigation, section completion),
     // re-discover steps to catch conditionally rendered content
-    if (result.currentUrl !== results[0]?.currentUrl ||
-        result.sectionCompleted) {
+    if (result.currentUrl !== results[0]?.currentUrl || result.sectionCompleted) {
       steps = await discoverStepsFromDOM(page);
 
       // If new steps appeared, log for diagnostics
@@ -479,6 +497,7 @@ async function iterateSteps(page: Page): Promise<StepTestResult[]> {
 ```
 
 **Recommendation**:
+
 - Start with single-pass for MVP
 - Add re-discovery if framework test guide fails due to missing steps
 - Log when re-discovery finds new steps (indicates conditional rendering)
@@ -490,6 +509,7 @@ async function iterateSteps(page: Page): Promise<StepTestResult[]> {
 **Status**: **FALSIFIED - BUT WORKS WITH MANAGER, NOT AGAINST IT**
 
 **Evidence**:
+
 - `src/requirements-manager/step-checker.hook.ts`:
   - Lines 199-228: Manager integration via context
   - Line 21: `SequentialRequirementsManager` is a core part of the system
@@ -500,6 +520,7 @@ async function iterateSteps(page: Page): Promise<StepTestResult[]> {
   - Debounced rechecks: 500ms for context changes, 1200ms for DOM mutations
 
 **Manager's Role**:
+
 ```typescript
 // Lines 210-228: Manager receives step state updates
 const updateManager = useCallback(
@@ -520,11 +541,13 @@ const updateManager = useCallback(
 **Design Impact**: ✅ **NO CHANGE - WORK WITH THE SYSTEM**
 
 The manager is **intentional** and **beneficial** for E2E testing:
+
 - Enforces sequential dependencies (already handled in U3)
 - Triggers next step's requirements check when previous completes
 - Debouncing prevents flakiness (waits for UI to settle)
 
 **What E2E Runner Should Do**:
+
 1. ✅ Execute steps in DOM order (already planned)
 2. ✅ Wait for button to be enabled (already planned in U3 fix)
 3. ✅ Let manager handle state propagation (no interference needed)
@@ -533,6 +556,7 @@ The manager is **intentional** and **beneficial** for E2E testing:
 The manager is NOT interference - it's the **mechanism** that enables sequential guides. E2E tests validate that this mechanism works correctly.
 
 **Recommendation**:
+
 - No additional handling needed
 - The debouncing (500ms/1200ms) is already factored into wait times
 - Trust that when a button becomes enabled, the manager gave permission
@@ -544,6 +568,7 @@ The manager is NOT interference - it's the **mechanism** that enables sequential
 **Status**: **UNKNOWN - REQUIRES EMPIRICAL TESTING**
 
 **Evidence**:
+
 - No code analysis can determine worst-case timing
 - Factors affecting duration:
   - Network latency (navigation steps)
@@ -552,6 +577,7 @@ The manager is NOT interference - it's the **mechanism** that enables sequential
   - Multistep action count
 
 **From `src/constants/interactive-config.ts`**:
+
 ```typescript
 INTERACTIVE_CONFIG = {
   delays: {
@@ -569,7 +595,7 @@ INTERACTIVE_CONFIG = {
       defaultStepDelay: 1800,
     },
   },
-}
+};
 ```
 
 **Estimated Durations** (from design doc):
@@ -584,6 +610,7 @@ INTERACTIVE_CONFIG = {
 **Design Impact**: ⚠️ **NEEDS TESTING - DYNAMIC TIMEOUT**
 
 Recommendation from design doc is sound:
+
 - Start with generous 30s default
 - Use completion detection (not fixed waits)
 - Timeout is safety net, not expected completion mechanism
@@ -606,6 +633,7 @@ async function waitForStepCompletion(page: Page, step: TestableStep): Promise<vo
 ```
 
 **Recommendation**:
+
 - Use 30s default for MVP
 - Run framework test guide to capture actual timings
 - If timeouts occur, analyze and adjust per-step-type
@@ -617,26 +645,26 @@ async function waitForStepCompletion(page: Page, step: TestableStep): Promise<vo
 
 ### High-Risk Findings (Require Design Changes)
 
-| Finding | Impact | Mitigation | Status |
-|---------|--------|------------|--------|
-| **U1**: Steps without "Do it" buttons | E2E runner will fail on noop/doIt:false steps | Add pre-check for button existence, handle auto-completed steps | Required for Milestone L3-3A |
-| **U3**: Buttons not always enabled when discovered | Race condition - clicking disabled buttons will fail | Use `.toBeEnabled()` matcher, wait for eligibility | Required for Milestone L3-3B |
+| Finding                                            | Impact                                               | Mitigation                                                      | Status                       |
+| -------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------- | ---------------------------- |
+| **U1**: Steps without "Do it" buttons              | E2E runner will fail on noop/doIt:false steps        | Add pre-check for button existence, handle auto-completed steps | Required for Milestone L3-3A |
+| **U3**: Buttons not always enabled when discovered | Race condition - clicking disabled buttons will fail | Use `.toBeEnabled()` matcher, wait for eligibility              | Required for Milestone L3-3B |
 
 ### Medium-Risk Findings (Require Adjustments)
 
-| Finding | Impact | Mitigation | Status |
-|---------|--------|------------|--------|
-| **U2**: Pre-completed steps | Unnecessary "Do it" clicks on already-done steps | Check completion before clicking | Recommended for Milestone L3-3B |
-| **U4**: Fix buttons can fail | Test hangs or fails cryptically | Add timeout and max attempts for fixes | Required for Milestone L3-4B |
-| **U6**: Conditional rendering possible | May miss dynamically rendered steps | Re-discover after major state changes | Optional for MVP, add if needed |
-| **U10**: Unknown max duration | Flaky timeouts or unnecessary waiting | Empirical testing with framework guide | Required for Milestone L3-3C |
+| Finding                                | Impact                                           | Mitigation                             | Status                          |
+| -------------------------------------- | ------------------------------------------------ | -------------------------------------- | ------------------------------- |
+| **U2**: Pre-completed steps            | Unnecessary "Do it" clicks on already-done steps | Check completion before clicking       | Recommended for Milestone L3-3B |
+| **U4**: Fix buttons can fail           | Test hangs or fails cryptically                  | Add timeout and max attempts for fixes | Required for Milestone L3-4B    |
+| **U6**: Conditional rendering possible | May miss dynamically rendered steps              | Re-discover after major state changes  | Optional for MVP, add if needed |
+| **U10**: Unknown max duration          | Flaky timeouts or unnecessary waiting            | Empirical testing with framework guide | Required for Milestone L3-3C    |
 
 ### Low-Risk Findings (Minor Adjustments)
 
-| Finding | Impact | Mitigation | Status |
-|---------|--------|------------|--------|
+| Finding                                | Impact                       | Mitigation            | Status          |
+| -------------------------------------- | ---------------------------- | --------------------- | --------------- |
 | **U5**: Console warnings produce noise | False positive error reports | Filter known warnings | Optional polish |
-| **U7**: Manager actively coordinates | None - works as designed | No action needed | Informational |
+| **U7**: Manager actively coordinates   | None - works as designed     | No action needed      | Informational   |
 
 ---
 
@@ -645,15 +673,18 @@ async function waitForStepCompletion(page: Page, step: TestableStep): Promise<vo
 Based on verification results, update the "Assumptions" section of the design document:
 
 ### Remove (Falsified):
+
 - ❌ "All steps have 'Do it' buttons" → FALSE
 - ❌ "Steps are always clickable when discovered" → FALSE
 - ❌ "Fix buttons always succeed" → FALSE
 
 ### Update (Qualified):
+
 - ⚠️ "Single DOM pass discovers all steps" → TRUE for most guides, re-check after major state changes
 - ⚠️ "Completion indicator appears after 'Do it' click" → TRUE for manual completion, but check for pre-completion first
 
 ### Add (New Findings):
+
 - ✅ "Noop steps auto-complete when eligible (no user interaction required)"
 - ✅ "Steps can complete via objectives without clicking 'Do it'"
 - ✅ "Section sequential dependencies enforce step order via isEligibleForChecking"
@@ -664,11 +695,13 @@ Based on verification results, update the "Assumptions" section of the design do
 ## Recommendations for Implementation
 
 ### Milestone L3-1B: JSON Loading Infrastructure (Ready to Implement)
+
 - ✅ localStorage is reliable (U8 verified)
 - ✅ No blocking issues for JSON injection mechanism
 - **Proceed as designed**
 
 ### Milestone L3-3A: Step Discovery (Changes Required)
+
 ```typescript
 interface TestableStep {
   stepId: string;
@@ -676,9 +709,9 @@ interface TestableStep {
   sectionId?: string;
   skippable: boolean;
   // NEW FIELDS based on verification:
-  hasDoItButton: boolean;        // U1: Check if button exists
-  isPreCompleted: boolean;       // U2: Check if already done
-  targetAction?: string;         // For logging/diagnostics
+  hasDoItButton: boolean; // U1: Check if button exists
+  isPreCompleted: boolean; // U2: Check if already done
+  targetAction?: string; // For logging/diagnostics
 }
 
 async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
@@ -711,6 +744,7 @@ async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
 ```
 
 ### Milestone L3-3B: Step Execution (Changes Required)
+
 ```typescript
 async function executeStep(page: Page, step: TestableStep): Promise<StepTestResult> {
   const startTime = Date.now();
@@ -755,11 +789,13 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 ```
 
 ### Milestone L3-3C: Timing (Empirical Testing Required)
+
 - Use framework test guide to capture actual durations
 - Log min/max/avg per step type
 - Adjust timeouts based on data
 
 ### Milestone L3-4B: Fix Button Execution (Changes Required)
+
 - Limit fix attempts to 3 (not 10) for faster failure
 - Add 10s timeout per fix operation
 - Handle failures gracefully based on `skippable` flag
@@ -769,6 +805,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 ## Conclusion
 
 **L3 Phase 1 verification is COMPLETE**. Of 10 assumptions:
+
 - ✅ **2 verified true** (U8, U9)
 - ⚠️ **4 partially true** (U2, U5, U6, U10) - require adjustments
 - ❌ **4 falsified** (U1, U3, U4, U7) - require design changes
@@ -776,6 +813,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 **Critical findings** (U1, U3) necessitate changes to Milestone L3-3A/L3-3B but do **not** block implementation. The findings actually **improve** the design by addressing real-world behavior.
 
 **Next Steps**:
+
 1. ✅ Update design document with corrected assumptions
 2. ✅ Implement Milestone L3-1B (JSON loading) - no blockers
 3. ✅ Proceed to Milestone L3-2A (CLI scaffolding) - no blockers

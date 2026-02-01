@@ -19,11 +19,13 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 ### Summary of L3 Phase 1 Results
 
 **Assumption Verification Status**:
+
 - ✅ **2 assumptions verified true** (U8: localStorage reliable, U9: LazyRender testable)
 - ⚠️ **4 assumptions partially true** (U2, U5, U6, U10) - require adjustments
 - ❌ **4 assumptions falsified** (U1, U3, U4, U7) - require design changes
 
 **Critical Findings**:
+
 1. **U1 (Falsified)**: Not all steps have "Do it" buttons - some have `doIt: false`, others are `noop` steps that auto-complete
 2. **U3 (Falsified)**: Steps may not be clickable when discovered - must wait for `isEligibleForChecking` (sequential dependencies)
 3. **U2 (Partial)**: Steps can pre-complete via objectives before clicking "Do it"
@@ -32,6 +34,7 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 **Design Impact**: Medium - Findings improve the design by addressing real-world behavior. No architectural blockers. See `L3-phase1-verification-results.md` for detailed analysis.
 
 **Files Created**:
+
 - `tests/e2e-runner/design/L3-phase1-verification-results.md` - Comprehensive verification report with code evidence
 
 ---
@@ -93,6 +96,7 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 - [x] Guide displays correctly with all interactive elements ✅
 
 **Implementation Notes**:
+
 - Handler follows same pattern as WYSIWYG preview (lines 264-306 in content-fetcher.ts)
 - Extracts title from JSON metadata for better UX
 - Returns clear error if no test content available
@@ -676,28 +680,28 @@ if (stepIndex % 5 === 0) {
 
 ## Summary Table
 
-| Milestone                                | L3 Phase | Effort | Risk       | Dependencies |
-| ---------------------------------------- | -------- | ------ | ---------- | ------------ |
-| L3-1A: Assumption Verification           | 1        | Small  | High value | None         |
-| L3-1B: JSON Loading                      | 1        | Small  | Low        | None         |
-| L3-2A: CLI Skeleton                      | 2        | Small  | Low        | L3-1B        |
-| L3-2B: Playwright Spawning               | 2        | Medium | Low        | L3-2A        |
-| L3-2C: Pre-flight Checks                 | 2        | Small  | Low        | L3-2B        |
-| L3-3A: Step Discovery                    | 3        | Medium | Medium     | L3-2C        |
-| L3-3B: Step Execution (Happy Path)       | 3        | Medium | Medium     | L3-3A        |
-| L3-3C: Timing/Completion (DOM Polling)   | 3        | Medium | Medium     | L3-3B        |
-| L3-3D: Session Validation                | 3        | Small  | Low        | L3-3C        |
-| L3-4A: Requirements Detection            | 4        | Medium | Low        | L3-3D        |
-| L3-4B: Fix Button Execution              | 4        | Medium | Medium     | L3-4A        |
-| L3-4C: Skip/Mandatory Logic              | 4        | Small  | Low        | L3-4B        |
-| L3-5A: Console Reporting                 | 5        | Small  | Low        | L3-4C        |
-| L3-5B: JSON Reporting                    | 5        | Medium | Low        | L3-5A        |
-| L3-5C: Error Classification              | 5        | Small  | Low        | L3-5B        |
-| L3-5D: Artifact Collection               | 5        | Medium | Low        | L3-5C        |
-| L3-6A: Framework Test Guide (MVP)        | 6        | Small  | Low        | L3-5D        |
-| L3-7A: Auth Abstraction                  | 7        | Small  | Low        | Parallel     |
-| L3-7B: Bundled Testing                   | 7        | Medium | Low        | L3-5D        |
-| L3-7C: CI Workflow                       | 7        | Small  | Low        | L3-7B        |
+| Milestone                              | L3 Phase | Effort | Risk       | Dependencies |
+| -------------------------------------- | -------- | ------ | ---------- | ------------ |
+| L3-1A: Assumption Verification         | 1        | Small  | High value | None         |
+| L3-1B: JSON Loading                    | 1        | Small  | Low        | None         |
+| L3-2A: CLI Skeleton                    | 2        | Small  | Low        | L3-1B        |
+| L3-2B: Playwright Spawning             | 2        | Medium | Low        | L3-2A        |
+| L3-2C: Pre-flight Checks               | 2        | Small  | Low        | L3-2B        |
+| L3-3A: Step Discovery                  | 3        | Medium | Medium     | L3-2C        |
+| L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        |
+| L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        |
+| L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        |
+| L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        |
+| L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        |
+| L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        |
+| L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        |
+| L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        |
+| L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        |
+| L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |
+| L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        |
+| L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     |
+| L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        |
+| L3-7C: CI Workflow                     | 7        | Small  | Low        | L3-7B        |
 
 ---
 
