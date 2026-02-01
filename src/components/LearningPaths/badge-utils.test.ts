@@ -4,7 +4,7 @@
  * Behavior-oriented tests for badge progress calculation and requirement text generation.
  */
 
-import { getBadgeProgress, getBadgeRequirementText } from './badge-utils';
+import { getBadgeProgress } from './badge-utils';
 import type { Badge } from '../../types';
 
 // ============================================================================
