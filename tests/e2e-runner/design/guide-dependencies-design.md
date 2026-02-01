@@ -1,6 +1,6 @@
 # Guide Dependencies Design
 
-This document specifies the guide-level metadata schema for expressing dependencies, capabilities, and test environment requirements. This metadata enables Layer 4 (Live Environment Validation) by allowing guides to declare what they need and what they provide.
+This document specifies the conceptual model for guide-level dependencies, capabilities, and test environment requirements. This metadata enables Layer 4 (Live Environment Validation) by allowing guides to declare what they need and what they provide.
 
 ## Overview
 
@@ -11,186 +11,57 @@ Guides are modeled after **Debian packages**: they can declare what they **requi
 - **Learning path ordering**: Define prerequisite relationships between guides
 - **Capability abstraction**: Allow multiple guides to satisfy the same abstract requirement
 
+## The Debian Model
+
+We adopt the proven dependency semantics from the [Debian package system](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends). Debian's package management has refined these concepts over decades, and they map naturally to educational content dependencies.
+
+### Dependency types
+
+| Debian Term | Guide Field | Meaning for Guides |
+|-------------|-------------|-------------------|
+| **Depends** | `depends` | Guide A depends on Guide B if B **must be completed** before A is accessible. This is a hard prerequisite that gates access. |
+| **Recommends** | `recommends` | Guide A recommends Guide B if most users would benefit from completing B first, but it's **not strictly required**. The system may prompt users but won't block access. |
+| **Suggests** | `suggests` | Guide A suggests Guide B if B contains **related content that enhances** understanding of A. Purely informational; used for "you might also like" recommendations. |
+| **Conflicts** | `conflicts` | Guide A conflicts with Guide B when both **cannot be meaningfully used together**. Typically used when a guide is deprecated in favor of another, or when guides target mutually exclusive environments (e.g., OSS-only vs. Cloud-only). |
+| **Replaces** | `replaces` | Guide A replaces Guide B when A **supersedes B entirely**. Used for versioned content where a new guide completely obsoletes an older one. Completion of A may automatically mark B as unnecessary. |
+| **Provides** | `provides` | Guide A provides capability X when completing A **satisfies any dependency on X**. This enables virtual capabilities where multiple different guides can satisfy the same abstract requirement. |
+
+We omit Debian's `Breaks` field as it maps to runtime conflicts, which are less relevant for educational content.
+
+### Virtual capabilities
+
+The `provides` field enables a powerful pattern borrowed from Debian's "virtual packages." Multiple guides can provide the same abstract capability, allowing flexible learning paths:
+
+- A guide teaching Prometheus setup and a guide teaching Loki setup might both `provide` a `datasource-configured` capability
+- A downstream guide can `depend` on `datasource-configured` without caring which specific guide the user completed
+- This enables branching learning paths while maintaining clear prerequisites
+
 ## Design Principles
 
-1. **Guide-level only**: This metadata structure exists only at the guide root level, not on individual blocks. Block-level `requirements` continue to use the existing string array format.
+1. **Guide-level only**: This dependency metadata exists only at the guide root level, not on individual blocks. Block-level `requirements` continue to use the existing string array format for runtime gating.
 
-2. **Rich structure over strings**: Unlike block-level requirements (which use strings like `"has-datasource:prometheus"`), guide-level dependencies use a structured object for expressiveness and validation.
+2. **Structured over strings**: Unlike block-level requirements (which use strings like `"has-datasource:prometheus"`), guide-level dependencies use a structured object for clarity and validation.
 
-3. **Debian-inspired semantics**: Borrow proven concepts from package management (requires, provides, suggests, conflicts).
+3. **Debian-inspired semantics**: We adopt Debian's proven dependency vocabulary rather than inventing new terminology.
 
-4. **Test-environment awareness**: Include fields specifically for test infrastructure routing.
+4. **Test-environment awareness**: Include fields specifically for test infrastructure routing, enabling Layer 4 validation.
 
-## Schema Specification
+## Test Environment Requirements
 
-### Top-Level Guide Structure
+Beyond inter-guide dependencies, guides may declare requirements for their test environment. This metadata enables the E2E runner to route guides to appropriate test infrastructure:
 
-```typescript
-interface JsonGuide {
-  schemaVersion?: string;
-  id: string;
-  title: string;
+- **Tier**: Which environment can run this guide (`local`, `managed`, or `cloud`)
+- **Minimum version**: The minimum Grafana version required
+- **Datasets**: Pre-seeded data the guide expects (e.g., sample Prometheus metrics)
+- **Plugins**: Grafana plugins that must be installed
+- **Datasources**: Data sources that must be configured
+- **Feature toggles**: Grafana feature flags that must be enabled
 
-  /** Guide-level dependency metadata (NEW) */
-  dependencies?: GuideDependencies;
+Guides without explicit test environment requirements default to `local` tier, meaning they can run against a standard local Grafana Docker instance.
 
-  blocks: JsonBlock[];
-}
-```
+## Example
 
-### GuideDependencies Interface
-
-```typescript
-interface GuideDependencies {
-  /**
-   * Hard prerequisites - ALL must be satisfied before the guide is accessible.
-   * Can reference guide IDs, capabilities, or environment conditions.
-   */
-  requires?: string[];
-
-  /**
-   * Alternative prerequisites - AT LEAST ONE must be satisfied.
-   * Useful when multiple guides teach equivalent foundational concepts.
-   */
-  requiresAny?: string[];
-
-  /**
-   * Capabilities this guide provides when completed.
-   * Other guides can depend on these via `requires`.
-   * The guide's `id` is implicitly provided upon completion.
-   */
-  provides?: string[];
-
-  /**
-   * Related guides that complement this one (informational, not gating).
-   * Used for "recommended next steps" UI and learning path suggestions.
-   */
-  suggests?: string[];
-
-  /**
-   * Mutually exclusive guides or conditions.
-   * If any conflict is satisfied, this guide should be hidden or show a warning.
-   */
-  conflicts?: string[];
-
-  /**
-   * Test environment requirements - used by E2E runner for routing.
-   */
-  testEnvironment?: TestEnvironmentRequirements;
-}
-```
-
-### TestEnvironmentRequirements Interface
-
-```typescript
-interface TestEnvironmentRequirements {
-  /**
-   * Which test tier can run this guide.
-   * - "local": Can run against local Docker Grafana (default)
-   * - "managed": Requires a managed test environment with specific setup
-   * - "cloud": Requires Grafana Cloud environment
-   */
-  tier?: 'local' | 'managed' | 'cloud';
-
-  /**
-   * Minimum Grafana version required.
-   * Guides will be skipped on environments below this version.
-   */
-  minVersion?: string;
-
-  /**
-   * Required datasets that must be pre-seeded in the test environment.
-   * See "Available Datasets" section for valid values.
-   */
-  datasets?: string[];
-
-  /**
-   * Required plugins that must be installed.
-   * Uses Grafana plugin IDs (e.g., "grafana-lokiexplore-app").
-   */
-  plugins?: string[];
-
-  /**
-   * Required data sources that must be configured.
-   * Can specify by type (e.g., "prometheus") or name.
-   */
-  datasources?: string[];
-
-  /**
-   * Feature toggles that must be enabled.
-   */
-  featureToggles?: string[];
-}
-```
-
-## Dependency Reference Syntax
-
-The `requires`, `requiresAny`, `provides`, `suggests`, and `conflicts` arrays use a unified reference syntax:
-
-| Pattern           | Meaning                                            | Example                     |
-| ----------------- | -------------------------------------------------- | --------------------------- |
-| `guide:{id}`      | Another guide must be completed                    | `guide:intro-to-alerting`   |
-| `cap:{name}`      | An abstract capability must be satisfied           | `cap:datasource-configured` |
-| `env:{condition}` | Environment condition (same as block requirements) | `env:min-version:11.0.0`    |
-
-### Examples
-
-```json
-{
-  "requires": ["guide:intro-to-alerting", "cap:prometheus-basics", "env:min-version:11.0.0"]
-}
-```
-
-**Shorthand**: For convenience, bare strings without a prefix are treated as guide references:
-
-```json
-{
-  "requires": ["intro-to-alerting"]
-}
-// Equivalent to:
-{
-  "requires": ["guide:intro-to-alerting"]
-}
-```
-
-## Capability Resolution
-
-When a guide is completed:
-
-1. `guide:{id}` becomes satisfied (implicit)
-2. All items in `provides` become satisfied capabilities
-3. Capabilities persist to user storage (localStorage in browser, mocked in tests)
-
-Multiple guides can provide the same capability, enabling flexible learning paths:
-
-```json
-// prometheus-quickstart.json
-{
-  "id": "prometheus-quickstart",
-  "dependencies": {
-    "provides": ["cap:datasource-ready", "cap:metrics-available"]
-  }
-}
-
-// loki-quickstart.json
-{
-  "id": "loki-quickstart",
-  "dependencies": {
-    "provides": ["cap:datasource-ready", "cap:logs-available"]
-  }
-}
-
-// explore-your-data.json
-{
-  "id": "explore-your-data",
-  "dependencies": {
-    "requires": ["cap:datasource-ready"]
-    // Satisfied by EITHER prometheus-quickstart OR loki-quickstart
-  }
-}
-```
-
-## Complete Example
+A complete example showing a guide with dependencies:
 
 ```json
 {
@@ -198,25 +69,12 @@ Multiple guides can provide the same capability, enabling flexible learning path
   "id": "advanced-alerting-techniques",
   "title": "Advanced alerting techniques",
   "dependencies": {
-    "requires": [
-      "intro-to-alerting",
-      "cap:prometheus-basics"
-    ],
-    "requiresAny": [
-      "prometheus-quickstart",
-      "mimir-quickstart"
-    ],
-    "provides": [
-      "cap:multi-condition-alerts",
-      "cap:notification-policies"
-    ],
-    "suggests": [
-      "oncall-integration",
-      "alert-silencing"
-    ],
-    "conflicts": [
-      "deprecated-alerting-v9"
-    ],
+    "depends": ["intro-to-alerting"],
+    "recommends": ["prometheus-quickstart"],
+    "suggests": ["oncall-integration", "alert-silencing"],
+    "provides": ["multi-condition-alerts", "notification-policies"],
+    "conflicts": ["deprecated-alerting-v9"],
+    "replaces": ["alerting-techniques-v10"],
     "testEnvironment": {
       "tier": "managed",
       "minVersion": "11.0.0",
@@ -225,77 +83,23 @@ Multiple guides can provide the same capability, enabling flexible learning path
       "plugins": ["grafana-oncall-app"]
     }
   },
-  "blocks": [...]
+  "blocks": []
 }
 ```
 
-## Available Datasets
-
-The managed test environments provide these pre-seeded datasets:
-
-| Dataset ID                  | Description                 | Contains                                                |
-| --------------------------- | --------------------------- | ------------------------------------------------------- |
-| `prometheus-sample-metrics` | Standard Prometheus metrics | Node exporter, container metrics, synthetic app metrics |
-| `loki-sample-logs`          | Sample log data             | Application logs, system logs, structured JSON logs     |
-| `tempo-sample-traces`       | Distributed traces          | Multi-service trace data with spans                     |
-| `testdata`                  | Grafana TestData datasource | Random walk, CSV, annotations                           |
-
-_Note: This list will expand as managed environments are provisioned._
-
-## Test Environment Routing
-
-The E2E test runner uses `testEnvironment` to determine where to run each guide:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Guide Dependencies                        │
-│                    testEnvironment field                     │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Test Router                               │
-│                                                              │
-│  tier: "local"    → Run against local Docker Grafana        │
-│  tier: "managed"  → Route to managed test environment       │
-│  tier: "cloud"    → Route to Grafana Cloud staging          │
-│  (unspecified)    → Default to "local"                      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Guides without a `dependencies` field or without `testEnvironment` default to `tier: "local"`.
-
-## Validation
-
-Layer 1 (Static Analysis) validates guide dependencies:
-
-1. **Schema validation**: Ensure `dependencies` object matches the schema
-2. **Reference validation**: Warn if referenced guides don't exist in the corpus
-3. **Cycle detection**: Error if circular dependencies exist
-4. **Dataset validation**: Warn if unknown dataset IDs are referenced
-
 ## Relationship to Block-Level Requirements
 
-| Concern        | Block-Level `requirements`            | Guide-Level `dependencies`                         |
-| -------------- | ------------------------------------- | -------------------------------------------------- |
-| **Scope**      | Single step/block                     | Entire guide                                       |
-| **Purpose**    | Runtime gating ("can execute now?")   | Structural metadata ("what does this guide need?") |
-| **Format**     | String array (`["has-datasource:X"]`) | Structured object                                  |
-| **Evaluation** | Real-time in browser                  | Pre-flight in test runner, UI filtering            |
-| **Persisted**  | No                                    | Capabilities persist on completion                 |
-
-## Implementation Status
-
-| Component              | Status                                  |
-| ---------------------- | --------------------------------------- |
-| Schema types           | ⏳ Future                               |
-| Zod validation         | ⏳ Future                               |
-| Capability storage     | ⏳ Future                               |
-| E2E router integration | ⏳ Future (requires Layer 3 completion) |
-| Static validation      | ⏳ Future                               |
+| Concern | Block-Level `requirements` | Guide-Level `dependencies` |
+|---------|---------------------------|---------------------------|
+| **Scope** | Single step/block | Entire guide |
+| **Purpose** | Runtime gating ("can this step execute now?") | Structural metadata ("what does this guide need to be useful?") |
+| **Format** | String array (`["has-datasource:X"]`) | Structured object with named fields |
+| **Evaluation** | Real-time in browser during guide execution | Pre-flight by test runner; UI filtering for recommendations |
+| **Persistence** | No | Capabilities persist on guide completion |
 
 ## Related Documents
 
 - [TESTING_STRATEGY.md](../../TESTING_STRATEGY.md) - Overall testing vision and Layer 4 context
 - [E2E Test Runner Design](./e2e-test-runner-design.md) - Layer 3 architecture
 - [Implementation Milestones](./MILESTONES.md) - Layer 3 implementation tasks
+- [Debian Package Dependencies](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends) - Authoritative reference for dependency semantics
