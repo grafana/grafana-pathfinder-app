@@ -97,6 +97,7 @@ export const StorageKeys = {
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
   WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview', // HTML content for editor persistence
   WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json', // JSON content for test preview
+  E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide', // JSON content for E2E test runner
   SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: grafana-pathfinder-app-section-collapse-{contentKey}-{sectionId}
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
