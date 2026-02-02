@@ -1,9 +1,9 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback, Suspense, lazy, Component, ReactNode } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -66,57 +66,23 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { config, getAppEvents, locationService } from '@grafana/runtime';
+import { config, getAppEvents } from '@grafana/runtime';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../testIds';
 
-// REACT: Error boundary for MyLearningTab to prevent panel crashes (R6)
-interface MyLearningErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class MyLearningErrorBoundary extends Component<{ children: ReactNode }, MyLearningErrorBoundaryState> {
-  state: MyLearningErrorBoundaryState = { hasError: false, error: null };
-
-  static getDerivedStateFromError(error: Error): MyLearningErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('MyLearningTab error:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: 16, textAlign: 'center' }}>
-          <Icon name="exclamation-triangle" size="xl" />
-          <p style={{ marginTop: 8 }}>Unable to load learning progress</p>
-          <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false, error: null })}>
-            Try again
-          </Button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+// Import extracted components
+import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions } from './components';
+// Import extracted utilities
+import { isDocsLikeTab, getTranslatedTitle } from './utils';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
 
 // Import centralized types
 import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
-
-/**
- * Helper to check if a tab type should be treated as docs-like content.
- * Both 'docs' and 'interactive' types render the same way (vs 'learning-journey').
- */
-const isDocsLikeTab = (type?: string): boolean => type === 'docs' || type === 'interactive';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;
@@ -1579,16 +1545,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           {visibleTabs
             .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
             .map((tab) => {
-              const getTranslatedTitle = (title: string) => {
-                if (title === 'Learning journey') {
-                  return t('docsPanel.learningJourney', 'Learning journey');
-                }
-                if (title === 'Documentation') {
-                  return t('docsPanel.documentation', 'Documentation');
-                }
-                return title; // Custom titles stay as-is
-              };
-
               return (
                 <button
                   key={tab.id}
@@ -1690,16 +1646,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               {overflowedTabs
                 .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
                 .map((tab) => {
-                  const getTranslatedTitle = (title: string) => {
-                    if (title === 'Learning Journey') {
-                      return t('docsPanel.learningJourney', 'Learning Journey');
-                    }
-                    if (title === 'Documentation') {
-                      return t('docsPanel.documentation', 'Documentation');
-                    }
-                    return title; // Custom titles stay as-is
-                  };
-
                   return (
                     <button
                       key={tab.id}
@@ -1761,69 +1707,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           )}
 
         {/* Menu and close actions */}
-        <div className={styles.tabBarActions}>
-          <Dropdown
-            placement="bottom-end"
-            overlay={
-              <Menu>
-                <Menu.Item
-                  label={t('docsPanel.giveFeedback', 'Give feedback')}
-                  icon="comment-alt-message"
-                  onClick={() => {
-                    reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
-                      interaction_location: 'header_menu_feedback',
-                      panel_type: 'docs_panel',
-                    });
-                    setTimeout(() => {
-                      window.open(
-                        'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
-                        '_blank',
-                        'noopener,noreferrer'
-                      );
-                    }, 100);
-                  }}
-                />
-                <Menu.Item
-                  label={t('docsPanel.settings', 'Settings')}
-                  icon="cog"
-                  onClick={() => {
-                    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                      action: 'navigate_to_config',
-                      source: 'header_menu_settings',
-                    });
-                    locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
-                  }}
-                />
-              </Menu>
-            }
-          >
-            <IconButton
-              name="ellipsis-v"
-              size="sm"
-              aria-label={t('docsPanel.menuAriaLabel', 'More options')}
-              tooltip={t('docsPanel.menuTooltip', 'More options')}
-            />
-          </Dropdown>
-          <IconButton
-            name="times"
-            size="sm"
-            tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
-            onClick={() => {
-              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                action: 'close_sidebar',
-                source: 'header_close_button',
-              });
-              // Close the extension sidebar
-              const appEvents = getAppEvents();
-              appEvents.publish({
-                type: 'close-extension-sidebar',
-                payload: {},
-              });
-            }}
-            aria-label="Close sidebar"
-            data-testid={testIds.docsPanel.closeButton}
-          />
-        </div>
+        <TabBarActions className={styles.tabBarActions} />
       </div>
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -1862,56 +1746,28 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           // Show loading state with skeleton
           if (!isRecommendationsTab && activeTab?.isLoading) {
             return (
-              <div
+              <LoadingIndicator
                 className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
-                data-testid={testIds.docsPanel.loadingState}
-              >
-                <SkeletonLoader type={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'} />
-              </div>
+                contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'}
+              />
             );
           }
 
           // Show error state with retry option
           if (!isRecommendationsTab && activeTab?.error && !activeTab.isLoading) {
-            const isRetryable =
-              activeTab.error.includes('timeout') ||
-              activeTab.error.includes('Unable to connect') ||
-              activeTab.error.includes('network');
-
             return (
-              <div
+              <ErrorDisplay
                 className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
-                data-testid={testIds.docsPanel.errorState}
-              >
-                <Alert
-                  severity="error"
-                  title={`Unable to load ${isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning journey'}`}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <p>{activeTab.error}</p>
-                    {isRetryable && (
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => {
-                            if (isDocsLikeTab(activeTab.type)) {
-                              model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                            } else {
-                              model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                            }
-                          }}
-                        >
-                          {t('docsPanel.retry', 'Retry')}
-                        </Button>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                          {t('docsPanel.retryHint', 'Check your connection and try again')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </Alert>
-              </div>
+                contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'}
+                error={activeTab.error}
+                onRetry={() => {
+                  if (isDocsLikeTab(activeTab.type)) {
+                    model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                  } else {
+                    model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                  }
+                }}
+              />
             );
           }
 
