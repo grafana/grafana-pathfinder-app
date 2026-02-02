@@ -28,6 +28,10 @@ export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled 
 // Coda Terminal defaults (experimental dev feature)
 export const DEFAULT_ENABLE_CODA_TERMINAL = false; // Experimental - disabled by default
 
+// Brokkr VM provisioning defaults (for Coda terminal backend)
+export const DEFAULT_BROKKR_URL = '';
+export const DEFAULT_BROKKR_USERNAME = '';
+
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
 export const DEFAULT_PEERJS_PORT = 9000;
@@ -85,6 +89,10 @@ export interface DocsPluginConfig {
   peerjsKey?: string;
   // Coda Terminal (Experimental dev feature for interactive sandbox)
   enableCodaTerminal?: boolean;
+  // Brokkr VM provisioning (backend for Coda terminal)
+  brokkrUrl?: string;
+  brokkrUsername?: string;
+  // Note: brokkrPassword is stored in secureJsonData, not here
 }
 
 // Helper functions to get configuration values with defaults
@@ -116,6 +124,9 @@ export const getConfigWithDefaults = (
   peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
   // Coda Terminal
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+  // Brokkr
+  brokkrUrl: config.brokkrUrl || DEFAULT_BROKKR_URL,
+  brokkrUsername: config.brokkrUsername || DEFAULT_BROKKR_USERNAME,
 });
 
 /**

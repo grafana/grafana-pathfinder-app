@@ -14,6 +14,8 @@ import {
   DEFAULT_PEERJS_PORT,
   DEFAULT_PEERJS_KEY,
   DEFAULT_ENABLE_CODA_TERMINAL,
+  DEFAULT_BROKKR_URL,
+  DEFAULT_BROKKR_USERNAME,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -37,6 +39,10 @@ type State = {
   peerjsKey: string;
   // Coda terminal (experimental)
   enableCodaTerminal: boolean;
+  // Brokkr VM provisioning (for Coda terminal backend)
+  brokkrUrl: string;
+  brokkrUsername: string;
+  brokkrPassword: string;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -59,6 +65,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
     enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+    brokkrUrl: jsonData?.brokkrUrl || DEFAULT_BROKKR_URL,
+    brokkrUsername: jsonData?.brokkrUsername || DEFAULT_BROKKR_USERNAME,
+    brokkrPassword: '', // Password is stored in secureJsonData, never loaded into state
   }));
   const [isSaving, setIsSaving] = useState(false);
 
@@ -184,6 +193,27 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onChangeBrokkrUrl = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      brokkrUrl: event.target.value.trim(),
+    });
+  };
+
+  const onChangeBrokkrUsername = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      brokkrUsername: event.target.value.trim(),
+    });
+  };
+
+  const onChangeBrokkrPassword = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      brokkrPassword: event.target.value,
+    });
+  };
+
   const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
@@ -223,12 +253,21 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsPort: state.peerjsPort,
         peerjsKey: state.peerjsKey,
         enableCodaTerminal: state.enableCodaTerminal,
+        brokkrUrl: state.brokkrUrl,
+        brokkrUsername: state.brokkrUsername,
       };
+
+      // Build secureJsonData only if password was changed
+      const secureJsonData: Record<string, string> = {};
+      if (state.brokkrPassword) {
+        secureJsonData.brokkrPassword = state.brokkrPassword;
+      }
 
       await updatePluginSettings(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: newJsonData,
+        ...(Object.keys(secureJsonData).length > 0 ? { secureJsonData } : {}),
       });
 
       // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
@@ -531,13 +570,63 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </div>
 
             {state.enableCodaTerminal && (
-              <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
-                <Text variant="body">
-                  <strong>This feature is experimental and requires backend infrastructure.</strong> The terminal panel
-                  will be visible in the sidebar but connection functionality requires a separate backend service to be
-                  running. This is intended for development and testing purposes only.
-                </Text>
-              </Alert>
+              <>
+                <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
+                  <Text variant="body">
+                    <strong>This feature is experimental and requires backend infrastructure.</strong> The terminal panel
+                    will be visible in the sidebar but connection functionality requires a separate backend service to be
+                    running. This is intended for development and testing purposes only.
+                  </Text>
+                </Alert>
+
+                {/* Brokkr VM provisioning configuration */}
+                <div className={s.marginTop}>
+                  <Text variant="h6">Brokkr VM provisioning</Text>
+                  <div style={{ marginTop: '8px', marginBottom: '16px' }}>
+                    <Text variant="body" color="secondary">
+                      Configure the Brokkr backend service for VM provisioning. The terminal connects to VMs provisioned
+                      by Brokkr.
+                    </Text>
+                  </div>
+
+                  <Field label="Brokkr URL" description="Base URL of the Brokkr API (e.g., http://localhost:8080)">
+                    <Input
+                      width={60}
+                      value={state.brokkrUrl}
+                      onChange={onChangeBrokkrUrl}
+                      placeholder="http://localhost:8080"
+                    />
+                  </Field>
+
+                  <Field label="Username" description="Username for Brokkr API authentication">
+                    <Input
+                      width={40}
+                      value={state.brokkrUsername}
+                      onChange={onChangeBrokkrUsername}
+                      placeholder="brokkr"
+                    />
+                  </Field>
+
+                  <Field
+                    label="Password"
+                    description="Password for Brokkr API authentication (stored securely)"
+                  >
+                    <Input
+                      type="password"
+                      width={40}
+                      value={state.brokkrPassword}
+                      onChange={onChangeBrokkrPassword}
+                      placeholder={plugin.meta.secureJsonFields?.brokkrPassword ? '••••••••' : 'Enter password'}
+                    />
+                  </Field>
+
+                  {plugin.meta.secureJsonFields?.brokkrPassword && !state.brokkrPassword && (
+                    <Text variant="bodySmall" color="secondary">
+                      Password is configured. Leave empty to keep the existing password.
+                    </Text>
+                  )}
+                </div>
+              </>
             )}
 
             {!state.enableCodaTerminal && (

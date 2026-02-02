@@ -37,12 +37,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [height, setHeight] = useState(() => getTerminalHeight());
   const [isResizing, setIsResizing] = useState(false);
 
-  // Session state (stubbed - no backend yet)
-  const [sessionId] = useState<string | null>(null);
-
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
   const { status, connect, disconnect, resize, error } = useTerminalLive({
-    sessionId,
     terminalRef: terminalInstanceRef,
   });
 
