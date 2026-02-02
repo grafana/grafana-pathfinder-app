@@ -64,12 +64,6 @@ export function detectUnknownFields(guide: unknown): ValidationWarning[] {
   if (guideFields) {
     warnings.push(...checkUnknownFields(guideObj, guideFields, []));
   }
-  if (guideObj.match && typeof guideObj.match === 'object') {
-    const matchFields = KNOWN_FIELDS._match;
-    if (matchFields) {
-      warnings.push(...checkUnknownFields(guideObj.match as Record<string, unknown>, matchFields, ['match']));
-    }
-  }
   if (Array.isArray(guideObj.blocks)) {
     (guideObj.blocks as Array<Record<string, unknown>>).forEach((block, index) => {
       warnings.push(...detectUnknownFieldsInBlock(block, ['blocks', index]));
