@@ -47,6 +47,7 @@ When reviewing a pull request, follow the comprehensive guidelines in:
 - **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** - Complete PR review checklist
 
 This guide instructs you to:
+
 1. Conduct a **Principal Engineer level** review focused on long-term code health
 2. Apply **security rules** from `frontend-security.mdc` (F1-F6)
 3. Apply **React anti-pattern checks** from `react-antipatterns.mdc` (R1-R15)

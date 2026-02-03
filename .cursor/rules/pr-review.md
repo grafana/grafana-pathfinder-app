@@ -1,8 +1,8 @@
 ---
 description: Comprehensive PR review checklist for Grafana Pathfinder
 globs:
-  - "**/*.ts"
-  - "**/*.tsx"
+  - '**/*.ts'
+  - '**/*.tsx'
 ---
 
 # PR Review Guidelines
@@ -39,6 +39,7 @@ Evaluate whether the code can be effectively tested:
 - [ ] Is there appropriate separation between business logic and UI rendering?
 
 **Red flags:**
+
 - Functions that directly access global state or singletons
 - Components that fetch data internally without abstraction
 - Tightly coupled modules that require extensive mocking
@@ -57,6 +58,7 @@ Evaluate the structural organization of the code:
 - [ ] Does the code follow the existing project structure patterns?
 
 **Red flags:**
+
 - Components doing too many unrelated things
 - Circular dependencies
 - God objects that accumulate unrelated functionality
@@ -75,6 +77,7 @@ Evaluate long-term sustainability of the code:
 - [ ] Are magic numbers and strings extracted to constants?
 
 **Red flags:**
+
 - Commented-out code left in place
 - Unclear variable/function names
 - Overly clever code that sacrifices readability
@@ -84,29 +87,37 @@ Evaluate long-term sustainability of the code:
 
 ## Vibe Coding Smells
 
-Watch for signs of AI-assisted code that lacks human review:
+Watch for signs of AI-assisted code that lacks human review.
+
+**Important**: PR authors are **not responsible** for refactoring existing large components they touch. However, they **should not create new** components that violate these constraints. Focus your review on newly introduced code.
 
 ### Large Components
-- [ ] Components should generally be under 200-300 lines
-- [ ] Flag any single component file exceeding 400 lines
-- [ ] Check for components with more than 5-6 responsibilities
+
+- [ ] **New** components should generally be under 200-300 lines
+- [ ] Flag any **newly created** component file exceeding 400 lines
+- [ ] Check for **new** components with more than 5-6 responsibilities
+- [ ] Existing large components are technical debt but not blocking for the PR
 
 ### God Objects
-- [ ] Watch for classes/objects that try to do everything
-- [ ] Flag state objects with more than 10 unrelated properties
-- [ ] Identify "manager" or "handler" classes that accumulate logic
+
+- [ ] Watch for **new** classes/objects that try to do everything
+- [ ] Flag **new** state objects with more than 10 unrelated properties
+- [ ] Identify **new** "manager" or "handler" classes that accumulate logic
 
 ### Duplicated Logic
+
 - [ ] Look for copy-paste patterns across files
 - [ ] Identify similar components that could be abstracted
 - [ ] Check for repeated utility functions that should be shared
 
 ### Excess Verbosity
+
 - [ ] Flag unnecessarily complex solutions to simple problems
 - [ ] Identify over-engineered abstractions
 - [ ] Look for boilerplate that could be simplified
 
 ### Missing Integration
+
 - [ ] Check if new code leverages existing utilities
 - [ ] Verify pattern consistency with the rest of the codebase
 - [ ] Confirm that new components follow established conventions
@@ -134,24 +145,52 @@ Watch for signs of AI-assisted code that lacks human review:
 ## Additional Quality Considerations
 
 ### Performance
+
 - [ ] Are expensive calculations memoized appropriately?
 - [ ] Are there potential memory leaks (uncleaned effects)?
 - [ ] Are lists rendered efficiently with proper keys?
 
 ### Error Handling
+
 - [ ] Are errors caught and handled gracefully?
 - [ ] Is there appropriate user feedback for failure states?
 - [ ] Are error boundaries in place where needed?
 
 ### Accessibility
+
 - [ ] Are interactive elements keyboard-navigable?
 - [ ] Are appropriate ARIA labels provided?
 - [ ] Is color contrast sufficient?
 
 ### TypeScript
+
 - [ ] Are types properly defined (avoid `any`)?
 - [ ] Are interfaces/types exported where needed?
 - [ ] Are generics used appropriately?
+
+---
+
+## Review Output Format
+
+**Keep review responses terse and focused.** Do not recap every check performed.
+
+### When All Checks Pass
+
+If the PR has no issues, provide a brief response like:
+
+> "LGTM. No security, anti-pattern, or vibe coding issues found. Approve to merge."
+
+Do **not** enumerate every rule checked or every section of this guide. One line is sufficient for a clean PR.
+
+### When Issues Are Found
+
+Only elaborate on specific problems. For each issue:
+
+- State the problem concisely
+- Reference the relevant rule (e.g., R3, F2)
+- Suggest a fix if straightforward
+
+Avoid verbose explanations of rules the code already follows correctly.
 
 ---
 
@@ -159,11 +198,11 @@ Watch for signs of AI-assisted code that lacks human review:
 
 After completing the review, provide one of these recommendations:
 
-| Disposition | Criteria |
-|-------------|----------|
-| **Approve to Merge** | Code meets all standards, tests pass, no blocking issues |
-| **Approve with Minor Changes** | Small improvements suggested but not blocking |
-| **Request Changes** | Blocking issues that must be addressed before merge |
+| Disposition                    | Criteria                                                 |
+| ------------------------------ | -------------------------------------------------------- |
+| **Approve to Merge**           | Code meets all standards, tests pass, no blocking issues |
+| **Approve with Minor Changes** | Small improvements suggested but not blocking            |
+| **Request Changes**            | Blocking issues that must be addressed before merge      |
 
 ### Final Checklist
 
