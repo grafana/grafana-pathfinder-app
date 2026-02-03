@@ -23,6 +23,20 @@ export interface UseStepCheckerProps {
   stepIndex?: number; // Document-wide step index for sequence awareness
   lazyRender?: boolean; // Enable progressive scroll discovery for virtualized containers
   scrollContainer?: string; // CSS selector for scroll container when lazyRender is enabled
+  /**
+   * Whether the step is disabled. When true, auto-completion callbacks are suppressed.
+   */
+  disabled?: boolean;
+  /**
+   * Callback invoked when objectives are satisfied, notifying parent of step completion.
+   * Called with stepId when completionReason becomes 'objectives'.
+   */
+  onStepComplete?: (stepId: string) => void;
+  /**
+   * Callback invoked when objectives are satisfied, for additional completion handling.
+   * Called after onStepComplete when completionReason becomes 'objectives'.
+   */
+  onComplete?: () => void;
 }
 
 /**

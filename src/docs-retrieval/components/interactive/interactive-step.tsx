@@ -258,6 +258,9 @@ export const InteractiveStep = forwardRef<
       stepIndex, // Pass document-wide step index for sequence awareness
       lazyRender, // Enable progressive scroll discovery for virtualized containers
       scrollContainer, // CSS selector for scroll container
+      disabled, // Pass through for auto-completion suppression
+      onStepComplete, // Pass through for objectives auto-completion
+      onComplete, // Pass through for objectives auto-completion
     });
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
@@ -304,6 +307,9 @@ export const InteractiveStep = forwardRef<
         }
       }
     }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
+
+    // NOTE: Auto-completion when objectives are met is now handled by useStepChecker
+    // via the onObjectivesComplete callback passed above.
 
     const shouldShowExplanation = isPartOfSection
       ? !isNoopAction &&
