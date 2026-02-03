@@ -22,10 +22,18 @@ export const getStyles = (theme: GrafanaTheme2) => ({
 
   editorContainer: css({
     flex: 1,
-    minHeight: 0,
-    // CodeEditor needs explicit height, use 100% of remaining flex space
+    // Minimum height ensures visibility when parent height is not explicit
+    minHeight: '400px',
+    // Use relative positioning to establish containing block for absolute child
+    position: 'relative',
+    // CodeEditor wrapper needs absolute positioning to fill flex container
+    // (percentage heights don't resolve in flex children without explicit height)
     '& > div': {
-      height: '100%',
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
     },
   }),
 });
