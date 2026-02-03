@@ -38,7 +38,22 @@ The following files are important sources of information:
 5. `.cursor/rules/multistepActions.mdc` - Multi-step component design and implementation
 6. `.cursor/rules/frontend-security.mdc` - Security rules for frontend code (ALWAYS apply)
 7. `.cursor/rules/instructions.mdc` - Agent behavior, commands, and workflow patterns
-8. `.cursor/rules/pr-reviews.mdc` - instructions for how to review a PR
+8. `.cursor/rules/react-antipatterns.mdc` - React anti-patterns to check during reviews (R1-R15)
+
+## PR Reviews
+
+When reviewing a pull request, follow the comprehensive guidelines in:
+
+- **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** - Complete PR review checklist
+
+This guide instructs you to:
+1. Conduct a **Principal Engineer level** review focused on long-term code health
+2. Apply **security rules** from `frontend-security.mdc` (F1-F6)
+3. Apply **React anti-pattern checks** from `react-antipatterns.mdc` (R1-R15)
+4. Evaluate **testability, modularity, and maintainability**
+5. Watch for **vibe coding smells**: large components, God objects, duplicated logic
+6. Check for **code duplication** and failure to reuse existing patterns
+7. Verify the change follows established **repo conventions**
 
 ## Local development commands
 
