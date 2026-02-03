@@ -112,6 +112,13 @@ export function BlockEditorHeader({
               onClick={() => onSetViewMode('preview')}
               tooltip="Preview"
             />
+            <Button
+              variant={viewMode === 'json' ? 'primary' : 'secondary'}
+              size="sm"
+              icon="brackets-curly"
+              onClick={() => onSetViewMode('json')}
+              tooltip="Edit JSON"
+            />
           </ButtonGroup>
         </div>
 
