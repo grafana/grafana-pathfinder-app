@@ -699,7 +699,11 @@ describe('JSON Round-trip Conversion', () => {
                 ],
                 whenFalse: [{ type: 'markdown', content: 'Add Prometheus first' }],
               },
-              { type: 'quiz', question: 'Did you complete the steps?', choices: [{ id: 'yes', text: 'Yes', correct: true }] },
+              {
+                type: 'quiz',
+                question: 'Did you complete the steps?',
+                choices: [{ id: 'yes', text: 'Yes', correct: true }],
+              },
             ],
           },
         ],
