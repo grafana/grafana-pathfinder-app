@@ -259,5 +259,29 @@ export interface BlockOperations {
   onConditionalBranchRecord: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
 }
 
+/**
+ * Props for the JSON editor component
+ */
+export interface BlockJsonEditorProps {
+  /** Current JSON text in the editor */
+  jsonText: string;
+  /** Called when JSON text changes */
+  onJsonChange: (json: string) => void;
+  /** List of validation errors */
+  validationErrors: string[];
+  /** Whether the current JSON is valid */
+  isValid: boolean;
+}
+
+/**
+ * JSON mode state for BlockEditorContent
+ */
+export interface JsonModeState {
+  /** Current JSON text being edited */
+  json: string;
+  /** Original block IDs before entering JSON mode */
+  originalBlockIds: string[];
+}
+
 // Re-export JSON guide types for convenience
 export type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction };

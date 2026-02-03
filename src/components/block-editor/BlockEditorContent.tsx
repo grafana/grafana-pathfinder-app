@@ -9,9 +9,10 @@
 
 import React from 'react';
 import { Button } from '@grafana/ui';
+import { BlockJsonEditor } from './BlockJsonEditor';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
-import type { EditorBlock, BlockOperations, JsonGuide, ViewMode } from './types';
+import type { EditorBlock, BlockOperations, JsonGuide, ViewMode, JsonModeState } from './types';
 
 export interface BlockEditorContentProps {
   /** Current view mode */
@@ -42,6 +43,14 @@ export interface BlockEditorContentProps {
   /** Empty state actions */
   onLoadTemplate: () => void;
   onOpenTour: () => void;
+  /** JSON mode state (present when in JSON editing mode) */
+  jsonModeState: JsonModeState | null;
+  /** Called when JSON text changes */
+  onJsonChange: (json: string) => void;
+  /** Validation errors for the current JSON */
+  jsonValidationErrors: string[];
+  /** Whether the current JSON is valid */
+  isJsonValid: boolean;
 }
 
 export function BlockEditorContent({
@@ -57,6 +66,10 @@ export function BlockEditorContent({
   onClearSelection,
   onLoadTemplate,
   onOpenTour,
+  jsonModeState,
+  onJsonChange,
+  jsonValidationErrors,
+  isJsonValid,
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
@@ -95,7 +108,14 @@ export function BlockEditorContent({
         </div>
       )}
 
-      {viewMode === 'preview' ? (
+      {viewMode === 'json' && jsonModeState ? (
+        <BlockJsonEditor
+          jsonText={jsonModeState.json}
+          onJsonChange={onJsonChange}
+          validationErrors={jsonValidationErrors}
+          isValid={isJsonValid}
+        />
+      ) : viewMode === 'preview' ? (
         <BlockPreview guide={guide} />
       ) : viewMode === 'edit' && hasBlocks ? (
         <BlockList blocks={blocks} operations={operations} />

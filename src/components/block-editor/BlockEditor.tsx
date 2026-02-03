@@ -588,6 +588,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onClearSelection={selection.clearSelection}
         onLoadTemplate={handleLoadTemplate}
         onOpenTour={() => modals.open('tour')}
+        // JSON mode props - placeholder until Phase 4 implementation
+        jsonModeState={null}
+        onJsonChange={() => {}}
+        jsonValidationErrors={[]}
+        isJsonValid={true}
       />
 
       {/* Footer with add block button (only in edit mode) */}
