@@ -8,7 +8,6 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useStyles2 } from '@grafana/ui';
-import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
@@ -17,15 +16,14 @@ import { useBlockSelection } from './hooks/useBlockSelection';
 import { useBlockFormState } from './hooks/useBlockFormState';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useRecordingActions } from './hooks/useRecordingActions';
+import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
+import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
+import { useGuideOperations } from './hooks/useGuideOperations';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { useActionRecorder } from '../../utils/devtools';
-import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
-import type { JsonGuide, BlockType, JsonBlock, BlockOperations, ViewMode, JsonModeState, PositionedError } from './types';
-import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
-import { convertBlockType } from './utils/block-conversion';
-import { parseAndValidateGuide } from './utils/block-import';
+import type { JsonGuide, JsonBlock, BlockOperations } from './types';
 import { BlockEditorFooter } from './BlockEditorFooter';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
@@ -70,10 +68,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     insertAtIndex,
     editingNestedBlock,
     editingConditionalBranchBlock,
-    setEditingBlockType,
-    setEditingBlock,
-    setEditingNestedBlock,
-    setEditingConditionalBranchBlock,
   } = formState;
 
   // Recording state - pure state layer (no persistence dependencies)
@@ -84,11 +78,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Block selection mode state (for merging blocks)
   const selection = useBlockSelection();
-
-  // JSON mode state - transient buffer until committed (Phase 4)
-  const [jsonModeState, setJsonModeState] = useState<JsonModeState | null>(null);
-  const [jsonValidationErrors, setJsonValidationErrors] = useState<PositionedError[]>([]);
-  const [isJsonValid, setIsJsonValid] = useState(true);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
   const excludeSelectors = useMemo(
@@ -151,6 +140,22 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       addBlockToConditionalBranch: editor.addBlockToConditionalBranch,
     },
     onClear: recordingPersistence.clear,
+  });
+
+  // JSON mode handlers - extracted hook for JSON editing
+  const jsonMode = useJsonModeHandlers({
+    editor,
+    recordingIntoSection,
+    recordingIntoConditionalBranch,
+    onStopRecording: recordingActions.stopRecording,
+    onClearSelection: selection.clearSelection,
+    isSelectionMode: selection.isSelectionMode,
+  });
+
+  // Block conversion handlers - extracted hook for type conversions
+  const conversionHandlers = useBlockConversionHandlers({
+    editor,
+    formState,
   });
 
   // Create BlockOperations for child components
@@ -236,241 +241,23 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     }
   }, [initialGuide, persistence, editor]);
 
+  // Guide operations - extracted hook for copy/download/new/import/template
+  const guideOps = useGuideOperations({
+    editor,
+    persistence,
+    recordingPersistence,
+    actionRecorder,
+    recordingState,
+    modals,
+    onCopy,
+    onDownload,
+  });
+
   // Handle block type selection from palette
   const handleBlockTypeSelect = formState.openNewBlockForm;
 
   // Handle form cancel
   const handleBlockFormCancel = formState.closeBlockForm;
-
-  // Handle split multistep/guided into individual interactive blocks
-  const handleSplitToBlocks = useCallback(() => {
-    // Check if we're editing a root-level or nested block
-    const blockData = editingNestedBlock?.block ?? editingBlock?.block;
-    if (!blockData || (blockData.type !== 'multistep' && blockData.type !== 'guided')) {
-      return;
-    }
-
-    const steps = (blockData as JsonMultistepBlock | JsonGuidedBlock).steps;
-    if (!steps || steps.length === 0) {
-      return;
-    }
-
-    // Convert steps to interactive blocks
-    const interactiveBlocks: JsonInteractiveBlock[] = steps.map((step) => ({
-      type: 'interactive',
-      action: step.action,
-      reftarget: step.reftarget,
-      content: step.tooltip || step.description || `${step.action} on element`,
-      ...(step.targetvalue && { targetvalue: step.targetvalue }),
-    }));
-
-    if (editingNestedBlock) {
-      // Nested block - replace within section
-      const { sectionId, nestedIndex } = editingNestedBlock;
-      // Delete the original block, then add the new ones at the same position
-      editor.deleteNestedBlock(sectionId, nestedIndex);
-      // Add in reverse order so they end up in correct sequence
-      interactiveBlocks.reverse().forEach((block) => {
-        editor.addBlockToSection(block, sectionId, nestedIndex);
-      });
-    } else if (editingBlock) {
-      // Root-level block - replace at same position
-      const blockIndex = editor.state.blocks.findIndex((b) => b.id === editingBlock.id);
-      if (blockIndex !== -1) {
-        // Remove the original
-        editor.removeBlock(editingBlock.id);
-        // Add the new blocks at the same position
-        interactiveBlocks.forEach((block, i) => {
-          editor.addBlock(block, blockIndex + i);
-        });
-      }
-    }
-
-    // Close the modal
-    handleBlockFormCancel();
-  }, [editingBlock, editingNestedBlock, editor, handleBlockFormCancel]);
-
-  // Handle convert between multistep and guided
-  const handleConvertType = useCallback(
-    (newType: 'multistep' | 'guided') => {
-      const blockData = editingNestedBlock?.block ?? editingBlock?.block;
-      if (!blockData || (blockData.type !== 'multistep' && blockData.type !== 'guided')) {
-        return;
-      }
-
-      const currentBlock = blockData as JsonMultistepBlock | JsonGuidedBlock;
-      let convertedBlock: JsonMultistepBlock | JsonGuidedBlock;
-
-      if (newType === 'guided') {
-        // Convert multistep to guided
-        convertedBlock = {
-          type: 'guided',
-          content: currentBlock.content,
-          steps: currentBlock.steps.map((step) => ({
-            ...step,
-            // Move tooltip to description for guided
-            description: step.tooltip || step.description,
-            tooltip: undefined,
-          })),
-          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
-          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
-          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
-        };
-      } else {
-        // Convert guided to multistep
-        convertedBlock = {
-          type: 'multistep',
-          content: currentBlock.content,
-          steps: currentBlock.steps.map((step) => ({
-            ...step,
-            // Move description to tooltip for multistep
-            tooltip: step.description || step.tooltip,
-            description: undefined,
-          })),
-          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
-          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
-          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
-        };
-      }
-
-      if (editingNestedBlock) {
-        // Update nested block
-        editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
-      } else if (editingBlock) {
-        // Update root-level block
-        editor.updateBlock(editingBlock.id, convertedBlock);
-      }
-
-      // Close the modal
-      handleBlockFormCancel();
-    },
-    [editingBlock, editingNestedBlock, editor, handleBlockFormCancel]
-  );
-
-  // Handle switch block type (for all block types, not just multistep/guided)
-  const handleSwitchBlockType = useCallback(
-    (newType: BlockType) => {
-      const sourceBlock = editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
-      if (!sourceBlock) {
-        console.warn('handleSwitchBlockType called with no active block');
-        return;
-      }
-
-      try {
-        const convertedBlock = convertBlockType(sourceBlock, newType);
-
-        // Update in-place based on context
-        if (editingConditionalBranchBlock) {
-          editor.updateConditionalBranchBlock(
-            editingConditionalBranchBlock.conditionalId,
-            editingConditionalBranchBlock.branch,
-            editingConditionalBranchBlock.nestedIndex,
-            convertedBlock
-          );
-          setEditingConditionalBranchBlock({
-            ...editingConditionalBranchBlock,
-            block: convertedBlock,
-          });
-        } else if (editingNestedBlock) {
-          editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
-          setEditingNestedBlock({
-            ...editingNestedBlock,
-            block: convertedBlock,
-          });
-        } else if (editingBlock) {
-          editor.updateBlock(editingBlock.id, convertedBlock);
-          setEditingBlock({
-            ...editingBlock,
-            block: convertedBlock,
-          });
-        }
-
-        // Update block type - triggers form remount via key prop change
-        setEditingBlockType(newType);
-      } catch (error) {
-        console.error('Failed to convert block type:', error);
-        getAppEvents().publish({
-          type: 'alert-error',
-          payload: ['Conversion failed', 'Could not convert to the selected block type.'],
-        });
-      }
-    },
-    [
-      editingBlock,
-      editingNestedBlock,
-      editingConditionalBranchBlock,
-      editor,
-      setEditingBlock,
-      setEditingBlockType,
-      setEditingConditionalBranchBlock,
-      setEditingNestedBlock,
-    ]
-  );
-
-  // Handle copy to clipboard
-  const handleCopy = useCallback(() => {
-    const guide = editor.getGuide();
-    const json = JSON.stringify(guide, null, 2);
-
-    if (onCopy) {
-      onCopy(json);
-    } else {
-      navigator.clipboard.writeText(json).then(() => {
-        // Could add a toast notification here
-        console.log('Copied to clipboard');
-      });
-    }
-  }, [editor, onCopy]);
-
-  // Handle download
-  const handleDownload = useCallback(() => {
-    const guide = editor.getGuide();
-
-    if (onDownload) {
-      onDownload(guide);
-    } else {
-      const json = JSON.stringify(guide, null, 2);
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-
-      // Open in new window/tab
-      const newWindow = window.open(url, '_blank');
-
-      // Revoke URL after window loads to free memory
-      if (newWindow) {
-        newWindow.onload = () => {
-          URL.revokeObjectURL(url);
-        };
-      } else {
-        // If popup was blocked, revoke immediately
-        URL.revokeObjectURL(url);
-      }
-    }
-  }, [editor, onDownload]);
-
-  // Handle new guide (reset and clear storage)
-  const handleNewGuide = useCallback(() => {
-    persistence.clear(); // Clear localStorage
-    recordingPersistence.clear(); // Clear any persisted recording state
-    actionRecorder.clearRecording(); // Stop any active recording
-    recordingState.reset(); // Clear recording state
-    editor.resetGuide(); // Reset editor state
-    modals.close('newGuideConfirm');
-  }, [editor, persistence, recordingPersistence, actionRecorder, recordingState, modals]);
-
-  // Handle import guide
-  const handleImportGuide = useCallback(
-    (guide: JsonGuide) => {
-      editor.loadGuide(guide);
-      modals.close('import');
-    },
-    [editor, modals]
-  );
-
-  // Handle loading the example template guide
-  const handleLoadTemplate = useCallback(() => {
-    editor.loadGuide(blockEditorTutorial as JsonGuide);
-  }, [editor]);
 
   // Recording handlers - delegate to recordingActions hook
   const handleStopRecording = recordingActions.stopRecording;
@@ -546,98 +333,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     ]
   );
 
-  // JSON mode handlers (Phase 4)
-  const handleEnterJsonMode = useCallback(() => {
-    // Stop recording if active
-    if (recordingIntoSection || recordingIntoConditionalBranch) {
-      recordingActions.stopRecording();
-    }
-    // Clear selection if active
-    if (selection.isSelectionMode) {
-      selection.clearSelection();
-    }
-
-    const guide = editor.getGuide();
-    const json = JSON.stringify(guide, null, 2);
-    setJsonModeState({
-      json,
-      originalBlockIds: editor.state.blocks.map((b) => b.id),
-      originalJson: json, // Capture snapshot for undo
-    });
-    setJsonValidationErrors([]);
-    setIsJsonValid(true);
-    editor.setViewMode('json');
-  }, [editor, recordingIntoSection, recordingIntoConditionalBranch, recordingActions, selection]);
-
-  // JSON undo handler - reverts to original JSON and re-validates
-  const handleJsonUndo = useCallback(() => {
-    setJsonModeState((prev) => {
-      if (!prev) {
-        return null;
-      }
-      // Re-validate the original JSON (should be valid, but be safe)
-      const result = parseAndValidateGuide(prev.originalJson);
-      setIsJsonValid(result.isValid);
-      setJsonValidationErrors(result.errors);
-      return { ...prev, json: prev.originalJson };
-    });
-  }, []);
-
-  // Compute canUndo - true when JSON differs from original
-  const canJsonUndo = jsonModeState !== null && jsonModeState.json !== jsonModeState.originalJson;
-
-  const handleExitJsonMode = useCallback(
-    (targetMode: 'edit' | 'preview') => {
-      if (!jsonModeState) {
-        editor.setViewMode(targetMode);
-        return;
-      }
-
-      const result = parseAndValidateGuide(jsonModeState.json);
-      if (!result.isValid) {
-        setJsonValidationErrors(result.errors);
-        setIsJsonValid(false);
-        return; // Block switch - inline errors visible
-      }
-
-      // Regenerate all block IDs (per DT3 - don't pass originalBlockIds)
-      editor.loadGuide(result.guide!);
-      // Mark dirty - loadGuide sets isDirty: false, but we want it dirty after JSON edit
-      editor.updateGuideMetadata({});
-
-      setJsonModeState(null);
-      setJsonValidationErrors([]);
-      setIsJsonValid(true);
-      editor.setViewMode(targetMode);
-    },
-    [editor, jsonModeState]
-  );
-
-  const handleJsonChange = useCallback((newJson: string) => {
-    setJsonModeState((prev) => (prev ? { ...prev, json: newJson } : null));
-    const result = parseAndValidateGuide(newJson);
-    setIsJsonValid(result.isValid);
-    setJsonValidationErrors(result.errors);
-  }, []);
-
-  const handleViewModeChange = useCallback(
-    (newMode: ViewMode) => {
-      const currentMode = editor.state.viewMode;
-      if (currentMode === newMode) {
-        return;
-      }
-
-      if (currentMode === 'json' && newMode !== 'json') {
-        handleExitJsonMode(newMode);
-      } else if (currentMode !== 'json' && newMode === 'json') {
-        handleEnterJsonMode();
-      } else {
-        editor.setViewMode(newMode);
-      }
-    },
-    [editor, handleEnterJsonMode, handleExitJsonMode]
-  );
-
   const { state } = editor;
   const hasBlocks = state.blocks.length > 0;
 
@@ -648,12 +343,12 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         guideTitle={state.guide.title}
         isDirty={state.isDirty}
         viewMode={state.viewMode}
-        onSetViewMode={handleViewModeChange}
+        onSetViewMode={jsonMode.handleViewModeChange}
         onOpenMetadata={() => modals.open('metadata')}
         onOpenTour={() => modals.open('tour')}
         onOpenImport={() => modals.open('import')}
-        onCopy={handleCopy}
-        onDownload={handleDownload}
+        onCopy={guideOps.handleCopy}
+        onDownload={guideOps.handleDownload}
         onOpenGitHubPR={() => modals.open('githubPr')}
         onNewGuide={() => modals.open('newGuideConfirm')}
         styles={{
@@ -684,15 +379,15 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onMergeToMultistep={handleMergeToMultistep}
         onMergeToGuided={handleMergeToGuided}
         onClearSelection={selection.clearSelection}
-        onLoadTemplate={handleLoadTemplate}
+        onLoadTemplate={guideOps.handleLoadTemplate}
         onOpenTour={() => modals.open('tour')}
         // JSON mode props (Phase 4)
-        jsonModeState={jsonModeState}
-        onJsonChange={handleJsonChange}
-        jsonValidationErrors={jsonValidationErrors}
-        isJsonValid={isJsonValid}
-        canJsonUndo={canJsonUndo}
-        onJsonUndo={handleJsonUndo}
+        jsonModeState={jsonMode.jsonModeState}
+        onJsonChange={jsonMode.handleJsonChange}
+        jsonValidationErrors={jsonMode.jsonValidationErrors}
+        isJsonValid={jsonMode.isJsonValid}
+        canJsonUndo={jsonMode.canUndo}
+        onJsonUndo={jsonMode.handleJsonUndo}
       />
 
       {/* Footer with add block button (only in edit mode) */}
@@ -706,8 +401,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isDirty={state.isDirty}
         hasBlocks={hasBlocks}
         onUpdateGuideMetadata={editor.updateGuideMetadata}
-        onNewGuideConfirm={handleNewGuide}
-        onImportGuide={handleImportGuide}
+        onNewGuideConfirm={guideOps.handleNewGuide}
+        onImportGuide={guideOps.handleImportGuide}
       />
 
       {/* Block form modal - kept separate due to complex editing state dependencies */}
@@ -722,17 +417,19 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           onSplitToBlocks={
             (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
             (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
-              ? handleSplitToBlocks
+              ? conversionHandlers.handleSplitToBlocks
               : undefined
           }
           onConvertType={
             (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
             (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
-              ? handleConvertType
+              ? conversionHandlers.handleConvertType
               : undefined
           }
           onSwitchBlockType={
-            editingBlock || editingNestedBlock || editingConditionalBranchBlock ? handleSwitchBlockType : undefined
+            editingBlock || editingNestedBlock || editingConditionalBranchBlock
+              ? conversionHandlers.handleSwitchBlockType
+              : undefined
           }
         />
       )}

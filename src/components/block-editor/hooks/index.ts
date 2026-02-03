@@ -42,3 +42,27 @@ export type {
   ActionRecorderInterface,
   EditorBlockInterface,
 } from './useRecordingActions';
+
+export { useJsonModeHandlers } from './useJsonModeHandlers';
+export type {
+  UseJsonModeHandlersOptions,
+  UseJsonModeHandlersReturn,
+  JsonModeEditorInterface,
+} from './useJsonModeHandlers';
+
+export { useBlockConversionHandlers } from './useBlockConversionHandlers';
+export type {
+  UseBlockConversionHandlersOptions,
+  UseBlockConversionHandlersReturn,
+  ConversionEditorInterface,
+  ConversionFormStateInterface,
+} from './useBlockConversionHandlers';
+
+export { useGuideOperations } from './useGuideOperations';
+export type {
+  UseGuideOperationsOptions,
+  UseGuideOperationsReturn,
+  GuideOpsEditorInterface,
+  GuideOpsPersistenceInterface,
+  GuideOpsModalInterface,
+} from './useGuideOperations';
