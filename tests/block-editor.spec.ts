@@ -86,7 +86,7 @@ test.describe.serial('Block Editor', () => {
     await expect(viewModeToggle).toBeVisible();
 
     // Click preview mode button (eye icon)
-    const previewButton = viewModeToggle.locator('button[aria-label="Preview mode"]');
+    const previewButton = viewModeToggle.locator('button[aria-label="Preview"]');
     await previewButton.click();
 
     // Block palette should be hidden in preview mode
@@ -94,7 +94,7 @@ test.describe.serial('Block Editor', () => {
     await expect(blockPalette).not.toBeVisible();
 
     // Click edit mode button (pen icon) to go back
-    const editButton = viewModeToggle.locator('button[aria-label="Edit mode"]');
+    const editButton = viewModeToggle.locator('button[aria-label="Edit blocks"]');
     await editButton.click();
 
     // Block palette should be visible again
