@@ -305,6 +305,51 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     }
   }
 
+  // SPECIAL CASE: Handle PR test learning paths from sessionStorage
+  if (contentId.startsWith('pr-tests/')) {
+    try {
+      const pathId = contentId.replace('pr-tests/', '');
+      const storageKey = `pathfinder-bundled-${pathId}`;
+      const pathContent = sessionStorage.getItem(storageKey);
+
+      if (!pathContent || pathContent.trim() === '') {
+        return {
+          content: null,
+          error: 'PR test path not found. It may have expired or been cleared.',
+        };
+      }
+
+      // Content is already JSON - parse to extract title for metadata
+      let title = 'PR Test Path';
+      try {
+        const parsed = JSON.parse(pathContent);
+        if (parsed.title) {
+          title = parsed.title;
+        }
+      } catch {
+        // If parsing fails, use default title
+      }
+
+      const rawContent: RawContent = {
+        content: pathContent, // Already valid JSON guide format
+        metadata: {
+          title,
+        },
+        type: 'interactive',
+        url,
+        lastFetched: new Date().toISOString(),
+      };
+
+      return { content: rawContent };
+    } catch (error) {
+      console.error('Failed to load PR test path:', error);
+      return {
+        content: null,
+        error: `Failed to load test path: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
   // Load bundled interactive from index.json
   // JSON format is the standard - all bundled interactives should be .json files
   try {

@@ -1737,6 +1737,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                   <SelectorDebugPanel
                     onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
+                    onOpenLearningJourney={(url: string, title: string) => model.openLearningJourney(url, title)}
                   />
                 </Suspense>
               </div>
