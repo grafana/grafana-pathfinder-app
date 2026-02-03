@@ -4,23 +4,24 @@
  * Header section of the block editor containing:
  * - Guide title and save status
  * - Settings button
- * - View mode toggle (edit/preview)
+ * - View mode toggle (edit/preview/json)
  * - Import/export actions
  * - New guide button
  */
 
 import React from 'react';
 import { Button, Badge, ButtonGroup } from '@grafana/ui';
+import type { ViewMode } from './types';
 
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
   guideTitle: string;
   /** Whether there are unsaved changes */
   isDirty: boolean;
-  /** Whether in preview mode */
-  isPreviewMode: boolean;
-  /** Callback to set preview mode */
-  onSetPreviewMode: (isPreview: boolean) => void;
+  /** Current view mode */
+  viewMode: ViewMode;
+  /** Callback to set view mode */
+  onSetViewMode: (mode: ViewMode) => void;
   /** Callback to open metadata modal */
   onOpenMetadata: () => void;
   /** Callback to open tour */
@@ -52,8 +53,8 @@ export interface BlockEditorHeaderProps {
 export function BlockEditorHeader({
   guideTitle,
   isDirty,
-  isPreviewMode,
-  onSetPreviewMode,
+  viewMode,
+  onSetViewMode,
   onOpenMetadata,
   onOpenTour,
   onOpenImport,
@@ -98,18 +99,18 @@ export function BlockEditorHeader({
         <div className={styles.viewModeToggle} data-testid="view-mode-toggle">
           <ButtonGroup>
             <Button
-              variant={!isPreviewMode ? 'primary' : 'secondary'}
+              variant={viewMode === 'edit' ? 'primary' : 'secondary'}
               size="sm"
               icon="pen"
-              onClick={() => onSetPreviewMode(false)}
-              tooltip="Edit mode"
+              onClick={() => onSetViewMode('edit')}
+              tooltip="Edit blocks"
             />
             <Button
-              variant={isPreviewMode ? 'primary' : 'secondary'}
+              variant={viewMode === 'preview' ? 'primary' : 'secondary'}
               size="sm"
               icon="eye"
-              onClick={() => onSetPreviewMode(true)}
-              tooltip="Preview mode"
+              onClick={() => onSetViewMode('preview')}
+              tooltip="Preview"
             />
           </ButtonGroup>
         </div>

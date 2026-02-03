@@ -549,8 +549,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       <BlockEditorHeader
         guideTitle={state.guide.title}
         isDirty={state.isDirty}
-        isPreviewMode={state.isPreviewMode}
-        onSetPreviewMode={editor.setPreviewMode}
+        viewMode={state.viewMode}
+        onSetViewMode={editor.setViewMode}
         onOpenMetadata={() => modals.open('metadata')}
         onOpenTour={() => modals.open('tour')}
         onOpenImport={() => modals.open('import')}
@@ -569,7 +569,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
       {/* Content */}
       <BlockEditorContent
-        isPreviewMode={state.isPreviewMode}
+        viewMode={state.viewMode}
         blocks={state.blocks}
         guide={editor.getGuide()}
         operations={blockOperations}
@@ -591,7 +591,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       />
 
       {/* Footer with add block button (only in edit mode) */}
-      <BlockEditorFooter isPreviewMode={state.isPreviewMode} onBlockTypeSelect={handleBlockTypeSelect} />
+      <BlockEditorFooter viewMode={state.viewMode} onBlockTypeSelect={handleBlockTypeSelect} />
 
       {/* Modals */}
       <BlockEditorModals

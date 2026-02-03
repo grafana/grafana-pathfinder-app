@@ -11,11 +11,11 @@ import React from 'react';
 import { Button } from '@grafana/ui';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
-import type { EditorBlock, BlockOperations, JsonGuide } from './types';
+import type { EditorBlock, BlockOperations, JsonGuide, ViewMode } from './types';
 
 export interface BlockEditorContentProps {
-  /** Whether in preview mode */
-  isPreviewMode: boolean;
+  /** Current view mode */
+  viewMode: ViewMode;
   /** List of blocks */
   blocks: EditorBlock[];
   /** Full guide for preview mode */
@@ -45,7 +45,7 @@ export interface BlockEditorContentProps {
 }
 
 export function BlockEditorContent({
-  isPreviewMode,
+  viewMode,
   blocks,
   guide,
   operations,
@@ -64,7 +64,7 @@ export function BlockEditorContent({
   return (
     <div className={styles.content} data-testid="block-editor-content">
       {/* Selection controls - shown in edit mode, above blocks */}
-      {!isPreviewMode && hasBlocks && (
+      {viewMode === 'edit' && hasBlocks && (
         <div className={styles.selectionControls}>
           {isSelectionMode && selectedCount >= 2 ? (
             <>
@@ -95,11 +95,11 @@ export function BlockEditorContent({
         </div>
       )}
 
-      {isPreviewMode ? (
+      {viewMode === 'preview' ? (
         <BlockPreview guide={guide} />
-      ) : hasBlocks ? (
+      ) : viewMode === 'edit' && hasBlocks ? (
         <BlockList blocks={blocks} operations={operations} />
-      ) : (
+      ) : viewMode === 'edit' ? (
         <div className={styles.emptyState}>
           <div className={styles.emptyStateIcon}>📄</div>
           <p className={styles.emptyStateText}>Your guide is empty. Add your first block to get started.</p>
@@ -112,7 +112,7 @@ export function BlockEditorContent({
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

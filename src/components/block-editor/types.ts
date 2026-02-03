@@ -8,6 +8,11 @@ import type { IconName } from '@grafana/ui';
 import type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction } from '../../types/json-guide.types';
 
 /**
+ * View mode for the block editor
+ */
+export type ViewMode = 'edit' | 'preview' | 'json';
+
+/**
  * Block type identifiers
  */
 export type BlockType =
@@ -55,8 +60,8 @@ export interface BlockEditorState {
   };
   /** Blocks in the guide */
   blocks: EditorBlock[];
-  /** Whether the editor is in preview mode */
-  isPreviewMode: boolean;
+  /** Current view mode (edit, preview, or json) */
+  viewMode: ViewMode;
   /** Whether there are unsaved changes */
   isDirty: boolean;
 }
