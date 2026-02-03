@@ -22,9 +22,10 @@ import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { useActionRecorder } from '../../utils/devtools';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
-import type { JsonGuide, BlockType, JsonBlock, BlockOperations } from './types';
+import type { JsonGuide, BlockType, JsonBlock, BlockOperations, ViewMode, JsonModeState } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
 import { convertBlockType } from './utils/block-conversion';
+import { parseAndValidateGuide } from './utils/block-import';
 import { BlockEditorFooter } from './BlockEditorFooter';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
@@ -83,6 +84,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Block selection mode state (for merging blocks)
   const selection = useBlockSelection();
+
+  // JSON mode state - transient buffer until committed (Phase 4)
+  const [jsonModeState, setJsonModeState] = useState<JsonModeState | null>(null);
+  const [jsonValidationErrors, setJsonValidationErrors] = useState<string[]>([]);
+  const [isJsonValid, setIsJsonValid] = useState(true);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
   const excludeSelectors = useMemo(
@@ -540,6 +546,77 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     ]
   );
 
+  // JSON mode handlers (Phase 4)
+  const handleEnterJsonMode = useCallback(() => {
+    // Stop recording if active
+    if (recordingIntoSection || recordingIntoConditionalBranch) {
+      recordingActions.stopRecording();
+    }
+    // Clear selection if active
+    if (selection.isSelectionMode) {
+      selection.clearSelection();
+    }
+
+    const guide = editor.getGuide();
+    const json = JSON.stringify(guide, null, 2);
+    setJsonModeState({ json, originalBlockIds: editor.state.blocks.map((b) => b.id) });
+    setJsonValidationErrors([]);
+    setIsJsonValid(true);
+    editor.setViewMode('json');
+  }, [editor, recordingIntoSection, recordingIntoConditionalBranch, recordingActions, selection]);
+
+  const handleExitJsonMode = useCallback(
+    (targetMode: 'edit' | 'preview') => {
+      if (!jsonModeState) {
+        editor.setViewMode(targetMode);
+        return;
+      }
+
+      const result = parseAndValidateGuide(jsonModeState.json);
+      if (!result.isValid) {
+        setJsonValidationErrors(result.errors);
+        setIsJsonValid(false);
+        return; // Block switch - inline errors visible
+      }
+
+      // Regenerate all block IDs (per DT3 - don't pass originalBlockIds)
+      editor.loadGuide(result.guide!);
+      // Mark dirty - loadGuide sets isDirty: false, but we want it dirty after JSON edit
+      editor.updateGuideMetadata({});
+
+      setJsonModeState(null);
+      setJsonValidationErrors([]);
+      setIsJsonValid(true);
+      editor.setViewMode(targetMode);
+    },
+    [editor, jsonModeState]
+  );
+
+  const handleJsonChange = useCallback((newJson: string) => {
+    setJsonModeState((prev) => (prev ? { ...prev, json: newJson } : null));
+    const result = parseAndValidateGuide(newJson);
+    setIsJsonValid(result.isValid);
+    setJsonValidationErrors(result.errors);
+  }, []);
+
+  const handleViewModeChange = useCallback(
+    (newMode: ViewMode) => {
+      const currentMode = editor.state.viewMode;
+      if (currentMode === newMode) {
+        return;
+      }
+
+      if (currentMode === 'json' && newMode !== 'json') {
+        handleExitJsonMode(newMode);
+      } else if (currentMode !== 'json' && newMode === 'json') {
+        handleEnterJsonMode();
+      } else {
+        editor.setViewMode(newMode);
+      }
+    },
+    [editor, handleEnterJsonMode, handleExitJsonMode]
+  );
+
   const { state } = editor;
   const hasBlocks = state.blocks.length > 0;
 
@@ -550,7 +627,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         guideTitle={state.guide.title}
         isDirty={state.isDirty}
         viewMode={state.viewMode}
-        onSetViewMode={editor.setViewMode}
+        onSetViewMode={handleViewModeChange}
         onOpenMetadata={() => modals.open('metadata')}
         onOpenTour={() => modals.open('tour')}
         onOpenImport={() => modals.open('import')}
@@ -588,11 +665,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onClearSelection={selection.clearSelection}
         onLoadTemplate={handleLoadTemplate}
         onOpenTour={() => modals.open('tour')}
-        // JSON mode props - placeholder until Phase 4 implementation
-        jsonModeState={null}
-        onJsonChange={() => {}}
-        jsonValidationErrors={[]}
-        isJsonValid={true}
+        // JSON mode props (Phase 4)
+        jsonModeState={jsonModeState}
+        onJsonChange={handleJsonChange}
+        jsonValidationErrors={jsonValidationErrors}
+        isJsonValid={isJsonValid}
       />
 
       {/* Footer with add block button (only in edit mode) */}
