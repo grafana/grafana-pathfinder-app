@@ -15,6 +15,14 @@ export const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
   }),
 
+  toolbar: css({
+    display: 'flex',
+    justifyContent: 'flex-end',
+    padding: theme.spacing(1),
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    backgroundColor: theme.colors.background.secondary,
+  }),
+
   errorList: css({
     margin: 0,
     paddingLeft: theme.spacing(2),

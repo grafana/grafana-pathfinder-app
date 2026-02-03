@@ -559,11 +559,32 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
     const guide = editor.getGuide();
     const json = JSON.stringify(guide, null, 2);
-    setJsonModeState({ json, originalBlockIds: editor.state.blocks.map((b) => b.id) });
+    setJsonModeState({
+      json,
+      originalBlockIds: editor.state.blocks.map((b) => b.id),
+      originalJson: json, // Capture snapshot for undo
+    });
     setJsonValidationErrors([]);
     setIsJsonValid(true);
     editor.setViewMode('json');
   }, [editor, recordingIntoSection, recordingIntoConditionalBranch, recordingActions, selection]);
+
+  // JSON undo handler - reverts to original JSON and re-validates
+  const handleJsonUndo = useCallback(() => {
+    setJsonModeState((prev) => {
+      if (!prev) {
+        return null;
+      }
+      // Re-validate the original JSON (should be valid, but be safe)
+      const result = parseAndValidateGuide(prev.originalJson);
+      setIsJsonValid(result.isValid);
+      setJsonValidationErrors(result.errors);
+      return { ...prev, json: prev.originalJson };
+    });
+  }, []);
+
+  // Compute canUndo - true when JSON differs from original
+  const canJsonUndo = jsonModeState !== null && jsonModeState.json !== jsonModeState.originalJson;
 
   const handleExitJsonMode = useCallback(
     (targetMode: 'edit' | 'preview') => {
@@ -670,6 +691,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onJsonChange={handleJsonChange}
         jsonValidationErrors={jsonValidationErrors}
         isJsonValid={isJsonValid}
+        canJsonUndo={canJsonUndo}
+        onJsonUndo={handleJsonUndo}
       />
 
       {/* Footer with add block button (only in edit mode) */}

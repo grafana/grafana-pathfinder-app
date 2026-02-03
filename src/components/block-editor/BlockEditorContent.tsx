@@ -12,7 +12,7 @@ import { Button } from '@grafana/ui';
 import { BlockJsonEditor } from './BlockJsonEditor';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
-import type { EditorBlock, BlockOperations, JsonGuide, ViewMode, JsonModeState } from './types';
+import type { EditorBlock, BlockOperations, JsonGuide, ViewMode, JsonModeState, PositionedError } from './types';
 
 export interface BlockEditorContentProps {
   /** Current view mode */
@@ -48,9 +48,13 @@ export interface BlockEditorContentProps {
   /** Called when JSON text changes */
   onJsonChange: (json: string) => void;
   /** Validation errors for the current JSON */
-  jsonValidationErrors: string[];
+  jsonValidationErrors: Array<string | PositionedError>;
   /** Whether the current JSON is valid */
   isJsonValid: boolean;
+  /** Whether undo is available for JSON mode */
+  canJsonUndo?: boolean;
+  /** Called when user clicks the undo button in JSON mode */
+  onJsonUndo?: () => void;
 }
 
 export function BlockEditorContent({
@@ -70,6 +74,8 @@ export function BlockEditorContent({
   onJsonChange,
   jsonValidationErrors,
   isJsonValid,
+  canJsonUndo,
+  onJsonUndo,
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
@@ -114,6 +120,8 @@ export function BlockEditorContent({
           onJsonChange={onJsonChange}
           validationErrors={jsonValidationErrors}
           isValid={isJsonValid}
+          canUndo={canJsonUndo}
+          onUndo={onJsonUndo}
         />
       ) : viewMode === 'preview' ? (
         <BlockPreview guide={guide} />

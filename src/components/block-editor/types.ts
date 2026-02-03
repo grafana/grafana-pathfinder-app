@@ -260,6 +260,16 @@ export interface BlockOperations {
 }
 
 /**
+ * Positioned error with line/column information for Monaco markers
+ */
+export interface PositionedError {
+  message: string;
+  path: Array<string | number>;
+  line?: number;
+  column?: number;
+}
+
+/**
  * Props for the JSON editor component
  */
 export interface BlockJsonEditorProps {
@@ -267,10 +277,14 @@ export interface BlockJsonEditorProps {
   jsonText: string;
   /** Called when JSON text changes */
   onJsonChange: (json: string) => void;
-  /** List of validation errors */
-  validationErrors: string[];
+  /** List of validation errors (string[] for legacy, PositionedError[] for enhanced) */
+  validationErrors: Array<string | PositionedError>;
   /** Whether the current JSON is valid */
   isValid: boolean;
+  /** Whether undo is available (JSON differs from original) */
+  canUndo?: boolean;
+  /** Called when user clicks the undo button */
+  onUndo?: () => void;
 }
 
 /**
@@ -281,6 +295,8 @@ export interface JsonModeState {
   json: string;
   /** Original block IDs before entering JSON mode */
   originalBlockIds: string[];
+  /** Original JSON snapshot for undo support */
+  originalJson: string;
 }
 
 // Re-export JSON guide types for convenience
