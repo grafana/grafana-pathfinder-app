@@ -30,13 +30,6 @@ export function BlockJsonEditor({
   const handleEditorMount = (editor: MonacoEditor, monaco: Monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    // Spike 0.1: Log Monaco API availability for verification
-    console.log('Monaco API available:', {
-      hasEditor: !!editor,
-      hasMonaco: !!monaco,
-      hasSetModelMarkers: !!monaco?.editor?.setModelMarkers,
-      hasMarkerSeverity: !!monaco?.MarkerSeverity,
-    });
   };
 
   // REACT: Update Monaco markers when errors change, cleanup on unmount (R1)

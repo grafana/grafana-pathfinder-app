@@ -22,7 +22,7 @@ import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { useActionRecorder } from '../../utils/devtools';
 import blockEditorTutorial from '../../bundled-interactives/block-editor-tutorial.json';
-import type { JsonGuide, BlockType, JsonBlock, BlockOperations, ViewMode, JsonModeState } from './types';
+import type { JsonGuide, BlockType, JsonBlock, BlockOperations, ViewMode, JsonModeState, PositionedError } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../types/json-guide.types';
 import { convertBlockType } from './utils/block-conversion';
 import { parseAndValidateGuide } from './utils/block-import';
@@ -87,7 +87,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // JSON mode state - transient buffer until committed (Phase 4)
   const [jsonModeState, setJsonModeState] = useState<JsonModeState | null>(null);
-  const [jsonValidationErrors, setJsonValidationErrors] = useState<string[]>([]);
+  const [jsonValidationErrors, setJsonValidationErrors] = useState<PositionedError[]>([]);
   const [isJsonValid, setIsJsonValid] = useState(true);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)

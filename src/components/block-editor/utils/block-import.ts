@@ -6,7 +6,8 @@
  */
 
 import type { JsonGuide } from '../types';
-import { validateGuideFromString, toLegacyResult } from '../../../validation';
+import { validateGuideFromString } from '../../../validation';
+import { addPositionsToErrors, type PositionedError } from './json-position';
 
 /**
  * Maximum file size in bytes (1MB)
@@ -14,11 +15,12 @@ import { validateGuideFromString, toLegacyResult } from '../../../validation';
 export const MAX_FILE_SIZE = 1024 * 1024;
 
 /**
- * Validation result with detailed error information
+ * Validation result with detailed error information.
+ * Errors include line/column positions for Monaco markers.
  */
 export interface ImportValidationResult {
   isValid: boolean;
-  errors: string[];
+  errors: PositionedError[];
   warnings: string[];
   guide: JsonGuide | null;
 }
@@ -76,16 +78,29 @@ export function validateFile(file: File): { isValid: boolean; errors: string[] }
 }
 
 /**
- * Parse and validate JSON guide content with detailed error reporting
+ * Parse and validate JSON guide content with detailed error reporting.
  *
  * Uses Zod schemas for validation. This is the main validation entry point.
+ * Errors include line/column positions for Monaco markers.
  *
  * @param jsonString - JSON string to parse
  * @returns Validation result with parsed guide if valid
  */
 export function parseAndValidateGuide(jsonString: string): ImportValidationResult {
   const result = validateGuideFromString(jsonString);
-  return toLegacyResult(result);
+
+  // Enrich errors with line/column positions using jsonc-parser
+  const errorsWithPositions = addPositionsToErrors(
+    result.errors.map((e) => ({ message: e.message, path: e.path })),
+    jsonString
+  );
+
+  return {
+    isValid: result.isValid,
+    errors: errorsWithPositions,
+    warnings: result.warnings.map((w) => w.message),
+    guide: result.guide,
+  };
 }
 
 /**
@@ -100,7 +115,8 @@ export async function importGuideFromFile(file: File): Promise<ImportValidationR
   if (!fileValidation.isValid) {
     return {
       isValid: false,
-      errors: fileValidation.errors,
+      // File validation errors don't have line/column positions
+      errors: fileValidation.errors.map((msg) => ({ message: msg, path: [] })),
       warnings: [],
       guide: null,
     };
@@ -113,7 +129,7 @@ export async function importGuideFromFile(file: File): Promise<ImportValidationR
   } catch {
     return {
       isValid: false,
-      errors: ['Unable to read file'],
+      errors: [{ message: 'Unable to read file', path: [] }],
       warnings: [],
       guide: null,
     };

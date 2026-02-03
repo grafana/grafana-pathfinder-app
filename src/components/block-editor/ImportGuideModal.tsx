@@ -466,7 +466,7 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
           <Alert title="Validation Failed" severity="error">
             <ul className={styles.errorList}>
               {state.result.errors.map((error, index) => (
-                <li key={index}>{error}</li>
+                <li key={index}>{error.line ? `Line ${error.line}: ${error.message}` : error.message}</li>
               ))}
             </ul>
           </Alert>
