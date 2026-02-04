@@ -253,7 +253,7 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 This is the highest-complexity phase. Consider splitting into smaller increments if the spike reveals additional complexity.
 
-**Progress**: 1/4 milestones complete (L3-3A ✅)
+**Progress**: 2/4 milestones complete (L3-3A ✅, L3-3B ✅)
 
 ### Milestone L3-3A: DOM-Based Step Discovery ✅ **COMPLETED**
 
@@ -312,7 +312,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-3B: Step Execution (Happy Path)
+### Milestone L3-3B: Step Execution (Happy Path) ✅ **COMPLETED**
 
 **Rationale**: Implements [Test Execution](./e2e-test-runner-design.md#test-execution) step execution flow.
 
@@ -327,14 +327,54 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-3A
 
+**Files modified**:
+
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Added step execution functions
+- `tests/e2e-runner/guide-runner.spec.ts` - Integrated step execution into test flow
+
 **Acceptance criteria**:
 
-- [ ] Steps scrolled into view before execution
-- [ ] "Do it" button clicked for each step
-- [ ] Completion indicator detected (or timeout)
-- [ ] Pre-completed steps handled gracefully (logged, skipped)
+- [x] Steps scrolled into view before execution ✅
+- [x] "Do it" button clicked for each step ✅
+- [x] Completion indicator detected (or timeout) ✅
+- [x] Pre-completed steps handled gracefully (logged, skipped) ✅
 
 **Estimated effort**: Medium (1-2 days)
+
+**Actual effort**: ~1.5 hours
+
+**Implementation Notes**:
+
+- **New types added**:
+  - `StepStatus`: `'passed' | 'failed' | 'skipped' | 'not_reached'`
+  - `SkipReason`: `'pre_completed' | 'no_do_it_button' | 'requirements_unmet'`
+  - `StepTestResult`: Captures stepId, status, durationMs, currentUrl, consoleErrors, error, skipReason
+
+- **`executeStep()` function** implements the happy path:
+  1. Checks for pre-completed steps (U2) → skip with `pre_completed` reason
+  2. Checks for missing "Do it" button (U1) → skip with `no_do_it_button` reason
+  3. Scrolls step into view with 300ms settle delay
+  4. Waits for "Do it" button to be enabled (U3 sequential dependencies, 10s timeout)
+  5. Clicks "Do it" button
+  6. Waits for completion indicator (30s default timeout)
+  7. Returns result with diagnostics (duration, URL, console errors)
+
+- **`executeAllSteps()` function** orchestrates sequential execution:
+  - Iterates through all discovered steps
+  - Handles abort on mandatory failure (marks remaining as `not_reached`)
+  - Supports verbose logging for debugging
+
+- **Console error capture**: Uses page.on('console') with cleanup in `finally` block to prevent memory leaks (per R1 cleanup pattern)
+
+- **Helper functions** for reporting:
+  - `logStepResult()`: Human-readable per-step output with status icons
+  - `summarizeResults()`: Aggregates counts and success status
+  - `logExecutionSummary()`: Summary output with pass/fail counts
+
+- **Design decisions**:
+  - Happy path only: Requirements handling deferred to L3-4A/4B
+  - All failures treated as mandatory (skip/mandatory logic in L3-4C)
+  - 30s default timeout per step (timing refinements in L3-3C)
 
 ---
 
@@ -769,7 +809,7 @@ if (stepIndex % 5 === 0) {
 | L3-2B: Playwright Spawning             | 2        | Medium | Low        | L3-2A        | ✅     |
 | L3-2C: Pre-flight Checks               | 2        | Small  | Low        | L3-2B        | ✅     |
 | L3-3A: Step Discovery                  | 3        | Medium | Medium     | L3-2C        | ✅     |
-| L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        |        |
+| L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        | ✅     |
 | L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        |        |
 | L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        |        |
 | L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        |        |

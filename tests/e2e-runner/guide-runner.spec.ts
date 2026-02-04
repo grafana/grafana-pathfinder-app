@@ -27,6 +27,9 @@ import {
 import {
   discoverStepsFromDOM,
   logDiscoveryResults,
+  executeAllSteps,
+  logExecutionSummary,
+  summarizeResults,
 } from './utils/guide-test-runner';
 
 /**
@@ -157,5 +160,27 @@ test.describe('Guide Runner', () => {
     }
 
     console.log(`\n✅ Step discovery completed successfully`);
+
+    // ============================================
+    // Step execution: Execute all discovered steps
+    // ============================================
+    console.log('\n🚀 Executing steps...');
+
+    const executionResults = await executeAllSteps(page, discoveryResult.steps, {
+      verbose: isVerbose,
+      stopOnMandatoryFailure: true, // Happy path: stop on first failure
+    });
+
+    // Log execution summary
+    logExecutionSummary(executionResults);
+
+    // Get summary for assertions
+    const summary = summarizeResults(executionResults);
+
+    // Verify no failures occurred
+    // Note: This is the happy path - we expect all steps to pass or be skipped
+    expect(summary.failed).toBe(0);
+
+    console.log(`\n✅ Guide execution completed: ${summary.passed} passed, ${summary.skipped} skipped`);
   });
 });

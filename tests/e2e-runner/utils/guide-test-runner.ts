@@ -70,6 +70,53 @@ export interface StepDiscoveryResult {
   durationMs: number;
 }
 
+/**
+ * Status of a step execution.
+ */
+export type StepStatus = 'passed' | 'failed' | 'skipped' | 'not_reached';
+
+/**
+ * Reason why a step was skipped.
+ */
+export type SkipReason =
+  | 'pre_completed' // Step was already completed before execution
+  | 'no_do_it_button' // Step doesn't have a "Do it" button (doIt: false or noop)
+  | 'requirements_unmet'; // Step requirements couldn't be satisfied (future milestone)
+
+/**
+ * Result of executing a single step.
+ *
+ * Captures diagnostics for debugging and reporting:
+ * - Status: passed, failed, skipped, or not_reached
+ * - Duration: execution time in ms
+ * - URL: page URL when step completed (useful for navigation steps)
+ * - Console errors: any console.error() calls during execution
+ * - Error message: if status is 'failed'
+ * - Skip reason: if status is 'skipped'
+ */
+export interface StepTestResult {
+  /** The step identifier */
+  stepId: string;
+
+  /** Execution outcome */
+  status: StepStatus;
+
+  /** Execution duration in milliseconds */
+  durationMs: number;
+
+  /** Page URL when step completed/failed */
+  currentUrl: string;
+
+  /** Console errors captured during step execution */
+  consoleErrors: string[];
+
+  /** Error message if status is 'failed' */
+  error?: string;
+
+  /** Reason if status is 'skipped' */
+  skipReason?: SkipReason;
+}
+
 // ============================================
 // Constants
 // ============================================
@@ -371,4 +418,306 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
       console.log(`   ${step.index + 1}. ${step.stepId}${actionStr}${sectionStr}${flagsStr}`);
     }
   }
+}
+
+// ============================================
+// Step Execution Functions
+// ============================================
+
+/**
+ * Default timeout for waiting for step completion (30 seconds per design).
+ */
+const DEFAULT_STEP_TIMEOUT = 30000;
+
+/**
+ * Delay after scrolling to allow animations to settle.
+ */
+const SCROLL_SETTLE_DELAY = 300;
+
+/**
+ * Execute a single step in the guide.
+ *
+ * This function implements the happy path step execution:
+ * 1. Handle pre-completed steps (skip with logging)
+ * 2. Handle steps without "Do it" buttons (skip with logging)
+ * 3. Scroll step into view
+ * 4. Wait for "Do it" button to be enabled (sequential dependencies)
+ * 5. Click "Do it" button
+ * 6. Wait for completion indicator
+ * 7. Return result with diagnostics
+ *
+ * Note: This is the "happy path" implementation (L3-3B).
+ * Requirements handling is deferred to L3-4A/4B.
+ * Timing/completion refinements are in L3-3C.
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to execute
+ * @param options - Execution options
+ * @returns StepTestResult with execution outcome and diagnostics
+ */
+export async function executeStep(
+  page: Page,
+  step: TestableStep,
+  options: {
+    timeout?: number;
+    verbose?: boolean;
+  } = {}
+): Promise<StepTestResult> {
+  const { timeout = DEFAULT_STEP_TIMEOUT, verbose = false } = options;
+  const startTime = Date.now();
+  const consoleErrors: string[] = [];
+
+  // Set up console error capture for this step execution
+  const consoleHandler = (msg: { type: () => string; text: () => string }) => {
+    if (msg.type() === 'error') {
+      consoleErrors.push(msg.text());
+    }
+  };
+  page.on('console', consoleHandler);
+
+  try {
+    // Handle pre-completed steps (U2: objectives/noop auto-completion)
+    if (step.isPreCompleted) {
+      if (verbose) {
+        console.log(`   ⊘ Step ${step.stepId} already completed, skipping`);
+      }
+      return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
+    }
+
+    // Handle steps without "Do it" buttons (U1: doIt: false, noop actions)
+    if (!step.hasDoItButton) {
+      if (verbose) {
+        console.log(`   ⊘ Step ${step.stepId} has no "Do it" button, skipping`);
+      }
+      return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
+    }
+
+    // Scroll step into view before interaction
+    await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY);
+
+    // Wait for "Do it" button to be enabled (U3: sequential dependencies)
+    // Use a shorter timeout for button enablement vs step completion
+    const buttonEnableTimeout = Math.min(timeout, 10000);
+    await waitForDoItButtonEnabled(page, step.stepId, buttonEnableTimeout);
+
+    // Click "Do it" button
+    const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
+    await doItButton.click();
+
+    if (verbose) {
+      console.log(`   → Clicked "Do it" for step ${step.stepId}`);
+    }
+
+    // Wait for step completion indicator
+    await waitForStepCompletion(page, step.stepId, timeout);
+
+    // Return success result with diagnostics
+    return {
+      stepId: step.stepId,
+      status: 'passed',
+      durationMs: Date.now() - startTime,
+      currentUrl: page.url(),
+      consoleErrors,
+    };
+  } catch (error) {
+    // Return failure result with error details
+    return {
+      stepId: step.stepId,
+      status: 'failed',
+      durationMs: Date.now() - startTime,
+      currentUrl: page.url(),
+      consoleErrors,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    // Clean up console handler to prevent memory leaks
+    page.off('console', consoleHandler);
+  }
+}
+
+/**
+ * Execute all discovered steps in sequence.
+ *
+ * This is a convenience function that iterates through all steps and
+ * executes them in order. It handles:
+ * - Pre-completed steps (skipped)
+ * - Steps without "Do it" buttons (skipped)
+ * - Failed mandatory steps (stops execution, marks remaining as not_reached)
+ *
+ * Note: This is the happy path implementation. Requirements handling
+ * and skip/mandatory logic refinements are in later milestones.
+ *
+ * @param page - Playwright Page object
+ * @param steps - Array of testable steps to execute
+ * @param options - Execution options
+ * @returns Array of StepTestResult for all steps
+ */
+export async function executeAllSteps(
+  page: Page,
+  steps: TestableStep[],
+  options: {
+    timeout?: number;
+    verbose?: boolean;
+    stopOnMandatoryFailure?: boolean;
+  } = {}
+): Promise<StepTestResult[]> {
+  const { verbose = false, stopOnMandatoryFailure = true } = options;
+  const results: StepTestResult[] = [];
+  let aborted = false;
+
+  if (verbose) {
+    console.log(`\n🚀 Executing ${steps.length} steps...`);
+  }
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+
+    // If we've aborted, mark remaining steps as not_reached
+    if (aborted) {
+      results.push({
+        stepId: step.stepId,
+        status: 'not_reached',
+        durationMs: 0,
+        currentUrl: page.url(),
+        consoleErrors: [],
+      });
+      continue;
+    }
+
+    if (verbose) {
+      console.log(`\n   [${i + 1}/${steps.length}] Step: ${step.stepId}`);
+    }
+
+    const result = await executeStep(page, step, options);
+    results.push(result);
+
+    // Log result
+    if (verbose) {
+      logStepResult(result);
+    }
+
+    // Check if we should stop on mandatory failure
+    // Note: For L3-3B (happy path), we treat all failures as stopping the test
+    // The skip/mandatory logic refinement is in L3-4C
+    if (result.status === 'failed' && stopOnMandatoryFailure) {
+      if (verbose) {
+        console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
+      }
+      aborted = true;
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Create a skipped result for a step.
+ *
+ * @param step - The step that was skipped
+ * @param page - Playwright Page object
+ * @param startTime - Start time for duration calculation
+ * @param consoleErrors - Any console errors captured
+ * @param skipReason - Why the step was skipped
+ * @returns StepTestResult with skipped status
+ */
+function createSkippedResult(
+  step: TestableStep,
+  page: Page,
+  startTime: number,
+  consoleErrors: string[],
+  skipReason: SkipReason
+): StepTestResult {
+  return {
+    stepId: step.stepId,
+    status: 'skipped',
+    durationMs: Date.now() - startTime,
+    currentUrl: page.url(),
+    consoleErrors,
+    skipReason,
+  };
+}
+
+/**
+ * Log a step execution result in a human-readable format.
+ *
+ * @param result - The step test result
+ */
+export function logStepResult(result: StepTestResult): void {
+  const statusIcon = {
+    passed: '✓',
+    failed: '✗',
+    skipped: '⊘',
+    not_reached: '○',
+  }[result.status];
+
+  const statusColor = {
+    passed: 'passed',
+    failed: 'FAILED',
+    skipped: 'skipped',
+    not_reached: 'not reached',
+  }[result.status];
+
+  let message = `   ${statusIcon} ${result.stepId} - ${statusColor} (${result.durationMs}ms)`;
+
+  if (result.skipReason) {
+    message += ` [${result.skipReason}]`;
+  }
+
+  if (result.error) {
+    message += `\n      Error: ${result.error}`;
+  }
+
+  if (result.consoleErrors.length > 0) {
+    message += `\n      Console errors: ${result.consoleErrors.length}`;
+  }
+
+  console.log(message);
+}
+
+/**
+ * Summarize execution results.
+ *
+ * @param results - Array of step test results
+ * @returns Summary object with counts and overall status
+ */
+export function summarizeResults(results: StepTestResult[]): {
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  notReached: number;
+  success: boolean;
+  totalDurationMs: number;
+} {
+  const counts = {
+    total: results.length,
+    passed: results.filter((r) => r.status === 'passed').length,
+    failed: results.filter((r) => r.status === 'failed').length,
+    skipped: results.filter((r) => r.status === 'skipped').length,
+    notReached: results.filter((r) => r.status === 'not_reached').length,
+  };
+
+  return {
+    ...counts,
+    success: counts.failed === 0,
+    totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
+  };
+}
+
+/**
+ * Log execution summary in a human-readable format.
+ *
+ * @param results - Array of step test results
+ */
+export function logExecutionSummary(results: StepTestResult[]): void {
+  const summary = summarizeResults(results);
+
+  console.log(`\n📊 Execution Summary`);
+  console.log(`   Total steps: ${summary.total}`);
+  console.log(`   ✓ Passed: ${summary.passed}`);
+  console.log(`   ✗ Failed: ${summary.failed}`);
+  console.log(`   ⊘ Skipped: ${summary.skipped}`);
+  console.log(`   ○ Not reached: ${summary.notReached}`);
+  console.log(`   Total duration: ${summary.totalDurationMs}ms`);
+  console.log(`   Overall: ${summary.success ? '✅ SUCCESS' : '❌ FAILURE'}`);
 }
