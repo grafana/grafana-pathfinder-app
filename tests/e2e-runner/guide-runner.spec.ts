@@ -16,7 +16,7 @@
  * @see tests/e2e-runner/utils/guide-test-runner.ts for step discovery utilities
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 
 import { test, expect } from '../fixtures';
 import { testIds } from '../../src/components/testIds';
@@ -30,7 +30,24 @@ import {
   executeAllSteps,
   logExecutionSummary,
   summarizeResults,
+  AllStepsResult,
+  AbortReason,
 } from './utils/guide-test-runner';
+
+/**
+ * Write abort reason to file for CLI to read and determine exit code.
+ * This enables the CLI to return exit code 4 for AUTH_EXPIRED (L3-3D).
+ *
+ * @param abortReason - The reason for aborting (AUTH_EXPIRED, MANDATORY_FAILURE)
+ * @param message - Human-readable message
+ */
+function writeAbortFile(abortReason: AbortReason, message: string): void {
+  const abortFilePath = process.env.ABORT_FILE_PATH;
+  if (abortFilePath) {
+    const abortData = JSON.stringify({ abortReason, message });
+    writeFileSync(abortFilePath, abortData, 'utf-8');
+  }
+}
 
 /**
  * Storage key for E2E test guide injection.
@@ -166,16 +183,30 @@ test.describe('Guide Runner', () => {
     // ============================================
     console.log('\n🚀 Executing steps...');
 
-    const executionResults = await executeAllSteps(page, discoveryResult.steps, {
+    const executionResult: AllStepsResult = await executeAllSteps(page, discoveryResult.steps, {
       verbose: isVerbose,
       stopOnMandatoryFailure: true, // Happy path: stop on first failure
+      sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
     });
 
     // Log execution summary
-    logExecutionSummary(executionResults);
+    logExecutionSummary(executionResult.results);
 
     // Get summary for assertions
-    const summary = summarizeResults(executionResults);
+    const summary = summarizeResults(executionResult.results);
+
+    // L3-3D: Handle session expiry with specific exit code
+    if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {
+      console.log(`\n❌ Session expired mid-test: ${executionResult.abortMessage}`);
+      console.log(`   Steps completed before expiry: ${summary.passed + summary.skipped + summary.failed}`);
+      console.log(`   Steps not reached: ${summary.notReached}`);
+
+      // Write abort file for CLI to read and determine exit code 4 (AUTH_FAILURE)
+      writeAbortFile('AUTH_EXPIRED', executionResult.abortMessage ?? 'Session expired mid-test');
+
+      // Throw error to fail the test
+      throw new Error(`AUTH_EXPIRED: ${executionResult.abortMessage}`);
+    }
 
     // Verify no failures occurred
     // Note: This is the happy path - we expect all steps to pass or be skipped

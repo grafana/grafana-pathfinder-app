@@ -249,11 +249,14 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 ---
 
-## L3 Phase 3: Step Discovery & Execution (Core Functionality) 🔄 **IN PROGRESS**
+## L3 Phase 3: Step Discovery & Execution (Core Functionality) ✅ **COMPLETED**
 
 This is the highest-complexity phase. Consider splitting into smaller increments if the spike reveals additional complexity.
 
-**Progress**: 3/4 milestones complete (L3-3A ✅, L3-3B ✅, L3-3C ✅)
+**Progress**: 4/4 milestones complete (L3-3A ✅, L3-3B ✅, L3-3C ✅, L3-3D ✅)
+
+**Completion Date**: 2026-02-04
+**Outcome**: All core step discovery and execution functionality implemented including session validation
 
 ### Milestone L3-3A: DOM-Based Step Discovery ✅ **COMPLETED**
 
@@ -466,7 +469,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-3D: Session Validation During Execution
+### Milestone L3-3D: Session Validation During Execution ✅ **COMPLETED**
 
 **Rationale**: Implements [Session Validation During Execution](./e2e-test-runner-design.md#session-validation-during-execution).
 
@@ -480,35 +483,57 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-3C
 
-**Implementation**:
+**Files modified**:
 
-```typescript
-async function validateSession(page: Page): Promise<boolean> {
-  const response = await page.evaluate(async () => {
-    const res = await fetch('/api/user');
-    return res.ok;
-  });
-  return response;
-}
-
-// In step loop, check every 5 steps
-if (stepIndex % 5 === 0) {
-  const sessionValid = await validateSession(page);
-  if (!sessionValid) {
-    return { aborted: true, reason: 'AUTH_EXPIRED' };
-  }
-}
-```
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Added session validation types, constants, and functions
+- `tests/e2e-runner/guide-runner.spec.ts` - Handle AUTH_EXPIRED abort with abort file for exit code
+- `src/cli/commands/e2e.ts` - Read abort file to determine exit code 4 for auth failures
 
 **Acceptance criteria**:
 
-- [ ] Session validation runs every N steps (configurable, default 5)
-- [ ] Session expiry detected before step fails cryptically
-- [ ] `AUTH_EXPIRED` classification in report
-- [ ] Exit code 4 for auth failures
-- [ ] Remaining steps marked as `not_reached`
+- [x] Session validation runs every N steps (configurable, default 5) ✅
+- [x] Session expiry detected before step fails cryptically ✅
+- [x] `AUTH_EXPIRED` classification in report ✅
+- [x] Exit code 4 for auth failures ✅
+- [x] Remaining steps marked as `not_reached` ✅
 
 **Estimated effort**: Small (half day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **New types added**:
+  - `AbortReason`: `'AUTH_EXPIRED' | 'MANDATORY_FAILURE'`
+  - `AllStepsResult`: Contains step results plus abort information (aborted, abortReason, abortMessage)
+
+- **Session validation constants**:
+  - `DEFAULT_SESSION_CHECK_INTERVAL`: 5 steps (configurable via options)
+  - `SESSION_VALIDATION_TIMEOUT_MS`: 5s timeout for the /api/user fetch
+
+- **`validateSession()` function**:
+  - Uses `page.evaluate()` to run fetch in browser context with session cookies
+  - Checks `/api/user` endpoint - returns false if response is not OK
+  - Includes 5s timeout to avoid hanging on network issues
+  - Returns false on any error (including page crash)
+
+- **Session check integration in `executeAllSteps()`**:
+  - Checks session at step indices 0, N, 2N, etc. (where N = sessionCheckInterval)
+  - On session expiry, marks current and all remaining steps as `not_reached`
+  - Returns `AllStepsResult` with `aborted: true` and `abortReason: 'AUTH_EXPIRED'`
+
+- **Exit code 4 mechanism**:
+  - Test writes abort reason to temp file (`ABORT_FILE_PATH` env var)
+  - CLI reads abort file after Playwright exits
+  - If abort file contains `AUTH_EXPIRED`, CLI exits with code 4 (`ExitCode.AUTH_FAILURE`)
+  - This workaround is needed because Playwright always exits with 0 or 1
+
+- **Verbose output** shows session validation timing:
+  - "🔐 Validating session (step N)..."
+  - "✓ Session valid" or "❌ Session expired, aborting remaining steps"
+
+- **Summary output** enhanced with auth expiry count:
+  - "🔐 Auth expired: N" shown when applicable
 
 ---
 
@@ -861,7 +886,7 @@ if (stepIndex % 5 === 0) {
 | L3-3A: Step Discovery                  | 3        | Medium | Medium     | L3-2C        | ✅     |
 | L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        | ✅     |
 | L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        | ✅     |
-| L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        |        |
+| L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        | ✅     |
 | L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        |        |
 | L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        |        |
 | L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        |        |
@@ -943,7 +968,7 @@ L3 Phase 7: Polish        ▼
 
 - **L3 Phase 1**: 1.5-2.5 days
 - **L3 Phase 2**: 2-3 days (includes pre-flight checks)
-- **L3 Phase 3**: 4-6 days (highest complexity, includes DOM polling completion + session validation)
+- **L3 Phase 3**: 4-6 days estimated, ~5 hours actual (highest complexity, includes DOM polling completion + session validation)
 - **L3 Phase 4**: 2.5-3.5 days
 - **L3 Phase 5**: 3-4 days (includes error classification + artifact collection)
 - **L3 Phase 6**: 0.5-1 day (framework test guide MVP)

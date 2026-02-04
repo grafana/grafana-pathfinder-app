@@ -96,6 +96,13 @@ export type SkipReason =
   | 'requirements_unmet'; // Step requirements couldn't be satisfied (future milestone)
 
 /**
+ * Reason why test execution was aborted (L3-3D).
+ */
+export type AbortReason =
+  | 'AUTH_EXPIRED' // Session expired mid-test
+  | 'MANDATORY_FAILURE'; // A mandatory step failed
+
+/**
  * Result of executing a single step.
  *
  * Captures diagnostics for debugging and reporting:
@@ -127,6 +134,26 @@ export interface StepTestResult {
 
   /** Reason if status is 'skipped' */
   skipReason?: SkipReason;
+}
+
+/**
+ * Result of executing all steps (L3-3D).
+ *
+ * Extends the array of step results with abort information
+ * for graceful handling of session expiry and mandatory failures.
+ */
+export interface AllStepsResult {
+  /** Individual step results */
+  results: StepTestResult[];
+
+  /** Whether execution was aborted before completing all steps */
+  aborted: boolean;
+
+  /** Reason for abort if aborted is true */
+  abortReason?: AbortReason;
+
+  /** Human-readable abort message */
+  abortMessage?: string;
 }
 
 // ============================================
@@ -188,6 +215,22 @@ const POST_CLICK_SETTLE_DELAY_MS = 500;
  * Used for detecting objective-based auto-completion.
  */
 const COMPLETION_POLL_INTERVAL_MS = 250;
+
+// ============================================
+// Session Validation Constants (L3-3D)
+// ============================================
+
+/**
+ * Default number of steps between session validation checks.
+ * Per design doc: validate session every 5 steps to detect expiry before cryptic failures.
+ */
+const DEFAULT_SESSION_CHECK_INTERVAL = 5;
+
+/**
+ * Timeout for session validation API call.
+ * Should be short since this is a lightweight check.
+ */
+const SESSION_VALIDATION_TIMEOUT_MS = 5000;
 
 // ============================================
 // Discovery Functions
@@ -417,6 +460,52 @@ async function extractMultistepInfo(
   } catch {
     // JSON parse failed, assume 3 actions as fallback
     return { isMultistep: true, internalActionCount: 3 };
+  }
+}
+
+// ============================================
+// Session Validation Functions (L3-3D)
+// ============================================
+
+/**
+ * Validate that the current session is still active (L3-3D).
+ *
+ * Performs a lightweight check against the /api/user endpoint to verify
+ * the session hasn't expired during long-running tests. This is called
+ * periodically during step execution to detect auth expiry before steps
+ * fail with cryptic errors.
+ *
+ * Per design doc: Check every N steps (default 5) to balance overhead
+ * vs early detection.
+ *
+ * @param page - Playwright Page object
+ * @returns true if session is valid, false if expired
+ */
+export async function validateSession(page: Page): Promise<boolean> {
+  try {
+    // Quick check: can we access a protected API endpoint?
+    // Uses page.evaluate to run fetch in browser context with session cookies
+    const response = await page.evaluate(async () => {
+      const controller = new AbortController();
+      // Set timeout for the fetch - must be inline since we can't pass the constant
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const res = await fetch('/api/user', {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        return res.ok;
+      } catch {
+        clearTimeout(timeoutId);
+        return false;
+      }
+    });
+
+    return response;
+  } catch {
+    // If page.evaluate fails (e.g., page crashed), session is invalid
+    return false;
   }
 }
 
@@ -760,21 +849,25 @@ export async function executeStep(
 }
 
 /**
- * Execute all discovered steps in sequence.
+ * Execute all discovered steps in sequence (L3-3D enhanced).
  *
- * This is a convenience function that iterates through all steps and
- * executes them in order. It handles:
+ * This function iterates through all steps and executes them in order.
+ * It handles:
  * - Pre-completed steps (skipped)
  * - Steps without "Do it" buttons (skipped)
  * - Failed mandatory steps (stops execution, marks remaining as not_reached)
+ * - Session validation every N steps to detect auth expiry (L3-3D)
  *
- * Note: This is the happy path implementation. Requirements handling
- * and skip/mandatory logic refinements are in later milestones.
+ * Session validation (L3-3D):
+ * - Checks session validity every `sessionCheckInterval` steps (default: 5)
+ * - Validates at step indices 0, N, 2N, etc. to ensure session is valid
+ * - On auth expiry, aborts with AUTH_EXPIRED reason and exit code 4
+ * - Remaining steps marked as not_reached
  *
  * @param page - Playwright Page object
  * @param steps - Array of testable steps to execute
  * @param options - Execution options
- * @returns Array of StepTestResult for all steps
+ * @returns AllStepsResult with step results and abort information
  */
 export async function executeAllSteps(
   page: Page,
@@ -783,14 +876,23 @@ export async function executeAllSteps(
     timeout?: number;
     verbose?: boolean;
     stopOnMandatoryFailure?: boolean;
+    /** Session check interval in steps (L3-3D). Default: 5 */
+    sessionCheckInterval?: number;
   } = {}
-): Promise<StepTestResult[]> {
-  const { verbose = false, stopOnMandatoryFailure = true } = options;
+): Promise<AllStepsResult> {
+  const {
+    verbose = false,
+    stopOnMandatoryFailure = true,
+    sessionCheckInterval = DEFAULT_SESSION_CHECK_INTERVAL,
+  } = options;
   const results: StepTestResult[] = [];
   let aborted = false;
+  let abortReason: AbortReason | undefined;
+  let abortMessage: string | undefined;
 
   if (verbose) {
     console.log(`\n🚀 Executing ${steps.length} steps...`);
+    console.log(`   Session validation: every ${sessionCheckInterval} steps`);
   }
 
   for (let i = 0; i < steps.length; i++) {
@@ -806,6 +908,41 @@ export async function executeAllSteps(
         consoleErrors: [],
       });
       continue;
+    }
+
+    // L3-3D: Session validation every N steps
+    // Check at step indices 0, sessionCheckInterval, 2*sessionCheckInterval, etc.
+    if (i % sessionCheckInterval === 0) {
+      if (verbose) {
+        console.log(`\n   🔐 Validating session (step ${i + 1})...`);
+      }
+
+      const sessionValid = await validateSession(page);
+
+      if (!sessionValid) {
+        if (verbose) {
+          console.log(`   ❌ Session expired, aborting remaining steps`);
+        }
+        aborted = true;
+        abortReason = 'AUTH_EXPIRED';
+        abortMessage = 'Session expired mid-test';
+
+        // Mark current and remaining steps as not_reached
+        for (let j = i; j < steps.length; j++) {
+          results.push({
+            stepId: steps[j].stepId,
+            status: 'not_reached',
+            durationMs: 0,
+            currentUrl: page.url(),
+            consoleErrors: [],
+          });
+        }
+        break;
+      }
+
+      if (verbose) {
+        console.log(`   ✓ Session valid`);
+      }
     }
 
     if (verbose) {
@@ -828,10 +965,17 @@ export async function executeAllSteps(
         console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
       }
       aborted = true;
+      abortReason = 'MANDATORY_FAILURE';
+      abortMessage = `Mandatory step ${step.stepId} failed`;
     }
   }
 
-  return results;
+  return {
+    results,
+    aborted,
+    abortReason,
+    abortMessage,
+  };
 }
 
 /**

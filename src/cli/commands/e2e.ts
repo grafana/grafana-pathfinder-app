@@ -6,7 +6,7 @@
  */
 
 import { spawn } from 'child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -107,18 +107,57 @@ async function checkGrafanaHealth(grafanaUrl: string): Promise<CliPreflightResul
 }
 
 /**
+ * Abort reason from test execution (L3-3D).
+ * Written to abort file by test, read by CLI to determine exit code.
+ */
+type AbortReason = 'AUTH_EXPIRED' | 'MANDATORY_FAILURE';
+
+/**
+ * Abort file content structure (L3-3D).
+ */
+interface AbortFileContent {
+  abortReason: AbortReason;
+  message: string;
+}
+
+/**
  * Result of running Playwright tests on a guide
  */
 interface PlaywrightResult {
   success: boolean;
   exitCode: number;
   traceFile?: string;
+  /** Abort reason if test was aborted (L3-3D) */
+  abortReason?: AbortReason;
+  /** Abort message if test was aborted (L3-3D) */
+  abortMessage?: string;
+}
+
+/**
+ * Read abort file content if it exists (L3-3D).
+ * Returns undefined if file doesn't exist or is invalid.
+ */
+function readAbortFile(abortFilePath: string): AbortFileContent | undefined {
+  try {
+    if (!existsSync(abortFilePath)) {
+      return undefined;
+    }
+    const content = readFileSync(abortFilePath, 'utf-8');
+    return JSON.parse(content) as AbortFileContent;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
  * Spawn Playwright to test a guide.
  * Writes guide JSON to temp file, spawns Playwright with environment variables,
  * and cleans up temp file after completion.
+ *
+ * Session validation (L3-3D):
+ * - Creates abort file path for test to write abort reason
+ * - Reads abort file after test completes to determine exit code
+ * - Returns AUTH_EXPIRED abort reason if session expired
  */
 async function runPlaywrightTests(
   guide: LoadedGuide,
@@ -127,6 +166,8 @@ async function runPlaywrightTests(
   // Write guide to temp file
   const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-'));
   const guidePath = join(tempDir, 'guide.json');
+  // L3-3D: Create abort file path for session validation
+  const abortFilePath = join(tempDir, 'abort.json');
 
   try {
     writeFileSync(guidePath, guide.content);
@@ -156,14 +197,16 @@ async function runPlaywrightTests(
           GRAFANA_URL: options.grafanaUrl,
           E2E_TRACE: options.trace ? 'true' : 'false',
           E2E_VERBOSE: options.verbose ? 'true' : 'false',
+          // L3-3D: Pass abort file path for session validation
+          ABORT_FILE_PATH: abortFilePath,
         },
         stdio: 'inherit',
         shell: true,
       });
 
       proc.on('close', (code) => {
-        const exitCode = code ?? 1;
-        const success = exitCode === 0;
+        const playwrightExitCode = code ?? 1;
+        const success = playwrightExitCode === 0;
 
         // Check for trace file if tracing was enabled
         let traceFile: string | undefined;
@@ -172,7 +215,24 @@ async function runPlaywrightTests(
           traceFile = 'test-results/guide-runner-loads-and-displays-guide-from-JSON-chromium/trace.zip';
         }
 
-        resolve({ success, exitCode, traceFile });
+        // L3-3D: Check abort file for session expiry
+        const abortContent = readAbortFile(abortFilePath);
+        if (abortContent) {
+          // Determine exit code based on abort reason
+          const exitCode =
+            abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
+
+          resolve({
+            success: false,
+            exitCode,
+            traceFile,
+            abortReason: abortContent.abortReason,
+            abortMessage: abortContent.message,
+          });
+          return;
+        }
+
+        resolve({ success, exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE, traceFile });
       });
 
       proc.on('error', (err) => {
@@ -366,7 +426,15 @@ export const e2eCommand = new Command('e2e')
       console.log('\n🎭 Running Playwright tests...\n');
 
       let allPassed = true;
-      const results: Array<{ guide: string; success: boolean; exitCode: number; traceFile?: string }> = [];
+      let hasAuthExpiry = false;
+      const results: Array<{
+        guide: string;
+        success: boolean;
+        exitCode: number;
+        traceFile?: string;
+        abortReason?: AbortReason;
+        abortMessage?: string;
+      }> = [];
 
       for (const guide of valid) {
         console.log(`\n📚 Testing: ${guide.path}`);
@@ -377,11 +445,20 @@ export const e2eCommand = new Command('e2e')
           success: result.success,
           exitCode: result.exitCode,
           traceFile: result.traceFile,
+          abortReason: result.abortReason,
+          abortMessage: result.abortMessage,
         });
 
         if (!result.success) {
           allPassed = false;
-          console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
+
+          // L3-3D: Check for auth expiry
+          if (result.abortReason === 'AUTH_EXPIRED') {
+            hasAuthExpiry = true;
+            console.log(`   ❌ Session expired: ${result.abortMessage}`);
+          } else {
+            console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
+          }
         } else {
           console.log(`   ✅ Test passed`);
         }
@@ -395,10 +472,19 @@ export const e2eCommand = new Command('e2e')
       console.log('\n📊 Summary:');
       const passed = results.filter((r) => r.success).length;
       const failed = results.filter((r) => !r.success).length;
+      const authExpired = results.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+
       console.log(`   ✅ Passed: ${passed}`);
       console.log(`   ❌ Failed: ${failed}`);
+      if (authExpired > 0) {
+        console.log(`   🔐 Auth expired: ${authExpired}`);
+      }
 
       if (!allPassed) {
+        // L3-3D: Use exit code 4 for auth expiry
+        if (hasAuthExpiry) {
+          process.exit(ExitCode.AUTH_FAILURE);
+        }
         process.exit(ExitCode.TEST_FAILURE);
       }
     } catch (error) {
