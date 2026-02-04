@@ -745,7 +745,9 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ## L3 Phase 5: Reporting
 
-### Milestone L3-5A: Console Reporting
+**Progress**: 1/4 milestones complete (L3-5A ✅)
+
+### Milestone L3-5A: Console Reporting ✅ **COMPLETED**
 
 **Rationale**: Provides real-time feedback during test execution for debugging.
 
@@ -762,15 +764,70 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-4C
 
+**Files created/modified**:
+
+- `tests/e2e-runner/utils/console-reporter.ts` - Console reporting module (NEW)
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Added `onStepComplete` callback
+- `tests/e2e-runner/guide-runner.spec.ts` - Integrated console reporter
+
 **Acceptance criteria**:
 
-- [ ] Each step shows as it completes
-- [ ] Clear visual distinction between statuses
-- [ ] Duration shown per step
-- [ ] Summary shows totals
-- [ ] Exit code 0 for all pass, non-zero for any failures
+- [x] Each step shows as it completes ✅
+- [x] Clear visual distinction between statuses ✅
+- [x] Duration shown per step ✅
+- [x] Summary shows totals ✅
+- [x] Exit code 0 for all pass, non-zero for any failures ✅
 
 **Estimated effort**: Small (half day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **Console reporter module** (`console-reporter.ts`) provides all formatted output functions:
+  - `printHeader()`: Box-style header with guide title per design spec
+  - `printStepResult()`: Per-step output with status icon, right-aligned duration
+  - `printSummary()`: Summary line with separator bars
+  - `printDetailedSummary()`: Extended summary with mandatory/skippable breakdown
+  - `printPreflightChecks()`: Pre-flight check output
+  - `printDiscoveryResults()`: Step discovery statistics
+
+- **Real-time progress callback**: Added `onStepComplete` callback option to `executeAllSteps()`:
+  - Called immediately after each step completes
+  - Receives result, step index, and total steps count
+  - Enables immediate console output as steps execute (not batched at end)
+
+- **Output format matches design spec**:
+  ```
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  E2E Test: Welcome to Grafana                                    ║
+  ╚══════════════════════════════════════════════════════════════════╝
+
+  📋 Discovered 5 steps [45ms]
+
+    ✓ step-1                                                  [1.2s]
+    ✓ step-2                                                  [0.8s]
+    ⊘ step-3 - SKIPPED                                        [0.1s]
+      Reason: requirements not met (skippable step)
+    ✓ step-4                                                  [0.9s]
+
+  ────────────────────────────────────────────────────────────────────
+  Summary: 3 passed, 0 failed, 1 skipped                      [3.0s]
+  ────────────────────────────────────────────────────────────────────
+  ```
+
+- **Exit codes** (verified from L3-3D/L3-4C):
+  - Exit 0: All tests pass (no mandatory failures)
+  - Exit 1: Test failure (mandatory step failed)
+  - Exit 2: Configuration error (validation failure)
+  - Exit 3: Grafana unreachable (health check fails)
+  - Exit 4: Auth failure (session expired mid-test)
+
+- **Design decisions**:
+  - Skipped steps show reason on separate indented line for clarity
+  - Failed steps show truncated error message (max ~56 chars)
+  - Duration uses "[1.2s]" format for seconds, "[123ms]" for sub-second
+  - Box width fixed at 68 characters for consistent alignment
 
 ---
 
@@ -1011,7 +1068,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        | ✅     |
 | L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        | ✅     |
 | L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        | ✅     |
-| L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        |        |
+| L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        | ✅     |
 | L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        |        |
 | L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        |        |
 | L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |        |

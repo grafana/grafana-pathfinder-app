@@ -1653,6 +1653,12 @@ export async function executeStep(
 }
 
 /**
+ * Callback for real-time step progress reporting (L3-5A).
+ * Called after each step completes for immediate console output.
+ */
+export type OnStepCompleteCallback = (result: StepTestResult, stepIndex: number, totalSteps: number) => void;
+
+/**
  * Execute all discovered steps in sequence (L3-3D enhanced).
  *
  * This function iterates through all steps and executes them in order.
@@ -1661,6 +1667,7 @@ export async function executeStep(
  * - Steps without "Do it" buttons (skipped)
  * - Failed mandatory steps (stops execution, marks remaining as not_reached)
  * - Session validation every N steps to detect auth expiry (L3-3D)
+ * - Real-time progress reporting via onStepComplete callback (L3-5A)
  *
  * Session validation (L3-3D):
  * - Checks session validity every `sessionCheckInterval` steps (default: 5)
@@ -1682,12 +1689,15 @@ export async function executeAllSteps(
     stopOnMandatoryFailure?: boolean;
     /** Session check interval in steps (L3-3D). Default: 5 */
     sessionCheckInterval?: number;
+    /** Callback for real-time step progress (L3-5A). Called after each step completes. */
+    onStepComplete?: OnStepCompleteCallback;
   } = {}
 ): Promise<AllStepsResult> {
   const {
     verbose = false,
     stopOnMandatoryFailure = true,
     sessionCheckInterval = DEFAULT_SESSION_CHECK_INTERVAL,
+    onStepComplete,
   } = options;
   const results: StepTestResult[] = [];
   let aborted = false;
@@ -1758,7 +1768,12 @@ export async function executeAllSteps(
     const result = await executeStep(page, step, options);
     results.push(result);
 
-    // Log result
+    // L3-5A: Real-time progress callback
+    if (onStepComplete) {
+      onStepComplete(result, i, steps.length);
+    }
+
+    // Log result (verbose mode only - regular output uses onStepComplete)
     if (verbose) {
       logStepResult(result);
     }

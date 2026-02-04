@@ -14,6 +14,7 @@
  * @see src/cli/commands/e2e.ts for the CLI that spawns this test
  * @see tests/e2e-runner/utils/preflight.ts for pre-flight check utilities
  * @see tests/e2e-runner/utils/guide-test-runner.ts for step discovery utilities
+ * @see tests/e2e-runner/utils/console-reporter.ts for console output formatting
  */
 
 import { readFileSync, writeFileSync } from 'fs';
@@ -26,13 +27,19 @@ import {
 } from './utils/preflight';
 import {
   discoverStepsFromDOM,
-  logDiscoveryResults,
   executeAllSteps,
-  logExecutionSummary,
   summarizeResults,
   AllStepsResult,
   AbortReason,
 } from './utils/guide-test-runner';
+import {
+  printHeader,
+  printStepResult,
+  printSummary,
+  printDetailedSummary,
+  printPreflightChecks,
+  printDiscoveryResults,
+} from './utils/console-reporter';
 
 /**
  * Write abort reason to file for CLI to read and determine exit code.
@@ -73,14 +80,17 @@ test.describe('Guide Runner', () => {
     // ============================================
     // Pre-flight checks: auth and plugin validation
     // ============================================
-    console.log('🔍 Running Playwright pre-flight checks...');
-
     const preflightResult = await runPlaywrightPreflightChecks(page, grafanaUrl);
 
-    // Log pre-flight results
-    const formattedPreflight = formatPreflightResults(preflightResult, isVerbose);
-    if (formattedPreflight) {
-      console.log(formattedPreflight);
+    // Log pre-flight results using console reporter
+    printPreflightChecks(preflightResult.checks);
+
+    // Log detailed results in verbose mode
+    if (isVerbose) {
+      const formattedPreflight = formatPreflightResults(preflightResult, isVerbose);
+      if (formattedPreflight) {
+        console.log(formattedPreflight);
+      }
     }
 
     if (!preflightResult.success) {
@@ -97,14 +107,9 @@ test.describe('Guide Runner', () => {
       }
     }
 
-    console.log(`   ✓ Auth valid [${preflightResult.checks[0]?.durationMs ?? 0}ms]`);
-    console.log(`   ✓ Plugin installed [${preflightResult.checks[1]?.durationMs ?? 0}ms]`);
-    console.log(`   Pre-flight total: ${preflightResult.totalDurationMs}ms`);
-
     // ============================================
     // Guide loading and verification
     // ============================================
-    console.log('\n📚 Loading guide...');
 
     // Navigate to Grafana home (pre-flight may have left us on a different page)
     await page.goto('/');
@@ -140,67 +145,51 @@ test.describe('Guide Runner', () => {
     const firstStep = page.locator('[data-testid^="interactive-step-"]').first();
     await expect(firstStep).toBeVisible({ timeout: 15000 });
 
-    // Optionally verify the title appears in the tab or content
-    // The tab title should contain the guide title
-    const tabWithTitle = page.locator(`[data-testid^="docs-panel-tab-"]`).filter({ hasText: guideTitle });
-    const tabCount = await tabWithTitle.count();
-
-    // Log success details
-    console.log(`\n✅ Guide "${guideTitle}" loaded successfully`);
-    console.log(`   - Panel visible: true`);
-    console.log(`   - Interactive step found: true`);
-    console.log(`   - Tab with title found: ${tabCount > 0}`);
-
     // ============================================
     // Step discovery: DOM-based step enumeration
     // ============================================
-    console.log('\n🔍 Discovering steps from DOM...');
-
     const discoveryResult = await discoverStepsFromDOM(page);
-
-    // Log discovery results
-    logDiscoveryResults(discoveryResult, isVerbose);
 
     // Verify step discovery found steps
     expect(discoveryResult.totalSteps).toBeGreaterThan(0);
-
-    // Log step metadata for debugging
-    console.log(`\n📊 Step Discovery Summary:`);
-    console.log(`   - Total steps discovered: ${discoveryResult.totalSteps}`);
-    console.log(`   - Pre-completed steps: ${discoveryResult.preCompletedCount}`);
-    console.log(`   - Steps without "Do it" button: ${discoveryResult.noDoItButtonCount}`);
-    console.log(`   - Discovery duration: ${discoveryResult.durationMs}ms`);
 
     // Steps should be in document order (indices should match)
     for (let i = 0; i < discoveryResult.steps.length; i++) {
       expect(discoveryResult.steps[i].index).toBe(i);
     }
 
-    console.log(`\n✅ Step discovery completed successfully`);
+    // ============================================
+    // Print header and discovery using console reporter (L3-5A)
+    // ============================================
+    printHeader(guideTitle);
+    printDiscoveryResults(
+      discoveryResult.totalSteps,
+      discoveryResult.preCompletedCount,
+      discoveryResult.noDoItButtonCount,
+      discoveryResult.durationMs
+    );
 
     // ============================================
     // Step execution: Execute all discovered steps
     // ============================================
-    console.log('\n🚀 Executing steps...');
-
     const executionResult: AllStepsResult = await executeAllSteps(page, discoveryResult.steps, {
       verbose: isVerbose,
       stopOnMandatoryFailure: true, // Happy path: stop on first failure
       sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
+      // L3-5A: Real-time step progress callback
+      onStepComplete: (result) => {
+        printStepResult(result);
+      },
     });
-
-    // Log execution summary
-    logExecutionSummary(executionResult.results);
 
     // Get summary for assertions
     const summary = summarizeResults(executionResult.results);
 
+    // L3-5A: Print summary using console reporter
+    printDetailedSummary(executionResult.results, executionResult, isVerbose);
+
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {
-      console.log(`\n❌ Session expired mid-test: ${executionResult.abortMessage}`);
-      console.log(`   Steps completed before expiry: ${summary.passed + summary.skipped + summary.failed}`);
-      console.log(`   Steps not reached: ${summary.notReached}`);
-
       // Write abort file for CLI to read and determine exit code 4 (AUTH_FAILURE)
       writeAbortFile('AUTH_EXPIRED', executionResult.abortMessage ?? 'Session expired mid-test');
 
@@ -208,10 +197,8 @@ test.describe('Guide Runner', () => {
       throw new Error(`AUTH_EXPIRED: ${executionResult.abortMessage}`);
     }
 
-    // Verify no failures occurred
-    // Note: This is the happy path - we expect all steps to pass or be skipped
-    expect(summary.failed).toBe(0);
-
-    console.log(`\n✅ Guide execution completed: ${summary.passed} passed, ${summary.skipped} skipped`);
+    // L3-4C: Verify no mandatory failures occurred
+    // Per design doc: skippable step failures do NOT fail the overall test
+    expect(summary.mandatoryFailed).toBe(0);
   });
 });
