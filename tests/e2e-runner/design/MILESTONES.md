@@ -539,7 +539,9 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ## L3 Phase 4: Requirements Handling
 
-### Milestone L3-4A: Requirements Detection
+**Progress**: 1/3 milestones complete (L3-4A ✅)
+
+### Milestone L3-4A: Requirements Detection ✅ **COMPLETED**
 
 **Rationale**: Implements [Requirements Handling](./e2e-test-runner-design.md#requirements-handling-mvp) detection logic.
 
@@ -554,14 +556,57 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-3D (session validation)
 
+**Files modified**:
+
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Added requirements detection types and functions
+
 **Acceptance criteria**:
 
-- [ ] Requirements detected for each step
-- [ ] Fix button presence detected
-- [ ] Skippable flag read from step
-- [ ] Requirement status (met/unmet) determined
+- [x] Requirements detected for each step ✅
+- [x] Fix button presence detected ✅
+- [x] Skippable flag read from step ✅
+- [x] Requirement status (met/unmet) determined ✅
 
 **Estimated effort**: Medium (1 day)
+
+**Actual effort**: ~1.5 hours
+
+**Implementation Notes**:
+
+- **New types added**:
+  - `RequirementStatus`: `'met' | 'unmet' | 'checking' | 'unknown'`
+  - `RequirementFixType`: `'navigation' | 'location' | 'expand-parent-navigation' | 'lazy-scroll'`
+  - `RequirementResult`: Captures all requirement-related info (hasFixButton, fixType, skippable, explanationText, etc.)
+
+- **`detectRequirements()` function** examines DOM to determine:
+  - Whether "Do it" button is enabled (indicates requirements met)
+  - Whether requirement explanation element is present (indicates requirements not met or checking)
+  - Whether spinner is visible (indicates requirements being checked)
+  - Presence of Fix, Retry, and Skip buttons
+
+- **`detectFixType()` function** infers fix type from:
+  - Explanation text content (navigation, menu, page, scroll keywords)
+  - Target action type (navigate → location)
+  - RefTarget selector (nav-menu → navigation)
+
+- **`waitForRequirementsCheckComplete()`** polls for spinner to disappear before detecting final status
+
+- **`handleRequirements()`** is the main entry point that:
+  1. Waits for ongoing requirements check to complete (10s timeout)
+  2. Calls `detectRequirements()` to get current status
+  3. Logs results in verbose mode
+
+- **Integration in `executeStep()`**:
+  - Requirements detected after scrolling, before clicking "Do it"
+  - Skippable steps with unmet requirements are skipped (preliminary L3-4C logic)
+  - Mandatory steps with unmet requirements still attempt execution (fix handling in L3-4B)
+
+- **`TestableStep` extended** with `refTarget` field for requirements detection
+
+- **Design decisions**:
+  - Fix execution deferred to L3-4B
+  - Full skip/mandatory logic deferred to L3-4C
+  - Requirements detection uses test IDs from `src/components/testIds.ts` for stability
 
 ---
 
@@ -887,7 +932,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        | ✅     |
 | L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        | ✅     |
 | L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        | ✅     |
-| L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        |        |
+| L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        | ✅     |
 | L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        |        |
 | L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        |        |
 | L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        |        |

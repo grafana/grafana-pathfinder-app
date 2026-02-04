@@ -58,6 +58,12 @@ export interface TestableStep {
    */
   internalActionCount: number;
 
+  /**
+   * The target element selector (L3-4A).
+   * Extracted from data-reftarget attribute.
+   */
+  refTarget?: string;
+
   /** Locator for the step element (for convenience in later operations) */
   locator: Locator;
 }
@@ -93,7 +99,66 @@ export type StepStatus = 'passed' | 'failed' | 'skipped' | 'not_reached';
 export type SkipReason =
   | 'pre_completed' // Step was already completed before execution
   | 'no_do_it_button' // Step doesn't have a "Do it" button (doIt: false or noop)
-  | 'requirements_unmet'; // Step requirements couldn't be satisfied (future milestone)
+  | 'requirements_unmet'; // Step requirements couldn't be satisfied
+
+// ============================================
+// Requirements Detection Types (L3-4A)
+// ============================================
+
+/**
+ * Status of a step's requirements (L3-4A).
+ */
+export type RequirementStatus =
+  | 'met' // All requirements satisfied
+  | 'unmet' // Requirements not satisfied
+  | 'checking' // Requirements are being checked
+  | 'unknown'; // Requirements status cannot be determined
+
+/**
+ * Type of fix available for a requirement (L3-4A).
+ *
+ * Per design doc: Fix buttons trigger different actions based on fixType.
+ */
+export type RequirementFixType =
+  | 'navigation' // Click mega-menu, expand sections
+  | 'location' // Navigate to a specific path
+  | 'expand-parent-navigation' // Expand collapsed nav section
+  | 'lazy-scroll'; // Scroll container to discover element
+
+/**
+ * Result of detecting requirements for a step (L3-4A).
+ *
+ * Captures all requirement-related information for decision making
+ * in L3-4B (Fix Button Execution) and L3-4C (Skippable vs Mandatory Logic).
+ */
+export interface RequirementResult {
+  /** Whether all requirements are met */
+  requirementsMet: boolean;
+
+  /** Current status of requirements */
+  status: RequirementStatus;
+
+  /** Whether a fix button is available */
+  hasFixButton: boolean;
+
+  /** Type of fix available (if hasFixButton is true) */
+  fixType?: RequirementFixType;
+
+  /** Whether the step is skippable */
+  skippable: boolean;
+
+  /** Human-readable explanation text from the UI */
+  explanationText?: string;
+
+  /** Whether requirements are currently being checked */
+  isChecking: boolean;
+
+  /** Whether a skip button is available */
+  hasSkipButton: boolean;
+
+  /** Whether a retry button is available (non-fixable requirement failure) */
+  hasRetryButton: boolean;
+}
 
 /**
  * Reason why test execution was aborted (L3-3D).
@@ -233,6 +298,21 @@ const DEFAULT_SESSION_CHECK_INTERVAL = 5;
 const SESSION_VALIDATION_TIMEOUT_MS = 5000;
 
 // ============================================
+// Requirements Detection Constants (L3-4A)
+// ============================================
+
+/**
+ * Timeout for waiting for requirements checking to complete.
+ * Requirements checking involves async operations (API calls, DOM checks).
+ */
+const REQUIREMENTS_CHECK_TIMEOUT_MS = 10000;
+
+/**
+ * Polling interval for checking if requirements are still being checked.
+ */
+const REQUIREMENTS_POLL_INTERVAL_MS = 200;
+
+// ============================================
 // Discovery Functions
 // ============================================
 
@@ -285,6 +365,9 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
     // Extract target action type from data-targetaction attribute
     const targetAction = (await element.getAttribute('data-targetaction')) ?? undefined;
 
+    // L3-4A: Extract refTarget for requirements detection
+    const refTarget = (await element.getAttribute('data-reftarget')) ?? undefined;
+
     // Check if "Do it" button exists (U1: not all steps have buttons)
     const hasDoItButton = await checkDoItButtonExists(page, stepId);
 
@@ -311,6 +394,7 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
       targetAction,
       isMultistep,
       internalActionCount,
+      refTarget,
       locator: element,
     });
   }
@@ -510,6 +594,312 @@ export async function validateSession(page: Page): Promise<boolean> {
 }
 
 // ============================================
+// Requirements Detection Functions (L3-4A)
+// ============================================
+
+/**
+ * Detect requirements status for a step (L3-4A).
+ *
+ * This function examines the DOM to determine:
+ * 1. Whether requirements are met (step is enabled)
+ * 2. Whether a Fix button is available
+ * 3. Whether a Skip button is available
+ * 4. The current explanation text (if any)
+ *
+ * This information is used in subsequent milestones:
+ * - L3-4B: Fix Button Execution - uses hasFixButton and fixType
+ * - L3-4C: Skippable vs Mandatory Logic - uses skippable and requirementsMet
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to check
+ * @returns RequirementResult with detected requirements information
+ */
+export async function detectRequirements(page: Page, step: TestableStep): Promise<RequirementResult> {
+  const { stepId, skippable } = step;
+
+  // Check if step is pre-completed - if so, requirements are implicitly met
+  if (step.isPreCompleted) {
+    return {
+      requirementsMet: true,
+      status: 'met',
+      hasFixButton: false,
+      skippable,
+      isChecking: false,
+      hasSkipButton: false,
+      hasRetryButton: false,
+    };
+  }
+
+  // Check if "Do it" button exists and is enabled (indicates requirements met)
+  const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
+  const doItButtonCount = await doItButton.count();
+  const doItButtonEnabled = doItButtonCount > 0 ? await doItButton.isEnabled() : false;
+
+  // Check for requirement explanation element (indicates requirements not met or checking)
+  const explanationElement = page.getByTestId(testIds.interactive.requirementCheck(stepId));
+  const hasExplanation = (await explanationElement.count()) > 0;
+
+  // Check if requirements are currently being checked (spinner visible)
+  const isChecking = hasExplanation
+    ? await explanationElement.locator('.interactive-requirement-spinner').count().then((c) => c > 0)
+    : false;
+
+  // Extract explanation text if available
+  let explanationText: string | undefined;
+  if (hasExplanation && !isChecking) {
+    try {
+      explanationText = await explanationElement.textContent().then((t) => t?.trim());
+      // Remove button text from explanation (Fix this, Retry, Skip)
+      explanationText = explanationText
+        ?.replace(/Fix this$/, '')
+        .replace(/Retry$/, '')
+        .replace(/Skip$/, '')
+        .replace(/⟳/g, '')
+        .trim();
+    } catch {
+      // Ignore errors reading explanation text
+    }
+  }
+
+  // Check for Fix button
+  const fixButton = page.getByTestId(testIds.interactive.requirementFixButton(stepId));
+  const hasFixButton = (await fixButton.count()) > 0;
+
+  // Check for Retry button (non-fixable requirement failure)
+  const retryButton = page.getByTestId(testIds.interactive.requirementRetryButton(stepId));
+  const hasRetryButton = (await retryButton.count()) > 0;
+
+  // Check for Skip button
+  const skipButton = page.getByTestId(testIds.interactive.requirementSkipButton(stepId));
+  const hasSkipButton = (await skipButton.count()) > 0;
+
+  // Determine fix type from DOM if fix button exists
+  let fixType: RequirementFixType | undefined;
+  if (hasFixButton) {
+    fixType = await detectFixType(page, step);
+  }
+
+  // Determine requirement status
+  let status: RequirementStatus;
+  let requirementsMet: boolean;
+
+  if (isChecking) {
+    status = 'checking';
+    requirementsMet = false;
+  } else if (doItButtonEnabled && !hasExplanation) {
+    // Button enabled and no explanation = requirements met
+    status = 'met';
+    requirementsMet = true;
+  } else if (hasExplanation || hasFixButton || hasRetryButton || hasSkipButton) {
+    // Has explanation or action buttons = requirements not met
+    status = 'unmet';
+    requirementsMet = false;
+  } else if (doItButtonCount > 0) {
+    // Button exists but disabled without explanation - could be sequential dependency
+    status = 'unknown';
+    requirementsMet = false;
+  } else {
+    // No button, no explanation - unknown state
+    status = 'unknown';
+    requirementsMet = true; // Assume met if nothing indicates otherwise
+  }
+
+  return {
+    requirementsMet,
+    status,
+    hasFixButton,
+    fixType,
+    skippable,
+    explanationText,
+    isChecking,
+    hasSkipButton,
+    hasRetryButton,
+  };
+}
+
+/**
+ * Detect the fix type available for a step (L3-4A).
+ *
+ * Fix types are determined by the requirement that failed:
+ * - navmenu-open → 'navigation' (click mega-menu)
+ * - on-page:/path → 'location' (navigate to path)
+ * - exists-reftarget with navigation item → 'expand-parent-navigation'
+ * - exists-reftarget with lazyRender → 'lazy-scroll'
+ *
+ * This function examines the step's target action and explanation text
+ * to infer the fix type, since it's not directly exposed in the DOM.
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to check
+ * @returns The detected fix type, or undefined if cannot be determined
+ */
+async function detectFixType(page: Page, step: TestableStep): Promise<RequirementFixType | undefined> {
+  const { stepId, targetAction, refTarget } = step;
+
+  // Get explanation text for clues about the fix type
+  const explanationElement = page.getByTestId(testIds.interactive.requirementCheck(stepId));
+  let explanationText = '';
+  try {
+    explanationText = (await explanationElement.textContent()) || '';
+  } catch {
+    // Ignore errors
+  }
+
+  const lowerExplanation = explanationText.toLowerCase();
+
+  // Check for navigation-related fixes
+  if (lowerExplanation.includes('navigation') || lowerExplanation.includes('menu')) {
+    if (lowerExplanation.includes('expand') || lowerExplanation.includes('section')) {
+      return 'expand-parent-navigation';
+    }
+    return 'navigation';
+  }
+
+  // Check for location/page fixes
+  if (lowerExplanation.includes('page') || lowerExplanation.includes('navigate')) {
+    return 'location';
+  }
+
+  // Check for scroll-related fixes
+  if (lowerExplanation.includes('scroll') || lowerExplanation.includes('discover')) {
+    return 'lazy-scroll';
+  }
+
+  // Infer from target action if explanation doesn't help
+  if (targetAction === 'navigate') {
+    return 'location';
+  }
+
+  // Check if refTarget suggests navigation menu item
+  if (refTarget?.includes('grafana:nav-menu') || refTarget?.includes('nav-item')) {
+    return 'navigation';
+  }
+
+  // Default to navigation for generic fix cases
+  return 'navigation';
+}
+
+/**
+ * Wait for requirements checking to complete (L3-4A).
+ *
+ * When a step's requirements are being checked (spinner visible),
+ * this function waits for the check to complete before proceeding.
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier
+ * @param timeout - Maximum time to wait in ms (default 10s)
+ * @returns true if checking completed, false if timeout
+ */
+export async function waitForRequirementsCheckComplete(
+  page: Page,
+  stepId: string,
+  timeout = REQUIREMENTS_CHECK_TIMEOUT_MS
+): Promise<boolean> {
+  const startTime = Date.now();
+  const explanationElement = page.getByTestId(testIds.interactive.requirementCheck(stepId));
+
+  while (Date.now() - startTime < timeout) {
+    // Check if explanation element exists and has spinner
+    const hasExplanation = (await explanationElement.count()) > 0;
+    if (!hasExplanation) {
+      // No explanation = requirements met or step completed
+      return true;
+    }
+
+    const hasSpinner = await explanationElement.locator('.interactive-requirement-spinner').count().then((c) => c > 0);
+    if (!hasSpinner) {
+      // Explanation without spinner = checking complete
+      return true;
+    }
+
+    // Still checking, wait and retry
+    await page.waitForTimeout(REQUIREMENTS_POLL_INTERVAL_MS);
+  }
+
+  // Timeout reached
+  return false;
+}
+
+/**
+ * Handle requirements for a step (L3-4A).
+ *
+ * This is the main entry point for requirements handling in step execution.
+ * It performs the following:
+ * 1. Wait for any ongoing requirements check to complete
+ * 2. Detect current requirements status
+ * 3. Return the result for decision-making
+ *
+ * Note: Fix button execution (L3-4B) and skip/mandatory logic (L3-4C)
+ * are implemented in subsequent milestones. This function only detects
+ * requirements status.
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to handle
+ * @param options - Options for requirements handling
+ * @returns RequirementResult with detected requirements information
+ */
+export async function handleRequirements(
+  page: Page,
+  step: TestableStep,
+  options: {
+    verbose?: boolean;
+    timeout?: number;
+  } = {}
+): Promise<RequirementResult> {
+  const { verbose = false, timeout = REQUIREMENTS_CHECK_TIMEOUT_MS } = options;
+
+  if (verbose) {
+    console.log(`   🔍 Checking requirements for step ${step.stepId}...`);
+  }
+
+  // Wait for any ongoing requirements check to complete
+  const checkComplete = await waitForRequirementsCheckComplete(page, step.stepId, timeout);
+  if (!checkComplete && verbose) {
+    console.log(`   ⚠ Requirements check timeout for step ${step.stepId}`);
+  }
+
+  // Detect current requirements status
+  const result = await detectRequirements(page, step);
+
+  if (verbose) {
+    logRequirementResult(step.stepId, result);
+  }
+
+  return result;
+}
+
+/**
+ * Log requirements detection result in a human-readable format.
+ *
+ * @param stepId - The step identifier
+ * @param result - The requirement detection result
+ */
+function logRequirementResult(stepId: string, result: RequirementResult): void {
+  const statusIcon = {
+    met: '✓',
+    unmet: '✗',
+    checking: '⟳',
+    unknown: '?',
+  }[result.status];
+
+  let message = `   ${statusIcon} Requirements ${result.status}`;
+
+  if (result.hasFixButton) {
+    message += ` (fix: ${result.fixType || 'available'})`;
+  }
+
+  if (result.hasSkipButton) {
+    message += ' (skippable)';
+  }
+
+  if (result.explanationText) {
+    message += `\n      Explanation: ${result.explanationText}`;
+  }
+
+  console.log(message);
+}
+
+// ============================================
 // Utility Functions
 // ============================================
 
@@ -691,6 +1081,7 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
         !step.hasDoItButton ? 'no-button' : null,
         step.skippable ? 'skippable' : null,
         step.isMultistep ? `multistep:${step.internalActionCount}` : null,
+        step.refTarget ? `target:${step.refTarget.substring(0, 30)}${step.refTarget.length > 30 ? '...' : ''}` : null,
       ]
         .filter(Boolean)
         .join(', ');
@@ -792,6 +1183,26 @@ export async function executeStep(
         currentUrl: page.url(),
         consoleErrors,
       };
+    }
+
+    // L3-4A: Detect requirements before attempting to click
+    // Note: Fix execution (L3-4B) and skip/mandatory logic (L3-4C) handled in later milestones
+    const requirements = await handleRequirements(page, step, { verbose });
+
+    // If requirements are not met and step is skippable, skip it
+    // This is a preliminary implementation - full logic in L3-4C
+    if (!requirements.requirementsMet && requirements.status === 'unmet') {
+      if (step.skippable) {
+        if (verbose) {
+          console.log(`   ⊘ Step ${step.stepId} skipped due to unmet requirements (skippable)`);
+        }
+        return createSkippedResult(step, page, startTime, consoleErrors, 'requirements_unmet');
+      }
+      // For mandatory steps with unmet requirements, we'll proceed to try "Do it"
+      // This allows fix buttons to be tested - full handling in L3-4B
+      if (verbose) {
+        console.log(`   ⚠ Step ${step.stepId} has unmet requirements but is mandatory, attempting execution`);
+      }
     }
 
     // L3-3C: Wait for "Do it" button to be enabled (U3: sequential dependencies)
