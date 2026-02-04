@@ -33,13 +33,11 @@ import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from
 import {
   isMarkdownBlock,
   isInteractiveBlock,
-  isMultistepBlock,
-  isGuidedBlock,
   isImageBlock,
   isVideoBlock,
-  isQuizBlock,
   isInputBlock,
 } from '../../../types/json-guide.types';
+import { getBlockPreview } from '../utils';
 
 // ============================================================================
 // Styles
@@ -232,41 +230,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
 // ============================================================================
 
 /**
- * Get a preview string for any block type
- */
-function getBlockPreview(block: JsonBlock): string {
-  if (isMarkdownBlock(block)) {
-    const firstLine = block.content.split('\n')[0];
-    return firstLine.slice(0, 50) + (firstLine.length > 50 ? '...' : '');
-  }
-  if (isInteractiveBlock(block)) {
-    return `${block.action}: ${block.reftarget || '(no target)'}`;
-  }
-  if (isMultistepBlock(block)) {
-    return `${block.steps.length} step${block.steps.length !== 1 ? 's' : ''}`;
-  }
-  if (isGuidedBlock(block)) {
-    return `${block.steps.length} guided step${block.steps.length !== 1 ? 's' : ''}`;
-  }
-  if (isImageBlock(block)) {
-    return block.alt || block.src;
-  }
-  if (isVideoBlock(block)) {
-    return block.title || block.src;
-  }
-  if (isQuizBlock(block)) {
-    return block.question.slice(0, 50) + (block.question.length > 50 ? '...' : '');
-  }
-  if (isInputBlock(block)) {
-    return block.prompt.slice(0, 50) + (block.prompt.length > 50 ? '...' : '');
-  }
-  if ('content' in block && typeof block.content === 'string') {
-    return block.content.slice(0, 50) + (block.content.length > 50 ? '...' : '');
-  }
-  return '';
-}
-
-/**
  * Create a default block of a given type
  */
 function createDefaultBlock(type: BlockType): JsonBlock {
@@ -301,6 +264,10 @@ function createDefaultBlock(type: BlockType): JsonBlock {
 
 // Block types allowed in conditional branches (no sections or conditionals)
 const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BLOCK_TYPE_ORDER.filter((t) => t !== 'section' && t !== 'conditional');
+
+// Block types that support inline form editing in BranchBlocksEditor
+// quiz, multistep, and guided require the dedicated editors and cannot be edited inline
+const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input'];
 
 const ACTION_OPTIONS: Array<SelectableValue<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
@@ -532,7 +499,17 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
     if (editingIndex === null) {
       return;
     }
-    const updatedBlock = buildBlockFromForm(blocks[editingIndex].type as BlockType);
+    const blockType = blocks[editingIndex].type as BlockType;
+
+    // Safety check: prevent data loss for types without inline editing support
+    // These types should use handleCancelEdit instead (UI shows Close button, not Save)
+    if (!INLINE_EDITABLE_TYPES.includes(blockType)) {
+      setEditingIndex(null);
+      resetFormFields();
+      return;
+    }
+
+    const updatedBlock = buildBlockFromForm(blockType);
     const newBlocks = [...blocks];
     newBlocks[editingIndex] = updatedBlock;
     onChange(newBlocks);
@@ -552,8 +529,12 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       const newBlocks = blocks.filter((_, i) => i !== index);
       onChange(newBlocks);
       if (editingIndex === index) {
+        // Deleted the block being edited
         setEditingIndex(null);
         resetFormFields();
+      } else if (editingIndex !== null && editingIndex > index) {
+        // Deleted a block before the one being edited - adjust index
+        setEditingIndex(editingIndex - 1);
       }
     },
     [blocks, onChange, editingIndex, resetFormFields]
@@ -578,7 +559,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
 
   // Render form fields based on block type
   // Note: formStyles is passed from parent scope where useStyles2 was called
-  const renderFormFields = (type: BlockType, isEditing: boolean) => {
+  const renderFormFields = (type: BlockType) => {
     switch (type) {
       case 'markdown':
         return (
@@ -716,7 +697,8 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       default:
         return (
           <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-            This block type has limited inline editing. Use the main editor for full editing capabilities.
+            This block type cannot be edited inline. To modify it, edit the JSON directly or use a dedicated editor for
+            this block type.
           </div>
         );
     }
@@ -814,7 +796,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
                                   tooltip="Delete block"
                                 />
                               </>
-                            ) : (
+                            ) : INLINE_EDITABLE_TYPES.includes(block.type as BlockType) ? (
                               <>
                                 <Button size="sm" variant="primary" onClick={handleSaveEdit}>
                                   Save
@@ -823,13 +805,17 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
                                   Cancel
                                 </Button>
                               </>
+                            ) : (
+                              <Button size="sm" variant="secondary" onClick={handleCancelEdit}>
+                                Close
+                              </Button>
                             )}
                           </div>
                         </div>
 
                         {/* Inline edit form */}
                         {isEditing && (
-                          <div className={styles.editForm}>{renderFormFields(block.type as BlockType, true)}</div>
+                          <div className={styles.editForm}>{renderFormFields(block.type as BlockType)}</div>
                         )}
                       </div>
                     </SortableBlockItem>
@@ -854,7 +840,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
                     onChange={(v) => v.value && setNewBlockType(v.value)}
                   />
                 </Field>
-                {renderFormFields(newBlockType, false)}
+                {renderFormFields(newBlockType)}
                 <div className={styles.formActions}>
                   <Button
                     variant="secondary"

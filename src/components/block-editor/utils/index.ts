@@ -43,3 +43,5 @@ export {
   type PositionedError,
   type ParseWithPositionsResult,
 } from './json-position';
+
+export { getBlockPreview, type BlockPreviewOptions } from './block-preview';
