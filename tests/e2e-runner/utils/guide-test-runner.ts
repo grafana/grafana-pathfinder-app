@@ -1801,41 +1801,14 @@ export async function executeStep(
     // Scroll step into view before interaction
     await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
 
-    // Wait for "Do it" button to appear (handles sequential dependencies)
-    // Button may not exist at discovery time but appears after previous step completes
+    // L3-4A/4B: Detect requirements and attempt to fix if needed BEFORE waiting for button
+    // Requirements must be met before the "Do it" button can appear/be enabled
     if (verbose) {
-      console.log(`   ⏳ Waiting for "Do it" button to appear...`);
+      console.log(`   🔍 Checking requirements for step ${step.stepId}...`);
     }
-    const buttonAppeared = await waitForDoItButtonToAppear(page, step.stepId);
-    if (!buttonAppeared) {
-      if (verbose) {
-        console.log(`   ⊘ Step ${step.stepId} has no "Do it" button (timeout waiting for appearance), skipping`);
-      }
-      return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
-    }
-
-    // L3-3C: Check for objective-based auto-completion BEFORE clicking
-    // Objectives may be satisfied by prior actions (e.g., navigation completed the step)
-    const preClickCompleted = await checkObjectiveCompletion(page, step.stepId);
-    if (preClickCompleted) {
-      if (verbose) {
-        console.log(`   ✓ Step ${step.stepId} auto-completed via objectives before clicking`);
-      }
-      return {
-        stepId: step.stepId,
-        status: 'passed',
-        durationMs: Date.now() - startTime,
-        currentUrl: page.url(),
-        consoleErrors,
-        skippable: step.skippable,
-      };
-    }
-
-    // L3-4A/4B: Detect requirements and attempt to fix if needed
-    // For mandatory steps, we attempt automatic fix when requirements are unmet
     const { requirements, fixResult } = await handleRequirementsWithFix(page, step, {
       verbose,
-      attemptFix: !step.skippable, // Only attempt fix for mandatory steps
+      attemptFix: true, // Attempt fix for all steps, skip later if it fails
       maxFixAttempts: MAX_FIX_ATTEMPTS,
     });
 
@@ -1887,6 +1860,36 @@ export async function executeStep(
       if (verbose) {
         console.log(`   ⚠ Step ${step.stepId} has unmet requirements but no fix available, attempting execution`);
       }
+    }
+
+    // Wait for "Do it" button to appear (handles sequential dependencies)
+    // Button may not exist at discovery time but appears after previous step completes
+    if (verbose) {
+      console.log(`   ⏳ Waiting for "Do it" button to appear...`);
+    }
+    const buttonAppeared = await waitForDoItButtonToAppear(page, step.stepId);
+    if (!buttonAppeared) {
+      if (verbose) {
+        console.log(`   ⊘ Step ${step.stepId} has no "Do it" button (timeout waiting for appearance), skipping`);
+      }
+      return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
+    }
+
+    // L3-3C: Check for objective-based auto-completion BEFORE clicking
+    // Objectives may be satisfied by prior actions (e.g., navigation completed the step)
+    const preClickCompleted = await checkObjectiveCompletion(page, step.stepId);
+    if (preClickCompleted) {
+      if (verbose) {
+        console.log(`   ✓ Step ${step.stepId} auto-completed via objectives before clicking`);
+      }
+      return {
+        stepId: step.stepId,
+        status: 'passed',
+        durationMs: Date.now() - startTime,
+        currentUrl: page.url(),
+        consoleErrors,
+        skippable: step.skippable,
+      };
     }
 
     // L3-3C: Wait for "Do it" button to be enabled (U3: sequential dependencies)
