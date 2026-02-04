@@ -600,8 +600,12 @@ export const e2eCommand = new Command('e2e')
         const failed = results.filter((r) => !r.success).length;
         const authExpired = results.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
 
-        console.log(`   ✅ Passed: ${passed}`);
-        console.log(`   ❌ Failed: ${failed}`);
+        if (passed > 0) {
+          console.log(`   ✅ Passed: ${passed}`);
+        }
+        if (failed > 0) {
+          console.log(`   ❌ Failed: ${failed}`);
+        }
         if (authExpired > 0) {
           console.log(`   🔐 Auth expired: ${authExpired}`);
         }

@@ -724,9 +724,7 @@ export async function capturePreStepArtifacts(
 
     return screenshotPath;
   } catch (error) {
-    console.warn(
-      `   ⚠ Failed to capture PRE screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+    console.warn(`   ⚠ Failed to capture PRE screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return undefined;
   }
 }
@@ -747,10 +745,7 @@ export async function capturePreStepArtifacts(
  * // finalPath = './artifacts/execution-final.png'
  * ```
  */
-export async function captureFinalScreenshot(
-  page: Page,
-  artifactsDir: string
-): Promise<string | undefined> {
+export async function captureFinalScreenshot(page: Page, artifactsDir: string): Promise<string | undefined> {
   try {
     // Ensure artifacts directory exists
     mkdirSync(artifactsDir, { recursive: true });
@@ -2077,7 +2072,7 @@ export async function executeStep(
     // If URL changed AND step element no longer exists, the action succeeded - treat as passed.
     const urlChanged = urlBeforeClick !== urlAfterClick;
     if (urlChanged) {
-      const stepElementExists = await page.locator(`[data-testid="interactive-step-${step.stepId}"]`).count() > 0;
+      const stepElementExists = (await page.locator(`[data-testid="interactive-step-${step.stepId}"]`).count()) > 0;
       if (!stepElementExists) {
         if (verbose) {
           console.log(`   ✓ Step ${step.stepId} completed via navigation (element unmounted)`);
