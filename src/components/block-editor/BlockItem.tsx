@@ -9,12 +9,9 @@ import { IconButton, useStyles2, Badge, Checkbox } from '@grafana/ui';
 import { getBlockItemStyles } from './block-editor.styles';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { BLOCK_TYPE_METADATA } from './constants';
+import { getBlockPreview } from './utils';
 import type { EditorBlock, BlockType } from './types';
 import {
-  isMarkdownBlock,
-  isHtmlBlock,
-  isImageBlock,
-  isVideoBlock,
   isSectionBlock,
   isInteractiveBlock,
   isMultistepBlock,
@@ -56,53 +53,6 @@ export interface BlockItemProps {
   childCount?: number;
   /** Whether this block was just dropped (triggers highlight animation) */
   isJustDropped?: boolean;
-}
-
-/**
- * Get a preview string for a block
- */
-function getBlockPreview(block: EditorBlock['block']): string {
-  if (isMarkdownBlock(block)) {
-    // Show first line of content, truncated
-    const firstLine = block.content.split('\n')[0];
-    return firstLine.slice(0, 60) + (firstLine.length > 60 ? '...' : '');
-  }
-  if (isHtmlBlock(block)) {
-    // Strip HTML tags and show text
-    const text = block.content.replace(/<[^>]+>/g, ' ').trim();
-    return text.slice(0, 60) + (text.length > 60 ? '...' : '');
-  }
-  if (isImageBlock(block)) {
-    return block.alt || block.src;
-  }
-  if (isVideoBlock(block)) {
-    return block.title || block.src;
-  }
-  if (isSectionBlock(block)) {
-    return block.title || block.id || `${block.blocks.length} blocks`;
-  }
-  if (isInteractiveBlock(block)) {
-    return `${block.action}: ${block.reftarget}`;
-  }
-  if (isMultistepBlock(block)) {
-    return `${block.steps.length} steps`;
-  }
-  if (isGuidedBlock(block)) {
-    return `${block.steps.length} guided steps`;
-  }
-  if (isConditionalBlock(block)) {
-    // Show description if available, otherwise show conditions
-    if (block.description) {
-      return block.description;
-    }
-    return `If: ${block.conditions.join(', ')}`;
-  }
-  if (isInputBlock(block)) {
-    // Show the prompt text, truncated
-    const prompt = block.prompt.replace(/\n/g, ' ').trim();
-    return prompt.slice(0, 60) + (prompt.length > 60 ? '...' : '');
-  }
-  return '';
 }
 
 /**

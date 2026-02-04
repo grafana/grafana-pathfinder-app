@@ -29,15 +29,13 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { getBlockPreview } from '../utils';
 import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from '../types';
 import {
   isMarkdownBlock,
   isInteractiveBlock,
-  isMultistepBlock,
-  isGuidedBlock,
   isImageBlock,
   isVideoBlock,
-  isQuizBlock,
   isInputBlock,
 } from '../../../types/json-guide.types';
 
@@ -230,41 +228,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Get a preview string for any block type
- */
-function getBlockPreview(block: JsonBlock): string {
-  if (isMarkdownBlock(block)) {
-    const firstLine = block.content.split('\n')[0];
-    return firstLine.slice(0, 50) + (firstLine.length > 50 ? '...' : '');
-  }
-  if (isInteractiveBlock(block)) {
-    return `${block.action}: ${block.reftarget || '(no target)'}`;
-  }
-  if (isMultistepBlock(block)) {
-    return `${block.steps.length} step${block.steps.length !== 1 ? 's' : ''}`;
-  }
-  if (isGuidedBlock(block)) {
-    return `${block.steps.length} guided step${block.steps.length !== 1 ? 's' : ''}`;
-  }
-  if (isImageBlock(block)) {
-    return block.alt || block.src;
-  }
-  if (isVideoBlock(block)) {
-    return block.title || block.src;
-  }
-  if (isQuizBlock(block)) {
-    return block.question.slice(0, 50) + (block.question.length > 50 ? '...' : '');
-  }
-  if (isInputBlock(block)) {
-    return block.prompt.slice(0, 50) + (block.prompt.length > 50 ? '...' : '');
-  }
-  if ('content' in block && typeof block.content === 'string') {
-    return block.content.slice(0, 50) + (block.content.length > 50 ? '...' : '');
-  }
-  return '';
-}
 
 /**
  * Create a default block of a given type
@@ -532,7 +495,12 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
     if (editingIndex === null) {
       return;
     }
-    const updatedBlock = buildBlockFromForm(blocks[editingIndex].type as BlockType);
+    const blockType = blocks[editingIndex].type as BlockType;
+    // For block types without full form support, preserve the original block
+    const unsupportedTypes: BlockType[] = ['quiz', 'multistep', 'guided'];
+    const updatedBlock = unsupportedTypes.includes(blockType)
+      ? blocks[editingIndex]
+      : buildBlockFromForm(blockType);
     const newBlocks = [...blocks];
     newBlocks[editingIndex] = updatedBlock;
     onChange(newBlocks);
@@ -552,8 +520,12 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       const newBlocks = blocks.filter((_, i) => i !== index);
       onChange(newBlocks);
       if (editingIndex === index) {
+        // Deleted the block being edited
         setEditingIndex(null);
         resetFormFields();
+      } else if (editingIndex !== null && index < editingIndex) {
+        // Deleted a block before the one being edited, adjust index
+        setEditingIndex(editingIndex - 1);
       }
     },
     [blocks, onChange, editingIndex, resetFormFields]
@@ -578,7 +550,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
 
   // Render form fields based on block type
   // Note: formStyles is passed from parent scope where useStyles2 was called
-  const renderFormFields = (type: BlockType, isEditing: boolean) => {
+  const renderFormFields = (type: BlockType) => {
     switch (type) {
       case 'markdown':
         return (
@@ -758,7 +730,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
               <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
                 {blocks.map((block, index) => {
                   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
-                  const preview = getBlockPreview(block);
+                  const preview = getBlockPreview(block, 50);
                   const isEditing = editingIndex === index;
 
                   return (
@@ -829,7 +801,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
 
                         {/* Inline edit form */}
                         {isEditing && (
-                          <div className={styles.editForm}>{renderFormFields(block.type as BlockType, true)}</div>
+                          <div className={styles.editForm}>{renderFormFields(block.type as BlockType)}</div>
                         )}
                       </div>
                     </SortableBlockItem>
@@ -854,7 +826,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
                     onChange={(v) => v.value && setNewBlockType(v.value)}
                   />
                 </Field>
-                {renderFormFields(newBlockType, false)}
+                {renderFormFields(newBlockType)}
                 <div className={styles.formActions}>
                   <Button
                     variant="secondary"
