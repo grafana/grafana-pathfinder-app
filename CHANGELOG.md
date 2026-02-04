@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.4.8
+
+### Added
+
+- **JSON editor mode**: New JSON editing mode in block editor with full undo/redo support and line-numbered validation errors (#521)
+  - Switch between visual block editor and raw JSON editing
+  - Validation errors show exact line numbers for quick debugging
+  - Maintains roundtrip fidelity when switching between modes
+- **Step state machine tests**: Added comprehensive unit tests for step state machine and check phases (#526)
+- **PR review guidelines**: Added documentation for PR review workflow in dev tools (#522)
+
+### Changed
+
+- **Conditional block improvements**: Quality of life improvements for editing conditional blocks (#530)
+  - New branch blocks editor for nested conditional content
+  - Collapsible UI sections for better organization
+  - Improved branch titles and visual hierarchy
+- **Block editor snap scrolling**: Improved scroll behavior in block editor for smoother navigation
+- **Docs panel refactoring**: Extracted components and utilities from docs-panel for better maintainability (#508)
+- **My learning refactoring**: Extracted utilities and styles from my-learning tab for maintainability (#507)
+- **Block editor refactoring**: Major code organization improvements to block editor (#504)
+- **CI optimization**: Parallelized quality checks for faster E2E feedback (#505)
+- **PR review workflow**: Improved PR review workflow in dev tools (#520)
+
+### Fixed
+
+- Fixed form validation errors in block builder
+- Fixed objectives recalculation in step state machine (#501)
+- Fixed parent section notification when step objectives are satisfied (#525)
+
+### Removed
+
+- Removed unused `showTarget` property from interactive schema (#506)
+
+### Chore
+
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v6.0.0 (#519)
+- Updated GitHub artifact actions (#517)
+- Updated actions/checkout to v4.3.1 (#435)
+- Updated dependencies: npm v11.8.0, @openfeature/react-sdk v1, commander v14, sass v1.97.3, glob v13
+
 ## 1.4.7
 
 ### Added
