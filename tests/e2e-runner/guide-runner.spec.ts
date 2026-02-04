@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync } from 'fs';
 
 import { test, expect } from '../fixtures';
 import { testIds } from '../../src/components/testIds';
+import { StorageKeys } from '../../src/lib/user-storage';
 import { runPlaywrightPreflightChecks, formatPreflightResults } from './utils/preflight';
 import {
   discoverStepsFromDOM,
@@ -102,12 +103,6 @@ function writeResultsFile(
   writeFileSync(resultsFilePath, JSON.stringify(data), 'utf-8');
 }
 
-/**
- * Storage key for E2E test guide injection.
- * Must match StorageKeys.E2E_TEST_GUIDE in src/lib/user-storage.ts
- */
-const E2E_TEST_GUIDE_KEY = 'grafana-pathfinder-app-e2e-test-guide';
-
 test.describe('Guide Runner', () => {
   test('loads and displays guide from JSON', async ({ page }) => {
     // Guide tests may take longer due to fix button attempts and multi-step execution.
@@ -182,7 +177,7 @@ test.describe('Guide Runner', () => {
       ({ key, json }) => {
         localStorage.setItem(key, json);
       },
-      { key: E2E_TEST_GUIDE_KEY, json: guideJson }
+      { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
     );
 
     // Open the docs panel first via Help button (panel must be mounted for event listener)
