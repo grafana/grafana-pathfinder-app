@@ -39,6 +39,74 @@ export const ExitCode = {
 } as const;
 
 /**
+ * Result of CLI-level pre-flight check (Grafana health)
+ */
+interface CliPreflightResult {
+  passed: boolean;
+  error?: string;
+  durationMs: number;
+}
+
+/**
+ * Check if Grafana is reachable and healthy.
+ *
+ * This is a public endpoint that doesn't require authentication,
+ * so it can be called from the CLI before spawning Playwright.
+ */
+async function checkGrafanaHealth(grafanaUrl: string): Promise<CliPreflightResult> {
+  const startTime = Date.now();
+
+  try {
+    const healthUrl = new URL('/api/health', grafanaUrl).toString();
+    const response = await fetch(healthUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      // Short timeout for health check
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return {
+        passed: false,
+        error: `Grafana health check failed: HTTP ${response.status} ${response.statusText}`,
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    const data = (await response.json()) as { database?: string; version?: string };
+
+    // Verify database is healthy
+    if (data.database !== 'ok') {
+      return {
+        passed: false,
+        error: `Grafana database not healthy: ${data.database ?? 'unknown'}`,
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    return {
+      passed: true,
+      durationMs: Date.now() - startTime,
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.name === 'TimeoutError'
+          ? `Connection timeout after 10s`
+          : error.message
+        : 'Unknown error';
+
+    return {
+      passed: false,
+      error: `Grafana not reachable at ${grafanaUrl}: ${errorMessage}`,
+      durationMs: Date.now() - startTime,
+    };
+  }
+}
+
+/**
  * Result of running Playwright tests on a guide
  */
 interface PlaywrightResult {
@@ -87,6 +155,7 @@ async function runPlaywrightTests(
           GUIDE_JSON_PATH: guidePath,
           GRAFANA_URL: options.grafanaUrl,
           E2E_TRACE: options.trace ? 'true' : 'false',
+          E2E_VERBOSE: options.verbose ? 'true' : 'false',
         },
         stdio: 'inherit',
         shell: true,
@@ -269,6 +338,29 @@ export const e2eCommand = new Command('e2e')
       if (options.trace) {
         console.log(`   Trace:       enabled`);
       }
+
+      // Run CLI-level pre-flight checks
+      console.log('\n🔍 Running pre-flight checks...');
+
+      // 1. Check Grafana health (public endpoint, no auth needed)
+      const healthCheck = await checkGrafanaHealth(options.grafanaUrl);
+
+      if (options.verbose) {
+        const status = healthCheck.passed ? '✓' : '✗';
+        console.log(`   ${status} grafana-reachable [${healthCheck.durationMs}ms]`);
+        if (!healthCheck.passed && healthCheck.error) {
+          console.log(`     Error: ${healthCheck.error}`);
+        }
+      }
+
+      if (!healthCheck.passed) {
+        console.error(`\n❌ Pre-flight check failed: ${healthCheck.error}`);
+        console.error('   Ensure Grafana is running and accessible at the specified URL.');
+        process.exit(ExitCode.GRAFANA_UNREACHABLE);
+      }
+
+      console.log('   ✓ Grafana is reachable');
+      console.log('   → Auth and plugin checks will run in Playwright context');
 
       // Run Playwright tests for each guide
       console.log('\n🎭 Running Playwright tests...\n');

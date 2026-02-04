@@ -108,7 +108,7 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 ---
 
-## L3 Phase 2: CLI Scaffolding ⏳ **IN PROGRESS**
+## L3 Phase 2: CLI Scaffolding ✅ **COMPLETED**
 
 ### Milestone L3-2A: CLI Command Skeleton ✅ **COMPLETED**
 
@@ -193,7 +193,7 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 ---
 
-### Milestone L3-2C: Pre-flight Checks
+### Milestone L3-2C: Pre-flight Checks ✅ **COMPLETED**
 
 **Rationale**: Enables fail-fast behavior before wasting time on guide execution.
 
@@ -209,15 +209,43 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 **Dependencies**: Milestone L3-2B
 
+**Files created/modified**:
+
+- `tests/e2e-runner/utils/preflight.ts` - Pre-flight check utilities (NEW)
+- `src/cli/commands/e2e.ts` - Added CLI-level Grafana health check
+- `tests/e2e-runner/guide-runner.spec.ts` - Added Playwright-level auth and plugin checks
+
 **Acceptance criteria**:
 
-- [ ] Grafana health check before test execution
-- [ ] Auth validation before guide loading
-- [ ] Plugin installation verified
-- [ ] Clear error messages with exit codes for each failure type
-- [ ] Pre-flight results included in verbose output
+- [x] Grafana health check before test execution ✅
+- [x] Auth validation before guide loading ✅
+- [x] Plugin installation verified ✅
+- [x] Clear error messages with exit codes for each failure type ✅
+- [x] Pre-flight results included in verbose output ✅
 
 **Estimated effort**: Small (half day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **Two-phase pre-flight architecture**:
+  - **CLI phase**: Grafana health check using `/api/health` (public endpoint, no auth needed). Exits with code 3 if Grafana is unreachable.
+  - **Playwright phase**: Auth validation and plugin installation check. These require browser context for authenticated API calls.
+
+- **Pre-flight check sequence**:
+  1. CLI: `checkGrafanaHealth()` - verifies `/api/health` returns `{ "database": "ok" }`
+  2. Playwright: `checkAuthValid()` - navigates to `/dashboards`, verifies no redirect to login, checks `/api/user` API
+  3. Playwright: `checkPluginInstalled()` - verifies `/api/plugins/grafana-pathfinder-app/settings` returns OK and plugin is enabled
+
+- **Exit codes implemented**:
+  - Exit 3: Grafana unreachable (health check fails)
+  - Exit 4: Auth failure (defined but auth failures currently result in test failure exit 1)
+  - Exit 2: Configuration error (validation failures)
+
+- **Verbose output** shows timing for each check with pass/fail indicators
+
+- **Design decision**: Auth and plugin checks run in Playwright context because they require authenticated API access. The `@grafana/plugin-e2e` fixture handles authentication automatically via `admin.json` state.
 
 ---
 
