@@ -17,6 +17,9 @@ import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/fi
 import {
   generateReport,
   writeReport,
+  generateMultiGuideReport,
+  writeMultiGuideReport,
+  formatMultiGuideSummary,
   type TestResultsData,
 } from '../utils/e2e-reporter';
 
@@ -513,33 +516,108 @@ export const e2eCommand = new Command('e2e')
         }
       }
 
-      // Print summary
-      console.log('\n📊 Summary:');
-      const passed = results.filter((r) => r.success).length;
-      const failed = results.filter((r) => !r.success).length;
-      const authExpired = results.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+      // Collect results data for reporting
+      const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
+      const isMultiGuide = valid.length > 1;
 
-      console.log(`   ✅ Passed: ${passed}`);
-      console.log(`   ❌ Failed: ${failed}`);
-      if (authExpired > 0) {
-        console.log(`   🔐 Auth expired: ${authExpired}`);
+      // Print summary
+      console.log('\n' + '─'.repeat(68));
+      console.log('📊 Summary');
+      console.log('─'.repeat(68));
+
+      if (isMultiGuide) {
+        // Multi-guide summary (L3-7B)
+        const passedGuides = results.filter((r) => r.success).length;
+        const failedGuides = results.filter((r) => !r.success && r.abortReason !== 'AUTH_EXPIRED').length;
+        const authExpired = results.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+
+        console.log(`\n   Guides: ${passedGuides}/${valid.length} passed`);
+        if (failedGuides > 0) {
+          console.log(`   ├─ ❌ Failed: ${failedGuides}`);
+        }
+        if (authExpired > 0) {
+          console.log(`   └─ 🔐 Auth expired: ${authExpired}`);
+        }
+
+        // Aggregate step statistics across all guides
+        if (resultsWithData.length > 0) {
+          const totalSteps = resultsWithData.reduce((sum, r) => sum + r.results.length, 0);
+          const passedSteps = resultsWithData.reduce(
+            (sum, r) => sum + r.results.filter((s) => s.status === 'passed').length,
+            0
+          );
+          const failedSteps = resultsWithData.reduce(
+            (sum, r) => sum + r.results.filter((s) => s.status === 'failed').length,
+            0
+          );
+          const skippedSteps = resultsWithData.reduce(
+            (sum, r) => sum + r.results.filter((s) => s.status === 'skipped').length,
+            0
+          );
+          const notReachedSteps = resultsWithData.reduce(
+            (sum, r) => sum + r.results.filter((s) => s.status === 'not_reached').length,
+            0
+          );
+
+          console.log(`\n   Steps: ${totalSteps} total`);
+          console.log(`   ├─ ✅ Passed: ${passedSteps}`);
+          if (failedSteps > 0) {
+            console.log(`   ├─ ❌ Failed: ${failedSteps}`);
+          }
+          if (skippedSteps > 0) {
+            console.log(`   ├─ ⊘ Skipped: ${skippedSteps}`);
+          }
+          if (notReachedSteps > 0) {
+            console.log(`   └─ ○ Not reached: ${notReachedSteps}`);
+          }
+        }
+
+        // List individual guide results
+        console.log(`\n   Guide results:`);
+        for (const result of results) {
+          const status = result.success ? '✅' : result.abortReason === 'AUTH_EXPIRED' ? '🔐' : '❌';
+          const guideName = result.guide.split('/').pop()?.replace('.json', '') ?? result.guide;
+          const reason = result.abortReason === 'AUTH_EXPIRED' ? ' (auth expired)' : '';
+          console.log(`   ${status} ${guideName}${reason}`);
+        }
+      } else {
+        // Single guide summary
+        const passed = results.filter((r) => r.success).length;
+        const failed = results.filter((r) => !r.success).length;
+        const authExpired = results.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+
+        console.log(`   ✅ Passed: ${passed}`);
+        console.log(`   ❌ Failed: ${failed}`);
+        if (authExpired > 0) {
+          console.log(`   🔐 Auth expired: ${authExpired}`);
+        }
       }
 
-      // L3-5B: Generate JSON report if --output was specified
+      console.log('\n' + '─'.repeat(68));
+
+      // L3-5B/L3-7B: Generate JSON report if --output was specified
       if (options.output) {
-        // For single guide, write detailed report
-        // For multiple guides, write first guide's report (multi-guide reporting is L3-7B)
-        const firstResultWithData = results.find((r) => r.resultsData);
-        if (firstResultWithData?.resultsData) {
+        if (resultsWithData.length === 0) {
+          console.warn(`   ⚠ No test results available for JSON report`);
+        } else if (isMultiGuide) {
+          // L3-7B: Generate multi-guide aggregated report
           try {
-            const report = generateReport(firstResultWithData.resultsData);
+            const report = generateMultiGuideReport(resultsWithData, options.grafanaUrl);
+            writeMultiGuideReport(report, options.output);
+            console.log(`\n📄 Multi-guide JSON report written to: ${options.output}`);
+            console.log(`   ${formatMultiGuideSummary(report)}`);
+          } catch (err) {
+            console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+        } else {
+          // Single guide: write detailed report
+          try {
+            const report = generateReport(resultsWithData[0]);
             writeReport(report, options.output);
             console.log(`\n📄 JSON report written to: ${options.output}`);
           } catch (err) {
             console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
           }
-        } else {
-          console.warn(`   ⚠ No test results available for JSON report`);
         }
       }
 

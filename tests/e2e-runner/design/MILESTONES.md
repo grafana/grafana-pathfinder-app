@@ -1184,7 +1184,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-7B: Bundled Guide Testing
+### Milestone L3-7B: Bundled Guide Testing ✅ **COMPLETED**
 
 **Rationale**: Tests all bundled guides per [CLI Interface](./e2e-test-runner-design.md#cli-interface) `--bundled` flag.
 
@@ -1199,14 +1199,66 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-5D
 
+**Files modified**:
+
+- `src/cli/utils/e2e-reporter.ts` - Added multi-guide report types and aggregation functions
+- `src/cli/commands/e2e.ts` - Updated to generate aggregated JSON reports and improved console output
+
 **Acceptance criteria**:
 
-- [ ] `npx pathfinder-cli e2e --bundled` tests all bundled guides
-- [ ] Each guide tested independently
-- [ ] Summary shows results across all guides
-- [ ] Exit code reflects overall pass/fail
+- [x] `npx pathfinder-cli e2e --bundled` tests all bundled guides ✅
+- [x] Each guide tested independently ✅
+- [x] Summary shows results across all guides ✅
+- [x] Exit code reflects overall pass/fail ✅
 
 **Estimated effort**: Medium (1 day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **Multi-guide report types** added to `e2e-reporter.ts`:
+  - `MultiGuideSummary`: Aggregated statistics across all guides (totalGuides, passedGuides, failedGuides, authExpiredGuides, aggregated step counts)
+  - `GuideResult`: Condensed per-guide result (id, title, path, success, abortReason, summary, duration)
+  - `MultiGuideReport`: Complete multi-guide report with `type: 'multi-guide'`, config, summary, guides array, and full reports array
+
+- **Multi-guide aggregation functions**:
+  - `generateMultiGuideSummary()`: Aggregates step counts across all guide reports
+  - `toGuideResult()`: Converts full report to condensed guide result
+  - `generateMultiGuideReport()`: Creates complete multi-guide report from results array
+  - `writeMultiGuideReport()`: Writes JSON report to file
+  - `isMultiGuideReportSuccess()`: Checks if all guides passed (no mandatory failures)
+  - `formatMultiGuideSummary()`: Formats brief summary line for console output
+
+- **Console output improvements** for multi-guide runs:
+  - Shows guide pass/fail counts with breakdown
+  - Shows aggregated step statistics
+  - Lists individual guide results with status icons
+  - Multi-guide JSON report path shown with formatted summary
+
+- **JSON report structure** for multi-guide runs:
+  ```json
+  {
+    "type": "multi-guide",
+    "config": { "grafanaUrl": "...", "timestamp": "..." },
+    "summary": {
+      "totalGuides": 10,
+      "passedGuides": 9,
+      "failedGuides": 1,
+      "authExpiredGuides": 0,
+      "steps": { "total": 47, "passed": 42, ... },
+      "totalDuration": 120000
+    },
+    "guides": [{ "id": "...", "success": true, ... }],
+    "reports": [{ /* full E2ETestReport for each guide */ }]
+  }
+  ```
+
+- **Design decisions**:
+  - Full step-level reports included in `reports` array for detailed analysis
+  - Condensed `guides` array for quick overview
+  - Single guide runs still generate single-guide format for backward compatibility
+  - Exit code 1 if any mandatory step fails in any guide
 
 ---
 
@@ -1259,7 +1311,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        | ✅     |
 | L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        | ✅     |
 | L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     | ✅     |
-| L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        |        |
+| L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        | ✅     |
 | L3-7C: CI Workflow                     | 7        | Small  | Low        | L3-7B        |        |
 
 ---

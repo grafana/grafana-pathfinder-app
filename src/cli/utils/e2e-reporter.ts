@@ -386,3 +386,239 @@ export function formatReportSummary(report: E2ETestReport): string {
 
   return parts.join(', ');
 }
+
+// ============================================
+// Multi-Guide Report Types (L3-7B)
+// ============================================
+
+/**
+ * Summary statistics for a multi-guide test run (L3-7B).
+ */
+export interface MultiGuideSummary {
+  /** Total number of guides tested */
+  totalGuides: number;
+  /** Number of guides that passed (no mandatory failures) */
+  passedGuides: number;
+  /** Number of guides that failed (at least one mandatory failure) */
+  failedGuides: number;
+  /** Number of guides where auth expired during testing */
+  authExpiredGuides: number;
+  /** Aggregated step counts across all guides */
+  steps: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    notReached: number;
+    mandatoryFailed: number;
+    skippableFailed: number;
+  };
+  /** Total test duration across all guides in milliseconds */
+  totalDuration: number;
+}
+
+/**
+ * Individual guide result in the multi-guide report (L3-7B).
+ */
+export interface GuideResult {
+  /** Guide identifier */
+  id: string;
+  /** Guide title */
+  title: string;
+  /** Path to the guide file */
+  path: string;
+  /** Whether this guide passed (no mandatory failures) */
+  success: boolean;
+  /** Reason for failure/abort if any */
+  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE';
+  /** Summary statistics for this guide */
+  summary: ReportSummary;
+  /** Duration in milliseconds */
+  duration: number;
+}
+
+/**
+ * Complete multi-guide E2E test report (L3-7B).
+ *
+ * This report aggregates results from multiple guides tested with --bundled
+ * or when multiple guide paths are provided.
+ */
+export interface MultiGuideReport {
+  /** Report type identifier */
+  type: 'multi-guide';
+  /** Test configuration */
+  config: ReportConfig;
+  /** Aggregated summary across all guides */
+  summary: MultiGuideSummary;
+  /** Individual guide results (condensed, without step details) */
+  guides: GuideResult[];
+  /** Full reports for each guide (includes step details) */
+  reports: E2ETestReport[];
+}
+
+// ============================================
+// Multi-Guide Report Generation (L3-7B)
+// ============================================
+
+/**
+ * Generate aggregated summary from multiple guide reports (L3-7B).
+ *
+ * @param reports - Array of individual guide reports
+ * @returns Aggregated summary statistics
+ */
+export function generateMultiGuideSummary(reports: E2ETestReport[]): MultiGuideSummary {
+  const passedGuides = reports.filter((r) => isReportSuccess(r)).length;
+  const failedGuides = reports.filter((r) => !isReportSuccess(r) && r.abortReason !== 'AUTH_EXPIRED').length;
+  const authExpiredGuides = reports.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+
+  // Aggregate step counts
+  const steps = reports.reduce(
+    (acc, report) => ({
+      total: acc.total + report.summary.total,
+      passed: acc.passed + report.summary.passed,
+      failed: acc.failed + report.summary.failed,
+      skipped: acc.skipped + report.summary.skipped,
+      notReached: acc.notReached + report.summary.notReached,
+      mandatoryFailed: acc.mandatoryFailed + report.summary.mandatoryFailed,
+      skippableFailed: acc.skippableFailed + report.summary.skippableFailed,
+    }),
+    {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      notReached: 0,
+      mandatoryFailed: 0,
+      skippableFailed: 0,
+    }
+  );
+
+  const totalDuration = reports.reduce((sum, r) => sum + r.summary.duration, 0);
+
+  return {
+    totalGuides: reports.length,
+    passedGuides,
+    failedGuides,
+    authExpiredGuides,
+    steps,
+    totalDuration,
+  };
+}
+
+/**
+ * Convert a single guide report to a condensed guide result (L3-7B).
+ *
+ * @param report - Full guide report
+ * @returns Condensed guide result without step details
+ */
+export function toGuideResult(report: E2ETestReport): GuideResult {
+  const result: GuideResult = {
+    id: report.guide.id,
+    title: report.guide.title,
+    path: report.guide.path,
+    success: isReportSuccess(report),
+    summary: report.summary,
+    duration: report.summary.duration,
+  };
+
+  if (report.abortReason) {
+    result.abortReason = report.abortReason;
+  }
+
+  return result;
+}
+
+/**
+ * Generate a multi-guide report from individual test results (L3-7B).
+ *
+ * @param resultsArray - Array of test results data from each guide
+ * @param grafanaUrl - Grafana URL used for testing
+ * @param grafanaVersion - Optional Grafana version
+ * @returns Complete multi-guide report
+ */
+export function generateMultiGuideReport(
+  resultsArray: TestResultsData[],
+  grafanaUrl: string,
+  grafanaVersion?: string
+): MultiGuideReport {
+  // Generate individual reports
+  const reports = resultsArray.map((data) => generateReport(data, grafanaVersion));
+
+  // Generate aggregated summary
+  const summary = generateMultiGuideSummary(reports);
+
+  // Create condensed guide results
+  const guides = reports.map(toGuideResult);
+
+  const config: ReportConfig = {
+    grafanaUrl,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (grafanaVersion) {
+    config.grafanaVersion = grafanaVersion;
+  }
+
+  return {
+    type: 'multi-guide',
+    config,
+    summary,
+    guides,
+    reports,
+  };
+}
+
+/**
+ * Write a multi-guide report to a file (L3-7B).
+ *
+ * @param report - The multi-guide report to write
+ * @param outputPath - Path to write the report to
+ */
+export function writeMultiGuideReport(report: MultiGuideReport, outputPath: string): void {
+  // Reuse writeReport's directory creation logic
+  const dir = dirname(outputPath);
+  if (dir !== '.') {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  const json = JSON.stringify(report, null, 2);
+  writeFileSync(outputPath, json, 'utf-8');
+}
+
+/**
+ * Check if a multi-guide report indicates overall success (L3-7B).
+ *
+ * Per L3-4C design doc: only mandatory failures count against success.
+ *
+ * @param report - The multi-guide report
+ * @returns true if all guides passed (no mandatory failures in any guide)
+ */
+export function isMultiGuideReportSuccess(report: MultiGuideReport): boolean {
+  return report.summary.steps.mandatoryFailed === 0;
+}
+
+/**
+ * Format a brief summary line from a multi-guide report (L3-7B).
+ *
+ * @param report - The multi-guide report
+ * @returns Summary string like "3/5 guides passed, 47 steps (42 passed, 3 failed, 2 skipped)"
+ */
+export function formatMultiGuideSummary(report: MultiGuideReport): string {
+  const { summary } = report;
+  const guideStatus = `${summary.passedGuides}/${summary.totalGuides} guides passed`;
+
+  const stepParts: string[] = [`${summary.steps.passed} passed`];
+  if (summary.steps.failed > 0) {
+    stepParts.push(`${summary.steps.failed} failed`);
+  }
+  if (summary.steps.skipped > 0) {
+    stepParts.push(`${summary.steps.skipped} skipped`);
+  }
+  if (summary.steps.notReached > 0) {
+    stepParts.push(`${summary.steps.notReached} not reached`);
+  }
+
+  const stepStatus = `${summary.steps.total} steps (${stepParts.join(', ')})`;
+
+  return `${guideStatus}, ${stepStatus}`;
+}
