@@ -9,6 +9,8 @@
  */
 
 import { Page, Locator, expect } from '@playwright/test';
+import { mkdirSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
 import { testIds } from '../../../src/components/testIds';
 
 // ============================================
@@ -217,6 +219,27 @@ export type AbortReason =
   | 'MANDATORY_FAILURE'; // A mandatory step failed
 
 // ============================================
+// Artifact Collection Types (L3-5D)
+// ============================================
+
+/**
+ * Paths to captured failure artifacts (L3-5D).
+ *
+ * Artifacts are captured when a step fails to provide debugging context
+ * in CI environments where you can't watch the browser.
+ *
+ * @see tests/e2e-runner/design/e2e-test-runner-design.md#artifact-collection-on-failure
+ */
+export interface ArtifactPaths {
+  /** Path to screenshot PNG file */
+  screenshot?: string;
+  /** Path to DOM snapshot HTML file */
+  dom?: string;
+  /** Path to console errors JSON file */
+  console?: string;
+}
+
+// ============================================
 // Error Classification Types (L3-5C)
 // ============================================
 
@@ -290,6 +313,13 @@ export interface StepTestResult {
    * all others default to `unknown`.
    */
   classification?: ErrorClassification;
+
+  /**
+   * Paths to artifacts captured on failure (L3-5D).
+   * Only present for failed steps when artifacts directory is configured.
+   * Contains screenshot and DOM snapshot for debugging.
+   */
+  artifacts?: ArtifactPaths;
 }
 
 /**
@@ -516,6 +546,91 @@ export function classifyError(error?: string, abortReason?: AbortReason): ErrorC
   // Default to unknown for all other errors
   // Per design doc: "default to `unknown` and require human triage"
   return 'unknown';
+}
+
+// ============================================
+// Artifact Collection Functions (L3-5D)
+// ============================================
+
+/**
+ * Capture failure artifacts (screenshot, DOM snapshot, console errors) (L3-5D).
+ *
+ * This function captures diagnostic artifacts when a step fails to provide
+ * debugging context in CI environments where you can't watch the browser.
+ *
+ * Per design doc:
+ * - Screenshot: PNG image of visual state at failure
+ * - DOM snapshot: HTML element structure for selector debugging
+ * - Console errors: JSON file with console.error() calls during step
+ *
+ * Artifacts are only captured for failed steps to save space.
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier (used in filenames)
+ * @param consoleErrors - Console errors captured during step execution
+ * @param artifactsDir - Directory to write artifacts to
+ * @returns ArtifactPaths with paths to captured files, undefined if capture fails
+ *
+ * @example
+ * ```typescript
+ * const artifacts = await captureFailureArtifacts(page, 'step-1', errors, './artifacts');
+ * // artifacts.screenshot = './artifacts/step-1-failure.png'
+ * // artifacts.dom = './artifacts/step-1-dom.html'
+ * // artifacts.console = './artifacts/step-1-console.json'
+ * ```
+ */
+export async function captureFailureArtifacts(
+  page: Page,
+  stepId: string,
+  consoleErrors: string[],
+  artifactsDir: string
+): Promise<ArtifactPaths | undefined> {
+  try {
+    // Ensure artifacts directory exists
+    mkdirSync(artifactsDir, { recursive: true });
+
+    const artifacts: ArtifactPaths = {};
+
+    // Capture screenshot
+    const screenshotPath = join(artifactsDir, `${stepId}-failure.png`);
+    try {
+      await page.screenshot({ path: screenshotPath, fullPage: false });
+      artifacts.screenshot = screenshotPath;
+    } catch (screenshotError) {
+      console.warn(`   ⚠ Failed to capture screenshot: ${screenshotError instanceof Error ? screenshotError.message : 'Unknown error'}`);
+    }
+
+    // Capture DOM snapshot
+    const domPath = join(artifactsDir, `${stepId}-dom.html`);
+    try {
+      const html = await page.content();
+      writeFileSync(domPath, html, 'utf-8');
+      artifacts.dom = domPath;
+    } catch (domError) {
+      console.warn(`   ⚠ Failed to capture DOM snapshot: ${domError instanceof Error ? domError.message : 'Unknown error'}`);
+    }
+
+    // Capture console errors if any were collected
+    if (consoleErrors.length > 0) {
+      const consolePath = join(artifactsDir, `${stepId}-console.json`);
+      try {
+        writeFileSync(consolePath, JSON.stringify(consoleErrors, null, 2), 'utf-8');
+        artifacts.console = consolePath;
+      } catch (consoleError) {
+        console.warn(`   ⚠ Failed to write console errors: ${consoleError instanceof Error ? consoleError.message : 'Unknown error'}`);
+      }
+    }
+
+    // Return artifacts only if we captured at least one
+    if (artifacts.screenshot || artifacts.dom || artifacts.console) {
+      return artifacts;
+    }
+
+    return undefined;
+  } catch (error) {
+    console.warn(`   ⚠ Failed to capture failure artifacts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return undefined;
+  }
 }
 
 // ============================================
@@ -1602,12 +1717,18 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
  * 6. Click "Do it" button with post-click settle delay
  * 7. Wait for completion with objective polling
  * 8. Return result with diagnostics
+ * 9. Capture artifacts on failure if artifactsDir is specified (L3-5D)
  *
  * Timing enhancements (L3-3C):
  * - Sequential dependencies: 10s timeout for button enable
  * - Multisteps: Dynamic timeout (30s base + 5s per internal action)
  * - Objective completion: Polling during wait to detect auto-completion
  * - Settle delays: Post-scroll and post-click delays for reactive system
+ *
+ * Artifact collection (L3-5D):
+ * - Screenshots and DOM snapshots captured only on failure
+ * - Console errors written to JSON file
+ * - Artifacts saved to artifactsDir if specified
  *
  * @param page - Playwright Page object
  * @param step - The testable step to execute
@@ -1620,11 +1741,13 @@ export async function executeStep(
   options: {
     timeout?: number;
     verbose?: boolean;
+    /** Directory to write failure artifacts to (L3-5D). If not set, no artifacts captured. */
+    artifactsDir?: string;
   } = {}
 ): Promise<StepTestResult> {
   // L3-3C: Calculate appropriate timeout based on step type
   const calculatedTimeout = calculateStepTimeout(step);
-  const { timeout = calculatedTimeout, verbose = false } = options;
+  const { timeout = calculatedTimeout, verbose = false, artifactsDir } = options;
   const startTime = Date.now();
   const consoleErrors: string[] = [];
 
@@ -1700,6 +1823,16 @@ export async function executeStep(
           );
         }
         const errorMsg = `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`;
+
+        // L3-5D: Capture artifacts on failure
+        let artifacts: ArtifactPaths | undefined;
+        if (artifactsDir) {
+          artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
+          if (verbose && artifacts) {
+            console.log(`   📸 Artifacts captured to ${artifactsDir}`);
+          }
+        }
+
         return {
           stepId: step.stepId,
           status: 'failed',
@@ -1710,6 +1843,8 @@ export async function executeStep(
           skippable: step.skippable,
           // L3-5C: Classify the error - requirements failures are typically 'unknown'
           classification: classifyError(errorMsg),
+          // L3-5D: Include artifact paths
+          artifacts,
         };
       }
 
@@ -1762,6 +1897,16 @@ export async function executeStep(
   } catch (error) {
     // Return failure result with error details
     const errorMsg = error instanceof Error ? error.message : String(error);
+
+    // L3-5D: Capture artifacts on failure
+    let artifacts: ArtifactPaths | undefined;
+    if (artifactsDir) {
+      artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
+      if (verbose && artifacts) {
+        console.log(`   📸 Artifacts captured to ${artifactsDir}`);
+      }
+    }
+
     return {
       stepId: step.stepId,
       status: 'failed',
@@ -1772,6 +1917,8 @@ export async function executeStep(
       skippable: step.skippable,
       // L3-5C: Classify the error for triage hints
       classification: classifyError(errorMsg),
+      // L3-5D: Include artifact paths
+      artifacts,
     };
   } finally {
     // REACT: cleanup subscription (R1) - Clean up console handler to prevent memory leaks
@@ -1795,12 +1942,17 @@ export type OnStepCompleteCallback = (result: StepTestResult, stepIndex: number,
  * - Failed mandatory steps (stops execution, marks remaining as not_reached)
  * - Session validation every N steps to detect auth expiry (L3-3D)
  * - Real-time progress reporting via onStepComplete callback (L3-5A)
+ * - Artifact collection on failure (L3-5D)
  *
  * Session validation (L3-3D):
  * - Checks session validity every `sessionCheckInterval` steps (default: 5)
  * - Validates at step indices 0, N, 2N, etc. to ensure session is valid
  * - On auth expiry, aborts with AUTH_EXPIRED reason and exit code 4
  * - Remaining steps marked as not_reached
+ *
+ * Artifact collection (L3-5D):
+ * - If artifactsDir is specified, captures screenshot, DOM snapshot, and console errors on failure
+ * - Artifacts are only captured for failed steps to save space
  *
  * @param page - Playwright Page object
  * @param steps - Array of testable steps to execute
@@ -1818,6 +1970,8 @@ export async function executeAllSteps(
     sessionCheckInterval?: number;
     /** Callback for real-time step progress (L3-5A). Called after each step completes. */
     onStepComplete?: OnStepCompleteCallback;
+    /** Directory for failure artifacts (L3-5D). If not set, no artifacts captured. */
+    artifactsDir?: string;
   } = {}
 ): Promise<AllStepsResult> {
   const {
@@ -1825,6 +1979,7 @@ export async function executeAllSteps(
     stopOnMandatoryFailure = true,
     sessionCheckInterval = DEFAULT_SESSION_CHECK_INTERVAL,
     onStepComplete,
+    artifactsDir,
   } = options;
   const results: StepTestResult[] = [];
   let aborted = false;
@@ -1895,7 +2050,8 @@ export async function executeAllSteps(
       console.log(`\n   [${i + 1}/${steps.length}] Step: ${step.stepId}`);
     }
 
-    const result = await executeStep(page, step, options);
+    // L3-5D: Pass artifactsDir to executeStep for failure artifact capture
+    const result = await executeStep(page, step, { ...options, artifactsDir });
     results.push(result);
 
     // L3-5A: Real-time progress callback

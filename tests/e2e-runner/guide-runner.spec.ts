@@ -92,6 +92,10 @@ function writeResultsFile(
       error: r.error,
       skipReason: r.skipReason,
       skippable: r.skippable,
+      // L3-5C: Include classification for failed or not_reached steps
+      classification: r.classification,
+      // L3-5D: Include artifact paths for failed steps
+      artifacts: r.artifacts,
     })),
     aborted: allStepsResult.aborted,
     abortReason: allStepsResult.abortReason,
@@ -116,6 +120,8 @@ test.describe('Guide Runner', () => {
     const guidePath = process.env.GUIDE_JSON_PATH;
     const grafanaUrl = process.env.GRAFANA_URL ?? 'http://localhost:3000';
     const isVerbose = process.env.E2E_VERBOSE === 'true';
+    // L3-5D: Artifacts directory for failure artifact collection
+    const artifactsDir = process.env.ARTIFACTS_DIR;
 
     if (!guidePath) {
       throw new Error('GUIDE_JSON_PATH environment variable is required');
@@ -234,6 +240,8 @@ test.describe('Guide Runner', () => {
       verbose: isVerbose,
       stopOnMandatoryFailure: true, // Happy path: stop on first failure
       sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
+      // L3-5D: Artifacts directory for failure artifact collection
+      artifactsDir,
       // L3-5A: Real-time step progress callback
       onStepComplete: (result) => {
         printStepResult(result);

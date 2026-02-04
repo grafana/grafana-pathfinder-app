@@ -743,9 +743,12 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-## L3 Phase 5: Reporting
+## L3 Phase 5: Reporting ✅ **COMPLETED**
 
-**Progress**: 3/4 milestones complete (L3-5A ✅, L3-5B ✅, L3-5C ✅)
+**Progress**: 4/4 milestones complete (L3-5A ✅, L3-5B ✅, L3-5C ✅, L3-5D ✅)
+
+**Completion Date**: 2026-02-04
+**Outcome**: All reporting functionality implemented including console output, JSON reports, error classification, and artifact collection
 
 ### Milestone L3-5A: Console Reporting ✅ **COMPLETED**
 
@@ -977,7 +980,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-5D: Artifact Collection on Failure
+### Milestone L3-5D: Artifact Collection on Failure ✅ **COMPLETED**
 
 **Rationale**: Screenshots and DOM snapshots are critical for debugging failures in CI where you can't watch the browser.
 
@@ -994,16 +997,55 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-5C
 
+**Files created/modified**:
+
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Added ArtifactPaths type, captureFailureArtifacts() function, updated executeStep() and executeAllSteps()
+- `src/cli/utils/e2e-reporter.ts` - Added ArtifactPaths type to report types, updated convertStepResults()
+- `src/cli/commands/e2e.ts` - Added ARTIFACTS_DIR environment variable for Playwright
+- `tests/e2e-runner/guide-runner.spec.ts` - Read ARTIFACTS_DIR, pass to executeAllSteps(), include artifacts in results file
+- `tests/e2e-runner/utils/console-reporter.ts` - Added artifact path output for failed steps
+
 **Acceptance criteria**:
 
-- [ ] Screenshot captured on step failure
-- [ ] DOM snapshot captured on step failure
-- [ ] Artifacts written to `--artifacts` directory (default: `./artifacts/`)
-- [ ] Artifact paths included in JSON output
-- [ ] Console errors captured per step
-- [ ] No artifacts captured for passing steps (saves space)
+- [x] Screenshot captured on step failure ✅
+- [x] DOM snapshot captured on step failure ✅
+- [x] Artifacts written to `--artifacts` directory (default: `./artifacts/`) ✅
+- [x] Artifact paths included in JSON output ✅
+- [x] Console errors captured per step ✅
+- [x] No artifacts captured for passing steps (saves space) ✅
 
 **Estimated effort**: Medium (1 day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **ArtifactPaths interface** captures three types of artifacts:
+  - `screenshot`: PNG image of visual state at failure time
+  - `dom`: HTML snapshot of DOM structure for selector debugging
+  - `console`: JSON file with console.error() messages during step execution
+
+- **`captureFailureArtifacts()` function** (guide-test-runner.ts):
+  - Creates artifacts directory if it doesn't exist
+  - Captures screenshot using `page.screenshot()` with `fullPage: false`
+  - Captures DOM using `page.content()` and writes to HTML file
+  - Writes console errors to JSON file if any were collected
+  - Returns paths only if at least one artifact was captured successfully
+  - Handles errors gracefully with warnings (doesn't fail if capture fails)
+
+- **Artifact filenames** follow the pattern: `{stepId}-failure.png`, `{stepId}-dom.html`, `{stepId}-console.json`
+
+- **Integration points**:
+  - CLI: `--artifacts` flag with default `./artifacts/` passed via `ARTIFACTS_DIR` env var
+  - Playwright: `executeStep()` captures artifacts on failure, `executeAllSteps()` passes artifactsDir
+  - JSON report: `artifacts` field added to step results with file paths
+  - Console output: Shows artifact count and paths for failed steps
+
+- **Design decisions**:
+  - Only capture artifacts on failed steps (not skipped/passed) to save space
+  - Console errors written separately from step result (avoids duplicate storage)
+  - Artifacts directory created lazily only when first failure occurs
+  - Screenshot uses viewport only (`fullPage: false`) per design doc
 
 ---
 
@@ -1172,7 +1214,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        | ✅     |
 | L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        | ✅     |
 | L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        | ✅     |
-| L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |        |
+| L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        | ✅     |
 | L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        | ✅     |
 | L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     |        |
 | L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        |        |

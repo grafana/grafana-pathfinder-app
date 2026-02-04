@@ -231,6 +231,8 @@ async function runPlaywrightTests(
           ABORT_FILE_PATH: abortFilePath,
           // L3-5B: Pass results file path for JSON reporting
           RESULTS_FILE_PATH: resultsFilePath,
+          // L3-5D: Pass artifacts directory for failure artifact collection
+          ARTIFACTS_DIR: options.artifacts,
         },
         stdio: 'inherit',
         shell: true,

@@ -142,6 +142,28 @@ export function printStepResult(result: StepTestResult): void {
   if ((result.status === 'failed' || result.status === 'not_reached') && result.classification) {
     console.log(`    Classification: ${result.classification}`);
   }
+
+  // L3-5D: Print artifact paths for failed steps
+  if (result.status === 'failed' && result.artifacts) {
+    const artifactCount = [
+      result.artifacts.screenshot,
+      result.artifacts.dom,
+      result.artifacts.console,
+    ].filter(Boolean).length;
+
+    if (artifactCount > 0) {
+      console.log(`    📸 Artifacts captured (${artifactCount}):`);
+      if (result.artifacts.screenshot) {
+        console.log(`       - Screenshot: ${result.artifacts.screenshot}`);
+      }
+      if (result.artifacts.dom) {
+        console.log(`       - DOM: ${result.artifacts.dom}`);
+      }
+      if (result.artifacts.console) {
+        console.log(`       - Console: ${result.artifacts.console}`);
+      }
+    }
+  }
 }
 
 /**

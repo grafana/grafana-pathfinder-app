@@ -74,6 +74,20 @@ export type ErrorClassification =
   | 'unknown'; // Default - cannot be reliably classified
 
 /**
+ * Paths to captured failure artifacts (L3-5D).
+ *
+ * Artifacts are captured when a step fails to provide debugging context.
+ */
+export interface ArtifactPaths {
+  /** Path to screenshot PNG file */
+  screenshot?: string;
+  /** Path to DOM snapshot HTML file */
+  dom?: string;
+  /** Path to console errors JSON file */
+  console?: string;
+}
+
+/**
  * Step result in the JSON report.
  *
  * Per design doc, each step includes:
@@ -105,6 +119,12 @@ export interface ReportStepResult {
    * Per MVP: only `infrastructure` is auto-classified, others default to `unknown`.
    */
   classification?: ErrorClassification;
+  /**
+   * Paths to failure artifacts (L3-5D).
+   * Only present for failed steps when artifacts were captured.
+   * Contains screenshot, DOM snapshot, and console errors file paths.
+   */
+  artifacts?: ArtifactPaths;
 }
 
 /**
@@ -148,6 +168,8 @@ export interface TestStepResult {
   skippable: boolean;
   /** Error classification for failure triage (L3-5C) */
   classification?: ErrorClassification;
+  /** Paths to failure artifacts (L3-5D) */
+  artifacts?: ArtifactPaths;
 }
 
 /**
@@ -236,6 +258,11 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
     // L3-5C: Include classification for failed or not_reached steps
     if ((result.status === 'failed' || result.status === 'not_reached') && result.classification) {
       reportStep.classification = result.classification;
+    }
+
+    // L3-5D: Include artifact paths for failed steps
+    if (result.status === 'failed' && result.artifacts) {
+      reportStep.artifacts = result.artifacts;
     }
 
     return reportStep;
