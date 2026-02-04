@@ -1,9 +1,14 @@
 /**
  * E2E Test Command
  *
- * Run E2E tests on JSON guide files. This is a skeleton that validates guides
- * and will integrate with Playwright in a later milestone (L3-2B).
+ * Run E2E tests on JSON guide files. Spawns Playwright to inject guides
+ * into localStorage and verify they load correctly in the docs panel.
  */
+
+import { spawn } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 import { Command } from 'commander';
 
@@ -32,6 +37,94 @@ export const ExitCode = {
   GRAFANA_UNREACHABLE: 3,
   AUTH_FAILURE: 4,
 } as const;
+
+/**
+ * Result of running Playwright tests on a guide
+ */
+interface PlaywrightResult {
+  success: boolean;
+  exitCode: number;
+  traceFile?: string;
+}
+
+/**
+ * Spawn Playwright to test a guide.
+ * Writes guide JSON to temp file, spawns Playwright with environment variables,
+ * and cleans up temp file after completion.
+ */
+async function runPlaywrightTests(
+  guide: LoadedGuide,
+  options: E2ECommandOptions
+): Promise<PlaywrightResult> {
+  // Write guide to temp file
+  const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-'));
+  const guidePath = join(tempDir, 'guide.json');
+
+  try {
+    writeFileSync(guidePath, guide.content);
+
+    if (options.verbose) {
+      console.log(`   📄 Temp guide file: ${guidePath}`);
+    }
+
+    // Build Playwright arguments
+    const playwrightArgs = [
+      'playwright',
+      'test',
+      'tests/e2e-runner/guide-runner.spec.ts',
+      '--project=chromium',
+    ];
+
+    if (options.trace) {
+      playwrightArgs.push('--trace', 'on');
+    }
+
+    // Spawn Playwright with environment variables
+    const result = await new Promise<PlaywrightResult>((resolve) => {
+      const proc = spawn('npx', playwrightArgs, {
+        env: {
+          ...process.env,
+          GUIDE_JSON_PATH: guidePath,
+          GRAFANA_URL: options.grafanaUrl,
+          E2E_TRACE: options.trace ? 'true' : 'false',
+        },
+        stdio: 'inherit',
+        shell: true,
+      });
+
+      proc.on('close', (code) => {
+        const exitCode = code ?? 1;
+        const success = exitCode === 0;
+
+        // Check for trace file if tracing was enabled
+        let traceFile: string | undefined;
+        if (options.trace) {
+          // Playwright stores traces in test-results/ directory
+          traceFile = 'test-results/guide-runner-loads-and-displays-guide-from-JSON-chromium/trace.zip';
+        }
+
+        resolve({ success, exitCode, traceFile });
+      });
+
+      proc.on('error', (err) => {
+        console.error(`Failed to spawn Playwright: ${err.message}`);
+        resolve({ success: false, exitCode: ExitCode.CONFIGURATION_ERROR });
+      });
+    });
+
+    return result;
+  } finally {
+    // Clean up temp directory
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+      if (options.verbose) {
+        console.log(`   🗑️  Cleaned up temp directory: ${tempDir}`);
+      }
+    } catch (cleanupError) {
+      console.warn(`Warning: Failed to clean up temp directory: ${tempDir}`);
+    }
+  }
+}
 
 /**
  * Validate all loaded guides and return any validation errors.
@@ -165,7 +258,7 @@ export const e2eCommand = new Command('e2e')
         process.exit(ExitCode.CONFIGURATION_ERROR);
       }
 
-      // All guides valid - print success and placeholder message
+      // All guides valid - print success and configuration
       console.log(`\n✅ Guide validation passed for ${valid.length} guide(s).`);
       console.log('\n📋 E2E test configuration:');
       console.log(`   Grafana URL: ${options.grafanaUrl}`);
@@ -176,7 +269,46 @@ export const e2eCommand = new Command('e2e')
       if (options.trace) {
         console.log(`   Trace:       enabled`);
       }
-      console.log('\n🚧 Playwright tests will run here. (Coming in L3-2B)\n');
+
+      // Run Playwright tests for each guide
+      console.log('\n🎭 Running Playwright tests...\n');
+
+      let allPassed = true;
+      const results: Array<{ guide: string; success: boolean; exitCode: number; traceFile?: string }> = [];
+
+      for (const guide of valid) {
+        console.log(`\n📚 Testing: ${guide.path}`);
+
+        const result = await runPlaywrightTests(guide, options);
+        results.push({
+          guide: guide.path,
+          success: result.success,
+          exitCode: result.exitCode,
+          traceFile: result.traceFile,
+        });
+
+        if (!result.success) {
+          allPassed = false;
+          console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
+        } else {
+          console.log(`   ✅ Test passed`);
+        }
+
+        if (result.traceFile && options.trace) {
+          console.log(`   📊 Trace file: ${result.traceFile}`);
+        }
+      }
+
+      // Print summary
+      console.log('\n📊 Summary:');
+      const passed = results.filter((r) => r.success).length;
+      const failed = results.filter((r) => !r.success).length;
+      console.log(`   ✅ Passed: ${passed}`);
+      console.log(`   ❌ Failed: ${failed}`);
+
+      if (!allPassed) {
+        process.exit(ExitCode.TEST_FAILURE);
+      }
     } catch (error) {
       console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
       process.exit(ExitCode.CONFIGURATION_ERROR);

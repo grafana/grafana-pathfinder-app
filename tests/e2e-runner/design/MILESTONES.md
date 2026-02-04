@@ -108,9 +108,9 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 ---
 
-## L3 Phase 2: CLI Scaffolding
+## L3 Phase 2: CLI Scaffolding ⏳ **IN PROGRESS**
 
-### Milestone L3-2A: CLI Command Skeleton
+### Milestone L3-2A: CLI Command Skeleton ✅ **COMPLETED**
 
 **Rationale**: Establishes CLI interface per [CLI Interface](./e2e-test-runner-design.md#cli-interface).
 
@@ -125,22 +125,31 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 **Dependencies**: Milestone L3-1B (JSON loading)
 
-**Files to create/modify**:
+**Files created/modified**:
 
-- `src/cli/commands/e2e.ts` - New command file
-- `src/cli/index.ts` - Register command
+- `src/cli/commands/e2e.ts` - E2E command implementation
+- `src/cli/index.ts` - Command registration
 
 **Acceptance criteria**:
 
-- [ ] `npx pathfinder-cli e2e ./guide.json` validates JSON and exits
-- [ ] Invalid JSON fails with helpful error message
-- [ ] `--help` shows all options: `--grafana-url`, `--output`, `--trace`, `--verbose`, `--bundled`
+- [x] `npx pathfinder-cli e2e ./guide.json` validates JSON and exits ✅
+- [x] Invalid JSON fails with helpful error message ✅
+- [x] `--help` shows all options: `--grafana-url`, `--output`, `--trace`, `--verbose`, `--bundled` ✅
 
 **Estimated effort**: Small (half day)
 
+**Actual effort**: Previously implemented
+
+**Implementation Notes**:
+
+- Exit codes defined per design spec (SUCCESS=0, TEST_FAILURE=1, CONFIGURATION_ERROR=2, etc.)
+- Supports `bundled:name` syntax for loading specific bundled guides
+- Validation errors show specific field-level issues for debugging
+- Verbose mode lists all loaded guides before validation
+
 ---
 
-### Milestone L3-2B: Playwright Spawning
+### Milestone L3-2B: Playwright Spawning ✅ **COMPLETED**
 
 **Rationale**: Integrates Playwright per [Architecture](./e2e-test-runner-design.md#architecture).
 
@@ -155,18 +164,32 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 **Dependencies**: Milestone L3-2A
 
-**Files to create**:
+**Files created/modified**:
 
-- `tests/e2e-runner/guide-runner.spec.ts` - Main test file
+- `tests/e2e-runner/guide-runner.spec.ts` - Main test file (NEW)
+- `src/cli/commands/e2e.ts` - Updated with Playwright spawning
 
 **Acceptance criteria**:
 
-- [ ] CLI spawns Playwright successfully
-- [ ] Guide JSON injected into localStorage
-- [ ] Guide opens in docs panel (can see title)
-- [ ] `--trace` generates trace file in test-results directory
+- [x] CLI spawns Playwright successfully ✅
+- [x] Guide JSON injected into localStorage ✅
+- [x] Guide opens in docs panel (can see title) ✅
+- [x] `--trace` generates trace file in test-results directory ✅
 
 **Estimated effort**: Medium (1-2 days)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- `runPlaywrightTests()` function in `e2e.ts` handles temp file creation, Playwright spawning, and cleanup
+- Guide JSON written to temp file in system temp directory (`mkdtempSync`)
+- Environment variables passed to Playwright: `GUIDE_JSON_PATH`, `GRAFANA_URL`, `E2E_TRACE`
+- Temp directory cleaned up in `finally` block to ensure cleanup even on failure
+- `guide-runner.spec.ts` injects guide into localStorage using key `grafana-pathfinder-app-e2e-test-guide`
+- Uses `pathfinder-auto-open-docs` custom event to open the guide with `bundled:e2e-test` URL
+- Test verifies panel visibility and presence of interactive step elements
+- Trace file path logged when `--trace` flag is used
 
 ---
 
