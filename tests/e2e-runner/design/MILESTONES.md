@@ -537,9 +537,12 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-## L3 Phase 4: Requirements Handling
+## L3 Phase 4: Requirements Handling ✅ **COMPLETED**
 
-**Progress**: 2/3 milestones complete (L3-4A ✅, L3-4B ✅)
+**Progress**: 3/3 milestones complete (L3-4A ✅, L3-4B ✅, L3-4C ✅)
+
+**Completion Date**: 2026-02-04
+**Outcome**: All requirements handling functionality implemented including detection, fix execution, and skip/mandatory logic
 
 ### Milestone L3-4A: Requirements Detection ✅ **COMPLETED**
 
@@ -679,7 +682,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-4C: Skippable vs Mandatory Logic
+### Milestone L3-4C: Skippable vs Mandatory Logic ✅ **COMPLETED**
 
 **Rationale**: Implements [Skippable vs Mandatory Steps](./e2e-test-runner-design.md#skippable-vs-mandatory-steps) decision tree.
 
@@ -696,14 +699,47 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-4B
 
+**Files modified**:
+
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Updated types and execution logic for skip/mandatory handling
+
 **Acceptance criteria**:
 
-- [ ] Skippable steps skip gracefully with reason logged
-- [ ] Mandatory failures stop test progression
-- [ ] NOT_REACHED status for steps after mandatory failure
-- [ ] Test exit code reflects failures
+- [x] Skippable steps skip gracefully with reason logged ✅
+- [x] Mandatory failures stop test progression ✅
+- [x] NOT_REACHED status for steps after mandatory failure ✅
+- [x] Test exit code reflects failures ✅
 
 **Estimated effort**: Small (half day)
+
+**Actual effort**: ~30 minutes
+
+**Implementation Notes**:
+
+- **`StepTestResult` interface** extended with `skippable` field to track whether failed steps were mandatory or skippable for summary calculation.
+
+- **`executeAllSteps()` decision logic** updated:
+  - Mandatory step failure (`!step.skippable && status === 'failed'`) → abort test, mark remaining as NOT_REACHED
+  - Skippable step failure (`step.skippable && status === 'failed'`) → log warning, continue to next step
+
+- **`summarizeResults()` enhanced** with:
+  - `mandatoryFailed`: Count of mandatory step failures (determines overall success)
+  - `skippableFailed`: Count of skippable step failures (do not affect overall success)
+  - `success = mandatoryFailed === 0` (per design doc: skippable failures do NOT fail overall test)
+
+- **Verbose output enhancements**:
+  - `logStepResult()` shows `[skippable - test continues]` or `[mandatory - test stops]` for failed steps
+  - `logExecutionSummary()` shows breakdown of mandatory vs skippable failures with tree structure
+
+- **Decision tree alignment** with design doc:
+  ```
+  Requirements met? → Execute step
+  Requirements not met + skippable → SKIPPED (continue)
+  Requirements not met + mandatory + fix available → Attempt fix
+  Requirements not met + mandatory + fix failed → FAILED (abort)
+  Execution fails + skippable → FAILED (continue)
+  Execution fails + mandatory → FAILED (abort)
+  ```
 
 ---
 
@@ -974,7 +1010,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        | ✅     |
 | L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        | ✅     |
 | L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        | ✅     |
-| L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        |        |
+| L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        | ✅     |
 | L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        |        |
 | L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        |        |
 | L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        |        |

@@ -226,6 +226,7 @@ export type AbortReason =
  * - Console errors: any console.error() calls during execution
  * - Error message: if status is 'failed'
  * - Skip reason: if status is 'skipped'
+ * - Skippable: whether the step was marked as skippable (L3-4C)
  */
 export interface StepTestResult {
   /** The step identifier */
@@ -248,6 +249,13 @@ export interface StepTestResult {
 
   /** Reason if status is 'skipped' */
   skipReason?: SkipReason;
+
+  /**
+   * Whether the step was skippable (L3-4C).
+   * Used to determine if failures count against overall test success.
+   * Per design doc: skippable step failures do NOT fail the overall test.
+   */
+  skippable: boolean;
 }
 
 /**
@@ -1541,6 +1549,7 @@ export async function executeStep(
         durationMs: Date.now() - startTime,
         currentUrl: page.url(),
         consoleErrors,
+        skippable: step.skippable,
       };
     }
 
@@ -1576,6 +1585,7 @@ export async function executeStep(
           currentUrl: page.url(),
           consoleErrors,
           error: `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`,
+          skippable: step.skippable,
         };
       }
 
@@ -1623,6 +1633,7 @@ export async function executeStep(
       durationMs: Date.now() - startTime,
       currentUrl: page.url(),
       consoleErrors,
+      skippable: step.skippable,
     };
   } catch (error) {
     // Return failure result with error details
@@ -1633,6 +1644,7 @@ export async function executeStep(
       currentUrl: page.url(),
       consoleErrors,
       error: error instanceof Error ? error.message : String(error),
+      skippable: step.skippable,
     };
   } finally {
     // REACT: cleanup subscription (R1) - Clean up console handler to prevent memory leaks
@@ -1698,6 +1710,7 @@ export async function executeAllSteps(
         durationMs: 0,
         currentUrl: page.url(),
         consoleErrors: [],
+        skippable: step.skippable,
       });
       continue;
     }
@@ -1727,6 +1740,7 @@ export async function executeAllSteps(
             durationMs: 0,
             currentUrl: page.url(),
             consoleErrors: [],
+            skippable: steps[j].skippable,
           });
         }
         break;
@@ -1749,16 +1763,27 @@ export async function executeAllSteps(
       logStepResult(result);
     }
 
-    // Check if we should stop on mandatory failure
-    // Note: For L3-3B (happy path), we treat all failures as stopping the test
-    // The skip/mandatory logic refinement is in L3-4C
-    if (result.status === 'failed' && stopOnMandatoryFailure) {
-      if (verbose) {
-        console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
+    // L3-4C: Skippable vs Mandatory Logic
+    // Only abort on mandatory step failures. Skippable step failures are logged but don't stop the test.
+    // Per design doc decision tree:
+    // - Skippable steps: if fail for any reason, log and continue (does NOT fail overall test)
+    // - Mandatory steps: if fail for any reason, abort and mark remaining as NOT_REACHED
+    if (result.status === 'failed') {
+      if (!step.skippable && stopOnMandatoryFailure) {
+        // Mandatory step failed - abort test
+        if (verbose) {
+          console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
+        }
+        aborted = true;
+        abortReason = 'MANDATORY_FAILURE';
+        abortMessage = `Mandatory step ${step.stepId} failed: ${result.error || 'unknown error'}`;
+      } else if (step.skippable) {
+        // Skippable step failed - log but continue
+        if (verbose) {
+          console.log(`   ⚠ Skippable step failed, continuing to next step`);
+        }
+        // Note: Result is already recorded as 'failed', but test continues
       }
-      aborted = true;
-      abortReason = 'MANDATORY_FAILURE';
-      abortMessage = `Mandatory step ${step.stepId} failed`;
     }
   }
 
@@ -1794,11 +1819,15 @@ function createSkippedResult(
     currentUrl: page.url(),
     consoleErrors,
     skipReason,
+    skippable: step.skippable,
   };
 }
 
 /**
- * Log a step execution result in a human-readable format.
+ * Log a step execution result in a human-readable format (L3-4C enhanced).
+ *
+ * Shows skippable/mandatory indicator for failed steps to clarify
+ * whether the failure affects overall test success.
  *
  * @param result - The step test result
  */
@@ -1819,6 +1848,11 @@ export function logStepResult(result: StepTestResult): void {
 
   let message = `   ${statusIcon} ${result.stepId} - ${statusColor} (${result.durationMs}ms)`;
 
+  // L3-4C: Show skippable indicator for failed steps
+  if (result.status === 'failed') {
+    message += result.skippable ? ' [skippable - test continues]' : ' [mandatory - test stops]';
+  }
+
   if (result.skipReason) {
     message += ` [${result.skipReason}]`;
   }
@@ -1835,7 +1869,11 @@ export function logStepResult(result: StepTestResult): void {
 }
 
 /**
- * Summarize execution results.
+ * Summarize execution results (L3-4C enhanced).
+ *
+ * Per design doc, overall test success is determined by:
+ * - Skippable step failures do NOT fail the overall test
+ * - Only mandatory step failures count against success
  *
  * @param results - Array of step test results
  * @returns Summary object with counts and overall status
@@ -1846,26 +1884,43 @@ export function summarizeResults(results: StepTestResult[]): {
   failed: number;
   skipped: number;
   notReached: number;
+  /** L3-4C: Count of mandatory step failures (determines overall success) */
+  mandatoryFailed: number;
+  /** L3-4C: Count of skippable step failures (do not affect overall success) */
+  skippableFailed: number;
   success: boolean;
   totalDurationMs: number;
 } {
+  const failedResults = results.filter((r) => r.status === 'failed');
+
+  // L3-4C: Separate mandatory vs skippable failures
+  const mandatoryFailed = failedResults.filter((r) => !r.skippable).length;
+  const skippableFailed = failedResults.filter((r) => r.skippable).length;
+
   const counts = {
     total: results.length,
     passed: results.filter((r) => r.status === 'passed').length,
-    failed: results.filter((r) => r.status === 'failed').length,
+    failed: failedResults.length,
     skipped: results.filter((r) => r.status === 'skipped').length,
     notReached: results.filter((r) => r.status === 'not_reached').length,
+    mandatoryFailed,
+    skippableFailed,
   };
 
   return {
     ...counts,
-    success: counts.failed === 0,
+    // L3-4C: Only mandatory failures count against overall success
+    // Per design doc: "Skippable step failures do NOT fail the overall test"
+    success: mandatoryFailed === 0,
     totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
   };
 }
 
 /**
- * Log execution summary in a human-readable format.
+ * Log execution summary in a human-readable format (L3-4C enhanced).
+ *
+ * Shows breakdown of mandatory vs skippable failures to help understand
+ * why the test passed or failed per the L3-4C decision tree.
  *
  * @param results - Array of step test results
  */
@@ -1875,7 +1930,20 @@ export function logExecutionSummary(results: StepTestResult[]): void {
   console.log(`\n📊 Execution Summary`);
   console.log(`   Total steps: ${summary.total}`);
   console.log(`   ✓ Passed: ${summary.passed}`);
-  console.log(`   ✗ Failed: ${summary.failed}`);
+
+  // L3-4C: Show breakdown of failures
+  if (summary.failed > 0) {
+    console.log(`   ✗ Failed: ${summary.failed}`);
+    if (summary.mandatoryFailed > 0) {
+      console.log(`      └─ Mandatory: ${summary.mandatoryFailed} (affects result)`);
+    }
+    if (summary.skippableFailed > 0) {
+      console.log(`      └─ Skippable: ${summary.skippableFailed} (does not affect result)`);
+    }
+  } else {
+    console.log(`   ✗ Failed: 0`);
+  }
+
   console.log(`   ⊘ Skipped: ${summary.skipped}`);
   console.log(`   ○ Not reached: ${summary.notReached}`);
   console.log(`   Total duration: ${summary.totalDurationMs}ms`);
