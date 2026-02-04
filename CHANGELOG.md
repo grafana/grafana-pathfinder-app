@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.9
+
+### Changed
+
+- Updated bundled guide to reflect changes in the Grafana UI
+
 ## 1.4.8
 
 ### Added

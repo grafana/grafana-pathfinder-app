@@ -6,12 +6,6 @@
 
 Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive guides directly into Grafana, so you can learn and build without leaving your workflow.
 
-> ⚠️ **Important: Version 1.1.83+ required for interactive guides**
->
-> Starting with version 1.1.83, interactive guides are served from a new CDN (`interactive-learning.grafana.net`).
-> If you're using an older version, you must update to continue loading interactive guides.
-> See the **CHANGELOG** for details.
-
 ## What is Interactive learning?
 
 Interactive learning is your in-app learning companion. It provides:
