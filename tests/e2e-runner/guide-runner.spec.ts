@@ -30,7 +30,7 @@ import {
   AllStepsResult,
   AbortReason,
   StepTestResult,
-} from './utils/guide-test-runner';
+} from './utils/guide-runner';
 import {
   printHeader,
   printStepResult,

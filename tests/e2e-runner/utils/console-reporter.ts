@@ -7,7 +7,7 @@
  * @see tests/e2e-runner/design/e2e-test-runner-design.md#console-output
  */
 
-import { StepTestResult, AllStepsResult, summarizeResults } from './guide-test-runner';
+import { StepTestResult, AllStepsResult, summarizeResults } from './guide-runner';
 
 // ============================================
 // Constants
