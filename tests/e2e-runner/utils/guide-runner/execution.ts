@@ -115,6 +115,7 @@ export async function waitForDoItButtonToAppear(
     await doItButton.waitFor({ state: 'attached', timeout });
     return true;
   } catch {
+    // Intentionally silent - button may not exist for this step type
     return false;
   }
 }

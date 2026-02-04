@@ -216,11 +216,6 @@ export interface AuthContext {
 // ============================================
 
 /**
- * Timeout for session validation API calls.
- */
-const SESSION_VALIDATION_TIMEOUT_MS = 5000;
-
-/**
  * Timeout for authentication operations.
  */
 const AUTH_OPERATION_TIMEOUT_MS = 30000;
