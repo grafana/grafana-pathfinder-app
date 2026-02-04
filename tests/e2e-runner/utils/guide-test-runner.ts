@@ -232,8 +232,10 @@ export type AbortReason =
  * @see tests/e2e-runner/design/e2e-test-runner-design.md#artifact-collection-on-failure
  */
 export interface ArtifactPaths {
-  /** Path to screenshot PNG file */
+  /** Path to screenshot PNG file (POST step execution) */
   screenshot?: string;
+  /** Path to screenshot PNG file (PRE step execution) */
+  screenshotPre?: string;
   /** Path to DOM snapshot HTML file */
   dom?: string;
   /** Path to console errors JSON file */
@@ -341,6 +343,9 @@ export interface AllStepsResult {
 
   /** Human-readable abort message */
   abortMessage?: string;
+
+  /** Path to final screenshot (only when alwaysScreenshot is enabled) */
+  finalScreenshot?: string;
 }
 
 // ============================================
@@ -683,6 +688,80 @@ export async function captureSuccessArtifacts(
   } catch (error) {
     console.warn(
       `   ⚠ Failed to capture success screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+    return undefined;
+  }
+}
+
+/**
+ * Capture PRE step artifacts (screenshot before step execution).
+ *
+ * This function captures a screenshot of the page state before a step
+ * is executed. Only captured when alwaysScreenshot is enabled.
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier (used in filenames)
+ * @param artifactsDir - Directory to write artifacts to
+ * @returns Path to screenshot file, undefined if capture fails
+ *
+ * @example
+ * ```typescript
+ * const prePath = await capturePreStepArtifacts(page, 'step-1', './artifacts');
+ * // prePath = './artifacts/step-1-pre.png'
+ * ```
+ */
+export async function capturePreStepArtifacts(
+  page: Page,
+  stepId: string,
+  artifactsDir: string
+): Promise<string | undefined> {
+  try {
+    // Ensure artifacts directory exists
+    mkdirSync(artifactsDir, { recursive: true });
+
+    const screenshotPath = join(artifactsDir, `${stepId}-pre.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+
+    return screenshotPath;
+  } catch (error) {
+    console.warn(
+      `   ⚠ Failed to capture PRE screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+    return undefined;
+  }
+}
+
+/**
+ * Capture final screenshot at the end of test execution.
+ *
+ * This function captures a screenshot of the final page state after
+ * all steps have been executed. Only captured when alwaysScreenshot is enabled.
+ *
+ * @param page - Playwright Page object
+ * @param artifactsDir - Directory to write artifacts to
+ * @returns Path to screenshot file, undefined if capture fails
+ *
+ * @example
+ * ```typescript
+ * const finalPath = await captureFinalScreenshot(page, './artifacts');
+ * // finalPath = './artifacts/execution-final.png'
+ * ```
+ */
+export async function captureFinalScreenshot(
+  page: Page,
+  artifactsDir: string
+): Promise<string | undefined> {
+  try {
+    // Ensure artifacts directory exists
+    mkdirSync(artifactsDir, { recursive: true });
+
+    const screenshotPath = join(artifactsDir, 'execution-final.png');
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+
+    return screenshotPath;
+  } catch (error) {
+    console.warn(
+      `   ⚠ Failed to capture final screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
     return undefined;
   }
@@ -1707,6 +1786,7 @@ export async function waitForCompletionWithObjectivePolling(
   while (Date.now() - startTime < timeout) {
     // Check if already completed (via objectives or otherwise)
     const isVisible = await completedIndicator.isVisible();
+
     if (isVisible) {
       // Determine if this was likely an objective completion
       // (completed very quickly after clicking, within 2 poll intervals)
@@ -1830,6 +1910,9 @@ export async function executeStep(
   };
   page.on('console', consoleHandler);
 
+  // PRE screenshot path (captured before step execution when alwaysScreenshot is enabled)
+  let preScreenshotPath: string | undefined;
+
   try {
     // Handle pre-completed steps (U2: objectives/noop auto-completion)
     if (step.isPreCompleted) {
@@ -1841,6 +1924,14 @@ export async function executeStep(
 
     // Scroll step into view before interaction
     await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
+
+    // Capture PRE screenshot if alwaysScreenshot is enabled
+    if (artifactsDir && alwaysScreenshot) {
+      preScreenshotPath = await capturePreStepArtifacts(page, step.stepId, artifactsDir);
+      if (verbose && preScreenshotPath) {
+        console.log(`   📸 PRE screenshot captured`);
+      }
+    }
 
     // L3-4A/4B: Detect requirements and attempt to fix if needed BEFORE waiting for button
     // Requirements must be met before the "Do it" button can appear/be enabled
@@ -1876,6 +1967,12 @@ export async function executeStep(
         let artifacts: ArtifactPaths | undefined;
         if (artifactsDir) {
           artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
+          // Include PRE screenshot if captured
+          if (artifacts && preScreenshotPath) {
+            artifacts.screenshotPre = preScreenshotPath;
+          } else if (preScreenshotPath) {
+            artifacts = { screenshotPre: preScreenshotPath };
+          }
           if (verbose && artifacts) {
             console.log(`   📸 Artifacts captured to ${artifactsDir}`);
           }
@@ -1928,6 +2025,12 @@ export async function executeStep(
       let artifacts: ArtifactPaths | undefined;
       if (artifactsDir && alwaysScreenshot) {
         artifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
+        // Include PRE screenshot if captured
+        if (artifacts && preScreenshotPath) {
+          artifacts.screenshotPre = preScreenshotPath;
+        } else if (preScreenshotPath) {
+          artifacts = { screenshotPre: preScreenshotPath };
+        }
         if (verbose && artifacts) {
           console.log(`   📸 Success screenshot captured`);
         }
@@ -1956,7 +2059,9 @@ export async function executeStep(
 
     // Click "Do it" button
     const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
+    const urlBeforeClick = page.url();
     await doItButton.click();
+    const urlAfterClick = page.url();
 
     if (verbose) {
       console.log(`   → Clicked "Do it" for step ${step.stepId}`);
@@ -1965,6 +2070,41 @@ export async function executeStep(
     // L3-3C: Allow reactive system to settle after click
     // Per design doc: debounced rechecks (500ms context, 1200ms DOM)
     await page.waitForTimeout(POST_CLICK_SETTLE_DELAY_MS);
+
+    // FIX: Handle case where navigation causes step element to unmount
+    // For highlight actions on nav links, clicking "Do it" navigates the page.
+    // This can cause the step component to unmount before showing the completion indicator.
+    // If URL changed AND step element no longer exists, the action succeeded - treat as passed.
+    const urlChanged = urlBeforeClick !== urlAfterClick;
+    if (urlChanged) {
+      const stepElementExists = await page.locator(`[data-testid="interactive-step-${step.stepId}"]`).count() > 0;
+      if (!stepElementExists) {
+        if (verbose) {
+          console.log(`   ✓ Step ${step.stepId} completed via navigation (element unmounted)`);
+        }
+
+        // Capture success screenshot if alwaysScreenshot is enabled
+        let navSuccessArtifacts: ArtifactPaths | undefined;
+        if (artifactsDir && alwaysScreenshot) {
+          navSuccessArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
+          if (navSuccessArtifacts && preScreenshotPath) {
+            navSuccessArtifacts.screenshotPre = preScreenshotPath;
+          } else if (preScreenshotPath) {
+            navSuccessArtifacts = { screenshotPre: preScreenshotPath };
+          }
+        }
+
+        return {
+          stepId: step.stepId,
+          status: 'passed',
+          durationMs: Date.now() - startTime,
+          currentUrl: page.url(),
+          consoleErrors,
+          skippable: step.skippable,
+          artifacts: navSuccessArtifacts,
+        };
+      }
+    }
 
     // L3-3C: Wait for step completion with objective polling
     // This detects both manual completion and objective-based auto-completion
@@ -1978,6 +2118,12 @@ export async function executeStep(
     let successArtifacts: ArtifactPaths | undefined;
     if (artifactsDir && alwaysScreenshot) {
       successArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
+      // Include PRE screenshot if captured
+      if (successArtifacts && preScreenshotPath) {
+        successArtifacts.screenshotPre = preScreenshotPath;
+      } else if (preScreenshotPath) {
+        successArtifacts = { screenshotPre: preScreenshotPath };
+      }
       if (verbose && successArtifacts) {
         console.log(`   📸 Success screenshot captured`);
       }
@@ -2001,6 +2147,12 @@ export async function executeStep(
     let artifacts: ArtifactPaths | undefined;
     if (artifactsDir) {
       artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
+      // Include PRE screenshot if captured
+      if (artifacts && preScreenshotPath) {
+        artifacts.screenshotPre = preScreenshotPath;
+      } else if (preScreenshotPath) {
+        artifacts = { screenshotPre: preScreenshotPath };
+      }
       if (verbose && artifacts) {
         console.log(`   📸 Artifacts captured to ${artifactsDir}`);
       }
@@ -2190,11 +2342,21 @@ export async function executeAllSteps(
     }
   }
 
+  // Capture final screenshot if alwaysScreenshot is enabled
+  let finalScreenshot: string | undefined;
+  if (artifactsDir && alwaysScreenshot) {
+    finalScreenshot = await captureFinalScreenshot(page, artifactsDir);
+    if (verbose && finalScreenshot) {
+      console.log(`\n   📸 Final screenshot captured: ${finalScreenshot}`);
+    }
+  }
+
   return {
     results,
     aborted,
     abortReason,
     abortMessage,
+    finalScreenshot,
   };
 }
 

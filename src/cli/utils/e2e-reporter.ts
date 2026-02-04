@@ -79,8 +79,10 @@ export type ErrorClassification =
  * Artifacts are captured when a step fails to provide debugging context.
  */
 export interface ArtifactPaths {
-  /** Path to screenshot PNG file */
+  /** Path to screenshot PNG file (POST step execution) */
   screenshot?: string;
+  /** Path to screenshot PNG file (PRE step execution) */
+  screenshotPre?: string;
   /** Path to DOM snapshot HTML file */
   dom?: string;
   /** Path to console errors JSON file */

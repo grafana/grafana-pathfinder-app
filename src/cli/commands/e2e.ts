@@ -238,6 +238,8 @@ async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions
           ARTIFACTS_DIR: options.artifacts,
           // Capture screenshots on success and failure
           ALWAYS_SCREENSHOT: options.alwaysScreenshot ? 'true' : 'false',
+          // Prevent Playwright from auto-opening HTML report server in CLI mode
+          PLAYWRIGHT_HTML_OPEN: 'never',
         },
         stdio: 'inherit',
         shell: true,

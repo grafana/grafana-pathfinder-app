@@ -110,6 +110,12 @@ const E2E_TEST_GUIDE_KEY = 'grafana-pathfinder-app-e2e-test-guide';
 
 test.describe('Guide Runner', () => {
   test('loads and displays guide from JSON', async ({ page }) => {
+    // Guide tests may take longer due to fix button attempts and multi-step execution.
+    // Per L3-3C timing design: 30s base + 5s per internal action for multisteps,
+    // plus additional time for fix attempts (up to 3 × 10s each).
+    // Set a generous 2-minute timeout to accommodate complex guides.
+    test.setTimeout(120000);
+
     // L3-5B: Capture timestamp at test start for JSON report
     const testStartTimestamp = new Date().toISOString();
 
