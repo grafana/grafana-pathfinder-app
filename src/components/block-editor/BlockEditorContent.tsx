@@ -9,13 +9,14 @@
 
 import React from 'react';
 import { Button } from '@grafana/ui';
+import { BlockJsonEditor } from './BlockJsonEditor';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
-import type { EditorBlock, BlockOperations, JsonGuide } from './types';
+import type { EditorBlock, BlockOperations, JsonGuide, ViewMode, JsonModeState, PositionedError } from './types';
 
 export interface BlockEditorContentProps {
-  /** Whether in preview mode */
-  isPreviewMode: boolean;
+  /** Current view mode */
+  viewMode: ViewMode;
   /** List of blocks */
   blocks: EditorBlock[];
   /** Full guide for preview mode */
@@ -42,10 +43,22 @@ export interface BlockEditorContentProps {
   /** Empty state actions */
   onLoadTemplate: () => void;
   onOpenTour: () => void;
+  /** JSON mode state (present when in JSON editing mode) */
+  jsonModeState: JsonModeState | null;
+  /** Called when JSON text changes */
+  onJsonChange: (json: string) => void;
+  /** Validation errors for the current JSON */
+  jsonValidationErrors: Array<string | PositionedError>;
+  /** Whether the current JSON is valid */
+  isJsonValid: boolean;
+  /** Whether undo is available for JSON mode */
+  canJsonUndo?: boolean;
+  /** Called when user clicks the undo button in JSON mode */
+  onJsonUndo?: () => void;
 }
 
 export function BlockEditorContent({
-  isPreviewMode,
+  viewMode,
   blocks,
   guide,
   operations,
@@ -57,6 +70,12 @@ export function BlockEditorContent({
   onClearSelection,
   onLoadTemplate,
   onOpenTour,
+  jsonModeState,
+  onJsonChange,
+  jsonValidationErrors,
+  isJsonValid,
+  canJsonUndo,
+  onJsonUndo,
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
@@ -64,7 +83,7 @@ export function BlockEditorContent({
   return (
     <div className={styles.content} data-testid="block-editor-content">
       {/* Selection controls - shown in edit mode, above blocks */}
-      {!isPreviewMode && hasBlocks && (
+      {viewMode === 'edit' && hasBlocks && (
         <div className={styles.selectionControls}>
           {isSelectionMode && selectedCount >= 2 ? (
             <>
@@ -95,11 +114,20 @@ export function BlockEditorContent({
         </div>
       )}
 
-      {isPreviewMode ? (
+      {viewMode === 'json' && jsonModeState ? (
+        <BlockJsonEditor
+          jsonText={jsonModeState.json}
+          onJsonChange={onJsonChange}
+          validationErrors={jsonValidationErrors}
+          isValid={isJsonValid}
+          canUndo={canJsonUndo}
+          onUndo={onJsonUndo}
+        />
+      ) : viewMode === 'preview' ? (
         <BlockPreview guide={guide} />
-      ) : hasBlocks ? (
+      ) : viewMode === 'edit' && hasBlocks ? (
         <BlockList blocks={blocks} operations={operations} />
-      ) : (
+      ) : viewMode === 'edit' ? (
         <div className={styles.emptyState}>
           <div className={styles.emptyStateIcon}>📄</div>
           <p className={styles.emptyStateText}>Your guide is empty. Add your first block to get started.</p>
@@ -112,7 +140,7 @@ export function BlockEditorContent({
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

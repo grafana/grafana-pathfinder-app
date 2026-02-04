@@ -36,3 +36,10 @@ export {
   convertProcessedStepsToBlocks,
   type ProcessedStep,
 } from './recorded-steps-processor';
+
+export {
+  parseWithPositions,
+  addPositionsToErrors,
+  type PositionedError,
+  type ParseWithPositionsResult,
+} from './json-position';

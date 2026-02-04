@@ -8,6 +8,11 @@ import type { IconName } from '@grafana/ui';
 import type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction } from '../../types/json-guide.types';
 
 /**
+ * View mode for the block editor
+ */
+export type ViewMode = 'edit' | 'preview' | 'json';
+
+/**
  * Block type identifiers
  */
 export type BlockType =
@@ -55,8 +60,8 @@ export interface BlockEditorState {
   };
   /** Blocks in the guide */
   blocks: EditorBlock[];
-  /** Whether the editor is in preview mode */
-  isPreviewMode: boolean;
+  /** Current view mode (edit, preview, or json) */
+  viewMode: ViewMode;
   /** Whether there are unsaved changes */
   isDirty: boolean;
 }
@@ -252,6 +257,46 @@ export interface BlockOperations {
   onSectionRecord: (sectionId: string) => void;
   /** Start/stop recording into a conditional branch */
   onConditionalBranchRecord: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
+}
+
+/**
+ * Positioned error with line/column information for Monaco markers
+ */
+export interface PositionedError {
+  message: string;
+  path: Array<string | number>;
+  line?: number;
+  column?: number;
+}
+
+/**
+ * Props for the JSON editor component
+ */
+export interface BlockJsonEditorProps {
+  /** Current JSON text in the editor */
+  jsonText: string;
+  /** Called when JSON text changes */
+  onJsonChange: (json: string) => void;
+  /** List of validation errors (string[] for legacy, PositionedError[] for enhanced) */
+  validationErrors: Array<string | PositionedError>;
+  /** Whether the current JSON is valid */
+  isValid: boolean;
+  /** Whether undo is available (JSON differs from original) */
+  canUndo?: boolean;
+  /** Called when user clicks the undo button */
+  onUndo?: () => void;
+}
+
+/**
+ * JSON mode state for BlockEditorContent
+ */
+export interface JsonModeState {
+  /** Current JSON text being edited */
+  json: string;
+  /** Original block IDs before entering JSON mode */
+  originalBlockIds: string[];
+  /** Original JSON snapshot for undo support */
+  originalJson: string;
 }
 
 // Re-export JSON guide types for convenience

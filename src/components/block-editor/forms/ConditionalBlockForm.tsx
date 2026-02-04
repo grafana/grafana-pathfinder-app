@@ -2,16 +2,17 @@
  * Conditional Block Form
  *
  * Form for creating/editing conditional blocks.
- * Nested blocks in the whenTrue/whenFalse branches are managed
- * via drag-and-drop in the main editor, not in this form.
+ * Supports inline editing of blocks in the whenTrue/whenFalse branches
+ * via the BranchBlocksEditor component.
  */
 
-import React, { useState, useCallback, useRef } from 'react';
-import { Button, Field, Input, TextArea, Badge, useStyles2, Alert, RadioButtonGroup } from '@grafana/ui';
+import React, { useState, useCallback } from 'react';
+import { Button, Field, Input, TextArea, Badge, useStyles2, RadioButtonGroup } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { BranchBlocksEditor } from './BranchBlocksEditor';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type {
   JsonConditionalBlock,
@@ -87,7 +88,13 @@ const getBranchConfigStyles = (theme: GrafanaTheme2) => ({
 /**
  * Conditional block form component
  */
-export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function ConditionalBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onPickerModeChange,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
   const branchStyles = useStyles2(getBranchConfigStyles);
 
@@ -96,6 +103,7 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
   const [conditions, setConditions] = useState(initial?.conditions?.join(', ') ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [displayMode, setDisplayMode] = useState<ConditionalDisplayMode>(initial?.display ?? 'inline');
+  const [reftarget, setReftarget] = useState(initial?.reftarget ?? '');
 
   // Per-branch section config state
   const [whenTrueTitle, setWhenTrueTitle] = useState(initial?.whenTrueSectionConfig?.title ?? '');
@@ -118,9 +126,16 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
   const [passExpanded, setPassExpanded] = useState(true);
   const [failExpanded, setFailExpanded] = useState(true);
 
-  // Preserve nested blocks when editing (but don't display them in the form)
-  const whenTrueBlocks = useRef<JsonBlock[]>(initial?.whenTrue ?? []);
-  const whenFalseBlocks = useRef<JsonBlock[]>(initial?.whenFalse ?? []);
+  // Branch blocks as state (editable in form via BranchBlocksEditor)
+  const [whenTrueBlocks, setWhenTrueBlocks] = useState<JsonBlock[]>(initial?.whenTrue ?? []);
+  const [whenFalseBlocks, setWhenFalseBlocks] = useState<JsonBlock[]>(initial?.whenFalse ?? []);
+
+  // Start element picker - pass callback to receive selected element
+  const startPicker = useCallback(() => {
+    onPickerModeChange?.(true, (selector: string) => {
+      setReftarget(selector);
+    });
+  }, [onPickerModeChange]);
 
   // Build the conditional block from current form state
   const buildBlock = useCallback((): JsonConditionalBlock => {
@@ -151,8 +166,8 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
     const block: JsonConditionalBlock = {
       type: 'conditional',
       conditions: conditionsArray,
-      whenTrue: whenTrueBlocks.current,
-      whenFalse: whenFalseBlocks.current,
+      whenTrue: whenTrueBlocks,
+      whenFalse: whenFalseBlocks,
     };
 
     // Add optional fields
@@ -161,6 +176,9 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
     }
     if (displayMode !== 'inline') {
       block.display = displayMode;
+    }
+    if (reftarget.trim()) {
+      block.reftarget = reftarget.trim();
     }
     if (displayMode === 'section') {
       const trueSectionConfig = buildSectionConfig(whenTrueTitle, whenTrueRequirements, whenTrueObjectives);
@@ -178,6 +196,9 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
     conditions,
     description,
     displayMode,
+    reftarget,
+    whenTrueBlocks,
+    whenFalseBlocks,
     whenTrueTitle,
     whenTrueRequirements,
     whenTrueObjectives,
@@ -209,12 +230,6 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
-      <Alert title="Conditional blocks" severity="info">
-        Conditional blocks show different content based on whether conditions pass or fail. Add blocks to each branch by
-        dragging them into the &quot;When conditions pass&quot; or &quot;When conditions fail&quot; areas in the main
-        editor.
-      </Alert>
-
       {/* Conditions */}
       <Field
         label="Conditions"
@@ -253,6 +268,30 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
         />
       </Field>
 
+      {/* Target element for exists-reftarget condition */}
+      <Field
+        label="Target element"
+        description="CSS selector or button text for exists-reftarget condition (only needed if using exists-reftarget)"
+      >
+        <div className={styles.selectorField}>
+          <Input
+            value={reftarget}
+            onChange={(e) => setReftarget(e.currentTarget.value)}
+            placeholder="e.g., button:Save, #my-element, [data-testid='submit']"
+            className={styles.selectorInput}
+          />
+          <Button
+            variant="secondary"
+            onClick={startPicker}
+            type="button"
+            icon="crosshair"
+            tooltip="Click an element to capture its selector"
+          >
+            Pick element
+          </Button>
+        </div>
+      </Field>
+
       {/* Display mode */}
       <Field label="Display mode" description="Choose how the conditional content is displayed to users">
         <RadioButtonGroup
@@ -261,6 +300,23 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
           onChange={(value) => setDisplayMode(value)}
         />
       </Field>
+
+      {/* Branch block editors */}
+      <BranchBlocksEditor
+        label="When conditions pass"
+        variant="success"
+        blocks={whenTrueBlocks}
+        onChange={setWhenTrueBlocks}
+        onPickerModeChange={onPickerModeChange}
+      />
+
+      <BranchBlocksEditor
+        label="When conditions fail"
+        variant="warning"
+        blocks={whenFalseBlocks}
+        onChange={setWhenFalseBlocks}
+        onPickerModeChange={onPickerModeChange}
+      />
 
       {/* Per-branch section configuration (only shown when display mode is 'section') */}
       {displayMode === 'section' && (

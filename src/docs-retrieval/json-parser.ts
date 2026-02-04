@@ -496,6 +496,7 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
         conditions: block.conditions,
         description: block.description,
         display: block.display ?? 'inline',
+        reftarget: block.reftarget,
         // Per-branch section configs (each branch has its own title, requirements, objectives)
         whenTrueSectionConfig: block.whenTrueSectionConfig,
         whenFalseSectionConfig: block.whenFalseSectionConfig,

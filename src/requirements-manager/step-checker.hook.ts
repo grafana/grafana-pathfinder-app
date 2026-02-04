@@ -46,6 +46,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     stepIndex,
     lazyRender,
     scrollContainer,
+    disabled = false,
+    onStepComplete,
+    onComplete,
   } = props;
   const [state, setState] = useState({
     isEnabled: false,
@@ -613,6 +616,17 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       checkStepRef.current();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally empty - only run on mount
+
+  // Auto-complete notification when objectives are met
+  // When a step's objectives are satisfied, notify the parent via callbacks.
+  // This centralizes a bug fix needed across
+  // interactive-step, interactive-guided, and interactive-multi-step components.
+  useEffect(() => {
+    if (state.completionReason === 'objectives' && !disabled) {
+      onStepComplete?.(stepId);
+      onComplete?.();
+    }
+  }, [state.completionReason, stepId, disabled, onStepComplete, onComplete]);
 
   // Register step checker with global manager for targeted re-checking
   // This is called by context changes (EchoSrv), watchNextStep, and triggerStepCheck

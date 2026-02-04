@@ -332,6 +332,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         processedContent={processedContent}
         contentType={content.type}
         baseUrl={content.url}
+        title={content.metadata.title}
         onContentReady={onContentReady}
         activeRef={activeRef}
         className={className}
@@ -347,6 +348,7 @@ interface ContentWithVariablesProps {
   processedContent: string;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
+  title: string;
   onContentReady?: () => void;
   activeRef: React.RefObject<HTMLDivElement>;
   className?: string;
@@ -358,6 +360,7 @@ function ContentWithVariables({
   processedContent,
   contentType,
   baseUrl,
+  title,
   onContentReady,
   activeRef,
   className,
@@ -367,6 +370,16 @@ function ContentWithVariables({
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
   const { responses } = useGuideResponses();
+
+  // Style for the title heading
+  const titleStyle = css`
+    font-size: 28px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 0 0 24px 0;
+    padding: 0;
+    color: inherit;
+  `;
 
   return (
     <div
@@ -381,6 +394,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
+      {title && <h1 className={titleStyle}>{title}</h1>}
       <ContentProcessor
         html={processedContent}
         contentType={contentType}
@@ -734,6 +748,7 @@ function renderParsedElement(
           conditions={element.props.conditions || []}
           description={element.props.description}
           display={element.props.display || 'inline'}
+          reftarget={element.props.reftarget}
           whenTrueSectionConfig={element.props.whenTrueSectionConfig}
           whenFalseSectionConfig={element.props.whenFalseSectionConfig}
           whenTrueChildren={element.props.whenTrueChildren || []}
