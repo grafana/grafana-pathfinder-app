@@ -318,6 +318,7 @@ const ConditionalProps = {
   conditions: z.array(z.string()).min(1, 'At least one condition is required'),
   description: z.string().optional(),
   display: z.enum(['inline', 'section']).optional(),
+  reftarget: z.string().optional(),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional(),
   whenFalseSectionConfig: ConditionalSectionConfigSchema.optional(),
 };
@@ -492,6 +493,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'whenFalse',
     'description',
     'display',
+    'reftarget',
     'whenTrueSectionConfig',
     'whenFalseSectionConfig',
   ]),

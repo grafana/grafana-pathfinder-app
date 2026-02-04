@@ -748,6 +748,7 @@ function renderParsedElement(
           conditions={element.props.conditions || []}
           description={element.props.description}
           display={element.props.display || 'inline'}
+          reftarget={element.props.reftarget}
           whenTrueSectionConfig={element.props.whenTrueSectionConfig}
           whenFalseSectionConfig={element.props.whenFalseSectionConfig}
           whenTrueChildren={element.props.whenTrueChildren || []}

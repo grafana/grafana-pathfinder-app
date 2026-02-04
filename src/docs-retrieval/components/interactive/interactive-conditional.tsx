@@ -22,6 +22,8 @@ export interface InteractiveConditionalProps {
   description?: string;
   /** Display mode: 'inline' (default) or 'section' for section-styled rendering */
   display?: ConditionalDisplayMode;
+  /** Target element for exists-reftarget condition (CSS selector or button text) */
+  reftarget?: string;
   /** Section config for the 'pass' branch (only used when display is 'section') */
   whenTrueSectionConfig?: ConditionalSectionConfig;
   /** Section config for the 'fail' branch (only used when display is 'section') */
@@ -50,6 +52,7 @@ export function InteractiveConditional({
   conditions,
   description,
   display = 'inline',
+  reftarget,
   whenTrueSectionConfig,
   whenFalseSectionConfig,
   whenTrueChildren,
@@ -94,10 +97,11 @@ export function InteractiveConditional({
 
     try {
       // Create requirement data for checking
+      // Use provided reftarget for exists-reftarget condition, fallback to placeholder
       const requirementData = {
         requirements: requirementsString,
         targetaction: 'conditional',
-        reftarget: 'conditional-block',
+        reftarget: reftarget || 'conditional-block',
         targetvalue: undefined,
         textContent: description || 'Conditional block',
         tagName: 'div',
@@ -117,7 +121,7 @@ export function InteractiveConditional({
         setIsChecking(false);
       }
     }
-  }, [requirementsString, checkRequirementsFromData, description]);
+  }, [requirementsString, checkRequirementsFromData, description, reftarget]);
 
   // Evaluate on mount and re-evaluate when relevant events occur
   useEffect(() => {
@@ -139,10 +143,20 @@ export function InteractiveConditional({
       evaluateConditions();
     };
 
+    // Re-evaluate after interactive steps complete - the step may have changed UI state
+    // This handles exists-reftarget conditions where elements appear after actions
+    const handleStepCompleted = () => {
+      // Small delay to let DOM settle after the step's action
+      setTimeout(() => {
+        evaluateConditions();
+      }, 100);
+    };
+
     // Subscribe to relevant events
     window.addEventListener('datasources-changed', handleDataSourcesChanged);
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
+    window.addEventListener('interactive-step-completed', handleStepCompleted);
 
     // REACT: cleanup subscriptions (R1)
     return () => {
@@ -150,6 +164,7 @@ export function InteractiveConditional({
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
+      window.removeEventListener('interactive-step-completed', handleStepCompleted);
     };
   }, [evaluateConditions]);
 
