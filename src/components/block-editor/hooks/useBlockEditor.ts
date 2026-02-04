@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide } from '../types';
+import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide, ViewMode } from '../types';
 import type {
   JsonSectionBlock,
   JsonConditionalBlock,
@@ -109,10 +109,8 @@ export interface UseBlockEditorReturn {
   moveNestedBlock: (sectionId: string, fromIndex: number, toIndex: number) => void;
 
   // View mode
-  /** Toggle between edit and preview modes */
-  togglePreviewMode: () => void;
-  /** Set preview mode explicitly */
-  setPreviewMode: (isPreview: boolean) => void;
+  /** Set the view mode explicitly */
+  setViewMode: (mode: ViewMode) => void;
 
   // Guide export
   /** Get the current guide as a JsonGuide object */
@@ -209,7 +207,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       title: initialGuide?.title ?? DEFAULT_GUIDE_METADATA.title,
     },
     blocks: initialBlocks,
-    isPreviewMode: false,
+    viewMode: 'edit' as ViewMode,
     isDirty: false,
   });
 
@@ -1151,19 +1149,11 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange]
   );
 
-  // Toggle preview mode
-  const togglePreviewMode = useCallback(() => {
+  // Set view mode
+  const setViewMode = useCallback((mode: ViewMode) => {
     setState((prev) => ({
       ...prev,
-      isPreviewMode: !prev.isPreviewMode,
-    }));
-  }, []);
-
-  // Set preview mode
-  const setPreviewMode = useCallback((isPreview: boolean) => {
-    setState((prev) => ({
-      ...prev,
-      isPreviewMode: isPreview,
+      viewMode: mode,
     }));
   }, []);
 
@@ -1193,7 +1183,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         title: guide.title,
       },
       blocks: newBlocks,
-      isPreviewMode: false,
+      viewMode: 'edit',
       isDirty: false,
     });
   }, []);
@@ -1203,7 +1193,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     setState({
       guide: { ...DEFAULT_GUIDE_METADATA },
       blocks: [],
-      isPreviewMode: false,
+      viewMode: 'edit',
       isDirty: false,
     });
   }, []);
@@ -1537,8 +1527,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       deleteNestedBlock,
       duplicateNestedBlock,
       moveNestedBlock,
-      togglePreviewMode,
-      setPreviewMode,
+      setViewMode,
       getGuide,
       loadGuide,
       resetGuide,
@@ -1571,8 +1560,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       deleteNestedBlock,
       duplicateNestedBlock,
       moveNestedBlock,
-      togglePreviewMode,
-      setPreviewMode,
+      setViewMode,
       getGuide,
       loadGuide,
       resetGuide,
