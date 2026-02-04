@@ -649,6 +649,45 @@ export async function captureFailureArtifacts(
   }
 }
 
+/**
+ * Capture success artifacts (screenshot only).
+ *
+ * This is a lighter-weight version of captureFailureArtifacts that only
+ * captures a screenshot on success. DOM and console logs are not captured
+ * on success to save space.
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier (used in filenames)
+ * @param artifactsDir - Directory to write artifacts to
+ * @returns ArtifactPaths with screenshot path, undefined if capture fails
+ *
+ * @example
+ * ```typescript
+ * const artifacts = await captureSuccessArtifacts(page, 'step-1', './artifacts');
+ * // artifacts.screenshot = './artifacts/step-1-success.png'
+ * ```
+ */
+export async function captureSuccessArtifacts(
+  page: Page,
+  stepId: string,
+  artifactsDir: string
+): Promise<ArtifactPaths | undefined> {
+  try {
+    // Ensure artifacts directory exists
+    mkdirSync(artifactsDir, { recursive: true });
+
+    const screenshotPath = join(artifactsDir, `${stepId}-success.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+
+    return { screenshot: screenshotPath };
+  } catch (error) {
+    console.warn(
+      `   ⚠ Failed to capture success screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+    return undefined;
+  }
+}
+
 // ============================================
 // Discovery Functions
 // ============================================
@@ -1770,13 +1809,15 @@ export async function executeStep(
   options: {
     timeout?: number;
     verbose?: boolean;
-    /** Directory to write failure artifacts to (L3-5D). If not set, no artifacts captured. */
+    /** Directory to write artifacts to (L3-5D). If not set, no artifacts captured. */
     artifactsDir?: string;
+    /** Capture screenshots on success, not just failure. Default: false */
+    alwaysScreenshot?: boolean;
   } = {}
 ): Promise<StepTestResult> {
   // L3-3C: Calculate appropriate timeout based on step type
   const calculatedTimeout = calculateStepTimeout(step);
-  const { timeout = calculatedTimeout, verbose = false, artifactsDir } = options;
+  const { timeout = calculatedTimeout, verbose = false, artifactsDir, alwaysScreenshot = false } = options;
   const startTime = Date.now();
   const consoleErrors: string[] = [];
 
@@ -1882,6 +1923,16 @@ export async function executeStep(
       if (verbose) {
         console.log(`   ✓ Step ${step.stepId} auto-completed via objectives before clicking`);
       }
+
+      // Capture success screenshot if alwaysScreenshot is enabled
+      let artifacts: ArtifactPaths | undefined;
+      if (artifactsDir && alwaysScreenshot) {
+        artifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
+        if (verbose && artifacts) {
+          console.log(`   📸 Success screenshot captured`);
+        }
+      }
+
       return {
         stepId: step.stepId,
         status: 'passed',
@@ -1889,6 +1940,7 @@ export async function executeStep(
         currentUrl: page.url(),
         consoleErrors,
         skippable: step.skippable,
+        artifacts,
       };
     }
 
@@ -1922,6 +1974,15 @@ export async function executeStep(
       console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);
     }
 
+    // Capture success screenshot if alwaysScreenshot is enabled
+    let successArtifacts: ArtifactPaths | undefined;
+    if (artifactsDir && alwaysScreenshot) {
+      successArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
+      if (verbose && successArtifacts) {
+        console.log(`   📸 Success screenshot captured`);
+      }
+    }
+
     // Return success result with diagnostics
     return {
       stepId: step.stepId,
@@ -1930,6 +1991,7 @@ export async function executeStep(
       currentUrl: page.url(),
       consoleErrors,
       skippable: step.skippable,
+      artifacts: successArtifacts,
     };
   } catch (error) {
     // Return failure result with error details
@@ -2007,8 +2069,10 @@ export async function executeAllSteps(
     sessionCheckInterval?: number;
     /** Callback for real-time step progress (L3-5A). Called after each step completes. */
     onStepComplete?: OnStepCompleteCallback;
-    /** Directory for failure artifacts (L3-5D). If not set, no artifacts captured. */
+    /** Directory for artifacts (L3-5D). If not set, no artifacts captured. */
     artifactsDir?: string;
+    /** Capture screenshots on success, not just failure. Default: false */
+    alwaysScreenshot?: boolean;
   } = {}
 ): Promise<AllStepsResult> {
   const {
@@ -2017,6 +2081,7 @@ export async function executeAllSteps(
     sessionCheckInterval = DEFAULT_SESSION_CHECK_INTERVAL,
     onStepComplete,
     artifactsDir,
+    alwaysScreenshot = false,
   } = options;
   const results: StepTestResult[] = [];
   let aborted = false;
@@ -2087,8 +2152,8 @@ export async function executeAllSteps(
       console.log(`\n   [${i + 1}/${steps.length}] Step: ${step.stepId}`);
     }
 
-    // L3-5D: Pass artifactsDir to executeStep for failure artifact capture
-    const result = await executeStep(page, step, { ...options, artifactsDir });
+    // L3-5D: Pass artifactsDir to executeStep for artifact capture
+    const result = await executeStep(page, step, { ...options, artifactsDir, alwaysScreenshot });
     results.push(result);
 
     // L3-5A: Real-time progress callback

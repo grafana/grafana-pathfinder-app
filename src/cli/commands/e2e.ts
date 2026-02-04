@@ -23,6 +23,8 @@ import {
   type TestResultsData,
 } from '../utils/e2e-reporter';
 
+import { randomUUID } from 'crypto';
+
 /**
  * CLI options for the e2e command
  */
@@ -34,6 +36,7 @@ interface E2ECommandOptions {
   bundled: boolean;
   trace: boolean;
   headed: boolean;
+  alwaysScreenshot: boolean;
 }
 
 /**
@@ -231,8 +234,10 @@ async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions
           ABORT_FILE_PATH: abortFilePath,
           // L3-5B: Pass results file path for JSON reporting
           RESULTS_FILE_PATH: resultsFilePath,
-          // L3-5D: Pass artifacts directory for failure artifact collection
+          // L3-5D: Pass artifacts directory for artifact collection
           ARTIFACTS_DIR: options.artifacts,
+          // Capture screenshots on success and failure
+          ALWAYS_SCREENSHOT: options.alwaysScreenshot ? 'true' : 'false',
         },
         stdio: 'inherit',
         shell: true,
@@ -377,16 +382,20 @@ function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide
   return guides;
 }
 
+// Generate unique run ID for default artifacts path
+const defaultArtifactsDir = `/tmp/pathfinder-e2e-${randomUUID().slice(0, 8)}`;
+
 export const e2eCommand = new Command('e2e')
   .description('Run E2E tests on JSON guide files')
   .arguments('[files...]')
   .option('--grafana-url <url>', 'Grafana instance URL', 'http://localhost:3000')
   .option('--output <path>', 'Path for JSON report output')
-  .option('--artifacts <dir>', 'Directory for failure artifacts', './artifacts')
+  .option('--artifacts <dir>', 'Directory for artifacts', defaultArtifactsDir)
   .option('--verbose', 'Enable verbose logging', false)
   .option('--bundled', 'Test all bundled guides')
   .option('--trace', 'Generate Playwright trace file', false)
   .option('--headed', 'Run browser in headed mode (visible)', false)
+  .option('--always-screenshot', 'Capture screenshots on success and failure', false)
   .action(async (files: string[], options: E2ECommandOptions) => {
     try {
       // Resolve guides from inputs
@@ -443,6 +452,9 @@ export const e2eCommand = new Command('e2e')
       }
       if (options.headed) {
         console.log(`   Headed:      enabled (browser visible)`);
+      }
+      if (options.alwaysScreenshot) {
+        console.log(`   Screenshots: on success and failure`);
       }
 
       // Run CLI-level pre-flight checks

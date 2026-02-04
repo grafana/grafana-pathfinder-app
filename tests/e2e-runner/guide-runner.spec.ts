@@ -117,8 +117,10 @@ test.describe('Guide Runner', () => {
     const guidePath = process.env.GUIDE_JSON_PATH;
     const grafanaUrl = process.env.GRAFANA_URL ?? 'http://localhost:3000';
     const isVerbose = process.env.E2E_VERBOSE === 'true';
-    // L3-5D: Artifacts directory for failure artifact collection
+    // L3-5D: Artifacts directory for artifact collection
     const artifactsDir = process.env.ARTIFACTS_DIR;
+    // Capture screenshots on success and failure
+    const alwaysScreenshot = process.env.ALWAYS_SCREENSHOT === 'true';
 
     if (!guidePath) {
       throw new Error('GUIDE_JSON_PATH environment variable is required');
@@ -237,8 +239,10 @@ test.describe('Guide Runner', () => {
       verbose: isVerbose,
       stopOnMandatoryFailure: true, // Happy path: stop on first failure
       sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
-      // L3-5D: Artifacts directory for failure artifact collection
+      // L3-5D: Artifacts directory for artifact collection
       artifactsDir,
+      // Capture screenshots on success and failure
+      alwaysScreenshot,
       // L3-5A: Real-time step progress callback
       onStepComplete: (result) => {
         printStepResult(result);

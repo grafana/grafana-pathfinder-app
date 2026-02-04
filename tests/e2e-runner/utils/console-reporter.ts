@@ -162,6 +162,11 @@ export function printStepResult(result: StepTestResult): void {
       }
     }
   }
+
+  // Print screenshot for passed steps (when --always-screenshot is enabled)
+  if (result.status === 'passed' && result.artifacts?.screenshot) {
+    console.log(`       - Screenshot: ${result.artifacts.screenshot}`);
+  }
 }
 
 /**
