@@ -22,10 +22,7 @@ import { readFileSync, writeFileSync } from 'fs';
 
 import { test, expect } from '../fixtures';
 import { testIds } from '../../src/components/testIds';
-import {
-  runPlaywrightPreflightChecks,
-  formatPreflightResults,
-} from './utils/preflight';
+import { runPlaywrightPreflightChecks, formatPreflightResults } from './utils/preflight';
 import {
   discoverStepsFromDOM,
   executeAllSteps,
@@ -260,13 +257,7 @@ test.describe('Guide Runner', () => {
       title: guideTitle,
       path: guidePath ?? 'unknown',
     };
-    writeResultsFile(
-      executionResult.results,
-      guideMetadata,
-      grafanaUrl,
-      testStartTimestamp,
-      executionResult
-    );
+    writeResultsFile(executionResult.results, guideMetadata, grafanaUrl, testStartTimestamp, executionResult);
 
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {

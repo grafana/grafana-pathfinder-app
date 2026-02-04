@@ -190,10 +190,7 @@ function readResultsFile(resultsFilePath: string): TestResultsData | undefined {
  * - Reads results file after test completes
  * - Returns results data for JSON report generation
  */
-async function runPlaywrightTests(
-  guide: LoadedGuide,
-  options: E2ECommandOptions
-): Promise<PlaywrightResult> {
+async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions): Promise<PlaywrightResult> {
   // Write guide to temp file
   const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-'));
   const guidePath = join(tempDir, 'guide.json');
@@ -210,12 +207,7 @@ async function runPlaywrightTests(
     }
 
     // Build Playwright arguments
-    const playwrightArgs = [
-      'playwright',
-      'test',
-      'tests/e2e-runner/guide-runner.spec.ts',
-      '--project=chromium',
-    ];
+    const playwrightArgs = ['playwright', 'test', 'tests/e2e-runner/guide-runner.spec.ts', '--project=chromium'];
 
     if (options.trace) {
       playwrightArgs.push('--trace', 'on');
@@ -259,8 +251,7 @@ async function runPlaywrightTests(
         const abortContent = readAbortFile(abortFilePath);
         if (abortContent) {
           // Determine exit code based on abort reason
-          const exitCode =
-            abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
+          const exitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
 
           resolve({
             success: false,

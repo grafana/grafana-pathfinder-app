@@ -801,6 +801,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
   - Enables immediate console output as steps execute (not batched at end)
 
 - **Output format matches design spec**:
+
   ```
   ╔══════════════════════════════════════════════════════════════════╗
   ║  E2E Test: Welcome to Grafana                                    ║
@@ -956,6 +957,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
   - Browser: `browser.*closed`, `page.*crashed`, `context.*destroyed`
 
 - **Console output enhanced** to show classification for failed/not_reached steps:
+
   ```
     ✗ step-5 - FAILED                                          [5.2s]
       Error: Timeout waiting for step completion indicator
@@ -963,6 +965,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
   ```
 
 - **JSON report** includes classification per design doc spec:
+
   ```json
   {
     "stepId": "step-5",
@@ -1237,6 +1240,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
   - Multi-guide JSON report path shown with formatted summary
 
 - **JSON report structure** for multi-guide runs:
+
   ```json
   {
     "type": "multi-guide",

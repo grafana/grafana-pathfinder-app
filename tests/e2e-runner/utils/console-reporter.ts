@@ -145,11 +145,9 @@ export function printStepResult(result: StepTestResult): void {
 
   // L3-5D: Print artifact paths for failed steps
   if (result.status === 'failed' && result.artifacts) {
-    const artifactCount = [
-      result.artifacts.screenshot,
-      result.artifacts.dom,
-      result.artifacts.console,
-    ].filter(Boolean).length;
+    const artifactCount = [result.artifacts.screenshot, result.artifacts.dom, result.artifacts.console].filter(
+      Boolean
+    ).length;
 
     if (artifactCount > 0) {
       console.log(`    📸 Artifacts captured (${artifactCount}):`);
@@ -363,9 +361,7 @@ export function printReportFromResults(guideTitle: string, results: StepTestResu
  *
  * @param checks - Array of check results with name, passed, and optional duration
  */
-export function printPreflightChecks(
-  checks: Array<{ name: string; passed: boolean; durationMs?: number }>
-): void {
+export function printPreflightChecks(checks: Array<{ name: string; passed: boolean; durationMs?: number }>): void {
   console.log('🔍 Pre-flight checks:');
   for (const check of checks) {
     const icon = check.passed ? '✓' : '✗';

@@ -598,7 +598,9 @@ export async function captureFailureArtifacts(
       await page.screenshot({ path: screenshotPath, fullPage: false });
       artifacts.screenshot = screenshotPath;
     } catch (screenshotError) {
-      console.warn(`   ⚠ Failed to capture screenshot: ${screenshotError instanceof Error ? screenshotError.message : 'Unknown error'}`);
+      console.warn(
+        `   ⚠ Failed to capture screenshot: ${screenshotError instanceof Error ? screenshotError.message : 'Unknown error'}`
+      );
     }
 
     // Capture DOM snapshot
@@ -608,7 +610,9 @@ export async function captureFailureArtifacts(
       writeFileSync(domPath, html, 'utf-8');
       artifacts.dom = domPath;
     } catch (domError) {
-      console.warn(`   ⚠ Failed to capture DOM snapshot: ${domError instanceof Error ? domError.message : 'Unknown error'}`);
+      console.warn(
+        `   ⚠ Failed to capture DOM snapshot: ${domError instanceof Error ? domError.message : 'Unknown error'}`
+      );
     }
 
     // Capture console errors if any were collected
@@ -618,7 +622,9 @@ export async function captureFailureArtifacts(
         writeFileSync(consolePath, JSON.stringify(consoleErrors, null, 2), 'utf-8');
         artifacts.console = consolePath;
       } catch (consoleError) {
-        console.warn(`   ⚠ Failed to write console errors: ${consoleError instanceof Error ? consoleError.message : 'Unknown error'}`);
+        console.warn(
+          `   ⚠ Failed to write console errors: ${consoleError instanceof Error ? consoleError.message : 'Unknown error'}`
+        );
       }
     }
 
@@ -629,7 +635,9 @@ export async function captureFailureArtifacts(
 
     return undefined;
   } catch (error) {
-    console.warn(`   ⚠ Failed to capture failure artifacts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.warn(
+      `   ⚠ Failed to capture failure artifacts: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
     return undefined;
   }
 }
@@ -946,7 +954,10 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
 
   // Check if requirements are currently being checked (spinner visible)
   const isChecking = hasExplanation
-    ? await explanationElement.locator('.interactive-requirement-spinner').count().then((c) => c > 0)
+    ? await explanationElement
+        .locator('.interactive-requirement-spinner')
+        .count()
+        .then((c) => c > 0)
     : false;
 
   // Extract explanation text if available
@@ -1111,7 +1122,10 @@ export async function waitForRequirementsCheckComplete(
       return true;
     }
 
-    const hasSpinner = await explanationElement.locator('.interactive-requirement-spinner').count().then((c) => c > 0);
+    const hasSpinner = await explanationElement
+      .locator('.interactive-requirement-spinner')
+      .count()
+      .then((c) => c > 0);
     if (!hasSpinner) {
       // Explanation without spinner = checking complete
       return true;
@@ -1391,9 +1405,7 @@ export async function attemptToFixRequirements(
     } else {
       if (verbose) {
         const remaining = maxAttempts - attemptNumber;
-        console.log(
-          `   ⚠ Fix did not satisfy requirements${remaining > 0 ? `, ${remaining} attempts remaining` : ''}`
-        );
+        console.log(`   ⚠ Fix did not satisfy requirements${remaining > 0 ? `, ${remaining} attempts remaining` : ''}`);
       }
       attempts.push({
         success: false,

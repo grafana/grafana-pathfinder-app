@@ -273,7 +273,8 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
       if (currentUrl.includes('/login')) {
         return {
           success: false,
-          error: 'Authentication failed - redirected to login page. Ensure @grafana/plugin-e2e is configured correctly.',
+          error:
+            'Authentication failed - redirected to login page. Ensure @grafana/plugin-e2e is configured correctly.',
           durationMs: Date.now() - startTime,
         };
       }
@@ -289,7 +290,7 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
       }
 
       // Extract user info from response
-      const userData = await userResponse.json() as { login?: string; id?: number; role?: string };
+      const userData = (await userResponse.json()) as { login?: string; id?: number; role?: string };
 
       return {
         success: true,
@@ -389,10 +390,7 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
  * const result = await authContext.authenticate(page);
  * ```
  */
-export function createAuthContext(
-  grafanaUrl: string,
-  strategy: AuthStrategy = pluginE2EAuthStrategy
-): AuthContext {
+export function createAuthContext(grafanaUrl: string, strategy: AuthStrategy = pluginE2EAuthStrategy): AuthContext {
   return {
     strategy,
     grafanaUrl,

@@ -7,12 +7,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import {
-  createAuthContext,
-  getDefaultAuthStrategy,
-  type AuthStrategy,
-  type AuthResult,
-} from '../auth/grafana-auth';
+import { createAuthContext, getDefaultAuthStrategy, type AuthStrategy, type AuthResult } from '../auth/grafana-auth';
 
 /**
  * Exit codes per design spec
@@ -266,10 +261,7 @@ export async function checkPluginInstalled(page: Page, grafanaUrl: string): Prom
  * @param grafanaUrl - Base Grafana URL
  * @returns Pre-flight result with all check statuses
  */
-export async function runPlaywrightPreflightChecks(
-  page: Page,
-  grafanaUrl: string
-): Promise<PreFlightResult> {
+export async function runPlaywrightPreflightChecks(page: Page, grafanaUrl: string): Promise<PreFlightResult> {
   const startTime = Date.now();
   const checks: PreFlightCheck[] = [];
 
