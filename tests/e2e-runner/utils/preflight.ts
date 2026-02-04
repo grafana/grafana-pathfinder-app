@@ -10,17 +10,6 @@ import type { Page } from '@playwright/test';
 import { createAuthContext, getDefaultAuthStrategy, type AuthStrategy, type AuthResult } from '../auth/grafana-auth';
 
 /**
- * Exit codes per design spec
- */
-export const ExitCode = {
-  SUCCESS: 0,
-  TEST_FAILURE: 1,
-  CONFIGURATION_ERROR: 2,
-  GRAFANA_UNREACHABLE: 3,
-  AUTH_FAILURE: 4,
-} as const;
-
-/**
  * Names of pre-flight checks
  */
 export type PreFlightCheckName = 'grafana-reachable' | 'auth-valid' | 'plugin-installed';
