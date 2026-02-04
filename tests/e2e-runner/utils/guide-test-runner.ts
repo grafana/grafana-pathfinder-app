@@ -160,6 +160,55 @@ export interface RequirementResult {
   hasRetryButton: boolean;
 }
 
+// ============================================
+// Fix Button Execution Types (L3-4B)
+// ============================================
+
+/**
+ * Result of a single fix button click attempt (L3-4B).
+ */
+export interface FixAttemptResult {
+  /** Whether the fix attempt succeeded (requirements now met) */
+  success: boolean;
+
+  /** The attempt number (1-based) */
+  attemptNumber: number;
+
+  /** Duration of the fix attempt in ms */
+  durationMs: number;
+
+  /** Error message if the fix failed */
+  error?: string;
+
+  /** Whether requirements were met after this attempt */
+  requirementsMet: boolean;
+}
+
+/**
+ * Result of attempting to fix requirements (L3-4B).
+ *
+ * Captures all fix attempt results and the final outcome.
+ */
+export interface FixResult {
+  /** Whether requirements were ultimately satisfied */
+  success: boolean;
+
+  /** Total number of fix attempts made */
+  totalAttempts: number;
+
+  /** Individual attempt results */
+  attempts: FixAttemptResult[];
+
+  /** Total duration of all fix attempts */
+  totalDurationMs: number;
+
+  /** Final requirements status */
+  finalStatus: RequirementStatus;
+
+  /** Reason if fix failed */
+  failureReason?: string;
+}
+
 /**
  * Reason why test execution was aborted (L3-3D).
  */
@@ -311,6 +360,34 @@ const REQUIREMENTS_CHECK_TIMEOUT_MS = 10000;
  * Polling interval for checking if requirements are still being checked.
  */
 const REQUIREMENTS_POLL_INTERVAL_MS = 200;
+
+// ============================================
+// Fix Button Execution Constants (L3-4B)
+// ============================================
+
+/**
+ * Timeout for individual fix button operation.
+ * Per design doc: 10s per fix operation.
+ */
+const FIX_BUTTON_TIMEOUT_MS = 10000;
+
+/**
+ * Maximum number of fix attempts before giving up.
+ * Per design doc: 3 attempts (reduced from original 10 for faster failure).
+ */
+const MAX_FIX_ATTEMPTS = 3;
+
+/**
+ * Delay after fix button click to allow the fix action to complete.
+ * Navigation fixes may involve page loads and menu animations.
+ */
+const POST_FIX_SETTLE_DELAY_MS = 1000;
+
+/**
+ * Delay after navigation fix to wait for page load completion.
+ * Location fixes trigger navigation which needs time to settle.
+ */
+const NAVIGATION_FIX_SETTLE_DELAY_MS = 2000;
 
 // ============================================
 // Discovery Functions
@@ -900,6 +977,288 @@ function logRequirementResult(stepId: string, result: RequirementResult): void {
 }
 
 // ============================================
+// Fix Button Execution Functions (L3-4B)
+// ============================================
+
+/**
+ * Click the Fix button for a step and wait for the fix action to complete (L3-4B).
+ *
+ * This function:
+ * 1. Clicks the Fix button
+ * 2. Waits for the appropriate settle delay based on fix type
+ * 3. Waits for requirements check to complete
+ * 4. Returns whether the fix succeeded
+ *
+ * Per design doc: Different fix types have different behaviors:
+ * - navigation: Click mega-menu, expand sections
+ * - location: Navigate to path (triggers page load)
+ * - expand-parent-navigation: Expand collapsed nav section
+ * - lazy-scroll: Scroll container to discover element
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to fix
+ * @param fixType - The type of fix being applied (affects wait times)
+ * @param timeout - Maximum time to wait for fix completion (default 10s)
+ * @returns true if fix button was clicked and requirements check completed
+ */
+export async function clickFixButton(
+  page: Page,
+  step: TestableStep,
+  fixType?: RequirementFixType,
+  timeout = FIX_BUTTON_TIMEOUT_MS
+): Promise<boolean> {
+  const { stepId } = step;
+  const fixButton = page.getByTestId(testIds.interactive.requirementFixButton(stepId));
+
+  // Check if fix button exists and is clickable
+  const buttonCount = await fixButton.count();
+  if (buttonCount === 0) {
+    return false;
+  }
+
+  try {
+    // Click the fix button with timeout
+    await fixButton.click({ timeout });
+
+    // Determine settle delay based on fix type
+    // Location fixes require longer wait for navigation
+    const settleDelay = fixType === 'location' ? NAVIGATION_FIX_SETTLE_DELAY_MS : POST_FIX_SETTLE_DELAY_MS;
+
+    // Wait for fix action to complete
+    await page.waitForTimeout(settleDelay);
+
+    // If it's a location fix, also wait for network to idle
+    if (fixType === 'location') {
+      try {
+        await page.waitForLoadState('networkidle', { timeout: timeout / 2 });
+      } catch {
+        // Network idle timeout is not critical - proceed anyway
+      }
+    }
+
+    // Wait for requirements recheck to complete
+    const recheckComplete = await waitForRequirementsCheckComplete(page, stepId, timeout);
+    return recheckComplete;
+  } catch (error) {
+    // Fix button click failed (timeout or element detached)
+    return false;
+  }
+}
+
+/**
+ * Attempt to fix requirements for a step with retry logic (L3-4B).
+ *
+ * This function implements the fix button retry mechanism:
+ * 1. Click the Fix button
+ * 2. Wait for the fix to take effect
+ * 3. Recheck requirements
+ * 4. If still not met, retry up to MAX_FIX_ATTEMPTS times
+ *
+ * Per design doc:
+ * - Max 3 fix attempts (reduced from 10 for faster failure)
+ * - 10s timeout per fix operation
+ * - Navigation fixes trigger page load wait
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to fix
+ * @param options - Options for fix handling
+ * @returns FixResult with all attempt results and final outcome
+ */
+export async function attemptToFixRequirements(
+  page: Page,
+  step: TestableStep,
+  options: {
+    verbose?: boolean;
+    maxAttempts?: number;
+    timeout?: number;
+  } = {}
+): Promise<FixResult> {
+  const { verbose = false, maxAttempts = MAX_FIX_ATTEMPTS, timeout = FIX_BUTTON_TIMEOUT_MS } = options;
+
+  const attempts: FixAttemptResult[] = [];
+  const overallStartTime = Date.now();
+  let success = false;
+  let finalStatus: RequirementStatus = 'unmet';
+  let failureReason: string | undefined;
+
+  if (verbose) {
+    console.log(`   🔧 Attempting to fix requirements (max ${maxAttempts} attempts)...`);
+  }
+
+  for (let attemptNumber = 1; attemptNumber <= maxAttempts; attemptNumber++) {
+    const attemptStartTime = Date.now();
+
+    if (verbose) {
+      console.log(`   → Fix attempt ${attemptNumber}/${maxAttempts}...`);
+    }
+
+    // First, detect current requirements to get fix type
+    const currentRequirements = await detectRequirements(page, step);
+
+    // If requirements are already met, we're done
+    if (currentRequirements.requirementsMet) {
+      if (verbose) {
+        console.log(`   ✓ Requirements already met`);
+      }
+      success = true;
+      finalStatus = 'met';
+      attempts.push({
+        success: true,
+        attemptNumber,
+        durationMs: Date.now() - attemptStartTime,
+        requirementsMet: true,
+      });
+      break;
+    }
+
+    // Check if fix button is available
+    if (!currentRequirements.hasFixButton) {
+      if (verbose) {
+        console.log(`   ✗ No Fix button available - cannot fix requirements`);
+      }
+      failureReason = 'No Fix button available';
+      attempts.push({
+        success: false,
+        attemptNumber,
+        durationMs: Date.now() - attemptStartTime,
+        error: 'No Fix button available',
+        requirementsMet: false,
+      });
+      break;
+    }
+
+    // Click the fix button
+    const fixClicked = await clickFixButton(page, step, currentRequirements.fixType, timeout);
+
+    if (!fixClicked) {
+      if (verbose) {
+        console.log(`   ✗ Fix button click failed or timed out`);
+      }
+      attempts.push({
+        success: false,
+        attemptNumber,
+        durationMs: Date.now() - attemptStartTime,
+        error: 'Fix button click failed',
+        requirementsMet: false,
+      });
+      continue; // Try again
+    }
+
+    // Recheck requirements after fix
+    const postFixRequirements = await detectRequirements(page, step);
+
+    if (postFixRequirements.requirementsMet) {
+      if (verbose) {
+        console.log(`   ✓ Fix successful - requirements now met`);
+      }
+      success = true;
+      finalStatus = 'met';
+      attempts.push({
+        success: true,
+        attemptNumber,
+        durationMs: Date.now() - attemptStartTime,
+        requirementsMet: true,
+      });
+      break;
+    } else {
+      if (verbose) {
+        const remaining = maxAttempts - attemptNumber;
+        console.log(
+          `   ⚠ Fix did not satisfy requirements${remaining > 0 ? `, ${remaining} attempts remaining` : ''}`
+        );
+      }
+      attempts.push({
+        success: false,
+        attemptNumber,
+        durationMs: Date.now() - attemptStartTime,
+        error: 'Requirements still not met after fix',
+        requirementsMet: false,
+      });
+
+      // Update final status from post-fix check
+      finalStatus = postFixRequirements.status;
+    }
+  }
+
+  // If we exhausted all attempts without success, record the failure reason
+  if (!success && !failureReason) {
+    failureReason = `Failed after ${attempts.length} fix attempts`;
+  }
+
+  return {
+    success,
+    totalAttempts: attempts.length,
+    attempts,
+    totalDurationMs: Date.now() - overallStartTime,
+    finalStatus,
+    failureReason,
+  };
+}
+
+/**
+ * Handle requirements with automatic fix attempts for mandatory steps (L3-4B).
+ *
+ * This function extends handleRequirements() with fix button execution:
+ * 1. Detect requirements
+ * 2. If unmet and fix button available, attempt to fix
+ * 3. Return final requirements status
+ *
+ * This is the main integration point for L3-4B fix button execution.
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to handle
+ * @param options - Options for requirements handling
+ * @returns Object with requirements result and any fix attempts
+ */
+export async function handleRequirementsWithFix(
+  page: Page,
+  step: TestableStep,
+  options: {
+    verbose?: boolean;
+    timeout?: number;
+    attemptFix?: boolean;
+    maxFixAttempts?: number;
+  } = {}
+): Promise<{
+  requirements: RequirementResult;
+  fixResult?: FixResult;
+}> {
+  const { verbose = false, timeout = REQUIREMENTS_CHECK_TIMEOUT_MS, attemptFix = true, maxFixAttempts } = options;
+
+  // First, handle requirements detection (L3-4A)
+  const requirements = await handleRequirements(page, step, { verbose, timeout });
+
+  // If requirements are met, no fix needed
+  if (requirements.requirementsMet) {
+    return { requirements };
+  }
+
+  // If requirements are unmet and we should attempt fix
+  if (attemptFix && requirements.hasFixButton && requirements.status === 'unmet') {
+    if (verbose) {
+      console.log(`   🔧 Requirements unmet, attempting automatic fix...`);
+    }
+
+    const fixResult = await attemptToFixRequirements(page, step, {
+      verbose,
+      maxAttempts: maxFixAttempts,
+      timeout: FIX_BUTTON_TIMEOUT_MS,
+    });
+
+    // Re-detect requirements after fix attempts
+    const postFixRequirements = await detectRequirements(page, step);
+
+    return {
+      requirements: postFixRequirements,
+      fixResult,
+    };
+  }
+
+  // No fix attempted
+  return { requirements };
+}
+
+// ============================================
 // Utility Functions
 // ============================================
 
@@ -1185,23 +1544,45 @@ export async function executeStep(
       };
     }
 
-    // L3-4A: Detect requirements before attempting to click
-    // Note: Fix execution (L3-4B) and skip/mandatory logic (L3-4C) handled in later milestones
-    const requirements = await handleRequirements(page, step, { verbose });
+    // L3-4A/4B: Detect requirements and attempt to fix if needed
+    // For mandatory steps, we attempt automatic fix when requirements are unmet
+    const { requirements, fixResult } = await handleRequirementsWithFix(page, step, {
+      verbose,
+      attemptFix: !step.skippable, // Only attempt fix for mandatory steps
+      maxFixAttempts: MAX_FIX_ATTEMPTS,
+    });
 
-    // If requirements are not met and step is skippable, skip it
-    // This is a preliminary implementation - full logic in L3-4C
+    // If requirements are not met after fix attempts
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
       if (step.skippable) {
+        // Skippable steps: skip with reason logged
         if (verbose) {
           console.log(`   ⊘ Step ${step.stepId} skipped due to unmet requirements (skippable)`);
         }
         return createSkippedResult(step, page, startTime, consoleErrors, 'requirements_unmet');
       }
-      // For mandatory steps with unmet requirements, we'll proceed to try "Do it"
-      // This allows fix buttons to be tested - full handling in L3-4B
+
+      // Mandatory steps: if fix was attempted and failed, report failure
+      if (fixResult && !fixResult.success) {
+        if (verbose) {
+          console.log(
+            `   ✗ Step ${step.stepId} failed: requirements not met after ${fixResult.totalAttempts} fix attempts`
+          );
+        }
+        return {
+          stepId: step.stepId,
+          status: 'failed',
+          durationMs: Date.now() - startTime,
+          currentUrl: page.url(),
+          consoleErrors,
+          error: `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`,
+        };
+      }
+
+      // Mandatory steps without fix button available - proceed to try "Do it"
+      // (button may still become enabled via sequential dependencies)
       if (verbose) {
-        console.log(`   ⚠ Step ${step.stepId} has unmet requirements but is mandatory, attempting execution`);
+        console.log(`   ⚠ Step ${step.stepId} has unmet requirements but no fix available, attempting execution`);
       }
     }
 

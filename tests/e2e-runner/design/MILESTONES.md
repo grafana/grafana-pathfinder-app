@@ -539,7 +539,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ## L3 Phase 4: Requirements Handling
 
-**Progress**: 1/3 milestones complete (L3-4A ✅)
+**Progress**: 2/3 milestones complete (L3-4A ✅, L3-4B ✅)
 
 ### Milestone L3-4A: Requirements Detection ✅ **COMPLETED**
 
@@ -610,7 +610,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-4B: Fix Button Execution
+### Milestone L3-4B: Fix Button Execution ✅ **COMPLETED**
 
 **Rationale**: Enables automatic requirement satisfaction per [Requirements Handling](./e2e-test-runner-design.md#requirements-handling-mvp).
 
@@ -627,15 +627,55 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-4A
 
+**Files modified**:
+
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Added fix button execution functions and types
+
 **Acceptance criteria**:
 
-- [ ] Fix buttons clicked automatically when present
-- [ ] Nav menu opened when `navmenu-open` required
-- [ ] Navigation fixes trigger page load wait
-- [ ] Fix failures don't crash test (log and continue based on skippable)
-- [ ] Max 3 fix attempts before giving up
+- [x] Fix buttons clicked automatically when present ✅
+- [x] Nav menu opened when `navmenu-open` required ✅
+- [x] Navigation fixes trigger page load wait ✅
+- [x] Fix failures don't crash test (log and continue based on skippable) ✅
+- [x] Max 3 fix attempts before giving up ✅
 
 **Estimated effort**: Medium (1-2 days)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **New constants added**:
+  - `FIX_BUTTON_TIMEOUT_MS`: 10s timeout per fix operation
+  - `MAX_FIX_ATTEMPTS`: 3 attempts (reduced from original 10 for faster failure)
+  - `POST_FIX_SETTLE_DELAY_MS`: 1s delay after fix button click
+  - `NAVIGATION_FIX_SETTLE_DELAY_MS`: 2s delay for location fixes (page navigation)
+
+- **New types added**:
+  - `FixAttemptResult`: Captures individual fix attempt outcome (success, duration, error)
+  - `FixResult`: Captures overall fix operation result (total attempts, final status)
+
+- **New functions added**:
+  - `clickFixButton()`: Clicks fix button with timeout, waits for settle delay based on fix type, handles navigation fixes with page load wait
+  - `attemptToFixRequirements()`: Retry loop with max 3 attempts, rechecks requirements after each fix, returns comprehensive result
+  - `handleRequirementsWithFix()`: Main integration point combining L3-4A detection with L3-4B fix execution
+
+- **`executeStep()` integration**:
+  - Uses `handleRequirementsWithFix()` for requirements handling
+  - For mandatory steps with unmet requirements: attempts automatic fix
+  - For skippable steps: skips without fix attempt (per design)
+  - Reports fix attempt counts in failure messages
+
+- **Fix type handling**:
+  - `location` fixes: Uses `NAVIGATION_FIX_SETTLE_DELAY_MS` (2s) + `waitForLoadState('networkidle')`
+  - `navigation`, `expand-parent-navigation`: Uses `POST_FIX_SETTLE_DELAY_MS` (1s)
+  - `lazy-scroll`: Handled by standard delay (transparent to E2E runner per design)
+
+- **Design decisions**:
+  - Only mandatory steps get automatic fix attempts (skippable steps skip immediately)
+  - Fix button click uses Playwright click timeout for reliability
+  - After each fix attempt, requirements are re-detected to check status
+  - Comprehensive logging in verbose mode shows attempt progress
 
 ---
 
@@ -933,7 +973,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        | ✅     |
 | L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        | ✅     |
 | L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        | ✅     |
-| L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        |        |
+| L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        | ✅     |
 | L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        |        |
 | L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        |        |
 | L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        |        |
