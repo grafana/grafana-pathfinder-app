@@ -1,1416 +1,355 @@
-# E2E Test Runner Implementation Milestones
+# E2E Test Runner Implementation Reference
 
-> **Layer 3 Implementation**: This document details the E2E Integration layer (Layer 3) of the [Testing Strategy](./TESTING_STRATEGY.md). All phases and milestones in this document are prefixed with "L3-" to indicate they belong to the E2E testing layer.
-
-This document breaks down the implementation of the E2E test runner CLI into discrete, independently deliverable phases and milestones. For overall design rationale and architecture, see [e2e-test-runner-design.md](./e2e-test-runner-design.md).
-
-## Overview
-
-The implementation is organized into 7 L3 phases with 18 milestones total. Each milestone has clear deliverables and acceptance criteria, enabling focused planning and incremental delivery.
+> **Layer 3 Implementation**: This document captures key implementation details, design decisions, and findings from building the E2E Integration layer (Layer 3) of the [Testing Strategy](./TESTING_STRATEGY.md). For architecture and specifications, see [e2e-test-runner-design.md](./e2e-test-runner-design.md).
 
 ---
 
-## L3 Phase 1: Foundation & Validation ✅ **COMPLETED**
+## Critical Findings: Assumption Verification
 
-**Completion Date**: 2026-02-01
-**Status**: All acceptance criteria met
-**Outcome**: Critical findings identified, JSON loading infrastructure implemented
+Before implementation, we verified 10 unexamined assumptions (U1-U10) from the design document. Results informed the implementation:
 
-### Summary of L3 Phase 1 Results
+### Falsified Assumptions
 
-**Assumption Verification Status**:
+| Assumption | Finding | Design Impact |
+|------------|---------|---------------|
+| **U1**: All steps have "Do it" buttons | Some steps have `doIt: false`, others are `noop` steps that auto-complete | Added `hasDoItButton` detection, skip handling |
+| **U3**: Steps clickable when discovered | Must wait for `isEligibleForChecking` (sequential dependencies) | Added button-enabled wait with 10s timeout |
+| **U4**: Fix buttons always work | Fix buttons can fail | Added retry loop with max 3 attempts |
+| **U7**: No interference from SequentialRequirementsManager | Sequential dependencies affect button state | Wait for button enabled before clicking |
 
-- ✅ **2 assumptions verified true** (U8: localStorage reliable, U9: LazyRender testable)
-- ⚠️ **4 assumptions partially true** (U2, U5, U6, U10) - require adjustments
-- ❌ **4 assumptions falsified** (U1, U3, U4, U7) - require design changes
+### Partially True Assumptions
 
-**Critical Findings**:
+| Assumption | Finding | Design Impact |
+|------------|---------|---------------|
+| **U2**: Steps complete only via "Do it" click | Steps can pre-complete via objectives before clicking | Added pre-completion detection |
+| **U5**: Completion detected via indicator | Multiple completion paths exist | Poll for completion, check before clicking |
+| **U6**: Timeouts sufficient | Multisteps need dynamic timeouts | Calculate timeout based on internal action count |
+| **U10**: Requirements always detectable | Spinner state must be waited out | Wait for requirements check to complete |
 
-1. **U1 (Falsified)**: Not all steps have "Do it" buttons - some have `doIt: false`, others are `noop` steps that auto-complete
-2. **U3 (Falsified)**: Steps may not be clickable when discovered - must wait for `isEligibleForChecking` (sequential dependencies)
-3. **U2 (Partial)**: Steps can pre-complete via objectives before clicking "Do it"
-4. **U4 (Falsified)**: Fix buttons can fail - need timeout and max attempts
+### Verified True
 
-**Design Impact**: Medium - Findings improve the design by addressing real-world behavior. No architectural blockers. See `L3-phase1-verification-results.md` for detailed analysis.
+- **U8**: localStorage reliable for guide injection
+- **U9**: LazyRender steps are testable
 
-**Files Created**:
-
-- `tests/e2e-runner/design/L3-phase1-verification-results.md` - Comprehensive verification report with code evidence
-
----
-
-### Milestone L3-1A: Assumption Verification Spike ✅ **COMPLETED**
-
-**Rationale**: Verifies design assumptions before implementation per [Assumptions](./e2e-test-runner-design.md#assumptions) section.
-
-**Goal**: Before building, verify the 10 unexamined assumptions (U1-U10) identified in the design document. This is a time-boxed investigation, not implementation.
-
-**Deliverables**:
-
-1. Create a test file that manually exercises each assumption
-2. Document findings in a verification table
-3. Identify design adjustments needed
-
-**Key questions to answer**:
-
-- Do all testable steps have "Do it" buttons? (U1)
-- How do pre-completed steps (via objectives) behave? (U2, U5)
-- Does the SequentialRequirementsManager interfere with test actions? (U7)
-- How should lazyRender steps be handled? (U9)
-
-**Acceptance criteria**:
-
-- [x] All 10 assumptions documented as verified/adjusted ✅
-- [x] Design document updated with findings ✅ (see below in Phase 1 summary)
-- [x] Risk register created for any unresolved concerns ✅ (in phase1-verification-results.md)
-
-**Estimated effort**: Small (1-2 days investigation)
-
-**Actual effort**: 1 day (code analysis)
+Full analysis: `tests/e2e-runner/design/L3-phase1-verification-results.md`
 
 ---
 
-### Milestone L3-1B: JSON Loading Infrastructure ✅ **COMPLETED**
+## JSON Loading Infrastructure
 
-**Rationale**: Enables test guide injection per [Raw JSON Loading Mechanism](./e2e-test-runner-design.md#raw-json-loading-mechanism).
+Enables test guide injection via localStorage.
 
-**Goal**: Enable loading arbitrary JSON guides into the pathfinder UI via localStorage. This is low-risk and provides immediate value for manual testing too.
+**Key files:**
+- `src/lib/user-storage.ts` - `E2E_TEST_GUIDE` storage key
+- `src/docs-retrieval/content-fetcher.ts` - `bundled:e2e-test` handler (pattern follows WYSIWYG preview)
 
-**Deliverables**:
-
-1. Add `E2E_TEST_GUIDE` key to `src/lib/user-storage.ts`
-2. Add `bundled:e2e-test` handler in `src/docs-retrieval/content-fetcher.ts`
-3. Manual verification script/instructions
-
-**Dependencies**: None
-
-**Files modified**:
-
-- `src/lib/user-storage.ts` - Added E2E_TEST_GUIDE storage key
-- `src/docs-retrieval/content-fetcher.ts` - Added bundled:e2e-test handler
-
-**Acceptance criteria**:
-
-- [x] `localStorage.setItem('grafana-pathfinder-app-e2e-test-guide', jsonString)` stores guide ✅
-- [x] Opening `bundled:e2e-test` renders the stored guide in the docs panel ✅
-- [x] Guide displays correctly with all interactive elements ✅
-
-**Implementation Notes**:
-
-- Handler follows same pattern as WYSIWYG preview (lines 264-306 in content-fetcher.ts)
-- Extracts title from JSON metadata for better UX
-- Returns clear error if no test content available
-- Works with existing localStorage infrastructure (quota handling, etc.)
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: 1 hour
+**Usage:**
+```ts
+localStorage.setItem('grafana-pathfinder-app-e2e-test-guide', jsonString);
+// Then open: bundled:e2e-test
+```
 
 ---
 
-## L3 Phase 2: CLI Scaffolding ✅ **COMPLETED**
+## CLI and Playwright Integration
 
-### Milestone L3-2A: CLI Command Skeleton ✅ **COMPLETED**
+### CLI command
 
-**Rationale**: Establishes CLI interface per [CLI Interface](./e2e-test-runner-design.md#cli-interface).
+`src/cli/commands/e2e.ts` implements the `e2e` command with:
+- JSON validation against guide schema
+- Exit codes: SUCCESS=0, TEST_FAILURE=1, CONFIGURATION_ERROR=2, GRAFANA_UNREACHABLE=3, AUTH_FAILURE=4
+- `bundled:name` syntax for loading specific bundled guides
+- `--bundled` flag to test all bundled guides
 
-**Goal**: Create the basic CLI command structure without Playwright integration.
+### Playwright spawning
 
-**Deliverables**:
+The CLI spawns Playwright via `runPlaywrightTests()`:
+1. Writes guide JSON to temp file (`mkdtempSync`)
+2. Passes environment variables: `GUIDE_JSON_PATH`, `GRAFANA_URL`, `E2E_TRACE`, `ARTIFACTS_DIR`, `ABORT_FILE_PATH`, `RESULTS_FILE_PATH`
+3. Cleans up temp files in `finally` block
 
-1. Create `src/cli/commands/e2e.ts` with Commander.js
-2. Add command to `src/cli/index.ts`
-3. Implement JSON loading and schema validation
-4. Parse all CLI options (no implementation yet)
+### Pre-flight checks
 
-**Dependencies**: Milestone L3-1B (JSON loading)
+Two-phase architecture:
+1. **CLI phase**: Grafana health check via `/api/health` (public endpoint, no auth)
+2. **Playwright phase**: Auth validation and plugin installation check (requires browser context)
 
-**Files created/modified**:
-
-- `src/cli/commands/e2e.ts` - E2E command implementation
-- `src/cli/index.ts` - Command registration
-
-**Acceptance criteria**:
-
-- [x] `npx pathfinder-cli e2e ./guide.json` validates JSON and exits ✅
-- [x] Invalid JSON fails with helpful error message ✅
-- [x] `--help` shows all options: `--grafana-url`, `--output`, `--trace`, `--verbose`, `--bundled` ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: Previously implemented
-
-**Implementation Notes**:
-
-- Exit codes defined per design spec (SUCCESS=0, TEST_FAILURE=1, CONFIGURATION_ERROR=2, etc.)
-- Supports `bundled:name` syntax for loading specific bundled guides
-- Validation errors show specific field-level issues for debugging
-- Verbose mode lists all loaded guides before validation
+Pre-flight utilities: `tests/e2e-runner/utils/preflight.ts`
 
 ---
 
-### Milestone L3-2B: Playwright Spawning ✅ **COMPLETED**
+## Step Discovery
 
-**Rationale**: Integrates Playwright per [Architecture](./e2e-test-runner-design.md#architecture).
+`tests/e2e-runner/utils/guide-runner/discovery.ts` discovers steps from rendered DOM.
 
-**Goal**: CLI spawns Playwright and establishes basic guide loading.
+### TestableStep interface
 
-**Deliverables**:
+```ts
+interface TestableStep {
+  stepId: string;              // From data-testid
+  index: number;               // Zero-based DOM order
+  sectionId?: string;          // Parent section ID
+  skippable: boolean;          // Has skip button
+  hasDoItButton: boolean;      // U1: not all steps have buttons
+  isPreCompleted: boolean;     // U2: objectives/noop completion
+  targetAction?: string;       // From data-targetaction
+  isMultistep: boolean;        // For timeout calculation
+  internalActionCount: number; // Multistep actions count
+  refTarget?: string;          // For requirements detection
+}
+```
 
-1. Create minimal `tests/e2e-runner/guide-runner.spec.ts`
-2. CLI sets environment variables and spawns Playwright
-3. Verify guide loads in docs panel
-4. Pass `--trace` flag through to Playwright
+### Discovery statistics
 
-**Dependencies**: Milestone L3-2A
-
-**Files created/modified**:
-
-- `tests/e2e-runner/guide-runner.spec.ts` - Main test file (NEW)
-- `src/cli/commands/e2e.ts` - Updated with Playwright spawning
-
-**Acceptance criteria**:
-
-- [x] CLI spawns Playwright successfully ✅
-- [x] Guide JSON injected into localStorage ✅
-- [x] Guide opens in docs panel (can see title) ✅
-- [x] `--trace` generates trace file in test-results directory ✅
-
-**Estimated effort**: Medium (1-2 days)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- `runPlaywrightTests()` function in `e2e.ts` handles temp file creation, Playwright spawning, and cleanup
-- Guide JSON written to temp file in system temp directory (`mkdtempSync`)
-- Environment variables passed to Playwright: `GUIDE_JSON_PATH`, `GRAFANA_URL`, `E2E_TRACE`
-- Temp directory cleaned up in `finally` block to ensure cleanup even on failure
-- `guide-runner.spec.ts` injects guide into localStorage using key `grafana-pathfinder-app-e2e-test-guide`
-- Uses `pathfinder-auto-open-docs` custom event to open the guide with `bundled:e2e-test` URL
-- Test verifies panel visibility and presence of interactive step elements
-- Trace file path logged when `--trace` flag is used
+```ts
+interface StepDiscoveryResult {
+  steps: TestableStep[];
+  stats: {
+    total: number;
+    preCompleted: number;  // Useful for understanding guide state
+    noButton: number;      // Steps with doIt: false or noop
+    discoveryDurationMs: number;
+  };
+}
+```
 
 ---
 
-### Milestone L3-2C: Pre-flight Checks ✅ **COMPLETED**
-
-**Rationale**: Enables fail-fast behavior before wasting time on guide execution.
-
-**Goal**: Fail fast with clear error messages before running any guide tests.
-
-**Specification**: See [Pre-flight Checks](./e2e-test-runner-design.md#pre-flight-checks) for check sequence and [Exit codes](./e2e-test-runner-design.md#exit-codes) for exit code table.
-
-**Deliverables**:
-
-1. Implement pre-flight check sequence per design doc
-2. Add exit codes for different failure types
-3. Clear error messages for each failure mode
-
-**Dependencies**: Milestone L3-2B
-
-**Files created/modified**:
-
-- `tests/e2e-runner/utils/preflight.ts` - Pre-flight check utilities (NEW)
-- `src/cli/commands/e2e.ts` - Added CLI-level Grafana health check
-- `tests/e2e-runner/guide-runner.spec.ts` - Added Playwright-level auth and plugin checks
-
-**Acceptance criteria**:
-
-- [x] Grafana health check before test execution ✅
-- [x] Auth validation before guide loading ✅
-- [x] Plugin installation verified ✅
-- [x] Clear error messages with exit codes for each failure type ✅
-- [x] Pre-flight results included in verbose output ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **Two-phase pre-flight architecture**:
-  - **CLI phase**: Grafana health check using `/api/health` (public endpoint, no auth needed). Exits with code 3 if Grafana is unreachable.
-  - **Playwright phase**: Auth validation and plugin installation check. These require browser context for authenticated API calls.
-
-- **Pre-flight check sequence**:
-  1. CLI: `checkGrafanaHealth()` - verifies `/api/health` returns `{ "database": "ok" }`
-  2. Playwright: `checkAuthValid()` - navigates to `/dashboards`, verifies no redirect to login, checks `/api/user` API
-  3. Playwright: `checkPluginInstalled()` - verifies `/api/plugins/grafana-pathfinder-app/settings` returns OK and plugin is enabled
-
-- **Exit codes implemented**:
-  - Exit 3: Grafana unreachable (health check fails)
-  - Exit 4: Auth failure (defined but auth failures currently result in test failure exit 1)
-  - Exit 2: Configuration error (validation failures)
-
-- **Verbose output** shows timing for each check with pass/fail indicators
-
-- **Design decision**: Auth and plugin checks run in Playwright context because they require authenticated API access. The `@grafana/plugin-e2e` fixture handles authentication automatically via `admin.json` state.
-
----
-
-## L3 Phase 3: Step Discovery & Execution (Core Functionality) ✅ **COMPLETED**
-
-This is the highest-complexity phase. Consider splitting into smaller increments if the spike reveals additional complexity.
-
-**Progress**: 4/4 milestones complete (L3-3A ✅, L3-3B ✅, L3-3C ✅, L3-3D ✅)
-
-**Completion Date**: 2026-02-04
-**Outcome**: All core step discovery and execution functionality implemented including session validation
-
-### Milestone L3-3A: DOM-Based Step Discovery ✅ **COMPLETED**
-
-**Rationale**: Implements [DOM-Based Step Discovery](./e2e-test-runner-design.md#dom-based-step-discovery) to test actual rendered UI.
-
-**Goal**: Discover testable steps from rendered DOM.
-
-**Deliverables**:
-
-1. Create `tests/e2e-runner/utils/guide-test-runner.ts`
-2. Implement `discoverStepsFromDOM()` function
-3. Handle edge cases identified in spike (pre-completed steps, lazyRender)
-
-**Dependencies**: Milestone L3-2C (pre-flight checks must pass first)
-
-**Files created/modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Step discovery utilities (NEW)
-- `tests/e2e-runner/guide-runner.spec.ts` - Integrated step discovery into test flow
-
-**Acceptance criteria**:
-
-- [x] All rendered interactive steps discovered from DOM ✅
-- [x] Steps discovered in document order (top to bottom) ✅
-- [x] Pre-completed steps detected (don't have "Do it" button) ✅
-- [x] Step metadata captured (stepId, skippable flag) ✅
-
-**Estimated effort**: Medium (1-2 days)
-
-**Actual effort**: ~2 hours
-
-**Implementation Notes**:
-
-- **TestableStep interface** captures all metadata identified in L3 Phase 1:
-  - `stepId`: Extracted from `data-testid` attribute
-  - `index`: Zero-based DOM order position
-  - `sectionId`: Parent section ID if within an interactive section
-  - `skippable`: Detected by presence of skip button (conservative assumption for completed steps)
-  - `hasDoItButton`: Handles U1 finding (not all steps have "Do it" buttons)
-  - `isPreCompleted`: Handles U2 finding (objectives/noop auto-completion)
-  - `targetAction`: Extracted from `data-targetaction` attribute for diagnostics
-
-- **StepDiscoveryResult** includes statistics:
-  - Total steps count
-  - Pre-completed count (useful for understanding guide state)
-  - No-button count (steps with doIt: false or noop actions)
-  - Discovery duration in ms
-
-- **Utility functions** provided for future milestones:
-  - `scrollStepIntoView()`: Scroll step into viewport before interaction
-  - `waitForDoItButtonEnabled()`: Handle U3 sequential dependencies
-  - `waitForStepCompletion()`: DOM polling for completion indicator
-  - `logDiscoveryResults()`: Human-readable discovery output
-
-- **Integration**: Step discovery integrated into `guide-runner.spec.ts` after guide loading
-
----
-
-### Milestone L3-3B: Step Execution (Happy Path) ✅ **COMPLETED**
-
-**Rationale**: Implements [Test Execution](./e2e-test-runner-design.md#test-execution) step execution flow.
-
-**Goal**: Execute steps assuming all requirements are met.
-
-**Deliverables**:
-
-1. Implement `executeStep()` function
-2. Implement `scrollStepIntoView()`
-3. Click "Do it" button, verify completion indicator
-4. Capture basic diagnostics (duration, URL)
-
-**Dependencies**: Milestone L3-3A
-
-**Files modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Added step execution functions
-- `tests/e2e-runner/guide-runner.spec.ts` - Integrated step execution into test flow
-
-**Acceptance criteria**:
-
-- [x] Steps scrolled into view before execution ✅
-- [x] "Do it" button clicked for each step ✅
-- [x] Completion indicator detected (or timeout) ✅
-- [x] Pre-completed steps handled gracefully (logged, skipped) ✅
-
-**Estimated effort**: Medium (1-2 days)
-
-**Actual effort**: ~1.5 hours
-
-**Implementation Notes**:
-
-- **New types added**:
-  - `StepStatus`: `'passed' | 'failed' | 'skipped' | 'not_reached'`
-  - `SkipReason`: `'pre_completed' | 'no_do_it_button' | 'requirements_unmet'`
-  - `StepTestResult`: Captures stepId, status, durationMs, currentUrl, consoleErrors, error, skipReason
-
-- **`executeStep()` function** implements the happy path:
-  1. Checks for pre-completed steps (U2) → skip with `pre_completed` reason
-  2. Checks for missing "Do it" button (U1) → skip with `no_do_it_button` reason
-  3. Scrolls step into view with 300ms settle delay
-  4. Waits for "Do it" button to be enabled (U3 sequential dependencies, 10s timeout)
-  5. Clicks "Do it" button
-  6. Waits for completion indicator (30s default timeout)
-  7. Returns result with diagnostics (duration, URL, console errors)
-
-- **`executeAllSteps()` function** orchestrates sequential execution:
-  - Iterates through all discovered steps
-  - Handles abort on mandatory failure (marks remaining as `not_reached`)
-  - Supports verbose logging for debugging
-
-- **Console error capture**: Uses page.on('console') with cleanup in `finally` block to prevent memory leaks (per R1 cleanup pattern)
-
-- **Helper functions** for reporting:
-  - `logStepResult()`: Human-readable per-step output with status icons
-  - `summarizeResults()`: Aggregates counts and success status
-  - `logExecutionSummary()`: Summary output with pass/fail counts
-
-- **Design decisions**:
-  - Happy path only: Requirements handling deferred to L3-4A/4B
-  - All failures treated as mandatory (skip/mandatory logic in L3-4C)
-  - 30s default timeout per step (timing refinements in L3-3C)
-
----
-
-### Milestone L3-3C: Timing and Completion Detection ✅ **COMPLETED**
-
-**Rationale**: Handles [Timing Considerations](./e2e-test-runner-design.md#timing-considerations) and [Completion Detection](./e2e-test-runner-design.md#completion-detection).
-
-**Goal**: Handle completion detection using DOM polling.
-
-**Deliverables**:
-
-1. Wait for "Do it" button to be enabled (not just visible)
-2. Handle multiple completion paths (manual, objectives, skipped)
-3. Add settling delay after actions for reactive system
-4. Implement configurable timeout (30s default)
-5. **DOM polling for completion indicator**
-
-**Removed from scope**:
-
-- Event-driven completion detection (decide later based on polling reliability)
-
-**Dependencies**: Milestone L3-3B
-
-**Technical considerations**:
-
-- EchoSrv context subscriptions trigger rechecks on navigation
-- SequentialRequirementsManager coordinates step eligibility
-- Multiple completion paths: manual, objectives, skipped, completeEarly
-- Debounced rechecks (500ms context, 1200ms DOM)
-
-**Acceptance criteria**:
-
-- [x] Sequential dependencies respected (wait for button enabled) ✅
-- [x] Objective-based auto-completion detected before clicking ✅
-- [x] Multisteps complete successfully with longer timeouts ✅
-- [x] Completion detected via DOM indicator visibility ✅
-
-**Estimated effort**: Medium (1-2 days)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **Timing constants** defined per design doc:
-  - `DEFAULT_STEP_TIMEOUT_MS`: 30s base timeout
-  - `TIMEOUT_PER_MULTISTEP_ACTION_MS`: +5s per internal action for multisteps
-  - `BUTTON_ENABLE_TIMEOUT_MS`: 10s for sequential dependency wait
-  - `SCROLL_SETTLE_DELAY_MS`: 300ms post-scroll
-  - `POST_CLICK_SETTLE_DELAY_MS`: 500ms post-click (allows reactive system to settle)
-  - `COMPLETION_POLL_INTERVAL_MS`: 250ms polling for objective detection
-
-- **TestableStep interface** extended with:
-  - `isMultistep`: boolean flag for multistep detection
-  - `internalActionCount`: number of internal actions (extracted from `data-internal-actions`)
-
-- **`extractMultistepInfo()`** function detects multisteps by:
-  - Checking `data-targetaction="multistep"` attribute
-  - Parsing `data-internal-actions` JSON to count internal actions
-  - Fallback to 3 actions if JSON parsing fails
-
-- **`calculateStepTimeout()`** function calculates dynamic timeout:
-  - Simple steps: 30s default
-  - Multisteps: 30s + (5s × internalActionCount)
-  - Example: 5-action multistep gets 55s timeout
-
-- **`waitForCompletionWithObjectivePolling()`** enhanced completion detection:
-  - Polls every 250ms for completion indicator
-  - Detects if completion happened quickly (likely via objectives)
-  - Falls back to Playwright's `expect().toBeVisible()` on timeout
-
-- **`checkObjectiveCompletion()`** checks for pre-click completion:
-  - Called after scrolling, before clicking "Do it"
-  - Catches cases where prior navigation satisfied objectives
-
-- **Enhanced `executeStep()`** flow:
-  1. Check pre-completed (from discovery)
-  2. Check no "Do it" button
-  3. Scroll with settle delay
-  4. Check objective completion before clicking
-  5. Wait for button enabled (10s, sequential dependencies)
-  6. Click "Do it"
-  7. Post-click settle delay (500ms)
-  8. Wait for completion with polling
-
-- **Verbose logging** enhanced to show:
-  - Multistep detection with action count
-  - Calculated timeout for multisteps
-  - Objective-based completion detection
-
----
-
-### Milestone L3-3D: Session Validation During Execution ✅ **COMPLETED**
-
-**Rationale**: Implements [Session Validation During Execution](./e2e-test-runner-design.md#session-validation-during-execution).
-
-**Goal**: Detect session expiry during long-running tests and abort gracefully.
-
-**Deliverables**:
-
-1. Implement lightweight session validation
-2. Periodic auth check during step loop (every 5 steps)
-3. Graceful abort with `AUTH_EXPIRED` classification
-
-**Dependencies**: Milestone L3-3C
-
-**Files modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Added session validation types, constants, and functions
-- `tests/e2e-runner/guide-runner.spec.ts` - Handle AUTH_EXPIRED abort with abort file for exit code
-- `src/cli/commands/e2e.ts` - Read abort file to determine exit code 4 for auth failures
-
-**Acceptance criteria**:
-
-- [x] Session validation runs every N steps (configurable, default 5) ✅
-- [x] Session expiry detected before step fails cryptically ✅
-- [x] `AUTH_EXPIRED` classification in report ✅
-- [x] Exit code 4 for auth failures ✅
-- [x] Remaining steps marked as `not_reached` ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **New types added**:
-  - `AbortReason`: `'AUTH_EXPIRED' | 'MANDATORY_FAILURE'`
-  - `AllStepsResult`: Contains step results plus abort information (aborted, abortReason, abortMessage)
-
-- **Session validation constants**:
-  - `DEFAULT_SESSION_CHECK_INTERVAL`: 5 steps (configurable via options)
-  - `SESSION_VALIDATION_TIMEOUT_MS`: 5s timeout for the /api/user fetch
-
-- **`validateSession()` function**:
-  - Uses `page.evaluate()` to run fetch in browser context with session cookies
-  - Checks `/api/user` endpoint - returns false if response is not OK
-  - Includes 5s timeout to avoid hanging on network issues
-  - Returns false on any error (including page crash)
-
-- **Session check integration in `executeAllSteps()`**:
-  - Checks session at step indices 0, N, 2N, etc. (where N = sessionCheckInterval)
-  - On session expiry, marks current and all remaining steps as `not_reached`
-  - Returns `AllStepsResult` with `aborted: true` and `abortReason: 'AUTH_EXPIRED'`
-
-- **Exit code 4 mechanism**:
-  - Test writes abort reason to temp file (`ABORT_FILE_PATH` env var)
-  - CLI reads abort file after Playwright exits
-  - If abort file contains `AUTH_EXPIRED`, CLI exits with code 4 (`ExitCode.AUTH_FAILURE`)
-  - This workaround is needed because Playwright always exits with 0 or 1
-
-- **Verbose output** shows session validation timing:
-  - "🔐 Validating session (step N)..."
-  - "✓ Session valid" or "❌ Session expired, aborting remaining steps"
-
-- **Summary output** enhanced with auth expiry count:
-  - "🔐 Auth expired: N" shown when applicable
-
----
-
-## L3 Phase 4: Requirements Handling ✅ **COMPLETED**
-
-**Progress**: 3/3 milestones complete (L3-4A ✅, L3-4B ✅, L3-4C ✅)
-
-**Completion Date**: 2026-02-04
-**Outcome**: All requirements handling functionality implemented including detection, fix execution, and skip/mandatory logic
-
-### Milestone L3-4A: Requirements Detection ✅ **COMPLETED**
-
-**Rationale**: Implements [Requirements Handling](./e2e-test-runner-design.md#requirements-handling-mvp) detection logic.
-
-**Goal**: Detect step requirements and their status.
-
-**Deliverables**:
-
-1. Implement `handleRequirements()` function
-2. Detect Fix buttons and their availability
-3. Distinguish skippable vs mandatory steps
-4. Detect requirement type from DOM attributes
-
-**Dependencies**: Milestone L3-3D (session validation)
-
-**Files modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Added requirements detection types and functions
-
-**Acceptance criteria**:
-
-- [x] Requirements detected for each step ✅
-- [x] Fix button presence detected ✅
-- [x] Skippable flag read from step ✅
-- [x] Requirement status (met/unmet) determined ✅
-
-**Estimated effort**: Medium (1 day)
-
-**Actual effort**: ~1.5 hours
-
-**Implementation Notes**:
-
-- **New types added**:
-  - `RequirementStatus`: `'met' | 'unmet' | 'checking' | 'unknown'`
-  - `RequirementFixType`: `'navigation' | 'location' | 'expand-parent-navigation' | 'lazy-scroll'`
-  - `RequirementResult`: Captures all requirement-related info (hasFixButton, fixType, skippable, explanationText, etc.)
-
-- **`detectRequirements()` function** examines DOM to determine:
-  - Whether "Do it" button is enabled (indicates requirements met)
-  - Whether requirement explanation element is present (indicates requirements not met or checking)
-  - Whether spinner is visible (indicates requirements being checked)
-  - Presence of Fix, Retry, and Skip buttons
-
-- **`detectFixType()` function** infers fix type from:
-  - Explanation text content (navigation, menu, page, scroll keywords)
-  - Target action type (navigate → location)
-  - RefTarget selector (nav-menu → navigation)
-
-- **`waitForRequirementsCheckComplete()`** polls for spinner to disappear before detecting final status
-
-- **`handleRequirements()`** is the main entry point that:
-  1. Waits for ongoing requirements check to complete (10s timeout)
-  2. Calls `detectRequirements()` to get current status
-  3. Logs results in verbose mode
-
-- **Integration in `executeStep()`**:
-  - Requirements detected after scrolling, before clicking "Do it"
-  - Skippable steps with unmet requirements are skipped (preliminary L3-4C logic)
-  - Mandatory steps with unmet requirements still attempt execution (fix handling in L3-4B)
-
-- **`TestableStep` extended** with `refTarget` field for requirements detection
-
-- **Design decisions**:
-  - Fix execution deferred to L3-4B
-  - Full skip/mandatory logic deferred to L3-4C
-  - Requirements detection uses test IDs from `src/components/testIds.ts` for stability
-
----
-
-### Milestone L3-4B: Fix Button Execution ✅ **COMPLETED**
-
-**Rationale**: Enables automatic requirement satisfaction per [Requirements Handling](./e2e-test-runner-design.md#requirements-handling-mvp).
-
-**Goal**: Click Fix buttons and handle outcomes.
-
-**Specification**: See [Fix Button Reliability](./e2e-test-runner-design.md#4-fix-button-reliability-medium-complexity) for fix types and failure modes.
-
-**Deliverables**:
-
-1. Click Fix buttons with timeout (10s per operation)
-2. Handle fix failures gracefully
-3. Limit fix attempts to **3** (reduced from original 10 for faster failure)
-4. Auto-satisfy `navmenu-open` and `on-page:` requirements
-
-**Dependencies**: Milestone L3-4A
-
-**Files modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Added fix button execution functions and types
-
-**Acceptance criteria**:
-
-- [x] Fix buttons clicked automatically when present ✅
-- [x] Nav menu opened when `navmenu-open` required ✅
-- [x] Navigation fixes trigger page load wait ✅
-- [x] Fix failures don't crash test (log and continue based on skippable) ✅
-- [x] Max 3 fix attempts before giving up ✅
-
-**Estimated effort**: Medium (1-2 days)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **New constants added**:
-  - `FIX_BUTTON_TIMEOUT_MS`: 10s timeout per fix operation
-  - `MAX_FIX_ATTEMPTS`: 3 attempts (reduced from original 10 for faster failure)
-  - `POST_FIX_SETTLE_DELAY_MS`: 1s delay after fix button click
-  - `NAVIGATION_FIX_SETTLE_DELAY_MS`: 2s delay for location fixes (page navigation)
-
-- **New types added**:
-  - `FixAttemptResult`: Captures individual fix attempt outcome (success, duration, error)
-  - `FixResult`: Captures overall fix operation result (total attempts, final status)
-
-- **New functions added**:
-  - `clickFixButton()`: Clicks fix button with timeout, waits for settle delay based on fix type, handles navigation fixes with page load wait
-  - `attemptToFixRequirements()`: Retry loop with max 3 attempts, rechecks requirements after each fix, returns comprehensive result
-  - `handleRequirementsWithFix()`: Main integration point combining L3-4A detection with L3-4B fix execution
-
-- **`executeStep()` integration**:
-  - Uses `handleRequirementsWithFix()` for requirements handling
-  - For mandatory steps with unmet requirements: attempts automatic fix
-  - For skippable steps: skips without fix attempt (per design)
-  - Reports fix attempt counts in failure messages
-
-- **Fix type handling**:
-  - `location` fixes: Uses `NAVIGATION_FIX_SETTLE_DELAY_MS` (2s) + `waitForLoadState('networkidle')`
-  - `navigation`, `expand-parent-navigation`: Uses `POST_FIX_SETTLE_DELAY_MS` (1s)
-  - `lazy-scroll`: Handled by standard delay (transparent to E2E runner per design)
-
-- **Design decisions**:
-  - Only mandatory steps get automatic fix attempts (skippable steps skip immediately)
-  - Fix button click uses Playwright click timeout for reliability
-  - After each fix attempt, requirements are re-detected to check status
-  - Comprehensive logging in verbose mode shows attempt progress
-
----
-
-### Milestone L3-4C: Skippable vs Mandatory Logic ✅ **COMPLETED**
-
-**Rationale**: Implements [Skippable vs Mandatory Steps](./e2e-test-runner-design.md#skippable-vs-mandatory-steps) decision tree.
-
-**Goal**: Implement the decision tree from the design.
-
-**Specification**: See [Decision Tree](./e2e-test-runner-design.md#decision-tree) for skip/mandatory flow diagram.
-
-**Deliverables**:
-
-1. Skippable steps with unmet requirements → SKIPPED
-2. Mandatory steps with unmet requirements → FAILED
-3. Failed mandatory step stops test progression
-4. Remaining steps marked as NOT_REACHED
-
-**Dependencies**: Milestone L3-4B
-
-**Files modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Updated types and execution logic for skip/mandatory handling
-
-**Acceptance criteria**:
-
-- [x] Skippable steps skip gracefully with reason logged ✅
-- [x] Mandatory failures stop test progression ✅
-- [x] NOT_REACHED status for steps after mandatory failure ✅
-- [x] Test exit code reflects failures ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: ~30 minutes
-
-**Implementation Notes**:
-
-- **`StepTestResult` interface** extended with `skippable` field to track whether failed steps were mandatory or skippable for summary calculation.
-
-- **`executeAllSteps()` decision logic** updated:
-  - Mandatory step failure (`!step.skippable && status === 'failed'`) → abort test, mark remaining as NOT_REACHED
-  - Skippable step failure (`step.skippable && status === 'failed'`) → log warning, continue to next step
-
-- **`summarizeResults()` enhanced** with:
-  - `mandatoryFailed`: Count of mandatory step failures (determines overall success)
-  - `skippableFailed`: Count of skippable step failures (do not affect overall success)
-  - `success = mandatoryFailed === 0` (per design doc: skippable failures do NOT fail overall test)
-
-- **Verbose output enhancements**:
-  - `logStepResult()` shows `[skippable - test continues]` or `[mandatory - test stops]` for failed steps
-  - `logExecutionSummary()` shows breakdown of mandatory vs skippable failures with tree structure
-
-- **Decision tree alignment** with design doc:
-  ```
-  Requirements met? → Execute step
-  Requirements not met + skippable → SKIPPED (continue)
-  Requirements not met + mandatory + fix available → Attempt fix
-  Requirements not met + mandatory + fix failed → FAILED (abort)
-  Execution fails + skippable → FAILED (continue)
-  Execution fails + mandatory → FAILED (abort)
-  ```
-
----
-
-## L3 Phase 5: Reporting ✅ **COMPLETED**
-
-**Progress**: 4/4 milestones complete (L3-5A ✅, L3-5B ✅, L3-5C ✅, L3-5D ✅)
-
-**Completion Date**: 2026-02-04
-**Outcome**: All reporting functionality implemented including console output, JSON reports, error classification, and artifact collection
-
-### Milestone L3-5A: Console Reporting ✅ **COMPLETED**
-
-**Rationale**: Provides real-time feedback during test execution for debugging.
-
-**Goal**: Real-time console output with clear visual feedback.
-
-**Specification**: See [Console Output](./e2e-test-runner-design.md#console-output) for expected format and status indicators.
-
-**Deliverables**:
-
-1. Step-by-step progress output during execution
-2. Status indicators (✓ passed, ✗ failed, ⊘ skipped, ○ not_reached)
-3. Timing per step
-4. Summary statistics at end
-
-**Dependencies**: Milestone L3-4C
-
-**Files created/modified**:
-
-- `tests/e2e-runner/utils/console-reporter.ts` - Console reporting module (NEW)
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Added `onStepComplete` callback
-- `tests/e2e-runner/guide-runner.spec.ts` - Integrated console reporter
-
-**Acceptance criteria**:
-
-- [x] Each step shows as it completes ✅
-- [x] Clear visual distinction between statuses ✅
-- [x] Duration shown per step ✅
-- [x] Summary shows totals ✅
-- [x] Exit code 0 for all pass, non-zero for any failures ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **Console reporter module** (`console-reporter.ts`) provides all formatted output functions:
-  - `printHeader()`: Box-style header with guide title per design spec
-  - `printStepResult()`: Per-step output with status icon, right-aligned duration
-  - `printSummary()`: Summary line with separator bars
-  - `printDetailedSummary()`: Extended summary with mandatory/skippable breakdown
-  - `printPreflightChecks()`: Pre-flight check output
-  - `printDiscoveryResults()`: Step discovery statistics
-
-- **Real-time progress callback**: Added `onStepComplete` callback option to `executeAllSteps()`:
-  - Called immediately after each step completes
-  - Receives result, step index, and total steps count
-  - Enables immediate console output as steps execute (not batched at end)
-
-- **Output format matches design spec**:
-
-  ```
-  ╔══════════════════════════════════════════════════════════════════╗
-  ║  E2E Test: Welcome to Grafana                                    ║
-  ╚══════════════════════════════════════════════════════════════════╝
-
-  📋 Discovered 5 steps [45ms]
-
-    ✓ step-1                                                  [1.2s]
-    ✓ step-2                                                  [0.8s]
-    ⊘ step-3 - SKIPPED                                        [0.1s]
-      Reason: requirements not met (skippable step)
-    ✓ step-4                                                  [0.9s]
-
-  ────────────────────────────────────────────────────────────────────
-  Summary: 3 passed, 0 failed, 1 skipped                      [3.0s]
-  ────────────────────────────────────────────────────────────────────
-  ```
-
-- **Exit codes** (verified from L3-3D/L3-4C):
-  - Exit 0: All tests pass (no mandatory failures)
-  - Exit 1: Test failure (mandatory step failed)
-  - Exit 2: Configuration error (validation failure)
-  - Exit 3: Grafana unreachable (health check fails)
-  - Exit 4: Auth failure (session expired mid-test)
-
-- **Design decisions**:
-  - Skipped steps show reason on separate indented line for clarity
-  - Failed steps show truncated error message (max ~56 chars)
-  - Duration uses "[1.2s]" format for seconds, "[123ms]" for sub-second
-  - Box width fixed at 68 characters for consistent alignment
-
----
-
-### Milestone L3-5B: JSON Reporting ✅ **COMPLETED**
-
-**Rationale**: Enables CI integration and programmatic test result analysis.
-
-**Goal**: Structured JSON output for CI integration.
-
-**Specification**: See [JSON Output](./e2e-test-runner-design.md#json-output) for complete JSON structure.
-
-**Deliverables**:
-
-1. Create `src/cli/utils/e2e-reporter.ts`
-2. Implement full JSON report structure per design doc
-3. Write to file via `--output` option
-4. Include console errors per step
-
-**Dependencies**: Milestone L3-5A
-
-**Files created/modified**:
-
-- `src/cli/utils/e2e-reporter.ts` - Report generator (NEW)
-- `src/cli/commands/e2e.ts` - Added results file reading and JSON report generation
-- `tests/e2e-runner/guide-runner.spec.ts` - Added results file writing
-
-**Acceptance criteria**:
-
-- [x] JSON file written to specified path ✅
-- [x] Contains guide metadata, config, summary ✅
-- [x] Each step has status, duration, currentUrl, consoleErrors ✅
-- [x] Skipped steps include skip reason ✅
-- [x] Failed steps include error message ✅
-
-**Estimated effort**: Medium (1 day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **JSON report structure** matches design spec:
-  - `guide`: id, title, path
-  - `config`: grafanaUrl, grafanaVersion (optional), timestamp
-  - `summary`: total, passed, failed, skipped, notReached, duration, mandatoryFailed, skippableFailed
-  - `steps`: array of step results with stepId, index, status, duration, currentUrl, consoleErrors, plus optional skipReason, error, skippable
-
-- **Data flow architecture**:
-  - Playwright test writes results to temp file (`RESULTS_FILE_PATH` env var)
-  - CLI reads results after Playwright completes
-  - CLI generates and writes JSON report to `--output` path if specified
-  - Temp files cleaned up after each run
-
-- **Types exported from `e2e-reporter.ts`**:
-  - `E2ETestReport`: Complete report structure
-  - `TestResultsData`: Input format from test execution
-  - `generateReport()`: Creates report from test results
-  - `writeReport()`: Writes JSON to file with directory creation
-
-- **Design decisions**:
-  - Report generation happens in CLI (not Playwright) to handle multiple guides
-  - Single guide report for now; multi-guide aggregation deferred to L3-7B
-  - Summary includes L3-4C mandatory/skippable failure counts for success determination
-  - Report includes abort info (L3-3D) when test is aborted
-
----
-
-### Milestone L3-5C: Error Classification (MVP) ✅ **COMPLETED**
-
-**Rationale**: Provides hints for failure triage per [Failure Classification](../../TESTING_STRATEGY.md#failure-classification).
-
-**Goal**: Add classification field to failures as a **hint**, not a routing decision.
-
-**Specification**: See [Error Classification](./e2e-test-runner-design.md#error-classification) for MVP approach and validation plan.
-
-**Deliverables**:
-
-1. Add `classification` field to step results
-2. Classify only high-confidence cases: `infrastructure` for TIMEOUT/NETWORK/AUTH
-3. Default all other failures to `unknown`
-4. Log classification in JSON output
-
-**Decide Later**:
-
-- Auto-routing to teams (requires validation data from 4+ weeks of test runs)
-- content-drift vs product-regression heuristic (requires human baseline)
-
-**Dependencies**: Milestone L3-5B
-
-**Files modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Added ErrorClassification type, classifyError function, classification field to StepTestResult
-- `src/cli/utils/e2e-reporter.ts` - Added ErrorClassification type and classification field to ReportStepResult, updated convertStepResults
-- `tests/e2e-runner/utils/console-reporter.ts` - Added classification output for failed steps
-
-**Acceptance criteria**:
-
-- [x] All failures include classification field ✅
-- [x] Infrastructure failures correctly identified (TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED) ✅
-- [x] `unknown` used as default (not guessing) ✅
-- [x] JSON output includes classification field ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: ~30 minutes
-
-**Implementation Notes**:
-
-- **ErrorClassification type** defined with four categories:
-  - `infrastructure`: TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED (high-confidence auto-classification)
-  - `content-drift`: Selector/requirement issues (requires human validation - not auto-classified)
-  - `product-regression`: Action failures (requires human validation - not auto-classified)
-  - `unknown`: Default for all cases that cannot be reliably classified
-
-- **classifyError() function** implements pattern matching:
-  - Checks `abortReason` first (AUTH_EXPIRED → infrastructure)
-  - Matches error message against infrastructure patterns (timeout, network, connection errors)
-  - Returns `unknown` for all non-matching cases per design doc MVP approach
-
-- **Infrastructure patterns recognized**:
-  - Timeout: `timeout`, `timed out`, `waiting for`, `exceeded`
-  - Network: `network`, `net::`, `fetch failed`, `econnrefused`, `connection refused/reset`
-  - Auth: `auth.*expir`, `session.*expir`, `unauthorized`, `401`, `403`
-  - Browser: `browser.*closed`, `page.*crashed`, `context.*destroyed`
-
-- **Console output enhanced** to show classification for failed/not_reached steps:
-
-  ```
-    ✗ step-5 - FAILED                                          [5.2s]
-      Error: Timeout waiting for step completion indicator
-      Classification: infrastructure
-  ```
-
-- **JSON report** includes classification per design doc spec:
-
-  ```json
-  {
-    "stepId": "step-5",
-    "status": "failed",
-    "classification": "infrastructure",
-    ...
+## Step Execution
+
+`tests/e2e-runner/utils/guide-runner/execution.ts` handles step execution.
+
+### Execution flow
+
+1. Check pre-completed (from discovery) → skip with `pre_completed` reason
+2. Check no "Do it" button (U1) → skip with `no_do_it_button` reason
+3. Scroll with 300ms settle delay
+4. Check objective completion before clicking (U2)
+5. Wait for button enabled (10s, U3 sequential dependencies)
+6. Handle requirements with fix attempts if needed
+7. Click "Do it"
+8. Post-click 500ms settle delay (reactive system)
+9. Wait for completion with polling
+
+### Timing constants
+
+```ts
+DEFAULT_STEP_TIMEOUT_MS = 30000;           // Base timeout
+TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;    // +5s per internal action
+BUTTON_ENABLE_TIMEOUT_MS = 10000;          // Sequential dependency wait
+SCROLL_SETTLE_DELAY_MS = 300;
+POST_CLICK_SETTLE_DELAY_MS = 500;
+COMPLETION_POLL_INTERVAL_MS = 250;
+```
+
+### Multistep timeout calculation
+
+```ts
+function calculateStepTimeout(step: TestableStep): number {
+  if (step.isMultistep) {
+    return DEFAULT_STEP_TIMEOUT_MS + (step.internalActionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS);
   }
-  ```
+  return DEFAULT_STEP_TIMEOUT_MS;
+}
+// Example: 5-action multistep gets 55s timeout
+```
 
-- **Design decisions**:
-  - Only auto-classify `infrastructure` per MVP approach
-  - Do not attempt to distinguish `content-drift` from `product-regression` (requires human baseline)
-  - Include classification for both `failed` and `not_reached` steps (AUTH_EXPIRED affects not_reached)
-  - Pattern matching is case-insensitive and broad to catch variations
+### Session validation
 
----
-
-### Milestone L3-5D: Artifact Collection on Failure ✅ **COMPLETED**
-
-**Rationale**: Screenshots and DOM snapshots are critical for debugging failures in CI where you can't watch the browser.
-
-**Goal**: Capture diagnostic artifacts when steps fail.
-
-**Specification**: See [Artifact Collection on Failure](./e2e-test-runner-design.md#artifact-collection-on-failure) for artifact types and implementation.
-
-**Deliverables**:
-
-1. Implement screenshot capture on failure per design doc
-2. Implement DOM snapshot capture
-3. Add `--artifacts` CLI flag for output directory
-4. Include artifact paths in JSON output
-
-**Dependencies**: Milestone L3-5C
-
-**Files created/modified**:
-
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Added ArtifactPaths type, captureFailureArtifacts() function, updated executeStep() and executeAllSteps()
-- `src/cli/utils/e2e-reporter.ts` - Added ArtifactPaths type to report types, updated convertStepResults()
-- `src/cli/commands/e2e.ts` - Added ARTIFACTS_DIR environment variable for Playwright
-- `tests/e2e-runner/guide-runner.spec.ts` - Read ARTIFACTS_DIR, pass to executeAllSteps(), include artifacts in results file
-- `tests/e2e-runner/utils/console-reporter.ts` - Added artifact path output for failed steps
-
-**Acceptance criteria**:
-
-- [x] Screenshot captured on step failure ✅
-- [x] DOM snapshot captured on step failure ✅
-- [x] Artifacts written to `--artifacts` directory (default: `./artifacts/`) ✅
-- [x] Artifact paths included in JSON output ✅
-- [x] Console errors captured per step ✅
-- [x] No artifacts captured for passing steps (saves space) ✅
-
-**Estimated effort**: Medium (1 day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **ArtifactPaths interface** captures three types of artifacts:
-  - `screenshot`: PNG image of visual state at failure time
-  - `dom`: HTML snapshot of DOM structure for selector debugging
-  - `console`: JSON file with console.error() messages during step execution
-
-- **`captureFailureArtifacts()` function** (guide-test-runner.ts):
-  - Creates artifacts directory if it doesn't exist
-  - Captures screenshot using `page.screenshot()` with `fullPage: false`
-  - Captures DOM using `page.content()` and writes to HTML file
-  - Writes console errors to JSON file if any were collected
-  - Returns paths only if at least one artifact was captured successfully
-  - Handles errors gracefully with warnings (doesn't fail if capture fails)
-
-- **Artifact filenames** follow the pattern: `{stepId}-failure.png`, `{stepId}-dom.html`, `{stepId}-console.json`
-
-- **Integration points**:
-  - CLI: `--artifacts` flag with default `./artifacts/` passed via `ARTIFACTS_DIR` env var
-  - Playwright: `executeStep()` captures artifacts on failure, `executeAllSteps()` passes artifactsDir
-  - JSON report: `artifacts` field added to step results with file paths
-  - Console output: Shows artifact count and paths for failed steps
-
-- **Design decisions**:
-  - Only capture artifacts on failed steps (not skipped/passed) to save space
-  - Console errors written separately from step result (avoids duplicate storage)
-  - Artifacts directory created lazily only when first failure occurs
-  - Screenshot uses viewport only (`fullPage: false`) per design doc
+Validates session every N steps (default 5) to detect expiry during long tests:
+- Uses `/api/user` fetch in browser context with session cookies
+- On expiry: marks remaining steps as `not_reached`, sets `abortReason: 'AUTH_EXPIRED'`
+- Exit code 4 mechanism: test writes abort reason to temp file, CLI reads it
 
 ---
 
-## L3 Phase 6: Framework Test Guide
+## Requirements Handling
 
-### Milestone L3-6A: Framework Test Guide Creation (MVP) ✅ **COMPLETED**
+`tests/e2e-runner/utils/guide-runner/requirements.ts` manages step requirements.
 
-**Rationale**: Validates the E2E framework itself; failures here indicate framework bugs, not guide bugs.
+### Detection
 
-**Goal**: Create a minimal guide that validates basic E2E framework functionality.
+```ts
+interface RequirementResult {
+  status: 'met' | 'unmet' | 'checking' | 'unknown';
+  hasFixButton: boolean;
+  fixType?: 'navigation' | 'location' | 'expand-parent-navigation' | 'lazy-scroll';
+  skippable: boolean;
+  hasRetryButton: boolean;
+  hasSkipButton: boolean;
+  explanationText?: string;
+}
+```
 
-**Specification**: See [Framework Test Guide](./e2e-test-runner-design.md#framework-test-guide) for MVP scope and expansion criteria.
+Detection examines DOM for:
+- "Do it" button enabled state (indicates requirements met)
+- Requirement explanation element (indicates unmet/checking)
+- Spinner visibility (indicates requirements being checked)
+- Fix, Retry, Skip button presence
 
-**Deliverables**:
+### Fix execution
 
-1. Create `src/bundled-interactives/e2e-framework-test.json` with 3-4 steps
-2. Steps cover: highlight, button click, navigate
-3. No side effects (read-only operations only)
+```ts
+FIX_BUTTON_TIMEOUT_MS = 10000;  // Per fix operation
+MAX_FIX_ATTEMPTS = 3;           // Reduced from 10 for faster failure
+POST_FIX_SETTLE_DELAY_MS = 1000;
+NAVIGATION_FIX_SETTLE_DELAY_MS = 2000;  // Location fixes
+```
 
-**Decide Later**:
+Fix type handling:
+- `location`: 2s delay + `waitForLoadState('networkidle')`
+- `navigation`, `expand-parent-navigation`: 1s delay
+- `lazy-scroll`: Standard delay
 
-- Exact timing thresholds (collect data first)
-- Full coverage matrix (expand based on observed gaps)
-- Failure interpretation table (build from real failures)
+### Skip/mandatory logic
 
-**Dependencies**: Milestone L3-5D (needs artifact capture working)
+```
+Requirements met? → Execute step
+Requirements not met + skippable → SKIPPED (continue)
+Requirements not met + mandatory + fix available → Attempt fix
+Requirements not met + mandatory + fix failed → FAILED (abort)
+Execution fails + skippable → FAILED (continue)
+Execution fails + mandatory → FAILED (abort)
+```
 
-**Design principles**:
+---
+
+## Reporting
+
+### Console output
+
+`tests/e2e-runner/utils/console-reporter.ts` provides formatted output:
+- Status icons: ✓ passed, ✗ failed, ⊘ skipped, ○ not_reached
+- Right-aligned duration per step
+- Box-style header with guide title
+- Summary with pass/fail counts
+
+### JSON reports
+
+`src/cli/utils/e2e-reporter.ts` generates structured reports.
+
+**Single guide report:**
+```ts
+interface E2ETestReport {
+  guide: { id: string; title: string; path: string };
+  config: { grafanaUrl: string; timestamp: string };
+  summary: {
+    total: number; passed: number; failed: number;
+    skipped: number; notReached: number;
+    mandatoryFailed: number; skippableFailed: number;
+    duration: number;
+  };
+  steps: StepResult[];
+}
+```
+
+**Multi-guide report** (for `--bundled` runs):
+```ts
+interface MultiGuideReport {
+  type: 'multi-guide';
+  summary: {
+    totalGuides: number; passedGuides: number;
+    failedGuides: number; authExpiredGuides: number;
+    steps: AggregatedStepCounts;
+    totalDuration: number;
+  };
+  guides: GuideResult[];  // Condensed per-guide results
+  reports: E2ETestReport[];  // Full reports for analysis
+}
+```
+
+### Error classification
+
+MVP approach: only auto-classify high-confidence `infrastructure` failures.
+
+```ts
+type ErrorClassification = 'infrastructure' | 'content-drift' | 'product-regression' | 'unknown';
+```
+
+Infrastructure patterns recognized:
+- Timeout: `timeout`, `timed out`, `waiting for`, `exceeded`
+- Network: `network`, `net::`, `fetch failed`, `econnrefused`
+- Auth: `auth.*expir`, `session.*expir`, `unauthorized`, `401`, `403`
+- Browser: `browser.*closed`, `page.*crashed`
+
+`content-drift` vs `product-regression` distinction requires human validation and is not auto-classified.
+
+### Artifact collection
+
+On step failure, captures:
+- **Screenshot**: `{stepId}-failure.png` (viewport only)
+- **DOM snapshot**: `{stepId}-dom.html` for selector debugging
+- **Console errors**: `{stepId}-console.json` if any were collected
+
+Artifacts captured only on failure to save space. Directory created lazily.
+
+---
+
+## Authentication Module
+
+`tests/e2e-runner/auth/grafana-auth.ts` provides swappable auth strategies.
+
+### Strategy interface
+
+```ts
+interface AuthStrategy {
+  name: string;
+  authenticate(page: Page, grafanaUrl: string): Promise<AuthResult>;
+  validateSession(page: Page): Promise<SessionValidationResult>;
+  refreshSession?(page: Page): Promise<AuthResult>;  // Optional
+}
+```
+
+### Default strategy
+
+Uses `@grafana/plugin-e2e` authentication via Playwright's `storageState`. Session persisted in `playwright/.auth/admin.json`.
+
+### Extension point
+
+Custom strategies can implement token refresh for long-running tests. The default strategy does not support refresh by design.
+
+---
+
+## Framework Test Guide
+
+`src/bundled-interactives/e2e-framework-test.json` validates the E2E framework itself.
+
+### Design principles
 
 - **No mutations**: Never create, modify, or delete data
 - **No dependencies**: Works on fresh Grafana with defaults
 - **Stable selectors**: Uses only elements that exist in all versions
 - **Fast execution**: Completes in under 60 seconds
-- **Deterministic**: Same result every time on same Grafana version
+- **Deterministic**: Same result every time
 
-**Acceptance criteria**:
+### Implementation notes
 
-- [x] Framework test guide runs without error on fresh Grafana ✅
-- [x] Guide completes in under 60 seconds (rough bound, not per-step) ✅
-- [x] `npx pathfinder-cli e2e bundled:e2e-framework-test` works ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **Guide structure**: 3 independent highlight actions (not in a section) to avoid sequential dependency issues at discovery time
-- **Steps test**: highlight action, navmenu-open requirement handling, fix button mechanism, multiple step execution, skippable step handling
-- **Performance**: Guide completes in ~3 seconds (well under 60s target)
-- **Selectors used**: Standard Grafana nav menu item test IDs (`a[data-testid='data-testid Nav menu item'][href='...']`) for cross-version stability
-- **Fix applied during implementation**: Updated `guide-runner.spec.ts` to open docs panel via Help button click before dispatching custom event (event listener is only active when panel is mounted)
-
-**Design decisions**:
-
-- **Highlight actions only**: Button and navigate actions were initially tested but don't reliably have "Do it" buttons when used standalone. Highlight actions with `navmenu-open` requirements provide consistent testable behavior.
-- **Independent steps (no section)**: Steps outside sections have "Do it" buttons immediately enabled at discovery time. Section steps use sequential dependencies which means only the first step has a button at discovery time.
-- **Read-only verification**: All steps highlight existing nav menu items without creating, modifying, or deleting data.
-
-**Files created/modified**:
-
-- `src/bundled-interactives/e2e-framework-test.json` - Framework test guide (NEW)
-- `tests/e2e-runner/guide-runner.spec.ts` - Fixed docs panel opening mechanism
+- Uses highlight actions only (button/navigate actions don't reliably have "Do it" buttons standalone)
+- Steps outside sections (independent) to avoid sequential dependency timing issues at discovery
+- Uses standard Grafana nav menu item test IDs for cross-version stability
 
 ---
 
-## L3 Phase 7: Polish & Extensions
-
-### Milestone L3-7A: Authentication Module Abstraction ✅ **COMPLETED**
-
-**Rationale**: Enables swappable auth strategies per [Authentication Module](./e2e-test-runner-design.md#authentication-module).
-
-**Goal**: Abstract authentication for future extensibility.
-
-**Deliverables**:
-
-1. Create `tests/e2e-runner/auth/grafana-auth.ts` interface
-2. MVP implementation using `@grafana/plugin-e2e` auth
-3. Documentation for swapping auth strategies
-
-**Dependencies**: Can be done in parallel with L3 Phase 5
-
-**Files created/modified**:
-
-- `tests/e2e-runner/auth/grafana-auth.ts` - Auth strategy interface and implementation (NEW)
-- `tests/e2e-runner/auth/index.ts` - Re-exports for convenient importing (NEW)
-- `tests/e2e-runner/utils/preflight.ts` - Updated to use auth abstraction
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Updated `validateSession()` to use auth abstraction
-
-**Acceptance criteria**:
-
-- [x] Auth logic isolated in separate module ✅
-- [x] Tests run with existing auth (admin.json) ✅
-- [x] Clear extension point documented for alternative auth strategies ✅
-
-**Estimated effort**: Small (half day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **Strategy pattern**: The auth module uses a strategy pattern with `AuthStrategy` interface to enable swappable auth strategies for different environments (local dev, CI, Grafana Cloud, etc.)
-
-- **Types exported**:
-  - `AuthStrategy`: Interface for implementing custom auth strategies
-  - `AuthContext`: High-level API for auth operations bound to a URL and strategy
-  - `AuthResult`: Result of authentication operations
-  - `SessionValidationResult`: Result of session validation
-
-- **Default strategy** (`pluginE2EAuthStrategy`): Uses `@grafana/plugin-e2e` authentication which relies on Playwright's `storageState` feature. Session state is persisted in `playwright/.auth/admin.json`.
-
-- **Factory functions**:
-  - `createAuthContext(grafanaUrl, strategy?)`: Creates an auth context with specified strategy
-  - `getDefaultAuthStrategy()`: Returns the default plugin-e2e strategy
-
-- **Utility functions**:
-  - `isSessionValid(page)`: Lightweight session validity check
-  - `validateSessionDetailed(page)`: Session validation with detailed result
-
-- **Integration points**:
-  - `preflight.ts`: `checkAuthValid()` now accepts optional `authStrategy` parameter
-  - `guide-test-runner.ts`: `validateSession()` delegates to auth module
-
-- **Documentation**: Extensive JSDoc comments with examples for custom auth strategy implementation. See `grafana-auth.ts` for full documentation including:
-  - How the default strategy works
-  - Prerequisites for using the module
-  - Example custom auth strategy implementation
-  - Extension points for future auth methods
-
-- **Design decisions**:
-  - Session refresh not supported by default strategy (by design - long-running tests should use a strategy with token refresh)
-  - Backward compatible - existing tests work without changes
-  - Auth context provides high-level API, raw strategy access available if needed
-
----
-
----
-
-### Milestone L3-7B: Bundled Guide Testing ✅ **COMPLETED**
-
-**Rationale**: Tests all bundled guides per [CLI Interface](./e2e-test-runner-design.md#cli-interface) `--bundled` flag.
-
-**Goal**: Add `--bundled` flag to test all bundled guides.
-
-**Deliverables**:
-
-1. Implement `--bundled` flag in CLI
-2. Load guides from `src/bundled-interactives/`
-3. Run tests for each guide sequentially
-4. Aggregate results across all guides
-
-**Dependencies**: Milestone L3-5D
-
-**Files modified**:
-
-- `src/cli/utils/e2e-reporter.ts` - Added multi-guide report types and aggregation functions
-- `src/cli/commands/e2e.ts` - Updated to generate aggregated JSON reports and improved console output
-
-**Acceptance criteria**:
-
-- [x] `npx pathfinder-cli e2e --bundled` tests all bundled guides ✅
-- [x] Each guide tested independently ✅
-- [x] Summary shows results across all guides ✅
-- [x] Exit code reflects overall pass/fail ✅
-
-**Estimated effort**: Medium (1 day)
-
-**Actual effort**: ~1 hour
-
-**Implementation Notes**:
-
-- **Multi-guide report types** added to `e2e-reporter.ts`:
-  - `MultiGuideSummary`: Aggregated statistics across all guides (totalGuides, passedGuides, failedGuides, authExpiredGuides, aggregated step counts)
-  - `GuideResult`: Condensed per-guide result (id, title, path, success, abortReason, summary, duration)
-  - `MultiGuideReport`: Complete multi-guide report with `type: 'multi-guide'`, config, summary, guides array, and full reports array
-
-- **Multi-guide aggregation functions**:
-  - `generateMultiGuideSummary()`: Aggregates step counts across all guide reports
-  - `toGuideResult()`: Converts full report to condensed guide result
-  - `generateMultiGuideReport()`: Creates complete multi-guide report from results array
-  - `writeMultiGuideReport()`: Writes JSON report to file
-  - `isMultiGuideReportSuccess()`: Checks if all guides passed (no mandatory failures)
-  - `formatMultiGuideSummary()`: Formats brief summary line for console output
-
-- **Console output improvements** for multi-guide runs:
-  - Shows guide pass/fail counts with breakdown
-  - Shows aggregated step statistics
-  - Lists individual guide results with status icons
-  - Multi-guide JSON report path shown with formatted summary
-
-- **JSON report structure** for multi-guide runs:
-
-  ```json
-  {
-    "type": "multi-guide",
-    "config": { "grafanaUrl": "...", "timestamp": "..." },
-    "summary": {
-      "totalGuides": 10,
-      "passedGuides": 9,
-      "failedGuides": 1,
-      "authExpiredGuides": 0,
-      "steps": { "total": 47, "passed": 42, ... },
-      "totalDuration": 120000
-    },
-    "guides": [{ "id": "...", "success": true, ... }],
-    "reports": [{ /* full E2ETestReport for each guide */ }]
-  }
-  ```
-
-- **Design decisions**:
-  - Full step-level reports included in `reports` array for detailed analysis
-  - Condensed `guides` array for quick overview
-  - Single guide runs still generate single-guide format for backward compatibility
-  - Exit code 1 if any mandatory step fails in any guide
-
----
-
-### Milestone L3-7C: CI Workflow Template
-
-**Rationale**: Enables automated testing in CI pipelines with appropriate failure policies.
-
-**Goal**: Provide GitHub Actions workflow for running E2E tests in CI.
-
-**Specification**: See [CI workflow example](./e2e-test-runner-design.md#ci-workflow-example-medium-term) for example workflow YAML and [CI test policies](./e2e-test-runner-design.md#ci-test-policies) for trigger/policy table.
-
-**Deliverables**:
-
-1. Create `.github/workflows/e2e-guides.yml` template per design doc
-2. Document CI integration patterns
-3. Define test policies (PR vs merge vs nightly)
-
-**Dependencies**: Milestone L3-7B
-
-**Acceptance criteria**:
-
-- [ ] Workflow template documented
-- [ ] Works in GitHub Actions environment
-- [ ] Artifacts uploaded on failure
-- [ ] Test policies documented
-
-**Estimated effort**: Small (half day)
-
----
-
-## Summary Table
-
-| Milestone                              | L3 Phase | Effort | Risk       | Dependencies | Status |
-| -------------------------------------- | -------- | ------ | ---------- | ------------ | ------ |
-| L3-1A: Assumption Verification         | 1        | Small  | High value | None         | ✅     |
-| L3-1B: JSON Loading                    | 1        | Small  | Low        | None         | ✅     |
-| L3-2A: CLI Skeleton                    | 2        | Small  | Low        | L3-1B        | ✅     |
-| L3-2B: Playwright Spawning             | 2        | Medium | Low        | L3-2A        | ✅     |
-| L3-2C: Pre-flight Checks               | 2        | Small  | Low        | L3-2B        | ✅     |
-| L3-3A: Step Discovery                  | 3        | Medium | Medium     | L3-2C        | ✅     |
-| L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        | ✅     |
-| L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        | ✅     |
-| L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        | ✅     |
-| L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        | ✅     |
-| L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        | ✅     |
-| L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        | ✅     |
-| L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        | ✅     |
-| L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        | ✅     |
-| L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        | ✅     |
-| L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        | ✅     |
-| L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        | ✅     |
-| L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     | ✅     |
-| L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        | ✅     |
-| L3-7C: CI Workflow                     | 7        | Small  | Low        | L3-7B        |        |
-
----
-
-## Dependency Graph
-
-```
-L3 Phase 1: Foundation
-  L3-1A (Spike) ────────────────────────────────────────────────────┐
-  L3-1B (JSON Loading) ───┐                                         │
-                          │                                         │
-L3 Phase 2: CLI           ▼                                         │
-  L3-2A (CLI Skeleton) ───┐                                         │
-                          │                                         │
-                          ▼                                         │
-  L3-2B (Playwright) ─────┐                                         │
-                          │                                         │
-                          ▼                                         │
-  L3-2C (Pre-flight) ─────┐                                         │
-                          │                                         │
-L3 Phase 3: Core          ▼    (Findings from L3-1A inform L3-3A-3D)│
-  L3-3A (Discovery) ──────┐◄────────────────────────────────────────┘
-                          │
-                          ▼
-  L3-3B (Execution) ──────┐
-                          │
-                          ▼
-  L3-3C (Timing/Polling) ─┐
-                          │
-                          ▼
-  L3-3D (Session) ────────┐
-                          │
-L3 Phase 4: Requirements  ▼
-  L3-4A (Detection) ──────┐
-                          │
-                          ▼
-  L3-4B (Fix Buttons) ────┐
-                          │
-                          ▼
-  L3-4C (Skip/Mandatory) ─┐
-                          │
-L3 Phase 5: Reporting     ▼
-  L3-5A (Console) ────────┐
-                          │
-                          ▼
-  L3-5B (JSON) ───────────┐
-                          │
-                          ▼
-  L3-5C (Classification) ─┐
-                          │
-                          ▼
-  L3-5D (Artifacts) ──────┐
-                          │
-L3 Phase 6: Framework     ▼
-  L3-6A (Test Guide) ─────┐
-                          │
-L3 Phase 7: Polish        ▼
-  L3-7A (Auth) ◄──────────┤ (can run in parallel with L3 Phase 5-6)
-                          │
-  L3-7B (Bundled) ◄───────┤
-                          │
-                          ▼
-  L3-7C (CI Workflow) ◄───┘
-```
-
----
-
-## Total Estimated Effort
-
-- **L3 Phase 1**: 1.5-2.5 days
-- **L3 Phase 2**: 2-3 days (includes pre-flight checks)
-- **L3 Phase 3**: 4-6 days estimated, ~5 hours actual (highest complexity, includes DOM polling completion + session validation)
-- **L3 Phase 4**: 2.5-3.5 days
-- **L3 Phase 5**: 3-4 days (includes error classification + artifact collection)
-- **L3 Phase 6**: 0.5-1 day (framework test guide MVP)
-- **L3 Phase 7**: 2-3 days
-
-**Total**: ~14-22 days of focused development
-
----
-
-## Notes for Implementation
-
-1. **Start with Milestone L3-1A**: The spike is critical. Unverified assumptions in the design could invalidate later milestones.
-
-2. **L3 Phase 3 is the riskiest**: Timing and completion detection involves the reactive requirements system. DOM polling is simpler than event-driven but may need adjustment based on empirical data. Budget extra time here.
-
-3. **Milestone L3-7A can be parallelized**: Authentication abstraction is independent and can be worked on alongside L3 Phase 5-6.
-
-4. **Each milestone should be a PR**: Keep changes focused and reviewable.
-
-5. **Write tests for the test runner**: Meta, but important. Unit tests for utility functions in `guide-test-runner.ts`.
-
-6. **Framework test guide (L3-6A) validates your work**: Once implemented, run the framework test guide after each milestone to ensure the runner still works correctly.
-
-7. **Error classification enables CI integration**: The classification system (L3-5C) makes failure routing possible in CI workflows (L3-7C). Implement them in order.
-
-8. **Artifact collection is essential for debugging**: Don't skip L3-5D — screenshots and DOM snapshots are critical for debugging failures in CI where you can't watch the browser.
+## Files Reference
+
+### Core implementation
+
+| File | Purpose |
+|------|---------|
+| `src/cli/commands/e2e.ts` | CLI command, Playwright spawning |
+| `tests/e2e-runner/guide-runner.spec.ts` | Main Playwright test |
+| `tests/e2e-runner/utils/guide-runner/discovery.ts` | Step discovery from DOM |
+| `tests/e2e-runner/utils/guide-runner/execution.ts` | Step execution logic |
+| `tests/e2e-runner/utils/guide-runner/requirements.ts` | Requirements detection and fix handling |
+| `tests/e2e-runner/utils/console-reporter.ts` | Console output formatting |
+| `src/cli/utils/e2e-reporter.ts` | JSON report generation |
+| `tests/e2e-runner/utils/preflight.ts` | Pre-flight check utilities |
+| `tests/e2e-runner/auth/grafana-auth.ts` | Auth strategy abstraction |
+
+### Infrastructure
+
+| File | Purpose |
+|------|---------|
+| `src/lib/user-storage.ts` | E2E_TEST_GUIDE storage key |
+| `src/docs-retrieval/content-fetcher.ts` | bundled:e2e-test handler |
+| `src/bundled-interactives/e2e-framework-test.json` | Framework validation guide |
