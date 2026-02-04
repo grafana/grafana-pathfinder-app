@@ -150,7 +150,7 @@ export function SectionNestedBlocks({
         ) : (
           <BlockPalette
             onSelect={(type) => onInsertBlockInSection(type, block.id)}
-            excludeTypes={['section', 'conditional']}
+            excludeTypes={['section']}
             embedded
           />
         )}

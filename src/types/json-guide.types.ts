@@ -190,6 +190,8 @@ export interface JsonConditionalBlock {
   description?: string;
   /** Display mode: 'inline' (default) or 'section' for section-styled rendering */
   display?: ConditionalDisplayMode;
+  /** Target element for exists-reftarget condition (CSS selector or button text) */
+  reftarget?: string;
   /** Section config for the 'pass' branch (only used when display is 'section') */
   whenTrueSectionConfig?: ConditionalSectionConfig;
   /** Section config for the 'fail' branch (only used when display is 'section') */
