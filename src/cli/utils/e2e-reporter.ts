@@ -61,6 +61,19 @@ export interface ReportSummary {
 }
 
 /**
+ * Error classification for failure triage (L3-5C).
+ *
+ * Per design doc MVP approach:
+ * - Only `infrastructure` can be reliably auto-classified
+ * - All other failures default to `unknown` and require human triage
+ */
+export type ErrorClassification =
+  | 'content-drift' // Selector/requirement issues (requires human validation)
+  | 'product-regression' // Action failures (requires human validation)
+  | 'infrastructure' // TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED
+  | 'unknown'; // Default - cannot be reliably classified
+
+/**
  * Step result in the JSON report.
  *
  * Per design doc, each step includes:
@@ -86,6 +99,12 @@ export interface ReportStepResult {
   error?: string;
   /** Whether the step was skippable (L3-4C) */
   skippable?: boolean;
+  /**
+   * Error classification for failure triage (L3-5C).
+   * Only present for failed or not_reached steps.
+   * Per MVP: only `infrastructure` is auto-classified, others default to `unknown`.
+   */
+  classification?: ErrorClassification;
 }
 
 /**
@@ -127,6 +146,8 @@ export interface TestStepResult {
   error?: string;
   skipReason?: string;
   skippable: boolean;
+  /** Error classification for failure triage (L3-5C) */
+  classification?: ErrorClassification;
 }
 
 /**
@@ -210,6 +231,11 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
     // Include skippable flag for failed steps (useful for understanding why test passed/failed)
     if (result.status === 'failed') {
       reportStep.skippable = result.skippable;
+    }
+
+    // L3-5C: Include classification for failed or not_reached steps
+    if ((result.status === 'failed' || result.status === 'not_reached') && result.classification) {
+      reportStep.classification = result.classification;
     }
 
     return reportStep;

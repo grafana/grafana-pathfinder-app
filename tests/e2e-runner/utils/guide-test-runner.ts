@@ -216,6 +216,31 @@ export type AbortReason =
   | 'AUTH_EXPIRED' // Session expired mid-test
   | 'MANDATORY_FAILURE'; // A mandatory step failed
 
+// ============================================
+// Error Classification Types (L3-5C)
+// ============================================
+
+/**
+ * Error classification for failure triage (L3-5C).
+ *
+ * Per design doc MVP approach:
+ * - Only `infrastructure` can be reliably auto-classified
+ * - All other failures default to `unknown` and require human triage
+ *
+ * Classification types (for future use):
+ * - `content-drift`: Selector/requirement issues → Content team
+ * - `product-regression`: Action failures → Product team
+ * - `infrastructure`: TIMEOUT/NETWORK/AUTH → Environmental
+ * - `unknown`: Default for anything that can't be reliably classified
+ *
+ * @see tests/e2e-runner/design/e2e-test-runner-design.md#error-classification
+ */
+export type ErrorClassification =
+  | 'content-drift' // Selector/requirement issues (requires human validation)
+  | 'product-regression' // Action failures (requires human validation)
+  | 'infrastructure' // TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED
+  | 'unknown'; // Default - cannot be reliably classified
+
 /**
  * Result of executing a single step.
  *
@@ -227,6 +252,7 @@ export type AbortReason =
  * - Error message: if status is 'failed'
  * - Skip reason: if status is 'skipped'
  * - Skippable: whether the step was marked as skippable (L3-4C)
+ * - Classification: error classification for triage (L3-5C)
  */
 export interface StepTestResult {
   /** The step identifier */
@@ -256,6 +282,14 @@ export interface StepTestResult {
    * Per design doc: skippable step failures do NOT fail the overall test.
    */
   skippable: boolean;
+
+  /**
+   * Error classification for failure triage (L3-5C).
+   * Only present for failed steps.
+   * Per design doc MVP: only `infrastructure` is auto-classified,
+   * all others default to `unknown`.
+   */
+  classification?: ErrorClassification;
 }
 
 /**
@@ -396,6 +430,93 @@ const POST_FIX_SETTLE_DELAY_MS = 1000;
  * Location fixes trigger navigation which needs time to settle.
  */
 const NAVIGATION_FIX_SETTLE_DELAY_MS = 2000;
+
+// ============================================
+// Error Classification Functions (L3-5C)
+// ============================================
+
+/**
+ * Patterns for identifying infrastructure errors (L3-5C).
+ *
+ * These patterns indicate environmental/infrastructure issues that
+ * are unlikely to be caused by guide content or product code changes.
+ */
+const INFRASTRUCTURE_ERROR_PATTERNS = [
+  // Timeout patterns - environmental/performance issues
+  /timeout/i,
+  /timed out/i,
+  /waiting for/i, // "Timeout waiting for X"
+  /exceeded/i, // "Timeout exceeded"
+
+  // Network patterns - connectivity issues
+  /network/i,
+  /net::/i, // Chrome network errors like net::ERR_*
+  /fetch failed/i,
+  /econnrefused/i,
+  /enotfound/i,
+  /connection refused/i,
+  /connection reset/i,
+  /dns/i,
+
+  // Auth patterns - session/authentication issues
+  /auth.*expir/i,
+  /session.*expir/i,
+  /unauthorized/i,
+  /401/,
+  /403.*forbidden/i,
+
+  // Browser/Playwright infrastructure
+  /browser.*closed/i,
+  /target.*closed/i,
+  /page.*crashed/i,
+  /context.*destroyed/i,
+] as const;
+
+/**
+ * Classify an error for failure triage (L3-5C).
+ *
+ * Per design doc MVP approach:
+ * - TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED → `infrastructure`
+ * - Everything else → `unknown` (requires human triage)
+ *
+ * This function analyzes error messages to determine classification.
+ * Only high-confidence infrastructure patterns are auto-classified.
+ * All ambiguous cases default to `unknown` to avoid misrouting.
+ *
+ * @param error - Error message to classify
+ * @param abortReason - Optional abort reason (AUTH_EXPIRED is always infrastructure)
+ * @returns ErrorClassification
+ *
+ * @example
+ * ```typescript
+ * classifyError('Timeout waiting for step completion')  // → 'infrastructure'
+ * classifyError('net::ERR_CONNECTION_REFUSED')          // → 'infrastructure'
+ * classifyError('Element not found')                    // → 'unknown'
+ * classifyError(undefined, 'AUTH_EXPIRED')              // → 'infrastructure'
+ * ```
+ */
+export function classifyError(error?: string, abortReason?: AbortReason): ErrorClassification {
+  // AUTH_EXPIRED abort is always infrastructure
+  if (abortReason === 'AUTH_EXPIRED') {
+    return 'infrastructure';
+  }
+
+  // No error message means we can't classify
+  if (!error) {
+    return 'unknown';
+  }
+
+  // Check if error matches any infrastructure patterns
+  const isInfrastructure = INFRASTRUCTURE_ERROR_PATTERNS.some((pattern) => pattern.test(error));
+
+  if (isInfrastructure) {
+    return 'infrastructure';
+  }
+
+  // Default to unknown for all other errors
+  // Per design doc: "default to `unknown` and require human triage"
+  return 'unknown';
+}
 
 // ============================================
 // Discovery Functions
@@ -1578,14 +1699,17 @@ export async function executeStep(
             `   ✗ Step ${step.stepId} failed: requirements not met after ${fixResult.totalAttempts} fix attempts`
           );
         }
+        const errorMsg = `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`;
         return {
           stepId: step.stepId,
           status: 'failed',
           durationMs: Date.now() - startTime,
           currentUrl: page.url(),
           consoleErrors,
-          error: `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`,
+          error: errorMsg,
           skippable: step.skippable,
+          // L3-5C: Classify the error - requirements failures are typically 'unknown'
+          classification: classifyError(errorMsg),
         };
       }
 
@@ -1637,14 +1761,17 @@ export async function executeStep(
     };
   } catch (error) {
     // Return failure result with error details
+    const errorMsg = error instanceof Error ? error.message : String(error);
     return {
       stepId: step.stepId,
       status: 'failed',
       durationMs: Date.now() - startTime,
       currentUrl: page.url(),
       consoleErrors,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMsg,
       skippable: step.skippable,
+      // L3-5C: Classify the error for triage hints
+      classification: classifyError(errorMsg),
     };
   } finally {
     // REACT: cleanup subscription (R1) - Clean up console handler to prevent memory leaks
@@ -1743,6 +1870,7 @@ export async function executeAllSteps(
         abortMessage = 'Session expired mid-test';
 
         // Mark current and remaining steps as not_reached
+        // L3-5C: Classify as infrastructure since it's due to AUTH_EXPIRED
         for (let j = i; j < steps.length; j++) {
           results.push({
             stepId: steps[j].stepId,
@@ -1751,6 +1879,8 @@ export async function executeAllSteps(
             currentUrl: page.url(),
             consoleErrors: [],
             skippable: steps[j].skippable,
+            // L3-5C: AUTH_EXPIRED is always infrastructure
+            classification: 'infrastructure',
           });
         }
         break;

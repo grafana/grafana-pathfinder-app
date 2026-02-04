@@ -137,6 +137,11 @@ export function printStepResult(result: StepTestResult): void {
       result.error.length > maxErrorLength ? result.error.substring(0, maxErrorLength - 3) + '...' : result.error;
     console.log(`    Error: ${errorText}`);
   }
+
+  // L3-5C: Print classification for failed or not_reached steps
+  if ((result.status === 'failed' || result.status === 'not_reached') && result.classification) {
+    console.log(`    Classification: ${result.classification}`);
+  }
 }
 
 /**

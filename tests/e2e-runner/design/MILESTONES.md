@@ -745,7 +745,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ## L3 Phase 5: Reporting
 
-**Progress**: 2/4 milestones complete (L3-5A ✅, L3-5B ✅)
+**Progress**: 3/4 milestones complete (L3-5A ✅, L3-5B ✅, L3-5C ✅)
 
 ### Milestone L3-5A: Console Reporting ✅ **COMPLETED**
 
@@ -894,7 +894,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-5C: Error Classification (MVP)
+### Milestone L3-5C: Error Classification (MVP) ✅ **COMPLETED**
 
 **Rationale**: Provides hints for failure triage per [Failure Classification](../../TESTING_STRATEGY.md#failure-classification).
 
@@ -916,14 +916,64 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-5B
 
+**Files modified**:
+
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Added ErrorClassification type, classifyError function, classification field to StepTestResult
+- `src/cli/utils/e2e-reporter.ts` - Added ErrorClassification type and classification field to ReportStepResult, updated convertStepResults
+- `tests/e2e-runner/utils/console-reporter.ts` - Added classification output for failed steps
+
 **Acceptance criteria**:
 
-- [ ] All failures include classification field
-- [ ] Infrastructure failures correctly identified (TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED)
-- [ ] `unknown` used as default (not guessing)
-- [ ] JSON output includes classification field
+- [x] All failures include classification field ✅
+- [x] Infrastructure failures correctly identified (TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED) ✅
+- [x] `unknown` used as default (not guessing) ✅
+- [x] JSON output includes classification field ✅
 
 **Estimated effort**: Small (half day)
+
+**Actual effort**: ~30 minutes
+
+**Implementation Notes**:
+
+- **ErrorClassification type** defined with four categories:
+  - `infrastructure`: TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED (high-confidence auto-classification)
+  - `content-drift`: Selector/requirement issues (requires human validation - not auto-classified)
+  - `product-regression`: Action failures (requires human validation - not auto-classified)
+  - `unknown`: Default for all cases that cannot be reliably classified
+
+- **classifyError() function** implements pattern matching:
+  - Checks `abortReason` first (AUTH_EXPIRED → infrastructure)
+  - Matches error message against infrastructure patterns (timeout, network, connection errors)
+  - Returns `unknown` for all non-matching cases per design doc MVP approach
+
+- **Infrastructure patterns recognized**:
+  - Timeout: `timeout`, `timed out`, `waiting for`, `exceeded`
+  - Network: `network`, `net::`, `fetch failed`, `econnrefused`, `connection refused/reset`
+  - Auth: `auth.*expir`, `session.*expir`, `unauthorized`, `401`, `403`
+  - Browser: `browser.*closed`, `page.*crashed`, `context.*destroyed`
+
+- **Console output enhanced** to show classification for failed/not_reached steps:
+  ```
+    ✗ step-5 - FAILED                                          [5.2s]
+      Error: Timeout waiting for step completion indicator
+      Classification: infrastructure
+  ```
+
+- **JSON report** includes classification per design doc spec:
+  ```json
+  {
+    "stepId": "step-5",
+    "status": "failed",
+    "classification": "infrastructure",
+    ...
+  }
+  ```
+
+- **Design decisions**:
+  - Only auto-classify `infrastructure` per MVP approach
+  - Do not attempt to distinguish `content-drift` from `product-regression` (requires human baseline)
+  - Include classification for both `failed` and `not_reached` steps (AUTH_EXPIRED affects not_reached)
+  - Pattern matching is case-insensitive and broad to catch variations
 
 ---
 
@@ -1100,7 +1150,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        | ✅     |
 | L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        | ✅     |
 | L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        | ✅     |
-| L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        |        |
+| L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        | ✅     |
 | L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |        |
 | L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        |        |
 | L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     |        |
