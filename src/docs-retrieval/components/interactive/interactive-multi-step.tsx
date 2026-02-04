@@ -206,6 +206,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for overall multi-step requirements and objectives
+    // Auto-completion when objectives are met is handled internally by useStepChecker
     const checker = useStepChecker({
       requirements,
       objectives,
@@ -214,6 +215,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
+      disabled, // Pass through for auto-completion suppression
+      onStepComplete, // Pass through for objectives auto-completion
+      onComplete, // Pass through for objectives auto-completion
     });
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
