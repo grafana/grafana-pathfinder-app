@@ -7,6 +7,12 @@
  */
 
 import type { Page } from '@playwright/test';
+import {
+  createAuthContext,
+  getDefaultAuthStrategy,
+  type AuthStrategy,
+  type AuthResult,
+} from '../auth/grafana-auth';
 
 /**
  * Exit codes per design spec
@@ -119,38 +125,59 @@ export async function checkGrafanaHealth(grafanaUrl: string): Promise<PreFlightC
 /**
  * Check if authentication is valid (requires Playwright page).
  *
- * This navigates to a protected page and verifies the user is not redirected to login.
- * Should be called after Playwright auth setup (e.g., via admin.json state).
+ * This uses the auth abstraction module to validate authentication.
+ * By default, uses the `@grafana/plugin-e2e` strategy which relies on
+ * stored session state (admin.json).
+ *
+ * To use a different auth strategy, pass it via the options parameter.
+ *
+ * @param page - Playwright Page object (should have auth state loaded)
+ * @param grafanaUrl - Base URL of the Grafana instance
+ * @param options - Optional configuration
+ * @returns PreFlightCheck result indicating auth validity
+ *
+ * @example Using default auth strategy
+ * ```typescript
+ * const result = await checkAuthValid(page, 'http://localhost:3000');
+ * if (!result.passed) {
+ *   throw new Error(result.error);
+ * }
+ * ```
+ *
+ * @example Using custom auth strategy
+ * ```typescript
+ * import { myAuthStrategy } from './my-auth-strategy';
+ * const result = await checkAuthValid(page, 'http://localhost:3000', {
+ *   authStrategy: myAuthStrategy,
+ * });
+ * ```
+ *
+ * @see tests/e2e-runner/auth/grafana-auth.ts for auth strategy documentation
  */
-export async function checkAuthValid(page: Page, grafanaUrl: string): Promise<PreFlightCheck> {
+export async function checkAuthValid(
+  page: Page,
+  grafanaUrl: string,
+  options: {
+    /** Custom auth strategy to use instead of the default */
+    authStrategy?: AuthStrategy;
+  } = {}
+): Promise<PreFlightCheck> {
   const startTime = Date.now();
   const name: PreFlightCheckName = 'auth-valid';
 
+  // Use provided strategy or fall back to default
+  const strategy = options.authStrategy ?? getDefaultAuthStrategy();
+  const authContext = createAuthContext(grafanaUrl, strategy);
+
   try {
-    // Navigate to a protected page
-    const dashboardsUrl = new URL('/dashboards', grafanaUrl).toString();
-    await page.goto(dashboardsUrl, { waitUntil: 'networkidle', timeout: 30000 });
+    // Use the auth context to authenticate/validate
+    const authResult: AuthResult = await authContext.authenticate(page);
 
-    // Check if we were redirected to login
-    const currentUrl = page.url();
-    const isLoginPage = currentUrl.includes('/login');
-
-    if (isLoginPage) {
+    if (!authResult.success) {
       return {
         name,
         passed: false,
-        error: 'Authentication failed - redirected to login page',
-        durationMs: Date.now() - startTime,
-      };
-    }
-
-    // Additional check: verify we can access protected API
-    const userResponse = await page.request.get(`${grafanaUrl}/api/user`);
-    if (!userResponse.ok()) {
-      return {
-        name,
-        passed: false,
-        error: `Authentication check failed: /api/user returned ${userResponse.status()}`,
+        error: authResult.error ?? 'Authentication failed',
         durationMs: Date.now() - startTime,
       };
     }

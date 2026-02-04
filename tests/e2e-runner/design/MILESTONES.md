@@ -1114,7 +1114,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ## L3 Phase 7: Polish & Extensions
 
-### Milestone L3-7A: Authentication Module Abstraction
+### Milestone L3-7A: Authentication Module Abstraction ✅ **COMPLETED**
 
 **Rationale**: Enables swappable auth strategies per [Authentication Module](./e2e-test-runner-design.md#authentication-module).
 
@@ -1128,17 +1128,59 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Can be done in parallel with L3 Phase 5
 
-**Files to create**:
+**Files created/modified**:
 
-- `tests/e2e-runner/auth/grafana-auth.ts` - Auth module
+- `tests/e2e-runner/auth/grafana-auth.ts` - Auth strategy interface and implementation (NEW)
+- `tests/e2e-runner/auth/index.ts` - Re-exports for convenient importing (NEW)
+- `tests/e2e-runner/utils/preflight.ts` - Updated to use auth abstraction
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Updated `validateSession()` to use auth abstraction
 
 **Acceptance criteria**:
 
-- [ ] Auth logic isolated in separate module
-- [ ] Tests run with existing auth (admin.json)
-- [ ] Clear extension point documented for alternative auth strategies
+- [x] Auth logic isolated in separate module ✅
+- [x] Tests run with existing auth (admin.json) ✅
+- [x] Clear extension point documented for alternative auth strategies ✅
 
 **Estimated effort**: Small (half day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **Strategy pattern**: The auth module uses a strategy pattern with `AuthStrategy` interface to enable swappable auth strategies for different environments (local dev, CI, Grafana Cloud, etc.)
+
+- **Types exported**:
+  - `AuthStrategy`: Interface for implementing custom auth strategies
+  - `AuthContext`: High-level API for auth operations bound to a URL and strategy
+  - `AuthResult`: Result of authentication operations
+  - `SessionValidationResult`: Result of session validation
+
+- **Default strategy** (`pluginE2EAuthStrategy`): Uses `@grafana/plugin-e2e` authentication which relies on Playwright's `storageState` feature. Session state is persisted in `playwright/.auth/admin.json`.
+
+- **Factory functions**:
+  - `createAuthContext(grafanaUrl, strategy?)`: Creates an auth context with specified strategy
+  - `getDefaultAuthStrategy()`: Returns the default plugin-e2e strategy
+
+- **Utility functions**:
+  - `isSessionValid(page)`: Lightweight session validity check
+  - `validateSessionDetailed(page)`: Session validation with detailed result
+
+- **Integration points**:
+  - `preflight.ts`: `checkAuthValid()` now accepts optional `authStrategy` parameter
+  - `guide-test-runner.ts`: `validateSession()` delegates to auth module
+
+- **Documentation**: Extensive JSDoc comments with examples for custom auth strategy implementation. See `grafana-auth.ts` for full documentation including:
+  - How the default strategy works
+  - Prerequisites for using the module
+  - Example custom auth strategy implementation
+  - Extension points for future auth methods
+
+- **Design decisions**:
+  - Session refresh not supported by default strategy (by design - long-running tests should use a strategy with token refresh)
+  - Backward compatible - existing tests work without changes
+  - Auth context provides high-level API, raw strategy access available if needed
+
+---
 
 ---
 
@@ -1216,7 +1258,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        | ✅     |
 | L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        | ✅     |
 | L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        | ✅     |
-| L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     |        |
+| L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     | ✅     |
 | L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        |        |
 | L3-7C: CI Workflow                     | 7        | Small  | Low        | L3-7B        |        |
 

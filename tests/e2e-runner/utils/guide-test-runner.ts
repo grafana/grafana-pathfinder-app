@@ -12,6 +12,7 @@ import { Page, Locator, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { testIds } from '../../../src/components/testIds';
+import { isSessionValid } from '../auth/grafana-auth';
 
 // ============================================
 // Types
@@ -875,6 +876,9 @@ async function extractMultistepInfo(
 /**
  * Validate that the current session is still active (L3-3D).
  *
+ * This function delegates to the auth abstraction module for session validation,
+ * enabling swappable auth strategies for different environments.
+ *
  * Performs a lightweight check against the /api/user endpoint to verify
  * the session hasn't expired during long-running tests. This is called
  * periodically during step execution to detect auth expiry before steps
@@ -885,33 +889,13 @@ async function extractMultistepInfo(
  *
  * @param page - Playwright Page object
  * @returns true if session is valid, false if expired
+ *
+ * @see tests/e2e-runner/auth/grafana-auth.ts for auth strategy customization
  */
 export async function validateSession(page: Page): Promise<boolean> {
-  try {
-    // Quick check: can we access a protected API endpoint?
-    // Uses page.evaluate to run fetch in browser context with session cookies
-    const response = await page.evaluate(async () => {
-      const controller = new AbortController();
-      // Set timeout for the fetch - must be inline since we can't pass the constant
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      try {
-        const res = await fetch('/api/user', {
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        return res.ok;
-      } catch {
-        clearTimeout(timeoutId);
-        return false;
-      }
-    });
-
-    return response;
-  } catch {
-    // If page.evaluate fails (e.g., page crashed), session is invalid
-    return false;
-  }
+  // Delegate to auth abstraction module (L3-7A)
+  // This uses the default plugin-e2e auth strategy
+  return isSessionValid(page);
 }
 
 // ============================================
