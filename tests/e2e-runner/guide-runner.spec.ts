@@ -15,6 +15,7 @@
  * @see tests/e2e-runner/utils/preflight.ts for pre-flight check utilities
  * @see tests/e2e-runner/utils/guide-test-runner.ts for step discovery utilities
  * @see tests/e2e-runner/utils/console-reporter.ts for console output formatting
+ * @see src/cli/utils/e2e-reporter.ts for JSON report generation
  */
 
 import { readFileSync, writeFileSync } from 'fs';
@@ -31,15 +32,16 @@ import {
   summarizeResults,
   AllStepsResult,
   AbortReason,
+  StepTestResult,
 } from './utils/guide-test-runner';
 import {
   printHeader,
   printStepResult,
-  printSummary,
   printDetailedSummary,
   printPreflightChecks,
   printDiscoveryResults,
 } from './utils/console-reporter';
+import type { TestResultsData } from '../../src/cli/utils/e2e-reporter';
 
 /**
  * Write abort reason to file for CLI to read and determine exit code.
@@ -57,6 +59,49 @@ function writeAbortFile(abortReason: AbortReason, message: string): void {
 }
 
 /**
+ * Write test results to file for CLI to read and generate JSON report (L3-5B).
+ *
+ * @param results - The step test results
+ * @param guide - Guide metadata
+ * @param grafanaUrl - Grafana URL used for testing
+ * @param timestamp - ISO timestamp of test start
+ * @param allStepsResult - Full execution result including abort info
+ */
+function writeResultsFile(
+  results: StepTestResult[],
+  guide: { id: string; title: string; path: string },
+  grafanaUrl: string,
+  timestamp: string,
+  allStepsResult: AllStepsResult
+): void {
+  const resultsFilePath = process.env.RESULTS_FILE_PATH;
+  if (!resultsFilePath) {
+    return;
+  }
+
+  const data: TestResultsData = {
+    guide,
+    grafanaUrl,
+    timestamp,
+    results: results.map((r) => ({
+      stepId: r.stepId,
+      status: r.status,
+      durationMs: r.durationMs,
+      currentUrl: r.currentUrl,
+      consoleErrors: r.consoleErrors,
+      error: r.error,
+      skipReason: r.skipReason,
+      skippable: r.skippable,
+    })),
+    aborted: allStepsResult.aborted,
+    abortReason: allStepsResult.abortReason,
+    abortMessage: allStepsResult.abortMessage,
+  };
+
+  writeFileSync(resultsFilePath, JSON.stringify(data), 'utf-8');
+}
+
+/**
  * Storage key for E2E test guide injection.
  * Must match StorageKeys.E2E_TEST_GUIDE in src/lib/user-storage.ts
  */
@@ -64,6 +109,9 @@ const E2E_TEST_GUIDE_KEY = 'grafana-pathfinder-app-e2e-test-guide';
 
 test.describe('Guide Runner', () => {
   test('loads and displays guide from JSON', async ({ page }) => {
+    // L3-5B: Capture timestamp at test start for JSON report
+    const testStartTimestamp = new Date().toISOString();
+
     // Read guide JSON from environment variable path
     const guidePath = process.env.GUIDE_JSON_PATH;
     const grafanaUrl = process.env.GRAFANA_URL ?? 'http://localhost:3000';
@@ -74,8 +122,11 @@ test.describe('Guide Runner', () => {
     }
 
     const guideJson = readFileSync(guidePath, 'utf-8');
-    const guide = JSON.parse(guideJson) as { title?: string };
+    const guide = JSON.parse(guideJson) as { title?: string; id?: string };
     const guideTitle = guide.title ?? 'E2E Test Guide';
+
+    // L3-5B: Extract guide ID from path or use provided id
+    const guideId = guide.id ?? guidePath.split('/').pop()?.replace('.json', '') ?? 'unknown';
 
     // ============================================
     // Pre-flight checks: auth and plugin validation
@@ -187,6 +238,20 @@ test.describe('Guide Runner', () => {
 
     // L3-5A: Print summary using console reporter
     printDetailedSummary(executionResult.results, executionResult, isVerbose);
+
+    // L3-5B: Write results file for CLI to generate JSON report
+    const guideMetadata = {
+      id: guideId,
+      title: guideTitle,
+      path: guidePath ?? 'unknown',
+    };
+    writeResultsFile(
+      executionResult.results,
+      guideMetadata,
+      grafanaUrl,
+      testStartTimestamp,
+      executionResult
+    );
 
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {

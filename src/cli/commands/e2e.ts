@@ -14,6 +14,11 @@ import { Command } from 'commander';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
+import {
+  generateReport,
+  writeReport,
+  type TestResultsData,
+} from '../utils/e2e-reporter';
 
 /**
  * CLI options for the e2e command
@@ -131,6 +136,8 @@ interface PlaywrightResult {
   abortReason?: AbortReason;
   /** Abort message if test was aborted (L3-3D) */
   abortMessage?: string;
+  /** Test results data for JSON report generation (L3-5B) */
+  resultsData?: TestResultsData;
 }
 
 /**
@@ -150,6 +157,22 @@ function readAbortFile(abortFilePath: string): AbortFileContent | undefined {
 }
 
 /**
+ * Read test results file if it exists (L3-5B).
+ * Returns undefined if file doesn't exist or is invalid.
+ */
+function readResultsFile(resultsFilePath: string): TestResultsData | undefined {
+  try {
+    if (!existsSync(resultsFilePath)) {
+      return undefined;
+    }
+    const content = readFileSync(resultsFilePath, 'utf-8');
+    return JSON.parse(content) as TestResultsData;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Spawn Playwright to test a guide.
  * Writes guide JSON to temp file, spawns Playwright with environment variables,
  * and cleans up temp file after completion.
@@ -158,6 +181,11 @@ function readAbortFile(abortFilePath: string): AbortFileContent | undefined {
  * - Creates abort file path for test to write abort reason
  * - Reads abort file after test completes to determine exit code
  * - Returns AUTH_EXPIRED abort reason if session expired
+ *
+ * JSON reporting (L3-5B):
+ * - Creates results file path for test to write step results
+ * - Reads results file after test completes
+ * - Returns results data for JSON report generation
  */
 async function runPlaywrightTests(
   guide: LoadedGuide,
@@ -168,6 +196,8 @@ async function runPlaywrightTests(
   const guidePath = join(tempDir, 'guide.json');
   // L3-3D: Create abort file path for session validation
   const abortFilePath = join(tempDir, 'abort.json');
+  // L3-5B: Create results file path for JSON reporting
+  const resultsFilePath = join(tempDir, 'results.json');
 
   try {
     writeFileSync(guidePath, guide.content);
@@ -199,6 +229,8 @@ async function runPlaywrightTests(
           E2E_VERBOSE: options.verbose ? 'true' : 'false',
           // L3-3D: Pass abort file path for session validation
           ABORT_FILE_PATH: abortFilePath,
+          // L3-5B: Pass results file path for JSON reporting
+          RESULTS_FILE_PATH: resultsFilePath,
         },
         stdio: 'inherit',
         shell: true,
@@ -215,6 +247,9 @@ async function runPlaywrightTests(
           traceFile = 'test-results/guide-runner-loads-and-displays-guide-from-JSON-chromium/trace.zip';
         }
 
+        // L3-5B: Read results file for JSON reporting
+        const resultsData = readResultsFile(resultsFilePath);
+
         // L3-3D: Check abort file for session expiry
         const abortContent = readAbortFile(abortFilePath);
         if (abortContent) {
@@ -228,11 +263,17 @@ async function runPlaywrightTests(
             traceFile,
             abortReason: abortContent.abortReason,
             abortMessage: abortContent.message,
+            resultsData,
           });
           return;
         }
 
-        resolve({ success, exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE, traceFile });
+        resolve({
+          success,
+          exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE,
+          traceFile,
+          resultsData,
+        });
       });
 
       proc.on('error', (err) => {
@@ -434,6 +475,7 @@ export const e2eCommand = new Command('e2e')
         traceFile?: string;
         abortReason?: AbortReason;
         abortMessage?: string;
+        resultsData?: TestResultsData;
       }> = [];
 
       for (const guide of valid) {
@@ -447,6 +489,7 @@ export const e2eCommand = new Command('e2e')
           traceFile: result.traceFile,
           abortReason: result.abortReason,
           abortMessage: result.abortMessage,
+          resultsData: result.resultsData,
         });
 
         if (!result.success) {
@@ -478,6 +521,24 @@ export const e2eCommand = new Command('e2e')
       console.log(`   ❌ Failed: ${failed}`);
       if (authExpired > 0) {
         console.log(`   🔐 Auth expired: ${authExpired}`);
+      }
+
+      // L3-5B: Generate JSON report if --output was specified
+      if (options.output) {
+        // For single guide, write detailed report
+        // For multiple guides, write first guide's report (multi-guide reporting is L3-7B)
+        const firstResultWithData = results.find((r) => r.resultsData);
+        if (firstResultWithData?.resultsData) {
+          try {
+            const report = generateReport(firstResultWithData.resultsData);
+            writeReport(report, options.output);
+            console.log(`\n📄 JSON report written to: ${options.output}`);
+          } catch (err) {
+            console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+        } else {
+          console.warn(`   ⚠ No test results available for JSON report`);
+        }
       }
 
       if (!allPassed) {

@@ -745,7 +745,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ## L3 Phase 5: Reporting
 
-**Progress**: 1/4 milestones complete (L3-5A ✅)
+**Progress**: 2/4 milestones complete (L3-5A ✅, L3-5B ✅)
 
 ### Milestone L3-5A: Console Reporting ✅ **COMPLETED**
 
@@ -831,7 +831,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-5B: JSON Reporting
+### Milestone L3-5B: JSON Reporting ✅ **COMPLETED**
 
 **Rationale**: Enables CI integration and programmatic test result analysis.
 
@@ -848,19 +848,49 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-5A
 
-**Files to create**:
+**Files created/modified**:
 
-- `src/cli/utils/e2e-reporter.ts` - Report generator
+- `src/cli/utils/e2e-reporter.ts` - Report generator (NEW)
+- `src/cli/commands/e2e.ts` - Added results file reading and JSON report generation
+- `tests/e2e-runner/guide-runner.spec.ts` - Added results file writing
 
 **Acceptance criteria**:
 
-- [ ] JSON file written to specified path
-- [ ] Contains guide metadata, config, summary
-- [ ] Each step has status, duration, currentUrl, consoleErrors
-- [ ] Skipped steps include skip reason
-- [ ] Failed steps include error message
+- [x] JSON file written to specified path ✅
+- [x] Contains guide metadata, config, summary ✅
+- [x] Each step has status, duration, currentUrl, consoleErrors ✅
+- [x] Skipped steps include skip reason ✅
+- [x] Failed steps include error message ✅
 
 **Estimated effort**: Medium (1 day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **JSON report structure** matches design spec:
+  - `guide`: id, title, path
+  - `config`: grafanaUrl, grafanaVersion (optional), timestamp
+  - `summary`: total, passed, failed, skipped, notReached, duration, mandatoryFailed, skippableFailed
+  - `steps`: array of step results with stepId, index, status, duration, currentUrl, consoleErrors, plus optional skipReason, error, skippable
+
+- **Data flow architecture**:
+  - Playwright test writes results to temp file (`RESULTS_FILE_PATH` env var)
+  - CLI reads results after Playwright completes
+  - CLI generates and writes JSON report to `--output` path if specified
+  - Temp files cleaned up after each run
+
+- **Types exported from `e2e-reporter.ts`**:
+  - `E2ETestReport`: Complete report structure
+  - `TestResultsData`: Input format from test execution
+  - `generateReport()`: Creates report from test results
+  - `writeReport()`: Writes JSON to file with directory creation
+
+- **Design decisions**:
+  - Report generation happens in CLI (not Playwright) to handle multiple guides
+  - Single guide report for now; multi-guide aggregation deferred to L3-7B
+  - Summary includes L3-4C mandatory/skippable failure counts for success determination
+  - Report includes abort info (L3-3D) when test is aborted
 
 ---
 
@@ -1069,7 +1099,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        | ✅     |
 | L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        | ✅     |
 | L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        | ✅     |
-| L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        |        |
+| L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        | ✅     |
 | L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        |        |
 | L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |        |
 | L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        |        |
