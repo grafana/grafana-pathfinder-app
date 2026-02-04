@@ -33,6 +33,7 @@ interface E2ECommandOptions {
   verbose: boolean;
   bundled: boolean;
   trace: boolean;
+  headed: boolean;
 }
 
 /**
@@ -213,6 +214,10 @@ async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions
       playwrightArgs.push('--trace', 'on');
     }
 
+    if (options.headed) {
+      playwrightArgs.push('--headed');
+    }
+
     // Spawn Playwright with environment variables
     const result = await new Promise<PlaywrightResult>((resolve) => {
       const proc = spawn('npx', playwrightArgs, {
@@ -381,6 +386,7 @@ export const e2eCommand = new Command('e2e')
   .option('--verbose', 'Enable verbose logging', false)
   .option('--bundled', 'Test all bundled guides')
   .option('--trace', 'Generate Playwright trace file', false)
+  .option('--headed', 'Run browser in headed mode (visible)', false)
   .action(async (files: string[], options: E2ECommandOptions) => {
     try {
       // Resolve guides from inputs
@@ -434,6 +440,9 @@ export const e2eCommand = new Command('e2e')
       }
       if (options.trace) {
         console.log(`   Trace:       enabled`);
+      }
+      if (options.headed) {
+        console.log(`   Headed:      enabled (browser visible)`);
       }
 
       // Run CLI-level pre-flight checks

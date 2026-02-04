@@ -386,6 +386,13 @@ const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
 const BUTTON_ENABLE_TIMEOUT_MS = 10000;
 
 /**
+ * Timeout for waiting for "Do it" button to appear.
+ * Longer than enable timeout since it needs to wait for
+ * previous step completion in sequential sections.
+ */
+const BUTTON_APPEAR_TIMEOUT_MS = 15000;
+
+/**
  * Delay after scrolling to allow animations to settle.
  * Per design doc: 300ms for scroll animation.
  */
@@ -1552,6 +1559,32 @@ export async function waitForDoItButtonEnabled(
 }
 
 /**
+ * Wait for a "Do it" button to appear in the DOM.
+ *
+ * For steps in sections with sequential dependencies, the button
+ * only appears after the previous step completes. This function
+ * waits for the button to be present (not necessarily enabled).
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier
+ * @param timeout - Maximum time to wait (ms), default 15s
+ * @returns true if button appeared, false if timeout
+ */
+export async function waitForDoItButtonToAppear(
+  page: Page,
+  stepId: string,
+  timeout = BUTTON_APPEAR_TIMEOUT_MS
+): Promise<boolean> {
+  const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
+  try {
+    await doItButton.waitFor({ state: 'attached', timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Calculate the appropriate timeout for a step based on its type (L3-3C).
  *
  * Per design doc: 30s base timeout for simple steps, +5s per internal action
@@ -1765,16 +1798,21 @@ export async function executeStep(
       return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
     }
 
-    // Handle steps without "Do it" buttons (U1: doIt: false, noop actions)
-    if (!step.hasDoItButton) {
+    // Scroll step into view before interaction
+    await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
+
+    // Wait for "Do it" button to appear (handles sequential dependencies)
+    // Button may not exist at discovery time but appears after previous step completes
+    if (verbose) {
+      console.log(`   ⏳ Waiting for "Do it" button to appear...`);
+    }
+    const buttonAppeared = await waitForDoItButtonToAppear(page, step.stepId);
+    if (!buttonAppeared) {
       if (verbose) {
-        console.log(`   ⊘ Step ${step.stepId} has no "Do it" button, skipping`);
+        console.log(`   ⊘ Step ${step.stepId} has no "Do it" button (timeout waiting for appearance), skipping`);
       }
       return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
     }
-
-    // Scroll step into view before interaction
-    await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
 
     // L3-3C: Check for objective-based auto-completion BEFORE clicking
     // Objectives may be satisfied by prior actions (e.g., navigation completed the step)
