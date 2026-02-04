@@ -24,7 +24,7 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
   section: css({
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
-    overflow: 'hidden',
+    // Note: overflow: hidden was removed to allow sticky positioning in child components
   }),
 
   sectionHeader: css({
