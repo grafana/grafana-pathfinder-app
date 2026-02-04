@@ -180,6 +180,57 @@ function readResultsFile(resultsFilePath: string): TestResultsData | undefined {
 }
 
 /**
+ * Process Playwright test results from temp files.
+ * Reads abort file and results file to determine final outcome.
+ *
+ * @param exitCode - The Playwright process exit code
+ * @param options - Options object with trace flag
+ * @param filePaths - Paths to abort and results files
+ * @returns PlaywrightResult with success status, exit code, and optional data
+ */
+function processPlaywrightResults(
+  exitCode: number,
+  options: { trace: boolean },
+  filePaths: { abortFilePath: string; resultsFilePath: string }
+): PlaywrightResult {
+  const playwrightExitCode = exitCode;
+  const success = playwrightExitCode === 0;
+
+  // Build trace file path if tracing enabled
+  let traceFile: string | undefined;
+  if (options.trace) {
+    // Playwright stores traces in test-results/ directory
+    traceFile = 'test-results/guide-runner-loads-and-displays-guide-from-JSON-chromium/trace.zip';
+  }
+
+  // L3-5B: Read results file for JSON reporting
+  const resultsData = readResultsFile(filePaths.resultsFilePath);
+
+  // L3-3D: Check abort file for session expiry
+  const abortContent = readAbortFile(filePaths.abortFilePath);
+  if (abortContent) {
+    // Determine exit code based on abort reason
+    const abortExitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
+
+    return {
+      success: false,
+      exitCode: abortExitCode,
+      traceFile,
+      abortReason: abortContent.abortReason,
+      abortMessage: abortContent.message,
+      resultsData,
+    };
+  }
+
+  return {
+    success,
+    exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE,
+    traceFile,
+    resultsData,
+  };
+}
+
+/**
  * Spawn Playwright to test a guide.
  * Writes guide JSON to temp file, spawns Playwright with environment variables,
  * and cleans up temp file after completion.
@@ -246,42 +297,12 @@ async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions
       });
 
       proc.on('close', (code) => {
-        const playwrightExitCode = code ?? 1;
-        const success = playwrightExitCode === 0;
-
-        // Check for trace file if tracing was enabled
-        let traceFile: string | undefined;
-        if (options.trace) {
-          // Playwright stores traces in test-results/ directory
-          traceFile = 'test-results/guide-runner-loads-and-displays-guide-from-JSON-chromium/trace.zip';
-        }
-
-        // L3-5B: Read results file for JSON reporting
-        const resultsData = readResultsFile(resultsFilePath);
-
-        // L3-3D: Check abort file for session expiry
-        const abortContent = readAbortFile(abortFilePath);
-        if (abortContent) {
-          // Determine exit code based on abort reason
-          const exitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
-
-          resolve({
-            success: false,
-            exitCode,
-            traceFile,
-            abortReason: abortContent.abortReason,
-            abortMessage: abortContent.message,
-            resultsData,
-          });
-          return;
-        }
-
-        resolve({
-          success,
-          exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE,
-          traceFile,
-          resultsData,
-        });
+        const result = processPlaywrightResults(
+          code ?? 1,
+          { trace: options.trace },
+          { abortFilePath, resultsFilePath }
+        );
+        resolve(result);
       });
 
       proc.on('error', (err) => {

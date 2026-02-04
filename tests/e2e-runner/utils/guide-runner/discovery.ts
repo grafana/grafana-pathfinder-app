@@ -12,6 +12,7 @@ import { Page, Locator } from '@playwright/test';
 
 import { testIds } from '../../../../src/components/testIds';
 import { STEP_SELECTOR, STEP_TESTID_PREFIX } from './constants';
+import { calculateStepTimeout } from './execution';
 import type { TestableStep, StepDiscoveryResult } from './types';
 
 // ============================================
@@ -252,27 +253,6 @@ async function extractMultistepInfo(
 // ============================================
 // Logging Functions
 // ============================================
-
-/**
- * Calculate the appropriate timeout for a step based on its type (L3-3C).
- *
- * Per design doc: 30s base timeout for simple steps, +5s per internal action
- * for multisteps. This accommodates multisteps with many internal actions.
- *
- * @param step - The testable step
- * @returns Timeout in milliseconds
- */
-function calculateStepTimeout(step: TestableStep): number {
-  // Import constants inline to avoid circular dependencies
-  const DEFAULT_STEP_TIMEOUT_MS = 30000;
-  const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
-
-  if (step.isMultistep && step.internalActionCount > 0) {
-    // Multistep: base timeout + time per internal action
-    return DEFAULT_STEP_TIMEOUT_MS + step.internalActionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS;
-  }
-  return DEFAULT_STEP_TIMEOUT_MS;
-}
 
 /**
  * Log step discovery results in a human-readable format.
