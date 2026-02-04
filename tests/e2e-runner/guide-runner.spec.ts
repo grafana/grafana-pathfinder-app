@@ -8,8 +8,12 @@
  * Pre-flight checks (auth validation, plugin installation) run before
  * guide loading to fail fast with clear error messages.
  *
+ * Step discovery uses DOM-based iteration to find all interactive steps
+ * and capture their metadata (completion state, button availability, etc.).
+ *
  * @see src/cli/commands/e2e.ts for the CLI that spawns this test
  * @see tests/e2e-runner/utils/preflight.ts for pre-flight check utilities
+ * @see tests/e2e-runner/utils/guide-test-runner.ts for step discovery utilities
  */
 
 import { readFileSync } from 'fs';
@@ -20,6 +24,10 @@ import {
   runPlaywrightPreflightChecks,
   formatPreflightResults,
 } from './utils/preflight';
+import {
+  discoverStepsFromDOM,
+  logDiscoveryResults,
+} from './utils/guide-test-runner';
 
 /**
  * Storage key for E2E test guide injection.
@@ -122,5 +130,32 @@ test.describe('Guide Runner', () => {
     console.log(`   - Panel visible: true`);
     console.log(`   - Interactive step found: true`);
     console.log(`   - Tab with title found: ${tabCount > 0}`);
+
+    // ============================================
+    // Step discovery: DOM-based step enumeration
+    // ============================================
+    console.log('\n🔍 Discovering steps from DOM...');
+
+    const discoveryResult = await discoverStepsFromDOM(page);
+
+    // Log discovery results
+    logDiscoveryResults(discoveryResult, isVerbose);
+
+    // Verify step discovery found steps
+    expect(discoveryResult.totalSteps).toBeGreaterThan(0);
+
+    // Log step metadata for debugging
+    console.log(`\n📊 Step Discovery Summary:`);
+    console.log(`   - Total steps discovered: ${discoveryResult.totalSteps}`);
+    console.log(`   - Pre-completed steps: ${discoveryResult.preCompletedCount}`);
+    console.log(`   - Steps without "Do it" button: ${discoveryResult.noDoItButtonCount}`);
+    console.log(`   - Discovery duration: ${discoveryResult.durationMs}ms`);
+
+    // Steps should be in document order (indices should match)
+    for (let i = 0; i < discoveryResult.steps.length; i++) {
+      expect(discoveryResult.steps[i].index).toBe(i);
+    }
+
+    console.log(`\n✅ Step discovery completed successfully`);
   });
 });

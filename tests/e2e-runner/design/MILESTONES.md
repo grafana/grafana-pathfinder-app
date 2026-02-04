@@ -249,11 +249,13 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 ---
 
-## L3 Phase 3: Step Discovery & Execution (Core Functionality)
+## L3 Phase 3: Step Discovery & Execution (Core Functionality) 🔄 **IN PROGRESS**
 
 This is the highest-complexity phase. Consider splitting into smaller increments if the spike reveals additional complexity.
 
-### Milestone L3-3A: DOM-Based Step Discovery
+**Progress**: 1/4 milestones complete (L3-3A ✅)
+
+### Milestone L3-3A: DOM-Based Step Discovery ✅ **COMPLETED**
 
 **Rationale**: Implements [DOM-Based Step Discovery](./e2e-test-runner-design.md#dom-based-step-discovery) to test actual rendered UI.
 
@@ -267,18 +269,46 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Dependencies**: Milestone L3-2C (pre-flight checks must pass first)
 
-**Files to create**:
+**Files created/modified**:
 
-- `tests/e2e-runner/utils/guide-test-runner.ts` - Test utilities
+- `tests/e2e-runner/utils/guide-test-runner.ts` - Step discovery utilities (NEW)
+- `tests/e2e-runner/guide-runner.spec.ts` - Integrated step discovery into test flow
 
 **Acceptance criteria**:
 
-- [ ] All rendered interactive steps discovered from DOM
-- [ ] Steps discovered in document order (top to bottom)
-- [ ] Pre-completed steps detected (don't have "Do it" button)
-- [ ] Step metadata captured (stepId, skippable flag)
+- [x] All rendered interactive steps discovered from DOM ✅
+- [x] Steps discovered in document order (top to bottom) ✅
+- [x] Pre-completed steps detected (don't have "Do it" button) ✅
+- [x] Step metadata captured (stepId, skippable flag) ✅
 
 **Estimated effort**: Medium (1-2 days)
+
+**Actual effort**: ~2 hours
+
+**Implementation Notes**:
+
+- **TestableStep interface** captures all metadata identified in L3 Phase 1:
+  - `stepId`: Extracted from `data-testid` attribute
+  - `index`: Zero-based DOM order position
+  - `sectionId`: Parent section ID if within an interactive section
+  - `skippable`: Detected by presence of skip button (conservative assumption for completed steps)
+  - `hasDoItButton`: Handles U1 finding (not all steps have "Do it" buttons)
+  - `isPreCompleted`: Handles U2 finding (objectives/noop auto-completion)
+  - `targetAction`: Extracted from `data-targetaction` attribute for diagnostics
+
+- **StepDiscoveryResult** includes statistics:
+  - Total steps count
+  - Pre-completed count (useful for understanding guide state)
+  - No-button count (steps with doIt: false or noop actions)
+  - Discovery duration in ms
+
+- **Utility functions** provided for future milestones:
+  - `scrollStepIntoView()`: Scroll step into viewport before interaction
+  - `waitForDoItButtonEnabled()`: Handle U3 sequential dependencies
+  - `waitForStepCompletion()`: DOM polling for completion indicator
+  - `logDiscoveryResults()`: Human-readable discovery output
+
+- **Integration**: Step discovery integrated into `guide-runner.spec.ts` after guide loading
 
 ---
 
@@ -731,28 +761,28 @@ if (stepIndex % 5 === 0) {
 
 ## Summary Table
 
-| Milestone                              | L3 Phase | Effort | Risk       | Dependencies |
-| -------------------------------------- | -------- | ------ | ---------- | ------------ |
-| L3-1A: Assumption Verification         | 1        | Small  | High value | None         |
-| L3-1B: JSON Loading                    | 1        | Small  | Low        | None         |
-| L3-2A: CLI Skeleton                    | 2        | Small  | Low        | L3-1B        |
-| L3-2B: Playwright Spawning             | 2        | Medium | Low        | L3-2A        |
-| L3-2C: Pre-flight Checks               | 2        | Small  | Low        | L3-2B        |
-| L3-3A: Step Discovery                  | 3        | Medium | Medium     | L3-2C        |
-| L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        |
-| L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        |
-| L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        |
-| L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        |
-| L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        |
-| L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        |
-| L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        |
-| L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        |
-| L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        |
-| L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |
-| L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        |
-| L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     |
-| L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        |
-| L3-7C: CI Workflow                     | 7        | Small  | Low        | L3-7B        |
+| Milestone                              | L3 Phase | Effort | Risk       | Dependencies | Status |
+| -------------------------------------- | -------- | ------ | ---------- | ------------ | ------ |
+| L3-1A: Assumption Verification         | 1        | Small  | High value | None         | ✅     |
+| L3-1B: JSON Loading                    | 1        | Small  | Low        | None         | ✅     |
+| L3-2A: CLI Skeleton                    | 2        | Small  | Low        | L3-1B        | ✅     |
+| L3-2B: Playwright Spawning             | 2        | Medium | Low        | L3-2A        | ✅     |
+| L3-2C: Pre-flight Checks               | 2        | Small  | Low        | L3-2B        | ✅     |
+| L3-3A: Step Discovery                  | 3        | Medium | Medium     | L3-2C        | ✅     |
+| L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        |        |
+| L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        |        |
+| L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        |        |
+| L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        |        |
+| L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        |        |
+| L3-4C: Skip/Mandatory Logic            | 4        | Small  | Low        | L3-4B        |        |
+| L3-5A: Console Reporting               | 5        | Small  | Low        | L3-4C        |        |
+| L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        |        |
+| L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        |        |
+| L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |        |
+| L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        |        |
+| L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     |        |
+| L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        |        |
+| L3-7C: CI Workflow                     | 7        | Small  | Low        | L3-7B        |        |
 
 ---
 
