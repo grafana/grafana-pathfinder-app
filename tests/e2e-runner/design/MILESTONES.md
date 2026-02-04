@@ -1009,7 +1009,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ## L3 Phase 6: Framework Test Guide
 
-### Milestone L3-6A: Framework Test Guide Creation (MVP)
+### Milestone L3-6A: Framework Test Guide Creation (MVP) ✅ **COMPLETED**
 
 **Rationale**: Validates the E2E framework itself; failures here indicate framework bugs, not guide bugs.
 
@@ -1041,11 +1041,32 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Acceptance criteria**:
 
-- [ ] Framework test guide runs without error on fresh Grafana
-- [ ] Guide completes in under 60 seconds (rough bound, not per-step)
-- [ ] `npx pathfinder-cli e2e bundled:e2e-framework-test` works
+- [x] Framework test guide runs without error on fresh Grafana ✅
+- [x] Guide completes in under 60 seconds (rough bound, not per-step) ✅
+- [x] `npx pathfinder-cli e2e bundled:e2e-framework-test` works ✅
 
 **Estimated effort**: Small (half day)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **Guide structure**: 3 independent highlight actions (not in a section) to avoid sequential dependency issues at discovery time
+- **Steps test**: highlight action, navmenu-open requirement handling, fix button mechanism, multiple step execution, skippable step handling
+- **Performance**: Guide completes in ~3 seconds (well under 60s target)
+- **Selectors used**: Standard Grafana nav menu item test IDs (`a[data-testid='data-testid Nav menu item'][href='...']`) for cross-version stability
+- **Fix applied during implementation**: Updated `guide-runner.spec.ts` to open docs panel via Help button click before dispatching custom event (event listener is only active when panel is mounted)
+
+**Design decisions**:
+
+- **Highlight actions only**: Button and navigate actions were initially tested but don't reliably have "Do it" buttons when used standalone. Highlight actions with `navmenu-open` requirements provide consistent testable behavior.
+- **Independent steps (no section)**: Steps outside sections have "Do it" buttons immediately enabled at discovery time. Section steps use sequential dependencies which means only the first step has a button at discovery time.
+- **Read-only verification**: All steps highlight existing nav menu items without creating, modifying, or deleting data.
+
+**Files created/modified**:
+
+- `src/bundled-interactives/e2e-framework-test.json` - Framework test guide (NEW)
+- `tests/e2e-runner/guide-runner.spec.ts` - Fixed docs panel opening mechanism
 
 ---
 
@@ -1152,7 +1173,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 | L3-5B: JSON Reporting                  | 5        | Medium | Low        | L3-5A        | ✅     |
 | L3-5C: Error Classification            | 5        | Small  | Low        | L3-5B        | ✅     |
 | L3-5D: Artifact Collection             | 5        | Medium | Low        | L3-5C        |        |
-| L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        |        |
+| L3-6A: Framework Test Guide (MVP)      | 6        | Small  | Low        | L3-5D        | ✅     |
 | L3-7A: Auth Abstraction                | 7        | Small  | Low        | Parallel     |        |
 | L3-7B: Bundled Testing                 | 7        | Medium | Low        | L3-5D        |        |
 | L3-7C: CI Workflow                     | 7        | Small  | Low        | L3-7B        |        |

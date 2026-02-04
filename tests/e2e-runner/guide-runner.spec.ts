@@ -166,7 +166,7 @@ test.describe('Guide Runner', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Inject guide into localStorage
+    // Inject guide into localStorage BEFORE opening the panel
     await page.evaluate(
       ({ key, json }) => {
         localStorage.setItem(key, json);
@@ -174,8 +174,16 @@ test.describe('Guide Runner', () => {
       { key: E2E_TEST_GUIDE_KEY, json: guideJson }
     );
 
-    // Open guide via custom event
-    // The event dispatcher opens a tab with bundled:e2e-test which loads from localStorage
+    // Open the docs panel first via Help button (panel must be mounted for event listener)
+    const helpButton = page.locator('button[aria-label="Help"]');
+    await helpButton.click();
+
+    // Verify panel is visible
+    const panel = page.getByTestId(testIds.docsPanel.container);
+    await expect(panel).toBeVisible({ timeout: 10000 });
+
+    // Now dispatch the event to load the specific guide content
+    // The event listener is only active when the docs panel is mounted
     await page.evaluate(
       ({ title }) => {
         document.dispatchEvent(
@@ -187,9 +195,8 @@ test.describe('Guide Runner', () => {
       { title: guideTitle }
     );
 
-    // Verify panel opens and shows guide content
-    const panel = page.getByTestId(testIds.docsPanel.container);
-    await expect(panel).toBeVisible({ timeout: 10000 });
+    // Wait for content to load
+    await page.waitForTimeout(1000);
 
     // Verify guide content loaded (first step visible indicates interactive content rendered)
     // Use a more general selector since step IDs vary by guide
