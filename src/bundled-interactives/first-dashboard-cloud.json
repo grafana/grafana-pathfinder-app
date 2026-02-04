@@ -1,5 +1,4 @@
 {
-  "schemaVersion": "1.0.0",
   "id": "first-dashboard-cloud",
   "title": "Create your first dashboard in Grafana Cloud",
   "blocks": [
@@ -21,42 +20,42 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[data-testid=\"data-testid Nav menu item\"][href=\"/connections/add-new-connection\"]",
-          "requirements": ["navmenu-open", "exists-reftarget"],
           "content": "Navigate to **Add new connection** in the Connections menu.",
-          "tooltip": "The Connections menu is where you manage all your data sources. In Grafana Cloud, you add new data sources through the 'Add new connection' page."
+          "tooltip": "The Connections menu is where you manage all your data sources. In Grafana Cloud, you add new data sources through the 'Add new connection' page.",
+          "requirements": ["navmenu-open", "exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[data-testid=\"search-input-input\"]",
           "targetvalue": "TestData",
-          "requirements": ["on-page:/connections/add-new-connection", "exists-reftarget"],
           "content": "Search for **TestData** in the connections search box.",
-          "tooltip": "TestData is a built-in data source that generates sample data for learning and testing. It's perfect for this tutorial since it doesn't require any external systems or configuration."
+          "tooltip": "TestData is a built-in data source that generates sample data for learning and testing. It's perfect for this tutorial since it doesn't require any external systems or configuration.",
+          "requirements": ["on-page:/connections/add-new-connection", "exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[href=\"/connections/datasources/grafana-testdata-datasource/\"]",
-          "requirements": [],
           "content": "Click on **TestData** to open the data source configuration.",
-          "tooltip": "This will take you to the TestData data source page where you can add a new instance."
+          "tooltip": "This will take you to the TestData data source page where you can add a new instance.",
+          "requirements": []
         },
         {
           "type": "interactive",
           "action": "highlight",
           "reftarget": "button:contains(\"Add new data source\")",
-          "requirements": ["on-page:/connections/datasources/grafana-testdata-datasource", "exists-reftarget"],
           "content": "Click **Add new data source** to create a new TestData instance.",
-          "tooltip": "This creates a new instance of the TestData data source in your Grafana Cloud environment."
+          "tooltip": "This creates a new instance of the TestData data source in your Grafana Cloud environment.",
+          "requirements": ["on-page:/connections/datasources/grafana-testdata-datasource", "exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "highlight",
           "reftarget": "button[data-testid=\"data-testid Data source settings page Save and Test button\"]",
-          "requirements": ["exists-reftarget"],
           "content": "Click **Save & test** to confirm the data source is working.",
-          "tooltip": "The Save & test button validates the connection to ensure everything is configured correctly. For TestData, this should always succeed since it's a built-in data source that doesn't require any external connections."
+          "tooltip": "The Save & test button validates the connection to ensure everything is configured correctly. For TestData, this should always succeed since it's a built-in data source that doesn't require any external connections.",
+          "requirements": ["exists-reftarget"]
         }
       ]
     },
@@ -74,19 +73,18 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[data-testid=\"data-testid Nav menu item\"][href=\"/explore\"]",
-          "requirements": ["navmenu-open", "exists-reftarget"],
           "content": "Navigate to **Explore** to begin querying data.",
-          "tooltip": "Explore is Grafana's investigation workspace. Unlike dashboards which display predefined visualizations, Explore lets you freely query your data sources and see results immediately. This makes it perfect for experimenting and understanding your data before committing to a dashboard design."
+          "tooltip": "Explore is Grafana's investigation workspace. Unlike dashboards which display predefined visualizations, Explore lets you freely query your data sources and see results immediately. This makes it perfect for experimenting and understanding your data before committing to a dashboard design.",
+          "requirements": ["navmenu-open", "exists-reftarget"]
         },
         {
           "type": "multistep",
           "content": "Select the **TestData** data source to work with sample data.",
-          "requirements": ["on-page:/explore"],
-          "objectives": ["has-datasource:testdata"],
           "steps": [
             {
               "action": "highlight",
               "reftarget": "grafana:components.DataSourcePicker.inputV2",
+              "tooltip": "foo",
               "requirements": ["exists-reftarget"]
             },
             {
@@ -95,42 +93,44 @@
               "requirements": ["exists-reftarget"],
               "tooltip": "In real-world scenarios, you'd connect to data sources like Prometheus for metrics, Loki for logs, or databases like PostgreSQL. For learning purposes, Grafana includes TestData - a built-in data source that generates realistic sample data without requiring any external setup. This lets you practice building dashboards right away."
             }
-          ]
+          ],
+          "requirements": ["on-page:/explore"],
+          "objectives": ["has-datasource:testdata"]
         },
         {
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[id=\"test-data-scenario-select-A\"]",
           "targetvalue": "Random Walk",
-          "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Choose **Random Walk** to simulate Jack's hiking altitude data.",
-          "tooltip": "Random Walk generates time series data that changes randomly over time, similar to how real metrics behave. Imagine tracking Jack's altitude as he climbs up and down hills - it goes up and down, but with natural variation. This type of data is perfect for simulating real-world metrics like CPU usage, temperature readings, or in our case, hiking altitude."
+          "tooltip": "Random Walk generates time series data that changes randomly over time, similar to how real metrics behave. Imagine tracking Jack's altitude as he climbs up and down hills - it goes up and down, but with natural variation. This type of data is perfect for simulating real-world metrics like CPU usage, temperature readings, or in our case, hiking altitude.",
+          "requirements": ["on-page:/explore", "exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[id=\"labels-A\"]",
           "targetvalue": "walker=jack",
-          "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Add the label **walker=jack** to identify Jack's hiking data.",
-          "tooltip": "Labels are key-value pairs that add context to your data. Think of them as tags that help you identify and filter your metrics. In our hiking story, we'll use labels to distinguish between Jack and Jill's individual altitude measurements. This is exactly how you'd use labels in production - to distinguish between different servers, applications, or users."
+          "tooltip": "Labels are key-value pairs that add context to your data. Think of them as tags that help you identify and filter your metrics. In our hiking story, we'll use labels to distinguish between Jack and Jill's individual altitude measurements. This is exactly how you'd use labels in production - to distinguish between different servers, applications, or users.",
+          "requirements": ["on-page:/explore", "exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "highlight",
           "reftarget": "button:contains(\"Add query\")",
-          "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Click **Add query** to create a second data series for Jill.",
-          "tooltip": "Now let's add Jill's hiking data! In Grafana, you can display multiple queries on the same graph to compare and contrast data. This is incredibly powerful - imagine comparing CPU usage across different servers, or in our case, comparing Jack and Jill's hiking altitudes to see who climbed higher."
+          "tooltip": "Now let's add Jill's hiking data! In Grafana, you can display multiple queries on the same graph to compare and contrast data. This is incredibly powerful - imagine comparing CPU usage across different servers, or in our case, comparing Jack and Jill's hiking altitudes to see who climbed higher.",
+          "requirements": ["on-page:/explore", "exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[id=\"labels-B\"]",
           "targetvalue": "walker=jill",
-          "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Add the label **walker=jill** to identify Jill's hiking data.",
-          "tooltip": "Now we'll add Jill's label to the second query. By using the same label key (`walker`) but different values (`jack` vs `jill`), Grafana can automatically differentiate between the two data series in visualizations. This labeling strategy is a best practice in observability - it keeps your data organized and queryable."
+          "tooltip": "Now we'll add Jill's label to the second query. By using the same label key (`walker`) but different values (`jack` vs `jill`), Grafana can automatically differentiate between the two data series in visualizations. This labeling strategy is a best practice in observability - it keeps your data organized and queryable.",
+          "requirements": ["on-page:/explore", "exists-reftarget"]
         }
       ]
     },
@@ -147,7 +147,6 @@
         {
           "type": "multistep",
           "content": "Use the **Add** button to send your queries to a new dashboard.",
-          "requirements": ["section-completed:section-explore-tutorial"],
           "steps": [
             {
               "action": "highlight",
@@ -165,7 +164,8 @@
               "requirements": ["exists-reftarget"],
               "tooltip": "One of Grafana's best features is the seamless transition from Explore to dashboards. Instead of manually recreating your queries, you can send them directly from Explore to a new or existing dashboard. This workflow saves time and ensures your carefully crafted queries make it to your dashboard exactly as you tested them."
             }
-          ]
+          ],
+          "requirements": ["section-completed:section-explore-tutorial"]
         },
         {
           "type": "multistep",
@@ -185,47 +185,62 @@
           ]
         },
         {
-          "type": "multistep",
-          "content": "Change the visualization to **Bar chart** to compare altitudes.",
-          "steps": [
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid=\"data-testid toggle-viz-picker\"]",
+          "content": "Let's change the visualisation type",
+          "tooltip": "Let's change the visualisation type",
+          "requirements": ["exists-reftarget"]
+        },
+        {
+          "type": "conditional",
+          "conditions": ["exists-reftarget"],
+          "description": "Check whether we need to toggle to All visualisations",
+          "reftarget": "button[data-testid='data-testid Tab All visualizations']",
+          "whenTrue": [
             {
+              "type": "interactive",
               "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid toggle-viz-picker\"]",
-              "requirements": ["exists-reftarget"]
-            },
-            {
-              "action": "highlight",
-              "reftarget": "div[data-testid=\"data-testid Plugin visualization item Bar chart\"]",
+              "reftarget": "button[data-testid='data-testid Tab All visualizations']",
+              "content": "Let's select all visualisations.",
+              "tooltip": "Let's select all visualisations.",
               "requirements": ["exists-reftarget"],
-              "tooltip": "Choosing the right visualization is key to telling your data's story. Time series graphs show trends over time, stat panels display single values, tables show raw data, and bar charts compare values side by side. For comparing Jack and Jill's final altitudes, a bar chart makes the difference instantly clear - you can see at a glance who climbed higher!"
+              "skippable": true
             }
-          ]
+          ],
+          "whenFalse": []
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid=\"data-testid Plugin visualization item Bar chart\"]",
+          "content": "Choosing the right visualization is key to telling your data's story. Time series graphs show trends over time, stat panels display single values, tables show raw data, and bar charts compare values side by side. For comparing Jack and Jill's final altitudes, a bar chart makes the difference instantly clear - you can see at a glance who climbed higher!"
         },
         {
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[data-testid=\"data-testid Panel editor option pane field input Title\"]",
           "targetvalue": "Jack and Jill Walk Altitude",
-          "requirements": ["exists-reftarget"],
           "content": "Give your panel a clear title: **Jack and Jill Walk Altitude**.",
-          "tooltip": "A good panel title transforms raw data into a story. Instead of generic names like \"Query A\" or \"Metric 1,\" use descriptive titles that immediately convey what the data represents. This is especially important when sharing dashboards with teammates who might not know the context. Your future self will thank you too!"
+          "tooltip": "A good panel title transforms raw data into a story. Instead of generic names like \"Query A\" or \"Metric 1,\" use descriptive titles that immediately convey what the data represents. This is especially important when sharing dashboards with teammates who might not know the context. Your future self will thank you too!",
+          "requirements": ["exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "highlight",
           "reftarget": "input[id=\"barchart-unit\"]",
           "targetvalue": "ALT",
-          "requirements": ["exists-reftarget"],
           "content": "We can give our walking data meaning by setting a unit.",
-          "tooltip": "Units give meaning to numbers. Is that value 42 seconds, bytes, requests, or meters? Without units, numbers are just numbers. Grafana can automatically format values based on their units - bytes become KB/MB/GB, seconds become ms/s/m, and so on. This polish makes your dashboards professional and removes ambiguity."
+          "tooltip": "Units give meaning to numbers. Is that value 42 seconds, bytes, requests, or meters? Without units, numbers are just numbers. Grafana can automatically format values based on their units - bytes become KB/MB/GB, seconds become ms/s/m, and so on. This polish makes your dashboards professional and removes ambiguity.",
+          "requirements": ["exists-reftarget"]
         },
         {
           "type": "multistep",
           "content": "Click **Save Dashboard**, name it **Walking Adventure**, and click **Save**.",
           "steps": [
             {
-              "action": "button",
-              "reftarget": "Save Dashboard",
+              "action": "highlight",
+              "reftarget": "button[data-testid='data-testid Save dashboard button']",
               "requirements": ["exists-reftarget"]
             },
             {
