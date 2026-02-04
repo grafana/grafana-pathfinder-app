@@ -43,8 +43,20 @@ export interface TestableStep {
   /** Whether the step is already completed (U2 - objectives/noop) */
   isPreCompleted: boolean;
 
-  /** The target action type (highlight, button, navigate, formfill, noop, etc.) */
+  /** The target action type (highlight, button, navigate, formfill, noop, multistep, etc.) */
   targetAction?: string;
+
+  /**
+   * Whether this is a multistep action (L3-3C).
+   * Multisteps require longer timeouts as they execute multiple internal actions.
+   */
+  isMultistep: boolean;
+
+  /**
+   * Number of internal actions for multisteps (L3-3C).
+   * Used to calculate appropriate timeout: 30s base + 5s per action.
+   */
+  internalActionCount: number;
 
   /** Locator for the step element (for convenience in later operations) */
   locator: Locator;
@@ -138,6 +150,46 @@ const STEP_TESTID_PREFIX = 'interactive-step-';
 const SECTION_SELECTOR = '[data-testid^="interactive-section-"]';
 
 // ============================================
+// Timing Constants (L3-3C)
+// ============================================
+
+/**
+ * Default timeout for waiting for step completion.
+ * Per design doc: 30 seconds as a generous default.
+ */
+const DEFAULT_STEP_TIMEOUT_MS = 30000;
+
+/**
+ * Additional timeout per internal action for multisteps.
+ * Per design doc: 30s base + 5s per action.
+ */
+const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
+
+/**
+ * Timeout for waiting for "Do it" button to become enabled.
+ * Sequential dependencies (isEligibleForChecking) may disable buttons.
+ */
+const BUTTON_ENABLE_TIMEOUT_MS = 10000;
+
+/**
+ * Delay after scrolling to allow animations to settle.
+ * Per design doc: 300ms for scroll animation.
+ */
+const SCROLL_SETTLE_DELAY_MS = 300;
+
+/**
+ * Delay after clicking "Do it" before checking completion.
+ * Allows the reactive system to settle (debounced rechecks: 500ms context, 1200ms DOM).
+ */
+const POST_CLICK_SETTLE_DELAY_MS = 500;
+
+/**
+ * Polling interval for checking completion during wait.
+ * Used for detecting objective-based auto-completion.
+ */
+const COMPLETION_POLL_INTERVAL_MS = 250;
+
+// ============================================
 // Discovery Functions
 // ============================================
 
@@ -203,6 +255,9 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
     // Try to find parent section ID
     const sectionId = await findParentSectionId(element);
 
+    // L3-3C: Detect multisteps and extract internal action count for timeout calculation
+    const { isMultistep, internalActionCount } = await extractMultistepInfo(element, targetAction);
+
     steps.push({
       stepId,
       index,
@@ -211,6 +266,8 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
       hasDoItButton,
       isPreCompleted,
       targetAction,
+      isMultistep,
+      internalActionCount,
       locator: element,
     });
   }
@@ -326,6 +383,43 @@ async function findParentSectionId(stepElement: Locator): Promise<string | undef
   return sectionId ?? undefined;
 }
 
+/**
+ * Extract multistep information from a step element (L3-3C).
+ *
+ * Multisteps have data-targetaction="multistep" and data-internal-actions
+ * containing a JSON array of internal action definitions.
+ *
+ * @param stepElement - Locator for the step element
+ * @param targetAction - Already-extracted target action type
+ * @returns Object with isMultistep flag and internal action count
+ */
+async function extractMultistepInfo(
+  stepElement: Locator,
+  targetAction?: string
+): Promise<{ isMultistep: boolean; internalActionCount: number }> {
+  // Quick check: if targetAction isn't "multistep", skip the expensive DOM read
+  if (targetAction !== 'multistep') {
+    return { isMultistep: false, internalActionCount: 0 };
+  }
+
+  // Extract internal actions count from data-internal-actions attribute
+  const internalActionsJson = await stepElement.getAttribute('data-internal-actions');
+
+  if (!internalActionsJson) {
+    // Fallback: it's a multistep but we couldn't get the count, assume 3 actions
+    return { isMultistep: true, internalActionCount: 3 };
+  }
+
+  try {
+    const internalActions = JSON.parse(internalActionsJson);
+    const count = Array.isArray(internalActions) ? internalActions.length : 0;
+    return { isMultistep: true, internalActionCount: count };
+  } catch {
+    // JSON parse failed, assume 3 actions as fallback
+    return { isMultistep: true, internalActionCount: 3 };
+  }
+}
+
 // ============================================
 // Utility Functions
 // ============================================
@@ -340,7 +434,11 @@ async function findParentSectionId(stepElement: Locator): Promise<string | undef
  * @param stepId - The step identifier
  * @param scrollDelay - Optional delay after scrolling (ms) for animations to settle
  */
-export async function scrollStepIntoView(page: Page, stepId: string, scrollDelay = 300): Promise<void> {
+export async function scrollStepIntoView(
+  page: Page,
+  stepId: string,
+  scrollDelay = SCROLL_SETTLE_DELAY_MS
+): Promise<void> {
   const stepElement = page.getByTestId(testIds.interactive.step(stepId));
 
   // Scroll within the docs panel container
@@ -353,38 +451,128 @@ export async function scrollStepIntoView(page: Page, stepId: string, scrollDelay
 }
 
 /**
- * Wait for a step's "Do it" button to become enabled.
+ * Wait for a step's "Do it" button to become enabled (L3-3C).
  *
  * Per U3 findings: Steps may not be clickable immediately when discovered.
  * Sequential dependencies enforced by isEligibleForChecking mean buttons
  * can be disabled until previous steps complete.
  *
+ * This function respects sequential dependencies by waiting for the button
+ * to become enabled, not just visible.
+ *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
- * @param timeout - Maximum time to wait (ms)
+ * @param timeout - Maximum time to wait (ms), default 10s
  */
-export async function waitForDoItButtonEnabled(page: Page, stepId: string, timeout = 5000): Promise<void> {
+export async function waitForDoItButtonEnabled(
+  page: Page,
+  stepId: string,
+  timeout = BUTTON_ENABLE_TIMEOUT_MS
+): Promise<void> {
   const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
   await expect(doItButton).toBeEnabled({ timeout });
 }
 
 /**
- * Wait for a step to show its completion indicator.
+ * Calculate the appropriate timeout for a step based on its type (L3-3C).
+ *
+ * Per design doc: 30s base timeout for simple steps, +5s per internal action
+ * for multisteps. This accommodates multisteps with many internal actions.
+ *
+ * @param step - The testable step
+ * @returns Timeout in milliseconds
+ */
+export function calculateStepTimeout(step: TestableStep): number {
+  if (step.isMultistep && step.internalActionCount > 0) {
+    // Multistep: base timeout + time per internal action
+    return DEFAULT_STEP_TIMEOUT_MS + step.internalActionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS;
+  }
+  return DEFAULT_STEP_TIMEOUT_MS;
+}
+
+/**
+ * Wait for a step to show its completion indicator (L3-3C).
  *
  * Primary completion detection mechanism using DOM polling.
  * The completion indicator appears when:
  * - User clicks "Do it" and action completes
- * - Objectives are satisfied
+ * - Objectives are satisfied (auto-completion)
  * - Step is skipped
  * - completeEarly is true (completes before action finishes)
+ *
+ * This function polls for completion more frequently to detect
+ * objective-based auto-completion that may happen at any time.
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
  * @param timeout - Maximum time to wait (ms), default 30s per design
  */
-export async function waitForStepCompletion(page: Page, stepId: string, timeout = 30000): Promise<void> {
+export async function waitForStepCompletion(
+  page: Page,
+  stepId: string,
+  timeout = DEFAULT_STEP_TIMEOUT_MS
+): Promise<void> {
   const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
   await expect(completedIndicator).toBeVisible({ timeout });
+}
+
+/**
+ * Check if a step has completed via objectives while waiting (L3-3C).
+ *
+ * Objectives-based auto-completion can happen at any time based on
+ * the application state. This function checks if completion occurred
+ * without clicking "Do it" (e.g., user navigated to the right page).
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier
+ * @returns true if the step completed via objectives
+ */
+export async function checkObjectiveCompletion(page: Page, stepId: string): Promise<boolean> {
+  const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
+  return completedIndicator.isVisible();
+}
+
+/**
+ * Wait for completion with periodic polling for objective-based auto-completion (L3-3C).
+ *
+ * This enhanced completion wait function:
+ * 1. Periodically checks if the step auto-completed via objectives
+ * 2. Uses the standard completion indicator for final detection
+ * 3. Provides early exit if objectives are satisfied
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier
+ * @param timeout - Maximum time to wait (ms)
+ * @returns Object indicating if completion was via objectives
+ */
+export async function waitForCompletionWithObjectivePolling(
+  page: Page,
+  stepId: string,
+  timeout: number
+): Promise<{ completedViaObjectives: boolean }> {
+  const startTime = Date.now();
+  const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
+
+  // Poll for completion until timeout
+  while (Date.now() - startTime < timeout) {
+    // Check if already completed (via objectives or otherwise)
+    const isVisible = await completedIndicator.isVisible();
+    if (isVisible) {
+      // Determine if this was likely an objective completion
+      // (completed very quickly after clicking, within 2 poll intervals)
+      const elapsed = Date.now() - startTime;
+      const likelyObjectiveCompletion = elapsed < COMPLETION_POLL_INTERVAL_MS * 2;
+      return { completedViaObjectives: likelyObjectiveCompletion };
+    }
+
+    // Wait before next poll
+    await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
+  }
+
+  // Timeout reached - do one final check with Playwright's built-in expect
+  // This will throw TimeoutError if not completed
+  await expect(completedIndicator).toBeVisible({ timeout: 1000 });
+  return { completedViaObjectives: false };
 }
 
 /**
@@ -394,10 +582,16 @@ export async function waitForStepCompletion(page: Page, stepId: string, timeout 
  * @param verbose - Whether to log detailed per-step information
  */
 export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false): void {
+  // Count multisteps for summary
+  const multistepCount = result.steps.filter((s) => s.isMultistep).length;
+
   console.log(`\n📋 Step Discovery Results`);
   console.log(`   Total steps: ${result.totalSteps}`);
   console.log(`   Pre-completed: ${result.preCompletedCount}`);
   console.log(`   Without "Do it": ${result.noDoItButtonCount}`);
+  if (multistepCount > 0) {
+    console.log(`   Multisteps: ${multistepCount}`);
+  }
   console.log(`   Discovery time: ${result.durationMs}ms`);
 
   if (verbose && result.steps.length > 0) {
@@ -407,6 +601,7 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
         step.isPreCompleted ? 'pre-completed' : null,
         !step.hasDoItButton ? 'no-button' : null,
         step.skippable ? 'skippable' : null,
+        step.isMultistep ? `multistep:${step.internalActionCount}` : null,
       ]
         .filter(Boolean)
         .join(', ');
@@ -415,40 +610,36 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
       const actionStr = step.targetAction ? ` [${step.targetAction}]` : '';
       const sectionStr = step.sectionId ? ` in section:${step.sectionId}` : '';
 
-      console.log(`   ${step.index + 1}. ${step.stepId}${actionStr}${sectionStr}${flagsStr}`);
+      // L3-3C: Show calculated timeout for multisteps in verbose mode
+      const timeoutStr = step.isMultistep ? ` timeout:${Math.round(calculateStepTimeout(step) / 1000)}s` : '';
+
+      console.log(`   ${step.index + 1}. ${step.stepId}${actionStr}${sectionStr}${flagsStr}${timeoutStr}`);
     }
   }
 }
 
 // ============================================
-// Step Execution Functions
+// Step Execution Functions (L3-3C Enhanced)
 // ============================================
 
 /**
- * Default timeout for waiting for step completion (30 seconds per design).
- */
-const DEFAULT_STEP_TIMEOUT = 30000;
-
-/**
- * Delay after scrolling to allow animations to settle.
- */
-const SCROLL_SETTLE_DELAY = 300;
-
-/**
- * Execute a single step in the guide.
+ * Execute a single step in the guide (L3-3C enhanced).
  *
- * This function implements the happy path step execution:
+ * This function implements step execution with proper timing:
  * 1. Handle pre-completed steps (skip with logging)
  * 2. Handle steps without "Do it" buttons (skip with logging)
- * 3. Scroll step into view
- * 4. Wait for "Do it" button to be enabled (sequential dependencies)
- * 5. Click "Do it" button
- * 6. Wait for completion indicator
- * 7. Return result with diagnostics
+ * 3. Scroll step into view with settle delay
+ * 4. Check for objective-based auto-completion before clicking
+ * 5. Wait for "Do it" button to be enabled (sequential dependencies)
+ * 6. Click "Do it" button with post-click settle delay
+ * 7. Wait for completion with objective polling
+ * 8. Return result with diagnostics
  *
- * Note: This is the "happy path" implementation (L3-3B).
- * Requirements handling is deferred to L3-4A/4B.
- * Timing/completion refinements are in L3-3C.
+ * Timing enhancements (L3-3C):
+ * - Sequential dependencies: 10s timeout for button enable
+ * - Multisteps: Dynamic timeout (30s base + 5s per internal action)
+ * - Objective completion: Polling during wait to detect auto-completion
+ * - Settle delays: Post-scroll and post-click delays for reactive system
  *
  * @param page - Playwright Page object
  * @param step - The testable step to execute
@@ -463,11 +654,14 @@ export async function executeStep(
     verbose?: boolean;
   } = {}
 ): Promise<StepTestResult> {
-  const { timeout = DEFAULT_STEP_TIMEOUT, verbose = false } = options;
+  // L3-3C: Calculate appropriate timeout based on step type
+  const calculatedTimeout = calculateStepTimeout(step);
+  const { timeout = calculatedTimeout, verbose = false } = options;
   const startTime = Date.now();
   const consoleErrors: string[] = [];
 
   // Set up console error capture for this step execution
+  // REACT: cleanup subscription (R1) - removed in finally block
   const consoleHandler = (msg: { type: () => string; text: () => string }) => {
     if (msg.type() === 'error') {
       consoleErrors.push(msg.text());
@@ -479,7 +673,7 @@ export async function executeStep(
     // Handle pre-completed steps (U2: objectives/noop auto-completion)
     if (step.isPreCompleted) {
       if (verbose) {
-        console.log(`   ⊘ Step ${step.stepId} already completed, skipping`);
+        console.log(`   ⊘ Step ${step.stepId} already completed (discovered as pre-completed)`);
       }
       return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
     }
@@ -493,12 +687,33 @@ export async function executeStep(
     }
 
     // Scroll step into view before interaction
-    await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY);
+    await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
 
-    // Wait for "Do it" button to be enabled (U3: sequential dependencies)
-    // Use a shorter timeout for button enablement vs step completion
-    const buttonEnableTimeout = Math.min(timeout, 10000);
-    await waitForDoItButtonEnabled(page, step.stepId, buttonEnableTimeout);
+    // L3-3C: Check for objective-based auto-completion BEFORE clicking
+    // Objectives may be satisfied by prior actions (e.g., navigation completed the step)
+    const preClickCompleted = await checkObjectiveCompletion(page, step.stepId);
+    if (preClickCompleted) {
+      if (verbose) {
+        console.log(`   ✓ Step ${step.stepId} auto-completed via objectives before clicking`);
+      }
+      return {
+        stepId: step.stepId,
+        status: 'passed',
+        durationMs: Date.now() - startTime,
+        currentUrl: page.url(),
+        consoleErrors,
+      };
+    }
+
+    // L3-3C: Wait for "Do it" button to be enabled (U3: sequential dependencies)
+    // Uses dedicated timeout constant for button enablement
+    if (verbose && step.isMultistep) {
+      console.log(
+        `   ⏱ Multistep detected (${step.internalActionCount} actions), timeout: ${Math.round(timeout / 1000)}s`
+      );
+    }
+
+    await waitForDoItButtonEnabled(page, step.stepId, BUTTON_ENABLE_TIMEOUT_MS);
 
     // Click "Do it" button
     const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
@@ -508,8 +723,17 @@ export async function executeStep(
       console.log(`   → Clicked "Do it" for step ${step.stepId}`);
     }
 
-    // Wait for step completion indicator
-    await waitForStepCompletion(page, step.stepId, timeout);
+    // L3-3C: Allow reactive system to settle after click
+    // Per design doc: debounced rechecks (500ms context, 1200ms DOM)
+    await page.waitForTimeout(POST_CLICK_SETTLE_DELAY_MS);
+
+    // L3-3C: Wait for step completion with objective polling
+    // This detects both manual completion and objective-based auto-completion
+    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+
+    if (verbose && completedViaObjectives) {
+      console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);
+    }
 
     // Return success result with diagnostics
     return {
@@ -530,7 +754,7 @@ export async function executeStep(
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    // Clean up console handler to prevent memory leaks
+    // REACT: cleanup subscription (R1) - Clean up console handler to prevent memory leaks
     page.off('console', consoleHandler);
   }
 }

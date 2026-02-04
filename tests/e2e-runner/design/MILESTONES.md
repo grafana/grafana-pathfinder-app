@@ -253,7 +253,7 @@ The implementation is organized into 7 L3 phases with 18 milestones total. Each 
 
 This is the highest-complexity phase. Consider splitting into smaller increments if the spike reveals additional complexity.
 
-**Progress**: 2/4 milestones complete (L3-3A ✅, L3-3B ✅)
+**Progress**: 3/4 milestones complete (L3-3A ✅, L3-3B ✅, L3-3C ✅)
 
 ### Milestone L3-3A: DOM-Based Step Discovery ✅ **COMPLETED**
 
@@ -378,7 +378,7 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 ---
 
-### Milestone L3-3C: Timing and Completion Detection
+### Milestone L3-3C: Timing and Completion Detection ✅ **COMPLETED**
 
 **Rationale**: Handles [Timing Considerations](./e2e-test-runner-design.md#timing-considerations) and [Completion Detection](./e2e-test-runner-design.md#completion-detection).
 
@@ -407,12 +407,62 @@ This is the highest-complexity phase. Consider splitting into smaller increments
 
 **Acceptance criteria**:
 
-- [ ] Sequential dependencies respected (wait for button enabled)
-- [ ] Objective-based auto-completion detected before clicking
-- [ ] Multisteps complete successfully with longer timeouts
-- [ ] Completion detected via DOM indicator visibility
+- [x] Sequential dependencies respected (wait for button enabled) ✅
+- [x] Objective-based auto-completion detected before clicking ✅
+- [x] Multisteps complete successfully with longer timeouts ✅
+- [x] Completion detected via DOM indicator visibility ✅
 
 **Estimated effort**: Medium (1-2 days)
+
+**Actual effort**: ~1 hour
+
+**Implementation Notes**:
+
+- **Timing constants** defined per design doc:
+  - `DEFAULT_STEP_TIMEOUT_MS`: 30s base timeout
+  - `TIMEOUT_PER_MULTISTEP_ACTION_MS`: +5s per internal action for multisteps
+  - `BUTTON_ENABLE_TIMEOUT_MS`: 10s for sequential dependency wait
+  - `SCROLL_SETTLE_DELAY_MS`: 300ms post-scroll
+  - `POST_CLICK_SETTLE_DELAY_MS`: 500ms post-click (allows reactive system to settle)
+  - `COMPLETION_POLL_INTERVAL_MS`: 250ms polling for objective detection
+
+- **TestableStep interface** extended with:
+  - `isMultistep`: boolean flag for multistep detection
+  - `internalActionCount`: number of internal actions (extracted from `data-internal-actions`)
+
+- **`extractMultistepInfo()`** function detects multisteps by:
+  - Checking `data-targetaction="multistep"` attribute
+  - Parsing `data-internal-actions` JSON to count internal actions
+  - Fallback to 3 actions if JSON parsing fails
+
+- **`calculateStepTimeout()`** function calculates dynamic timeout:
+  - Simple steps: 30s default
+  - Multisteps: 30s + (5s × internalActionCount)
+  - Example: 5-action multistep gets 55s timeout
+
+- **`waitForCompletionWithObjectivePolling()`** enhanced completion detection:
+  - Polls every 250ms for completion indicator
+  - Detects if completion happened quickly (likely via objectives)
+  - Falls back to Playwright's `expect().toBeVisible()` on timeout
+
+- **`checkObjectiveCompletion()`** checks for pre-click completion:
+  - Called after scrolling, before clicking "Do it"
+  - Catches cases where prior navigation satisfied objectives
+
+- **Enhanced `executeStep()`** flow:
+  1. Check pre-completed (from discovery)
+  2. Check no "Do it" button
+  3. Scroll with settle delay
+  4. Check objective completion before clicking
+  5. Wait for button enabled (10s, sequential dependencies)
+  6. Click "Do it"
+  7. Post-click settle delay (500ms)
+  8. Wait for completion with polling
+
+- **Verbose logging** enhanced to show:
+  - Multistep detection with action count
+  - Calculated timeout for multisteps
+  - Objective-based completion detection
 
 ---
 
@@ -810,7 +860,7 @@ if (stepIndex % 5 === 0) {
 | L3-2C: Pre-flight Checks               | 2        | Small  | Low        | L3-2B        | ✅     |
 | L3-3A: Step Discovery                  | 3        | Medium | Medium     | L3-2C        | ✅     |
 | L3-3B: Step Execution (Happy Path)     | 3        | Medium | Medium     | L3-3A        | ✅     |
-| L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        |        |
+| L3-3C: Timing/Completion (DOM Polling) | 3        | Medium | Medium     | L3-3B        | ✅     |
 | L3-3D: Session Validation              | 3        | Small  | Low        | L3-3C        |        |
 | L3-4A: Requirements Detection          | 4        | Medium | Low        | L3-3D        |        |
 | L3-4B: Fix Button Execution            | 4        | Medium | Medium     | L3-4A        |        |
