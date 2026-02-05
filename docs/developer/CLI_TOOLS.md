@@ -1,6 +1,17 @@
-# Pathfinder CLI Tools
+# Pathfinder CLI tools
 
-The `pathfinder-cli` is a command-line interface for validating interactive JSON guides in the Grafana Pathfinder application. It ensures that guide definitions adhere to the required schema and best practices.
+The `pathfinder-cli` is a command-line interface for working with interactive JSON guides in the Grafana Pathfinder application. It provides two main commands:
+
+- **validate** - Validates guide definitions against the schema and best practices
+- **e2e** - Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
+
+This document covers the `validate` command. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md).
+
+---
+
+## Validate command
+
+The validate command ensures that guide definitions adhere to the required schema and best practices.
 
 ## Setup
 
