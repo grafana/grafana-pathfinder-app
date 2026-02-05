@@ -262,7 +262,14 @@ async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions
     }
 
     // Build Playwright arguments
-    const playwrightArgs = ['playwright', 'test', 'tests/e2e-runner/guide-runner.spec.ts', '--project=chromium'];
+    // Use the dedicated e2e-runner config (main config has testIgnore for e2e-runner)
+    const playwrightArgs = [
+      'playwright',
+      'test',
+      'tests/e2e-runner/guide-runner.spec.ts',
+      '--config=tests/e2e-runner/playwright.config.ts',
+      '--project=chromium',
+    ];
 
     if (options.trace) {
       playwrightArgs.push('--trace', 'on');
@@ -273,6 +280,7 @@ async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions
     }
 
     // Spawn Playwright with environment variables
+    // Note: shell: false for security (avoids argument escaping issues)
     const result = await new Promise<PlaywrightResult>((resolve) => {
       const proc = spawn('npx', playwrightArgs, {
         env: {
@@ -293,7 +301,6 @@ async function runPlaywrightTests(guide: LoadedGuide, options: E2ECommandOptions
           PLAYWRIGHT_HTML_OPEN: 'never',
         },
         stdio: 'inherit',
-        shell: true,
       });
 
       proc.on('close', (code) => {

@@ -22,7 +22,8 @@ import { readFileSync, writeFileSync } from 'fs';
 
 import { test, expect } from '../fixtures';
 import { testIds } from '../../src/components/testIds';
-import { StorageKeys } from '../../src/lib/user-storage';
+// Import from storage-keys.ts directly to avoid browser dependencies from user-storage.ts
+import { StorageKeys } from '../../src/lib/storage-keys';
 import { runPlaywrightPreflightChecks, formatPreflightResults } from './utils/preflight';
 import {
   discoverStepsFromDOM,
