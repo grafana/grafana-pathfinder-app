@@ -15,6 +15,10 @@ const pluginE2eAuth = `${dirname(require.resolve('@grafana/plugin-e2e'))}/auth`;
  */
 export default defineConfig<PluginOptions>({
   testDir: './tests',
+  /* Only match *.spec.ts files - Jest unit tests use *.test.ts */
+  testMatch: '**/*.spec.ts',
+  /* Exclude CLI e2e-runner - it's invoked directly by pathfinder-cli e2e, not CI */
+  testIgnore: '**/e2e-runner/**',
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */

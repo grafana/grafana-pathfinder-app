@@ -12,6 +12,12 @@ module.exports = {
     '\\.(svg)$': '<rootDir>/__mocks__/svgMock.js', // Mock SVG files
   },
 
+  // Extend testMatch to include tests/e2e-runner/utils unit tests
+  testMatch: [
+    ...require('./.config/jest.config').testMatch,
+    '<rootDir>/tests/e2e-runner/utils/**/*.test.{js,jsx,ts,tsx}',
+  ],
+
   // Coverage configuration
   collectCoverage: true,
   coverageReporters: ['text', 'html', 'lcov'],
