@@ -394,7 +394,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && <h1 className={titleStyle}>{title}</h1>}
+      {title && contentType === 'single-doc' && <h1 className={titleStyle}>{title}</h1>}
       <ContentProcessor
         html={processedContent}
         contentType={contentType}
