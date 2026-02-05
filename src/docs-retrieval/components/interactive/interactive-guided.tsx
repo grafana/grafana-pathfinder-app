@@ -606,6 +606,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-step-id={stepId || renderedStepId}
         data-state={uiState}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-state={uiState}
+        data-test-substep-index={isExecuting ? currentStepIndex : undefined}
+        data-test-substep-total={internalActions.length}
+        data-test-requirements-state={
+          checker.isChecking ? 'checking' :
+          checker.isEnabled ? 'met' :
+          checker.explanation ? 'unmet' : 'unknown'
+        }
       >
         {/* Title and description - always shown */}
         <div className="interactive-step-content">

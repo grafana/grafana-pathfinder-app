@@ -639,6 +639,8 @@ export class NavigationManager {
       showKeyboardHint?: boolean;
       stepTitle?: string;
       skipAnimations?: boolean; // For smooth step transitions
+      actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
+      targetValue?: string;
     }
   ): Promise<HTMLElement> {
     // First, ensure navigation is open and element is visible
@@ -815,10 +817,21 @@ export class NavigationManager {
       showKeyboardHint?: boolean;
       stepTitle?: string;
       skipAnimations?: boolean;
+      actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
+      targetValue?: string;
     }
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
+
+    // NEW: Tier 1 - action type
+    if (options?.actionType) {
+      commentBox.setAttribute('data-test-action', options.actionType);
+    }
+    // NEW: Tier 2 - target value
+    if (options?.targetValue) {
+      commentBox.setAttribute('data-test-target-value', options.targetValue);
+    }
 
     // We'll calculate position after building the content so we can measure actual height
 
