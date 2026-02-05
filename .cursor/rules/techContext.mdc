@@ -19,7 +19,7 @@ description: Describes technologies, frameworks, and other tools used in this re
 - **Dev Environment**: Docker Compose with Grafana OSS for local testing
 - **Scripts**: `npm run dev` (watch mode), `npm run build` (production), `npm run server` (Docker)
 - **Code Quality**: ESLint + Prettier with Grafana configs, TypeScript strict mode
-- **Testing**: `npm run test` (Jest), `npm run e2e` (Playwright), `npm run typecheck`
+- **Testing**: `npm run test:ci` (Jest CI mode - for agents/automation), `npm test` (watch mode - for local dev), `npm run e2e` (Playwright), `npm run typecheck`
 
 ## Technical Constraints
 
