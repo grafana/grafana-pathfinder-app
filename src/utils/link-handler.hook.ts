@@ -472,53 +472,47 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         }
       }
 
-      // Handle bottom navigation buttons (Previous/Next)
-      const bottomNavButton = target.closest('.journey-bottom-nav-button') as HTMLElement;
+      // Handle bottom navigation buttons (Previous/Next) with data-journey-nav attribute
+      const journeyNavButton = target.closest('[data-journey-nav]') as HTMLElement;
 
-      if (bottomNavButton) {
+      if (journeyNavButton) {
         safeEventHandler(event, {
           preventDefault: true,
           stopPropagation: true,
         });
 
-        const buttonText = bottomNavButton.textContent?.trim().toLowerCase();
+        const navDirection = journeyNavButton.getAttribute('data-journey-nav');
         const activeTab = model.getActiveTab();
 
-        if (buttonText?.includes('previous') || buttonText?.includes('prev')) {
-          if (model.canNavigatePrevious()) {
-            // Track analytics for bottom navigation previous click
-            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-              content_title: activeTab?.title || 'unknown',
-              content_url: activeTab?.baseUrl || 'unknown',
-              current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
-              total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
-              direction: 'backward',
-              interaction_location: 'bottom_navigation',
-              completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
-            });
-            model.navigateToPreviousMilestone();
-          }
-        } else if (buttonText?.includes('next')) {
-          if (model.canNavigateNext()) {
-            // Track analytics for bottom navigation next click
-            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-              content_title: activeTab?.title || 'unknown',
-              content_url: activeTab?.baseUrl || 'unknown',
-              current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
-              total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
-              direction: 'forward',
-              interaction_location: 'bottom_navigation',
-              completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
-            });
-            model.navigateToNextMilestone();
-          }
+        if (navDirection === 'prev' && model.canNavigatePrevious()) {
+          reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+            content_title: activeTab?.title || 'unknown',
+            content_url: activeTab?.baseUrl || 'unknown',
+            current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
+            total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+            direction: 'backward',
+            interaction_location: 'bottom_navigation',
+            completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
+          });
+          model.navigateToPreviousMilestone();
+        } else if (navDirection === 'next' && model.canNavigateNext()) {
+          reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+            content_title: activeTab?.title || 'unknown',
+            content_url: activeTab?.baseUrl || 'unknown',
+            current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
+            total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+            direction: 'forward',
+            interaction_location: 'bottom_navigation',
+            completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
+          });
+          model.navigateToNextMilestone();
         }
       }
 
       // Also handle buttons with specific text content as fallback
       const button = target.closest('button') as HTMLButtonElement;
 
-      if (button && !bottomNavButton) {
+      if (button && !journeyNavButton) {
         const buttonText = button.textContent?.trim().toLowerCase();
 
         // Check if this looks like a navigation button in the content area

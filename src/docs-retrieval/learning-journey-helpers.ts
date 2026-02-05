@@ -143,14 +143,12 @@ export function generateJourneyContentWithExtras(
     enhancedContent = addConclusionImageToContent(enhancedContent, currentMilestone.conclusionImage);
   }
 
-  // Add bottom navigation (only for milestone pages, not cover pages)
-  if (metadata.currentMilestone > 0) {
-    enhancedContent = appendBottomNavigationToContent(
-      enhancedContent,
-      metadata.currentMilestone,
-      metadata.totalMilestones
-    );
-  }
+  // Add bottom navigation to all milestones including cover page (milestone 0)
+  enhancedContent = appendBottomNavigationToContent(
+    enhancedContent,
+    metadata.currentMilestone,
+    metadata.totalMilestones
+  );
 
   return enhancedContent;
 }
@@ -267,22 +265,20 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
 }
 
 function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
-  // Don't show navigation for cover pages (milestone 0)
-  if (currentMilestone === 0) {
-    return content;
-  }
-
   const isLastMilestone = currentMilestone === totalMilestones;
+  const isCoverPage = currentMilestone === 0;
 
-  // Conditionally render Previous button (primary style, always show)
-  const prevButton = `
+  // Conditionally render Previous button (hide on cover page)
+  const prevButton = isCoverPage
+    ? ''
+    : `
     <button class="btn btn--primary journey-nav-prev" 
             data-journey-nav="prev">
       ← Previous
     </button>
   `;
 
-  // Conditionally render Next button (primary style, hide on last milestone)
+  // Conditionally render Next button (hide on last milestone)
   const nextButton = isLastMilestone
     ? ''
     : `
@@ -292,11 +288,16 @@ function appendBottomNavigationToContent(content: string, currentMilestone: numb
     </button>
   `;
 
+  // Show appropriate progress text
+  const progressText = isCoverPage
+    ? `Introduction (${totalMilestones} milestone${totalMilestones !== 1 ? 's' : ''})`
+    : `Step ${currentMilestone} of ${totalMilestones}`;
+
   const navigationHtml = `
     <div class="journey-bottom-navigation">
       <div class="journey-bottom-nav-container">
         ${prevButton}
-        <span class="journey-progress-text">Step ${currentMilestone} of ${totalMilestones}</span>
+        <span class="journey-progress-text">${progressText}</span>
         ${nextButton}
       </div>
     </div>
