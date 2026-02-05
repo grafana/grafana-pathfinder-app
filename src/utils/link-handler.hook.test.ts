@@ -152,11 +152,11 @@ describe('useLinkClickHandler', () => {
 
       // Create and add navigation buttons
       const nextButton = document.createElement('button');
-      nextButton.className = 'journey-bottom-nav-button';
+      nextButton.setAttribute('data-journey-nav', 'next');
       nextButton.textContent = 'Next';
 
       const prevButton = document.createElement('button');
-      prevButton.className = 'journey-bottom-nav-button';
+      prevButton.setAttribute('data-journey-nav', 'prev');
       prevButton.textContent = 'Previous';
 
       contentDiv.appendChild(nextButton);
