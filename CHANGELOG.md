@@ -1,8 +1,14 @@
 # Changelog
 
+## 1.4.11
+
+### Fixed
+
+- Fixed infinite loop in interactive step completion that caused steps to remain locked after previous step was completed
+
 ## 1.4.10
 
-### fixeed
+### Fixed
 
 - Issue with learning journeys showing duplicate headers for index pages
 

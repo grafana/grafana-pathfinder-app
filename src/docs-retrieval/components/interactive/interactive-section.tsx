@@ -628,6 +628,12 @@ export function InteractiveSection({
   // Handle individual step completion
   const handleStepComplete = useCallback(
     (stepId: string, skipStateUpdate = false) => {
+      // GUARD: Skip if already completed - prevents infinite loops when callbacks are
+      // retriggered due to useCallback/useEffect dependency chains (R1, R2, R3)
+      if (completedSteps.has(stepId)) {
+        return;
+      }
+
       if (!skipStateUpdate) {
         // Update state normally - React batches these automatically
         const newCompletedSteps = new Set([...completedSteps, stepId]);
