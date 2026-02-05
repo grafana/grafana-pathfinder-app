@@ -610,9 +610,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-test-substep-index={isExecuting ? currentStepIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' :
-          checker.isEnabled ? 'met' :
-          checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         {/* Title and description - always shown */}

@@ -83,11 +83,7 @@ describe('E2E Contract: data-test-step-state', () => {
   describe('InteractiveStep', () => {
     it('has data-test-step-state attribute', () => {
       render(
-        <InteractiveStep
-          stepId="test-step-state"
-          targetAction="button"
-          refTarget="button[data-testid='test']"
-        >
+        <InteractiveStep stepId="test-step-state" targetAction="button" refTarget="button[data-testid='test']">
           Step content
         </InteractiveStep>
       );
@@ -104,11 +100,7 @@ describe('E2E Contract: data-test-step-state', () => {
 
     it('defaults to checking when component initializes with requirement checking', () => {
       render(
-        <InteractiveStep
-          stepId="test-step-initial"
-          targetAction="button"
-          refTarget="button[data-testid='test']"
-        >
+        <InteractiveStep stepId="test-step-initial" targetAction="button" refTarget="button[data-testid='test']">
           Initial step
         </InteractiveStep>
       );
@@ -147,11 +139,7 @@ describe('E2E Contract: data-test-step-state', () => {
   describe('InteractiveGuided', () => {
     it('has data-test-step-state attribute', () => {
       render(
-        <InteractiveGuided
-          stepId="test-guided-state"
-          internalActions={mockGuidedActions}
-          title="Test Guided Step"
-        >
+        <InteractiveGuided stepId="test-guided-state" internalActions={mockGuidedActions} title="Test Guided Step">
           Guided content
         </InteractiveGuided>
       );
@@ -168,11 +156,7 @@ describe('E2E Contract: data-test-step-state', () => {
 
     it('has matching data-state attribute (backward compatibility)', () => {
       render(
-        <InteractiveGuided
-          stepId="test-guided-dual"
-          internalActions={mockGuidedActions}
-          title="Test Guided Step"
-        >
+        <InteractiveGuided stepId="test-guided-dual" internalActions={mockGuidedActions} title="Test Guided Step">
           Guided content
         </InteractiveGuided>
       );
@@ -195,10 +179,7 @@ describe('E2E Contract: data-test-step-state', () => {
 describe('E2E Contract: data-test-substep-index', () => {
   it('InteractiveGuided: undefined when not executing', () => {
     render(
-      <InteractiveGuided
-        stepId="test-substep-idle"
-        internalActions={mockGuidedActions}
-      >
+      <InteractiveGuided stepId="test-substep-idle" internalActions={mockGuidedActions}>
         Not executing
       </InteractiveGuided>
     );
@@ -211,10 +192,7 @@ describe('E2E Contract: data-test-substep-index', () => {
 
   it('InteractiveMultiStep: undefined when not executing', () => {
     render(
-      <InteractiveMultiStep
-        stepId="test-multistep-substep-idle"
-        internalActions={mockInternalActions}
-      >
+      <InteractiveMultiStep stepId="test-multistep-substep-idle" internalActions={mockInternalActions}>
         Not executing
       </InteractiveMultiStep>
     );
@@ -233,10 +211,7 @@ describe('E2E Contract: data-test-substep-index', () => {
 describe('E2E Contract: data-test-substep-total', () => {
   it('InteractiveGuided: equals internalActions.length', () => {
     render(
-      <InteractiveGuided
-        stepId="test-substep-total"
-        internalActions={mockGuidedActions}
-      >
+      <InteractiveGuided stepId="test-substep-total" internalActions={mockGuidedActions}>
         Test substep total
       </InteractiveGuided>
     );
@@ -249,10 +224,7 @@ describe('E2E Contract: data-test-substep-total', () => {
 
   it('InteractiveMultiStep: equals internalActions.length', () => {
     render(
-      <InteractiveMultiStep
-        stepId="test-multistep-total"
-        internalActions={mockInternalActions}
-      >
+      <InteractiveMultiStep stepId="test-multistep-total" internalActions={mockInternalActions}>
         Test substep total
       </InteractiveMultiStep>
     );
@@ -273,10 +245,7 @@ describe('E2E Contract: data-test-substep-total', () => {
     ];
 
     render(
-      <InteractiveGuided
-        stepId="test-substep-single"
-        internalActions={singleAction}
-      >
+      <InteractiveGuided stepId="test-substep-single" internalActions={singleAction}>
         Single action
       </InteractiveGuided>
     );
@@ -295,11 +264,7 @@ describe('E2E Contract: data-test-substep-total', () => {
 describe('E2E Contract: data-test-fix-type', () => {
   it('InteractiveStep: has data-test-fix-type attribute', () => {
     render(
-      <InteractiveStep
-        stepId="test-fix-type"
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId="test-fix-type" targetAction="button" refTarget="button">
         Fix type test
       </InteractiveStep>
     );
@@ -316,11 +281,7 @@ describe('E2E Contract: data-test-fix-type', () => {
 
   it('InteractiveStep: defaults to "none" when no fix needed', () => {
     render(
-      <InteractiveStep
-        stepId="test-fix-none"
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId="test-fix-none" targetAction="button" refTarget="button">
         No fix needed
       </InteractiveStep>
     );
@@ -341,11 +302,7 @@ describe('E2E Contract: data-test-fix-type', () => {
 describe('E2E Contract: data-test-requirements-state', () => {
   it('InteractiveStep: has data-test-requirements-state attribute', () => {
     render(
-      <InteractiveStep
-        stepId="test-req-state"
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId="test-req-state" targetAction="button" refTarget="button">
         Requirements state test
       </InteractiveStep>
     );
@@ -362,10 +319,7 @@ describe('E2E Contract: data-test-requirements-state', () => {
 
   it('InteractiveMultiStep: has data-test-requirements-state attribute', () => {
     render(
-      <InteractiveMultiStep
-        stepId="test-multistep-req"
-        internalActions={mockInternalActions}
-      >
+      <InteractiveMultiStep stepId="test-multistep-req" internalActions={mockInternalActions}>
         Requirements test
       </InteractiveMultiStep>
     );
@@ -382,10 +336,7 @@ describe('E2E Contract: data-test-requirements-state', () => {
 
   it('InteractiveGuided: has data-test-requirements-state attribute', () => {
     render(
-      <InteractiveGuided
-        stepId="test-guided-req"
-        internalActions={mockGuidedActions}
-      >
+      <InteractiveGuided stepId="test-guided-req" internalActions={mockGuidedActions}>
         Requirements test
       </InteractiveGuided>
     );
@@ -408,11 +359,7 @@ describe('E2E Contract: data-test-requirements-state', () => {
 describe('E2E Contract: data-test-form-state', () => {
   it('InteractiveStep: not present for non-formfill actions', () => {
     render(
-      <InteractiveStep
-        stepId="test-form-button"
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId="test-form-button" targetAction="button" refTarget="button">
         Button action
       </InteractiveStep>
     );
@@ -425,11 +372,7 @@ describe('E2E Contract: data-test-form-state', () => {
 
   it('InteractiveStep: present for formfill actions', () => {
     render(
-      <InteractiveStep
-        stepId="test-form-fill"
-        targetAction="formfill"
-        refTarget="input[name='test']"
-      >
+      <InteractiveStep stepId="test-form-fill" targetAction="formfill" refTarget="input[name='test']">
         Form fill action
       </InteractiveStep>
     );
@@ -446,11 +389,7 @@ describe('E2E Contract: data-test-form-state', () => {
 
   it('InteractiveStep: defaults to idle for formfill', () => {
     render(
-      <InteractiveStep
-        stepId="test-form-idle"
-        targetAction="formfill"
-        refTarget="input[name='test']"
-      >
+      <InteractiveStep stepId="test-form-idle" targetAction="formfill" refTarget="input[name='test']">
         Form fill idle
       </InteractiveStep>
     );
@@ -501,11 +440,7 @@ describe('E2E Contract: data-targetaction (existing)', () => {
 
   it('InteractiveGuided: does not have data-targetaction attribute', () => {
     render(
-      <InteractiveGuided
-        stepId="test-guided-action"
-        internalActions={mockGuidedActions}
-        title="Guided Test"
-      >
+      <InteractiveGuided stepId="test-guided-action" internalActions={mockGuidedActions} title="Guided Test">
         Guided content
       </InteractiveGuided>
     );
@@ -522,12 +457,7 @@ describe('E2E Contract: data-targetaction (existing)', () => {
 describe('E2E Contract: data-targetvalue', () => {
   it('InteractiveStep: reflects targetValue in data-targetvalue', () => {
     render(
-      <InteractiveStep
-        stepId="test-value"
-        targetAction="formfill"
-        refTarget="input"
-        targetValue="test-value-123"
-      >
+      <InteractiveStep stepId="test-value" targetAction="formfill" refTarget="input" targetValue="test-value-123">
         Has target value
       </InteractiveStep>
     );
@@ -538,11 +468,7 @@ describe('E2E Contract: data-targetvalue', () => {
 
   it('InteractiveStep: handles undefined targetValue', () => {
     render(
-      <InteractiveStep
-        stepId="test-value-undefined"
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId="test-value-undefined" targetAction="button" refTarget="button">
         No target value
       </InteractiveStep>
     );
@@ -562,11 +488,7 @@ describe('E2E Contract: data-targetvalue', () => {
 describe('E2E Contract: data-testid', () => {
   it('InteractiveStep: matches testIds.interactive.step(stepId)', () => {
     render(
-      <InteractiveStep
-        stepId="test-step-123"
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId="test-step-123" targetAction="button" refTarget="button">
         Test step content
       </InteractiveStep>
     );
@@ -577,11 +499,7 @@ describe('E2E Contract: data-testid', () => {
 
   it('InteractiveMultiStep: matches testIds.interactive.step(stepId)', () => {
     render(
-      <InteractiveMultiStep
-        stepId="test-multistep-456"
-        internalActions={mockInternalActions}
-        title="Test Multi-Step"
-      >
+      <InteractiveMultiStep stepId="test-multistep-456" internalActions={mockInternalActions} title="Test Multi-Step">
         Multi-step content
       </InteractiveMultiStep>
     );
@@ -592,11 +510,7 @@ describe('E2E Contract: data-testid', () => {
 
   it('InteractiveGuided: matches testIds.interactive.step(stepId)', () => {
     render(
-      <InteractiveGuided
-        stepId="test-guided-789"
-        internalActions={mockGuidedActions}
-        title="Test Guided Step"
-      >
+      <InteractiveGuided stepId="test-guided-789" internalActions={mockGuidedActions} title="Test Guided Step">
         Guided step content
       </InteractiveGuided>
     );
@@ -607,10 +521,7 @@ describe('E2E Contract: data-testid', () => {
 
   it('uses generated renderedStepId when stepId not provided', () => {
     render(
-      <InteractiveStep
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep targetAction="button" refTarget="button">
         Step without explicit ID
       </InteractiveStep>
     );
@@ -631,11 +542,7 @@ describe('E2E Contract: data-reftarget', () => {
     const refTargetValue = 'button#submit-form';
 
     render(
-      <InteractiveStep
-        stepId="test-reftarget"
-        targetAction="button"
-        refTarget={refTargetValue}
-      >
+      <InteractiveStep stepId="test-reftarget" targetAction="button" refTarget={refTargetValue}>
         Click the submit button
       </InteractiveStep>
     );
@@ -648,11 +555,7 @@ describe('E2E Contract: data-reftarget', () => {
     const complexSelector = 'div.container > button[data-testid="submit"]:not(.disabled)';
 
     render(
-      <InteractiveStep
-        stepId="test-complex-selector"
-        targetAction="button"
-        refTarget={complexSelector}
-      >
+      <InteractiveStep stepId="test-complex-selector" targetAction="button" refTarget={complexSelector}>
         Complex selector test
       </InteractiveStep>
     );
@@ -665,11 +568,7 @@ describe('E2E Contract: data-reftarget', () => {
     const stepId = 'test-multistep-reftarget';
 
     render(
-      <InteractiveMultiStep
-        stepId={stepId}
-        internalActions={mockInternalActions}
-        title="Multi-Step Test"
-      >
+      <InteractiveMultiStep stepId={stepId} internalActions={mockInternalActions} title="Multi-Step Test">
         Multi-step content
       </InteractiveMultiStep>
     );
@@ -680,11 +579,7 @@ describe('E2E Contract: data-reftarget', () => {
 
   it('InteractiveGuided: does not have data-reftarget attribute', () => {
     render(
-      <InteractiveGuided
-        stepId="test-guided-reftarget"
-        internalActions={mockGuidedActions}
-        title="Guided Test"
-      >
+      <InteractiveGuided stepId="test-guided-reftarget" internalActions={mockGuidedActions} title="Guided Test">
         Guided content
       </InteractiveGuided>
     );
@@ -753,11 +648,7 @@ describe('E2E Contract: data-internal-actions', () => {
 
   it('InteractiveStep: does not have data-internal-actions attribute', () => {
     render(
-      <InteractiveStep
-        stepId="test-step-no-internal"
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId="test-step-no-internal" targetAction="button" refTarget="button">
         Regular step
       </InteractiveStep>
     );
@@ -768,11 +659,7 @@ describe('E2E Contract: data-internal-actions', () => {
 
   it('InteractiveGuided: does not have data-internal-actions attribute', () => {
     render(
-      <InteractiveGuided
-        stepId="test-guided-no-internal"
-        internalActions={mockGuidedActions}
-        title="Guided Test"
-      >
+      <InteractiveGuided stepId="test-guided-no-internal" internalActions={mockGuidedActions} title="Guided Test">
         Guided content
       </InteractiveGuided>
     );
@@ -791,11 +678,7 @@ describe('E2E Contract: data-step-id', () => {
     const stepId = 'custom-step-id-123';
 
     render(
-      <InteractiveStep
-        stepId={stepId}
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId={stepId} targetAction="button" refTarget="button">
         Step with custom ID
       </InteractiveStep>
     );
@@ -806,10 +689,7 @@ describe('E2E Contract: data-step-id', () => {
 
   it('InteractiveStep: uses generated renderedStepId when stepId absent', () => {
     render(
-      <InteractiveStep
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep targetAction="button" refTarget="button">
         Step without explicit ID
       </InteractiveStep>
     );
@@ -827,11 +707,7 @@ describe('E2E Contract: data-step-id', () => {
     const stepId = 'custom-multistep-id-456';
 
     render(
-      <InteractiveMultiStep
-        stepId={stepId}
-        internalActions={mockInternalActions}
-        title="Multi-Step Test"
-      >
+      <InteractiveMultiStep stepId={stepId} internalActions={mockInternalActions} title="Multi-Step Test">
         Multi-step content
       </InteractiveMultiStep>
     );
@@ -842,10 +718,7 @@ describe('E2E Contract: data-step-id', () => {
 
   it('InteractiveMultiStep: uses generated renderedStepId when stepId absent', () => {
     render(
-      <InteractiveMultiStep
-        internalActions={mockInternalActions}
-        title="Multi-Step Test"
-      >
+      <InteractiveMultiStep internalActions={mockInternalActions} title="Multi-Step Test">
         Multi-step without explicit ID
       </InteractiveMultiStep>
     );
@@ -863,11 +736,7 @@ describe('E2E Contract: data-step-id', () => {
     const stepId = 'custom-guided-id-789';
 
     render(
-      <InteractiveGuided
-        stepId={stepId}
-        internalActions={mockGuidedActions}
-        title="Guided Test"
-      >
+      <InteractiveGuided stepId={stepId} internalActions={mockGuidedActions} title="Guided Test">
         Guided content
       </InteractiveGuided>
     );
@@ -878,10 +747,7 @@ describe('E2E Contract: data-step-id', () => {
 
   it('InteractiveGuided: uses generated renderedStepId when stepId absent', () => {
     render(
-      <InteractiveGuided
-        internalActions={mockGuidedActions}
-        title="Guided Test"
-      >
+      <InteractiveGuided internalActions={mockGuidedActions} title="Guided Test">
         Guided without explicit ID
       </InteractiveGuided>
     );
@@ -899,11 +765,7 @@ describe('E2E Contract: data-step-id', () => {
     const stepId = 'queryable-step-id';
 
     render(
-      <InteractiveStep
-        stepId={stepId}
-        targetAction="button"
-        refTarget="button"
-      >
+      <InteractiveStep stepId={stepId} targetAction="button" refTarget="button">
         Queryable step
       </InteractiveStep>
     );

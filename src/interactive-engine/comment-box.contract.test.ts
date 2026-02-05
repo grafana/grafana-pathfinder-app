@@ -138,9 +138,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
   describe('existing attributes', () => {
     describe('data-ready', () => {
       it('is set to "true" when comment box is visible', async () => {
-        await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-          skipAnimations: true,
-        });
+        await navigationManager.highlightWithComment(
+          mockElement,
+          'Test comment',
+          true,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            skipAnimations: true,
+          }
+        );
 
         const commentBox = document.querySelector('.interactive-comment-box');
         expect(commentBox).not.toBeNull();
@@ -148,9 +158,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
       });
 
       it('is set immediately when skipAnimations is true', async () => {
-        await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-          skipAnimations: true,
-        });
+        await navigationManager.highlightWithComment(
+          mockElement,
+          'Test comment',
+          true,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            skipAnimations: true,
+          }
+        );
 
         const commentBox = document.querySelector('.interactive-comment-box');
         expect(commentBox).not.toBeNull();
@@ -160,15 +180,25 @@ describe('E2E Contract: Comment Box Attributes', () => {
       it('is set after requestAnimationFrame when skipAnimations is false', async () => {
         // When skipAnimations is false, data-ready is set in requestAnimationFrame
         // We can test that it's NOT set immediately, but will be set eventually
-        await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-          skipAnimations: false,
-        });
+        await navigationManager.highlightWithComment(
+          mockElement,
+          'Test comment',
+          true,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            skipAnimations: false,
+          }
+        );
 
         const commentBox = document.querySelector('.interactive-comment-box');
         expect(commentBox).not.toBeNull();
 
         // Wait for requestAnimationFrame to complete
-        await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
 
         expect(commentBox).toHaveAttribute('data-ready', 'true');
       });
@@ -218,9 +248,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
       });
 
       it('is absent for normal action comment boxes', async () => {
-        await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-          actionType: 'button',
-        });
+        await navigationManager.highlightWithComment(
+          mockElement,
+          'Test comment',
+          true,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            actionType: 'button',
+          }
+        );
 
         const commentBox = document.querySelector('.interactive-comment-box');
         expect(commentBox).not.toBeNull();
@@ -248,9 +288,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('is set to "hover" when actionType option is "hover"', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Hover over this', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'hover',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Hover over this',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'hover',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -258,9 +308,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('is set to "button" when actionType option is "button"', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Click this button', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'button',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Click this button',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'button',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -268,9 +328,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('is set to "highlight" when actionType option is "highlight"', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Look at this', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'highlight',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Look at this',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'highlight',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -278,9 +348,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('is set to "formfill" when actionType option is "formfill"', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Fill in this field', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'formfill',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Fill in this field',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'formfill',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -306,9 +386,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
       for (const actionType of validActionTypes) {
         navigationManager.clearAllHighlights();
 
-        await navigationManager.highlightWithComment(mockElement, `Test ${actionType}`, true, undefined, undefined, undefined, undefined, undefined, {
-          actionType,
-        });
+        await navigationManager.highlightWithComment(
+          mockElement,
+          `Test ${actionType}`,
+          true,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            actionType,
+          }
+        );
 
         const commentBox = document.querySelector('.interactive-comment-box');
         expect(commentBox).toHaveAttribute('data-test-action', actionType);
@@ -322,10 +412,20 @@ describe('E2E Contract: Comment Box Attributes', () => {
 
   describe('data-test-target-value (Tier 2)', () => {
     it('is present when targetValue option is provided', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Enter username', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'formfill',
-        targetValue: 'testuser',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Enter username',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'formfill',
+          targetValue: 'testuser',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -333,9 +433,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('is absent when targetValue option is not provided', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'button',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Test comment',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'button',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -354,10 +464,20 @@ describe('E2E Contract: Comment Box Attributes', () => {
       for (const targetValue of testValues) {
         navigationManager.clearAllHighlights();
 
-        await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-          actionType: 'formfill',
-          targetValue,
-        });
+        await navigationManager.highlightWithComment(
+          mockElement,
+          'Test comment',
+          true,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            actionType: 'formfill',
+            targetValue,
+          }
+        );
 
         const commentBox = document.querySelector('.interactive-comment-box');
         expect(commentBox).toHaveAttribute('data-test-target-value', targetValue);
@@ -365,10 +485,20 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('works with button actions that have target values', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Select option', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'button',
-        targetValue: 'option-1',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Select option',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'button',
+          targetValue: 'option-1',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -377,9 +507,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('can be used without actionType (backward compatibility)', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-        targetValue: 'some-value',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Test comment',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          targetValue: 'some-value',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -390,10 +530,20 @@ describe('E2E Contract: Comment Box Attributes', () => {
     it('does not set attribute for empty string (falsy value)', async () => {
       // Empty string is falsy, so the attribute won't be set
       // This is intentional - empty strings don't add meaningful test data
-      await navigationManager.highlightWithComment(mockElement, 'Clear field', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'formfill',
-        targetValue: '',
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Clear field',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'formfill',
+          targetValue: '',
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -407,11 +557,21 @@ describe('E2E Contract: Comment Box Attributes', () => {
 
   describe('combined attributes', () => {
     it('sets all relevant attributes together for formfill actions', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Enter your email', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'formfill',
-        targetValue: 'user@example.com',
-        skipAnimations: true,
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Enter your email',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'formfill',
+          targetValue: 'user@example.com',
+          skipAnimations: true,
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -431,10 +591,20 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('sets correct attributes for button actions without target values', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Click to continue', true, undefined, undefined, undefined, undefined, undefined, {
-        actionType: 'button',
-        skipAnimations: true,
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Click to continue',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          actionType: 'button',
+          skipAnimations: true,
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -493,9 +663,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
 
   describe('edge cases', () => {
     it('handles undefined options gracefully', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-        skipAnimations: true,
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Test comment',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          skipAnimations: true,
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
@@ -510,9 +690,19 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
 
     it('handles empty options object gracefully', async () => {
-      await navigationManager.highlightWithComment(mockElement, 'Test comment', true, undefined, undefined, undefined, undefined, undefined, {
-        skipAnimations: true,
-      });
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Test comment',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          skipAnimations: true,
+        }
+      );
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();

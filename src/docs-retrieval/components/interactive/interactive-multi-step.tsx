@@ -641,18 +641,22 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
         data-test-step-state={
-          isCompletedWithObjectives ? 'completed' :
-          executionError ? 'error' :
-          isExecuting ? 'executing' :
-          checker.isChecking ? 'checking' :
-          !checker.isEnabled ? 'requirements-unmet' : 'idle'
+          isCompletedWithObjectives
+            ? 'completed'
+            : executionError
+              ? 'error'
+              : isExecuting
+                ? 'executing'
+                : checker.isChecking
+                  ? 'checking'
+                  : !checker.isEnabled
+                    ? 'requirements-unmet'
+                    : 'idle'
         }
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' :
-          checker.isEnabled ? 'met' :
-          checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         <div className="interactive-step-content">
