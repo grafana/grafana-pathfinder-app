@@ -52,7 +52,11 @@ Once started, open Grafana: http://localhost:3000
 ### Unit tests
 
 ```bash
-npm run test
+# Run all tests once (CI mode - recommended for agents/automation)
+npm run test:ci
+
+# Run tests in watch mode (for local development)
+npm test
 ```
 
 ### Type checks and lint
