@@ -31,6 +31,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
+import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import type { JsonStep, JsonInteractiveAction } from '../types';
 
 // Exclude our overlay UI from being recorded as steps
@@ -347,15 +348,25 @@ export function StepEditor({
   const startPicker = useCallback(() => {
     onPickerModeChange?.(true, (selector: string) => {
       setNewReftarget(selector);
+      // Auto-add default requirements based on selector pattern
+      const suggestions = suggestDefaultRequirements(newAction, selector);
+      if (suggestions.length > 0) {
+        setNewRequirements((prev) => mergeRequirements(prev, suggestions));
+      }
     });
-  }, [onPickerModeChange]);
+  }, [onPickerModeChange, newAction]);
 
   // Start element picker for editing step
   const startEditPicker = useCallback(() => {
     onPickerModeChange?.(true, (selector: string) => {
       setEditReftarget(selector);
+      // Auto-add default requirements based on selector pattern
+      const suggestions = suggestDefaultRequirements(editAction, selector);
+      if (suggestions.length > 0) {
+        setEditRequirements((prev) => mergeRequirements(prev, suggestions));
+      }
     });
-  }, [onPickerModeChange]);
+  }, [onPickerModeChange, editAction]);
 
   // Start editing a step
   const handleStartEdit = useCallback(
@@ -632,7 +643,16 @@ export function StepEditor({
                           <Select
                             options={ACTION_OPTIONS}
                             value={ACTION_OPTIONS.find((o) => o.value === editAction)}
-                            onChange={(opt) => opt.value && setEditAction(opt.value)}
+                            onChange={(opt) => {
+                              if (opt.value) {
+                                setEditAction(opt.value);
+                                // Auto-add default requirements for this action type
+                                const suggestions = suggestDefaultRequirements(opt.value, editReftarget);
+                                if (suggestions.length > 0) {
+                                  setEditRequirements((prev) => mergeRequirements(prev, suggestions));
+                                }
+                              }
+                            }}
                             menuPlacement="top"
                           />
                         </Field>
@@ -903,7 +923,16 @@ export function StepEditor({
               <Select
                 options={ACTION_OPTIONS}
                 value={ACTION_OPTIONS.find((o) => o.value === newAction)}
-                onChange={(opt) => opt.value && setNewAction(opt.value)}
+                onChange={(opt) => {
+                  if (opt.value) {
+                    setNewAction(opt.value);
+                    // Auto-add default requirements for this action type
+                    const suggestions = suggestDefaultRequirements(opt.value, newReftarget);
+                    if (suggestions.length > 0) {
+                      setNewRequirements((prev) => mergeRequirements(prev, suggestions));
+                    }
+                  }
+                }}
                 menuPlacement="top"
               />
             </Field>

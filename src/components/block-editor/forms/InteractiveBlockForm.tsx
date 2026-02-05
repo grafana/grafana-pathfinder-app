@@ -11,6 +11,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import type { BlockFormProps, JsonBlock, JsonInteractiveAction } from '../types';
 import type { JsonInteractiveBlock } from '../../../types/json-guide.types';
 
@@ -78,8 +79,13 @@ export function InteractiveBlockForm({
   const startPicker = useCallback(() => {
     onPickerModeChange?.(true, (selector: string) => {
       setReftarget(selector);
+      // Auto-add default requirements based on selector pattern
+      const suggestions = suggestDefaultRequirements(action, selector);
+      if (suggestions.length > 0) {
+        setRequirements((prev) => mergeRequirements(prev, suggestions));
+      }
     });
-  }, [onPickerModeChange]);
+  }, [onPickerModeChange, action]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -154,11 +160,19 @@ export function InteractiveBlockForm({
     ]
   );
 
-  const handleActionChange = useCallback((option: SelectableValue<JsonInteractiveAction>) => {
-    if (option.value) {
-      setAction(option.value);
-    }
-  }, []);
+  const handleActionChange = useCallback(
+    (option: SelectableValue<JsonInteractiveAction>) => {
+      if (option.value) {
+        setAction(option.value);
+        // Auto-add default requirements for this action type
+        const suggestions = suggestDefaultRequirements(option.value, reftarget);
+        if (suggestions.length > 0) {
+          setRequirements((prev) => mergeRequirements(prev, suggestions));
+        }
+      }
+    },
+    [reftarget]
+  );
 
   const handleRequirementClick = useCallback((req: string) => {
     setRequirements((prev) => {
