@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.10
+
+### fixeed
+
+- Issue with learning journeys showing duplicate headers for index pages
+
 ## 1.4.9
 
 ### Changed
