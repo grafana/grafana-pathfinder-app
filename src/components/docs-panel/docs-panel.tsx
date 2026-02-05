@@ -1778,8 +1778,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             const showMilestoneProgress =
               isLearningJourneyTab &&
               activeTab.content?.type === 'learning-journey' &&
-              activeTab.content.metadata.learningJourney &&
-              activeTab.content.metadata.learningJourney.currentMilestone > 0;
+              activeTab.content.metadata.learningJourney;
 
             return (
               <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
@@ -1977,10 +1976,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           className={styles.navButton}
                         />
                         <span className={styles.milestoneText}>
-                          {t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                            current: activeTab.content?.metadata.learningJourney?.currentMilestone,
-                            total: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                          })}
+                          {activeTab.content?.metadata.learningJourney?.currentMilestone === 0
+                            ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
+                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                              })
+                            : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
+                                current: activeTab.content?.metadata.learningJourney?.currentMilestone,
+                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                              })}
                         </span>
                         <IconButton
                           name="arrow-right"
