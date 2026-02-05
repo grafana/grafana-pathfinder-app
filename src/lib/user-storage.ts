@@ -41,6 +41,7 @@ import { z } from 'zod';
 
 import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { StorageKeys } from './storage-keys';
 
 // ============================================================================
 // LEARNING PROGRESS SCHEMA (for defense-in-depth validation)

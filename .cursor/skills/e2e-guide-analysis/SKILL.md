@@ -10,6 +10,7 @@ This skill runs the E2E CLI against a provided JSON guide with maximum diagnosti
 ## Prerequisites
 
 Before running, ensure:
+
 1. Grafana is running locally: `npm run server` (or verify at http://localhost:3000)
 2. Plugin is built: `npm run dev` or `npm run build`
 3. The JSON guide file exists at the provided path
@@ -43,13 +44,13 @@ After the CLI completes (pass or fail), collect:
 
 For each step in the guide, examine:
 
-| Aspect | What to look for |
-|--------|------------------|
-| **Status** | passed, failed, skipped, not_reached |
-| **Skip reason** | pre_completed, no_do_it_button, requirements_not_met, skippable_failed |
-| **Requirements** | Were requirements met? Did fix buttons work? |
-| **Timing** | How long did each step take? Timeouts? |
-| **Screenshots** | Visual anomalies, unexpected UI state |
+| Aspect           | What to look for                                                       |
+| ---------------- | ---------------------------------------------------------------------- |
+| **Status**       | passed, failed, skipped, not_reached                                   |
+| **Skip reason**  | pre_completed, no_do_it_button, requirements_not_met, skippable_failed |
+| **Requirements** | Were requirements met? Did fix buttons work?                           |
+| **Timing**       | How long did each step take? Timeouts?                                 |
+| **Screenshots**  | Visual anomalies, unexpected UI state                                  |
 
 ### Step 4: Identify learnings
 
@@ -79,14 +80,14 @@ Use this template:
 
 ## Test Results
 
-| Metric | Value |
-|--------|-------|
-| Total steps | N |
-| Passed | N |
-| Failed | N |
-| Skipped | N |
-| Not reached | N |
-| Duration | Xms |
+| Metric      | Value |
+| ----------- | ----- |
+| Total steps | N     |
+| Passed      | N     |
+| Failed      | N     |
+| Skipped     | N     |
+| Not reached | N     |
+| Duration    | Xms   |
 
 ## Observations
 
@@ -107,9 +108,11 @@ Use this template:
 ## Recommendations
 
 ### For guide authors
+
 - <actionable guidance>
 
 ### For E2E CLI development
+
 - <suggested improvements>
 
 ## Artifacts
@@ -129,13 +132,13 @@ For deeper context, read these files:
 
 ## Exit codes reference
 
-| Code | Meaning |
-|------|---------|
-| 0 | All steps passed |
-| 1 | One or more steps failed |
-| 2 | Configuration/setup error |
-| 3 | Grafana unreachable |
-| 4 | Auth failure |
+| Code | Meaning                   |
+| ---- | ------------------------- |
+| 0    | All steps passed          |
+| 1    | One or more steps failed  |
+| 2    | Configuration/setup error |
+| 3    | Grafana unreachable       |
+| 4    | Auth failure              |
 
 ## Common edge cases to watch for
 
