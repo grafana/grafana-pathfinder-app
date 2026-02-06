@@ -40,7 +40,6 @@ import {
 import {
   tabStorage,
   useUserStorage,
-  learningProgressStorage,
   interactiveStepStorage,
   interactiveCompletionStorage,
 } from '../../lib/user-storage';
@@ -74,9 +73,10 @@ import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../testIds';
 
 // Import extracted components
-import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions } from './components';
+import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
 // Import extracted utilities
-import { isDocsLikeTab, getTranslatedTitle } from './utils';
+import { isDocsLikeTab, getTranslatedTitle, computeTabVisibility } from './utils';
+import { useBadgeCelebrationQueue } from './hooks/useBadgeCelebrationQueue';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -692,63 +692,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const handRaiseIndicatorRef = React.useRef<HTMLDivElement>(null);
 
   // Global badge celebration queue - shows toasts sequentially when badges are earned
-  const [badgeCelebrationQueue, setBadgeCelebrationQueue] = React.useState<string[]>([]);
-  const [currentCelebrationBadge, setCurrentCelebrationBadge] = React.useState<string | null>(null);
-  const isProcessingQueueRef = React.useRef(false);
+  const {
+    currentCelebrationBadge,
+    queueCount: badgeCelebrationQueueCount,
+    onDismiss: handleDismissGlobalCelebration,
+  } = useBadgeCelebrationQueue();
 
   // Interactive progress state - shows reset button when user has completed steps
   const [hasInteractiveProgress, setHasInteractiveProgress] = React.useState(false);
 
-  // Process the badge queue - show next badge toast
-  React.useEffect(() => {
-    if (badgeCelebrationQueue.length > 0 && !currentCelebrationBadge && !isProcessingQueueRef.current) {
-      isProcessingQueueRef.current = true;
-      // Small delay before showing next toast for better UX
-      const timer = setTimeout(
-        () => {
-          const [nextBadge, ...remaining] = badgeCelebrationQueue;
-          setBadgeCelebrationQueue(remaining);
-          setCurrentCelebrationBadge(nextBadge);
-          isProcessingQueueRef.current = false;
-        },
-        currentCelebrationBadge === null ? 0 : 500
-      ); // No delay for first, 500ms between subsequent
-
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [badgeCelebrationQueue, currentCelebrationBadge]);
-
-  // Listen for badge award events globally (only set up once)
-  React.useEffect(() => {
-    const handleProgressUpdate = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-
-      // Check for new badges from guide completion
-      if (detail?.type === 'guide-completed' && detail?.newBadges?.length > 0) {
-        // Add all new badges to the queue (cap at 3 to avoid overwhelming)
-        const newBadges = detail.newBadges.slice(0, 3) as string[];
-        setBadgeCelebrationQueue((prev) => [...prev, ...newBadges]);
-      }
-    };
-
-    window.addEventListener('learning-progress-updated', handleProgressUpdate);
-
-    return () => {
-      window.removeEventListener('learning-progress-updated', handleProgressUpdate);
-    };
-  }, []);
-
-  // Handle dismissing the current badge celebration
-  const handleDismissGlobalCelebration = React.useCallback(async () => {
-    const badgeId = currentCelebrationBadge;
-    if (badgeId) {
-      // Clear current badge to trigger showing next in queue
-      setCurrentCelebrationBadge(null);
-      // Then persist dismissal to storage
-      await learningProgressStorage.dismissCelebration(badgeId);
-    }
-  }, [currentCelebrationBadge]);
   const {
     isActive: isSessionActive,
     sessionRole,
@@ -972,78 +924,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [containerWidth, setContainerWidth] = useState<number>(0);
 
   // Dynamic tab visibility calculation based on container width
-  // Note: Permanent tabs (recommendations, my-learning) are now rendered separately as icon tabs
   const calculateTabVisibility = useCallback(() => {
-    // Filter out permanent tabs - they're rendered separately as icons
-    const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools');
-
-    if (guideTabs.length === 0) {
-      setVisibleTabs(tabs); // Keep all tabs in state for reference
-      setOverflowedTabs([]);
-      return;
-    }
-
-    // If we don't have container width yet, show minimal tabs
-    if (containerWidth === 0) {
-      setVisibleTabs(tabs);
-      setOverflowedTabs([]);
-      return;
-    }
-
-    // Note: chevron button width is already reserved in containerWidth calculation
-    const tabSpacing = 4; // Gap between tabs (theme.spacing(0.5))
-
-    // Use a more practical minimum: each tab needs at least 80px to be readable
-    // With flex layout, tabs will grow to fill available space proportionally
-    const minTabWidth = 80; // Minimum readable width per tab
-
-    // Account for: permanent tabs (~72px) + divider (~8px) + actions (~50px)
-    const reservedWidth = 130;
-    const availableWidth = Math.max(0, containerWidth - reservedWidth);
-
-    // Determine how many guide tabs can fit
-    let maxVisibleGuideTabs = 0;
-    let widthUsed = 0;
-
-    // Try to fit guide tabs
-    for (let i = 0; i < guideTabs.length; i++) {
-      const tabWidth = minTabWidth + tabSpacing;
-      const spaceNeeded = widthUsed + tabWidth;
-
-      if (spaceNeeded <= availableWidth) {
-        maxVisibleGuideTabs++;
-        widthUsed += tabWidth;
-      } else {
-        break;
-      }
-    }
-
-    // Always show at least 1 guide tab if any exist
-    maxVisibleGuideTabs = Math.max(maxVisibleGuideTabs, Math.min(1, guideTabs.length));
-
-    // Find the active guide tab (if any)
-    const activeGuideTabIndex = guideTabs.findIndex((t) => t.id === activeTabId);
-
-    if (activeGuideTabIndex >= maxVisibleGuideTabs) {
-      // Active guide tab is in overflow, swap it into visible range
-      const visibleGuideTabsArray = [...guideTabs.slice(0, maxVisibleGuideTabs - 1), guideTabs[activeGuideTabIndex]];
-      const overflowGuideTabsArray = [
-        ...guideTabs.slice(maxVisibleGuideTabs - 1, activeGuideTabIndex),
-        ...guideTabs.slice(activeGuideTabIndex + 1),
-      ];
-      setVisibleTabs([
-        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
-        ...visibleGuideTabsArray,
-      ]);
-      setOverflowedTabs(overflowGuideTabsArray);
-    } else {
-      // Normal case - show as many tabs as fit (at least 1 if any exist)
-      setVisibleTabs([
-        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
-        ...guideTabs.slice(0, maxVisibleGuideTabs),
-      ]);
-      setOverflowedTabs(guideTabs.slice(maxVisibleGuideTabs));
-    }
+    const { visibleTabs: nextVisible, overflowedTabs: nextOverflowed } = computeTabVisibility(
+      tabs,
+      containerWidth,
+      activeTabId
+    );
+    setVisibleTabs(nextVisible);
+    setOverflowedTabs(nextOverflowed);
   }, [tabs, containerWidth, activeTabId]);
 
   useEffect(() => {
@@ -2203,31 +2091,20 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         anchorRef={handRaiseIndicatorRef}
       />
 
-      {/* Modal backdrop */}
-      {(showPresenterControls || showAttendeeJoin) && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999,
-          }}
-          onClick={() => {
-            setShowPresenterControls(false);
-            setShowAttendeeJoin(false);
-          }}
-        />
-      )}
+      <ModalBackdrop
+        visible={showPresenterControls || showAttendeeJoin}
+        onClose={() => {
+          setShowPresenterControls(false);
+          setShowAttendeeJoin(false);
+        }}
+      />
 
       {/* Global Badge Celebration Toast - shows queued toasts sequentially */}
       {currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
         <BadgeUnlockedToast
           badge={getBadgeById(currentCelebrationBadge)!}
           onDismiss={handleDismissGlobalCelebration}
-          queueCount={badgeCelebrationQueue.length}
+          queueCount={badgeCelebrationQueueCount}
         />
       )}
     </div>
