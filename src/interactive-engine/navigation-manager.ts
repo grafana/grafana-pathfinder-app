@@ -61,6 +61,7 @@ export class NavigationManager {
     commentBox.setAttribute('data-position', 'center');
     commentBox.setAttribute('data-ready', 'true');
     commentBox.setAttribute('data-noop', 'true');
+    applyE2ECommentBoxAttributes(commentBox, { actionType: 'noop' });
 
     // Build comment box content
     const content = document.createElement('div');

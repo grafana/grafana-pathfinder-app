@@ -274,17 +274,13 @@ describe('E2E Contract: Comment Box Attributes', () => {
   // ============================================================================
 
   describe('data-test-action (Tier 1)', () => {
-    it('is not set by showNoopComment (only by GuidedHandler)', () => {
-      // NavigationManager.showNoopComment only sets data-noop, not data-test-action.
-      // The data-test-action='noop' attribute is set by GuidedHandler.showNoopCommentBox
-      // which is a private method tested through integration/e2e tests.
+    it('is set to "noop" by showNoopComment', () => {
       navigationManager.showNoopComment('Noop instruction');
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
       expect(commentBox).toHaveAttribute('data-noop', 'true');
-      // showNoopComment does NOT set data-test-action - that's GuidedHandler's responsibility
-      expect(commentBox).not.toHaveAttribute('data-test-action');
+      expect(commentBox).toHaveAttribute('data-test-action', 'noop');
     });
 
     it('is set to "hover" when actionType option is "hover"', async () => {
