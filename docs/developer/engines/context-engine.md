@@ -1,18 +1,19 @@
 # Context Engine
 
-The Context Engine (`src/context-engine/`) analyzes the user's current Grafana state and provides context-aware documentation recommendations.
+The Context Engine (`src/context-engine/`) analyzes the user's current Grafana state and provides context-aware documentation recommendations. It combines URL path analysis, EchoSrv event monitoring, and Grafana API data to generate personalized recommendations.
 
 ## Overview
 
-The Context Engine continuously monitors the user's activity in Grafana (current page, datasources, dashboards, etc.) and generates personalized documentation recommendations based on what they're working on.
+The Context Engine monitors user activity in Grafana by tracking location changes, listening to analytics events, and fetching datasource and dashboard information. It generates context tags from this data and sends them to an external recommendation service to retrieve relevant documentation, learning journeys, and interactive guides. When the external service is unavailable or disabled, it falls back to bundled interactives and static link recommendations.
 
 ## Architecture
 
 ### Core Components
 
-- **`context.service.ts`** - Context data fetching and tag generation
-- **`context.hook.ts`** - React hook for context panel
-- **`context.init.ts`** - Service initialization
+- **`context.service.ts`** - Main service for context data collection, tag generation, and recommendation fetching
+- **`context.hook.ts`** - React hook providing context state management and debouncing
+- **`context.init.ts`** - Plugin lifecycle initialization for EchoSrv event logging
+- **`index.ts`** - Public API exports for the context engine
 
 ## Main Service
 
@@ -20,23 +21,28 @@ The Context Engine continuously monitors the user's activity in Grafana (current
 
 **Location**: `src/context-engine/context.service.ts`
 
-**Purpose**: Fetches context data and generates recommendations
+**Purpose**: Centralized service for collecting Grafana context, generating semantic tags, and fetching personalized recommendations
 
 **Key Features**:
 
-- Analyzes current Grafana state
-- Generates context tags
-- Fetches recommendations from ML service
-- Provides fallback recommendations
+- Collects context from multiple sources: URL paths, EchoSrv events, and Grafana APIs
+- Generates semantic tags for recommendation matching
+- Fetches recommendations from external recommendation service with security validation
+- Provides three-tier fallback system: external service, bundled interactives, and static links
+- Handles error states with user-friendly messages and automatic fallback
+- Manages event buffering to preserve context when plugin is closed and reopened
+- Implements security measures including HTTPS validation, domain allowlisting, and XSS protection
 
 **Context Data Collected**:
 
-- Current page path and URL
-- Active datasources
-- Dashboard information
-- Visualization types
-- User role and permissions
-- Grafana version and platform
+- Current page path, URL, and path segments
+- Search parameters from URL query strings
+- Active datasources from Grafana API
+- Dashboard information including UID, title, tags, and folder
+- Datasource type from EchoSrv events (new datasource, datasource picker, query execution)
+- Visualization type from EchoSrv panel picker events
+- User role and hashed user identifiers for Cloud users
+- Grafana version, platform (Cloud vs OSS), theme, and language/locale
 
 ## Main Hook
 
@@ -44,92 +50,294 @@ The Context Engine continuously monitors the user's activity in Grafana (current
 
 **Location**: `src/context-engine/context.hook.ts`
 
-**Purpose**: React hook for context panel component
+**Purpose**: React hook providing context state management, debouncing, and action handlers for UI components
 
 **Key Features**:
 
-- Monitors location changes
-- Debounces context updates
-- Manages recommendation state
-- Handles errors gracefully
-
-**Usage**:
-
-```typescript
-import { useContextPanel } from '../context-engine';
-
-const ContextPanel = () => {
-  const { contextData, isLoading } = useContextPanel({
-    onOpenLearningJourney: handleOpenJourney,
-    onOpenDocsPage: handleOpenDocs,
-  });
-
-  // Render recommendations
-};
-```
+- Monitors URL location changes via browser events and Grafana LocationService
+- Subscribes to EchoSrv-triggered context changes for datasource and visualization events
+- Centralizes debouncing using TimeoutManager to prevent competing refresh mechanisms
+- Separates context data loading from recommendation fetching for better performance
+- Manages recommendation expansion state and error handling
+- Provides action handlers for opening learning journeys and docs pages
+- Refreshes recommendations when interactive progress is cleared
 
 ## Context Detection
 
 The engine detects context through multiple sources:
 
-1. **Location Service** - Monitors URL changes
-2. **EchoSrv Events** - Listens to Grafana analytics events
-3. **Backend APIs** - Fetches datasource and dashboard data
-4. **DOM Analysis** - Analyzes current page state
+1. **Location Service** - Monitors URL changes via browser popstate events and Grafana's LocationService history listener. Tracks pathname changes to detect page navigation.
+
+2. **EchoSrv Events** - Listens to Grafana analytics events for real-time user interactions:
+   - `grafana_ds_add_datasource_clicked` - New datasource configuration
+   - `grafana_ds_test_datasource_clicked` - Datasource testing (workaround for edit detection)
+   - `dashboards_dspicker_clicked` - Dashboard datasource selection
+   - `dashboards_panel_plugin_picker_clicked` - Visualization type selection
+   - `data-request` (meta-analytics) - Active query execution in Explore or dashboards
+
+3. **Backend APIs** - Fetches structured data from Grafana REST APIs:
+   - `/api/datasources` - All configured datasources with types and metadata
+   - `/api/dashboards/uid/{uid}` - Dashboard metadata including title, tags, and folder
 
 ## Tag Generation
 
-Context tags are generated from:
+Context tags are semantic identifiers generated from user context to match relevant documentation:
 
-- Page paths (e.g., `/dashboard`, `/datasources`)
-- Datasource types (e.g., `prometheus`, `loki`)
-- Visualization types (e.g., `graph`, `table`)
-- User actions (e.g., `creating-dashboard`, `configuring-alert`)
+- **Entity-Action tags** - Extracted from URL paths (e.g., `dashboard:edit`, `datasource:create`, `explore:view`)
+- **Selected datasource tags** - From EchoSrv events (e.g., `selected-datasource:prometheus`, `selected-datasource:loki`)
+- **Panel type tags** - Only when creating/editing visualizations (e.g., `panel-type:timeseries`, `panel-type:gauge`)
+- **Connection type tags** - From add-new-connection URLs (e.g., `connection-type:clickhouse`)
+- **Datasource type tags** - From connections and datasources pages (e.g., `datasource-type:prometheus`)
+- **Dashboard tags** - From dashboard metadata (e.g., `dashboard-tag:monitoring`)
+- **UI state tags** - From query parameters (e.g., `ui:tabbed`, `ui:fullscreen`, `ui:kiosk`)
 
-Tags are sent to the recommendation service to find relevant content.
+Tags are sent to the external recommendation service as part of the context payload for semantic matching.
 
 ## Recommendation Flow
 
-1. **Context Collection** - Gather current Grafana state
-2. **Tag Generation** - Create semantic tags from context
-3. **API Request** - Send tags to recommendation service
-4. **Fallback Handling** - Use bundled recommendations if service unavailable
-5. **Display** - Show recommendations in context panel
+The recommendation system follows a three-tier approach with automatic fallback:
+
+### Tier 1: External Recommendation Service
+
+1. **Context Collection** - Fetch current Grafana state via `getContextData()`
+2. **Tag Generation** - Create semantic tags from URL, events, and API data
+3. **Security Validation** - Validate recommender service URL against domain allowlist
+4. **User Privacy** - Hash user identifiers and email for Cloud users (OSS users use generic identifiers)
+5. **API Request** - POST context payload to external recommender service with 5-second timeout
+6. **XSS Protection** - Sanitize recommendations using explicit allowlist to prevent prototype pollution
+7. **Learning Journey Processing** - Fetch metadata and completion percentages for learning journeys
+8. **Filtering** - Remove low-confidence recommendations (below 0.5 threshold)
+9. **Sorting** - Prioritize by type (interactive > learning-journey > docs-page), then by accuracy
+
+### Tier 2: Bundled Interactives (on External Service Failure)
+
+1. **Load Index** - Read `bundled-interactives/index.json` for available guides
+2. **URL Matching** - Filter interactives by current URL path and platform (Cloud/OSS)
+3. **Completion Tracking** - Include user progress from local storage
+
+### Tier 3: Static Links (fallback when recommender disabled)
+
+1. **Load Rules** - Dynamically require all JSON files from `bundled-interactives/static-links/`
+2. **URL Prefix Matching** - Match current path against rule URL prefixes
+3. **Platform Filtering** - Filter by target platform (Cloud/OSS)
+4. **Top-Level Only** - Exclude tag-based rules (only navigation-level recommendations)
 
 ## Timeout Management
 
-The engine uses `src/utils/timeout-manager.ts` for:
+The engine uses a centralized `TimeoutManager` (`src/utils/timeout-manager.ts`) to prevent competing debounce mechanisms:
 
-- Debouncing context updates (500ms)
-- Preventing rapid-fire API calls
-- Managing timeout cleanup
+**Location**: Hook-level debouncing in `useContextPanel()`
+
+**Purpose**: Single source of truth for all timeout operations
+
+**Key Features**:
+
+- Debounces context refreshes to prevent rapid-fire API calls
+- Cancels previous timeouts when new events arrive (true debouncing behavior)
+- Uses configurable delays from `INTERACTIVE_CONFIG` constants
+- Provides `setDebounced()` for operations requiring cancellation
+- Provides `setTimeout()` for simple delays without interference
+- Manages cleanup on component unmount
 
 ## Event Buffering
 
-EchoSrv events are buffered to handle:
+The service maintains an in-memory event buffer to preserve context across plugin lifecycle:
 
-- Plugin close/reopen scenarios
-- Missed events during plugin downtime
-- Initialization from recent events
+**Buffer Specifications**:
 
-## Integration
+- Maximum 10 events stored
+- 5-minute TTL for events
+- Stores datasource type, visualization type, timestamp, and event source
+- Automatically cleaned on buffer overflow
 
-The Context Engine integrates with:
+**Use Cases**:
 
-- **Content Fetcher** (`docs-retrieval/content-fetcher.ts`) - Fetches recommended content
-- **Docs Panel** (`components/docs-panel/docs-panel.tsx`) - Opens recommended content
-- **Timeout Manager** (`utils/timeout-manager.ts`) - Manages debouncing
+- Plugin close/reopen scenarios - preserves last known datasource and visualization context
+- Missed events during plugin downtime - recovers from recent events
+- Initialization on plugin startup - calls `initializeFromRecentEvents()` to restore state
+
+**Implementation**: Static properties on `ContextService` class maintain state across React component lifecycles.
+
+## Integration Points
+
+The Context Engine integrates with multiple systems:
+
+**Internal Dependencies**:
+
+- **Content Fetcher** (`docs-retrieval/content-fetcher.ts`) - Fetches learning journey metadata and content
+- **Context Panel** (`components/docs-panel/context-panel.tsx`) - Primary UI consumer using `useContextPanel()` hook
+- **Timeout Manager** (`utils/timeout-manager.ts`) - Centralized debouncing and timeout management
+- **User Storage** (`lib/user-storage`) - Stores interactive completion percentages
+- **Hash Utility** (`lib/hash.util`) - Hashes user identifiers for privacy
+- **Security Utilities** (`security/`) - Text sanitization and URL parsing
+
+**External Dependencies**:
+
+- **Grafana Runtime** - LocationService for navigation, BackendSrv for API calls, EchoSrv for events, config for system info
+- **Grafana Data** - Plugin context for configuration
+- **External Recommendation Service** - Remote API at `recommender.grafana.com` for ML-powered recommendations
+
+**Initialization**:
+
+- Called via `onPluginStart()` in `App.tsx` during plugin mount
+- Registers EchoSrv backend immediately to capture events even when plugin UI is closed
+
+## Security Measures
+
+The Context Engine implements multiple security layers:
+
+**URL Validation**:
+
+- HTTPS-only requirement for external recommender service (dev mode allows HTTP)
+- Domain allowlist with exact hostname matching (no wildcards)
+- URL parsing with safe fallbacks to prevent injection attacks
+
+**XSS Protection**:
+
+- Explicit allowlist for recommendation properties (blocks `__proto__`, `constructor`, dangerous properties)
+- Text sanitization for display to prevent script injection
+- No spread operators on external API responses to prevent prototype pollution
+
+**Privacy Protection**:
+
+- User identifiers and emails hashed with SHA-256 for Cloud users
+- OSS users use generic identifiers (`oss-user`, `oss-user@example.com`)
+- Source hostname hashing for Cloud instances (except public `play.grafana.org`)
+- No sensitive data sent to external services
+
+**Error Boundaries**:
+
+- Graceful degradation when external service fails
+- User-friendly error messages without exposing internal details
+- Automatic fallback to bundled content maintains functionality
+
+## Error Handling
+
+The service implements a comprehensive error handling strategy:
+
+**Error Types**:
+
+- `unavailable` - Service timeout, CORS, or network failure
+- `rate-limit` - HTTP 429 response when service is under strain
+- `other` - Validation failures, parsing errors, or unexpected issues
+
+**Error Response**:
+
+- User-friendly messages displayed in UI
+- Error state tracked in `lastExternalRecommenderError` with timestamp
+- Automatic fallback to bundled interactives and static links
+- Service continues retrying on next context change (no permanent failure state)
+
+**Fallback Behavior**:
+
+- External service failure → bundled interactives + static links
+- Recommender disabled → bundled interactives + static links only
+- Content fetch failure → empty recommendations with graceful error display
+
+## Bundled Content System
+
+The Context Engine includes offline-capable bundled content located in `src/bundled-interactives/`:
+
+**Bundled Interactives** (`index.json`):
+
+- JSON guide files containing interactive tutorials and walkthroughs
+- Indexed by ID, title, summary, URL patterns, and target platform
+- Support multiple URL patterns per interactive (array format)
+- Platform filtering for Cloud-specific or OSS-specific content
+- Matched by exact URL path comparison
+- Accuracy score: 0.8 (high confidence for bundled content)
+
+**Static Links** (`static-links/*.json`):
+
+- Platform-specific documentation link collections organized by topic
+- Rule-based matching using URL prefix patterns and platform targeting
+- Support for logical operators (AND/OR) in match conditions
+- Files organized by category: alerting, explore, administration, AI/ML, etc.
+- Only top-level navigation rules used (tag-based rules filtered out)
+- Accuracy score: 0.7 (good confidence for static fallbacks)
+
+**Content Discovery**:
+
+- Uses webpack `require.context` for dynamic file loading
+- Deduplicates file paths to handle webpack finding same files with different paths
+- Graceful error handling if files fail to load
+- No external network requests required for bundled content
+
+## Recommendation Scoring
+
+Recommendations are filtered and sorted based on accuracy and content type:
+
+**Accuracy Scores**:
+
+- External API recommendations: Variable (0.0 to 1.0) based on semantic matching
+- Bundled interactives: 0.8 (high confidence)
+- Static links: 0.7 (good confidence)
+- Confidence threshold: 0.5 (recommendations below this are filtered out)
+
+**Content Type Priority** (lower number = higher priority):
+
+1. Interactive guides (0) - Hands-on, step-by-step tutorials
+2. Learning journeys (1) - Multi-step educational paths
+3. Docs pages (2) - Static documentation
+
+**Sorting Algorithm**:
+
+1. Primary sort: Content type priority (interactive first)
+2. Secondary sort: Accuracy score descending
+3. Featured recommendations: Server-curated, not filtered by confidence, preserve server order
+
+**Filtering Rules**:
+
+- Remove generic learning journey index pages
+- Drop recommendations with accuracy ≤ 0.5
+- Featured recommendations skip confidence filtering (trusted server curation)
 
 ## Configuration
 
-Context detection can be configured via plugin settings:
+Configuration is managed through plugin settings (`DocsPluginConfig`):
 
-- Enable/disable context-aware recommendations
-- Configure recommendation service URL
-- Set data usage preferences
+**Recommendation Service**:
+
+- `recommenderServiceUrl` - External API endpoint (default: `https://recommender.grafana.com`)
+- `acceptedTermsAndConditions` - Enable/disable external recommendations (default: enabled for Cloud, disabled for OSS)
+- Security validation requires HTTPS and domain allowlist matching
+
+**Network Timeouts**:
+
+- `DEFAULT_RECOMMENDER_TIMEOUT` - 5 seconds for API requests (prevents hanging in air-gapped environments)
+- Automatic fallback to bundled content on timeout or network errors
+
+**Platform Detection**:
+
+- Automatically detects Cloud vs OSS from Grafana build info
+- Cloud users: real user identifiers hashed for privacy
+- OSS users: generic identifiers (`oss-user`) to preserve privacy
+
+## Key Files and Locations
+
+**Core Implementation**:
+
+- `src/context-engine/context.service.ts` - Main service class with all context logic
+- `src/context-engine/context.hook.ts` - React hook for UI integration
+- `src/context-engine/context.init.ts` - Plugin lifecycle initialization
+- `src/types/context.types.ts` - TypeScript type definitions
+
+**Bundled Content**:
+
+- `src/bundled-interactives/index.json` - Interactive guides index
+- `src/bundled-interactives/static-links/*.json` - Static documentation links
+- `src/bundled-interactives/*.json` - Interactive guide content files
+
+**Related Systems**:
+
+- `src/utils/timeout-manager.ts` - Centralized debouncing and timeout management
+- `src/docs-retrieval/content-fetcher.ts` - Content fetching for learning journeys
+- `src/components/docs-panel/context-panel.tsx` - Primary UI consumer
+- `src/constants.ts` - Configuration constants and security allowlists
 
 ## See Also
 
-- `docs/developer/components/docs-panel/README.md` - Context panel component
-- `docs/architecture.dot` - Overall architecture (GraphViz DOT format)
-- `src/types/context.types.ts` - Type definitions
+- `docs/developer/components/docs-panel/` - Context panel component documentation
+- `docs/architecture.dot` - Overall system architecture
+- `docs/developer/utils/README.md` - TimeoutManager and utility documentation
+- `docs/developer/ASSISTANT_INTEGRATION.md` - Assistant integration using context data

@@ -1,37 +1,53 @@
-### Self-healing interactive steps
-
-Interactive steps now self-heal if users change UI state after a Fix (e.g., closing the navigation menu after it was opened/docked). The system:
-
-- Reacts to nav state changes (mutation observer, URL change, and likely nav clicks)
-- Re-evaluates requirements and reverts steps back to the fix state if prerequisites are no longer met
-- Optionally uses a short, scoped heartbeat window to recheck fragile prerequisites like `navmenu-open` for better resilience
-
-Configuration for the optional heartbeat lives in `INTERACTIVE_CONFIG.requirements.heartbeat` and is enabled by default.
-
 # Docs Panel Components
 
-The core documentation functionality of the plugin, including context-aware recommendations and interactive learning journeys.
+The core documentation functionality of the plugin, including context-aware recommendations, interactive learning journeys, live session integration, and comprehensive content rendering.
+
+## Location
+
+**Path**: `/src/components/docs-panel/`
+**Main Component**: `docs-panel.tsx`
+**Context Component**: `context-panel.tsx`
+
+## Purpose
+
+The docs-panel exists to:
+
+- Provide AI-powered context-aware documentation recommendations
+- Render interactive learning journeys with milestone navigation
+- Enable live collaborative learning sessions
+- Track learning progress and achievements
+- Offer tabbed interface for multiple content streams
+- Integrate developer tools for content authoring
+- Support multiple content types (journeys, docs, guides)
 
 ## Files Overview
 
 ### `docs-panel.tsx` ⭐ **Main Component**
 
-**Purpose**: Primary documentation viewer with tabbed interface supporting both learning journeys and single docs
+**Purpose**: Primary documentation viewer with tabbed interface and session integration
+**Location**: `/src/components/docs-panel/docs-panel.tsx`
 **Role**:
 
-- Manages multiple content tabs (recommendations, learning journeys, docs pages)
+- Manages multiple content tabs (recommendations, my learning, content tabs)
 - Handles navigation between milestones within learning journeys
-- Integrates all the extracted hooks for clean code organization
+- Integrates live session features for collaborative learning
 - Provides unified interface for different content types
+- Coordinates with interactive engine for step execution
+- Manages tab persistence and restoration
 
 **Key Features**:
 
-- **Multi-tab Interface**: Recommendations tab + dynamic content tabs
-- **Content Type Support**: Learning journeys and standalone documentation pages
+- **Multi-tab Interface**: Fixed tabs (Recommendations, My Learning) + dynamic content tabs
+- **Content Type Support**: Learning journeys, documentation pages, interactive guides
 - **Milestone Navigation**: Previous/Next navigation within learning journeys
+- **Live Sessions**: Real-time collaborative learning with presenter/attendee modes
+- **Session Integration**: Action capture and replay for synchronized experiences
 - **Real-time Loading**: Lazy loading of content when tabs are activated
 - **Keyboard Shortcuts**: Tab switching and navigation shortcuts
 - **Cache Management**: Intelligent caching with cleanup on tab close
+- **Dev Tools**: Integrated developer tools panel (dev mode only)
+- **Progress Tracking**: Automatic progress tracking for guides and milestones
+- **Error Boundary**: Graceful error handling for My Learning tab
 
 **State Management**:
 
@@ -40,113 +56,255 @@ interface CombinedPanelState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
   contextPanel: ContextPanel;
+  pluginConfig: DocsPluginConfig;
 }
 
 interface LearningJourneyTab {
   id: string;
   title: string;
   baseUrl: string;
-  content: LearningJourneyContent | null;
-  docsContent: SingleDocsContent | null;
-  type?: 'learning-journey' | 'docs';
+  currentUrl: string;
+  content: Content | null;
   isLoading: boolean;
   error: string | null;
+  type?: 'learning-journey' | 'docs';
 }
 ```
 
-**Hook Integration** (Post-Refactor):
+**Hook Integration**:
 
-- `useInteractiveElements()` - Handles interactive document features (`interactive-engine/interactive.hook.ts`)
-- `useStepChecker()` - Step requirements and objectives validation (`requirements-manager/step-checker.hook.ts`)
-- `useKeyboardShortcuts()` - Tab switching and milestone navigation (`utils/keyboard-shortcuts.hook.ts`)
-- `useLinkClickHandler()` - Journey starts, image lightbox, navigation (`utils/link-handler.hook.ts`)
-- `useContentRenderer()` - Content rendering logic (`docs-retrieval/content-renderer.tsx`)
+- `useInteractiveElements()` - Interactive step execution and requirements checking
+- `useKeyboardShortcuts()` - Tab switching and milestone navigation
+- `useLinkClickHandler()` - Journey starts, image lightbox, internal navigation
+- `useUserStorage()` - Tab persistence and restoration
+- `useSession()` - Live session state and collaboration features
+
+**Session Integration**:
+
+- **SessionProvider**: Wraps component with session context
+- **ActionCaptureSystem**: Records presenter actions
+- **ActionReplaySystem**: Replays actions for attendees
+- **PresenterControls**: Session management for presenters
+- **AttendeeJoin**: Join interface for participants
+- **HandRaiseButton/Queue**: Participant interaction features
 
 ---
 
 ### `context-panel.tsx` ⭐ **Recommendations Engine**
 
-**Purpose**: Context-aware documentation recommendations based on user's current Grafana state
+**Purpose**: AI-powered context-aware documentation recommendations
+**Location**: `/src/components/docs-panel/context-panel.tsx`
 **Role**:
 
 - Analyzes current Grafana context (path, datasources, dashboard info)
 - Fetches personalized recommendations from AI service
-- Displays learning journeys and docs organized by type
+- Displays recommendations organized by priority and type
 - Handles opening content in the main docs panel
+- Shows recommendation banner when service is disabled
+- Integrates developer tools panel (dev mode only)
 
 **Key Features**:
 
 - **Context Analysis**: Extracts context from current Grafana page
-- **Smart Recommendations**: AI-powered content suggestions
+- **Smart Recommendations**: AI-powered content suggestions based on user's workflow
 - **Recommendation Types**: Learning journeys vs. standalone docs
+- **Priority Levels**: Primary and related recommendations
 - **Expandable Sections**: Collapsible lists with metadata
 - **Real-time Updates**: Refreshes on page navigation
+- **Dev Tools Integration**: Shows SelectorDebugPanel when dev mode enabled
+- **Terms Banner**: Displays EnableRecommenderBanner when terms not accepted
 
 **Context Detection**:
 
-- Current page path and parameters
-- Active datasources
-- Dashboard information (if applicable)
-- User role and preferences
+- Current page path and URL parameters
+- Active datasources and their types
+- Dashboard information (if on dashboard page)
+- Panel types and configurations
+- Query languages in use
+- User role and permissions
+- Grafana version and environment
 - Generated context tags for AI processing
 
 **Recommendation Flow**:
 
-1. **Context Collection**: Gather user's current state
-2. **API Request**: Send context to recommendation service
-3. **Content Processing**: Fetch milestone data for learning journeys
-4. **Display**: Show organized recommendations by type
-5. **Integration**: Open selected content in main panel
+1. **Context Collection**: Gather user's current Grafana state
+2. **API Request**: Send context to recommendation service endpoint
+3. **Content Processing**: Parse recommendations and fetch milestone data
+4. **Priority Sorting**: Organize by primary vs. related recommendations
+5. **Display**: Show organized recommendations with expand/collapse
+6. **User Action**: User clicks recommendation to open
+7. **Integration**: Opens content in main panel via callbacks
+
+**Recommendation Structure**:
+
+```typescript
+interface Recommendation {
+  title: string;
+  url: string;
+  type: 'learning-journey' | 'docs';
+  priority: 'primary' | 'related';
+  description?: string;
+  estimatedTime?: string;
+}
+```
 
 ---
 
-## Refactoring History
+### `MinimizedSidebarIcon.tsx`
 
-This component underwent major refactoring to improve maintainability:
+**Purpose**: Icon component for minimized sidebar state
+**Location**: `/src/components/docs-panel/MinimizedSidebarIcon.tsx`
+**Role**:
 
-### Before Refactor
+- Displays icon when sidebar is minimized
+- Provides visual indicator for reopening
+- Consistent with Grafana's sidebar behavior
 
-- Single `docs-panel.tsx` file with ~3,500 lines
-- Mixed concerns: UI, business logic, styling, event handling
-- Difficult to maintain and test
+### `/components/` Directory
 
-### After Refactor ✅
+**Purpose**: Extracted sub-components for cleaner organization
+**Location**: `/src/components/docs-panel/components/`
 
-- **Main Component**: ~560 lines focused on rendering and state
-- **Extracted Hooks**: Organized business logic in `/utils/*.hook.ts`
-- **Extracted Styles**: Organized styling in `/styles/*.styles.ts`
-- **Extracted Constants**: Type-safe selectors in `/constants/selectors.ts`
+**Components:**
 
-### Extracted Modules (Post-Refactor)
+- **MyLearningErrorBoundary.tsx** - Error boundary for My Learning tab
+- **LoadingIndicator.tsx** - Loading state display component
+- **ErrorDisplay.tsx** - Error message display component
+- **TabBarActions.tsx** - Tab bar action buttons
 
-- `src/interactive-engine/interactive.hook.ts` - Interactive elements hook
-- `src/requirements-manager/step-checker.hook.ts` - Requirements/objectives checking
-- `src/docs-retrieval/content-renderer.tsx` - Unified content renderer
-- `src/docs-retrieval/html-parser.ts` - HTML to React component parsing
-- `src/utils/keyboard-shortcuts.hook.ts` - Keyboard navigation
-- `src/utils/link-handler.hook.ts` - Link handling
-- `src/styles/docs-panel.styles.ts` - Component styling
-- `src/styles/content-html.styles.ts` - Content HTML styling
-- `src/constants/selectors.ts` - UI selectors and constants
+### `/utils/` Directory
 
-## Component Relationships
+**Purpose**: Utility functions for docs panel
+**Location**: `/src/components/docs-panel/utils/`
+
+**Utilities:**
+
+- **isDocsLikeTab()** - Checks if tab is documentation-type
+- **getTranslatedTitle()** - Handles title localization
+
+## Architecture
+
+### Component Structure
 
 ```
-CombinedLearningJourneyPanel (main)
-├── ContextPanel (recommendations)
-├── Interactive Hooks
-│   ├── useInteractiveElements() (interactive-engine/)
-│   ├── useStepChecker() (requirements-manager/)
-│   ├── useKeyboardShortcuts() (utils/)
-│   └── useLinkClickHandler() (utils/)
-├── Content System
-│   ├── content-fetcher.ts (docs-retrieval/)
-│   ├── html-parser.ts (docs-retrieval/)
-│   └── content-renderer.tsx (docs-retrieval/)
-└── Styling
-    ├── docs-panel.styles.ts
-    └── content-html.styles.ts
+CombinedLearningJourneyPanel (SceneObjectBase)
+├── SessionProvider (collaboration context)
+│   └── CombinedPanelRenderer (React component)
+│       ├── Tab Bar
+│       │   ├── Recommendations Tab
+│       │   ├── My Learning Tab
+│       │   └── Content Tabs (dynamic)
+│       ├── Tab Content
+│       │   ├── ContextPanel (recommendations)
+│       │   ├── MyLearningTab (learning paths)
+│       │   └── ContentRenderer (journeys/docs)
+│       ├── Live Session Components
+│       │   ├── PresenterControls
+│       │   ├── AttendeeJoin
+│       │   ├── HandRaiseButton
+│       │   └── HandRaiseQueue
+│       ├── SelectorDebugPanel (dev mode)
+│       ├── FeedbackButton
+│       └── HelpFooter
 ```
+
+### State Management Layers
+
+**Scene State** (SceneObjectBase):
+- Tab list and active tab
+- Context panel instance
+- Plugin configuration
+
+**React State** (Component):
+- Session mode (presenter/attendee/none)
+- UI interactions
+- Form states
+
+**User Storage**:
+- Tab persistence
+- Progress tracking
+- Badge unlocks
+
+**Session State**:
+- Live session participants
+- Action queue for replay
+- Presenter actions
+
+## Tab Types
+
+### Fixed Tabs
+
+**Recommendations Tab**:
+- Always present
+- Contains ContextPanel
+- Shows AI recommendations
+- Shows EnableRecommenderBanner (if needed)
+- Shows SelectorDebugPanel (dev mode only)
+
+**My Learning Tab**:
+- Always present
+- Contains MyLearningTab component
+- Shows learning paths and progress
+- Wrapped in error boundary
+- Badge celebrations
+
+### Dynamic Content Tabs
+
+**Properties:**
+- Created when user opens content
+- Persisted across sessions
+- Closeable by user
+- Support for learning journeys and docs
+- Milestone navigation (journeys)
+
+**Tab State:**
+```typescript
+{
+  id: string;           // Unique identifier
+  title: string;        // Display name
+  baseUrl: string;      // Initial URL
+  currentUrl: string;   // Current milestone URL
+  content: Content;     // Rendered content
+  isLoading: boolean;   // Loading state
+  error: string | null; // Error state
+}
+```
+
+## Live Session Features
+
+### Session Modes
+
+**Presenter Mode**:
+- Controls session flow
+- Actions captured and broadcast
+- Can see hand raise queue
+- Manages attendees
+
+**Attendee Mode**:
+- Follows presenter's actions
+- Actions replayed automatically
+- Can raise hand for questions
+- Read-only experience
+
+**None (Default)**:
+- Standard individual learning
+- No collaboration features
+- Full control of navigation
+
+### Session Actions
+
+**Captured Actions:**
+- Tab switches
+- Milestone navigation
+- Content scrolling
+- Interactive step execution
+- Guide openings
+
+**Action Replay:**
+- Queued and replayed in order
+- Smooth transitions between actions
+- Maintains state consistency
+- Error handling for failed replays
 
 ## Usage Patterns
 
@@ -155,6 +313,9 @@ CombinedLearningJourneyPanel (main)
 ```typescript
 // From context panel recommendations
 const tabId = await model.openLearningJourney(url, title);
+
+// From learning paths panel
+onOpenGuide(guideId); // Resolves to URL internally
 
 // Navigation within journeys
 model.navigateToNextMilestone();
@@ -166,6 +327,9 @@ model.navigateToPreviousMilestone();
 ```typescript
 // From context panel or related links
 const tabId = await model.openDocsPage(url, title);
+
+// From dev tools (PR tester, URL tester)
+onOpenDocsPage(url, title);
 ```
 
 ### Tab Management
@@ -176,24 +340,153 @@ model.setActiveTab(tabId);
 
 // Close tab (preserves cache intelligently)
 model.closeTab(tabId);
+
+// Close all content tabs
+model.closeAllContentTabs();
+```
+
+### Starting Live Session
+
+```typescript
+// Presenter starts session
+<PresenterControls sessionId={sessionId} />
+
+// Attendees join
+<AttendeeJoin sessionId={sessionId} />
+
+// Hand raising
+<HandRaiseButton />
 ```
 
 ## Integration Points
 
-### Data Sources
+### Content System
 
-- `src/docs-retrieval/content-fetcher.ts` - Unified content fetching (learning journeys and docs)
-- `src/context-engine/context.service.ts` - Context panel recommendation API
+- **Content Fetcher**: `/src/docs-retrieval/content-fetcher.ts`
+  - Unified content fetching for all types
+  - Handles authentication and caching
+  - Supports multiple content sources
+
+- **Content Renderer**: `/src/docs-retrieval/ContentRenderer.tsx`
+  - Renders HTML content as React components
+  - Handles interactive elements
+  - Manages image lightbox
+
+- **HTML Parser**: `/src/docs-retrieval/html-parser.ts`
+  - Converts HTML to React elements
+  - Sanitizes content
+  - Applies styling
+
+### Context Engine
+
+- **Context Service**: `/src/context-engine/context.service.ts`
+  - Analyzes Grafana context
+  - Generates context tags
+  - Fetches AI recommendations
+
+- **Context Collection**: `/src/context-engine/context-collector.ts`
+  - Extracts datasource information
+  - Identifies current page type
+  - Collects user preferences
+
+### Interactive Engine
+
+- **Interactive Hook**: `/src/interactive-engine/interactive.hook.ts`
+  - Executes interactive steps
+  - Manages step state
+  - Handles requirements and objectives
+
+- **Requirements Manager**: `/src/requirements-manager/`
+  - Validates step requirements
+  - Checks objectives completion
+  - Self-healing mechanism
+
+### User Storage
+
+- **Tab Storage**: Persists open tabs across sessions
+- **Progress Storage**: Tracks guide completion
+- **Learning Paths Storage**: Badge and streak data
+- **Interactive Storage**: Step completion state
+
+### Live Sessions
+
+- **Session Provider**: `/src/integrations/workshop/SessionProvider.tsx`
+- **Action Systems**: Capture and replay user actions
+- **PeerJS Integration**: WebRTC communication
+
+### Analytics
+
+- **Scroll Tracking**: Content engagement metrics
+- **Interaction Tracking**: User action analytics
+- **Progress Events**: Learning milestone events
+- **Badge Events**: Achievement unlocks
 
 ### Styling
 
-- `src/styles/docs-panel.styles.ts` - Component-level styles
-- `src/styles/content-html.styles.ts` - Content-specific HTML styling
+- **Component Styles**: `/src/styles/docs-panel.styles.ts`
+- **Content HTML Styles**: `/src/styles/content-html.styles.ts`
+- **Interactive Styles**: `/src/styles/interactive.styles.ts`
+- **Prism Styles**: `/src/styles/prism.styles.ts` (code highlighting)
 - Grafana theme integration for consistent appearance
 
 ### Configuration
 
-- `src/constants/selectors.ts` - UI selectors and configuration
-- `src/constants.ts` - API endpoints and authentication
+- **Plugin Config**: `DocsPluginConfig` interface
+- **API Endpoints**: Recommendation service, docs base URL
+- **Feature Flags**: OpenFeature integration
+- **Dev Mode**: Developer tools access control
 
-This organization provides a clean, maintainable codebase that separates concerns and makes it easy for developers to understand and modify specific functionality.
+## Dependencies
+
+### External Dependencies
+
+- **@grafana/scenes**: Scene-based state management
+- **@grafana/ui**: Grafana UI components
+- **@grafana/data**: Data types and utilities
+- **@grafana/runtime**: Runtime services
+- **React**: UI framework
+- **PeerJS**: WebRTC for live sessions
+
+### Internal Dependencies
+
+- **Interactive Engine**: Step execution
+- **Content System**: Content fetching and rendering
+- **Context Engine**: Recommendation generation
+- **User Storage**: Persistence layer
+- **Analytics**: Event tracking
+- **Learning Paths**: Progress tracking
+
+## Data Collected
+
+### User Activity
+
+- Tab open/close events
+- Content view duration (scroll tracking)
+- Milestone navigation
+- Interactive step completion
+- Search queries (if applicable)
+
+### Learning Progress
+
+- Guide completion status
+- Step completion state
+- Badge unlocks
+- Streak maintenance
+- Path progress percentages
+
+### Session Data (Live Sessions Only)
+
+- Session participation
+- Actions performed (as presenter)
+- Hand raises
+- Session duration
+
+All data stored locally in browser unless explicitly synced (future feature).
+
+## See Also
+
+- `docs/developer/interactive-engine/` - Interactive step system
+- `docs/developer/LIVE_SESSIONS.md` - Live session setup
+- `docs/developer/USER_STORAGE.md` - Storage system
+- `docs/developer/components/LearningPaths/` - Learning path tracking
+- `docs/developer/components/SelectorDebugPanel/` - Developer tools
