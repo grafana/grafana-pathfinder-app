@@ -74,7 +74,7 @@ Applied to `InteractiveStep`, `InteractiveMultiStep`, and `InteractiveGuided` el
 - `completed` - Step successfully completed
 - `error` - Execution failed
 - `cancelled` - User cancelled execution
-- `requirements-unmet` / `requirements-not-met` - Prerequisites not satisfied
+- `requirements-unmet` - Prerequisites not satisfied
 
 **Example**:
 
@@ -248,6 +248,8 @@ Applied to comment box elements created by `NavigationManager` and `GuidedHandle
 
 **Implementation**: Applied via `applyE2ECommentBoxAttributes()` in `src/interactive-engine/e2e-attributes.ts`
 
+**Noop actions**: A noop is an informational step with no target element (no click, formfill, or highlight). A centered comment box is shown; both `NavigationManager.showNoopComment()` and GuidedHandler's noop path set `data-noop="true"` and `data-test-action="noop"`. Used for guided noop steps and for multi-step noop steps (e.g. intro text).
+
 ---
 
 #### `data-test-target-value`
@@ -306,6 +308,7 @@ applyE2ECommentBoxAttributes(commentBox, {
 This ensures consistency between:
 
 - `NavigationManager.highlightWithComment()`
+- `NavigationManager.showNoopComment()` (for noop comment boxes)
 - `GuidedHandler.executeGuidedStep()`
 
 ### React Component Integration
