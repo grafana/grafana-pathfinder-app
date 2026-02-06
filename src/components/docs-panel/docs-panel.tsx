@@ -22,7 +22,7 @@ const TerminalPanel = lazy(() =>
 );
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults } from '../../constants';
+import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -35,14 +35,8 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
-  enrichWithStepContext,
 } from '../../lib/analytics';
-import {
-  tabStorage,
-  useUserStorage,
-  interactiveStepStorage,
-  interactiveCompletionStorage,
-} from '../../lib/user-storage';
+import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -75,9 +69,16 @@ import { testIds } from '../testIds';
 // Import extracted components
 import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
 // Import extracted utilities
-import { isDocsLikeTab, getTranslatedTitle, restoreTabsFromStorage, restoreActiveTabFromStorage } from './utils';
+import {
+  isDocsLikeTab,
+  getTranslatedTitle,
+  restoreTabsFromStorage,
+  restoreActiveTabFromStorage,
+  isGrafanaDocsUrl,
+  cleanDocsUrl,
+} from './utils';
 // Import extracted hooks
-import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation } from './hooks';
+import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
 
 // Import centralized types
 import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
@@ -825,6 +826,21 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     activeTab?.currentUrl
   );
 
+  // Content reset hook - handles complex storage/state/reload orchestration
+  const handleResetGuide = useContentReset({ model, setHasInteractiveProgress });
+
+  // Helper: Reload active tab content (DRY - was duplicated 3x)
+  const reloadActiveTab = useCallback(
+    (tab: LearningJourneyTab) => {
+      if (isDocsLikeTab(tab.type)) {
+        model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
+      } else {
+        model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);
+      }
+    },
+    [model]
+  );
+
   // Expose current active tab id/url globally for interactive persistence keys
   useEffect(() => {
     try {
@@ -1395,13 +1411,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
                 contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'}
                 error={activeTab.error}
-                onRetry={() => {
-                  if (isDocsLikeTab(activeTab.type)) {
-                    model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                  } else {
-                    model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                  }
-                }}
+                onRetry={() => reloadActiveTab(activeTab)}
               />
             );
           }
@@ -1468,20 +1478,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     >
                       {(() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
-                        const isBundled = typeof url === 'string' && url.startsWith('bundled:');
-                        let isGrafanaDomain = false;
-                        try {
-                          if (url && typeof url === 'string') {
-                            const parsed = new URL(url);
-                            // Security: Use exact hostname matching from allowlist (no subdomains)
-                            isGrafanaDomain = ALLOWED_GRAFANA_DOCS_HOSTNAMES.includes(parsed.hostname);
-                          }
-                        } catch {
-                          isGrafanaDomain = false;
-                        }
-                        if (url && !isBundled && isGrafanaDomain) {
-                          // Strip /unstyled.html from URL for browser viewing (users want the styled docs page)
-                          const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+                        if (isGrafanaDocsUrl(url)) {
+                          const cleanUrl = cleanDocsUrl(url);
 
                           return (
                             <button
@@ -1515,11 +1513,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           name="sync"
                           onClick={() => {
                             if (activeTab) {
-                              if (isDocsLikeTab(activeTab.type)) {
-                                model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                              } else {
-                                model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                              }
+                              reloadActiveTab(activeTab);
                             }
                           }}
                         />
@@ -1530,39 +1524,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           aria-label={t('docsPanel.resetGuide', 'Reset guide')}
                           title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
                           onClick={async () => {
-                            if (progressKey) {
-                              // Track analytics (use content URL for analytics, not internal storage key)
-                              const analyticsUrl = activeTab?.content?.url || activeTab?.baseUrl || '';
-                              reportAppInteraction(
-                                UserInteraction.ResetProgressClick,
-                                enrichWithStepContext({
-                                  content_url: analyticsUrl,
-                                  content_type: getContentTypeForAnalytics(analyticsUrl, activeTab?.type || 'docs'),
-                                  interaction_location: 'docs_content_meta_header',
-                                })
-                              );
-
-                              // Clear all progress for this content (use content URL to match storage)
-                              await interactiveStepStorage.clearAllForContent(progressKey);
-                              // Also clear the completion percentage so recommendations show updated state
-                              await interactiveCompletionStorage.clear(progressKey);
-                              setHasInteractiveProgress(false);
-
-                              // Dispatch event to notify context panel to refresh recommendations
-                              window.dispatchEvent(
-                                new CustomEvent('interactive-progress-cleared', {
-                                  detail: { contentKey: progressKey },
-                                })
-                              );
-
-                              // Reload content to reset UI state
-                              if (activeTab) {
-                                if (isDocsLikeTab(activeTab.type)) {
-                                  model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                                } else {
-                                  model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                                }
-                              }
+                            if (progressKey && activeTab) {
+                              await handleResetGuide(progressKey, activeTab);
                             }
                           }}
                         >

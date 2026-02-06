@@ -4,3 +4,4 @@ export { useTabOverflow } from './useTabOverflow';
 export type { UseTabOverflowResult } from './useTabOverflow';
 export { useScrollPositionPreservation } from './useScrollPositionPreservation';
 export type { UseScrollPositionPreservationResult } from './useScrollPositionPreservation';
+export { useContentReset } from './useContentReset';
