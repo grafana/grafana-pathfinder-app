@@ -79,9 +79,6 @@ import { isDocsLikeTab, getTranslatedTitle, restoreTabsFromStorage, restoreActiv
 // Import extracted hooks
 import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation } from './hooks';
 
-// Use the properly extracted styles
-const getStyles = getComponentStyles;
-
 // Import centralized types
 import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
 import type { DocsPanelModelOperations } from './types';
@@ -798,7 +795,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     };
   }, [progressKey]);
 
-  const styles = useStyles2(getStyles);
+  const styles = useStyles2(getComponentStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
