@@ -27,8 +27,8 @@ import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
-import { parseUrlSafely, isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../security';
+import { isDevModeEnabled } from '../../utils/dev-mode';
+import { parseUrlSafely } from '../../security';
 
 import {
   setupScrollTracking,
@@ -75,7 +75,7 @@ import { testIds } from '../testIds';
 // Import extracted components
 import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
 // Import extracted utilities
-import { isDocsLikeTab, getTranslatedTitle } from './utils';
+import { isDocsLikeTab, getTranslatedTitle, restoreTabsFromStorage, restoreActiveTabFromStorage } from './utils';
 // Import extracted hooks
 import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation } from './hooks';
 
@@ -84,8 +84,9 @@ const getStyles = getComponentStyles;
 
 // Import centralized types
 import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
+import type { DocsPanelModelOperations } from './types';
 
-class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
+class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
   public get renderBeforeActivation(): boolean {
@@ -133,8 +134,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async restoreTabsAsync(): Promise<void> {
-    const restoredTabs = await CombinedLearningJourneyPanel.restoreTabsFromStorage();
-    const activeTabId = await CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
+    // Use extracted restore module with dev mode detection
+    const currentUserId = config.bootData.user?.id;
+    const pluginConfig = this.state.pluginConfig || {};
+    const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+
+    const restoredTabs = await restoreTabsFromStorage(tabStorage, { isDevMode });
+    const activeTabId = await restoreActiveTabFromStorage(tabStorage, restoredTabs);
 
     this.setState({
       tabs: restoredTabs,
@@ -161,121 +167,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         }
       }
     }
-  }
-
-  private static async restoreTabsFromStorage(): Promise<LearningJourneyTab[]> {
-    try {
-      const parsedData = await tabStorage.getTabs<PersistedTabData>();
-
-      if (!parsedData || parsedData.length === 0) {
-        // Return default tabs if no stored data
-        return [
-          {
-            id: 'recommendations',
-            title: 'Recommendations',
-            baseUrl: '',
-            currentUrl: '',
-            content: null,
-            isLoading: false,
-            error: null,
-          },
-        ];
-      }
-
-      const tabs: LearningJourneyTab[] = [
-        {
-          id: 'recommendations',
-          title: 'Recommendations', // Will be translated in renderer
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        },
-      ];
-
-      parsedData.forEach((data) => {
-        // Handle devtools tab specially - it has no URLs to validate
-        if (data.type === 'devtools') {
-          tabs.push({
-            id: 'devtools',
-            title: 'Dev Tools',
-            baseUrl: '',
-            currentUrl: '',
-            content: null,
-            isLoading: false,
-            error: null,
-            type: 'devtools',
-          });
-          return;
-        }
-
-        // SECURITY: Validate URLs before restoring from storage
-        // This prevents XSS attacks via storage injection
-        const validateUrl = (url: string): boolean => {
-          const isDevMode = isDevModeEnabledGlobal();
-          return isAllowedContentUrl(url) || (isDevMode && isLocalhostUrl(url)) || (isDevMode && isGitHubRawUrl(url));
-        };
-
-        const isValidBase = validateUrl(data.baseUrl);
-        const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
-
-        if (!isValidBase || !isValidCurrent) {
-          console.warn('Rejected potentially unsafe URL from storage:', {
-            baseUrl: data.baseUrl,
-            currentUrl: data.currentUrl,
-            isValidBase,
-            isValidCurrent,
-          });
-          return; // Skip this tab
-        }
-
-        tabs.push({
-          id: data.id,
-          title: data.title,
-          baseUrl: data.baseUrl,
-          currentUrl: data.currentUrl || data.baseUrl,
-          content: null, // Will be loaded when tab becomes active
-          isLoading: false,
-          error: null,
-          type: data.type || 'learning-journey',
-        });
-      });
-
-      return tabs;
-    } catch (error) {
-      console.error('Failed to restore tabs from storage:', error);
-      return [
-        {
-          id: 'recommendations',
-          title: 'Recommendations',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        },
-      ];
-    }
-  }
-
-  private static async restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): Promise<string> {
-    try {
-      const activeTabId = await tabStorage.getActiveTab();
-
-      if (activeTabId) {
-        const tabExists = tabs.some((t) => t.id === activeTabId);
-
-        // Restore the stored tab if it exists (including devtools - it should persist like normal tabs)
-        // The closeTab method ensures that when all tabs are closed, 'recommendations' is saved to storage
-        // So if storage has 'devtools', it means the user was legitimately on devtools when they refreshed
-        return tabExists ? activeTabId : 'recommendations';
-      }
-    } catch (error) {
-      console.error('Failed to restore active tab from storage:', error);
-    }
-
-    return 'recommendations';
   }
 
   private async saveTabsToStorage(): Promise<void> {
