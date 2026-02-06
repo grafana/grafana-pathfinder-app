@@ -268,6 +268,26 @@ Applied to comment box elements created by `NavigationManager` and `GuidedHandle
 
 ---
 
+#### `data-test-reftarget`
+
+**Purpose**: Selector string for the current target element so the E2E runner can drive actions from the DOM only (no guide JSON dependency).
+
+**Values**: CSS selector or other selector string that resolves to the current target (e.g. `[data-testid="submit-btn"]`, `.btn-primary`).
+
+**Presence**: Set only when the action has a target (button, highlight, formfill, hover). **Absent for noop** (informational step with no target).
+
+**Example**:
+
+```html
+<div class="interactive-comment-box" data-test-action="button" data-test-reftarget="[data-testid='create-dashboard']">
+  <!-- E2E can locate and click the target using the reftarget selector -->
+</div>
+```
+
+**Usage in tests**: Read `data-test-reftarget` from `.interactive-comment-box` together with `data-test-action` and `data-test-target-value` to perform the current substep (click, fill, hover) without parsing guide JSON.
+
+---
+
 ## Implementation Details
 
 ### Constants and Type Safety
@@ -415,17 +435,34 @@ await page.waitForSelector('[data-test-step-state="executing"]');
 await page.waitForSelector('[data-test-step-state="completed"]', { timeout: 30000 });
 ```
 
-### Guided Steps with Substep Progress
+### Guided steps
+
+Guided steps run a substep loop driven by the comment box. The runner uses only the DOM and contract attributes (no guide JSON):
+
+1. **Wait for execution to start**: After clicking "Do it", wait for the step element to have `data-test-step-state="executing"`.
+2. **Read substep bounds**: From the step element, read `data-test-substep-index` (current substep, 0-based) and `data-test-substep-total` (total substeps).
+3. **Locate the comment box**: Use `.interactive-comment-box` (visible while the guided step is executing).
+4. **Read the comment box contract**: From the comment box, read `data-test-action` (e.g. `button`, `highlight`, `formfill`, `hover`, `noop`), `data-test-reftarget` (selector for the current target; see Phase 2 and Comment Boxes above — absent for noop), and `data-test-target-value` (for formfill).
+5. **Perform the substep**: For noop, click the Continue button; for button/highlight, resolve the target from `data-test-reftarget` and click; for hover, resolve and hover; for formfill, resolve and fill with `data-test-target-value`.
+6. **Wait for advance**: Poll the step element until `data-test-substep-index` increases or `data-test-step-state` becomes `"completed"`. If the step becomes `"error"` or `"cancelled"`, fail.
+
+Completion is standardized on `data-test-step-state="completed"` for all step types (single, multistep, guided).
 
 ```typescript
 // Wait for guided execution to start
 await page.waitForSelector('[data-test-step-state="executing"]');
 
-// Monitor substep progress
-for (let i = 0; i < 5; i++) {
-  await page.waitForSelector(`[data-test-substep-index="${i}"]`);
-  console.log(`Substep ${i + 1} of 5`);
-}
+// Read substep progress from step element
+const stepElement = page.locator('[data-testid="interactive-step-my-step"]');
+const totalStr = await stepElement.getAttribute('data-test-substep-total');
+const total = parseInt(totalStr ?? '1', 10);
+
+// Each substep: read comment box, perform action, wait for advance
+const commentBox = page.locator('.interactive-comment-box').first();
+const action = await commentBox.getAttribute('data-test-action');
+const reftarget = await commentBox.getAttribute('data-test-reftarget');
+const targetValue = await commentBox.getAttribute('data-test-target-value');
+// ... resolve target from reftarget, then click/fill/hover per action ...
 
 // Wait for completion
 await page.waitForSelector('[data-test-step-state="completed"]');
@@ -499,11 +536,11 @@ Consider adding `data-test-version="v1"` to step elements. This allows:
 
 ### Adding New Attributes
 
-1. Define constants in `step-states.ts` with valid values
+1. Define constants in `step-states.ts` with valid values (if applicable)
 2. Add TypeScript type for the values
-3. Apply attribute in React component or use `applyE2ECommentBoxAttributes()`
+3. Apply attribute in React component or use `applyE2ECommentBoxAttributes()` (for comment box attributes, add to `E2ECommentBoxAttributeOptions` in `e2e-attributes.ts`)
 4. Add contract test in `data-attributes.contract.test.tsx` or `comment-box.contract.test.ts`
-5. Document in this file
+5. Document in this file (Comment Boxes or Step Components as appropriate)
 6. Update E2E test selectors if needed
 
 ### Changing Existing Attributes

@@ -23,6 +23,13 @@ export interface E2ECommentBoxAttributeOptions {
    * Used for formfill actions to expose the expected value to E2E tests
    */
   targetValue?: string;
+
+  /**
+   * Selector string for the current target element (E2E contract).
+   * Exposed as data-test-reftarget so the runner can drive actions from the DOM only.
+   * Omit for noop (no target).
+   */
+  reftarget?: string;
 }
 
 /**
@@ -57,5 +64,10 @@ export function applyE2ECommentBoxAttributes(commentBox: HTMLElement, options?: 
   // Tier 2 - Target value attribute (for formfill actions)
   if (options.targetValue) {
     commentBox.setAttribute('data-test-target-value', options.targetValue);
+  }
+
+  // E2E: current target selector (absent for noop)
+  if (options.reftarget) {
+    commentBox.setAttribute('data-test-reftarget', options.reftarget);
   }
 }
