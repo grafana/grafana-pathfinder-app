@@ -1,7 +1,7 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 
@@ -75,8 +75,9 @@ import { testIds } from '../testIds';
 // Import extracted components
 import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
 // Import extracted utilities
-import { isDocsLikeTab, getTranslatedTitle, computeTabVisibility } from './utils';
-import { useBadgeCelebrationQueue } from './hooks/useBadgeCelebrationQueue';
+import { isDocsLikeTab, getTranslatedTitle } from './utils';
+// Import extracted hooks
+import { useBadgeCelebrationQueue, useTabOverflow } from './hooks';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -912,64 +913,18 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
 
-  // Tab overflow management - dynamic calculation based on container width
-  const tabBarRef = useRef<HTMLDivElement>(null); // Measure parent instead of child
-  const tabListRef = useRef<HTMLDivElement>(null);
-  const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
-  const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
-  const chevronButtonRef = useRef<HTMLButtonElement>(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const dropdownOpenTimeRef = useRef<number>(0);
-  const [containerWidth, setContainerWidth] = useState<number>(0);
-
-  // Dynamic tab visibility calculation based on container width
-  const calculateTabVisibility = useCallback(() => {
-    const { visibleTabs: nextVisible, overflowedTabs: nextOverflowed } = computeTabVisibility(
-      tabs,
-      containerWidth,
-      activeTabId
-    );
-    setVisibleTabs(nextVisible);
-    setOverflowedTabs(nextOverflowed);
-  }, [tabs, containerWidth, activeTabId]);
-
-  useEffect(() => {
-    calculateTabVisibility();
-  }, [calculateTabVisibility]);
-
-  // ResizeObserver to track container width changes
-  // Re-run when tabs.length changes to handle tab bar appearing/disappearing
-  useEffect(() => {
-    const tabBar = tabBarRef.current;
-    if (!tabBar) {
-      return;
-    }
-
-    // Measure tabBar and reserve space for chevron button
-    const chevronWidth = 120; // Approximate width of chevron button + spacing
-
-    // Set initial width immediately (ResizeObserver may not fire on initial mount)
-    const tabBarWidth = tabBar.getBoundingClientRect().width;
-    const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
-    if (availableForTabs > 0) {
-      setContainerWidth(availableForTabs);
-    }
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const tabBarWidth = entry.contentRect.width;
-        const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
-        setContainerWidth(availableForTabs);
-      }
-    });
-
-    resizeObserver.observe(tabBar);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [tabs.length]);
+  // Tab overflow management - extracted to hook
+  const {
+    tabBarRef,
+    tabListRef,
+    visibleTabs,
+    overflowedTabs,
+    isDropdownOpen,
+    setIsDropdownOpen,
+    dropdownRef,
+    chevronButtonRef,
+    dropdownOpenTimeRef,
+  } = useTabOverflow(tabs, activeTabId);
 
   // Content styles are applied at the component level via CSS classes
 
@@ -1157,53 +1112,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Tab persistence is now handled explicitly in the model methods
   // No need for automatic saving here as it's done when tabs are created/modified
-
-  // Close dropdown when clicking outside and handle positioning
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        chevronButtonRef.current &&
-        !chevronButtonRef.current.contains(event.target as Node)
-      ) {
-        setIsDropdownOpen(false);
-      }
-    };
-
-    // Position dropdown to prevent clipping
-    const positionDropdown = () => {
-      if (isDropdownOpen && dropdownRef.current && chevronButtonRef.current) {
-        const dropdown = dropdownRef.current;
-        const chevronButton = chevronButtonRef.current;
-
-        // Reset position attributes
-        dropdown.removeAttribute('data-position');
-
-        // Get chevron button position
-        const chevronRect = chevronButton.getBoundingClientRect();
-        const dropdownWidth = Math.min(320, Math.max(220, dropdown.offsetWidth)); // Use CSS min/max values
-
-        // Check if dropdown extends beyond right edge of viewport
-        if (chevronRect.right - dropdownWidth < 20) {
-          // Not enough space on right, position from left
-          dropdown.setAttribute('data-position', 'left');
-        }
-      }
-    };
-
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      // Position dropdown after it's rendered
-      setTimeout(positionDropdown, 0);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-
-    // Return undefined for the else case
-    return undefined;
-  }, [isDropdownOpen]);
+  // Note: Click-outside and dropdown positioning now handled by useTabOverflow hook
 
   // Auto-launch tutorial detection
   useEffect(() => {
