@@ -643,6 +643,7 @@ export class NavigationManager {
       skipAnimations?: boolean; // For smooth step transitions
       actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
       targetValue?: string;
+      reftarget?: string; // E2E contract: selector for current target
     }
   ): Promise<HTMLElement> {
     // First, ensure navigation is open and element is visible
@@ -821,6 +822,7 @@ export class NavigationManager {
       skipAnimations?: boolean;
       actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
       targetValue?: string;
+      reftarget?: string; // E2E contract: selector for current target
     }
   ): HTMLElement {
     const commentBox = document.createElement('div');
@@ -830,6 +832,7 @@ export class NavigationManager {
     applyE2ECommentBoxAttributes(commentBox, {
       actionType: options?.actionType,
       targetValue: options?.targetValue,
+      reftarget: options?.reftarget,
     });
 
     // We'll calculate position after building the content so we can measure actual height

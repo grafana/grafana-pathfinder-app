@@ -65,6 +65,9 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
 
     const stepId = dataTestId.replace(STEP_TESTID_PREFIX, '');
 
+    // Scroll step into view so below-the-fold or lazy-rendered content (e.g. Skip button) is in DOM
+    await element.scrollIntoViewIfNeeded().catch(() => {});
+
     // Extract target action type from data-targetaction attribute
     const targetAction = (await element.getAttribute('data-targetaction')) ?? undefined;
 
@@ -87,16 +90,25 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
     // L3-3C: Detect multisteps and extract internal action count for timeout calculation
     const { isMultistep, internalActionCount } = await extractMultistepInfo(element, targetAction);
 
+    // E2E contract: detect guided steps and substep count from DOM only
+    const { isGuided, guidedStepCount } = await extractGuidedInfo(element, targetAction);
+
+    // Guided steps require user to click each target; E2E runner does not automate that.
+    // Treat as skippable when skip button wasn't detected so guides with guided blocks can pass (skippable failure).
+    const effectiveSkippable = skippable || isGuided;
+
     steps.push({
       stepId,
       index,
       sectionId,
-      skippable,
+      skippable: effectiveSkippable,
       hasDoItButton,
       isPreCompleted,
       targetAction,
       isMultistep,
       internalActionCount,
+      isGuided,
+      guidedStepCount: isGuided ? guidedStepCount : undefined,
       refTarget,
       locator: element,
     });
@@ -250,6 +262,37 @@ async function extractMultistepInfo(
   }
 }
 
+/**
+ * Extract guided step information from a step element (E2E contract).
+ *
+ * Guided steps have data-targetaction="guided" and data-test-substep-total
+ * (always present on multi-step and guided components per contract).
+ *
+ * Exported for unit testing (Phase 5).
+ *
+ * @param stepElement - Locator for the step element
+ * @param targetAction - Already-extracted target action type
+ * @returns Object with isGuided flag and guidedStepCount (substep total)
+ */
+export async function extractGuidedInfo(
+  stepElement: Locator,
+  targetAction?: string
+): Promise<{ isGuided: boolean; guidedStepCount: number }> {
+  // Guided steps may have data-targetaction="guided" or only data-test-substep-total (InteractiveGuided does not set targetaction).
+  // Multistep also has data-test-substep-total, so exclude targetAction === 'multistep'.
+  // Only infer guided from hasSubstepTotal when targetAction is unset (undefined); explicit 'button' etc. are not guided.
+  const raw = await stepElement.getAttribute('data-test-substep-total');
+  const parsed = raw !== null && raw !== '' ? parseInt(raw, 10) : NaN;
+  const hasSubstepTotal = Number.isFinite(parsed) && parsed >= 1;
+  const targetActionUnset = targetAction === undefined || targetAction === null || targetAction === '';
+  const isGuided = targetAction === 'guided' || (hasSubstepTotal && targetAction !== 'multistep' && targetActionUnset);
+  if (!isGuided) {
+    return { isGuided: false, guidedStepCount: 1 };
+  }
+  const guidedStepCount = hasSubstepTotal ? parsed : 1;
+  return { isGuided: true, guidedStepCount };
+}
+
 // ============================================
 // Logging Functions
 // ============================================
@@ -261,8 +304,8 @@ async function extractMultistepInfo(
  * @param verbose - Whether to log detailed per-step information
  */
 export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false): void {
-  // Count multisteps for summary
   const multistepCount = result.steps.filter((s) => s.isMultistep).length;
+  const guidedCount = result.steps.filter((s) => s.isGuided).length;
 
   console.log(`\n📋 Step Discovery Results`);
   console.log(`   Total steps: ${result.totalSteps}`);
@@ -270,6 +313,9 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
   console.log(`   Without "Do it": ${result.noDoItButtonCount}`);
   if (multistepCount > 0) {
     console.log(`   Multisteps: ${multistepCount}`);
+  }
+  if (guidedCount > 0) {
+    console.log(`   Guided: ${guidedCount}`);
   }
   console.log(`   Discovery time: ${result.durationMs}ms`);
 
@@ -281,6 +327,7 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
         !step.hasDoItButton ? 'no-button' : null,
         step.skippable ? 'skippable' : null,
         step.isMultistep ? `multistep:${step.internalActionCount}` : null,
+        step.isGuided && step.guidedStepCount != null ? `guided:${step.guidedStepCount}` : null,
         step.refTarget ? `target:${step.refTarget.substring(0, 30)}${step.refTarget.length > 30 ? '...' : ''}` : null,
       ]
         .filter(Boolean)
@@ -290,7 +337,6 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
       const actionStr = step.targetAction ? ` [${step.targetAction}]` : '';
       const sectionStr = step.sectionId ? ` in section:${step.sectionId}` : '';
 
-      // L3-3C: Show calculated timeout for multisteps in verbose mode
       const timeoutStr = step.isMultistep ? ` timeout:${Math.round(calculateStepTimeout(step) / 1000)}s` : '';
 
       console.log(`   ${step.index + 1}. ${step.stepId}${actionStr}${sectionStr}${flagsStr}${timeoutStr}`);

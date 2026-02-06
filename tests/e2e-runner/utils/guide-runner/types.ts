@@ -58,6 +58,18 @@ export interface TestableStep {
   internalActionCount: number;
 
   /**
+   * Whether this is a guided step (E2E contract: data-targetaction="guided").
+   * Guided steps run a substep loop driven by the comment box.
+   */
+  isGuided: boolean;
+
+  /**
+   * Total substeps for guided steps (from data-test-substep-total).
+   * Used for timeouts and loop bound in Phase 3.
+   */
+  guidedStepCount?: number;
+
+  /**
    * The target element selector (L3-4A).
    * Extracted from data-reftarget attribute.
    */

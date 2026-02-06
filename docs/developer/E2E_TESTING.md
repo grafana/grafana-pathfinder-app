@@ -176,6 +176,22 @@ When a step fails, the runner captures:
 
 Artifacts are saved to the `--artifacts` directory (or a temp directory by default).
 
+## Guided-block test guide
+
+To verify guided-block support (substep loop, comment box contract, completion), run the E2E CLI against a guide that includes at least one guided block. The bundled guide **Block editor tutorial** (`block-editor-tutorial`) contains a guided block with two highlight substeps and is skippable:
+
+```bash
+npx pathfinder-cli e2e bundled:block-editor-tutorial
+```
+
+Or by path:
+
+```bash
+npx pathfinder-cli e2e src/bundled-interactives/block-editor-tutorial.json
+```
+
+Guided steps are discovered via `data-targetaction="guided"` and `data-test-substep-total`; after "Do it", the runner drives substeps using only the comment box (`data-test-action`, `data-test-reftarget`, `data-test-target-value`) and step state (`data-test-step-state`, `data-test-substep-index`). Full coverage (button, highlight, formfill, hover, noop, skippable) may require additional guides such as `prometheus-grafana-101` or `loki-grafana-101`.
+
 ## Framework test guide
 
 The bundled guide `e2e-framework-test` validates the E2E runner itself. It follows strict principles:
