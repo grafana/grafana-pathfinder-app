@@ -3,6 +3,7 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
 import { sanitizeDocumentationHTML } from '../security';
+import { applyE2ECommentBoxAttributes } from './e2e-attributes';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -824,14 +825,11 @@ export class NavigationManager {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
 
-    // NEW: Tier 1 - action type
-    if (options?.actionType) {
-      commentBox.setAttribute('data-test-action', options.actionType);
-    }
-    // NEW: Tier 2 - target value
-    if (options?.targetValue) {
-      commentBox.setAttribute('data-test-target-value', options.targetValue);
-    }
+    // Apply E2E testing contract attributes
+    applyE2ECommentBoxAttributes(commentBox, {
+      actionType: options?.actionType,
+      targetValue: options?.targetValue,
+    });
 
     // We'll calculate position after building the content so we can measure actual height
 

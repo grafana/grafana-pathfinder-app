@@ -7,6 +7,7 @@ import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
+import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
 
@@ -240,7 +241,11 @@ export class GuidedHandler {
     commentBox.setAttribute('data-position', 'center');
     commentBox.setAttribute('data-ready', 'true');
     commentBox.setAttribute('data-noop', 'true');
-    commentBox.setAttribute('data-test-action', 'noop');
+
+    // Apply E2E testing contract attributes
+    applyE2ECommentBoxAttributes(commentBox, {
+      actionType: 'noop',
+    });
 
     const content = document.createElement('div');
     content.className = 'interactive-comment-content interactive-comment-glow';
