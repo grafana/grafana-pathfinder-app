@@ -34,12 +34,14 @@ https://your-grafana.com/a/grafana-pathfinder-app?page=configuration
 ### 2. Enable Dev Mode
 
 **Option A: Via Dev Mode Tab**
+
 1. Go to "Dev Mode" configuration tab
 2. Add your user ID to the "Dev Mode User IDs" list
 3. Click "Save configuration"
 4. Page will reload automatically
 
 **Option B: Via URL Parameter (Quick Enable)**
+
 1. Add `&dev=true` to configuration URL
 2. Check "Dev Mode" checkbox
 3. Click "Save configuration"
@@ -60,6 +62,7 @@ The debug panel provides three main tools:
 **Purpose**: Visual block-based editor for authoring JSON guides
 
 **Features:**
+
 - Block palette with all block types
 - Drag-and-drop block composition
 - Action recording mode
@@ -70,11 +73,13 @@ The debug panel provides three main tools:
 - Auto-save to localStorage
 
 **Block Types Supported:**
+
 - Text, Interactive, Multistep, Guided
 - Section, Conditional
 - Image, Video, Code, Alert
 
 **Use Cases:**
+
 - Creating new interactive guides
 - Editing existing guides
 - Recording user workflows
@@ -87,6 +92,7 @@ See: `docs/developer/components/block-editor/`
 **Purpose**: Test content changes from GitHub Pull Requests
 
 **Features:**
+
 - PR URL input and validation
 - Automatic content file detection
 - Three testing modes:
@@ -97,6 +103,7 @@ See: `docs/developer/components/block-editor/`
 - State persistence across sessions
 
 **Use Cases:**
+
 - Reviewing content PRs
 - Testing guide changes before merge
 - Sequential guide testing
@@ -109,6 +116,7 @@ See: `docs/developer/components/PrTester/`
 **Purpose**: Validate and test content URLs
 
 **Features:**
+
 - URL format validation
 - Supported domain checking
 - Quick guide opening
@@ -116,12 +124,14 @@ See: `docs/developer/components/PrTester/`
 - Error feedback
 
 **Supported URLs:**
+
 - `interactive-learning.grafana.net`
 - `raw.githubusercontent.com`
 - `grafana.com/docs`
 - `localhost` (local testing)
 
 **Use Cases:**
+
 - Testing guide URLs
 - Validating content sources
 - Quick guide access during development
@@ -131,6 +141,7 @@ See: `docs/developer/components/PrTester/`
 ### SelectorDebugPanel.tsx
 
 Main container component that:
+
 - Manages section expansion state
 - Lazy loads heavy components (BlockEditor)
 - Persists section state to localStorage
@@ -140,6 +151,7 @@ Main container component that:
 ### Section Management
 
 Each tool has:
+
 - Collapsible section header
 - Persistent expansion state
 - Independent lazy loading
@@ -148,6 +160,7 @@ Each tool has:
 ### State Persistence
 
 Persisted to localStorage:
+
 - `pathfinder-devtools-block-editor-expanded`
 - `pathfinder-devtools-pr-tester-expanded`
 - `pathfinder-devtools-url-tester-expanded`
@@ -155,6 +168,7 @@ Persisted to localStorage:
 ### Lazy Loading
 
 Components loaded on-demand:
+
 - BlockEditor (largest component)
 - Heavy dependencies excluded from main bundle
 - Improves initial load performance
@@ -164,6 +178,7 @@ Components loaded on-demand:
 ### Docs Panel Integration
 
 The debug panel integrates with the main docs panel:
+
 - Shares `onOpenDocsPage` callback
 - Shares `onOpenLearningJourney` callback
 - Opens guides in existing tab system
@@ -179,6 +194,7 @@ The debug panel integrates with the main docs panel:
 ### Leave Dev Mode
 
 Users can exit dev mode via:
+
 - "Leave dev mode" button in panel header
 - User-specific disabling (multi-user support)
 - Fallback to global disable if needed
@@ -189,6 +205,7 @@ Users can exit dev mode via:
 ### Recommended Process
 
 **For Guide Authoring:**
+
 1. Open Interactive Guide Editor
 2. Create new guide or import existing
 3. Add blocks from palette
@@ -197,6 +214,7 @@ Users can exit dev mode via:
 6. Export or create PR
 
 **For PR Review:**
+
 1. Open PR Tester
 2. Paste PR URL
 3. Select testing mode
@@ -204,6 +222,7 @@ Users can exit dev mode via:
 5. Provide feedback on PR
 
 **For URL Validation:**
+
 1. Open URL Tester
 2. Paste content URL
 3. Verify format and domain

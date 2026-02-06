@@ -18,12 +18,14 @@ The constants directory is organized into specialized files that separate concer
 **Purpose**: Type-safe CSS selectors and UI element configuration for DOM manipulation and content processing.
 
 **Key Responsibilities**:
+
 - Provide consistent selector strings for identifying interactive elements, code blocks, and UI components
 - Define CSS class names for lightbox modals and tab configuration
 - Configure copy button behavior and timing
 - Maintain URL pattern constants
 
 **Key Exports**:
+
 - `CODE_BLOCK_SELECTORS` - Selectors for code blocks requiring copy buttons
 - `INTERACTIVE_SELECTORS` - Selectors for journey links, collapsible sections, and expandable tables
 - `COPY_BUTTON_SELECTORS` - Selectors for identifying and styling copy buttons
@@ -34,6 +36,7 @@ The constants directory is organized into specialized files that separate concer
 - `URL_PATTERNS` - Base URL patterns for Grafana documentation
 
 **Used By**:
+
 - `src/utils/link-handler.hook.ts` - Interactive link handling and lightbox creation
 - `src/components/docs-panel/` - Tab management and UI rendering
 - `src/styles/*.styles.ts` - Styling functions and theme application
@@ -47,6 +50,7 @@ The constants directory is organized into specialized files that separate concer
 **Purpose**: Comprehensive configuration for interactive learning guide behaviors, timing, and action types. This is the primary configuration source for the interactive engine.
 
 **Key Responsibilities**:
+
 - Define all timing constants for animations, delays, navigation, and form filling
 - Configure requirements checking, heartbeat monitoring, and retry logic
 - Provide action type definitions and metadata for interactive steps
@@ -54,6 +58,7 @@ The constants directory is organized into specialized files that separate concer
 - Export helper functions for configuration with plugin overrides
 
 **Key Exports**:
+
 - `INTERACTIVE_CONFIG_DEFAULTS` - Master configuration object containing:
   - `delays` - Timing for perceptual UX, technical operations, sections, multi-step sequences, navigation, form filling, requirements checking, and debouncing
   - `requirements` - Heartbeat monitoring for fragile prerequisites
@@ -80,6 +85,7 @@ The constants directory is organized into specialized files that separate concer
 **Data Collected**: No data collection. This is pure configuration.
 
 **Used By**:
+
 - `src/interactive-engine/` - All interactive action handlers, sequence manager, navigation manager, state manager
 - `src/requirements-manager/` - Step checker, requirements checker, check phases
 - `src/styles/interactive.styles.ts` - CSS animation timing synchronization
@@ -89,6 +95,7 @@ The constants directory is organized into specialized files that separate concer
 - E2E test runner for guide execution and validation
 
 **Critical Dependencies**:
+
 - **CSS Animations**: The `highlighting` timing constants must stay synchronized with CSS animation durations in `src/styles/interactive.styles.ts`. Changes to one require changes to the other.
 - **Plugin Configuration**: Values can be overridden via `DocsPluginConfig` interface in `src/constants.ts`
 - **Action Handlers**: All action handlers depend on delay configurations from this file
@@ -103,12 +110,14 @@ The constants directory is organized into specialized files that separate concer
 **Purpose**: Configuration constants specific to the WYSIWYG interactive guide editor (not used in runtime guide execution).
 
 **Key Responsibilities**:
+
 - Define CSS class names and Tiptap node types for editor elements
 - Configure toolbar button labels, tooltips, and keyboard shortcuts
 - Provide default editor content and placeholder text
 - Set editor formatting preferences and timing constants
 
 **Key Exports**:
+
 - `CSS_CLASSES` - CSS classes for interactive elements in editor
 - `NODE_TYPES` - Tiptap node and mark type names
 - `HTML_TAGS` - HTML element tag names
@@ -120,11 +129,13 @@ The constants directory is organized into specialized files that separate concer
 **Data Collected**: No data collection. This is pure configuration.
 
 **Used By**:
+
 - `src/components/block-editor/` - Block editor forms, hooks, and UI components
 - WYSIWYG editor implementation (Tiptap-based)
 - Guide authoring tools and development utilities
 
 **Critical Dependencies**:
+
 - **Tiptap Editor**: Node types and mark names must match Tiptap configuration
 - **Interactive Config**: Works alongside `interactive-config.ts` but is editor-specific (not used in runtime)
 
@@ -137,11 +148,13 @@ The constants directory is organized into specialized files that separate concer
 **Purpose**: Centralized z-index constants for interactive overlays, highlights, and comment boxes.
 
 **Key Responsibilities**:
+
 - Define z-index values for all interactive overlay elements
 - Ensure correct stacking order for highlights, comments, and blocking overlays
 - Handle Grafana plugin context where values must exceed Grafana's own z-index ranges
 
 **Key Exports**:
+
 - `INTERACTIVE_Z_INDEX` - Object containing:
   - `BLOCKING_OVERLAY` - 9999 (blocks interaction with specific elements)
   - `HIGHLIGHT_OUTLINE` - 9999 (visual highlight around target elements)
@@ -151,11 +164,13 @@ The constants directory is organized into specialized files that separate concer
 **Data Collected**: No data collection. This is pure configuration.
 
 **Used By**:
+
 - `src/styles/interactive.styles.ts` - Apply z-index to interactive overlays
 - `src/interactive-engine/global-interaction-blocker.ts` - Blocking overlay positioning
 - `src/components/DomPathTooltip/` - Element inspector tooltip styling
 
 **Critical Dependencies**:
+
 - **Grafana UI**: Values must exceed Grafana's z-index ranges (modals, portals, tooltips up to ~2000)
 - **Interactive Styles**: Must coordinate with other styling systems to prevent stacking context issues
 
@@ -170,6 +185,7 @@ The constants directory is organized into specialized files that separate concer
 **Purpose**: Plugin-wide configuration including API endpoints, security allowlists, feature defaults, and runtime configuration management.
 
 **Key Responsibilities**:
+
 - Define default API URLs for recommender and documentation services
 - Maintain security allowlists for permitted hostnames (docs, recommender, interactive learning)
 - Configure plugin-wide feature defaults (auto-detection, live sessions, dev mode, etc.)
@@ -177,6 +193,7 @@ The constants directory is organized into specialized files that separate concer
 - Manage backward compatibility exports
 
 **Key Exports**:
+
 - `PLUGIN_BASE_URL` - Base path for plugin routes
 - Default URLs: `DEFAULT_DOCS_BASE_URL`, `DEFAULT_RECOMMENDER_SERVICE_URL`
 - Security allowlists: `ALLOWED_GRAFANA_DOCS_HOSTNAMES`, `ALLOWED_RECOMMENDER_DOMAINS`, `ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES`
@@ -192,6 +209,7 @@ The constants directory is organized into specialized files that separate concer
 **Data Collected**: No data collection. This is configuration only.
 
 **Used By**:
+
 - `src/module.tsx` - Plugin initialization and configuration
 - `src/security/url-validator.ts` - URL validation against allowlists
 - `src/context-engine/context.service.ts` - API endpoint configuration
@@ -200,6 +218,7 @@ The constants directory is organized into specialized files that separate concer
 - All components requiring API access, security validation, or feature toggle checks
 
 **Critical Dependencies**:
+
 - **Security**: URL validators and content fetchers depend on allowlists to prevent MITM attacks and unauthorized content loading
 - **Feature Toggles**: All experimental features (live sessions, global link interception, auto-detection) read their defaults from this file
 - **API Services**: Recommender and docs retrieval systems depend on these endpoint configurations
@@ -220,6 +239,7 @@ The constants are organized in a multi-level hierarchy:
 5. **Styling Configuration** (`/src/constants/interactive-z-index.ts`) - Z-index stacking order
 
 This separation ensures:
+
 - **Clear Boundaries**: Plugin-level vs engine-level vs UI-level vs editor-level concerns
 - **Type Safety**: All constants are strongly typed with TypeScript
 - **Maintainability**: Changes to one system don't ripple across unrelated systems

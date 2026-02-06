@@ -57,42 +57,50 @@ Learning Paths exist to:
 ### Core Components
 
 **LearningPathsPanel.tsx** - Main panel component
+
 - Displays learning path cards
 - Manages badge modals
 - Shows streak indicators
 - Handles guide navigation
 
 **LearningPathCard.tsx** - Individual path card
+
 - Path metadata display
 - Progress visualization
 - Continue/start actions
 
 **MyLearningTab.tsx** - Learning dashboard
+
 - User's personal learning view
 - Progress overview
 - Path management
 
 **BadgesDisplay.tsx** - Badge collection view
+
 - Grid of all badges
 - Locked/unlocked states
 - Badge metadata
 
 **BadgeUnlockedToast.tsx** - Achievement celebration
+
 - Toast notification for new badges
 - Badge details display
 - Dismissal handling
 
 **StreakIndicator.tsx** - Streak display
+
 - Current streak count
 - Flame icon visualization
 - Streak milestone indicators
 
 **ProgressRing.tsx** - Progress visualization
+
 - Circular progress indicator
 - Percentage display
 - Color-coded completion status
 
 **BadgeDetailCard.tsx** - Badge detail view
+
 - Badge requirements
 - Unlock criteria
 - Achievement date
@@ -100,6 +108,7 @@ Learning Paths exist to:
 ### Utilities
 
 **badge-utils.ts** - Badge logic utilities
+
 - Badge unlock calculation
 - Progress evaluation
 - Badge metadata management

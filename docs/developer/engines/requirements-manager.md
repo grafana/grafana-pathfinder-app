@@ -58,6 +58,7 @@ The requirements manager is organized into several specialized modules:
 **State Management**:
 
 The hook returns a comprehensive state object including:
+
 - `isEnabled` - Step can be executed
 - `isCompleted` - Step has been completed
 - `isChecking` - Currently validating requirements
@@ -91,6 +92,7 @@ The hook returns a comprehensive state object including:
 **Supported Requirement Types**:
 
 **Authentication & Authorization:**
+
 - `is-admin` - User is Grafana admin or org admin
 - `is-logged-in` - User is authenticated
 - `is-editor` - User has editor role or higher
@@ -98,6 +100,7 @@ The hook returns a comprehensive state object including:
 - `has-role:<role>` - User has specific organizational role
 
 **Data Sources & Plugins:**
+
 - `has-datasources` - At least one data source configured
 - `has-datasource:<name>` - Specific data source exists by name
 - `has-datasource:type:<type>` - Data source of specific type exists
@@ -106,21 +109,25 @@ The hook returns a comprehensive state object including:
 - `plugin-enabled:<pluginId>` - Plugin is enabled
 
 **Dashboards:**
+
 - `dashboard-exists` - At least one dashboard exists
 - `has-dashboard-named:<title>` - Dashboard with specific title exists
 
 **Navigation & UI State:**
+
 - `exists-reftarget` - Target element exists in DOM (supports lazy rendering)
 - `navmenu-open` - Navigation menu is open and docked
 - `on-page:<path>` - User is on specific page/URL path
 - `form-valid` - Form is valid and ready for submission
 
 **Environment & Features:**
+
 - `has-feature:<toggle>` - Feature toggle is enabled
 - `in-environment:<env>` - Running in specific environment
 - `min-version:<version>` - Minimum Grafana version requirement met
 
 **Workflow & Dependencies:**
+
 - `section-completed:<sectionId>` - Previous section has been completed
 - `var-<name>:<value>` - Guide response variable matches expected value
 - `renderer:<type>` - Running in specific renderer context (pathfinder, website)
@@ -137,6 +144,7 @@ The hook returns a comprehensive state object including:
 The system distinguishes between two types of conditions:
 
 **Requirements** (preconditions):
+
 - Must pass for step to be executable
 - Checked after objectives and eligibility
 - Block step execution when not met
@@ -144,6 +152,7 @@ The system distinguishes between two types of conditions:
 - Support retry logic for transient failures
 
 **Objectives** (completion criteria):
+
 - If met, step is automatically completed
 - Checked first, before requirements
 - Shortcut requirements checking - if objectives are met, requirements are ignored
@@ -309,12 +318,14 @@ This design ensures steps don't require users to repeat actions they've already 
 The Requirements Manager integrates with:
 
 **Interactive Engine** (`src/interactive-engine/`):
+
 - `navigation-manager.ts` - Provides navigation fixes and parent expansion
 - `sequence-manager.ts` - Coordinates section-level sequential steps
 - `use-sequential-step-state.hook.ts` - React hook for subscribing to manager state
 - `interactive-state-manager.ts` - Global interactive state coordination
 
 **Step Components** (`src/docs-retrieval/components/interactive/`):
+
 - `interactive-step.tsx` - Single action steps
 - `interactive-guided.tsx` - Multi-step guided workflows
 - `interactive-multi-step.tsx` - Sequential multi-step sections
@@ -322,9 +333,11 @@ The Requirements Manager integrates with:
 - `interactive-quiz.tsx` - Quiz components with validation
 
 **Context Engine** (`src/context-engine/`):
+
 - ContextService - Subscribes to state changes for reactive checking
 
 **Supporting Systems**:
+
 - `TimeoutManager` - Manages debouncing and delayed checks
 - `guideResponseStorage` - Variable storage for var-based requirements
 - DOM utilities in `src/lib/dom/` - DOM state checking functions
@@ -336,22 +349,26 @@ The Requirements Manager integrates with:
 The requirements manager behavior is controlled through `INTERACTIVE_CONFIG.delays.requirements` and `INTERACTIVE_CONFIG.requirements.heartbeat`:
 
 **Retry Configuration**:
+
 - `maxRetries` - Maximum retry attempts for failed checks
 - `retryDelay` - Milliseconds between retry attempts
 
 **Heartbeat Configuration** (optional periodic rechecking):
+
 - `enabled` - Enable/disable heartbeat monitoring
 - `intervalMs` - Milliseconds between heartbeat checks
 - `watchWindowMs` - Maximum duration to monitor a step (0 = infinite)
 - `onlyForFragile` - Only monitor fragile requirements (navmenu-open, exists-reftarget, on-page)
 
 **Debouncing Configuration**:
+
 - `stateSettling` - Delay for DOM to settle after state changes
 
 ## Key Design Decisions
 
 **Event-Driven vs Polling**:
 The manager uses event-driven checking instead of continuous polling for better performance. Checks are triggered by:
+
 - Context changes from ContextService
 - Navigation events
 - DOM mutations (limited to specific hotspots)
@@ -366,6 +383,7 @@ The `exists-reftarget` check supports virtualized/lazy-loaded content through pr
 
 **Fix Automation**:
 Several requirement types support automatic fixes:
+
 - `navmenu-open` - Auto-open and dock navigation menu
 - `on-page:<path>` - Auto-navigate to required page
 - Location mismatches - Navigate to expected path

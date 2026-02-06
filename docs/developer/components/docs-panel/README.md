@@ -211,21 +211,25 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 ### State Management Layers
 
 **Scene State** (SceneObjectBase):
+
 - Tab list and active tab
 - Context panel instance
 - Plugin configuration
 
 **React State** (Component):
+
 - Session mode (presenter/attendee/none)
 - UI interactions
 - Form states
 
 **User Storage**:
+
 - Tab persistence
 - Progress tracking
 - Badge unlocks
 
 **Session State**:
+
 - Live session participants
 - Action queue for replay
 - Presenter actions
@@ -235,6 +239,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 ### Fixed Tabs
 
 **Recommendations Tab**:
+
 - Always present
 - Contains ContextPanel
 - Shows AI recommendations
@@ -242,6 +247,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 - Shows SelectorDebugPanel (dev mode only)
 
 **My Learning Tab**:
+
 - Always present
 - Contains MyLearningTab component
 - Shows learning paths and progress
@@ -251,6 +257,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 ### Dynamic Content Tabs
 
 **Properties:**
+
 - Created when user opens content
 - Persisted across sessions
 - Closeable by user
@@ -258,14 +265,15 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 - Milestone navigation (journeys)
 
 **Tab State:**
+
 ```typescript
 {
-  id: string;           // Unique identifier
-  title: string;        // Display name
-  baseUrl: string;      // Initial URL
-  currentUrl: string;   // Current milestone URL
-  content: Content;     // Rendered content
-  isLoading: boolean;   // Loading state
+  id: string; // Unique identifier
+  title: string; // Display name
+  baseUrl: string; // Initial URL
+  currentUrl: string; // Current milestone URL
+  content: Content; // Rendered content
+  isLoading: boolean; // Loading state
   error: string | null; // Error state
 }
 ```
@@ -275,18 +283,21 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 ### Session Modes
 
 **Presenter Mode**:
+
 - Controls session flow
 - Actions captured and broadcast
 - Can see hand raise queue
 - Manages attendees
 
 **Attendee Mode**:
+
 - Follows presenter's actions
 - Actions replayed automatically
 - Can raise hand for questions
 - Read-only experience
 
 **None (Default)**:
+
 - Standard individual learning
 - No collaboration features
 - Full control of navigation
@@ -294,6 +305,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 ### Session Actions
 
 **Captured Actions:**
+
 - Tab switches
 - Milestone navigation
 - Content scrolling
@@ -301,6 +313,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 - Guide openings
 
 **Action Replay:**
+
 - Queued and replayed in order
 - Smooth transitions between actions
 - Maintains state consistency

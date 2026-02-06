@@ -35,18 +35,21 @@ PR Tester exists to:
 ### Three Testing Modes
 
 **Single Mode** (default)
+
 - Test one guide at a time
 - Select guide from dropdown
 - Best for focused review
 - Remembers last selected guide
 
 **Open All Mode**
+
 - Opens all PR guides in separate tabs
 - Quick overview of all changes
 - Efficient for small PRs
 - Tabs open sequentially
 
 **Learning Path Mode**
+
 - Create ordered sequence of guides
 - Drag-and-drop reordering
 - Test guides in logical sequence
@@ -63,6 +66,7 @@ PR Tester exists to:
 ### State Persistence
 
 All state persists to localStorage:
+
 - PR URL input
 - Selected testing mode
 - Fetched file list
@@ -74,6 +78,7 @@ All state persists to localStorage:
 ### Core Components
 
 **PrTester.tsx** - Main testing interface
+
 - PR URL input and validation
 - Mode selection radio buttons
 - File dropdown (single mode)
@@ -84,6 +89,7 @@ All state persists to localStorage:
 ### GitHub API Module
 
 **github-api.ts** - GitHub API integration
+
 - PR URL parsing
 - GitHub API requests
 - Content file fetching
@@ -91,6 +97,7 @@ All state persists to localStorage:
 - Error handling
 
 **Functions:**
+
 - `isValidPrUrl(url)` - Validates PR URL format
 - `fetchPrContentFilesFromUrl(url)` - Fetches content files from PR
 - `parsePrUrl(url)` - Extracts owner, repo, PR number
@@ -104,6 +111,7 @@ All state persists to localStorage:
 **Use Case**: Testing individual guides, focused review
 
 **Flow:**
+
 1. Paste PR URL
 2. Click "Fetch PR"
 3. Select guide from dropdown
@@ -111,6 +119,7 @@ All state persists to localStorage:
 5. Guide opens in content tab
 
 **Best For:**
+
 - Detailed guide review
 - Step-by-step testing
 - Iterative feedback cycles
@@ -120,6 +129,7 @@ All state persists to localStorage:
 **Use Case**: Quick overview, small PRs
 
 **Flow:**
+
 1. Paste PR URL
 2. Click "Fetch PR"
 3. Select "Open All" mode
@@ -127,6 +137,7 @@ All state persists to localStorage:
 5. All guides open in separate tabs
 
 **Best For:**
+
 - Small PRs (1-3 guides)
 - Quick visual inspection
 - Comparing guide styles
@@ -136,6 +147,7 @@ All state persists to localStorage:
 **Use Case**: Sequential testing, related guides
 
 **Flow:**
+
 1. Paste PR URL
 2. Click "Fetch PR"
 3. Select "Learning Path" mode
@@ -144,6 +156,7 @@ All state persists to localStorage:
 6. Opens as connected journey with navigation
 
 **Best For:**
+
 - Multi-guide PRs
 - Sequential content
 - Path-based content
@@ -161,6 +174,7 @@ The PR Tester stores:
 - **Ordered Files**: User's file order (path mode)
 
 All data stored in browser localStorage with these keys:
+
 - `pathfinder-pr-tester-url`
 - `pathfinder-pr-tester-mode`
 - `pathfinder-pr-tester-files`
@@ -173,6 +187,7 @@ All data stored in browser localStorage with these keys:
 ### SelectorDebugPanel
 
 PR Tester is embedded in the dev tools panel:
+
 - Loaded lazily to keep bundle size small
 - Only available in dev mode
 - Accessed via "PR tester" section
@@ -205,11 +220,13 @@ PR Tester is embedded in the dev tools panel:
 ### Endpoints Used
 
 **List PR Files:**
+
 ```
 GET /repos/{owner}/{repo}/pulls/{pr_number}/files
 ```
 
 **Fetch File Content:**
+
 ```
 GET /repos/{owner}/{repo}/contents/{path}?ref={branch}
 ```
@@ -224,10 +241,12 @@ GET /repos/{owner}/{repo}/contents/{path}?ref={branch}
 ### PR URL Format
 
 Supported formats:
+
 - `https://github.com/{owner}/{repo}/pull/{number}`
 - `https://github.com/{owner}/{repo}/pulls/{number}`
 
 Extracted information:
+
 - Repository owner
 - Repository name
 - PR number
@@ -250,21 +269,25 @@ Extracted information:
 ## Error Handling
 
 **Invalid PR URL:**
+
 - Clear error message
 - Suggests correct format
 - Prevents API call
 
 **API Errors:**
+
 - Network failures displayed
 - Rate limit warnings
 - Invalid response handling
 
 **Content Errors:**
+
 - Invalid JSON detected
 - Missing required fields
 - Malformed content
 
 **No Content Files:**
+
 - Message if PR has no content.json files
 - Suggestions for what to check
 

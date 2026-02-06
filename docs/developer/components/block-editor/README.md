@@ -58,26 +58,31 @@ The Block Editor exists to:
 ### Core Components
 
 **BlockEditor.tsx** - Main editor component
+
 - Orchestrates all editor functionality
 - Manages editor state and lifecycle
 - Coordinates recording and editing modes
 
 **BlockList.tsx** - Block list display and management
+
 - Renders list of blocks
 - Handles drag-and-drop reordering
 - Manages block selection and deletion
 
 **BlockPalette.tsx** - Block type picker
+
 - Displays available block types
 - Handles block insertion
 - Categorizes blocks by type
 
 **BlockFormModal.tsx** - Block configuration forms
+
 - Dynamic form based on block type
 - Validation and error handling
 - Nested block support
 
 **RecordModeOverlay.tsx** - Recording mode UI
+
 - Overlay during action recording
 - Stop recording button
 - Recording status display
@@ -196,6 +201,7 @@ The Block Editor is loaded lazily within the SelectorDebugPanel component when d
 ### DevTools Integration
 
 Accessed via:
+
 1. Enable dev mode in plugin configuration
 2. Open Pathfinder sidebar
 3. Stay on "Recommendations" tab

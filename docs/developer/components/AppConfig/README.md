@@ -43,18 +43,22 @@ The plugin configuration interface that allows administrators to set up the docu
 **Configuration Fields**:
 
 **General Settings:**
+
 - `docsBaseUrl` - Base URL for the documentation service
 - `docsUsername` - Username for authentication (optional)
 - `docsPassword` - Password for authentication (optional, stored securely)
 
 **Recommendations Config:**
+
 - `acceptedTermsAndConditions` - Terms acceptance for recommendation service
 - `recommenderServiceUrl` - URL for the AI recommendation service
 
 **Interactive Features:**
+
 - Feature flag toggles for experimental features
 
 **Dev Mode:**
+
 - `devModeUserIds` - List of user IDs with dev mode access
 - Developer tools enablement
 
@@ -156,15 +160,18 @@ interface DocsPluginConfig {
 **Default Values**:
 
 **General:**
+
 - Docs Base URL: `https://grafana.com`
 - Username: Empty (optional authentication)
 - Password: Empty (optional authentication)
 
 **Recommendations:**
+
 - Recommender Service: `https://grafana-recommender-93209135917.us-central1.run.app`
 - Terms Accepted: `false`
 
 **Dev Mode:**
+
 - Dev Mode Users: `[]` (empty list)
 
 ## Integration Points
