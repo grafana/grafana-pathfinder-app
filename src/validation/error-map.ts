@@ -31,12 +31,18 @@ function findActionableError(errors: z.ZodIssue[][]): z.ZodIssue | null {
   // Prefer enum/value errors on non-discriminator fields (most actionable)
   // Skip 'type' field errors as they're just discriminator mismatches
   const enumError = allErrors.find((issue) => {
-    if (issue.code !== 'invalid_value') return false;
+    if (issue.code !== 'invalid_value') {
+      return false;
+    }
+
     const path = issue.path || [];
     const fieldName = path.length > 0 ? String(path[path.length - 1]) : '';
     return fieldName !== 'type'; // Skip discriminator field
   });
-  if (enumError) return enumError;
+
+  if (enumError) {
+    return enumError;
+  }
 
   // Fallback: first non-generic error (including type errors if nothing else found)
   return (
