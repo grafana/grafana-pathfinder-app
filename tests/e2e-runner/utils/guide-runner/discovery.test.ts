@@ -52,6 +52,16 @@ describe('extractGuidedInfo', () => {
     expect(result).toEqual({ isGuided: false, guidedStepCount: 1 });
   });
 
+  it('returns isGuided: true when targetAction is undefined but data-test-substep-total present (InteractiveGuided)', async () => {
+    const stepElement = createMockLocator({
+      'data-test-substep-total': '2',
+    });
+
+    const result = await extractGuidedInfo(stepElement, undefined);
+
+    expect(result).toEqual({ isGuided: true, guidedStepCount: 2 });
+  });
+
   it('falls back to guidedStepCount 1 when data-test-substep-total is missing for guided', async () => {
     const stepElement = createMockLocator({});
 

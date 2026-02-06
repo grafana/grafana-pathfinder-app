@@ -200,19 +200,46 @@ export async function checkObjectiveCompletion(page: Page, stepId: string): Prom
 export async function waitForCompletionWithObjectivePolling(
   page: Page,
   stepId: string,
-  timeout: number
+  timeout: number,
+  options?: { urlBeforeClick?: string }
 ): Promise<{ completedViaObjectives: boolean }> {
   const startTime = Date.now();
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  const urlBeforeClick = options?.urlBeforeClick;
 
   while (Date.now() - startTime < timeout) {
-    const state = await stepLocator.getAttribute('data-test-step-state');
+    // If step element was detached (e.g. after formfill that changed URL), treat as completed
+    const count = await stepLocator.count();
+    if (count === 0 && urlBeforeClick != null) {
+      const currentUrl = page.url();
+      if (currentUrl !== urlBeforeClick) {
+        return { completedViaObjectives: false };
+      }
+    }
+
+    let state: string | null = null;
+    try {
+      state = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 });
+    } catch {
+      // Element may have detached (e.g. formfill closed overlay); check URL change
+      if (urlBeforeClick != null && page.url() !== urlBeforeClick) {
+        return { completedViaObjectives: false };
+      }
+    }
     if (state === 'completed') {
       const elapsed = Date.now() - startTime;
       const likelyObjectiveCompletion = elapsed < COMPLETION_POLL_INTERVAL_MS * 2;
       return { completedViaObjectives: likelyObjectiveCompletion };
     }
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
+  }
+
+  // Final check: step may have detached after URL change (e.g. formfill into command palette)
+  if (urlBeforeClick != null) {
+    const count = await stepLocator.count();
+    if (count === 0 && page.url() !== urlBeforeClick) {
+      return { completedViaObjectives: false };
+    }
   }
 
   // Final fallback: assert contract completion with short timeout
@@ -722,6 +749,9 @@ export async function executeStep(
     // Per design doc: debounced rechecks (500ms context, 1200ms DOM)
     await page.waitForTimeout(POST_CLICK_SETTLE_DELAY_MS);
 
+    // Re-read URL after settle so we detect async URL changes (e.g. formfill updating query params)
+    const urlAfterSettle = page.url();
+
     // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
     if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
       const stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
@@ -760,11 +790,11 @@ export async function executeStep(
       };
     }
 
-    // FIX: Handle case where navigation causes step element to unmount
+    // FIX: Handle case where navigation (or formfill-driven URL change) causes step element to unmount
     // For highlight actions on nav links, clicking "Do it" navigates the page.
-    // This can cause the step component to unmount before showing the completion indicator.
+    // For formfill (e.g. command palette), URL may update after settle; step can unmount before completion indicator.
     // If URL changed AND step element no longer exists, the action succeeded - treat as passed.
-    const urlChanged = urlBeforeClick !== urlAfterClick;
+    const urlChanged = urlBeforeClick !== urlAfterSettle;
     if (urlChanged) {
       const stepElementExists = (await page.locator(`[data-testid="interactive-step-${step.stepId}"]`).count()) > 0;
       if (!stepElementExists) {
@@ -796,8 +826,11 @@ export async function executeStep(
     }
 
     // L3-3C: Wait for step completion with objective polling
-    // This detects both manual completion and objective-based auto-completion
-    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+    // This detects both manual completion and objective-based auto-completion.
+    // Pass urlBeforeClick so that if the step element detaches after a URL change (e.g. formfill), we treat as passed.
+    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout, {
+      urlBeforeClick,
+    });
 
     if (verbose && completedViaObjectives) {
       console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);
