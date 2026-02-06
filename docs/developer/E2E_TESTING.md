@@ -311,5 +311,6 @@ jobs:
 
 ## Related documentation
 
+- [E2E Testing Contract](./E2E_TESTING_CONTRACT.md) - data-test-\* attributes for reliable E2E selectors
 - [CLI tools](./CLI_TOOLS.md) - Guide validation commands
 - [Local development](./LOCAL_DEV.md) - Setting up the development environment

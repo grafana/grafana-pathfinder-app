@@ -22,6 +22,7 @@ import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../
 import { CodeBlock } from '../docs/code-block';
 import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../../lib/dom';
 import { isCssSelector } from '../../../lib/dom/selector-detector';
+import { STEP_STATES } from './step-states';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -821,6 +822,32 @@ export const InteractiveStep = forwardRef<
         data-targetcomment={targetComment}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-state={
+          isCompletedWithObjectives
+            ? 'completed'
+            : isShowRunning || isDoRunning
+              ? 'executing'
+              : checker.isChecking
+                ? 'checking'
+                : !finalIsEnabled
+                  ? STEP_STATES.REQUIREMENTS_UNMET
+                  : 'idle'
+        }
+        data-test-fix-type={checker.fixType || 'none'}
+        data-test-requirements-state={
+          checker.isChecking ? 'checking' : finalIsEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+        }
+        data-test-form-state={
+          targetAction === 'formfill'
+            ? formValidation?.isChecking
+              ? 'checking'
+              : formValidation?.isInvalid
+                ? 'invalid'
+                : formValidation?.isValid
+                  ? 'valid'
+                  : 'idle'
+            : undefined
+        }
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}

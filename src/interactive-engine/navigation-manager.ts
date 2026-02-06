@@ -3,6 +3,7 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
 import { sanitizeDocumentationHTML } from '../security';
+import { applyE2ECommentBoxAttributes } from './e2e-attributes';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -60,6 +61,7 @@ export class NavigationManager {
     commentBox.setAttribute('data-position', 'center');
     commentBox.setAttribute('data-ready', 'true');
     commentBox.setAttribute('data-noop', 'true');
+    applyE2ECommentBoxAttributes(commentBox, { actionType: 'noop' });
 
     // Build comment box content
     const content = document.createElement('div');
@@ -639,6 +641,8 @@ export class NavigationManager {
       showKeyboardHint?: boolean;
       stepTitle?: string;
       skipAnimations?: boolean; // For smooth step transitions
+      actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
+      targetValue?: string;
     }
   ): Promise<HTMLElement> {
     // First, ensure navigation is open and element is visible
@@ -815,10 +819,18 @@ export class NavigationManager {
       showKeyboardHint?: boolean;
       stepTitle?: string;
       skipAnimations?: boolean;
+      actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
+      targetValue?: string;
     }
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
+
+    // Apply E2E testing contract attributes
+    applyE2ECommentBoxAttributes(commentBox, {
+      actionType: options?.actionType,
+      targetValue: options?.targetValue,
+    });
 
     // We'll calculate position after building the content so we can measure actual height
 

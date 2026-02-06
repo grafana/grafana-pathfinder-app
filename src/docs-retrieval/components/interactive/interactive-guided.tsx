@@ -17,6 +17,7 @@ import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 import { GuidedAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
 import { sanitizeDocumentationHTML } from '../../../security';
+import { STEP_STATES } from './step-states';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -595,7 +596,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return 'checking';
       }
       if (!checker.isEnabled) {
-        return 'requirements-not-met';
+        return STEP_STATES.REQUIREMENTS_UNMET;
       }
       return 'idle';
     })();
@@ -606,6 +607,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-step-id={stepId || renderedStepId}
         data-state={uiState}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-state={uiState}
+        data-test-substep-index={isExecuting ? currentStepIndex : undefined}
+        data-test-substep-total={internalActions.length}
+        data-test-requirements-state={
+          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+        }
       >
         {/* Title and description - always shown */}
         <div className="interactive-step-content">
@@ -678,7 +685,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         {/* ═══════════════════════════════════════════════════════════════════
             STATE: REQUIREMENTS NOT MET (also show during rechecking)
         ═══════════════════════════════════════════════════════════════════ */}
-        {(uiState === 'requirements-not-met' || (uiState === 'checking' && checker.explanation)) &&
+        {(uiState === STEP_STATES.REQUIREMENTS_UNMET || (uiState === 'checking' && checker.explanation)) &&
           checker.explanation && (
             <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
               <div className="interactive-guided-requirement-box">

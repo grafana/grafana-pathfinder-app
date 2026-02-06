@@ -335,6 +335,18 @@ const InteractiveGuide = () => {
 };
 ```
 
+## E2E Testing Contract
+
+The interactive system exposes its state via `data-test-*` attributes for E2E testing. These form a stable contract between the interactive components and the E2E test runner.
+
+**Key locations:**
+
+- `src/interactive-engine/e2e-attributes.ts` - Shared helper for applying attributes to comment boxes
+- `src/docs-retrieval/components/interactive/step-states.ts` - Constants defining valid attribute values
+- Contract tests ensure attribute stability at build time
+
+See: [`docs/developer/E2E_TESTING_CONTRACT.md`](../E2E_TESTING_CONTRACT.md) for the full specification.
+
 ## Key Dependencies
 
 ### Internal Dependencies
@@ -374,5 +386,6 @@ The Interactive Engine exists to bridge the gap between static documentation and
 ## See Also
 
 - `docs/developer/engines/requirements-manager.md` - Requirements validation system
+- `docs/developer/E2E_TESTING_CONTRACT.md` - E2E testing contract and data-test-\* attributes
 - `docs/architecture.dot` - Overall architecture diagram (GraphViz DOT format)
 - `.cursor/rules/interactiveRequirements.mdc` - Requirements system rules and patterns
