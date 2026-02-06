@@ -14,6 +14,7 @@ import { testIds } from '../../../../src/components/testIds';
 import {
   DEFAULT_STEP_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
+  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
   BUTTON_ENABLE_TIMEOUT_MS,
   BUTTON_APPEAR_TIMEOUT_MS,
   SCROLL_SETTLE_DELAY_MS,
@@ -21,6 +22,15 @@ import {
   COMPLETION_POLL_INTERVAL_MS,
   DEFAULT_SESSION_CHECK_INTERVAL,
   MAX_FIX_ATTEMPTS,
+  GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS,
+  GUIDED_TARGET_RESOLUTION_TIMEOUT_MS,
+  GUIDED_SUBSTEP_ADVANCE_POLL_MS,
+  GUIDED_BETWEEN_SUBSTEP_DELAY_MS,
+  GUIDED_FORMFILL_DEBOUNCE_MS,
+  GUIDED_FORMFILL_VALID_TIMEOUT_MS,
+  GUIDED_FORMFILL_INVALID_PERSIST_MS,
+  GUIDED_HOVER_DWELL_MS,
+  GUIDED_SKIP_AFTER_TIMEOUT_FRACTION,
 } from './constants';
 import { classifyError } from './classification';
 import {
@@ -39,6 +49,8 @@ import type {
   AllStepsResult,
   OnStepCompleteCallback,
 } from './types';
+import { resolveSelector } from '../../../../src/lib/dom';
+import type { Locator } from '@playwright/test';
 
 // ============================================
 // Utility Functions
@@ -130,6 +142,9 @@ export async function waitForDoItButtonToAppear(
  * @returns Timeout in milliseconds
  */
 export function calculateStepTimeout(step: TestableStep): number {
+  if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
+    return DEFAULT_STEP_TIMEOUT_MS + step.guidedStepCount * TIMEOUT_PER_GUIDED_SUBSTEP_MS;
+  }
   if (step.isMultistep && step.internalActionCount > 0) {
     // Multistep: base timeout + time per internal action
     return DEFAULT_STEP_TIMEOUT_MS + step.internalActionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS;
@@ -138,17 +153,10 @@ export function calculateStepTimeout(step: TestableStep): number {
 }
 
 /**
- * Wait for a step to show its completion indicator (L3-3C).
+ * Wait for a step to reach completed state (E2E contract).
  *
- * Primary completion detection mechanism using DOM polling.
- * The completion indicator appears when:
- * - User clicks "Do it" and action completes
- * - Objectives are satisfied (auto-completion)
- * - Step is skipped
- * - completeEarly is true (completes before action finishes)
- *
- * This function polls for completion more frequently to detect
- * objective-based auto-completion that may happen at any time.
+ * Uses data-test-step-state="completed" on the step element so that all step types
+ * (single, multistep, guided) are considered complete when the contract says so.
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
@@ -159,33 +167,30 @@ export async function waitForStepCompletion(
   stepId: string,
   timeout = DEFAULT_STEP_TIMEOUT_MS
 ): Promise<void> {
-  const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
-  await expect(completedIndicator).toBeVisible({ timeout });
+  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  await expect(stepLocator).toHaveAttribute('data-test-step-state', 'completed', { timeout });
 }
 
 /**
  * Check if a step has completed via objectives while waiting (L3-3C).
  *
- * Objectives-based auto-completion can happen at any time based on
- * the application state. This function checks if completion occurred
- * without clicking "Do it" (e.g., user navigated to the right page).
+ * Reads data-test-step-state from the step element; returns true when value is 'completed'.
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
- * @returns true if the step completed via objectives
+ * @returns true if the step completed via objectives (or any completion)
  */
 export async function checkObjectiveCompletion(page: Page, stepId: string): Promise<boolean> {
-  const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
-  return completedIndicator.isVisible();
+  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  const state = await stepLocator.getAttribute('data-test-step-state');
+  return state === 'completed';
 }
 
 /**
  * Wait for completion with periodic polling for objective-based auto-completion (L3-3C).
  *
- * This enhanced completion wait function:
- * 1. Periodically checks if the step auto-completed via objectives
- * 2. Uses the standard completion indicator for final detection
- * 3. Provides early exit if objectives are satisfied
+ * Polls the step element's data-test-step-state; when 'completed', returns.
+ * Final fallback asserts step has data-test-step-state="completed" with a short timeout.
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
@@ -198,29 +203,273 @@ export async function waitForCompletionWithObjectivePolling(
   timeout: number
 ): Promise<{ completedViaObjectives: boolean }> {
   const startTime = Date.now();
-  const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
+  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
 
-  // Poll for completion until timeout
   while (Date.now() - startTime < timeout) {
-    // Check if already completed (via objectives or otherwise)
-    const isVisible = await completedIndicator.isVisible();
-
-    if (isVisible) {
-      // Determine if this was likely an objective completion
-      // (completed very quickly after clicking, within 2 poll intervals)
+    const state = await stepLocator.getAttribute('data-test-step-state');
+    if (state === 'completed') {
       const elapsed = Date.now() - startTime;
       const likelyObjectiveCompletion = elapsed < COMPLETION_POLL_INTERVAL_MS * 2;
       return { completedViaObjectives: likelyObjectiveCompletion };
     }
-
-    // Wait before next poll
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
   }
 
-  // Timeout reached - do one final check with Playwright's built-in expect
-  // This will throw TimeoutError if not completed
-  await expect(completedIndicator).toBeVisible({ timeout: 1000 });
+  // Final fallback: assert contract completion with short timeout
+  await expect(stepLocator).toHaveAttribute('data-test-step-state', 'completed', { timeout: 1000 });
   return { completedViaObjectives: false };
+}
+
+// ============================================
+// Guided Step Execution (Phase 3)
+// ============================================
+
+const GUIDED_WAIT_EXECUTING_MS = 5000;
+
+/**
+ * Resolve data-test-reftarget to a Playwright locator for the current substep.
+ * Button: try getByRole('button', { name }) then locator(selector); others use locator(selector).
+ * Handles grafana: prefix via resolveSelector.
+ */
+async function resolveGuidedTarget(page: Page, reftarget: string, actionType: string): Promise<Locator> {
+  const timeout = GUIDED_TARGET_RESOLUTION_TIMEOUT_MS;
+  const selector = reftarget.startsWith('grafana:') ? resolveSelector(reftarget) : reftarget;
+
+  if (actionType === 'button') {
+    const byRole = page.getByRole('button', { name: reftarget });
+    const n = await byRole.count();
+    if (n > 0) {
+      return byRole.first();
+    }
+    const bySelector = page.locator(selector);
+    const hasButton = bySelector.filter({ has: page.getByRole('button') });
+    const hasCount = await hasButton.count();
+    if (hasCount > 0) {
+      return hasButton.first();
+    }
+    return bySelector.first();
+  }
+
+  const loc = page.locator(selector).first();
+  await loc.waitFor({ state: 'visible', timeout });
+  return loc;
+}
+
+/**
+ * Wait until the step's substep index increases or the step completes.
+ * Fails if step state becomes 'error' or 'cancelled'.
+ * Phase 4.3: If commentBox is provided, after 80% of timeout tries to click Skip button if present.
+ * Phase 4.6: Timeout error includes last seen state for diagnostics.
+ */
+async function waitForSubstepAdvance(
+  page: Page,
+  stepLocator: Locator,
+  previousSubstepIndex: number,
+  timeoutMs: number,
+  options: { commentBox?: Locator } = {}
+): Promise<void> {
+  const { commentBox } = options;
+  const deadline = Date.now() + timeoutMs;
+  const skipAfterMs = Math.floor(timeoutMs * GUIDED_SKIP_AFTER_TIMEOUT_FRACTION);
+  let lastState: string | null = null;
+  let lastIndex: string | null = null;
+
+  while (Date.now() < deadline) {
+    lastState = await stepLocator.getAttribute('data-test-step-state');
+    lastIndex = await stepLocator.getAttribute('data-test-substep-index');
+
+    if (lastState === 'error') {
+      throw new Error('Guided step entered error state');
+    }
+    if (lastState === 'cancelled') {
+      throw new Error('Guided step was cancelled');
+    }
+    if (lastState === 'completed') {
+      return;
+    }
+    const index = lastIndex != null ? parseInt(lastIndex, 10) : 0;
+    if (!Number.isNaN(index) && index > previousSubstepIndex) {
+      return;
+    }
+
+    const elapsed = Date.now() - (deadline - timeoutMs);
+    if (commentBox && elapsed >= skipAfterMs) {
+      const skipBtn = commentBox.getByRole('button', { name: /^Skip$/ });
+      const count = await skipBtn.count();
+      if (count > 0) {
+        await skipBtn.click().catch(() => {});
+      }
+    }
+
+    await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
+  }
+
+  throw new Error(
+    `Guided substep did not advance within ${timeoutMs}ms (previous index: ${previousSubstepIndex}, last state: ${lastState ?? 'unknown'}, last substep-index: ${lastIndex ?? 'unknown'})`
+  );
+}
+
+/**
+ * After formfill: debounce, optionally wait for data-test-form-state="valid", or retry once on persistent invalid (Phase 4.1).
+ */
+async function waitForFormfillSettle(
+  page: Page,
+  stepLocator: Locator,
+  target: Locator,
+  targetValue: string
+): Promise<void> {
+  await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
+
+  const validDeadline = Date.now() + GUIDED_FORMFILL_VALID_TIMEOUT_MS;
+  let invalidSince: number | null = null;
+
+  while (Date.now() < validDeadline) {
+    const formState = await stepLocator.getAttribute('data-test-form-state');
+    if (formState === 'valid') {
+      return;
+    }
+    if (formState === 'invalid') {
+      if (invalidSince == null) {
+        invalidSince = Date.now();
+      }
+      if (Date.now() - invalidSince >= GUIDED_FORMFILL_INVALID_PERSIST_MS) {
+        await target.fill(targetValue);
+        await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
+        const afterRetry = await stepLocator.getAttribute('data-test-form-state');
+        if (afterRetry === 'invalid') {
+          throw new Error(
+            `Guided step: formfill validation failed (data-test-form-state="invalid" persisted after retry with value "${targetValue}")`
+          );
+        }
+        if (afterRetry === 'valid') {
+          return;
+        }
+        invalidSince = null;
+      }
+    } else {
+      invalidSince = null;
+    }
+    await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
+  }
+  // No valid state on step element (e.g. guided step may not set form-state); proceed to waitForSubstepAdvance
+}
+
+/**
+ * Run the guided substep loop: read comment box contract, perform action, wait for advance.
+ * Phase 4: formfill validation, hover dwell, skippable substeps, navigation re-query, error diagnostics.
+ */
+async function runGuidedSubstepLoop(
+  page: Page,
+  step: TestableStep,
+  options: {
+    stepLocator: Locator;
+    perSubstepTimeoutMs: number;
+    verbose?: boolean;
+    artifactsDir?: string;
+  }
+): Promise<void> {
+  let stepLocator = options.stepLocator;
+  const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
+  const guidedStepCount = step.guidedStepCount ?? 1;
+
+  const captureLoopArtifacts = async (context: string) => {
+    if (artifactsDir) {
+      await captureFailureArtifacts(page, step.stepId, [], artifactsDir).catch(() => {});
+    }
+  };
+
+  while (true) {
+    const state = await stepLocator.getAttribute('data-test-step-state');
+    if (state === 'completed') {
+      break;
+    }
+    if (state === 'error') {
+      await captureLoopArtifacts('error-state');
+      throw new Error('Guided step entered error state');
+    }
+    if (state === 'cancelled') {
+      await captureLoopArtifacts('cancelled-state');
+      throw new Error('Guided step was cancelled');
+    }
+    if (state !== 'executing') {
+      await captureLoopArtifacts(`unexpected-state-${state}`);
+      throw new Error(`Unexpected guided step state: ${state}`);
+    }
+
+    const indexStr = await stepLocator.getAttribute('data-test-substep-index');
+    const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
+    const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
+    if (safeIndex >= guidedStepCount) {
+      break;
+    }
+
+    const commentBox = page.locator('.interactive-comment-box').first();
+    await commentBox.waitFor({ state: 'visible', timeout: GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS }).catch(async () => {
+      await captureLoopArtifacts('comment-box-not-visible');
+      throw new Error('Guided step: comment box not visible');
+    });
+
+    const action = await commentBox.getAttribute('data-test-action');
+    const reftarget = await commentBox.getAttribute('data-test-reftarget');
+    const targetValue = await commentBox.getAttribute('data-test-target-value');
+
+    if (verbose) {
+      console.log(`   📍 Guided substep ${safeIndex + 1}/${guidedStepCount} action=${action}`);
+    }
+
+    try {
+      if (action === 'noop') {
+        const continueBtn = commentBox.getByRole('button', { name: /Continue/ });
+        await continueBtn.click();
+      } else if (action === 'button' || action === 'highlight') {
+        if (!reftarget) {
+          throw new Error('Guided step: button/highlight substep missing data-test-reftarget');
+        }
+        const urlBefore = page.url();
+        const target = await resolveGuidedTarget(page, reftarget, action);
+        await target.scrollIntoViewIfNeeded();
+        await target.click();
+        await page.waitForTimeout(100);
+        const urlAfter = page.url();
+        if (urlBefore !== urlAfter) {
+          await page.waitForLoadState('domcontentloaded');
+          stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
+          const count = await stepLocator.count();
+          if (count === 0) {
+            break;
+          }
+          const newState = await stepLocator.getAttribute('data-test-step-state');
+          if (newState === 'completed') {
+            break;
+          }
+        }
+      } else if (action === 'hover') {
+        if (!reftarget) {
+          throw new Error('Guided step: hover substep missing data-test-reftarget');
+        }
+        const target = await resolveGuidedTarget(page, reftarget, 'hover');
+        await target.scrollIntoViewIfNeeded();
+        await target.hover();
+        await page.waitForTimeout(GUIDED_HOVER_DWELL_MS);
+      } else if (action === 'formfill') {
+        if (!reftarget) {
+          throw new Error('Guided step: formfill substep missing data-test-reftarget');
+        }
+        const target = await resolveGuidedTarget(page, reftarget, 'formfill');
+        await target.scrollIntoViewIfNeeded();
+        await target.fill(targetValue ?? '');
+        await waitForFormfillSettle(page, stepLocator, target, targetValue ?? '');
+      } else {
+        throw new Error(`Guided step: unknown data-test-action "${action}"`);
+      }
+    } catch (err) {
+      await captureLoopArtifacts(`substep-${safeIndex}-${action}`);
+      throw err;
+    }
+
+    await waitForSubstepAdvance(page, stepLocator, safeIndex, perSubstepTimeoutMs, { commentBox });
+    await page.waitForTimeout(GUIDED_BETWEEN_SUBSTEP_DELAY_MS);
+  }
 }
 
 // ============================================
@@ -472,6 +721,44 @@ export async function executeStep(
     // L3-3C: Allow reactive system to settle after click
     // Per design doc: debounced rechecks (500ms context, 1200ms DOM)
     await page.waitForTimeout(POST_CLICK_SETTLE_DELAY_MS);
+
+    // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
+    if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
+      const stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
+      await expect(stepLocator).toHaveAttribute('data-test-step-state', 'executing', {
+        timeout: GUIDED_WAIT_EXECUTING_MS,
+      });
+      await runGuidedSubstepLoop(page, step, {
+        stepLocator,
+        perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+        verbose,
+        artifactsDir,
+      });
+      await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+
+      let guidedArtifacts: ArtifactPaths | undefined;
+      if (artifactsDir && alwaysScreenshot) {
+        guidedArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
+        if (guidedArtifacts && preScreenshotPath) {
+          guidedArtifacts.screenshotPre = preScreenshotPath;
+        } else if (preScreenshotPath) {
+          guidedArtifacts = { screenshotPre: preScreenshotPath };
+        }
+        if (verbose && guidedArtifacts) {
+          console.log(`   📸 Success screenshot captured`);
+        }
+      }
+
+      return {
+        stepId: step.stepId,
+        status: 'passed',
+        durationMs: Date.now() - startTime,
+        currentUrl: page.url(),
+        consoleErrors,
+        skippable: step.skippable,
+        artifacts: guidedArtifacts,
+      };
+    }
 
     // FIX: Handle case where navigation causes step element to unmount
     // For highlight actions on nav links, clicking "Do it" navigates the page.

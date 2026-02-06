@@ -22,6 +22,7 @@ import {
   logExecutionSummary,
   DEFAULT_STEP_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
+  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from './guide-runner';
 import type { StepTestResult, TestableStep } from './guide-runner';
 
@@ -42,6 +43,7 @@ function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep
     isPreCompleted: false,
     isMultistep: false,
     internalActionCount: 0,
+    isGuided: false,
     locator: {} as unknown as TestableStep['locator'], // Mock locator - not used in pure functions
     ...overrides,
   };
@@ -128,6 +130,52 @@ describe('calculateStepTimeout', () => {
 
     // Should use default timeout since isMultistep is false
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
+  });
+
+  it('adds time per guided substep when isGuided and guidedStepCount > 0', () => {
+    const step = createTestableStep({
+      isGuided: true,
+      guidedStepCount: 3,
+    });
+
+    const timeout = calculateStepTimeout(step);
+
+    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 3 * TIMEOUT_PER_GUIDED_SUBSTEP_MS);
+  });
+
+  it('returns default timeout for guided step with zero guidedStepCount', () => {
+    const step = createTestableStep({
+      isGuided: true,
+      guidedStepCount: 0,
+    });
+
+    const timeout = calculateStepTimeout(step);
+
+    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
+  });
+
+  it('returns default timeout for guided step with undefined guidedStepCount', () => {
+    const step = createTestableStep({
+      isGuided: true,
+      guidedStepCount: undefined,
+    });
+
+    const timeout = calculateStepTimeout(step);
+
+    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
+  });
+
+  it('prefers guided timeout over multistep when both set', () => {
+    const step = createTestableStep({
+      isMultistep: true,
+      internalActionCount: 2,
+      isGuided: true,
+      guidedStepCount: 4,
+    });
+
+    const timeout = calculateStepTimeout(step);
+
+    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 4 * TIMEOUT_PER_GUIDED_SUBSTEP_MS);
   });
 });
 

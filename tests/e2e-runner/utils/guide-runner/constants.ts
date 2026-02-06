@@ -44,6 +44,57 @@ export const DEFAULT_STEP_TIMEOUT_MS = 30000;
 export const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
 
 /**
+ * Additional timeout per guided substep (Phase 3).
+ * Guided steps run a substep loop; total step timeout = base + guidedStepCount * this.
+ */
+export const TIMEOUT_PER_GUIDED_SUBSTEP_MS = 30000;
+
+/**
+ * Timeout for comment box to become visible during guided execution.
+ */
+export const GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS = 5000;
+
+/**
+ * Timeout for resolving the target element from data-test-reftarget during a substep.
+ */
+export const GUIDED_TARGET_RESOLUTION_TIMEOUT_MS = 10000;
+
+/**
+ * Polling interval when waiting for substep index to advance or step to complete.
+ */
+export const GUIDED_SUBSTEP_ADVANCE_POLL_MS = 400;
+
+/**
+ * Short delay between substeps to allow UI to settle.
+ */
+export const GUIDED_BETWEEN_SUBSTEP_DELAY_MS = 300;
+
+/**
+ * Delay after formfill to allow debounce/validation to run (Phase 4.1).
+ */
+export const GUIDED_FORMFILL_DEBOUNCE_MS = 500;
+
+/**
+ * Timeout when waiting for step's data-test-form-state="valid" after formfill (Phase 4.1).
+ */
+export const GUIDED_FORMFILL_VALID_TIMEOUT_MS = 5000;
+
+/**
+ * Timeout to consider form invalid before retry or fail (Phase 4.1).
+ */
+export const GUIDED_FORMFILL_INVALID_PERSIST_MS = 3000;
+
+/**
+ * Minimal dwell after hover before waiting for substep advance (Phase 4.2).
+ */
+export const GUIDED_HOVER_DWELL_MS = 500;
+
+/**
+ * Fraction of per-substep timeout after which we try Skip button if present (Phase 4.3). 0.8 = 80%.
+ */
+export const GUIDED_SKIP_AFTER_TIMEOUT_FRACTION = 0.8;
+
+/**
  * Timeout for waiting for "Do it" button to become enabled.
  * Sequential dependencies (isEligibleForChecking) may disable buttons.
  */
