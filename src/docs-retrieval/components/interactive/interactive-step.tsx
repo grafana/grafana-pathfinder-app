@@ -22,6 +22,7 @@ import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../
 import { CodeBlock } from '../docs/code-block';
 import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../../lib/dom';
 import { isCssSelector } from '../../../lib/dom/selector-detector';
+import { STEP_STATES } from './step-states';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -829,7 +830,7 @@ export const InteractiveStep = forwardRef<
               : checker.isChecking
                 ? 'checking'
                 : !finalIsEnabled
-                  ? 'requirements-unmet'
+                  ? STEP_STATES.REQUIREMENTS_UNMET
                   : 'idle'
         }
         data-test-fix-type={checker.fixType || 'none'}

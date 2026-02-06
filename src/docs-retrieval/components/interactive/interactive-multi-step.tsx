@@ -12,6 +12,7 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG } from '../../../constants/interactive-config';
 import { InternalAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
+import { STEP_STATES } from './step-states';
 
 let anonymousMultiStepCounter = 0;
 
@@ -650,7 +651,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 : checker.isChecking
                   ? 'checking'
                   : !checker.isEnabled
-                    ? 'requirements-unmet'
+                    ? STEP_STATES.REQUIREMENTS_UNMET
                     : 'idle'
         }
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}

@@ -13,8 +13,7 @@ export const STEP_STATES = {
   COMPLETED: 'completed',
   ERROR: 'error',
   CANCELLED: 'cancelled',
-  REQUIREMENTS_NOT_MET: 'requirements-not-met', // Used by InteractiveGuided
-  REQUIREMENTS_UNMET: 'requirements-unmet', // Used by InteractiveMultiStep/InteractiveStep
+  REQUIREMENTS_UNMET: 'requirements-unmet', // Used by InteractiveStep, InteractiveMultiStep, InteractiveGuided
 } as const;
 
 export type StepStateValue = (typeof STEP_STATES)[keyof typeof STEP_STATES];
