@@ -77,11 +77,11 @@ npm run dev
 # Run Grafana locally with Docker
 npm run server
 
-# Run tests in watch mode
-npm test
-
-# Run all tests (CI mode)
+# Run all tests (CI mode - agents should use this)
 npm run test:ci
+
+# Run tests in watch mode (for local development)
+npm test
 
 # Run tests with coverage
 npm run test:coverage
