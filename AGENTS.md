@@ -39,6 +39,7 @@ The following files are important sources of information:
 6. `.cursor/rules/frontend-security.mdc` - Security rules for frontend code (ALWAYS apply)
 7. `.cursor/rules/instructions.mdc` - Agent behavior, commands, and workflow patterns
 8. `.cursor/rules/react-antipatterns.mdc` - React anti-patterns to check during reviews (R1-R15)
+9. `docs/developer/E2E_TESTING_CONTRACT.md` - the interactive system exposes its state via **data-test-\* attributes** which serve as a stable contract for both the interactive system itself and E2E testing.
 
 ## PR Reviews
 
