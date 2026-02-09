@@ -33,7 +33,7 @@ A guide's identity is spread across at least three unrelated files. The guide it
 
 ### No dependency semantics
 
-The [guide dependencies design](./guide-dependencies-design.md) articulates why Debian-style dependencies are needed (test environment routing, learning path ordering, capability abstraction). But there is nowhere to put this data today.
+Debian-style dependencies are needed (test environment routing, learning path ordering, capability abstraction). But there is nowhere to put this data today.
 
 ### SCORM and external content import
 
@@ -1054,7 +1054,6 @@ Decisions made during the design discussion, with rationale.
 
 ### Internal
 
-- [Guide dependencies design](./guide-dependencies-design.md) — Debian dependency model for guides
 - [Testing strategy](./TESTING_STRATEGY.md) — Content-as-Code vision and testing pyramid
 - [SCORM analysis](./SCORM.md) — SCORM import feasibility study
 - [Schema types](../../src/types/json-guide.types.ts) — Current TypeScript type definitions

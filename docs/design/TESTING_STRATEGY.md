@@ -73,7 +73,7 @@ content.
   - Run via: `npx pathfinder-cli validate ./path/to/guide.json`
   - Use of this CLI is presently in the CI chain for the [https://github.com/grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials) repo.
 
-### Layer 2: Engine Verification (Unit Tests)
+### Layer 2: Engine Verification (Unit Tests) ✅ IMPLEMENTED
 
 - **Goal:** Ensure the Pathfinder plugin itself works, runs on every PR
 - **Checks:**
@@ -82,6 +82,14 @@ content.
   - Does the requirement checking logic work?
 - **Speed:** Seconds.
 - **Owner:** Interactive Learning Plugin Team.
+- **Implementation:** Comprehensive Jest test suite covering:
+  - **Interactive engine core**: state management, sequence management, navigation, global interaction blocking
+  - **Action handlers**: guided, hover, form-fill, focus, button, and navigate handlers
+  - **Requirements and state checking**: requirement checker utilities and hooks, step state, check phases
+  - **Auto-completion**: action matcher for detecting when users complete steps independently
+  - **DOM layer**: selector resolution, generation, detection, enhanced selectors, element validation
+  - **Security**: sanitization, MITM protection, URL validation, log sanitization, context security
+  - **Validation**: guide validation, condition validation, type coupling
 
 ### Layer 3: E2E Integration 🚧 IN PROGRESS
 
@@ -115,7 +123,7 @@ Layer 4 validation requires **guide-level dependency metadata** to route guides 
 - **Guide dependencies**: Which other guides must be completed first (learning path ordering)
 - **Capability abstraction**: Multiple guides can provide the same abstract capability, enabling flexible learning paths
 
-This structured metadata lives in a `dependencies` object at the guide root level, separate from block-level `requirements` (which remain string arrays for runtime gating). See [Guide Dependencies Design](./guide-dependencies-design.md) for the detailed specification.
+This structured metadata lives in `package.json` alongside the guide's `content.json`, separate from block-level `requirements` (which remain string arrays for runtime gating). See the [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md) for the full specification — particularly the [dependencies](./PATHFINDER-PACKAGE-DESIGN.md#dependencies) and [test environment metadata](./PATHFINDER-PACKAGE-DESIGN.md#future-proofing) sections.
 
 ---
 
@@ -248,7 +256,7 @@ We apply dependency principles to guides:
 | Layer            | Status         | Implementation                                            |
 | :--------------- | :------------- | :-------------------------------------------------------- |
 | Layer 1 (Static) | ✅ Complete    | [`src/validation/`](../../src/validation/)                |
-| Layer 2 (Unit)   | ✅ Complete    | Existing Jest test suite                                  |
+| Layer 2 (Unit)   | ✅ Complete    | Comprehensive Jest suite (see Layer 2 description above)  |
 | Layer 3 (E2E)    | 🚧 In Progress | See [E2E Test Runner Design](./e2e-test-runner-design.md) |
 | Layer 4 (Live)   | ⏳ Future      | Requires Layer 3 completion                               |
 
@@ -278,7 +286,7 @@ The E2E testing layer is the most complex component. Detailed design and impleme
 
 ### Layer 4 Prerequisites
 
-- **[Guide Dependencies Design](./guide-dependencies-design.md)** - Guide-level metadata schema for environment targeting, dataset requirements, and inter-guide dependencies
+- **[Pathfinder Package Design](./PATHFINDER-PACKAGE-DESIGN.md)** — Guide-level metadata, dependencies, and test environment routing. See [dependencies](./PATHFINDER-PACKAGE-DESIGN.md#dependencies) and [test environment metadata](./PATHFINDER-PACKAGE-DESIGN.md#future-proofing) sections.
 
 ---
 
@@ -286,11 +294,11 @@ The E2E testing layer is the most complex component. Detailed design and impleme
 
 This section establishes the authority hierarchy for E2E testing documentation, preventing duplication and ensuring single sources of truth.
 
-| Document                     | Purpose                                     | Authority                                |
-| ---------------------------- | ------------------------------------------- | ---------------------------------------- |
-| TESTING_STRATEGY.md          | Vision, failure taxonomy, testing pyramid   | Immutable principles                     |
-| e2e-test-runner-design.md    | Architecture, interfaces, specifications    | Single source of truth for specs         |
-| guide-dependencies-design.md | Guide metadata schema, dependency semantics | Source of truth for guide-level metadata |
+| Document                     | Purpose                                   | Authority                                         |
+| ---------------------------- | ----------------------------------------- | ------------------------------------------------- |
+| TESTING_STRATEGY.md          | Vision, failure taxonomy, testing pyramid | Immutable principles                              |
+| e2e-test-runner-design.md    | Architecture, interfaces, specifications  | Single source of truth for E2E specs              |
+| PATHFINDER-PACKAGE-DESIGN.md | Package model, metadata, dependencies     | Source of truth for guide-level metadata and deps |
 
 ### Guide failure ownership model
 
