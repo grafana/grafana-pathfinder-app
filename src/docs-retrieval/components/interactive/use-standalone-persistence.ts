@@ -35,11 +35,14 @@ export function useStandalonePersistence(
 ): void {
   const isStandalone = !onStepComplete;
   const hasRestoredRef = useRef(false);
+  // Track if user completed step before restore finished, to avoid losing their action
+  const userCompletedBeforeRestoreRef = useRef(false);
 
   // Reset restore guard when the step ID changes so the persist effect
   // doesn't run with stale state before the new restore completes.
   useEffect(() => {
     hasRestoredRef.current = false;
+    userCompletedBeforeRestoreRef.current = false;
   }, [renderedStepId]);
 
   // Restore completion state from storage on mount (and when step ID changes)
@@ -56,9 +59,14 @@ export function useStandalonePersistence(
       if (!isMounted) {
         return;
       }
-      // Set completion state based on storage — explicitly reset to false when
-      // the step is not found, preventing stale state from a previous step ID.
-      setIsLocallyCompleted(restored.has(renderedStepId));
+      // If user completed before restore finished, preserve their action instead of overwriting
+      if (userCompletedBeforeRestoreRef.current) {
+        setIsLocallyCompleted(true);
+      } else {
+        // Set completion state based on storage — explicitly reset to false when
+        // the step is not found, preventing stale state from a previous step ID.
+        setIsLocallyCompleted(restored.has(renderedStepId));
+      }
       hasRestoredRef.current = true;
     });
 
@@ -69,7 +77,15 @@ export function useStandalonePersistence(
 
   // Persist completion state changes (after initial restore completes)
   useEffect(() => {
-    if (!isStandalone || !hasRestoredRef.current) {
+    if (!isStandalone) {
+      return;
+    }
+
+    // If user completed before restore finished, track it to prevent restore from overwriting
+    if (!hasRestoredRef.current) {
+      if (isLocallyCompleted) {
+        userCompletedBeforeRestoreRef.current = true;
+      }
       return;
     }
 
