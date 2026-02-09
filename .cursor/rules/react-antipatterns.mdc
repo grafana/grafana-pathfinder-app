@@ -1,6 +1,6 @@
 ---
-title: React Anti-Patterns and Code Quality Rule
-description: Detailed Do/Don't examples and fix guidance for React anti-patterns R1-R15. Load when a PR review flags a specific pattern or when implementing features that touch hooks, effects, or state management.
+title: React Anti-Patterns and Code Quality Rules
+description: Detailed Do/Don't examples and fix guidance for React anti-patterns R1-R21 (hooks, effects, state, performance, SRE reliability). Load when a PR review flags a pattern, when implementing features that touch hooks/effects/state, or for the /attack SRE audit command.
 alwaysApply: false
 ---
 
@@ -282,6 +282,7 @@ function App() {
 
 **Agent behavior**
 - Recommend error boundaries around components that fetch data, parse external content, or render user-provided data.
+- Wrap major component trees and route definitions — one unhandled render error can unmount the entire app (white screen of death).
 - Note that error boundaries don't catch errors in event handlers, async code, or the boundary itself.
 - When implementing new features with external data, suggest wrapping in an error boundary.
 
@@ -739,13 +740,103 @@ function VideoPlayer({ src }) {
 
 ---
 
+## R16 — Unbounded Main Thread Blocking
+Heavy synchronous work in the render path freezes the UI.
+
+*   **Detection**: Heavy synchronous computations inside `useMemo`, `useEffect`, or the render body. Large loops (`map`, `filter`) on un-memoized arrays derived from props.
+*   **Risk**: Freezes the UI, fails Interaction to Next Paint (INP).
+*   **Fix**: Move to Web Worker, use `useTransition`, or break into async chunks.
+
+**Agent behavior**
+- Flag large synchronous array transformations on data derived from props without `useMemo`.
+- Flag CPU-intensive work (parsing, sorting, tree traversal) in the render body or effects.
+- Suggest `useTransition` for non-urgent state updates, Web Workers for heavy computation.
+
+---
+
+## R17 — Network Waterfalls & Request Storms
+Nested components that each fetch on mount create sequential request chains and amplified load.
+
+*   **Detection**: Nested components that *both* trigger data fetching on mount. `useEffect` dependency arrays that include unstable object/array references (creating infinite fetch loops).
+*   **Risk**: Slow loading, self-inflicted DDoS.
+*   **Fix**: Hoist data fetching to parent/loader, or use React Query/TanStack Query.
+
+**Agent behavior**
+- Flag parent/child pairs where both independently fetch data on mount.
+- Flag `useEffect` fetch calls with object/array dependencies that are recreated each render (combines with R3).
+- Recommend hoisting data requirements to a single parent or using a data-fetching library with deduplication.
+
+---
+
+## R18 — LocalStorage Abuse
+Synchronous `localStorage` calls block the main thread and can crash on quota limits.
+
+*   **Detection**: `localStorage.setItem/getItem` in critical render paths or loops. Storing large objects in storage.
+*   **Risk**: Blocks main thread (I/O is sync), crashes on `QuotaExceededError`.
+*   **Fix**: Use `indexedDB` (async), debounce writes, or wrap in try/catch.
+
+**Agent behavior**
+- Flag `localStorage` calls inside render functions, `useMemo`, or effects that run frequently.
+- Flag storage of large serialized objects (full state trees, large arrays).
+- Recommend try/catch around all `localStorage` calls to handle `QuotaExceededError`.
+
+---
+
+## R19 — LCP Failures
+"Render-then-fetch" patterns delay the largest visible content, causing user bounce.
+
+*   **Detection**: Loading spinners as the initial render for primary content. Lazy loading the hero image or LCP element.
+*   **Risk**: High LCP score, user bounce.
+*   **Fix**: Eager load LCP assets, avoid lazy loading primary content.
+*   **Note**: Less applicable to Grafana plugins rendered inside the Grafana shell. Focus on plugin-owned content that dominates the visible panel.
+
+**Agent behavior**
+- Flag primary content areas that show a loading spinner before any meaningful paint.
+- Flag lazy-loaded images or components that constitute the largest visible element.
+
+---
+
+## R20 — CLS Violations (Layout Shifts)
+Content that loads without reserved space causes jarring layout shifts.
+
+*   **Detection**: `<img>` tags without `width`/`height`. Content blocks that load asynchronously without a skeleton placeholder of fixed height.
+*   **Risk**: UI jumps, users click wrong buttons.
+*   **Fix**: Enforce aspect-ratio CSS or fixed dimensions on images. Use skeleton placeholders with fixed height for async content.
+
+**Agent behavior**
+- Flag `<img>` elements without explicit `width` and `height` attributes or CSS aspect-ratio.
+- Flag async-loaded content blocks without a fixed-height skeleton or placeholder.
+
+---
+
+## R21 — Third-Party Script Contention
+Undeferred scripts block the main thread during page load.
+
+*   **Detection**: External scripts loaded without `defer` or `async`. Analytics/tracking code running in the main render loop.
+*   **Risk**: High Total Blocking Time (TBT).
+*   **Fix**: Defer scripts, move non-critical work to `requestIdleCallback`.
+*   **Note**: Less applicable to Grafana plugins, which typically don't load third-party scripts directly.
+
+**Agent behavior**
+- Flag `<script>` tags without `defer` or `async`.
+- Flag analytics or tracking calls in the render path or effects.
+
+---
+
 ## Agent Conduct
 
 ### During `/review`
-Check code against all R1-R15 rules. Prioritize:
-1. **Critical (R1-R5)**: Memory leaks, race conditions, infinite loops, state bugs
-2. **High (R6-R10)**: Error handling, hook violations, key issues
-3. **Medium (R11-R15)**: Performance and patterns
+Check code against all R1-R21 rules. Prioritize:
+1. **Critical (R1-R5, R8, R13)**: Memory leaks, infinite loops, state mutation, hook violations
+2. **High (R6-R7, R9-R10, R15-R17)**: Error handling, race conditions, key issues, waterfalls
+3. **Medium (R11-R12, R14, R18-R21)**: Performance, context, derived state, web vitals
+
+### During `/attack`
+Run an aggressive SRE reliability audit. Scan code against ALL R1-R21 rules with an emphasis on production-incident patterns (R1, R4, R6-R7, R16-R21). Report findings grouped by severity, then propose a remediation plan for Critical/High issues. Response format:
+
+1.  **Executive summary**: "Found X critical issues, Y high priority."
+2.  **Findings**: `[Severity] Title` — File:Line — 1-sentence impact — specific fix.
+3.  **Next steps**: Ask if the user wants to generate a fix for the #1 most critical issue.
 
 ### When Implementing Features
 - Always add cleanup to `useEffect` with subscriptions/listeners.
@@ -772,7 +863,7 @@ When fixing anti-patterns, annotate with rule reference:
 | Object/array in dependency array | R3 | Use `useMemo` or primitives |
 | `fetch` without `AbortController` | R4 | Add abort handling |
 | `.push()`, `.splice()` on state | R5 | Use spread/map |
-| No error boundary around risky component | R6 | Wrap with boundary |
+| No error boundary around risky component/route | R6 | Wrap with boundary |
 | Search effect without cancellation | R7 | Add cancelled flag |
 | Hook after conditional return | R8 | Move hooks to top |
 | `key={index}` in dynamic list | R9 | Use stable ID |
@@ -782,3 +873,9 @@ When fixing anti-patterns, annotate with rule reference:
 | `useEffect` without dependency array | R13 | Add `[]` or deps |
 | `useState` + `useEffect` for derived value | R14 | Compute in render |
 | DOM listener without cleanup | R15 | Add `removeEventListener` |
+| Heavy sync work in render/effect body | R16 | Web Worker / `useTransition` |
+| Parent + child both fetch on mount | R17 | Hoist to parent/loader |
+| `localStorage` in render path or loop | R18 | Debounce / try-catch / indexedDB |
+| Loading spinner as initial LCP content | R19 | Eager load primary content |
+| `<img>` without dimensions / no skeleton | R20 | Add width/height or skeleton |
+| `<script>` without defer/async | R21 | Add `defer` |

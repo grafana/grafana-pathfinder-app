@@ -38,19 +38,18 @@ The following files are important sources of information:
 5. `.cursor/rules/multistepActions.mdc` - Multi-step component design and implementation
 6. `.cursor/rules/frontend-security.mdc` - Security rules for frontend code (ALWAYS apply)
 7. `.cursor/rules/instructions.mdc` - Agent behavior, commands, and workflow patterns
-8. `.cursor/rules/react-antipatterns.mdc` - React anti-patterns to check during reviews (R1-R15)
+8. `.cursor/rules/react-antipatterns.mdc` - React anti-patterns and SRE reliability patterns (R1-R21), also used by `/attack`
 9. `docs/developer/E2E_TESTING_CONTRACT.md` - the interactive system exposes its state via **data-test-\* attributes** which serve as a stable contract for both the interactive system itself and E2E testing.
 
 ## PR Reviews
 
-Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. It contains a compact detection table covering all concern areas (React anti-patterns R1-R15, security F1-F6, SRE reliability SRE1-SRE10, and quality heuristics QC1-QC7) with pointers to detailed reference files.
+Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. It contains a compact detection table covering all concern areas (React anti-patterns R1-R21, security F1-F6, and quality heuristics QC1-QC7) with a pointer to the detailed reference file.
 
 **Tiered rule architecture:**
 
 - **Tier 1 (always loaded)**: `frontend-security.mdc` — security rules F1-F6
 - **Tier 1 (on `/review`)**: `pr-review.md` — compact orchestrator with unified detection table
-- **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` — detailed Do/Don't for R1-R15
-- **Tier 2 (loaded on hit)**: `react-sre-audit.mdc` — SRE reliability audit for SRE1-SRE10 (also used by `/attack`)
+- **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` — detailed Do/Don't for R1-R21 (includes hooks, state, performance, and SRE reliability patterns; also used by `/attack`)
 
 ## Local development commands
 
