@@ -42,13 +42,23 @@ export function useStandalonePersistence(
       return;
     }
 
+    let isMounted = true;
     const contentKey = getContentKey();
+
     interactiveStepStorage.getCompleted(contentKey, STANDALONE_SECTION_ID).then((restored) => {
+      // REACT: ignore stale responses after unmount (R4)
+      if (!isMounted) {
+        return;
+      }
       if (restored.has(renderedStepId)) {
         setIsLocallyCompleted(true);
       }
       hasRestoredRef.current = true;
     });
+
+    return () => {
+      isMounted = false;
+    };
   }, [renderedStepId, isStandalone, setIsLocallyCompleted]);
 
   // Persist completion state changes (after initial restore completes)
@@ -57,8 +67,15 @@ export function useStandalonePersistence(
       return;
     }
 
+    let isMounted = true;
     const contentKey = getContentKey();
+
     interactiveStepStorage.getCompleted(contentKey, STANDALONE_SECTION_ID).then((existing) => {
+      // REACT: ignore stale responses after unmount (R4)
+      if (!isMounted) {
+        return;
+      }
+
       const updated = new Set(existing);
       if (isLocallyCompleted) {
         updated.add(renderedStepId);
@@ -68,9 +85,10 @@ export function useStandalonePersistence(
       interactiveStepStorage.setCompleted(contentKey, STANDALONE_SECTION_ID, updated);
 
       // Compute unified completion percentage across ALL sections (including standalone)
+      // Defensive: don't calculate percentage until document steps are registered (docTotal >= 1)
       const docTotal = getTotalDocumentSteps();
       const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
-      const percentage = docTotal > 0 ? Math.round((allCompleted / docTotal) * 100) : undefined;
+      const percentage = docTotal >= 1 ? Math.round((allCompleted / docTotal) * 100) : undefined;
       if (percentage !== undefined) {
         interactiveCompletionStorage.set(contentKey, percentage);
       }
@@ -84,5 +102,9 @@ export function useStandalonePersistence(
         );
       }
     });
+
+    return () => {
+      isMounted = false;
+    };
   }, [isLocallyCompleted, isStandalone, renderedStepId]);
 }

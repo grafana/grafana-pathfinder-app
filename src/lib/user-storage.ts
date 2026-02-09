@@ -832,6 +832,12 @@ export const tabStorage = {
 };
 
 /**
+ * Cache for countAllCompleted to avoid O(n) localStorage scan on every step completion.
+ * Invalidated by setCompleted, clear, and clearAllForContent operations.
+ */
+const completedCountCache = new Map<string, number>();
+
+/**
  * Interactive step completion storage operations
  */
 export const interactiveStepStorage = {
@@ -854,6 +860,8 @@ export const interactiveStepStorage = {
    */
   async setCompleted(contentKey: string, sectionId: string, completedIds: Set<string>): Promise<void> {
     try {
+      // Invalidate count cache before write so next countAllCompleted() re-scans
+      completedCountCache.delete(contentKey);
       const storage = createUserStorage();
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.setItem(key, Array.from(completedIds));
@@ -867,6 +875,7 @@ export const interactiveStepStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
+      completedCountCache.delete(contentKey);
       const storage = createUserStorage();
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.removeItem(key);
@@ -910,6 +919,7 @@ export const interactiveStepStorage = {
    */
   async clearAllForContent(contentKey: string): Promise<void> {
     try {
+      completedCountCache.delete(contentKey);
       const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
       const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
 
@@ -934,8 +944,16 @@ export const interactiveStepStorage = {
    * Scans all localStorage entries matching the content key prefix and sums the
    * lengths of their step ID arrays. Used to compute a unified completion percentage
    * that correctly accounts for both section-managed and standalone steps.
+   *
+   * Results are cached per contentKey and invalidated by setCompleted, clear, and
+   * clearAllForContent to avoid an O(n) localStorage scan on every step completion.
    */
   countAllCompleted(contentKey: string): number {
+    const cached = completedCountCache.get(contentKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
       const prefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
       let total = 0;
@@ -955,6 +973,7 @@ export const interactiveStepStorage = {
           }
         }
       }
+      completedCountCache.set(contentKey, total);
       return total;
     } catch {
       return 0;

@@ -1,4 +1,18 @@
 /**
+ * Maximum allowed length for a content key.
+ * Prevents excessively long strings from bloating localStorage.
+ */
+const MAX_KEY_LENGTH = 200;
+
+/**
+ * Sanitizes a content key to prevent path traversal and limit storage bloat.
+ * Removes `..` sequences and truncates to MAX_KEY_LENGTH.
+ */
+function sanitizeKey(key: string): string {
+  return key.replace(/\.\./g, '').slice(0, MAX_KEY_LENGTH);
+}
+
+/**
  * Shared content key resolver for interactive step persistence.
  *
  * Both InteractiveSection and useStandalonePersistence MUST use this function
@@ -18,18 +32,20 @@ export function getContentKey(): string {
     const tabId = (window as any).__DocsPluginActiveTabId as string | undefined;
     // Prefer tabUrl — always available on mount, ensuring persist and restore use the same key
     if (tabUrl && tabUrl.length > 0) {
-      return tabUrl;
+      return sanitizeKey(tabUrl);
     }
     // Fallback to contentKey (set asynchronously, may not be available on mount)
     if (contentKey && contentKey.length > 0) {
-      return contentKey;
+      return sanitizeKey(contentKey);
     }
     // Last resort: use tabId
     if (tabId && tabId.length > 0) {
-      return `tab:${tabId}`;
+      return sanitizeKey(`tab:${tabId}`);
     }
-  } catch {
-    // no-op
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[getContentKey] Failed to resolve content key:', error);
+    }
   }
-  return typeof window !== 'undefined' ? window.location.pathname : 'unknown';
+  return typeof window !== 'undefined' ? sanitizeKey(window.location.pathname) : 'unknown';
 }
