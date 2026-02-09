@@ -5,6 +5,7 @@
 - [Motivation](#motivation)
 - [Design principles](#design-principles)
 - [Package structure](#package-structure)
+- [Separation of content and metadata](#separation-of-content-and-metadata)
 - [Identity model](#identity-model)
 - [Phase 1 schema](#phase-1-schema)
 - [Metadata](#metadata)
@@ -28,7 +29,7 @@ This creates structural problems that are already present or imminent:
 
 ### Scattered metadata
 
-A guide's identity is spread across at least three files. The guide itself only knows its `id` and `title`. Its description, URL targeting, and platform rules live in `index.json`. Its ordering within a learning path lives in `paths.json`. Its estimated duration lives in `paths.json` under `guideMetadata`. There is no single place to understand "what is this guide, what does it need, and where does it fit?"
+A guide's identity is spread across at least three unrelated files. The guide itself only knows its `id` and `title`. Its description, URL targeting, and platform rules live in `index.json`. Its ordering within a learning path lives in `paths.json`. Its estimated duration lives in `paths.json` under `guideMetadata`. There is no single **package** to understand "what is this guide, what does it need, and where does it fit?"
 
 ### No dependency semantics
 
@@ -66,27 +67,95 @@ As the content corpus grows from ~45 guides toward 100-200+, decentralized owner
 
 6. **Vet field names against standards.** Before finalizing metadata field names, cross-reference Dublin Core, IEEE LOM, and SCORM to avoid backward-incompatible renames later.
 
+7. **Separate content from metadata.** Content (`content.json`) and package metadata (`package.json`) live in separate files within the package directory. Different consumers read only the file they need; different roles author only the file they own. This follows the Debian model where `control` metadata is physically separate from package data.
+
 ---
 
 ## Package structure
 
-A package is a **directory** containing at minimum `content.json`. The directory name matches the guide `id`:
+A package is a **directory** containing at minimum `content.json`. A `package.json` file carries metadata, dependencies, and targeting. An optional `assets/` directory holds non-JSON resources (images, diagrams, supplementary files). The directory name matches the guide `id`:
 
 ```
 interactive-tutorials/
 ├── welcome-to-grafana/
-│   └── content.json
+│   ├── content.json          ← content blocks (block editor's domain)
+│   └── package.json          ← metadata, dependencies, targeting
 ├── prometheus-grafana-101/
-│   └── content.json
+│   ├── content.json
+│   ├── package.json
+│   └── assets/               ← optional non-JSON assets
+│       └── architecture.png
 ├── first-dashboard/
-│   └── content.json
+│   └── content.json          ← package.json optional; standalone guide
 └── advanced-alerting/
     ├── content.json
-    └── assets/               ← future: local assets
-        └── architecture.png
+    └── package.json
 ```
 
+### Files in a package
+
+| File           | Required | Owner                                  | Contains                                          |
+| -------------- | -------- | -------------------------------------- | ------------------------------------------------- |
+| `content.json` | Yes      | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`          |
+| `package.json` | No       | Product, enablement, recommender teams | `metadata`, `dependencies`, `targeting`           |
+| `assets/`      | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources |
+
 For backwards compatibility, bare files (`welcome-to-grafana.json`) continue to work. The directory convention is adopted for new guides and migrated incrementally.
+
+---
+
+## Separation of content and metadata
+
+### The Debian precedent
+
+A Debian `.deb` binary package contains **two separate archives**: `control.tar.gz` (metadata, dependencies, maintainer scripts) and `data.tar.gz` (the installable files). The package manager reads `control.tar.gz` to make dependency and conflict decisions without ever extracting `data.tar.gz`. This physical separation is deliberate: metadata and content serve different consumers, are authored by different tools, and change for different reasons.
+
+We adopt the same principle. A Pathfinder package separates metadata (`package.json`) from content (`content.json`).
+
+### Multiple consumers, different needs
+
+As the content corpus grows toward 100-200+ guides, different systems consume package data for different purposes. No single consumer needs the full merged artifact:
+
+| Consumer                   | Reads            | Why                                                          |
+| -------------------------- | ---------------- | ------------------------------------------------------------ |
+| Pathfinder plugin          | `content.json`   | Renders blocks in the sidebar; metadata is irrelevant        |
+| Recommender (`build-index`)| `package.json`   | Needs `targeting.match` and `metadata.description`; blocks are irrelevant |
+| Learning path engine       | `package.json`   | Needs `dependencies` for DAG traversal; blocks are irrelevant |
+| LMS / catalog search       | `package.json`   | Searches by title, category, difficulty, author; blocks are irrelevant |
+| E2E test runner            | Both             | Needs blocks to execute and `dependencies.testEnvironment` for routing |
+| CLI validator              | Both             | Cross-validates content structure and package metadata       |
+
+Separating the files means each consumer can parse only the file it needs. A recommender indexing 200 packages reads 200 small `package.json` files rather than 200 large `content.json` files that include potentially hundreds of content blocks each.
+
+### Authoring role separation
+
+Different roles own different concerns:
+
+| Role                    | Edits            | Tool                                           |
+| ----------------------- | ---------------- | ---------------------------------------------- |
+| Tech writers            | `content.json`   | Block editor                                   |
+| Enablement / product    | `package.json`   | Text editor, CLI, or future metadata editor    |
+| Recommender engineers   | `package.json`   | Text editor or recommender tooling             |
+| Content architects      | `package.json`   | Text editor, dependency graph tools            |
+
+The block editor can read and write `content.json` without needing to understand, preserve, or risk clobbering metadata fields. It never touches `package.json`. This keeps the block editor focused on content authoring — its primary purpose.
+
+Git history stays clean: content changes produce diffs in `content.json`; metadata and targeting changes produce diffs in `package.json`. Reviews are scoped to the concern being changed. Merge conflicts between content authors and metadata managers are eliminated.
+
+### Logical merge
+
+The CLI and build tools assemble a **logical guide** by merging `content.json` and `package.json` at validation and build time. The `id` field appears in both files and must match — this is a cross-file consistency check enforced by the CLI. When `package.json` is absent, the guide is standalone: it has content but no package metadata.
+
+### The `assets/` directory
+
+Packages may include an optional `assets/` directory for non-JSON resources: images, architecture diagrams, supplementary PDFs, or other files referenced by the guide content. Assets are:
+
+- **Not parsed** by the CLI or plugin — they are opaque files
+- **Referenced** from content blocks via relative paths (e.g., `./assets/architecture.png`)
+- **Bundled** alongside the package for distribution
+- **Aligned with SCORM** — SCORM packages include static assets alongside SCO content
+
+The `assets/` convention is adopted now but asset resolution and rendering are deferred to a future phase.
 
 ---
 
@@ -122,12 +191,12 @@ FQIs are used in:
 
 ### Bare ID resolution
 
-When a dependency reference contains no `/`, it is resolved within the same repository. This makes same-repo references concise:
+When a dependency reference contains no `/`, it is resolved within the same repository. This makes same-repo references concise. In `package.json`:
 
 ```json
 {
-  "repository": "interactive-tutorials",
   "id": "advanced-alerting",
+  "repository": "interactive-tutorials",
   "dependencies": {
     "depends": ["intro-to-alerting"],
     "recommends": ["private-guides/deep-dive-alerting"]
@@ -145,7 +214,36 @@ When `repository` is absent, the default is `"interactive-tutorials"`. This prov
 
 ## Phase 1 schema
 
-The complete Phase 1 schema extension. All new fields are optional for backwards compatibility.
+Phase 1 defines two file schemas and a merged logical type. All new fields are optional for backwards compatibility.
+
+### Content schema (`content.json`)
+
+The content file is what the block editor produces. It contains only the fields needed to render the guide: schemaVersion, id, title, blocks: []
+
+### Package schema (`package.json`)
+
+The package file carries metadata, dependencies, and targeting. It is authored by product, enablement, or recommender teams — not by the block editor:
+
+```typescript
+interface PackageJson {
+  /** Schema version — "1.1.0" for packages */
+  schemaVersion?: string;
+  /** Local identifier — must match content.json id */
+  id: string;
+  /** Repository token for multi-repo identity (default: "interactive-tutorials") */
+  repository?: string;
+  /** Package metadata for discoverability and attribution */
+  metadata?: GuideMetadata;
+  /** Debian-style dependency declarations */
+  dependencies?: GuideDependencies;
+  /** Advisory recommendation targeting */
+  targeting?: GuideTargeting;
+}
+```
+
+### Merged logical type
+
+The CLI and build tools assemble both files into a logical `JsonGuide` for validation, index generation, and runtime consumption. The `id` field must match across both files:
 
 ```typescript
 interface JsonGuide {
@@ -175,14 +273,32 @@ interface JsonGuide {
 }
 ```
 
+When `package.json` is absent, the logical `JsonGuide` is identical to `content.json` — a standalone guide with no package metadata.
+
 ### Example: complete Phase 1 package
+
+A package with both files:
+
+**`prometheus-grafana-101/content.json`** — authored by the block editor:
 
 ```json
 {
   "schemaVersion": "1.1.0",
-  "repository": "interactive-tutorials",
   "id": "prometheus-grafana-101",
   "title": "Prometheus & Grafana 101",
+  "blocks": [
+    { "type": "markdown", "content": "# Prometheus & Grafana 101\n\nIn this guide..." }
+  ]
+}
+```
+
+**`prometheus-grafana-101/package.json`** — authored by product/enablement:
+
+```json
+{
+  "schemaVersion": "1.1.0",
+  "id": "prometheus-grafana-101",
+  "repository": "interactive-tutorials",
   "metadata": {
     "description": "Learn to use Prometheus and Grafana to monitor your infrastructure.",
     "language": "en",
@@ -204,14 +320,15 @@ interface JsonGuide {
     "match": {
       "and": [{ "urlPrefixIn": ["/connections"] }, { "targetPlatform": "oss" }]
     }
-  },
-  "blocks": [{ "type": "markdown", "content": "# Prometheus & Grafana 101\n\nIn this guide..." }]
+  }
 }
 ```
 
 ---
 
 ## Metadata
+
+All metadata fields live in `package.json`, not in `content.json`. This keeps the block editor's file clean and focused on content.
 
 ### Fields
 
@@ -274,6 +391,8 @@ These fields are not in Phase 1 but the schema is designed to accept them as bac
 
 ## Dependencies
 
+Dependencies are declared in `package.json`. They express structural relationships between guides — prerequisites, recommendations, capabilities, and conflicts.
+
 ### Fields
 
 ```typescript
@@ -297,6 +416,9 @@ interface GuideDependencies {
   replaces?: string[];
 }
 ```
+
+**TODO**: Do we want to support logical AND/OR in dependencies/recommends/etc? Alternatively, if
+the `GuideTargeting` Api Spec can be reused here.  
 
 All references use FQI format (`"repository/id"`) for cross-repo or bare `id` for same-repo. See [identity model](#identity-model).
 
@@ -343,6 +465,8 @@ Both coexist. `paths.json` references guides by FQI. The dependency graph is a p
 ---
 
 ## Targeting
+
+Targeting rules are declared in `package.json`.
 
 ### Purpose
 
@@ -395,26 +519,21 @@ This says: "I'm most relevant when the user is on a connections/datasources page
 
 The package schema validates `targeting` loosely — it checks that the field is a valid JSON object but does not enforce the full `MatchExpr` grammar. The recommender's rule definition language can evolve independently without requiring package schema changes.
 
-```typescript
-const GuideTargetingSchema = z
-  .object({
-    match: z.record(z.unknown()).optional(),
-  })
-  .passthrough();
-```
 
 ### Relationship to index.json
 
 Today, the recommender consumes `index.json` for recommendation rules. In the package model, `index.json` becomes a **build artifact** derived from scanning packages. A future `pathfinder-cli build-index` command will:
 
 1. Scan all package directories
-2. For each package, assemble a recommender `Rule` by:
-   - Taking `title` from the guide root
-   - Taking `description` from `metadata.description`
+2. For each package, read `package.json` and `content.json`:
+   - Taking `title` from `content.json`
+   - Taking `description` from `package.json` → `metadata.description`
    - Computing `url` from the package's deployment location
-   - Copying `match` from `targeting.match`
+   - Copying `match` from `package.json` → `targeting.match`
    - Setting `source` to the package FQI
 3. Output a single `index.json` file
+
+The recommender only needs `package.json` for most operations (targeting, metadata). It reads `content.json` only for the `title` field, which could alternatively be duplicated into `package.json` metadata in the future if needed.
 
 Until `build-index` is implemented, `index.json` continues to be maintained separately. This is noted as a [deferred concern](#deferred-concerns).
 
@@ -424,41 +543,51 @@ Until `build-index` is implemented, `index.json` continues to be maintained sepa
 
 ### Schema level
 
-`JsonGuideSchema` uses `.passthrough()` (via `.loose()`) which means unknown fields are allowed. All new fields (`repository`, `metadata`, `dependencies`, `targeting`) are optional. Existing guides with only `{ schemaVersion, id, title, blocks }` pass validation without changes.
+`JsonGuideSchema` uses `.passthrough()` (via `.loose()`) which means unknown fields are allowed. Existing guides with only `{ schemaVersion, id, title, blocks }` in a single file pass validation without changes. The two-file model is additive — `package.json` is optional.
 
 ### KNOWN_FIELDS
 
-Adding `'repository'`, `'metadata'`, `'dependencies'`, and `'targeting'` to `KNOWN_FIELDS._guide` means these fields won't trigger "unknown field" warnings when present. Their absence triggers nothing.
+For `content.json`: the existing `KNOWN_FIELDS._guide` applies unchanged. If `content.json` contains metadata/dependency/targeting fields (e.g., from a legacy single-file guide), they are accepted via `.passthrough()` but the canonical location is `package.json`.
+
+For `package.json`: a new `KNOWN_FIELDS._package` set includes `'schemaVersion'`, `'id'`, `'repository'`, `'metadata'`, `'dependencies'`, and `'targeting'`.
 
 ### Schema version
 
 The version bumps from `"1.0.0"` to `"1.1.0"`:
 
-- `1.0.0` → `1.1.0`: backward-compatible addition of optional fields
+- `1.0.0` → `1.1.0`: backward-compatible addition of the two-file package model
 - Consumers that don't understand the new fields safely ignore them
 - The `.passthrough()` pattern already ensures this
+- Both `content.json` and `package.json` carry `schemaVersion` independently
 
 ### Default values
 
 | Field          | Default when absent                                                                          |
 | -------------- | -------------------------------------------------------------------------------------------- |
+| `package.json` | No package metadata (standalone guide with content only)                                     |
 | `repository`   | `"interactive-tutorials"`                                                                    |
 | `metadata`     | No metadata (guide is opaque)                                                                |
 | `dependencies` | No dependencies (standalone guide)                                                           |
 | `targeting`    | No targeting (not recommended contextually; only reachable via direct link or learning path) |
+| `assets/`      | No assets                                                                                    |
 
 ### Migration path
 
 1. Existing bare `*.json` files continue to work indefinitely
-2. When a guide gains package fields, move it into a directory: `first-dashboard.json` → `first-dashboard/content.json`
-3. This is done incrementally, one guide at a time
-4. The CLI accepts both file paths and directory paths
+2. When a guide gains package structure, move it into a directory: `first-dashboard.json` → `first-dashboard/content.json`
+3. When a guide gains metadata, create `package.json` alongside `content.json`
+4. This is done incrementally, one guide at a time
+5. The CLI accepts bare files, directory paths with only `content.json`, and full packages with both files
+
+### Legacy single-file guides
+
+For backwards compatibility, the CLI also accepts a single `content.json` that contains metadata/dependency/targeting fields inline (the original unified-file design). When the CLI encounters this, it treats the file as both content and package metadata. This ensures that any guide authored before the two-file split continues to work. New guides should use the two-file model.
 
 ### Consolidation of external metadata
 
-- `index.json` entries (`summary`, `url`, `targetPlatform`) can be gradually migrated into package `metadata` and `targeting`
-- `paths.json` guide ordering can be derived from `dependencies.depends` chains
-- Both external files continue to work during transition — they are the fallback when packages don't carry their own metadata
+- `index.json` entries (`summary`, `url`, `targetPlatform`) can be gradually migrated into `package.json` `metadata` and `targeting`
+- `paths.json` guide ordering can be derived from `dependencies.depends` chains in `package.json`
+- Both external files continue to work during transition — they are the fallback when packages don't carry their own `package.json`
 
 ---
 
@@ -466,7 +595,9 @@ The version bumps from `"1.0.0"` to `"1.1.0"`:
 
 ### Schema validation of new fields
 
-Extend `JsonGuideSchemaStrict` and `KNOWN_FIELDS`:
+The CLI validates `content.json` and `package.json` with separate schemas, then performs cross-file consistency checks when both are present.
+
+#### Shared sub-schemas
 
 ```typescript
 const GuideMetadataSchema = z
@@ -501,7 +632,37 @@ const GuideTargetingSchema = z
     match: z.record(z.unknown()).optional(),
   })
   .passthrough();
+```
 
+#### Content schema (`content.json`)
+
+```typescript
+export const ContentJsonSchema = z.object({
+  schemaVersion: z.string().optional(),
+  id: z.string().min(1, 'Guide id is required'),
+  title: z.string().min(1, 'Guide title is required'),
+  blocks: z.array(JsonBlockSchema),
+});
+```
+
+#### Package schema (`package.json`)
+
+```typescript
+export const PackageJsonSchema = z.object({
+  schemaVersion: z.string().optional(),
+  id: z.string().min(1, 'Package id is required'),
+  repository: z.string().optional(),
+  metadata: GuideMetadataSchema.optional(),
+  dependencies: GuideDependenciesSchema.optional(),
+  targeting: GuideTargetingSchema.optional(),
+});
+```
+
+#### Merged logical schema (for legacy single-file guides)
+
+For backwards compatibility with single-file guides that carry all fields:
+
+```typescript
 export const JsonGuideSchemaStrict = z.object({
   schemaVersion: z.string().optional(),
   repository: z.string().optional(),
@@ -532,12 +693,15 @@ Package-level validation adds checks that single-file validation cannot perform:
 | Check                         | What it validates                                                                       |
 | ----------------------------- | --------------------------------------------------------------------------------------- |
 | Directory structure           | Package directory contains `content.json`                                               |
-| ID consistency                | `content.json` `id` matches directory name                                              |
+| ID consistency (directory)    | `content.json` `id` matches directory name                                              |
+| ID consistency (cross-file)   | `package.json` `id` matches `content.json` `id` (when both present)                    |
+| Package.json structure        | `package.json` passes `PackageJsonSchema` validation (when present)                     |
 | Dependency resolution (local) | All same-repo `depends`/`recommends` reference guide IDs that exist in the tree         |
 | Circular dependency detection | No cycles in the dependency graph                                                       |
 | Capability coverage           | Every `depends` target either exists as a guide ID or is `provides`-d by some guide     |
 | Cross-repo references         | Warns on unresolvable cross-repo references (cannot validate without external metadata) |
 | Conflict consistency          | `conflicts` pairs that are not symmetric generate a warning                             |
+| Assets directory              | Warns if `content.json` references assets that don't exist in `assets/`                 |
 
 ### Dependency graph command (new)
 
@@ -601,19 +765,21 @@ Phase 1 metadata field names are chosen to align with established standards wher
 
 ### SCORM
 
-The package format is designed to be the **output target** for a future SCORM import pipeline. Key alignment points:
+The package format is designed to be the **output target** for a future SCORM import pipeline. The two-file model aligns naturally with SCORM's separation of `imsmanifest.xml` (metadata) from content files:
 
-| SCORM concept              | Package equivalent                    |
-| -------------------------- | ------------------------------------- |
-| Package (ZIP)              | Package directory                     |
-| `imsmanifest.xml` metadata | `metadata` field                      |
-| Organization tree          | Multiple packages linked by `depends` |
-| SCO (interactive content)  | Package with content blocks           |
-| Asset (static content)     | `assets/` directory within package    |
-| Prerequisites              | `dependencies.depends`                |
-| Sequencing (forward-only)  | Linear `depends` chain                |
+| SCORM concept              | Package equivalent                         |
+| -------------------------- | ------------------------------------------ |
+| Package (ZIP)              | Package directory                          |
+| `imsmanifest.xml` metadata | `package.json`                             |
+| Organization tree          | Multiple packages linked by `depends`      |
+| SCO (interactive content)  | `content.json` with content blocks         |
+| Asset (static content)     | `assets/` directory within package         |
+| Prerequisites              | `package.json` → `dependencies.depends`    |
+| Sequencing (forward-only)  | Linear `depends` chain                     |
 
-SCORM-specific fields (`metadata.source`, `metadata.rights`, `metadata.educationalContext`) are deferred to the SCORM implementation phase but will be backward-compatible additions to the existing `metadata` object.
+The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `package.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure.
+
+SCORM-specific fields (`metadata.source`, `metadata.rights`, `metadata.educationalContext`) are deferred to the SCORM implementation phase but will be backward-compatible additions to `package.json`.
 
 ---
 
@@ -621,14 +787,15 @@ SCORM-specific fields (`metadata.source`, `metadata.rights`, `metadata.education
 
 ### Extensible metadata namespace
 
-The `metadata` object is a bag of optional fields. Adding new fields is always backward-compatible. The Zod sub-schema uses `.strict()` for validation precision in the current version, but the outer guide schema uses `.passthrough()` for forward compatibility. Unknown sub-fields in newer guides generate warnings but don't fail validation.
+The `metadata` object in `package.json` is a bag of optional fields. Adding new fields is always backward-compatible. The Zod sub-schema uses `.strict()` for validation precision in the current version, but the outer package schema uses `.passthrough()` for forward compatibility. Unknown sub-fields in newer packages generate warnings but don't fail validation.
 
 ### The `source` provenance pattern (future)
 
-When SCORM import arrives, packages gain `metadata.source`:
+When SCORM import arrives, `package.json` gains `metadata.source`:
 
 ```json
 {
+  "id": "acme-sales-training",
   "metadata": {
     "source": {
       "format": "SCORM",
@@ -654,10 +821,11 @@ Adding `type: "guide" | "course" | "module"` enables:
 
 ### Test environment metadata (future)
 
-`dependencies.testEnvironment` will be added when Layer 4 E2E infrastructure is ready to consume it:
+`dependencies.testEnvironment` will be added to `package.json` when Layer 4 E2E infrastructure is ready to consume it:
 
 ```json
 {
+  "id": "advanced-alerting",
   "dependencies": {
     "testEnvironment": {
       "tier": "managed",
@@ -674,8 +842,8 @@ Adding `type: "guide" | "course" | "module"` enables:
 
 | Version | Scope                                                                                       |
 | ------- | ------------------------------------------------------------------------------------------- |
-| `1.0.0` | Current: `id`, `title`, `blocks`, `schemaVersion`                                           |
-| `1.1.0` | Phase 1 packages: adds `repository`, `metadata`, `dependencies`, `targeting`                |
+| `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`           |
+| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `package.json`), `assets/` directory     |
 | `1.2.0` | Future: adds `type`, `metadata.source`, `metadata.keywords`, `dependencies.testEnvironment` |
 | `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                             |
 
@@ -683,7 +851,7 @@ Any consumer can inspect `schemaVersion` and decide which fields to expect.
 
 ### CRD serialization readiness
 
-The package format uses plain JSON with no Grafana-specific runtime dependencies. The structure maps cleanly to Kubernetes Custom Resource Definitions:
+The package format uses plain JSON with no Grafana-specific runtime dependencies. The CLI merges `content.json` and `package.json` into the logical `JsonGuide` type, which maps cleanly to Kubernetes Custom Resource Definitions:
 
 ```yaml
 apiVersion: pathfinder.grafana.com/v1alpha1
@@ -691,9 +859,12 @@ kind: Guide
 metadata:
   name: interactive-tutorials-prometheus-grafana-101
 spec:
-  repository: interactive-tutorials
+  # From content.json
   id: prometheus-grafana-101
   title: 'Prometheus & Grafana 101'
+  blocks: [...]
+  # From package.json
+  repository: interactive-tutorials
   metadata:
     description: '...'
     difficulty: beginner
@@ -706,6 +877,8 @@ spec:
         - urlPrefixIn: ['/connections']
         - targetPlatform: oss
 ```
+
+The CRD is a merged view — it does not reflect the file-level split. The split is an authoring concern; the CRD is a distribution and runtime concern.
 
 ---
 
@@ -722,8 +895,11 @@ The `repository` field is a short name token. Mapping tokens to concrete locatio
 A `pathfinder-cli build-index` command will scan packages and produce `index.json` for the recommender. Until this is built, `index.json` is maintained separately. The command should:
 
 1. Scan all package directories in a tree
-2. Assemble a recommender `Rule` per package from `title`, `metadata.description`, deployment URL, and `targeting.match`
-3. Output a single `index.json` file
+2. Read `package.json` for `metadata.description`, `targeting.match`, and FQI; read `content.json` for `title`
+3. Assemble a recommender `Rule` per package
+4. Output a single `index.json` file
+
+Note: the recommender index is built primarily from `package.json`. The only field it needs from `content.json` is `title`. A future optimization could duplicate `title` in `package.json` metadata to avoid reading content files during index generation.
 
 ### Recommender consumption of package metadata
 
@@ -743,50 +919,52 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 ### Phase 0: Schema foundation (1-2 weeks)
 
-**Goal:** Extend the schema to accept package fields. Zero runtime changes. Full backwards compatibility.
+**Goal:** Define the two-file schema model (`ContentJsonSchema` + `PackageJsonSchema`). Zero runtime changes. Full backwards compatibility.
 
 **Deliverables:**
 
-- [ ] Add `repository` to `JsonGuide` interface and Zod schema
-- [ ] Add `metadata` (with sub-fields) to `JsonGuide` interface and Zod schema
-- [ ] Add `dependencies` (with sub-fields) to `JsonGuide` interface and Zod schema
-- [ ] Add `targeting` (with `match` passthrough) to `JsonGuide` interface and Zod schema
-- [ ] Update `KNOWN_FIELDS._guide` with all new top-level fields
+- [ ] Define `ContentJsonSchema` for `content.json` (`schemaVersion`, `id`, `title`, `blocks`)
+- [ ] Define `PackageJsonSchema` for `package.json` (`schemaVersion`, `id`, `repository`, `metadata`, `dependencies`, `targeting`)
+- [ ] Define shared sub-schemas (`GuideMetadataSchema`, `GuideDependenciesSchema`, `GuideTargetingSchema`)
+- [ ] Retain merged `JsonGuideSchemaStrict` for backwards compatibility with single-file guides
+- [ ] Add `KNOWN_FIELDS._package` for `package.json` fields
 - [ ] Bump `CURRENT_SCHEMA_VERSION` to `"1.1.0"`
-- [ ] Add unit tests for schema validation with and without new fields
+- [ ] Add unit tests for content schema, package schema, and cross-file ID consistency
 - [ ] Run `validate:strict` to confirm all existing guides still pass
 - [ ] Update schema-coupling documentation
 
-**Why first:** Everything downstream depends on the schema accepting these fields.
+**Why first:** Everything downstream depends on the schema accepting these fields and the two-file model being defined.
 
 ### Phase 1: CLI package validation (2-3 weeks)
 
-**Goal:** The CLI can validate a directory as a package and validate cross-package dependencies.
+**Goal:** The CLI can validate a directory as a package (both `content.json` and `package.json`) and validate cross-package dependencies.
 
 **Deliverables:**
 
-- [ ] `--package` flag: validate a directory (expects `content.json`, checks ID/directory name consistency)
+- [ ] `--package` flag: validate a directory (expects `content.json`, optionally `package.json`)
+- [ ] Cross-file consistency: `id` match between `content.json` and `package.json`
 - [ ] `--packages` flag: validate a tree of package directories
-- [ ] Dependency graph validator: resolution, cycle detection, capability coverage
+- [ ] Dependency graph validator: resolution, cycle detection, capability coverage (reads from `package.json`)
 - [ ] Cross-repo reference warnings (unresolvable without external metadata)
 - [ ] `graph` command: output dependency DAG as text or DOT format
-- [ ] Integration tests with sample package trees (valid and invalid)
+- [ ] Asset reference validation: warn if `content.json` references assets not in `assets/`
+- [ ] Integration tests with sample package trees (valid and invalid, with and without `package.json`)
 
 **Why second:** Enables CI validation of packages in `interactive-tutorials` before guides are converted. Tooling is ready before content migrates.
 
 ### Phase 2: Pilot package migration (1-2 weeks)
 
-**Goal:** Convert 3-5 existing guides to package format and validate end-to-end.
+**Goal:** Convert 3-5 existing guides to the two-file package format and validate end-to-end.
 
 **Deliverables:**
 
 - [ ] Convert `welcome-to-grafana`, `prometheus-grafana-101`, `first-dashboard` to directory packages
-- [ ] Add `metadata` (description, difficulty, estimatedDuration, author, category) to each
-- [ ] Add `dependencies` (depends, provides, suggests) to express the "Getting started" learning path
-- [ ] Add `targeting` with recommender match expressions
-- [ ] Verify plugin loads and renders these guides correctly
-- [ ] Verify `validate --packages` passes in CI
-- [ ] Document the package authoring workflow
+- [ ] For each, create `package.json` with `metadata` (description, difficulty, estimatedDuration, author, category)
+- [ ] Add `dependencies` (depends, provides, suggests) to `package.json` to express the "Getting started" learning path
+- [ ] Add `targeting` with recommender match expressions to `package.json`
+- [ ] Verify plugin loads and renders `content.json` correctly (ignoring `package.json` at runtime)
+- [ ] Verify `validate --packages` passes in CI (validates both files)
+- [ ] Document the two-file package authoring workflow for content authors and metadata managers
 
 **Why third:** Proof-of-concept that validates schema, CLI, and runtime work together. Small scope (3-5 guides) catches issues early.
 
@@ -810,10 +988,10 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 **Deliverables:**
 
-- [ ] Add `dependencies.testEnvironment` to schema (tier, minVersion, datasets, plugins, datasources)
-- [ ] Extend CLI validation for testEnvironment fields
-- [ ] E2E runner uses testEnvironment for routing decisions
-- [ ] Document testEnvironment authoring guidelines
+- [ ] Add `dependencies.testEnvironment` to `PackageJsonSchema` (tier, minVersion, datasets, plugins, datasources)
+- [ ] Extend CLI validation for testEnvironment fields in `package.json`
+- [ ] E2E runner reads `package.json` for testEnvironment routing decisions
+- [ ] Document testEnvironment authoring guidelines (authored in `package.json`)
 
 **Why fifth:** Layer 4 foundation from the testing strategy. Depends on the package format being stable and adopted.
 
@@ -823,9 +1001,9 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 **Deliverables:**
 
-- [ ] Add `type` field to schema (`"guide"` | `"course"` | `"module"`)
-- [ ] Add `metadata.source` for provenance tracking
-- [ ] Add `metadata.keywords`, `metadata.rights`, `metadata.educationalContext`
+- [ ] Add `type` field to `PackageJsonSchema` (`"guide"` | `"course"` | `"module"`)
+- [ ] Add `metadata.source` to `package.json` for provenance tracking
+- [ ] Add `metadata.keywords`, `metadata.rights`, `metadata.educationalContext` to `package.json`
 - [ ] Course/module rendering in web display mode (table-of-contents page)
 - [ ] Design SCORM import pipeline CLI interface
 
@@ -837,15 +1015,15 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 
 ### Summary
 
-| Phase                | Effort    | Unlocks                                      |
-| -------------------- | --------- | -------------------------------------------- |
-| 0: Schema            | 1-2 weeks | Everything — the format exists               |
-| 1: CLI               | 2-3 weeks | CI validation, dependency graph checking     |
-| 2: Pilot             | 1-2 weeks | Proof-of-concept, runtime validation         |
-| 3: Learning journeys | 2-3 weeks | User-visible value, docs partner alignment   |
-| 4: Test environment  | 2-3 weeks | Layer 4 E2E routing                          |
-| 5: SCORM foundation  | 3-4 weeks | SCORM import readiness, `type` discriminator |
-| 6+: SCORM import     | 15+ weeks | Full SCORM conversion pipeline               |
+| Phase                | Effort    | Unlocks                                            |
+| -------------------- | --------- | -------------------------------------------------- |
+| 0: Schema            | 1-2 weeks | Everything — `content.json` + `package.json` model |
+| 1: CLI               | 2-3 weeks | CI validation, cross-file checks, dependency graph |
+| 2: Pilot             | 1-2 weeks | Proof-of-concept, runtime validation               |
+| 3: Learning journeys | 2-3 weeks | User-visible value, docs partner alignment         |
+| 4: Test environment  | 2-3 weeks | Layer 4 E2E routing                                |
+| 5: SCORM foundation  | 3-4 weeks | SCORM import readiness, `type` discriminator       |
+| 6+: SCORM import     | 15+ weeks | Full SCORM conversion pipeline                     |
 
 Total for Phases 0-4 (core package model): **8-12 weeks**. Delivers a fully functional package system serving learning journeys, E2E testing, and content lifecycle management — before any SCORM work begins.
 
@@ -855,21 +1033,23 @@ Total for Phases 0-4 (core package model): **8-12 weeks**. Delivers a fully func
 
 Decisions made during the design discussion, with rationale.
 
-| #   | Decision                                                   | Rationale                                                                         |
-| --- | ---------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| D1  | Packages are directories containing `content.json`         | Natural extension point for assets, sidecars; aligns with SCORM decomposition     |
-| D2  | Identity: `repository` token + `id`, FQI = `repository/id` | Follows Debian model; repository is a token, not a URL; resolution is external    |
-| D3  | Default repository: `"interactive-tutorials"`              | Backwards compat for all existing guides                                          |
-| D4  | Bare ID references resolve within same repository          | Concise same-repo references; cross-repo uses FQI                                 |
-| D5  | Namespacing from Phase 1                                   | Avoids collision risk as multi-repo becomes real; semantic IDs over UUIDs         |
-| D6  | Single `metadata.category` string                          | Aligns with docs team taxonomy; multi-category deferred                           |
-| D7  | `targeting.match` follows recommender's MatchExpr grammar  | Package suggests, recommender decides; loosely validated to avoid coupling        |
-| D8  | Learning paths: both curated and derived                   | `paths.json` is editorial; dependency graph is structural; both coexist           |
-| D9  | Multi-repo; resolution deferred                            | Packages across repos is a known requirement; resolution mechanism is future work |
-| D10 | Grafana-first, extensible for non-Grafana                  | No gold-plating for SCORM; open extensibility is the goal                         |
-| D11 | `build-index` deferred                                     | Recommender currently uses separately maintained `index.json`; future CLI command |
-| D12 | Vet metadata field names against standards                 | Cross-reference Dublin Core / IEEE LOM / SCORM before finalizing names            |
-| D13 | Schema version `"1.1.0"` for package extension             | Backward-compatible addition; minor version bump per semver                       |
+| #   | Decision                                                   | Rationale                                                                                                |
+| --- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| D1  | Packages are directories containing `content.json`         | Natural extension point for assets, sidecars; aligns with SCORM decomposition                            |
+| D2  | Identity: `repository` token + `id`, FQI = `repository/id` | Follows Debian model; repository is a token, not a URL; resolution is external                           |
+| D3  | Default repository: `"interactive-tutorials"`              | Backwards compat for all existing guides                                                                 |
+| D4  | Bare ID references resolve within same repository          | Concise same-repo references; cross-repo uses FQI                                                        |
+| D5  | Namespacing from Phase 1                                   | Avoids collision risk as multi-repo becomes real; semantic IDs over UUIDs                                |
+| D6  | Single `metadata.category` string                          | Aligns with docs team taxonomy; multi-category deferred                                                  |
+| D7  | `targeting.match` follows recommender's MatchExpr grammar  | Package suggests, recommender decides; loosely validated to avoid coupling                               |
+| D8  | Learning paths: both curated and derived                   | `paths.json` is editorial; dependency graph is structural; both coexist                                  |
+| D9  | Multi-repo; resolution deferred                            | Packages across repos is a known requirement; resolution mechanism is future work                        |
+| D10 | Grafana-first, extensible for non-Grafana                  | No gold-plating for SCORM; open extensibility is the goal                                                |
+| D11 | `build-index` deferred                                     | Recommender currently uses separately maintained `index.json`; future CLI command                        |
+| D12 | Vet metadata field names against standards                 | Cross-reference Dublin Core / IEEE LOM / SCORM before finalizing names                                   |
+| D13 | Schema version `"1.1.0"` for package extension             | Backward-compatible addition; minor version bump per semver                                              |
+| D14 | Separate `content.json` (content) from `package.json` (metadata) | Follows Debian `control`/`data` separation. Multiple consumers (plugin, recommender, LMS, E2E runner) each need different data; separate files avoid full-parsing a large unified file. Block editor stays focused on content; metadata is managed by different roles with different tools. Eliminates merge conflicts between content and metadata changes. |
+| D15 | Optional `assets/` directory for non-JSON resources        | Aligns with SCORM asset packaging. Images, diagrams, and supplementary files live alongside content. Asset resolution deferred but convention established now. |
 
 ---
 
