@@ -1,7 +1,8 @@
 /**
  * Error formatting utilities for Zod validation errors
  *
- * Minimal formatter using Zod's raw error messages.
+ * Simple formatter that adds path context to Zod error messages.
+ * Complex error message improvements are handled by the custom error map.
  */
 
 import type { ZodIssue } from 'zod';
@@ -32,8 +33,10 @@ export function formatZodErrors(issues: ZodIssue[]): ValidationError[] {
   return issues.map((issue) => {
     // Zod paths are PropertyKey[] but for JSON data they are always string | number
     const path = issue.path as Array<string | number>;
+    const errorMessage = issue.message;
+
     return {
-      message: path.length > 0 ? `${formatPath(path)}: ${issue.message}` : issue.message,
+      message: path.length > 0 ? `${formatPath(path)}: ${errorMessage}` : errorMessage,
       path,
       code: issue.code,
     };

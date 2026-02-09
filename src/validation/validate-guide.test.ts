@@ -194,6 +194,35 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
+
+    it('should provide clear error for invalid action enum values', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'section',
+            title: 'Test Section',
+            blocks: [
+              {
+                type: 'interactive',
+                action: 'invalid-action',
+                reftarget: '[data-testid="test"]',
+                content: 'Test',
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+      // Error message should mention the invalid 'action' field and list valid options
+      const errorMessage = result.errors[0].message.toLowerCase();
+      expect(errorMessage).toContain('action');
+      expect(errorMessage).toContain('expected one of');
+      expect(errorMessage).toMatch(/highlight|button|formfill/);
+    });
   });
 
   describe('nested blocks', () => {
