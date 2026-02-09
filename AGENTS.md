@@ -52,12 +52,12 @@ Do NOT create summary `.md` files unless explicitly requested by the user. No `I
 
 ### Slash commands
 
-| Command | Role | Behavior |
-|---------|------|----------|
-| `/review` | Code reviewer | Precision and respect. Focus on clarity, correctness, maintainability. Highlight naming issues, duplication, hidden complexity, poor abstractions. Actionable, concise, kind. |
-| `/secure` | Security analyst | Think like an attacker. Inspect for vulnerabilities, unsafe patterns, injection risks, secrets in code, insecure dependencies. Explain risk clearly, provide concrete remediation. |
-| `/test` | Test writer | Tests that enable change. Prioritize unit tests, edge cases, failure modes. Property-based tests when useful. Avoid mocking unless necessary. Fast, isolated, reliable. |
-| `/docs` | Documentation writer | Write for humans first. Document purpose, parameters, return values. Small useful examples. Standard docstring style. Avoid unnecessary words. |
+| Command   | Role                 | Behavior                                                                                                                                                                           |
+| --------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/review` | Code reviewer        | Precision and respect. Focus on clarity, correctness, maintainability. Highlight naming issues, duplication, hidden complexity, poor abstractions. Actionable, concise, kind.      |
+| `/secure` | Security analyst     | Think like an attacker. Inspect for vulnerabilities, unsafe patterns, injection risks, secrets in code, insecure dependencies. Explain risk clearly, provide concrete remediation. |
+| `/test`   | Test writer          | Tests that enable change. Prioritize unit tests, edge cases, failure modes. Property-based tests when useful. Avoid mocking unless necessary. Fast, isolated, reliable.            |
+| `/docs`   | Documentation writer | Write for humans first. Document purpose, parameters, return values. Small useful examples. Standard docstring style. Avoid unnecessary words.                                     |
 
 ## Local development commands
 
@@ -143,18 +143,18 @@ src/
 
 Load these files **only when working in the relevant domain**. Do not preload all of them.
 
-| File | When to load | Auto-triggered by globs |
-|------|-------------|------------------------|
-| `projectbrief.mdc` | Understanding project scope and goals | -- |
-| `techContext.mdc` | Tech stack, dependencies, build system | -- |
-| `systemPatterns.mdc` | Architecture, component relationships | -- |
-| `interactiveRequirements.mdc` | Interactive tutorial system work | -- |
-| `frontend-security.mdc` | Frontend security (from security team) | `*.ts`, `*.tsx`, `*.js`, `*.jsx` |
-| `react-antipatterns.mdc` | PR reviews (on hit), hooks/effects/state | -- |
-| `schema-coupling.mdc` | JSON guide types or schemas | `json-guide.types.ts`, `json-guide.schema.ts` |
-| `testingStrategy.mdc` | Writing or reviewing tests | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
-| `pr-review.md` | PR review orchestration (`/review`) | -- |
-| `E2E_TESTING_CONTRACT.md` | E2E testing, `data-test-*` attributes | -- |
+| File                          | When to load                             | Auto-triggered by globs                                  |
+| ----------------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| `projectbrief.mdc`            | Understanding project scope and goals    | --                                                       |
+| `techContext.mdc`             | Tech stack, dependencies, build system   | --                                                       |
+| `systemPatterns.mdc`          | Architecture, component relationships    | --                                                       |
+| `interactiveRequirements.mdc` | Interactive tutorial system work         | --                                                       |
+| `frontend-security.mdc`       | Frontend security (from security team)   | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
+| `react-antipatterns.mdc`      | PR reviews (on hit), hooks/effects/state | --                                                       |
+| `schema-coupling.mdc`         | JSON guide types or schemas              | `json-guide.types.ts`, `json-guide.schema.ts`            |
+| `testingStrategy.mdc`         | Writing or reviewing tests               | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
+| `pr-review.md`                | PR review orchestration (`/review`)      | --                                                       |
+| `E2E_TESTING_CONTRACT.md`     | E2E testing, `data-test-*` attributes    | --                                                       |
 
 All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md` is at `docs/developer/E2E_TESTING_CONTRACT.md`.
 
