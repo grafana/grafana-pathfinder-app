@@ -286,11 +286,11 @@ The E2E testing layer is the most complex component. Detailed design and impleme
 
 This section establishes the authority hierarchy for E2E testing documentation, preventing duplication and ensuring single sources of truth.
 
-| Document                          | Purpose                                     | Authority                                |
-| --------------------------------- | ------------------------------------------- | ---------------------------------------- |
-| TESTING_STRATEGY.md               | Vision, failure taxonomy, testing pyramid   | Immutable principles                     |
-| e2e-test-runner-design.md         | Architecture, interfaces, specifications    | Single source of truth for specs         |
-| guide-dependencies-design.md      | Guide metadata schema, dependency semantics | Source of truth for guide-level metadata |
+| Document                     | Purpose                                     | Authority                                |
+| ---------------------------- | ------------------------------------------- | ---------------------------------------- |
+| TESTING_STRATEGY.md          | Vision, failure taxonomy, testing pyramid   | Immutable principles                     |
+| e2e-test-runner-design.md    | Architecture, interfaces, specifications    | Single source of truth for specs         |
+| guide-dependencies-design.md | Guide metadata schema, dependency semantics | Source of truth for guide-level metadata |
 
 ### Guide failure ownership model
 
