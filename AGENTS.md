@@ -1,6 +1,6 @@
 # Grafana Pathfinder - AI Agent Guide
 
-## What is this Project?
+## What is this project?
 
 **Grafana Pathfinder** is a Grafana App Plugin that provides contextual, interactive documentation directly within the Grafana UI. It appears as a right-hand sidebar panel that displays personalized learning content, tutorials, and recommendations to help users learn Grafana products and configurations.
 
@@ -25,31 +25,39 @@ This is a **React + TypeScript + Grafana Scenes** application built as a Grafana
 - **Interactive Tutorial System**: Sophisticated requirement checking and automated action execution
 - **Functional-First Code Style**: Pragmatic functional programming approach with immutable data and pure functions
 
-## Getting started for AI agents
+## Code style and conventions
 
-### Project Context
+### Coding style
 
-The following files are important sources of information:
+- **Functional-first**: Pragmatic FP approach balancing purity with practicality
+- Break problems into small, reusable functions
+- Use immutable data structures and pure functions for core logic
+- Allow minimal side effects in well-isolated functions (e.g., IO, logging)
+- Favor functional patterns (`map`, `filter`, `reduce`) over loops
+- Use type annotations whenever possible
+- Favor idiomatic React usage consistent with the Grafana codebase
 
-1. `.cursor/rules/projectbrief.mdc` - Start here to understand core requirements and goals
-2. `.cursor/rules/techContext.mdc` - Technologies, dependencies, and development setup
-3. `.cursor/rules/systemPatterns.mdc` - Architecture, design patterns, and critical implementation paths
-4. `.cursor/rules/interactiveRequirements.mdc` - Requirements and objectives system for interactive tutorials
-5. `.cursor/rules/multistepActions.mdc` - Multi-step component design and implementation
-6. `.cursor/rules/frontend-security.mdc` - Security rules for frontend code (ALWAYS apply)
-7. `.cursor/rules/instructions.mdc` - Agent behavior, commands, and workflow patterns
-8. `.cursor/rules/react-antipatterns.mdc` - React anti-patterns and SRE reliability patterns (R1-R21), also used by `/attack`
-9. `docs/developer/E2E_TESTING_CONTRACT.md` - the interactive system exposes its state via **data-test-\* attributes** which serve as a stable contract for both the interactive system itself and E2E testing.
+### Writing style
 
-## PR Reviews
+All UI text and documentation follows **sentence case** per the [Grafana Writers' Toolkit](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization).
 
-Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. It contains a compact detection table covering all concern areas (React anti-patterns R1-R21, security F1-F6, and quality heuristics QC1-QC7) with a pointer to the detailed reference file.
+- **Capitalize only the first word** and proper nouns (product names, company names)
+- **Do NOT use title case** for headings, button labels, menu items, or other UI elements
+- Proper nouns to capitalize: **Grafana**, **Loki**, **Prometheus**, **Tempo**, **Mimir**, **Alloy**, **Grafana Cloud**, **Grafana Enterprise**, **Grafana Labs**
+- Generic terms stay lowercase: dashboard, alert, data source, panel, query, plugin
 
-**Tiered rule architecture:**
+### File creation policy
 
-- **Tier 1 (always loaded)**: `frontend-security.mdc` — security rules F1-F6
-- **Tier 1 (on `/review`)**: `pr-review.md` — compact orchestrator with unified detection table
-- **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` — detailed Do/Don't for R1-R21 (includes hooks, state, performance, and SRE reliability patterns; also used by `/attack`)
+Do NOT create summary `.md` files unless explicitly requested by the user. No `IMPLEMENTATION_SUMMARY.md`, no `CLEANUP_SUMMARY.md`, no proactive documentation files. Communicate all summaries and completion status directly in chat responses.
+
+### Slash commands
+
+| Command   | Role                 | Behavior                                                                                                                                                                           |
+| --------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/review` | Code reviewer        | Precision and respect. Focus on clarity, correctness, maintainability. Highlight naming issues, duplication, hidden complexity, poor abstractions. Actionable, concise, kind.      |
+| `/secure` | Security analyst     | Think like an attacker. Inspect for vulnerabilities, unsafe patterns, injection risks, secrets in code, insecure dependencies. Explain risk clearly, provide concrete remediation. |
+| `/test`   | Test writer          | Tests that enable change. Prioritize unit tests, edge cases, failure modes. Property-based tests when useful. Avoid mocking unless necessary. Fast, isolated, reliable.            |
+| `/docs`   | Documentation writer | Write for humans first. Document purpose, parameters, return values. Small useful examples. Standard docstring style. Avoid unnecessary words.                                     |
 
 ## Local development commands
 
@@ -98,7 +106,7 @@ npm run prettier
 npm run prettier-test
 ```
 
-### Building and Testing
+### Building and testing
 
 ```bash
 # Production build
@@ -130,3 +138,32 @@ src/
 ├── constants/         # Configuration and selectors
 └── types/             # TypeScript type definitions
 ```
+
+## On-demand context
+
+Load these files **only when working in the relevant domain**. Do not preload all of them.
+
+| File                          | When to load                             | Auto-triggered by globs                                  |
+| ----------------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| `projectbrief.mdc`            | Understanding project scope and goals    | --                                                       |
+| `techContext.mdc`             | Tech stack, dependencies, build system   | --                                                       |
+| `systemPatterns.mdc`          | Architecture, component relationships    | --                                                       |
+| `interactiveRequirements.mdc` | Interactive tutorial system work         | --                                                       |
+| `frontend-security.mdc`       | Frontend security (from security team)   | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
+| `react-antipatterns.mdc`      | PR reviews (on hit), hooks/effects/state | --                                                       |
+| `schema-coupling.mdc`         | JSON guide types or schemas              | `json-guide.types.ts`, `json-guide.schema.ts`            |
+| `testingStrategy.mdc`         | Writing or reviewing tests               | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
+| `pr-review.md`                | PR review orchestration (`/review`)      | --                                                       |
+| `E2E_TESTING_CONTRACT.md`     | E2E testing, `data-test-*` attributes    | --                                                       |
+
+All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md` is at `docs/developer/E2E_TESTING_CONTRACT.md`.
+
+## PR reviews
+
+Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. It contains a compact detection table covering all concern areas (React anti-patterns R1-R21, security F1-F6, and quality heuristics QC1-QC7) with a pointer to the detailed reference file.
+
+**Tiered rule architecture:**
+
+- **Tier 1 (glob-triggered on `*.ts`/`*.tsx`/`*.js`/`*.jsx`)**: `frontend-security.mdc` -- security rules F1-F6
+- **Tier 1 (on `/review`)**: `pr-review.md` -- compact orchestrator with unified detection table
+- **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` -- detailed Do/Don't for R1-R21 (includes hooks, state, performance, and SRE reliability patterns; also used by `/attack`)
