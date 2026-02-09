@@ -174,6 +174,34 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
     });
+
+    it('should match by normalized type (strip grafana- prefix and -datasource suffix)', async () => {
+      const mockDataSources = [{ name: 'My Custom DS', uid: 'td1', type: 'grafana-testdata-datasource' }];
+      (getDataSourceSrv as jest.Mock).mockReturnValue({
+        getList: () => mockDataSources,
+      });
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'has-datasource:testdata',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should fail when no matching data source exists', async () => {
+      const mockDataSources = [{ name: 'Prometheus', uid: 'prom1', type: 'prometheus' }];
+      (getDataSourceSrv as jest.Mock).mockReturnValue({
+        getList: () => mockDataSources,
+      });
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'has-datasource:testdata',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+    });
   });
 
   describe('datasourceConfiguredCHECK', () => {

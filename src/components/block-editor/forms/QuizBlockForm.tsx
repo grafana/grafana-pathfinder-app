@@ -5,7 +5,7 @@
  * Supports configurable completion modes, hints for wrong answers, and requirements.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Button,
   Field,
@@ -16,10 +16,11 @@ import {
   useStyles2,
   IconButton,
   RadioButtonGroup,
-  Select,
+  Combobox,
   Alert,
+  type ComboboxOption,
 } from '@grafana/ui';
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
+import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
@@ -35,7 +36,7 @@ function isQuizBlock(block: JsonBlock): block is JsonQuizBlock {
 }
 
 /** Completion mode options */
-const COMPLETION_MODE_OPTIONS: Array<SelectableValue<'correct-only' | 'max-attempts'>> = [
+const COMPLETION_MODE_OPTIONS: Array<ComboboxOption<'correct-only' | 'max-attempts'>> = [
   {
     value: 'correct-only',
     label: 'Correct only',
@@ -49,7 +50,7 @@ const COMPLETION_MODE_OPTIONS: Array<SelectableValue<'correct-only' | 'max-attem
 ];
 
 /** Max attempts options for dropdown */
-const MAX_ATTEMPTS_OPTIONS: Array<SelectableValue<number>> = [
+const MAX_ATTEMPTS_OPTIONS: Array<ComboboxOption<number>> = [
   { value: 1, label: '1 attempt' },
   { value: 2, label: '2 attempts' },
   { value: 3, label: '3 attempts (default)' },
@@ -315,12 +316,6 @@ export function QuizBlockForm({
   const hasCorrectAnswer = choices.some((c) => c.correct);
   const isValid = hasQuestion && hasValidChoices && hasCorrectAnswer;
 
-  // Selected completion mode for Select component
-  const selectedCompletionMode = useMemo(
-    () => COMPLETION_MODE_OPTIONS.find((o) => o.value === completionMode),
-    [completionMode]
-  );
-
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
       <Alert title="Quiz block" severity="info">
@@ -442,19 +437,19 @@ export function QuizBlockForm({
         <div className={styles.sectionTitle}>Completion settings</div>
         <div className={quizStyles.modeSection}>
           <Field label="Completion mode" description="How the quiz is marked complete">
-            <Select
+            <Combobox
               options={COMPLETION_MODE_OPTIONS}
-              value={selectedCompletionMode}
-              onChange={(option) => option.value && setCompletionMode(option.value)}
+              value={completionMode}
+              onChange={(option) => setCompletionMode(option.value)}
             />
           </Field>
 
           {completionMode === 'max-attempts' && (
             <Field label="Maximum attempts" description="Reveal correct answer after this many wrong attempts">
-              <Select
+              <Combobox
                 options={MAX_ATTEMPTS_OPTIONS}
-                value={MAX_ATTEMPTS_OPTIONS.find((o) => o.value === maxAttempts)}
-                onChange={(option) => option.value && setMaxAttempts(option.value)}
+                value={maxAttempts}
+                onChange={(option) => setMaxAttempts(option.value)}
               />
             </Field>
           )}

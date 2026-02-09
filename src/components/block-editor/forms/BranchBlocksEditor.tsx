@@ -7,8 +7,18 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Button, Field, Input, Select, Badge, IconButton, TextArea, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
+import {
+  Button,
+  Field,
+  Input,
+  Combobox,
+  Badge,
+  IconButton,
+  TextArea,
+  useStyles2,
+  type ComboboxOption,
+} from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
 import { css, cx } from '@emotion/css';
 import {
   DndContext,
@@ -269,7 +279,7 @@ const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BLOCK_TYPE_ORDER.filter((t) => t
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
 const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input'];
 
-const ACTION_OPTIONS: Array<SelectableValue<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
+const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
   label: a.label,
 }));
@@ -578,11 +588,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
           <>
             <div className={styles.formRow}>
               <Field label="Action" style={{ flex: 1 }}>
-                <Select
-                  options={ACTION_OPTIONS}
-                  value={formAction}
-                  onChange={(v) => v.value && setFormAction(v.value)}
-                />
+                <Combobox options={ACTION_OPTIONS} value={formAction} onChange={(v) => setFormAction(v.value)} />
               </Field>
               <Field label="Target" style={{ flex: 2 }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -830,14 +836,14 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
             {showAddForm ? (
               <div className={styles.addBlockForm}>
                 <Field label="Block type">
-                  <Select
+                  <Combobox
                     options={ALLOWED_BRANCH_BLOCK_TYPES.map((t) => ({
                       value: t,
                       label: BLOCK_TYPE_METADATA[t]?.name ?? t,
                       description: BLOCK_TYPE_METADATA[t]?.description,
                     }))}
                     value={newBlockType}
-                    onChange={(v) => v.value && setNewBlockType(v.value)}
+                    onChange={(v) => setNewBlockType(v.value)}
                   />
                 </Field>
                 {renderFormFields(newBlockType)}

@@ -4,9 +4,20 @@
  * Form for creating/editing interactive blocks with DOM picker integration.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { Button, Field, Input, TextArea, Select, Checkbox, Badge, useStyles2, Stack, Switch } from '@grafana/ui';
-import { SelectableValue } from '@grafana/data';
+import React, { useState, useCallback } from 'react';
+import {
+  Button,
+  Field,
+  Input,
+  TextArea,
+  Combobox,
+  Checkbox,
+  Badge,
+  useStyles2,
+  Stack,
+  Switch,
+  type ComboboxOption,
+} from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
@@ -16,7 +27,7 @@ import type { BlockFormProps, JsonBlock, JsonInteractiveAction } from '../types'
 import type { JsonInteractiveBlock } from '../../../types/json-guide.types';
 
 /** Assistant content type options */
-const ASSISTANT_TYPE_OPTIONS: Array<SelectableValue<'query' | 'config' | 'code' | 'text'>> = [
+const ASSISTANT_TYPE_OPTIONS: Array<ComboboxOption<'query' | 'config' | 'code' | 'text'>> = [
   { value: 'query', label: 'Query', description: 'PromQL, LogQL, or other query languages' },
   { value: 'config', label: 'Configuration', description: 'Configuration values or settings' },
   { value: 'code', label: 'Code', description: 'Code snippets' },
@@ -30,7 +41,7 @@ function isInteractiveBlock(block: JsonBlock): block is JsonInteractiveBlock {
   return block.type === 'interactive';
 }
 
-const ACTION_OPTIONS: Array<SelectableValue<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
+const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
   label: a.label,
   description: a.description,
@@ -161,14 +172,12 @@ export function InteractiveBlockForm({
   );
 
   const handleActionChange = useCallback(
-    (option: SelectableValue<JsonInteractiveAction>) => {
-      if (option.value) {
-        setAction(option.value);
-        // Auto-add default requirements for this action type
-        const suggestions = suggestDefaultRequirements(option.value, reftarget);
-        if (suggestions.length > 0) {
-          setRequirements((prev) => mergeRequirements(prev, suggestions));
-        }
+    (option: ComboboxOption<JsonInteractiveAction>) => {
+      setAction(option.value);
+      // Auto-add default requirements for this action type
+      const suggestions = suggestDefaultRequirements(option.value, reftarget);
+      if (suggestions.length > 0) {
+        setRequirements((prev) => mergeRequirements(prev, suggestions));
       }
     },
     [reftarget]
@@ -190,14 +199,11 @@ export function InteractiveBlockForm({
   const isValid = (isNoop || reftarget.trim().length > 0) && content.trim().length > 0;
   const showTargetValue = action === 'formfill';
 
-  // Selected action option for Select component
-  const selectedAction = useMemo(() => ACTION_OPTIONS.find((o) => o.value === action), [action]);
-
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
       {/* Action Type */}
       <Field label="Action Type" description="The type of interaction to perform" required>
-        <Select options={ACTION_OPTIONS} value={selectedAction} onChange={handleActionChange} />
+        <Combobox options={ACTION_OPTIONS} value={action} onChange={handleActionChange} />
       </Field>
 
       {/* Navigation path - for navigate actions only */}
@@ -446,10 +452,10 @@ export function InteractiveBlockForm({
             </Field>
 
             <Field label="Content type" description="Type of content being customized (affects AI prompts)">
-              <Select
+              <Combobox
                 options={ASSISTANT_TYPE_OPTIONS}
-                value={ASSISTANT_TYPE_OPTIONS.find((o) => o.value === assistantType)}
-                onChange={(option) => option.value && setAssistantType(option.value)}
+                value={assistantType}
+                onChange={(option) => setAssistantType(option.value)}
               />
             </Field>
           </>

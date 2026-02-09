@@ -16,7 +16,6 @@ import {
   initializeOpenFeature,
   getFeatureFlagValue,
   getExperimentConfig,
-  FeatureFlags,
   ExperimentConfig,
   matchPathPattern,
 } from './utils/openfeature';
@@ -57,7 +56,7 @@ try {
 // - variant "treatment": In experiment, sidebar auto-opens on target pages
 // - pages: Array of page path prefixes where auto-open should trigger (treatment only)
 // - resetCache: When toggled true, clears session storage to allow sidebar to auto-open again
-const experimentConfig: ExperimentConfig = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+const experimentConfig: ExperimentConfig = getExperimentConfig('pathfinder.experiment-variant');
 const experimentVariant = experimentConfig.variant;
 
 // Expose experiment debugging utilities on window.__pathfinderExperiment
@@ -221,7 +220,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // - treatment: auto-open on target pages from GOFF config (or all pages if no target specified)
   // - excluded: use normal behavior (respect sessionStorage and config settings)
   // - control: no sidebar is registered, skip auto-open entirely
-  const featureFlagEnabled = getFeatureFlagValue(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
+  const featureFlagEnabled = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
   const isTreatment = experimentVariant === 'treatment';
   const isExcluded = experimentVariant === 'excluded';
 

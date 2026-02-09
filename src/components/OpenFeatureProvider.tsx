@@ -23,7 +23,7 @@ interface PathfinderFeatureProviderProps {
  * </PathfinderFeatureProvider>
  *
  * // Then use hooks in child components
- * const autoOpen = useBooleanFlag(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
+ * const autoOpen = useBooleanFlag('pathfinder.auto-open-sidebar', false);
  */
 export const PathfinderFeatureProvider = ({ children }: PathfinderFeatureProviderProps) => {
   return <OFProvider domain={OPENFEATURE_DOMAIN}>{children}</OFProvider>;

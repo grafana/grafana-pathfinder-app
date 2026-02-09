@@ -25,9 +25,6 @@ jest.mock('../lib/user-storage', () => ({
 // Mock openfeature
 jest.mock('./openfeature', () => ({
   getExperimentConfig: jest.fn(),
-  FeatureFlags: {
-    EXPERIMENT_VARIANT: 'pathfinder.experiment-variant',
-  },
   matchPathPattern: jest.fn((pattern: string, path: string) => {
     // Simple implementation for testing
     if (pattern.endsWith('*')) {

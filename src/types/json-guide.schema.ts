@@ -326,7 +326,7 @@ const ConditionalProps = {
 const MAX_NESTING_DEPTH = 5;
 
 // Helper to create depth-limited block schema
-function createBlockSchemaWithDepth(currentDepth: number): z.ZodSchema {
+function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
   if (currentDepth >= MAX_NESTING_DEPTH) {
     // At max depth, only allow non-recursive blocks
     return NonRecursiveBlockSchema;
@@ -412,7 +412,7 @@ export const JsonGuideSchemaStrict = z.object({
  * Use this for forward compatibility - newer guides with new fields won't fail.
  * @coupling Type: JsonGuide
  */
-export const JsonGuideSchema = JsonGuideSchemaStrict.passthrough();
+export const JsonGuideSchema = JsonGuideSchemaStrict.loose();
 
 // ============ TYPE INFERENCE ============
 

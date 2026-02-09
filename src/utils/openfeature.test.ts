@@ -111,30 +111,6 @@ describe('openfeature', () => {
       });
     });
 
-    it('FeatureFlags should define AUTO_OPEN_SIDEBAR_ON_LAUNCH', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { FeatureFlags } = require('./openfeature');
-        expect(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH).toBe('pathfinder.auto-open-sidebar');
-      });
-    });
-
-    it('FeatureFlags should define EXPERIMENT_VARIANT', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { FeatureFlags } = require('./openfeature');
-        expect(FeatureFlags.EXPERIMENT_VARIANT).toBe('pathfinder.experiment-variant');
-      });
-    });
-
     it('pathfinderFeatureFlags should have trackingKey for each flag', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();
@@ -247,10 +223,10 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getFeatureFlagValue, FeatureFlags } = require('./openfeature');
-        const result = getFeatureFlagValue(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
+        const { getFeatureFlagValue } = require('./openfeature');
+        const result = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
 
-        expect(mockOF.mockClient.getBooleanValue).toHaveBeenCalledWith(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
+        expect(mockOF.mockClient.getBooleanValue).toHaveBeenCalledWith('pathfinder.auto-open-sidebar', false);
         expect(result).toBe(true);
       });
     });
@@ -290,10 +266,10 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getStringFlagValue, FeatureFlags } = require('./openfeature');
-        const result = getStringFlagValue(FeatureFlags.EXPERIMENT_VARIANT, 'a');
+        const { getStringFlagValue } = require('./openfeature');
+        const result = getStringFlagValue('pathfinder.experiment-variant', 'a');
 
-        expect(mockOF.mockClient.getStringValue).toHaveBeenCalledWith(FeatureFlags.EXPERIMENT_VARIANT, 'a');
+        expect(mockOF.mockClient.getStringValue).toHaveBeenCalledWith('pathfinder.experiment-variant', 'a');
         expect(result).toBe('b');
       });
     });
@@ -306,8 +282,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getStringFlagValue, FeatureFlags } = require('./openfeature');
-        const result = getStringFlagValue(FeatureFlags.EXPERIMENT_VARIANT, 'a');
+        const { getStringFlagValue } = require('./openfeature');
+        const result = getStringFlagValue('pathfinder.experiment-variant', 'a');
 
         expect(result).toBe('a');
       });
@@ -351,8 +327,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result).toEqual({
           variant: 'treatment',
@@ -373,8 +349,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result).toEqual({
           variant: 'control',
@@ -395,8 +371,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result).toEqual({
           variant: 'excluded',
@@ -418,8 +394,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result).toEqual({
           variant: 'treatment',
@@ -440,8 +416,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getExperimentConfig, FeatureFlags, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
       });
@@ -458,8 +434,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getExperimentConfig, FeatureFlags, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
       });
@@ -477,8 +453,8 @@ describe('openfeature', () => {
 
         const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
-        const { getExperimentConfig, FeatureFlags, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
         expect(consoleSpy).toHaveBeenCalledWith(
@@ -501,8 +477,8 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
-        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+        const { getExperimentConfig } = require('./openfeature');
+        const result = getExperimentConfig('pathfinder.experiment-variant');
 
         expect(result.variant).toBe('treatment');
         expect(result.pages).toHaveLength(2);

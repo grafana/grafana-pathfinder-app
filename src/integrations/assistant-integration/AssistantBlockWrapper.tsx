@@ -571,7 +571,7 @@ Return only the customized content text.`;
       case 'h4':
       case 'h5':
       case 'h6':
-        const HeadingTag = element.type as keyof JSX.IntrinsicElements;
+        const HeadingTag = element.type as keyof React.JSX.IntrinsicElements;
         return <HeadingTag key={key}>{children}</HeadingTag>;
       case 'ul':
         return <ul key={key}>{children}</ul>;
