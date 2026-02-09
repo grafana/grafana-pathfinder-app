@@ -42,6 +42,9 @@ export function useStandalonePersistence(
       return;
     }
 
+    // Reset hasRestored flag when step ID changes to prevent stale state persistence
+    hasRestoredRef.current = false;
+
     let isMounted = true;
     const contentKey = getContentKey();
 
@@ -52,6 +55,9 @@ export function useStandalonePersistence(
       }
       if (restored.has(renderedStepId)) {
         setIsLocallyCompleted(true);
+      } else {
+        // Reset to false when not found to clear stale state from previous step
+        setIsLocallyCompleted(false);
       }
       hasRestoredRef.current = true;
     });

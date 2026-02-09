@@ -477,9 +477,10 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
 
   // Register standalone steps in the global step registry so that
   // totalDocumentSteps includes BOTH section steps and standalone steps.
-  // This runs in useMemo (before children render) to match InteractiveSection's pattern.
-
-  useMemo(() => {
+  // Use useEffect instead of useMemo to ensure this runs AFTER InteractiveSection
+  // children have registered themselves (sections register in useMemo during render).
+  // This preserves document order in the Map-based registry.
+  useEffect(() => {
     if (totalStandaloneSteps > 0) {
       registerSectionSteps(STANDALONE_SECTION_ID, totalStandaloneSteps);
     }
@@ -719,13 +720,13 @@ interface StandaloneStepPosition {
 /**
  * Set of ParsedElement types that represent interactive steps.
  * These are the types that need step position tracking for analytics.
+ * Note: input-block is excluded because it collects user input but doesn't track completion.
  */
 const INTERACTIVE_STEP_TYPES = new Set([
   'interactive-step',
   'interactive-multi-step',
   'interactive-guided',
   'quiz-block',
-  'input-block',
 ]);
 
 /**
