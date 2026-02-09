@@ -526,11 +526,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
       {hasFetched && hasMultipleFiles && testMode === 'single' && (
         <div className={styles.selectContainer}>
           <label className={styles.label}>Guide to test</label>
-          <Combobox
-            options={fileOptions}
-            value={selectedFile}
-            onChange={handleFileSelect}
-          />
+          <Combobox options={fileOptions} value={selectedFile} onChange={handleFileSelect} />
         </div>
       )}
 

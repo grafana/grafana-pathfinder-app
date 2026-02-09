@@ -7,7 +7,17 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Button, Field, Input, Combobox, Badge, IconButton, TextArea, useStyles2, type ComboboxOption } from '@grafana/ui';
+import {
+  Button,
+  Field,
+  Input,
+  Combobox,
+  Badge,
+  IconButton,
+  TextArea,
+  useStyles2,
+  type ComboboxOption,
+} from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, cx } from '@emotion/css';
 import {
@@ -578,11 +588,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
           <>
             <div className={styles.formRow}>
               <Field label="Action" style={{ flex: 1 }}>
-                <Combobox
-                  options={ACTION_OPTIONS}
-                  value={formAction}
-                  onChange={(v) => setFormAction(v.value)}
-                />
+                <Combobox options={ACTION_OPTIONS} value={formAction} onChange={(v) => setFormAction(v.value)} />
               </Field>
               <Field label="Target" style={{ flex: 2 }}>
                 <div style={{ display: 'flex', gap: '8px' }}>

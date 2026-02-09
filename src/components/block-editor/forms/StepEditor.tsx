@@ -7,7 +7,17 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
-import { Button, Field, Input, Combobox, Badge, IconButton, Checkbox, useStyles2, type ComboboxOption } from '@grafana/ui';
+import {
+  Button,
+  Field,
+  Input,
+  Combobox,
+  Badge,
+  IconButton,
+  Checkbox,
+  useStyles2,
+  type ComboboxOption,
+} from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, cx } from '@emotion/css';
 // @dnd-kit

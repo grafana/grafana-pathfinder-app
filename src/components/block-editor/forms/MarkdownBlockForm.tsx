@@ -6,7 +6,18 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, IconButton, useStyles2, Menu, Dropdown, Switch, Combobox, Input, type ComboboxOption } from '@grafana/ui';
+import {
+  Button,
+  Field,
+  IconButton,
+  useStyles2,
+  Menu,
+  Dropdown,
+  Switch,
+  Combobox,
+  Input,
+  type ComboboxOption,
+} from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';

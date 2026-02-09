@@ -316,7 +316,6 @@ export function QuizBlockForm({
   const hasCorrectAnswer = choices.some((c) => c.correct);
   const isValid = hasQuestion && hasValidChoices && hasCorrectAnswer;
 
-
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
       <Alert title="Quiz block" severity="info">

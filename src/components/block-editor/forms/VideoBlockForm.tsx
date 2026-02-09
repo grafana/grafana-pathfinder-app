@@ -87,11 +87,7 @@ export function VideoBlockForm({
       )}
 
       <Field label="Video Provider" description="Select the video source type">
-        <Combobox
-          options={PROVIDER_OPTIONS}
-          value={provider}
-          onChange={handleProviderChange}
-        />
+        <Combobox options={PROVIDER_OPTIONS} value={provider} onChange={handleProviderChange} />
       </Field>
 
       <Field label="Video URL" description={getUrlHint()} required>

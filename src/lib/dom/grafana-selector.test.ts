@@ -93,5 +93,4 @@ describe('grafana-selector', () => {
       expect(existsByGrafanaSelector('components.RefreshPicker.runButtonV2')).toBe(false);
     });
   });
-
 });

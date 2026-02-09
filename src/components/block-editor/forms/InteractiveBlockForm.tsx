@@ -5,7 +5,19 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, TextArea, Combobox, Checkbox, Badge, useStyles2, Stack, Switch, type ComboboxOption } from '@grafana/ui';
+import {
+  Button,
+  Field,
+  Input,
+  TextArea,
+  Combobox,
+  Checkbox,
+  Badge,
+  useStyles2,
+  Stack,
+  Switch,
+  type ComboboxOption,
+} from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
@@ -186,7 +198,6 @@ export function InteractiveBlockForm({
   const isNavigate = action === 'navigate';
   const isValid = (isNoop || reftarget.trim().length > 0) && content.trim().length > 0;
   const showTargetValue = action === 'formfill';
-
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
