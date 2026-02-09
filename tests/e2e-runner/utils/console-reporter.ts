@@ -4,7 +4,7 @@
  * Provides formatted console output for E2E test execution per design spec.
  * Outputs step-by-step progress with clear visual indicators and timing.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md#console-output
+ * @see docs/design/e2e-test-runner-design.md#console-output
  */
 
 import { StepTestResult, AllStepsResult, summarizeResults } from './guide-runner';

@@ -4,7 +4,7 @@
  * This module provides utilities for discovering and testing interactive steps
  * in guide documents. It implements DOM-based step discovery per the E2E Test Runner design.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md
+ * @see docs/design/e2e-test-runner-design.md
  */
 
 // ============================================

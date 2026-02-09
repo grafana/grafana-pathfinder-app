@@ -31,7 +31,7 @@ Before implementation, we verified 10 unexamined assumptions (U1-U10) from the d
 - **U8**: localStorage reliable for guide injection
 - **U9**: LazyRender steps are testable
 
-Full analysis: `tests/e2e-runner/design/L3-phase1-verification-results.md`
+Full analysis: [L3-phase1-verification-results.md](./L3-phase1-verification-results.md)
 
 ---
 

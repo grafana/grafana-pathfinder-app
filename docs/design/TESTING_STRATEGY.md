@@ -67,9 +67,9 @@ content.
   - Reference integrity (do links point to real sections?)
   - Condition validation for interactive requirements
 - **Implementation:**
-  - [`src/validation/validate-guide.ts`](../src/validation/validate-guide.ts) - Core validation logic
-  - [`src/validation/condition-validator.ts`](../src/validation/condition-validator.ts) - Requirements condition validation
-  - [`src/cli/commands/validate.ts`](../src/cli/commands/validate.ts) - CLI command
+  - [`src/validation/validate-guide.ts`](../../src/validation/validate-guide.ts) - Core validation logic
+  - [`src/validation/condition-validator.ts`](../../src/validation/condition-validator.ts) - Requirements condition validation
+  - [`src/cli/commands/validate.ts`](../../src/cli/commands/validate.ts) - CLI command
   - Run via: `npx pathfinder-cli validate ./path/to/guide.json`
   - Use of this CLI is presently in the CI chain for the [https://github.com/grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials) repo.
 
@@ -92,10 +92,10 @@ content.
   - Does the "Happy Path" complete successfully?
 - **Tooling:** Playwright-based CLI Runner (`pathfinder-cli e2e`)
 - **Design Documentation:**
-  - [E2E Test Runner Design](./e2e-runner/design/e2e-test-runner-design.md) - Full architecture and design rationale
-  - [Implementation Milestones](./e2e-runner/design/MILESTONES.md) - L3 Phased implementation plan
-  - [L3 Phase 1 Results](./e2e-runner/design/L3-phase1-verification-results.md) - Assumption verification (completed)
-  - [L3 Phase 1 Summary](./e2e-runner/design/L3-PHASE1-SUMMARY.md) - Executive summary of L3 Phase 1
+  - [E2E Test Runner Design](./e2e-test-runner-design.md) - Full architecture and design rationale
+  - [Implementation Milestones](./MILESTONES.md) - L3 Phased implementation plan
+  - [L3 Phase 1 Results](./L3-phase1-verification-results.md) - Assumption verification (completed)
+  - [L3 Phase 1 Summary](./L3-PHASE1-SUMMARY.md) - Executive summary of L3 Phase 1
 
 ### Layer 4: Live Environment Validation
 
@@ -118,7 +118,7 @@ Layer 4 validation requires **guide-level dependency metadata** to route guides 
 - **Guide dependencies**: Which other guides must be completed first (learning path ordering)
 - **Capability abstraction**: Multiple guides can provide the same abstract capability, enabling flexible learning paths
 
-This structured metadata lives in a `dependencies` object at the guide root level, separate from block-level `requirements` (which remain string arrays for runtime gating). See [Guide Dependencies Design](./e2e-runner/design/guide-dependencies-design.md) for the detailed specification.
+This structured metadata lives in a `dependencies` object at the guide root level, separate from block-level `requirements` (which remain string arrays for runtime gating). See [Guide Dependencies Design](./guide-dependencies-design.md) for the detailed specification.
 
 ---
 
@@ -250,9 +250,9 @@ We apply dependency principles to guides:
 
 | Layer            | Status         | Implementation                                                              |
 | :--------------- | :------------- | :-------------------------------------------------------------------------- |
-| Layer 1 (Static) | ✅ Complete    | [`src/validation/`](../src/validation/)                                     |
+| Layer 1 (Static) | ✅ Complete    | [`src/validation/`](../../src/validation/)                                     |
 | Layer 2 (Unit)   | ✅ Complete    | Existing Jest test suite                                                    |
-| Layer 3 (E2E)    | 🚧 In Progress | See [E2E Test Runner Design](./e2e-runner/design/e2e-test-runner-design.md) |
+| Layer 3 (E2E)    | 🚧 In Progress | See [E2E Test Runner Design](./e2e-test-runner-design.md) |
 | Layer 4 (Live)   | ⏳ Future      | Requires Layer 3 completion                                                 |
 
 ---
@@ -271,21 +271,21 @@ The following concerns are explicitly **out of scope** for this initiative:
 
 The E2E testing layer is the most complex component. Detailed design and implementation planning:
 
-- **[E2E Test Runner Design](./e2e-runner/design/e2e-test-runner-design.md)** - Complete architecture, CLI interface, step execution logic, error classification, and timing considerations
-- **[Implementation Milestones](./e2e-runner/design/MILESTONES.md)** - 7 L3 phases with 18 discrete milestones (L3-1A through L3-7C)
-- **[L3 Phase 1 Verification Results](./e2e-runner/design/L3-phase1-verification-results.md)** - Detailed assumption verification with code evidence (ARCHIVED)
-- **[L3 Phase 1 Summary](./e2e-runner/design/L3-PHASE1-SUMMARY.md)** - Executive summary of L3 Phase 1 completion (ARCHIVED)
-- **[Manual Verification Guide](./e2e-runner/design/MANUAL-VERIFICATION.md)** - Instructions for testing JSON loading infrastructure
+- **[E2E Test Runner Design](./e2e-test-runner-design.md)** - Complete architecture, CLI interface, step execution logic, error classification, and timing considerations
+- **[Implementation Milestones](./MILESTONES.md)** - 7 L3 phases with 18 discrete milestones (L3-1A through L3-7C)
+- **[L3 Phase 1 Verification Results](./L3-phase1-verification-results.md)** - Detailed assumption verification with code evidence (ARCHIVED)
+- **[L3 Phase 1 Summary](./L3-PHASE1-SUMMARY.md)** - Executive summary of L3 Phase 1 completion (ARCHIVED)
+- **[Manual Verification Guide](./MANUAL-VERIFICATION.md)** - Instructions for testing JSON loading infrastructure
 
 ### Static Analysis (Layer 1)
 
-- [`src/validation/validate-guide.ts`](../src/validation/validate-guide.ts) - Core guide validation
-- [`src/validation/condition-validator.ts`](../src/validation/condition-validator.ts) - Requirements condition parser
-- [`src/cli/commands/validate.ts`](../src/cli/commands/validate.ts) - CLI command implementation
+- [`src/validation/validate-guide.ts`](../../src/validation/validate-guide.ts) - Core guide validation
+- [`src/validation/condition-validator.ts`](../../src/validation/condition-validator.ts) - Requirements condition parser
+- [`src/cli/commands/validate.ts`](../../src/cli/commands/validate.ts) - CLI command implementation
 
 ### Layer 4 Prerequisites
 
-- **[Guide Dependencies Design](./e2e-runner/design/guide-dependencies-design.md)** - Guide-level metadata schema for environment targeting, dataset requirements, and inter-guide dependencies
+- **[Guide Dependencies Design](./guide-dependencies-design.md)** - Guide-level metadata schema for environment targeting, dataset requirements, and inter-guide dependencies
 
 ---
 

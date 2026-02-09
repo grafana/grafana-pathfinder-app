@@ -878,7 +878,7 @@ The implementation should reuse:
 
 ### Verified Assumptions (L3 Phase 1 Complete) ✅
 
-> **L3 Phase 1 Completion**: All assumptions have been verified through code analysis (2026-02-01). See `tests/e2e-runner/design/L3-phase1-verification-results.md` for detailed findings.
+> **L3 Phase 1 Completion**: All assumptions have been verified through code analysis (2026-02-01). See [L3-phase1-verification-results.md](./L3-phase1-verification-results.md) for detailed findings.
 
 | #   | Assumption                                           | Verification Result                                                                              | Design Impact                                               | Status                              |
 | --- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- | ----------------------------------- |
@@ -1171,10 +1171,10 @@ npx pathfinder-cli e2e bundled:e2e-framework-test --verbose --trace
 
 ## Related Documentation
 
-- [Interactive Requirements System](../../../docs/developer/interactive-examples/requirements-reference.md)
-- [JSON Guide Schema](../../../src/types/json-guide.types.ts)
-- [Existing E2E Tests](../../welcome-journey.spec.ts)
-- [CLI Validation Command](../../../src/cli/commands/validate.ts)
+- [Interactive Requirements System](../developer/interactive-examples/requirements-reference.md)
+- [JSON Guide Schema](../../src/types/json-guide.types.ts)
+- [Existing E2E Tests](../../tests/welcome-journey.spec.ts)
+- [CLI Validation Command](../../src/cli/commands/validate.ts)
 - [Testing Strategy](./TESTING_STRATEGY.md) - Higher-level testing vision and failure classification
 - [Implementation Milestones](./MILESTONES.md) - L3 Phased implementation plan
 - [L3 Phase 1 Results](./L3-phase1-verification-results.md) - Assumption verification findings

@@ -188,7 +188,7 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 - ✅ Added 7 new corrected assumptions based on verification findings
 - ✅ Marked localStorage and LazyRender as verified true
 
-### 3. `tests/e2e-runner/design/L3-phase1-verification-results.md` (NEW)
+### 3. `docs/design/L3-phase1-verification-results.md` (NEW)
 
 **Contents**:
 
@@ -216,11 +216,11 @@ async function executeStep(page: Page, step: TestableStep): Promise<StepTestResu
 
 ### Files Created
 
-1. **tests/e2e-runner/design/L3-phase1-verification-results.md**
+1. **docs/design/L3-phase1-verification-results.md**
    - Detailed verification report for all 10 assumptions
    - Design impact analysis and mitigation strategies
 
-2. **tests/e2e-runner/design/L3-PHASE1-SUMMARY.md** (this file)
+2. **docs/design/L3-PHASE1-SUMMARY.md** (this file)
    - Executive summary of L3 Phase 1 completion
 
 ---
