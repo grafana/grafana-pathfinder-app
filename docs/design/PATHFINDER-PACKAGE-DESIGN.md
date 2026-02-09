@@ -97,7 +97,7 @@ interactive-tutorials/
 | File           | Required | Owner                                  | Contains                                           |
 | -------------- | -------- | -------------------------------------- | -------------------------------------------------- |
 | `content.json` | Yes      | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`           |
-| `package.json` | No       | Product, enablement, recommender teams | `metadata`, `dependencies`, `targeting`            |
+| `package.json` | No       | Product, enablement, recommender teams | Flat metadata, dependency fields, `targeting`      |
 | `assets/`      | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources |
 
 For backwards compatibility, bare files (`welcome-to-grafana.json`) continue to work. The directory convention is adopted for new guides and migrated incrementally.
@@ -119,10 +119,10 @@ As the content corpus grows toward 100-200+ guides, different systems consume pa
 | Consumer                    | Reads          | Why                                                                       |
 | --------------------------- | -------------- | ------------------------------------------------------------------------- |
 | Pathfinder plugin           | `content.json` | Renders blocks in the sidebar; metadata is irrelevant                     |
-| Recommender (`build-index`) | `package.json` | Needs `targeting.match` and `metadata.description`; blocks are irrelevant |
+| Recommender (`build-index`) | `package.json` | Needs `targeting.match` and `description`; blocks are irrelevant          |
 | Learning path engine        | `package.json` | Needs `dependencies` for DAG traversal; blocks are irrelevant             |
 | LMS / catalog search        | `package.json` | Searches by title, category, difficulty, author; blocks are irrelevant    |
-| E2E test runner             | Both           | Needs blocks to execute and `dependencies.testEnvironment` for routing    |
+| E2E test runner             | Both           | Needs blocks to execute and `testEnvironment` for routing                 |
 | CLI validator               | Both           | Cross-validates content structure and package metadata                    |
 
 Separating the files means each consumer can parse only the file it needs. A recommender indexing 200 packages reads 200 small `package.json` files rather than 200 large `content.json` files that include potentially hundreds of content blocks each.
@@ -197,10 +197,8 @@ When a dependency reference contains no `/`, it is resolved within the same repo
 {
   "id": "advanced-alerting",
   "repository": "interactive-tutorials",
-  "dependencies": {
-    "depends": ["intro-to-alerting"],
-    "recommends": ["private-guides/deep-dive-alerting"]
-  }
+  "depends": ["intro-to-alerting"],
+  "recommends": ["private-guides/deep-dive-alerting"]
 }
 ```
 
@@ -222,7 +220,7 @@ The content file is what the block editor produces. It contains only the fields 
 
 ### Package schema (`package.json`)
 
-The package file carries metadata, dependencies, and targeting. It is authored by product, enablement, or recommender teams — not by the block editor:
+The package file carries metadata, dependencies, and targeting as flat fields. It is authored by product, enablement, or recommender teams — not by the block editor:
 
 ```typescript
 interface PackageJson {
@@ -232,10 +230,35 @@ interface PackageJson {
   id: string;
   /** Repository token for multi-repo identity (default: "interactive-tutorials") */
   repository?: string;
-  /** Package metadata for discoverability and attribution */
-  metadata?: GuideMetadata;
-  /** Debian-style dependency declarations */
-  dependencies?: GuideDependencies;
+
+  // --- Metadata (flat, following Debian conventions) ---
+
+  /** Full description for discoverability and display */
+  description?: string;
+  /** Content language — BCP 47 tag (default: "en") */
+  language?: string;
+  /** Content category for taxonomy alignment */
+  category?: string;
+  /** Content author or owning team */
+  author?: { name?: string; team?: string };
+
+  // --- Dependencies (Debian-style) ---
+
+  /** Hard prerequisites — must be completed before this guide is accessible */
+  depends?: DependencyList;
+  /** Soft prerequisites — recommended but not required */
+  recommends?: DependencyList;
+  /** Related content for enrichment ("you might also like") */
+  suggests?: DependencyList;
+  /** Virtual capabilities this guide provides on completion */
+  provides?: string[];
+  /** Guides this one conflicts with (mutually exclusive) */
+  conflicts?: string[];
+  /** Guides this one supersedes entirely */
+  replaces?: string[];
+
+  // --- Targeting ---
+
   /** Advisory recommendation targeting */
   targeting?: GuideTargeting;
 }
@@ -262,11 +285,31 @@ interface JsonGuide {
   /** Content blocks */
   blocks: JsonBlock[];
 
-  /** Package metadata for discoverability and attribution */
-  metadata?: GuideMetadata;
+  // --- Metadata (flat) ---
 
-  /** Debian-style dependency declarations */
-  dependencies?: GuideDependencies;
+  /** Full description for discoverability and display */
+  description?: string;
+  /** Content language — BCP 47 tag (default: "en") */
+  language?: string;
+  /** Content category for taxonomy alignment */
+  category?: string;
+  /** Content author or owning team */
+  author?: { name?: string; team?: string };
+
+  // --- Dependencies (Debian-style) ---
+
+  /** Hard prerequisites — must be completed before this guide is accessible */
+  depends?: DependencyList;
+  /** Soft prerequisites — recommended but not required */
+  recommends?: DependencyList;
+  /** Related content for enrichment ("you might also like") */
+  suggests?: DependencyList;
+  /** Virtual capabilities this guide provides on completion */
+  provides?: string[];
+  /** Guides this one conflicts with (mutually exclusive) */
+  conflicts?: string[];
+  /** Guides this one supersedes entirely */
+  replaces?: string[];
 
   /** Advisory recommendation targeting */
   targeting?: GuideTargeting;
@@ -297,23 +340,17 @@ A package with both files:
   "schemaVersion": "1.1.0",
   "id": "prometheus-grafana-101",
   "repository": "interactive-tutorials",
-  "metadata": {
-    "description": "Learn to use Prometheus and Grafana to monitor your infrastructure.",
-    "language": "en",
-    "estimatedDuration": "PT10M",
-    "difficulty": "beginner",
-    "category": "data-availability",
-    "author": {
-      "name": "Enablement Team",
-      "team": "interactive-learning"
-    }
+  "description": "Learn to use Prometheus and Grafana to monitor your infrastructure.",
+  "language": "en",
+  "category": "data-availability",
+  "author": {
+    "name": "Enablement Team",
+    "team": "interactive-learning"
   },
-  "dependencies": {
-    "depends": ["welcome-to-grafana"],
-    "recommends": ["first-dashboard"],
-    "suggests": ["loki-grafana-101", "prometheus-advanced-queries"],
-    "provides": ["datasource-configured"]
-  },
+  "depends": ["welcome-to-grafana"],
+  "recommends": ["first-dashboard"],
+  "suggests": ["loki-grafana-101", "prometheus-advanced-queries"],
+  "provides": ["datasource-configured"],
   "targeting": {
     "match": {
       "and": [{ "urlPrefixIn": ["/connections"] }, { "targetPlatform": "oss" }]
@@ -326,99 +363,106 @@ A package with both files:
 
 ## Metadata
 
-All metadata fields live in `package.json`, not in `content.json`. This keeps the block editor's file clean and focused on content.
+Metadata fields live **flat** at the top level of `package.json`, not nested under a `metadata` wrapper. This follows the Debian `control` file convention where `Description`, `Maintainer`, and other metadata are peer fields alongside `Depends` and `Recommends` — not grouped under a header. Flat structure keeps the file shallow, easy to scan, and simple to validate.
+
+Metadata fields live in `package.json`, not in `content.json`. This keeps the block editor's file clean and focused on content.
 
 ### Fields
 
-```typescript
-interface GuideMetadata {
-  /** Full description for discoverability and display */
-  description?: string;
-
-  /** Content language (BCP 47 tag, e.g., "en", "es", "ja") */
-  language?: string;
-
-  /**
-   * Estimated time to complete.
-   * Format TBD — will be vetted against ISO 8601 duration (e.g., "PT10M")
-   * and SCORM typicalLearningTime before finalizing.
-   */
-  estimatedDuration?: string;
-
-  /** Difficulty level */
-  difficulty?: 'beginner' | 'intermediate' | 'advanced';
-
-  /**
-   * Content category for taxonomy alignment.
-   * Free-form string; documented convention aligns with docs team
-   * taxonomy: "data-availability", "query-visualize", "take-action".
-   */
-  category?: string;
-
-  /** Content author or owning team */
-  author?: {
-    name?: string;
-    team?: string;
-  };
-}
-```
+| Field         | Type                                  | Default  | Description                                                                                                                               |
+| ------------- | ------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `description` | `string`                              | —        | Full description for discoverability and display                                                                                          |
+| `language`    | `string`                              | `"en"`   | Content language ([BCP 47](https://www.rfc-editor.org/info/bcp47) tag, e.g., `"en"`, `"es"`, `"ja"`). Defaults to `"en"` when absent.    |
+| `category`    | `string`                              | —        | Content category for taxonomy alignment. Convention aligns with docs team taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`. |
+| `author`      | `{ name?: string; team?: string }`    | —        | Content author or owning team                                                                                                             |
 
 ### Rationale for each field
 
-| Field               | Consumer                                            | Rationale                                                                    |
-| ------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `description`       | Recommendations, web display, index.json generation | Consolidates `summary` from `index.json` into the package                    |
-| `language`          | i18n, SCORM import, web display                     | Minimal overhead, critical for non-English content                           |
-| `estimatedDuration` | Learning paths UI, web display                      | Currently in `paths.json` as `estimatedMinutes` — should live in the package |
-| `difficulty`        | Recommendations, web display                        | Gap identified in SCORM analysis (G1)                                        |
-| `category`          | Taxonomy, docs team alignment, recommendations      | Aligns with docs team's journey categories                                   |
-| `author`            | Failure routing, attribution, provenance            | Testing strategy identifies ownership as critical for escalation             |
+| Field         | Consumer                                            | Rationale                                                                |
+| ------------- | --------------------------------------------------- | ------------------------------------------------------------------------ |
+| `description` | Recommendations, web display, index.json generation | Consolidates `summary` from `index.json` into the package                |
+| `language`    | i18n, SCORM import, web display                     | Minimal overhead, critical for non-English content                       |
+| `category`    | Taxonomy, docs team alignment, recommendations      | Aligns with docs team's journey categories                               |
+| `author`      | Failure routing, attribution, provenance            | Testing strategy identifies ownership as critical for escalation         |
+
+### Namespace collision note
+
+Flat metadata fields share the top-level namespace with identity fields (`id`, `repository`), dependency fields (`depends`, `recommends`, etc.), and `targeting`. This is acceptable because:
+
+- The field inventory is bounded and well-understood — drawn from established standards (Dublin Core, IEEE LOM, Debian)
+- Field names are specific and self-describing (`description`, `language`, `author` do not collide with `depends`, `provides`, `targeting`)
+- The `package.json` schema is validated by Zod, which catches any accidental field reuse at compile time
+- Future fields will be vetted against the existing namespace before adoption (see [design principle 6](#design-principles))
+
+If the namespace ever becomes crowded (unlikely given the standards-aligned vocabulary), a future schema version could introduce grouping — but the current field set does not warrant it.
 
 ### Deferred metadata fields
 
 These fields are not in Phase 1 but the schema is designed to accept them as backward-compatible additions in future phases:
 
-| Field                | Phase       | Reason to defer                                      |
-| -------------------- | ----------- | ---------------------------------------------------- |
-| `keywords`           | Phase 2+    | No consumer yet; recommendations use URL-based rules |
-| `rights`             | SCORM phase | Only needed for imported content with licensing      |
-| `source`             | SCORM phase | Provenance tracking for imported content             |
-| `educationalContext` | SCORM phase | Educational context classification                   |
+| Field                | Phase       | Reason to defer                                                                                                       |
+| -------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| `estimatedDuration`  | Phase 2+    | No compelling MVP consumer. Format TBD (ISO 8601 duration vs. SCORM `typicalLearningTime`). Needed if SCORM arrives. |
+| `difficulty`         | Phase 2+    | No MVP consumer for filtering or display. Useful for SCORM import and future recommendation ranking.                  |
+| `keywords`           | Phase 2+    | No consumer yet; recommendations use URL-based rules                                                                  |
+| `rights`             | SCORM phase | Only needed for imported content with licensing                                                                        |
+| `source`             | SCORM phase | Provenance tracking for imported content                                                                              |
+| `educationalContext` | SCORM phase | Educational context classification                                                                                    |
 
 ---
 
 ## Dependencies
 
-Dependencies are declared in `package.json`. They express structural relationships between guides — prerequisites, recommendations, capabilities, and conflicts.
+Dependency fields live flat at the top level of `package.json`, alongside metadata fields. They express structural relationships between guides — prerequisites, recommendations, capabilities, and conflicts.
 
 ### Fields
 
+Dependency fields live flat at the top level of `package.json`, alongside metadata and targeting. Each dependency field that accepts guide references (`depends`, `recommends`, `suggests`) uses the `DependencyList` type, which supports AND/OR logic. Fields that declare capabilities or relationships (`provides`, `conflicts`, `replaces`) use plain `string[]`.
+
 ```typescript
-interface GuideDependencies {
-  /** Hard prerequisites — must be completed before this guide is accessible */
-  depends?: string[];
+/**
+ * A dependency clause: either a single reference (string)
+ * or an OR-group of alternatives (string[]).
+ */
+type DependencyClause = string | string[];
 
-  /** Soft prerequisites — recommended but not required */
-  recommends?: string[];
+/**
+ * A list of dependency clauses combined with AND.
+ * Each clause is either a bare string (single reference)
+ * or an array of strings (OR-group of alternatives).
+ *
+ * Follows Debian's dependency syntax in JSON form:
+ * - Debian: `A | B, C`  (comma = AND, pipe = OR)
+ * - JSON:   `[["A", "B"], "C"]`
+ */
+type DependencyList = DependencyClause[];
+```
 
-  /** Related content for enrichment ("you might also like") */
-  suggests?: string[];
+All references use FQI format (`"repository/id"`) for cross-repo or bare `id` for same-repo. See [identity model](#identity-model).
 
-  /** Virtual capabilities this guide provides on completion */
-  provides?: string[];
+### AND/OR semantics
 
-  /** Guides this one conflicts with (mutually exclusive) */
-  conflicts?: string[];
+Dependency lists use **conjunctive normal form** (CNF): the outer array is AND, inner arrays are OR. This maps directly to Debian's established syntax where commas separate AND-clauses and pipes separate OR-alternatives.
 
-  /** Guides this one supersedes entirely */
-  replaces?: string[];
+| JSON                                        | Meaning                          | Debian equivalent       |
+| ------------------------------------------- | -------------------------------- | ----------------------- |
+| `["A", "B"]`                                | A **and** B                      | `A, B`                  |
+| `[["A", "B"]]`                              | A **or** B                       | `A \| B`                |
+| `[["A", "B"], "C"]`                         | (A **or** B) **and** C           | `A \| B, C`             |
+| `["A", ["B", "C"], "D"]`                    | A **and** (B **or** C) **and** D | `A, B \| C, D`          |
+
+**Example** — a guide that requires completion of `welcome-to-grafana` AND either `prometheus-grafana-101` or `loki-grafana-101`:
+
+```json
+{
+  "depends": [
+    "welcome-to-grafana",
+    ["prometheus-grafana-101", "loki-grafana-101"]
+  ]
 }
 ```
 
-**TODO**: Do we want to support logical AND/OR in dependencies/recommends/etc? Alternatively, if
-the `GuideTargeting` Api Spec can be reused here.
-
-All references use FQI format (`"repository/id"`) for cross-repo or bare `id` for same-repo. See [identity model](#identity-model).
+This complements virtual capabilities (`provides`): OR-groups express direct alternatives between concrete guides, while `provides` expresses abstract capability satisfaction. Both mechanisms coexist.
 
 ### Dependency semantics
 
@@ -443,13 +487,13 @@ The `provides` field enables flexible learning paths. Multiple guides can provid
 
 ### Relationship to block-level requirements
 
-| Concern         | Block-level `requirements`                     | Guide-level `dependencies`                         |
-| --------------- | ---------------------------------------------- | -------------------------------------------------- |
-| **Scope**       | Single step/block                              | Entire guide                                       |
-| **Purpose**     | Runtime gating ("can this step execute now?")  | Structural metadata ("what does this guide need?") |
-| **Format**      | String array (`["has-datasource:prometheus"]`) | Structured object with named fields                |
-| **Evaluation**  | Real-time in browser during guide execution    | Pre-flight by test runner; UI filtering            |
-| **Persistence** | No                                             | Capabilities persist on guide completion           |
+| Concern         | Block-level `requirements`                     | Guide-level dependencies                                |
+| --------------- | ---------------------------------------------- | ------------------------------------------------------- |
+| **Scope**       | Single step/block                              | Entire guide                                            |
+| **Purpose**     | Runtime gating ("can this step execute now?")  | Structural metadata ("what does this guide need?")      |
+| **Format**      | String array (`["has-datasource:prometheus"]`) | Flat fields (`depends`, `recommends`, etc.) with CNF OR |
+| **Evaluation**  | Real-time in browser during guide execution    | Pre-flight by test runner; UI filtering                 |
+| **Persistence** | No                                             | Capabilities persist on guide completion                |
 
 ### Relationship to learning paths
 
@@ -524,13 +568,13 @@ Today, the recommender consumes `index.json` for recommendation rules. In the pa
 1. Scan all package directories
 2. For each package, read `package.json` and `content.json`:
    - Taking `title` from `content.json`
-   - Taking `description` from `package.json` → `metadata.description`
+   - Taking `description` from `package.json`
    - Computing `url` from the package's deployment location
    - Copying `match` from `package.json` → `targeting.match`
    - Setting `source` to the package FQI
 3. Output a single `index.json` file
 
-The recommender only needs `package.json` for most operations (targeting, metadata). It reads `content.json` only for the `title` field, which could alternatively be duplicated into `package.json` metadata in the future if needed.
+The recommender only needs `package.json` for most operations (targeting, description). It reads `content.json` only for the `title` field, which could alternatively be duplicated as a flat field in `package.json` in the future if needed.
 
 Until `build-index` is implemented, `index.json` continues to be maintained separately. This is noted as a [deferred concern](#deferred-concerns).
 
@@ -546,7 +590,7 @@ Until `build-index` is implemented, `index.json` continues to be maintained sepa
 
 For `content.json`: the existing `KNOWN_FIELDS._guide` applies unchanged. If `content.json` contains metadata/dependency/targeting fields (e.g., from a legacy single-file guide), they are accepted via `.passthrough()` but the canonical location is `package.json`.
 
-For `package.json`: a new `KNOWN_FIELDS._package` set includes `'schemaVersion'`, `'id'`, `'repository'`, `'metadata'`, `'dependencies'`, and `'targeting'`.
+For `package.json`: a new `KNOWN_FIELDS._package` set includes `'schemaVersion'`, `'id'`, `'repository'`, `'description'`, `'language'`, `'category'`, `'author'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
 
 ### Schema version
 
@@ -563,8 +607,7 @@ The version bumps from `"1.0.0"` to `"1.1.0"`:
 | -------------- | -------------------------------------------------------------------------------------------- |
 | `package.json` | No package metadata (standalone guide with content only)                                     |
 | `repository`   | `"interactive-tutorials"`                                                                    |
-| `metadata`     | No metadata (guide is opaque)                                                                |
-| `dependencies` | No dependencies (standalone guide)                                                           |
+| `language`     | `"en"`                                                                                       |
 | `targeting`    | No targeting (not recommended contextually; only reachable via direct link or learning path) |
 | `assets/`      | No assets                                                                                    |
 
@@ -582,8 +625,8 @@ For backwards compatibility, the CLI also accepts a single `content.json` that c
 
 ### Consolidation of external metadata
 
-- `index.json` entries (`summary`, `url`, `targetPlatform`) can be gradually migrated into `package.json` `metadata` and `targeting`
-- `paths.json` guide ordering can be derived from `dependencies.depends` chains in `package.json`
+- `index.json` entries (`summary`, `url`, `targetPlatform`) can be gradually migrated into `package.json` fields (`description`, `targeting`)
+- `paths.json` guide ordering can be derived from `depends` chains in `package.json`
 - Both external files continue to work during transition — they are the fallback when packages don't carry their own `package.json`
 
 ---
@@ -597,30 +640,16 @@ The CLI validates `content.json` and `package.json` with separate schemas, then 
 #### Shared sub-schemas
 
 ```typescript
-const GuideMetadataSchema = z
-  .object({
-    description: z.string().optional(),
-    language: z.string().optional(),
-    estimatedDuration: z.string().optional(),
-    difficulty: z.enum(['beginner', 'intermediate', 'advanced']).optional(),
-    category: z.string().optional(),
-    author: z
-      .object({
-        name: z.string().optional(),
-        team: z.string().optional(),
-      })
-      .optional(),
-  })
-  .strict();
+/** A single reference or OR-group of alternatives */
+const DependencyClauseSchema = z.union([z.string(), z.array(z.string()).min(1)]);
 
-const GuideDependenciesSchema = z
+/** AND-list of dependency clauses (CNF: outer = AND, inner array = OR) */
+const DependencyListSchema = z.array(DependencyClauseSchema);
+
+const AuthorSchema = z
   .object({
-    depends: z.array(z.string()).optional(),
-    recommends: z.array(z.string()).optional(),
-    suggests: z.array(z.string()).optional(),
-    provides: z.array(z.string()).optional(),
-    conflicts: z.array(z.string()).optional(),
-    replaces: z.array(z.string()).optional(),
+    name: z.string().optional(),
+    team: z.string().optional(),
   })
   .strict();
 
@@ -649,8 +678,19 @@ export const PackageJsonSchema = z.object({
   schemaVersion: z.string().optional(),
   id: z.string().min(1, 'Package id is required'),
   repository: z.string().optional(),
-  metadata: GuideMetadataSchema.optional(),
-  dependencies: GuideDependenciesSchema.optional(),
+  // Metadata (flat)
+  description: z.string().optional(),
+  language: z.string().optional(),
+  category: z.string().optional(),
+  author: AuthorSchema.optional(),
+  // Dependencies (flat, with CNF OR support)
+  depends: DependencyListSchema.optional(),
+  recommends: DependencyListSchema.optional(),
+  suggests: DependencyListSchema.optional(),
+  provides: z.array(z.string()).optional(),
+  conflicts: z.array(z.string()).optional(),
+  replaces: z.array(z.string()).optional(),
+  // Targeting
   targeting: GuideTargetingSchema.optional(),
 });
 ```
@@ -666,8 +706,19 @@ export const JsonGuideSchemaStrict = z.object({
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),
-  metadata: GuideMetadataSchema.optional(),
-  dependencies: GuideDependenciesSchema.optional(),
+  // Metadata (flat)
+  description: z.string().optional(),
+  language: z.string().optional(),
+  category: z.string().optional(),
+  author: AuthorSchema.optional(),
+  // Dependencies (flat, with CNF OR support)
+  depends: DependencyListSchema.optional(),
+  recommends: DependencyListSchema.optional(),
+  suggests: DependencyListSchema.optional(),
+  provides: z.array(z.string()).optional(),
+  conflicts: z.array(z.string()).optional(),
+  replaces: z.array(z.string()).optional(),
+  // Targeting
   targeting: GuideTargetingSchema.optional(),
 });
 ```
@@ -738,27 +789,29 @@ The Grafana docs team expresses inter-guide relationships in a YAML format:
 
 This maps naturally to the package model:
 
-| YAML field   | Package equivalent                        |
-| ------------ | ----------------------------------------- |
-| `id`         | `id`                                      |
-| `category`   | `metadata.category`                       |
-| `links[].to` | `dependencies.suggests` (or `recommends`) |
+| YAML field   | Package equivalent            |
+| ------------ | ----------------------------- |
+| `id`         | `id`                          |
+| `category`   | `category`                    |
+| `links[].to` | `suggests` (or `recommends`) |
 
 The `links.to` relationships are soft recommendations — "completing prom-data-source enables you to better pursue metrics-drilldown." These are `suggests` or `recommends` in Debian vocabulary, not hard `depends`.
 
-The `category` field aligns directly with `metadata.category`. The documented convention uses the same taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`.
+The `category` field aligns directly. The documented convention uses the same taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`.
 
 ### Dublin Core / IEEE LOM
 
 Phase 1 metadata field names are chosen to align with established standards where applicable:
 
-| Package field       | Dublin Core      | IEEE LOM                          | Notes                     |
-| ------------------- | ---------------- | --------------------------------- | ------------------------- |
-| `description`       | `dc:description` | `general.description`             | Direct alignment          |
-| `language`          | `dc:language`    | `general.language`                | BCP 47 tag                |
-| `author.name`       | `dc:creator`     | `lifeCycle.contribute.entity`     | Simplified structure      |
-| `difficulty`        | —                | `educational.difficulty`          | Enum subset of LOM values |
-| `estimatedDuration` | —                | `educational.typicalLearningTime` | Format to be vetted       |
+| Package field  | Dublin Core      | IEEE LOM                      | Notes                                           |
+| -------------- | ---------------- | ----------------------------- | ----------------------------------------------- |
+| `description`  | `dc:description` | `general.description`         | Direct alignment                                |
+| `language`     | `dc:language`    | `general.language`            | BCP 47 tag; defaults to `"en"`                  |
+| `author.name`  | `dc:creator`     | `lifeCycle.contribute.entity` | Simplified structure                            |
+| `difficulty`*  | —                | `educational.difficulty`      | Deferred to Phase 2+; enum subset of LOM values |
+| `estimatedDuration`* | —           | `educational.typicalLearningTime` | Deferred to Phase 2+; format to be vetted   |
+
+\* Deferred fields — not in Phase 1, but names are vetted against standards now to avoid future renames.
 
 ### SCORM
 
@@ -771,36 +824,34 @@ The package format is designed to be the **output target** for a future SCORM im
 | Organization tree          | Multiple packages linked by `depends`   |
 | SCO (interactive content)  | `content.json` with content blocks      |
 | Asset (static content)     | `assets/` directory within package      |
-| Prerequisites              | `package.json` → `dependencies.depends` |
+| Prerequisites              | `package.json` → `depends`              |
 | Sequencing (forward-only)  | Linear `depends` chain                  |
 
 The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `package.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure.
 
-SCORM-specific fields (`metadata.source`, `metadata.rights`, `metadata.educationalContext`) are deferred to the SCORM implementation phase but will be backward-compatible additions to `package.json`.
+SCORM-specific fields (`source`, `rights`, `educationalContext`) are deferred to the SCORM implementation phase but will be backward-compatible flat additions to `package.json`.
 
 ---
 
 ## Future-proofing
 
-### Extensible metadata namespace
+### Extensible flat namespace
 
-The `metadata` object in `package.json` is a bag of optional fields. Adding new fields is always backward-compatible. The Zod sub-schema uses `.strict()` for validation precision in the current version, but the outer package schema uses `.passthrough()` for forward compatibility. Unknown sub-fields in newer packages generate warnings but don't fail validation.
+Metadata fields live flat at the top level of `package.json`. Adding new optional fields is always backward-compatible. The Zod schema uses `.passthrough()` for forward compatibility — unknown fields in newer packages generate warnings but don't fail validation. See [namespace collision note](#namespace-collision-note) for why flat structure is safe given the bounded, standards-aligned field inventory.
 
 ### The `source` provenance pattern (future)
 
-When SCORM import arrives, `package.json` gains `metadata.source`:
+When SCORM import arrives, `package.json` gains a flat `source` field:
 
 ```json
 {
   "id": "acme-sales-training",
-  "metadata": {
-    "source": {
-      "format": "SCORM",
-      "version": "1.2",
-      "importedAt": "2026-02-07T00:00:00Z",
-      "originalIdentifier": "com.acme.sales-training",
-      "importToolVersion": "1.0.0"
-    }
+  "source": {
+    "format": "SCORM",
+    "version": "1.2",
+    "importedAt": "2026-02-07T00:00:00Z",
+    "originalIdentifier": "com.acme.sales-training",
+    "importToolVersion": "1.0.0"
   }
 }
 ```
@@ -818,19 +869,17 @@ Adding `type: "guide" | "course" | "module"` enables:
 
 ### Test environment metadata (future)
 
-`dependencies.testEnvironment` will be added to `package.json` when Layer 4 E2E infrastructure is ready to consume it:
+A flat `testEnvironment` field will be added to `package.json` when Layer 4 E2E infrastructure is ready to consume it:
 
 ```json
 {
   "id": "advanced-alerting",
-  "dependencies": {
-    "testEnvironment": {
-      "tier": "managed",
-      "minVersion": "11.0.0",
-      "datasets": ["prometheus-sample-metrics"],
-      "datasources": ["prometheus"],
-      "plugins": ["grafana-oncall-app"]
-    }
+  "testEnvironment": {
+    "tier": "managed",
+    "minVersion": "11.0.0",
+    "datasets": ["prometheus-sample-metrics"],
+    "datasources": ["prometheus"],
+    "plugins": ["grafana-oncall-app"]
   }
 }
 ```
@@ -841,7 +890,7 @@ Adding `type: "guide" | "course" | "module"` enables:
 | ------- | ------------------------------------------------------------------------------------------- |
 | `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`           |
 | `1.1.0` | Phase 1 packages: two-file model (`content.json` + `package.json`), `assets/` directory     |
-| `1.2.0` | Future: adds `type`, `metadata.source`, `metadata.keywords`, `dependencies.testEnvironment` |
+| `1.2.0` | Future: adds `type`, `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment` |
 | `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                             |
 
 Any consumer can inspect `schemaVersion` and decide which fields to expect.
@@ -860,14 +909,13 @@ spec:
   id: prometheus-grafana-101
   title: 'Prometheus & Grafana 101'
   blocks: [...]
-  # From package.json
+  # From package.json (flat metadata and dependencies)
   repository: interactive-tutorials
-  metadata:
-    description: '...'
-    difficulty: beginner
-  dependencies:
-    depends:
-      - welcome-to-grafana
+  description: '...'
+  language: en
+  category: data-availability
+  depends:
+    - welcome-to-grafana
   targeting:
     match:
       and:
@@ -892,11 +940,11 @@ The `repository` field is a short name token. Mapping tokens to concrete locatio
 A `pathfinder-cli build-index` command will scan packages and produce `index.json` for the recommender. Until this is built, `index.json` is maintained separately. The command should:
 
 1. Scan all package directories in a tree
-2. Read `package.json` for `metadata.description`, `targeting.match`, and FQI; read `content.json` for `title`
+2. Read `package.json` for `description`, `targeting.match`, and FQI; read `content.json` for `title`
 3. Assemble a recommender `Rule` per package
 4. Output a single `index.json` file
 
-Note: the recommender index is built primarily from `package.json`. The only field it needs from `content.json` is `title`. A future optimization could duplicate `title` in `package.json` metadata to avoid reading content files during index generation.
+Note: the recommender index is built primarily from `package.json`. The only field it needs from `content.json` is `title`. A future optimization could duplicate `title` as a flat field in `package.json` to avoid reading content files during index generation.
 
 ### Recommender consumption of package metadata
 
@@ -921,8 +969,8 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 **Deliverables:**
 
 - [ ] Define `ContentJsonSchema` for `content.json` (`schemaVersion`, `id`, `title`, `blocks`)
-- [ ] Define `PackageJsonSchema` for `package.json` (`schemaVersion`, `id`, `repository`, `metadata`, `dependencies`, `targeting`)
-- [ ] Define shared sub-schemas (`GuideMetadataSchema`, `GuideDependenciesSchema`, `GuideTargetingSchema`)
+- [ ] Define `PackageJsonSchema` for `package.json` (flat metadata fields, flat dependency fields, `targeting`)
+- [ ] Define shared sub-schemas (`DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`)
 - [ ] Retain merged `JsonGuideSchemaStrict` for backwards compatibility with single-file guides
 - [ ] Add `KNOWN_FIELDS._package` for `package.json` fields
 - [ ] Bump `CURRENT_SCHEMA_VERSION` to `"1.1.0"`
@@ -956,8 +1004,8 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 **Deliverables:**
 
 - [ ] Convert `welcome-to-grafana`, `prometheus-grafana-101`, `first-dashboard` to directory packages
-- [ ] For each, create `package.json` with `metadata` (description, difficulty, estimatedDuration, author, category)
-- [ ] Add `dependencies` (depends, provides, suggests) to `package.json` to express the "Getting started" learning path
+- [ ] For each, create `package.json` with flat metadata (description, language, category, author)
+- [ ] Add dependency fields (depends, provides, suggests) to `package.json` to express the "Getting started" learning path
 - [ ] Add `targeting` with recommender match expressions to `package.json`
 - [ ] Verify plugin loads and renders `content.json` correctly (ignoring `package.json` at runtime)
 - [ ] Verify `validate --packages` passes in CI (validates both files)
@@ -973,7 +1021,7 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 - [ ] Utility to compute learning paths from dependency DAG
 - [ ] Reconciliation: curated `paths.json` takes priority; dependency-derived paths fill gaps
-- [ ] UI: learning path cards use package metadata (description, difficulty, estimatedDuration) when available
+- [ ] UI: learning path cards use package metadata (description, category) when available
 - [ ] Align with docs partners' YAML format for learning journey relationships
 - [ ] Validate that `recommends`/`suggests` from packages align with docs team's `links.to` semantics
 
@@ -985,7 +1033,7 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 **Deliverables:**
 
-- [ ] Add `dependencies.testEnvironment` to `PackageJsonSchema` (tier, minVersion, datasets, plugins, datasources)
+- [ ] Add flat `testEnvironment` field to `PackageJsonSchema` (tier, minVersion, datasets, plugins, datasources)
 - [ ] Extend CLI validation for testEnvironment fields in `package.json`
 - [ ] E2E runner reads `package.json` for testEnvironment routing decisions
 - [ ] Document testEnvironment authoring guidelines (authored in `package.json`)
@@ -999,8 +1047,8 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 **Deliverables:**
 
 - [ ] Add `type` field to `PackageJsonSchema` (`"guide"` | `"course"` | `"module"`)
-- [ ] Add `metadata.source` to `package.json` for provenance tracking
-- [ ] Add `metadata.keywords`, `metadata.rights`, `metadata.educationalContext` to `package.json`
+- [ ] Add flat `source` field to `package.json` for provenance tracking
+- [ ] Add flat `keywords`, `rights`, `educationalContext`, `difficulty`, `estimatedDuration` fields to `package.json`
 - [ ] Course/module rendering in web display mode (table-of-contents page)
 - [ ] Design SCORM import pipeline CLI interface
 
@@ -1037,7 +1085,7 @@ Decisions made during the design discussion, with rationale.
 | D3  | Default repository: `"interactive-tutorials"`                    | Backwards compat for all existing guides                                                                                                                                                                                                                                                                                                                     |
 | D4  | Bare ID references resolve within same repository                | Concise same-repo references; cross-repo uses FQI                                                                                                                                                                                                                                                                                                            |
 | D5  | Namespacing from Phase 1                                         | Avoids collision risk as multi-repo becomes real; semantic IDs over UUIDs                                                                                                                                                                                                                                                                                    |
-| D6  | Single `metadata.category` string                                | Aligns with docs team taxonomy; multi-category deferred                                                                                                                                                                                                                                                                                                      |
+| D6  | Single `category` string                                         | Aligns with docs team taxonomy; multi-category deferred                                                                                                                                                                                                                                                                                                      |
 | D7  | `targeting.match` follows recommender's MatchExpr grammar        | Package suggests, recommender decides; loosely validated to avoid coupling                                                                                                                                                                                                                                                                                   |
 | D8  | Learning paths: both curated and derived                         | `paths.json` is editorial; dependency graph is structural; both coexist                                                                                                                                                                                                                                                                                      |
 | D9  | Multi-repo; resolution deferred                                  | Packages across repos is a known requirement; resolution mechanism is future work                                                                                                                                                                                                                                                                            |
@@ -1047,6 +1095,10 @@ Decisions made during the design discussion, with rationale.
 | D13 | Schema version `"1.1.0"` for package extension                   | Backward-compatible addition; minor version bump per semver                                                                                                                                                                                                                                                                                                  |
 | D14 | Separate `content.json` (content) from `package.json` (metadata) | Follows Debian `control`/`data` separation. Multiple consumers (plugin, recommender, LMS, E2E runner) each need different data; separate files avoid full-parsing a large unified file. Block editor stays focused on content; metadata is managed by different roles with different tools. Eliminates merge conflicts between content and metadata changes. |
 | D15 | Optional `assets/` directory for non-JSON resources              | Aligns with SCORM asset packaging. Images, diagrams, and supplementary files live alongside content. Asset resolution deferred but convention established now.                                                                                                                                                                                               |
+| D16 | Flat metadata and dependency fields in `package.json`            | Follows Debian `control` file convention where all fields are peers at the same level. Reduces nesting depth, simplifies authoring and validation. Namespace collision risk is acceptable given the bounded, standards-aligned field inventory (see [namespace collision note](#namespace-collision-note)).                                                    |
+| D17 | CNF OR syntax for dependency lists (nested arrays)               | Maps directly to Debian's comma + pipe semantics (`A \| B, C` → `[["A", "B"], "C"]`). Outer array = AND, inner array = OR. Backwards compatible: existing `["A", "B"]` (all strings) retains AND semantics. No string parsing required; fully validatable with Zod.                                                                                        |
+| D18 | Default `language` to `"en"`                                     | All existing content is English. Explicit default avoids mandatory boilerplate while preserving the field for future i18n and SCORM import.                                                                                                                                                                                                                  |
+| D19 | Defer `estimatedDuration` and `difficulty` to Phase 2+           | No compelling MVP consumer for either field. No UI component displays them; no recommender logic consumes them. Field names are vetted against IEEE LOM now to avoid future renames. Will be needed if SCORM import or recommendation ranking arrives.                                                                                                       |
 
 ---
 
