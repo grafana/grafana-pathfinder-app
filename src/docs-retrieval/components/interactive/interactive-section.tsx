@@ -7,7 +7,7 @@ import { useStepChecker } from '../../../requirements-manager';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
-import { InteractiveQuiz } from './interactive-quiz';
+import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -52,6 +52,7 @@ export function resetInteractiveCounters() {
   resetStepCounter();
   resetMultiStepCounter();
   resetGuidedCounter();
+  resetQuizCounter();
 }
 
 // Register a section's steps in the global registry (idempotent)
