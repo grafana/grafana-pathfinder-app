@@ -104,5 +104,4 @@ A complete example showing a guide with dependencies:
 
 - [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) - Overall testing vision and Layer 4 context
 - [E2E Test Runner Design](./e2e-test-runner-design.md) - Layer 3 architecture
-- [Implementation Milestones](./MILESTONES.md) - Layer 3 implementation tasks
 - [Debian Package Dependencies](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends) - Authoritative reference for dependency semantics

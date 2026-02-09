@@ -175,7 +175,6 @@ src/docs-retrieval/
 
 tests/
 ├── e2e-runner/                  # NEW: E2E test runner directory
-│   ├── MILESTONES.md            # Implementation milestones
 │   ├── guide-runner.spec.ts     # Dynamic guide test runner
 │   ├── utils/
 │   │   └── guide-test-runner.ts # Test execution utilities
@@ -706,20 +705,6 @@ async function captureFailureArtifacts(page: Page, stepId: string, outputDir: st
 }
 ```
 
-## Implementation Milestones
-
-For detailed implementation milestones, phases, and acceptance criteria, see [MILESTONES.md](./MILESTONES.md).
-
-The implementation is organized into 7 L3 phases:
-
-1. **L3 Phase 1: Foundation & Validation** - JSON loading infrastructure and assumption verification
-2. **L3 Phase 2: CLI Scaffolding** - Command structure, Playwright integration, and pre-flight checks
-3. **L3 Phase 3: Step Discovery & Execution** - Core DOM-based test execution (highest complexity)
-4. **L3 Phase 4: Requirements Handling** - Fix buttons, skippable/mandatory logic
-5. **L3 Phase 5: Reporting** - Console output, JSON output, error classification, and artifact capture
-6. **L3 Phase 6: Framework Test Guide** - Create `e2e-framework-test.json` to validate the runner itself
-7. **L3 Phase 7: Polish & Extensions** - Auth abstraction, bundled guide testing, CI workflow template
-
 ## Key Types
 
 ```typescript
@@ -1176,5 +1161,3 @@ npx pathfinder-cli e2e bundled:e2e-framework-test --verbose --trace
 - [Existing E2E Tests](../../tests/welcome-journey.spec.ts)
 - [CLI Validation Command](../../src/cli/commands/validate.ts)
 - [Testing Strategy](./TESTING_STRATEGY.md) - Higher-level testing vision and failure classification
-- [Implementation Milestones](./MILESTONES.md) - L3 Phased implementation plan
-- [L3 Phase 1 Results](./L3-phase1-verification-results.md) - Assumption verification findings

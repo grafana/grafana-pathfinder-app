@@ -93,9 +93,6 @@ content.
 - **Tooling:** Playwright-based CLI Runner (`pathfinder-cli e2e`)
 - **Design Documentation:**
   - [E2E Test Runner Design](./e2e-test-runner-design.md) - Full architecture and design rationale
-  - [Implementation Milestones](./MILESTONES.md) - L3 Phased implementation plan
-  - [L3 Phase 1 Results](./L3-phase1-verification-results.md) - Assumption verification (completed)
-  - [L3 Phase 1 Summary](./L3-PHASE1-SUMMARY.md) - Executive summary of L3 Phase 1
 
 ### Layer 4: Live Environment Validation
 
@@ -272,10 +269,6 @@ The following concerns are explicitly **out of scope** for this initiative:
 The E2E testing layer is the most complex component. Detailed design and implementation planning:
 
 - **[E2E Test Runner Design](./e2e-test-runner-design.md)** - Complete architecture, CLI interface, step execution logic, error classification, and timing considerations
-- **[Implementation Milestones](./MILESTONES.md)** - 7 L3 phases with 18 discrete milestones (L3-1A through L3-7C)
-- **[L3 Phase 1 Verification Results](./L3-phase1-verification-results.md)** - Detailed assumption verification with code evidence (ARCHIVED)
-- **[L3 Phase 1 Summary](./L3-PHASE1-SUMMARY.md)** - Executive summary of L3 Phase 1 completion (ARCHIVED)
-- **[Manual Verification Guide](./MANUAL-VERIFICATION.md)** - Instructions for testing JSON loading infrastructure
 
 ### Static Analysis (Layer 1)
 
@@ -298,8 +291,6 @@ This section establishes the authority hierarchy for E2E testing documentation, 
 | TESTING_STRATEGY.md               | Vision, failure taxonomy, testing pyramid   | Immutable principles                     |
 | e2e-test-runner-design.md         | Architecture, interfaces, specifications    | Single source of truth for specs         |
 | guide-dependencies-design.md      | Guide metadata schema, dependency semantics | Source of truth for guide-level metadata |
-| MILESTONES.md                     | Implementation tasks, acceptance criteria   | References design doc for specs          |
-| L3-phase1-verification-results.md | Historical findings                         | Archived - findings merged into design   |
 
 ### Guide failure ownership model
 
