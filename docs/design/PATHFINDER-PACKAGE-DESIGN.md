@@ -94,11 +94,11 @@ interactive-tutorials/
 
 ### Files in a package
 
-| File           | Required | Owner                                  | Contains                                           |
-| -------------- | -------- | -------------------------------------- | -------------------------------------------------- |
-| `content.json` | Yes      | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`           |
+| File            | Required | Owner                                  | Contains                                           |
+| --------------- | -------- | -------------------------------------- | -------------------------------------------------- |
+| `content.json`  | Yes      | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`           |
 | `manifest.json` | No       | Product, enablement, recommender teams | Flat metadata, dependency fields, `targeting`      |
-| `assets/`      | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources |
+| `assets/`       | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources |
 
 For backwards compatibility, bare files (`welcome-to-grafana.json`) continue to work. The directory convention is adopted for new guides and migrated incrementally.
 
@@ -116,14 +116,14 @@ We adopt the same principle. A Pathfinder package separates metadata (`manifest.
 
 As the content corpus grows toward 100-200+ guides, different systems consume package data for different purposes. No single consumer needs the full merged artifact:
 
-| Consumer                    | Reads          | Why                                                                    |
-| --------------------------- | -------------- | ---------------------------------------------------------------------- |
-| Pathfinder plugin           | `content.json` | Renders blocks in the sidebar; metadata is irrelevant                  |
+| Consumer                    | Reads           | Why                                                                    |
+| --------------------------- | --------------- | ---------------------------------------------------------------------- |
+| Pathfinder plugin           | `content.json`  | Renders blocks in the sidebar; metadata is irrelevant                  |
 | Recommender (`build-index`) | `manifest.json` | Needs `targeting.match` and `description`; blocks are irrelevant       |
 | Learning path engine        | `manifest.json` | Needs `dependencies` for DAG traversal; blocks are irrelevant          |
 | LMS / catalog search        | `manifest.json` | Searches by title, category, difficulty, author; blocks are irrelevant |
-| E2E test runner             | Both           | Needs blocks to execute and `testEnvironment` for routing              |
-| CLI validator               | Both           | Cross-validates content structure and package metadata                 |
+| E2E test runner             | Both            | Needs blocks to execute and `testEnvironment` for routing              |
+| CLI validator               | Both            | Cross-validates content structure and package metadata                 |
 
 Separating the files means each consumer can parse only the file it needs. A recommender indexing 200 packages reads 200 small `manifest.json` files rather than 200 large `content.json` files that include potentially hundreds of content blocks each.
 
@@ -131,9 +131,9 @@ Separating the files means each consumer can parse only the file it needs. A rec
 
 Different roles own different concerns:
 
-| Role                  | Edits          | Tool                                        |
-| --------------------- | -------------- | ------------------------------------------- |
-| Tech writers          | `content.json` | Block editor                                |
+| Role                  | Edits           | Tool                                        |
+| --------------------- | --------------- | ------------------------------------------- |
+| Tech writers          | `content.json`  | Block editor                                |
 | Enablement / product  | `manifest.json` | Text editor, CLI, or future metadata editor |
 | Recommender engineers | `manifest.json` | Text editor or recommender tooling          |
 | Content architects    | `manifest.json` | Text editor, dependency graph tools         |
@@ -600,13 +600,13 @@ The version bumps from `"1.0.0"` to `"1.1.0"`:
 
 ### Default values
 
-| Field          | Default when absent                                                                          |
-| -------------- | -------------------------------------------------------------------------------------------- |
+| Field           | Default when absent                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------- |
 | `manifest.json` | No package metadata (standalone guide with content only)                                     |
-| `repository`   | `"interactive-tutorials"`                                                                    |
-| `language`     | `"en"`                                                                                       |
-| `targeting`    | No targeting (not recommended contextually; only reachable via direct link or learning path) |
-| `assets/`      | No assets                                                                                    |
+| `repository`    | `"interactive-tutorials"`                                                                    |
+| `language`      | `"en"`                                                                                       |
+| `targeting`     | No targeting (not recommended contextually; only reachable via direct link or learning path) |
+| `assets/`       | No assets                                                                                    |
 
 ### Migration path
 
@@ -739,8 +739,8 @@ Package-level validation adds checks that single-file validation cannot perform:
 | ----------------------------- | --------------------------------------------------------------------------------------- |
 | Directory structure           | Package directory contains `content.json`                                               |
 | ID consistency (directory)    | `content.json` `id` matches directory name                                              |
-| ID consistency (cross-file)   | `manifest.json` `id` matches `content.json` `id` (when both present)                     |
-| Manifest.json structure        | `manifest.json` passes `ManifestJsonSchema` validation (when present)                     |
+| ID consistency (cross-file)   | `manifest.json` `id` matches `content.json` `id` (when both present)                    |
+| Manifest.json structure       | `manifest.json` passes `ManifestJsonSchema` validation (when present)                   |
 | Dependency resolution (local) | All same-repo `depends`/`recommends` reference guide IDs that exist in the tree         |
 | Circular dependency detection | No cycles in the dependency graph                                                       |
 | Capability coverage           | Every `depends` target either exists as a guide ID or is `provides`-d by some guide     |
@@ -817,11 +817,11 @@ The package format is designed to be the **output target** for a future SCORM im
 | SCORM concept              | Package equivalent                    |
 | -------------------------- | ------------------------------------- |
 | Package (ZIP)              | Package directory                     |
-| `imsmanifest.xml` metadata | `manifest.json`                        |
+| `imsmanifest.xml` metadata | `manifest.json`                       |
 | Organization tree          | Multiple packages linked by `depends` |
 | SCO (interactive content)  | `content.json` with content blocks    |
 | Asset (static content)     | `assets/` directory within package    |
-| Prerequisites              | `manifest.json` → `depends`            |
+| Prerequisites              | `manifest.json` → `depends`           |
 | Sequencing (forward-only)  | Linear `depends` chain                |
 
 The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `manifest.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure.
@@ -886,7 +886,7 @@ A flat `testEnvironment` field will be added to `manifest.json` when Layer 4 E2E
 | Version | Scope                                                                                           |
 | ------- | ----------------------------------------------------------------------------------------------- |
 | `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`               |
-| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory         |
+| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory        |
 | `1.2.0` | Future: adds `type`, `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment` |
 | `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                                 |
 
@@ -1057,15 +1057,15 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 
 ### Summary
 
-| Phase                | Effort    | Unlocks                                            |
-| -------------------- | --------- | -------------------------------------------------- |
+| Phase                | Effort    | Unlocks                                             |
+| -------------------- | --------- | --------------------------------------------------- |
 | 0: Schema            | 1-2 weeks | Everything — `content.json` + `manifest.json` model |
-| 1: CLI               | 2-3 weeks | CI validation, cross-file checks, dependency graph |
-| 2: Pilot             | 1-2 weeks | Proof-of-concept, runtime validation               |
-| 3: Learning journeys | 2-3 weeks | User-visible value, docs partner alignment         |
-| 4: Test environment  | 2-3 weeks | Layer 4 E2E routing                                |
-| 5: SCORM foundation  | 3-4 weeks | SCORM import readiness, `type` discriminator       |
-| 6+: SCORM import     | 15+ weeks | Full SCORM conversion pipeline                     |
+| 1: CLI               | 2-3 weeks | CI validation, cross-file checks, dependency graph  |
+| 2: Pilot             | 1-2 weeks | Proof-of-concept, runtime validation                |
+| 3: Learning journeys | 2-3 weeks | User-visible value, docs partner alignment          |
+| 4: Test environment  | 2-3 weeks | Layer 4 E2E routing                                 |
+| 5: SCORM foundation  | 3-4 weeks | SCORM import readiness, `type` discriminator        |
+| 6+: SCORM import     | 15+ weeks | Full SCORM conversion pipeline                      |
 
 Total for Phases 0-4 (core package model): **8-12 weeks**. Delivers a fully functional package system serving learning journeys, E2E testing, and content lifecycle management — before any SCORM work begins.
 
@@ -1075,28 +1075,28 @@ Total for Phases 0-4 (core package model): **8-12 weeks**. Delivers a fully func
 
 Decisions made during the design discussion, with rationale.
 
-| #   | Decision                                                         | Rationale                                                                                                                                                                                                                                                                                                                                                    |
-| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D1  | Packages are directories containing `content.json`               | Natural extension point for assets, sidecars; aligns with SCORM decomposition                                                                                                                                                                                                                                                                                |
-| D2  | Identity: `repository` token + `id`, FQI = `repository/id`       | Follows Debian model; repository is a token, not a URL; resolution is external                                                                                                                                                                                                                                                                               |
-| D3  | Default repository: `"interactive-tutorials"`                    | Backwards compat for all existing guides                                                                                                                                                                                                                                                                                                                     |
-| D4  | Bare ID references resolve within same repository                | Concise same-repo references; cross-repo uses FQI                                                                                                                                                                                                                                                                                                            |
-| D5  | Namespacing from Phase 1                                         | Avoids collision risk as multi-repo becomes real; semantic IDs over UUIDs                                                                                                                                                                                                                                                                                    |
-| D6  | Single `category` string                                         | Aligns with docs team taxonomy; multi-category deferred                                                                                                                                                                                                                                                                                                      |
-| D7  | `targeting.match` follows recommender's MatchExpr grammar        | Package suggests, recommender decides; loosely validated to avoid coupling                                                                                                                                                                                                                                                                                   |
-| D8  | Learning paths: both curated and derived                         | `paths.json` is editorial; dependency graph is structural; both coexist                                                                                                                                                                                                                                                                                      |
-| D9  | Multi-repo; resolution deferred                                  | Packages across repos is a known requirement; resolution mechanism is future work                                                                                                                                                                                                                                                                            |
-| D10 | Grafana-first, extensible for non-Grafana                        | No gold-plating for SCORM; open extensibility is the goal                                                                                                                                                                                                                                                                                                    |
-| D11 | `build-index` deferred                                           | Recommender currently uses separately maintained `index.json`; future CLI command                                                                                                                                                                                                                                                                            |
-| D12 | Vet metadata field names against standards                       | Cross-reference Dublin Core / IEEE LOM / SCORM before finalizing names                                                                                                                                                                                                                                                                                       |
-| D13 | Schema version `"1.1.0"` for package extension                   | Backward-compatible addition; minor version bump per semver                                                                                                                                                                                                                                                                                                  |
-| D14 | Separate `content.json` (content) from `manifest.json` (metadata) | Follows Debian `control`/`data` separation. Multiple consumers (plugin, recommender, LMS, E2E runner) each need different data; separate files avoid full-parsing a large unified file. Block editor stays focused on content; metadata is managed by different roles with different tools. Eliminates merge conflicts between content and metadata changes. |
-| D15 | Optional `assets/` directory for non-JSON resources              | Aligns with SCORM asset packaging. Images, diagrams, and supplementary files live alongside content. Asset resolution deferred but convention established now.                                                                                                                                                                                               |
-| D16 | Flat metadata and dependency fields in `manifest.json`            | Follows Debian `control` file convention where all fields are peers at the same level. Reduces nesting depth, simplifies authoring and validation. Namespace collision risk is acceptable given the bounded, standards-aligned field inventory (see [namespace collision note](#namespace-collision-note)).                                                  |
-| D17 | CNF OR syntax for dependency lists (nested arrays)               | Maps directly to Debian's comma + pipe semantics (`A \| B, C` → `[["A", "B"], "C"]`). Outer array = AND, inner array = OR. Backwards compatible: existing `["A", "B"]` (all strings) retains AND semantics. No string parsing required; fully validatable with Zod.                                                                                          |
-| D18 | Default `language` to `"en"`                                     | All existing content is English. Explicit default avoids mandatory boilerplate while preserving the field for future i18n and SCORM import.                                                                                                                                                                                                                  |
-| D19 | Defer `estimatedDuration` and `difficulty` to Phase 2+           | No compelling MVP consumer for either field. No UI component displays them; no recommender logic consumes them. Field names are vetted against IEEE LOM now to avoid future renames. Will be needed if SCORM import or recommendation ranking arrives.                                                                                                       |
-| D20 | Metadata file named `manifest.json`, not `package.json`          | Avoids collision with Node.js `package.json`, which would cause friction with npm, IDEs, GitHub dependency graphs, and toolchain root detection across 100-200+ guide directories. `manifest.json` is semantically accurate (the file is a manifest of identity, metadata, dependencies, and targeting), parallels SCORM's `imsmanifest.xml`, is familiar to web developers (PWA/extension manifests), and survives the Phase 5 `type` expansion (a manifest for a course is still a manifest). No major toolchain claims this filename. |
+| #   | Decision                                                          | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Packages are directories containing `content.json`                | Natural extension point for assets, sidecars; aligns with SCORM decomposition                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D2  | Identity: `repository` token + `id`, FQI = `repository/id`        | Follows Debian model; repository is a token, not a URL; resolution is external                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| D3  | Default repository: `"interactive-tutorials"`                     | Backwards compat for all existing guides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| D4  | Bare ID references resolve within same repository                 | Concise same-repo references; cross-repo uses FQI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D5  | Namespacing from Phase 1                                          | Avoids collision risk as multi-repo becomes real; semantic IDs over UUIDs                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D6  | Single `category` string                                          | Aligns with docs team taxonomy; multi-category deferred                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D7  | `targeting.match` follows recommender's MatchExpr grammar         | Package suggests, recommender decides; loosely validated to avoid coupling                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D8  | Learning paths: both curated and derived                          | `paths.json` is editorial; dependency graph is structural; both coexist                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D9  | Multi-repo; resolution deferred                                   | Packages across repos is a known requirement; resolution mechanism is future work                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D10 | Grafana-first, extensible for non-Grafana                         | No gold-plating for SCORM; open extensibility is the goal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D11 | `build-index` deferred                                            | Recommender currently uses separately maintained `index.json`; future CLI command                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D12 | Vet metadata field names against standards                        | Cross-reference Dublin Core / IEEE LOM / SCORM before finalizing names                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| D13 | Schema version `"1.1.0"` for package extension                    | Backward-compatible addition; minor version bump per semver                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| D14 | Separate `content.json` (content) from `manifest.json` (metadata) | Follows Debian `control`/`data` separation. Multiple consumers (plugin, recommender, LMS, E2E runner) each need different data; separate files avoid full-parsing a large unified file. Block editor stays focused on content; metadata is managed by different roles with different tools. Eliminates merge conflicts between content and metadata changes.                                                                                                                                                                             |
+| D15 | Optional `assets/` directory for non-JSON resources               | Aligns with SCORM asset packaging. Images, diagrams, and supplementary files live alongside content. Asset resolution deferred but convention established now.                                                                                                                                                                                                                                                                                                                                                                           |
+| D16 | Flat metadata and dependency fields in `manifest.json`            | Follows Debian `control` file convention where all fields are peers at the same level. Reduces nesting depth, simplifies authoring and validation. Namespace collision risk is acceptable given the bounded, standards-aligned field inventory (see [namespace collision note](#namespace-collision-note)).                                                                                                                                                                                                                              |
+| D17 | CNF OR syntax for dependency lists (nested arrays)                | Maps directly to Debian's comma + pipe semantics (`A \| B, C` → `[["A", "B"], "C"]`). Outer array = AND, inner array = OR. Backwards compatible: existing `["A", "B"]` (all strings) retains AND semantics. No string parsing required; fully validatable with Zod.                                                                                                                                                                                                                                                                      |
+| D18 | Default `language` to `"en"`                                      | All existing content is English. Explicit default avoids mandatory boilerplate while preserving the field for future i18n and SCORM import.                                                                                                                                                                                                                                                                                                                                                                                              |
+| D19 | Defer `estimatedDuration` and `difficulty` to Phase 2+            | No compelling MVP consumer for either field. No UI component displays them; no recommender logic consumes them. Field names are vetted against IEEE LOM now to avoid future renames. Will be needed if SCORM import or recommendation ranking arrives.                                                                                                                                                                                                                                                                                   |
+| D20 | Metadata file named `manifest.json`, not `package.json`           | Avoids collision with Node.js `package.json`, which would cause friction with npm, IDEs, GitHub dependency graphs, and toolchain root detection across 100-200+ guide directories. `manifest.json` is semantically accurate (the file is a manifest of identity, metadata, dependencies, and targeting), parallels SCORM's `imsmanifest.xml`, is familiar to web developers (PWA/extension manifests), and survives the Phase 5 `type` expansion (a manifest for a course is still a manifest). No major toolchain claims this filename. |
 
 ---
 
