@@ -11,10 +11,10 @@ import { z } from 'zod';
  * Recursively collect all errors from union branches, then find the best one.
  * Prefers enum/value errors as they're most actionable.
  */
-function findActionableError(errors: z.ZodIssue[][]): z.ZodIssue | null {
-  const allErrors: z.ZodIssue[] = [];
+function findActionableError(errors: z.core.$ZodIssue[][]): z.core.$ZodIssue | null {
+  const allErrors: z.core.$ZodIssue[] = [];
 
-  function collect(errorBranches: z.ZodIssue[][]): void {
+  function collect(errorBranches: z.core.$ZodIssue[][]): void {
     for (const branchErrors of errorBranches) {
       for (const issue of branchErrors) {
         allErrors.push(issue);
@@ -56,7 +56,7 @@ function findActionableError(errors: z.ZodIssue[][]): z.ZodIssue | null {
 /**
  * Format an error with expected values shown clearly.
  */
-function formatError(issue: z.ZodIssue): string {
+function formatError(issue: z.core.$ZodIssue): string {
   const path = issue.path || [];
   const fieldName = path.length > 0 ? String(path[path.length - 1]) : 'value';
 
@@ -74,7 +74,7 @@ function formatError(issue: z.ZodIssue): string {
  * Custom error map for Zod validation.
  * Replaces generic "Invalid input" messages with specific field errors.
  */
-export const customErrorMap = (issue: z.ZodIssue): { message: string } | undefined => {
+export const customErrorMap: z.core.$ZodErrorMap = (issue) => {
   // Only handle union errors - everything else gets default messages
   if (issue.code === 'invalid_union' && 'errors' in issue) {
     const actionableError = findActionableError((issue as any).errors);

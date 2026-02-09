@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { Box, Button, Icon, Input, Select, useStyles2, RadioButtonGroup } from '@grafana/ui';
+import { Box, Button, Icon, Input, Combobox, useStyles2, RadioButtonGroup, type ComboboxOption } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getPrTesterStyles } from './pr-tester.styles';
 import { fetchPrContentFilesFromUrl, isValidPrUrl, type PrContentFile } from './github-api';
@@ -237,7 +237,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
   }, [files, userSelectedFile]);
 
   // Build select options from files
-  const fileOptions: Array<SelectableValue<string>> = useMemo(
+  const fileOptions: Array<ComboboxOption<string>> = useMemo(
     () =>
       files.map((file) => ({
         value: file.directoryName,
@@ -415,10 +415,8 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
   }, []);
 
   // Handle file selection change
-  const handleFileSelect = useCallback((option: SelectableValue<string>) => {
-    if (option.value) {
-      setUserSelectedFile(option.value);
-    }
+  const handleFileSelect = useCallback((option: ComboboxOption<string>) => {
+    setUserSelectedFile(option.value);
   }, []);
 
   // Handle test mode change
@@ -528,20 +526,10 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
       {hasFetched && hasMultipleFiles && testMode === 'single' && (
         <div className={styles.selectContainer}>
           <label className={styles.label}>Guide to test</label>
-          <Select
+          <Combobox
             options={fileOptions}
-            value={fileOptions.find((o) => o.value === selectedFile)}
+            value={selectedFile}
             onChange={handleFileSelect}
-            formatOptionLabel={(option) => (
-              <span>
-                {option.label}
-                {option.description && (
-                  <span className={getStatusClass(option.description as PrContentFile['status'])}>
-                    {option.description}
-                  </span>
-                )}
-              </span>
-            )}
           />
         </div>
       )}

@@ -1,7 +1,6 @@
 /**
  * Guide Validation Module
  */
-import { z } from 'zod';
 import type { JsonGuide } from '../types/json-guide.types';
 import { JsonGuideSchema } from '../types/json-guide.schema';
 import {
@@ -48,14 +47,7 @@ function conditionIssueToWarning(issue: ConditionIssue): ValidationWarning {
 
 export function validateGuide(data: unknown, options: ValidationOptions = {}): ValidationResult {
   // 1. Zod parse - validates structure, types, nesting depth and use a custom error map for better messages
-  const previousErrorMap = z.getErrorMap?.();
-  z.setErrorMap(customErrorMap as any); // Type assertion needed for Zod v4 compatibility
-
-  const result = JsonGuideSchema.safeParse(data);
-
-  if (previousErrorMap) {
-    z.setErrorMap(previousErrorMap);
-  }
+  const result = JsonGuideSchema.safeParse(data, { error: customErrorMap });
 
   if (!result.success) {
     return { isValid: false, errors: formatZodErrors(result.error.issues), warnings: [], guide: null };

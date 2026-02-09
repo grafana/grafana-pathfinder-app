@@ -6,8 +6,8 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, IconButton, useStyles2, Menu, Dropdown, Switch, Select, Input } from '@grafana/ui';
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
+import { Button, Field, IconButton, useStyles2, Menu, Dropdown, Switch, Combobox, Input, type ComboboxOption } from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -20,7 +20,7 @@ import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonMarkdownBlock } from '../../../types/json-guide.types';
 
 /** Assistant content type options */
-const ASSISTANT_TYPE_OPTIONS: Array<SelectableValue<'query' | 'config' | 'code' | 'text'>> = [
+const ASSISTANT_TYPE_OPTIONS: Array<ComboboxOption<'query' | 'config' | 'code' | 'text'>> = [
   { value: 'query', label: 'Query', description: 'PromQL, LogQL, or other query languages' },
   { value: 'config', label: 'Configuration', description: 'Configuration values or settings' },
   { value: 'code', label: 'Code', description: 'Code snippets' },
@@ -669,10 +669,10 @@ code block
             </Field>
 
             <Field label="Content type" description="Type of content being customized (affects AI prompts)">
-              <Select
+              <Combobox
                 options={ASSISTANT_TYPE_OPTIONS}
-                value={ASSISTANT_TYPE_OPTIONS.find((o) => o.value === assistantType)}
-                onChange={(option) => option.value && setAssistantType(option.value)}
+                value={assistantType}
+                onChange={(option) => setAssistantType(option.value)}
               />
             </Field>
           </>

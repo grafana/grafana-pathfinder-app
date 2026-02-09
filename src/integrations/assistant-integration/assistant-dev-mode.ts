@@ -152,9 +152,3 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
     reset,
   };
 };
-
-/**
- * @deprecated Use useMockInlineAssistant() instead - this is kept for backward compatibility
- * but should be replaced with the hook version
- */
-export const getMockInlineAssistantResult = useMockInlineAssistant;

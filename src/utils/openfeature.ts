@@ -122,19 +122,6 @@ export const featureFlagTrackingKeys = Object.fromEntries(
 export { pathfinderFeatureFlags };
 
 // ============================================================================
-// BACKWARDS COMPATIBILITY - Legacy constants
-// ============================================================================
-
-/**
- * @deprecated Use FeatureFlagName type and flag names directly instead
- * Legacy feature flag keys - kept for backwards compatibility
- */
-export const FeatureFlags = {
-  AUTO_OPEN_SIDEBAR_ON_LAUNCH: 'pathfinder.auto-open-sidebar' as const,
-  EXPERIMENT_VARIANT: 'pathfinder.experiment-variant' as const,
-} as const;
-
-// ============================================================================
 // OPENFEATURE CONFIGURATION
 // ============================================================================
 
@@ -297,7 +284,7 @@ export async function evaluateFeatureFlag<T extends FeatureFlagName>(flagName: T
  * @returns The evaluated flag value or default
  *
  * @example
- * const shouldAutoOpen = getFeatureFlagValue(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
+ * const shouldAutoOpen = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
  */
 export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): boolean => {
   try {
@@ -319,7 +306,7 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
  * @returns The evaluated flag value or default
  *
  * @example
- * const variant = getStringFlagValue(FeatureFlags.EXPERIMENT_VARIANT, 'a');
+ * const variant = getStringFlagValue('pathfinder.experiment-variant', 'a');
  */
 export const getStringFlagValue = (flagName: string, defaultValue: string): string => {
   try {
@@ -341,7 +328,7 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
  * @returns The experiment configuration or DEFAULT_EXPERIMENT_CONFIG on error
  *
  * @example
- * const config = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+ * const config = getExperimentConfig('pathfinder.experiment-variant');
  * if (config.variant === 'treatment') {
  *   // Auto-open on config.pages
  * }

@@ -52,7 +52,6 @@ export {
   getIsAssistantAvailable,
   getOpenAssistant,
   useMockInlineAssistant,
-  getMockInlineAssistantResult,
 } from './assistant-dev-mode';
 
 // Custom tools for inline assistant

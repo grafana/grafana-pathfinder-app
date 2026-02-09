@@ -7,8 +7,8 @@
 
 import React, { useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { css } from '@emotion/css';
-import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Select } from '@grafana/ui';
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
+import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Combobox, type ComboboxOption } from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
 import { getDataSourceSrv } from '@grafana/runtime';
 import { useGuideResponsesOptional } from '../../../lib/GuideResponseContext';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
@@ -92,7 +92,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * Get datasource options from the DataSourceSrv.
  * Uses the modern synchronous API instead of the deprecated /api/datasources endpoint.
  */
-function getDatasourceOptions(filter?: string): Array<SelectableValue<string>> {
+function getDatasourceOptions(filter?: string): Array<ComboboxOption<string>> {
   try {
     const datasourceSrv = getDataSourceSrv();
     const datasources = datasourceSrv.getList();
@@ -240,7 +240,7 @@ export function InputBlock({
   }, []);
 
   // Handle datasource selection change
-  const handleDatasourceChange = useCallback((option: SelectableValue<string>) => {
+  const handleDatasourceChange = useCallback((option: ComboboxOption<string> | null) => {
     setDatasourceValue(option?.value ?? null);
     setIsSaved(false);
     setValidationError(null);
@@ -426,9 +426,9 @@ export function InputBlock({
         return (
           <div className={styles.selectContainer}>
             <Field label="" invalid={!!validationError} error={validationError}>
-              <Select
+              <Combobox
                 options={datasourceOptions}
-                value={datasourceOptions.find((opt) => opt.value === datasourceValue)}
+                value={datasourceValue}
                 onChange={handleDatasourceChange}
                 placeholder={placeholder || 'Select a data source...'}
                 isClearable

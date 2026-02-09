@@ -9,5 +9,4 @@ export {
   setMockFeatureFlag,
   clearMockFeatureFlags,
   getMockFeatureFlag,
-  createOpenFeatureMock,
 } from './openfeature-mock';

@@ -5,7 +5,7 @@
  * Complex error message improvements are handled by the custom error map.
  */
 
-import type { ZodIssue } from 'zod';
+import { z } from 'zod';
 
 export interface ValidationError {
   message: string;
@@ -29,7 +29,7 @@ export function formatPath(path: Array<string | number>): string {
     .replace(/^\./, '');
 }
 
-export function formatZodErrors(issues: ZodIssue[]): ValidationError[] {
+export function formatZodErrors(issues: z.core.$ZodIssue[]): ValidationError[] {
   return issues.map((issue) => {
     // Zod paths are PropertyKey[] but for JSON data they are always string | number
     const path = issue.path as Array<string | number>;
