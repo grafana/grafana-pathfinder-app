@@ -55,6 +55,11 @@ export interface InteractiveQuizProps {
 // Counter for generating unique quiz IDs
 let quizCounter = 0;
 
+/** Reset the anonymous quiz counter (called by resetInteractiveCounters). */
+export function resetQuizCounter(): void {
+  quizCounter = 0;
+}
+
 export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   question,
   choices,
