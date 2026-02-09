@@ -38,24 +38,18 @@ The following files are important sources of information:
 5. `.cursor/rules/multistepActions.mdc` - Multi-step component design and implementation
 6. `.cursor/rules/frontend-security.mdc` - Security rules for frontend code (ALWAYS apply)
 7. `.cursor/rules/instructions.mdc` - Agent behavior, commands, and workflow patterns
-8. `.cursor/rules/react-antipatterns.mdc` - React anti-patterns to check during reviews (R1-R15)
+8. `.cursor/rules/react-antipatterns.mdc` - React anti-patterns and SRE reliability patterns (R1-R21), also used by `/attack`
 9. `docs/developer/E2E_TESTING_CONTRACT.md` - the interactive system exposes its state via **data-test-\* attributes** which serve as a stable contract for both the interactive system itself and E2E testing.
 
 ## PR Reviews
 
-When reviewing a pull request, follow the comprehensive guidelines in:
+Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. It contains a compact detection table covering all concern areas (React anti-patterns R1-R21, security F1-F6, and quality heuristics QC1-QC7) with a pointer to the detailed reference file.
 
-- **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** - Complete PR review checklist
+**Tiered rule architecture:**
 
-This guide instructs you to:
-
-1. Conduct a **Principal Engineer level** review focused on long-term code health
-2. Apply **security rules** from `frontend-security.mdc` (F1-F6)
-3. Apply **React anti-pattern checks** from `react-antipatterns.mdc` (R1-R15)
-4. Evaluate **testability, modularity, and maintainability**
-5. Watch for **vibe coding smells**: large components, God objects, duplicated logic
-6. Check for **code duplication** and failure to reuse existing patterns
-7. Verify the change follows established **repo conventions**
+- **Tier 1 (always loaded)**: `frontend-security.mdc` — security rules F1-F6
+- **Tier 1 (on `/review`)**: `pr-review.md` — compact orchestrator with unified detection table
+- **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` — detailed Do/Don't for R1-R21 (includes hooks, state, performance, and SRE reliability patterns; also used by `/attack`)
 
 ## Local development commands
 
