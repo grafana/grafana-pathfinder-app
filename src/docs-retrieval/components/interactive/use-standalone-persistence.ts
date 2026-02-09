@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
 import { getContentKey } from './get-content-key';
@@ -9,6 +9,20 @@ import { getTotalDocumentSteps } from './interactive-section';
  * Keeps storage keys consistent and separate from real sections.
  */
 export const STANDALONE_SECTION_ID = '__standalone__';
+
+/**
+ * Promise queue to serialize standalone persistence operations.
+ * Prevents race conditions when multiple steps complete simultaneously.
+ */
+let persistenceQueue = Promise.resolve();
+
+/**
+ * Queues a persistence operation to run after all previous operations complete.
+ * This prevents read-modify-write races on shared storage.
+ */
+function queuePersistence(operation: () => Promise<void>): void {
+  persistenceQueue = persistenceQueue.then(operation, operation);
+}
 
 /**
  * Provides persistence for standalone interactive steps (not inside a section).
@@ -34,7 +48,8 @@ export function useStandalonePersistence(
   _totalSteps: number | undefined
 ): void {
   const isStandalone = !onStepComplete;
-  const hasRestoredRef = useRef(false);
+  // REACT: use state instead of ref to trigger re-renders (Bug Fix: c83d6abe-5bfa-408c-ad6d-b0281235f65d)
+  const [hasRestored, setHasRestored] = useState(false);
 
   // Restore completion state from storage on mount
   useEffect(() => {
@@ -47,32 +62,34 @@ export function useStandalonePersistence(
       if (restored.has(renderedStepId)) {
         setIsLocallyCompleted(true);
       }
-      hasRestoredRef.current = true;
+      setHasRestored(true);
     });
   }, [renderedStepId, isStandalone, setIsLocallyCompleted]);
 
   // Persist completion state changes (after initial restore completes)
   useEffect(() => {
-    if (!isStandalone || !hasRestoredRef.current) {
+    if (!isStandalone || !hasRestored) {
       return;
     }
 
-    const contentKey = getContentKey();
-    interactiveStepStorage.getCompleted(contentKey, STANDALONE_SECTION_ID).then((existing) => {
+    // REACT: serialize persistence operations to prevent race conditions (Bug Fix: ref1_b6d1eb3a-e58b-416b-b8de-133c6aa1b276)
+    queuePersistence(async () => {
+      const contentKey = getContentKey();
+      const existing = await interactiveStepStorage.getCompleted(contentKey, STANDALONE_SECTION_ID);
       const updated = new Set(existing);
       if (isLocallyCompleted) {
         updated.add(renderedStepId);
       } else {
         updated.delete(renderedStepId);
       }
-      interactiveStepStorage.setCompleted(contentKey, STANDALONE_SECTION_ID, updated);
+      await interactiveStepStorage.setCompleted(contentKey, STANDALONE_SECTION_ID, updated);
 
       // Compute unified completion percentage across ALL sections (including standalone)
       const docTotal = getTotalDocumentSteps();
       const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
       const percentage = docTotal > 0 ? Math.round((allCompleted / docTotal) * 100) : undefined;
       if (percentage !== undefined) {
-        interactiveCompletionStorage.set(contentKey, percentage);
+        await interactiveCompletionStorage.set(contentKey, percentage);
       }
 
       // Dispatch progress event (mirrors InteractiveSection behavior)
@@ -84,5 +101,5 @@ export function useStandalonePersistence(
         );
       }
     });
-  }, [isLocallyCompleted, isStandalone, renderedStepId]);
+  }, [isLocallyCompleted, isStandalone, renderedStepId, hasRestored]);
 }
