@@ -4,9 +4,9 @@ import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements, ActionMonitor } from '../../../interactive-engine';
 import { useStepChecker } from '../../../requirements-manager';
-import { InteractiveStep } from './interactive-step';
-import { InteractiveMultiStep } from './interactive-multi-step';
-import { InteractiveGuided } from './interactive-guided';
+import { InteractiveStep, resetStepCounter } from './interactive-step';
+import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
+import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
 import { InteractiveQuiz } from './interactive-quiz';
 import {
   reportAppInteraction,
@@ -29,9 +29,17 @@ import { getContentKey } from './get-content-key';
 let interactiveSectionCounter = 0;
 
 // Global registry to track all steps across all sections in the document
-const globalStepRegistry: Map<string, number> = new Map(); // sectionId -> number of steps
+interface StepRegistryEntry {
+  stepCount: number;
+  /** Explicit document-order index used to sort entries when computing offsets.
+   *  Entries with lower documentOrder appear first (get lower step offsets). */
+  documentOrder: number;
+}
+const globalStepRegistry: Map<string, StepRegistryEntry> = new Map();
 let totalDocumentSteps = 0;
 let documentStepOffsets: Map<string, number> = new Map(); // sectionId -> starting offset
+/** Auto-incrementing fallback for entries registered without an explicit documentOrder. */
+let autoDocumentOrder = 0;
 
 // Function to reset counters (can be called when new content loads)
 export function resetInteractiveCounters() {
@@ -39,21 +47,42 @@ export function resetInteractiveCounters() {
   globalStepRegistry.clear();
   totalDocumentSteps = 0;
   documentStepOffsets.clear();
+  autoDocumentOrder = 0;
+  // Reset anonymous step ID counters across all step types
+  resetStepCounter();
+  resetMultiStepCounter();
+  resetGuidedCounter();
 }
 
 // Register a section's steps in the global registry (idempotent)
-export function registerSectionSteps(sectionId: string, stepCount: number): { offset: number; total: number } {
-  // Update this section's step count
-  globalStepRegistry.set(sectionId, stepCount);
+//
+// `documentOrder` controls how entries are sorted when computing step offsets.
+// ContentProcessor pre-registers ALL entries (sections + standalone) in visual
+// document order *before* children render. When InteractiveSection later re-registers
+// the same sectionId (to update the step count), the original documentOrder is
+// preserved — only the count is updated.
+//
+// Fallback: if no documentOrder is provided and no prior registration exists,
+// an auto-incrementing counter is used so the behaviour degrades gracefully to
+// registration order.
+export function registerSectionSteps(
+  sectionId: string,
+  stepCount: number,
+  documentOrder?: number
+): { offset: number; total: number } {
+  const existing = globalStepRegistry.get(sectionId);
+  // Prefer explicit order → existing order → auto-increment fallback
+  const order = documentOrder ?? existing?.documentOrder ?? autoDocumentOrder++;
+  globalStepRegistry.set(sectionId, { stepCount, documentOrder: order });
 
-  // Recalculate total and offsets from scratch to ensure consistency
-  // This handles re-registration (re-renders) and multiple sections correctly
-  // Use Map's insertion order (document order) instead of sorting alphabetically
+  // Sort entries by documentOrder, then recompute offsets from scratch
+  const sorted = Array.from(globalStepRegistry.entries()).sort(([, a], [, b]) => a.documentOrder - b.documentOrder);
+
   let runningTotal = 0;
-
-  for (const [secId, count] of globalStepRegistry.entries()) {
+  documentStepOffsets.clear();
+  for (const [secId, entry] of sorted) {
     documentStepOffsets.set(secId, runningTotal);
-    runningTotal += count;
+    runningTotal += entry.stepCount;
   }
 
   totalDocumentSteps = runningTotal;

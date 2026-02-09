@@ -469,21 +469,61 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     return undefined;
   }, [parseResult]);
 
-  // Count standalone interactive elements for analytics position tracking.
-  // Elements inside sections are tracked by InteractiveSection; only top-level steps need this.
-  // Computed before early returns to satisfy React hooks rules (useMemo must not be conditional).
-  const totalStandaloneSteps =
-    parseResult.isValid && parseResult.data ? countStandaloneInteractiveSteps(parseResult.data.elements) : 0;
-
-  // Register standalone steps in the global step registry so that
-  // totalDocumentSteps includes BOTH section steps and standalone steps.
-  // This runs in useMemo (before children render) to match InteractiveSection's pattern.
-
-  useMemo(() => {
-    if (totalStandaloneSteps > 0) {
-      registerSectionSteps(STANDALONE_SECTION_ID, totalStandaloneSteps);
+  // Pre-register ALL interactive entries (sections + standalone steps) in visual
+  // document order. This runs before children render (parent useMemo executes first)
+  // so that getDocumentStepPosition returns correct offsets during this render.
+  //
+  // Without explicit documentOrder, the global registry would use Map insertion
+  // order — and because this parent useMemo always fires before child useMemos,
+  // standalone steps would always get offset 0 regardless of their actual position
+  // in the document.
+  //
+  // For sections, we predict the sectionId (matching InteractiveSection's logic)
+  // and count steps from the parsed tree. When InteractiveSection later re-registers
+  // the same sectionId, only the stepCount is updated; the documentOrder is preserved.
+  //
+  // Known limitation: interleaved standalone steps (standalone steps between
+  // different sections) are grouped into a single registry entry positioned at the
+  // first standalone step's document location. Fully interleaved numbering would
+  // require splitting into per-position groups — acceptable trade-off for now.
+  const documentLayout: DocumentLayoutInfo = useMemo(() => {
+    if (!parseResult.isValid || !parseResult.data) {
+      return { standaloneGroupMap: new Map(), totalStandaloneSteps: 0 };
     }
-  }, [totalStandaloneSteps]);
+
+    const elements = parseResult.data.elements;
+    let docOrder = 0;
+    let sectionCounter = 0; // Simulates interactiveSectionCounter (reset at top of ContentProcessor)
+    let standaloneCount = 0;
+    let standaloneDocOrder: number | null = null;
+    const groupMap = new Map<number, StandaloneGroupInfo>();
+
+    elements.forEach((el, idx) => {
+      if (el.type === 'interactive-section') {
+        // Predict sectionId using the same logic as InteractiveSection's useMemo:
+        // prefer the explicit HTML id prop, otherwise use the sequential counter.
+        const sectionId = el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`;
+        const stepCount = countStepsInSection(el);
+        registerSectionSteps(sectionId, stepCount, docOrder);
+        docOrder++;
+      } else if (isInteractiveStepElement(el)) {
+        // First standalone step reserves a document-order slot for the group
+        if (standaloneDocOrder === null) {
+          standaloneDocOrder = docOrder;
+          docOrder++;
+        }
+        groupMap.set(idx, { groupId: STANDALONE_SECTION_ID, indexInGroup: standaloneCount });
+        standaloneCount++;
+      }
+    });
+
+    // Register standalone group with correct document order
+    if (standaloneCount > 0 && standaloneDocOrder !== null) {
+      registerSectionSteps(STANDALONE_SECTION_ID, standaloneCount, standaloneDocOrder);
+    }
+
+    return { standaloneGroupMap: groupMap, totalStandaloneSteps: standaloneCount };
+  }, [parseResult]);
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
@@ -578,22 +618,12 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     );
   }
 
-  let standaloneStepCounter = 0;
-
   return (
     <div ref={ref}>
       {parsedContent.elements.map((element, index) => {
-        // Compute position for standalone interactive elements (guides without sections)
-        const isStandalone =
-          totalStandaloneSteps > 0 && element.type !== 'interactive-section' && isInteractiveStepElement(element);
-        // Use getDocumentStepPosition for document-wide position (includes section step offsets)
-        const stepPosition = isStandalone
-          ? (() => {
-              const pos = getDocumentStepPosition(STANDALONE_SECTION_ID, standaloneStepCounter);
-              standaloneStepCounter++;
-              return pos;
-            })()
-          : undefined;
+        // Look up standalone step position from precomputed document layout
+        const groupInfo = documentLayout.standaloneGroupMap.get(index);
+        const stepPosition = groupInfo ? getDocumentStepPosition(groupInfo.groupId, groupInfo.indexInGroup) : undefined;
         return renderParsedElement(element, `element-${index}`, baseUrl, responses, stepPosition);
       })}
     </div>
@@ -717,15 +747,19 @@ interface StandaloneStepPosition {
 }
 
 /**
- * Set of ParsedElement types that represent interactive steps.
- * These are the types that need step position tracking for analytics.
+ * Set of ParsedElement types that represent completable interactive steps.
+ * These are the types that track completion state, use persistence hooks,
+ * and receive stepIndex/totalSteps props for position tracking.
+ *
+ * Note: input-block is intentionally excluded — it doesn't track completion,
+ * doesn't use useStandalonePersistence, and would inflate the total step count
+ * making 100% completion impossible.
  */
 const INTERACTIVE_STEP_TYPES = new Set([
   'interactive-step',
   'interactive-multi-step',
   'interactive-guided',
   'quiz-block',
-  'input-block',
 ]);
 
 /**
@@ -746,17 +780,52 @@ function isInteractiveStepElement(element: ParsedElement): boolean {
 }
 
 /**
- * Count standalone interactive step elements in a top-level elements array.
- * Skips elements inside interactive-section (sections handle their own tracking).
+ * Step types tracked by InteractiveSection as "steps" in its stepComponents array.
+ * Must stay in sync with InteractiveSection's React.Children.forEach extraction logic.
+ * Note: input-block is NOT tracked by InteractiveSection as a section step.
  */
-function countStandaloneInteractiveSteps(elements: ParsedElement[]): number {
-  return elements.reduce((count, el) => {
-    // Skip sections - they handle their own step tracking
-    if (el.type === 'interactive-section') {
+const SECTION_TRACKED_STEP_TYPES = new Set([
+  'interactive-step',
+  'interactive-multi-step',
+  'interactive-guided',
+  'quiz-block',
+]);
+
+/**
+ * Count the number of steps inside a parsed interactive-section element.
+ * Mirrors InteractiveSection's stepComponents extraction: only counts direct
+ * children of the tracked step types (not wrapped children like assistant-block-wrapper).
+ */
+function countStepsInSection(element: ParsedElement): number {
+  if (!element.children) {
+    return 0;
+  }
+  return element.children.reduce((count, child) => {
+    if (typeof child === 'string') {
       return count;
     }
-    return count + (isInteractiveStepElement(el) ? 1 : 0);
+    const childEl = child as ParsedElement;
+    return count + (SECTION_TRACKED_STEP_TYPES.has(childEl.type) ? 1 : 0);
   }, 0);
+}
+
+/**
+ * Layout information for standalone steps, computed once during document layout
+ * analysis. Maps element indices to their registry group and position within group.
+ */
+interface StandaloneGroupInfo {
+  groupId: string;
+  indexInGroup: number;
+}
+
+/**
+ * Document layout information computed from the parsed element tree.
+ * Used to pre-register all interactive entries in correct document order
+ * and to look up standalone step positions during rendering.
+ */
+interface DocumentLayoutInfo {
+  standaloneGroupMap: Map<number, StandaloneGroupInfo>;
+  totalStandaloneSteps: number;
 }
 
 function renderParsedElement(

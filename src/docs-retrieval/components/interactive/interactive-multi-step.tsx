@@ -17,6 +17,11 @@ import { useStandalonePersistence } from './use-standalone-persistence';
 
 let anonymousMultiStepCounter = 0;
 
+/** Reset the anonymous multi-step counter (called by resetInteractiveCounters). */
+export function resetMultiStepCounter(): void {
+  anonymousMultiStepCounter = 0;
+}
+
 interface InteractiveMultiStepProps {
   internalActions: InternalAction[];
 

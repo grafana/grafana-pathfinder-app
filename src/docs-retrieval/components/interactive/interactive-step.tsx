@@ -134,6 +134,11 @@ const mapDatasourceTypeToLanguage = (datasourceType: string | null): string => {
 
 let anonymousStepCounter = 0;
 
+/** Reset the anonymous step counter (called by resetInteractiveCounters). */
+export function resetStepCounter(): void {
+  anonymousStepCounter = 0;
+}
+
 export const InteractiveStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },
   InteractiveStepProps

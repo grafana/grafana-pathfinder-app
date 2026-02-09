@@ -36,7 +36,13 @@ export function useStandalonePersistence(
   const isStandalone = !onStepComplete;
   const hasRestoredRef = useRef(false);
 
-  // Restore completion state from storage on mount
+  // Reset restore guard when the step ID changes so the persist effect
+  // doesn't run with stale state before the new restore completes.
+  useEffect(() => {
+    hasRestoredRef.current = false;
+  }, [renderedStepId]);
+
+  // Restore completion state from storage on mount (and when step ID changes)
   useEffect(() => {
     if (!isStandalone) {
       return;
@@ -50,9 +56,9 @@ export function useStandalonePersistence(
       if (!isMounted) {
         return;
       }
-      if (restored.has(renderedStepId)) {
-        setIsLocallyCompleted(true);
-      }
+      // Set completion state based on storage — explicitly reset to false when
+      // the step is not found, preventing stale state from a previous step ID.
+      setIsLocallyCompleted(restored.has(renderedStepId));
       hasRestoredRef.current = true;
     });
 

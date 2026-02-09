@@ -77,6 +77,11 @@ function SafeHTML({ html, className }: { html: string; className?: string }) {
 
 let anonymousGuidedCounter = 0;
 
+/** Reset the anonymous guided step counter (called by resetInteractiveCounters). */
+export function resetGuidedCounter(): void {
+  anonymousGuidedCounter = 0;
+}
+
 interface InteractiveGuidedProps {
   internalActions: GuidedAction[];
 
