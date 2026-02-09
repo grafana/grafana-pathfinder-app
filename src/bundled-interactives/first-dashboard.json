@@ -28,7 +28,6 @@
           "type": "multistep",
           "content": "Select the **TestData** data source to work with sample data.",
           "requirements": ["on-page:/explore"],
-          "objectives": ["has-datasource:testdata"],
           "steps": [
             {
               "action": "highlight",

@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.4.12
+
+### Added
+
+- **E2E testing contract**: Added `data-test-*` attributes for step state, action type, and substep progress to enable stable E2E testing of interactive and guided blocks (#540)
+- **E2E CLI guided block support**: Expanded E2E CLI runner with guided block discovery tests, timeout calculations, and `data-reftarget` attributes (#544)
+- **E2E guide test runner documentation**: Added developer documentation for the CLI-based E2E test runner (#533)
+- **Default requirements suggester**: Block editor now auto-suggests default requirements when creating interactive steps (#537)
+
+### Fixed
+
+- **Datasource type matching**: `has-datasource` checks now match plugin types with `grafana-` prefix and `-datasource` suffix (e.g., `has-datasource:testdata` matches `grafana-testdata-datasource`), fixing section auto-completion in the cloud first-dashboard tutorial
+- **Collapsed options group expansion**: Interactive steps targeting elements inside collapsed Grafana panel editor options groups now detect the collapsed state and offer a "Fix this" action to expand them
+
+### Changed
+
+- **Improved validation error messages**: Better error messages for nested union fields in guide validation with custom error map (#542)
+- **StorageKeys refactor**: Extracted storage keys into a standalone module to remove browser dependency, improving testability (#538)
+- **Comprehensive documentation refresh**: Major rewrite of developer documentation with strategic context, integration maps, security context, and developer workflows (#543)
+- **Lint deprecation cleanup**: Resolved lint warnings by updating deprecated APIs across 30 files (#547)
+
+### Chore
+
+- Updated dependency webpack to v5.104.1 (security) (#541)
+- Updated dependency sass-loader to v16.0.7 (#546)
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v6.1.0 (#539)
+- Updated grafana/plugin-actions digest to 09d9424 (#536)
+- Updated packages and added jest-dom type declarations
+- Updated agent configuration to use `test:ci` script (#535)
+
 ## 1.4.11
 
 ### Fixed

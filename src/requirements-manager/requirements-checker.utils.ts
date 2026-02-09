@@ -479,7 +479,8 @@ async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
     let found = false;
     let matchType = '';
 
-    // Check for exact matches in name or type
+    // Check for exact matches in name or type, then normalized type
+    // Type normalization strips common prefixes/suffixes (e.g. grafana-testdata-datasource → testdata)
     for (const ds of dataSources) {
       if (ds.name.toLowerCase() === dsRequirement) {
         found = true;
@@ -489,6 +490,15 @@ async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
       if (ds.type.toLowerCase() === dsRequirement) {
         found = true;
         matchType = 'type';
+        break;
+      }
+      const normalizedType = ds.type
+        .toLowerCase()
+        .replace(/^grafana-/, '')
+        .replace(/-datasource$/, '');
+      if (normalizedType === dsRequirement) {
+        found = true;
+        matchType = 'type-normalized';
         break;
       }
     }
@@ -1209,9 +1219,17 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
     // Find the specific data source to test
     let targetDataSource = null;
 
-    // Check for exact matches in name or type (same logic as hasDataSourceCheck)
+    // Check for exact matches in name or type, then normalized type (same logic as hasDataSourceCheck)
     for (const ds of dataSources) {
       if (ds.name.toLowerCase() === dsRequirement || ds.type.toLowerCase() === dsRequirement) {
+        targetDataSource = ds;
+        break;
+      }
+      const normalizedType = ds.type
+        .toLowerCase()
+        .replace(/^grafana-/, '')
+        .replace(/-datasource$/, '');
+      if (normalizedType === dsRequirement) {
         targetDataSource = ds;
         break;
       }
