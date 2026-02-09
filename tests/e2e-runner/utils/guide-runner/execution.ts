@@ -5,7 +5,7 @@
  * Implements step execution with proper timing, artifact collection,
  * and session validation per the E2E Test Runner design.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md
+ * @see docs/design/e2e-test-runner-design.md
  */
 
 import { Page, expect } from '@playwright/test';
