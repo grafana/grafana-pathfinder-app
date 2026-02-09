@@ -248,12 +248,12 @@ We apply dependency principles to guides:
 
 ## Implementation Status
 
-| Layer            | Status         | Implementation                                                              |
-| :--------------- | :------------- | :-------------------------------------------------------------------------- |
-| Layer 1 (Static) | ✅ Complete    | [`src/validation/`](../../src/validation/)                                     |
-| Layer 2 (Unit)   | ✅ Complete    | Existing Jest test suite                                                    |
+| Layer            | Status         | Implementation                                            |
+| :--------------- | :------------- | :-------------------------------------------------------- |
+| Layer 1 (Static) | ✅ Complete    | [`src/validation/`](../../src/validation/)                |
+| Layer 2 (Unit)   | ✅ Complete    | Existing Jest test suite                                  |
 | Layer 3 (E2E)    | 🚧 In Progress | See [E2E Test Runner Design](./e2e-test-runner-design.md) |
-| Layer 4 (Live)   | ⏳ Future      | Requires Layer 3 completion                                                 |
+| Layer 4 (Live)   | ⏳ Future      | Requires Layer 3 completion                               |
 
 ---
 

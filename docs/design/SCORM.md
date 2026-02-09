@@ -39,15 +39,15 @@ SCORM (Sharable Content Object Reference Model) is a set of technical standards 
 
 ### Versions
 
-| Feature | SCORM 1.2 (2001) | SCORM 2004 4th Ed. (2009) |
-|---------|-------------------|---------------------------|
-| Packaging | ZIP + `imsmanifest.xml` | ZIP + `imsmanifest.xml` |
-| Content model | SCOs + Assets | SCOs + Assets |
-| Sequencing | None (LMS decides) | Full sequencing & navigation rules |
-| Suspend data | 4,096 characters | 64,000 characters |
-| Interaction tracking | Limited | Full interaction model (10 types) |
-| Navigation control | LMS-controlled | Content-author-controlled |
-| Adoption | Most widely deployed | More capable but less adopted |
+| Feature              | SCORM 1.2 (2001)        | SCORM 2004 4th Ed. (2009)          |
+| -------------------- | ----------------------- | ---------------------------------- |
+| Packaging            | ZIP + `imsmanifest.xml` | ZIP + `imsmanifest.xml`            |
+| Content model        | SCOs + Assets           | SCOs + Assets                      |
+| Sequencing           | None (LMS decides)      | Full sequencing & navigation rules |
+| Suspend data         | 4,096 characters        | 64,000 characters                  |
+| Interaction tracking | Limited                 | Full interaction model (10 types)  |
+| Navigation control   | LMS-controlled          | Content-author-controlled          |
+| Adoption             | Most widely deployed    | More capable but less adopted      |
 
 ### Package Structure
 
@@ -76,6 +76,7 @@ my-course.zip
 The manifest contains four major sections:
 
 **1. Metadata** — IEEE Learning Object Metadata (LOM):
+
 - Title, description, keywords, language
 - Author, publisher, rights/licensing
 - Difficulty level, typical learning time
@@ -83,6 +84,7 @@ The manifest contains four major sections:
 - Technical requirements
 
 **2. Organizations** — Hierarchical activity tree:
+
 ```xml
 <organizations default="org-1">
   <organization identifier="org-1">
@@ -106,10 +108,12 @@ The manifest contains four major sections:
 Items can nest arbitrarily deep. Parent items are containers (clusters); leaf items reference actual content (SCOs or Assets). A single package can contain multiple organizations presenting the same content in different arrangements.
 
 **3. Resources** — Content files, classified as:
+
 - **SCOs** (Sharable Content Objects): Interactive HTML/JS that communicates with the LMS via the SCORM Runtime API
 - **Assets**: Static files (images, CSS, PDFs) that don't communicate with the LMS
 
 **4. Sequencing** (SCORM 2004 only):
+
 - Pre-condition rules (gates access based on prior activity)
 - Post-condition rules (determines what happens after completion)
 - Exit condition rules (evaluates on learner exit)
@@ -120,34 +124,34 @@ Items can nest arbitrarily deep. Parent items are containers (clusters); leaf it
 
 SCORM's JavaScript API (`LMSInitialize`, `LMSSetValue`, `LMSGetValue`, etc.) enables SCOs to report learner state to the LMS:
 
-| Data Element | Description |
-|-------------|-------------|
-| `cmi.completion_status` | incomplete, completed, not attempted |
-| `cmi.success_status` | passed, failed, unknown |
-| `cmi.score.raw/min/max/scaled` | Numeric scores with configurable ranges |
-| `cmi.objectives.n.*` | Named learning objectives with individual satisfaction and scores |
-| `cmi.interactions.n.*` | Per-question tracking (type, response, result, latency, weighting) |
-| `cmi.suspend_data` | Arbitrary state string for bookmark/resume |
-| `cmi.session_time` / `cmi.total_time` | Time tracking |
-| `cmi.learner_preference.*` | Audio level, language, delivery speed |
-| `cmi.launch_data` | Content-specific initialization data |
+| Data Element                          | Description                                                        |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `cmi.completion_status`               | incomplete, completed, not attempted                               |
+| `cmi.success_status`                  | passed, failed, unknown                                            |
+| `cmi.score.raw/min/max/scaled`        | Numeric scores with configurable ranges                            |
+| `cmi.objectives.n.*`                  | Named learning objectives with individual satisfaction and scores  |
+| `cmi.interactions.n.*`                | Per-question tracking (type, response, result, latency, weighting) |
+| `cmi.suspend_data`                    | Arbitrary state string for bookmark/resume                         |
+| `cmi.session_time` / `cmi.total_time` | Time tracking                                                      |
+| `cmi.learner_preference.*`            | Audio level, language, delivery speed                              |
+| `cmi.launch_data`                     | Content-specific initialization data                               |
 
 ### SCORM Interaction Types (Assessment)
 
 SCORM defines 10 interaction types for tracking learner responses:
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `true_false` | Boolean response | "Is the sky blue?" → true |
-| `choice` | Single or multiple choice | Select A, B, C, or D |
-| `fill_in` | Short text entry | "The capital of France is ___" |
-| `long_fill_in` | Extended text entry | Essay or paragraph response |
-| `matching` | Pair related items | Match terms to definitions |
-| `performance` | Simulation or demonstration | Complete a task in a simulated environment |
-| `sequencing` | Order items correctly | Arrange steps in the right order |
-| `likert` | Scale-based response | Rate 1-5: "I found this helpful" |
-| `numeric` | Numerical value entry | "What is 7 × 8?" → 56 |
-| `other` | Catch-all for custom types | Vendor-specific interactions |
+| Type           | Description                 | Example                                    |
+| -------------- | --------------------------- | ------------------------------------------ |
+| `true_false`   | Boolean response            | "Is the sky blue?" → true                  |
+| `choice`       | Single or multiple choice   | Select A, B, C, or D                       |
+| `fill_in`      | Short text entry            | "The capital of France is \_\_\_"          |
+| `long_fill_in` | Extended text entry         | Essay or paragraph response                |
+| `matching`     | Pair related items          | Match terms to definitions                 |
+| `performance`  | Simulation or demonstration | Complete a task in a simulated environment |
+| `sequencing`   | Order items correctly       | Arrange steps in the right order           |
+| `likert`       | Scale-based response        | Rate 1-5: "I found this helpful"           |
+| `numeric`      | Numerical value entry       | "What is 7 × 8?" → 56                      |
+| `other`        | Catch-all for custom types  | Vendor-specific interactions               |
 
 ---
 
@@ -168,12 +172,12 @@ Pathfinder guides are JSON files with this root structure:
 
 ### Block Types (12)
 
-| Category | Block Types | Purpose |
-|----------|-------------|---------|
-| Content | `markdown`, `html`, `image`, `video` | Static instructional content |
-| Interactive | `interactive`, `multistep`, `guided` | Drive actions in the live Grafana UI |
-| Structural | `section`, `conditional`, `assistant` | Grouping, branching, AI customization |
-| Assessment | `quiz`, `input` | Knowledge checks, user input collection |
+| Category    | Block Types                           | Purpose                                 |
+| ----------- | ------------------------------------- | --------------------------------------- |
+| Content     | `markdown`, `html`, `image`, `video`  | Static instructional content            |
+| Interactive | `interactive`, `multistep`, `guided`  | Drive actions in the live Grafana UI    |
+| Structural  | `section`, `conditional`, `assistant` | Grouping, branching, AI customization   |
+| Assessment  | `quiz`, `input`                       | Knowledge checks, user input collection |
 
 ### Evolving Package Model
 
@@ -213,6 +217,7 @@ This model directly parallels how SCORM organizations decompose courses into pre
 ### Web Display Mode
 
 When displayed on the web (outside Grafana), interactive features are disabled. The rendering degrades to narrative text:
+
 - `interactive` blocks → descriptive text ("Click the Dashboards button in the navigation menu")
 - `multistep` blocks → numbered step descriptions
 - `guided` blocks → instructional text
@@ -228,63 +233,63 @@ This web display mode is important for SCORM import: imported content would natu
 
 ### Package-Level Mapping
 
-| SCORM Concept | Pathfinder Equivalent | Notes |
-|---------------|----------------------|-------|
-| ZIP package | Guide package (JSON + assets) | SCORM is a ZIP; Pathfinder is evolving toward a package model |
-| `imsmanifest.xml` | Guide `dependencies` field + proposed metadata | Manifest metadata maps to package metadata |
-| Organization (activity tree) | Array of guides linked by `depends`/`recommends` | One SCORM organization → multiple interrelated Pathfinder packages |
-| Item (cluster) | Guide package that `depends` on child guides | Parent items become container guides |
-| Item (leaf) | Individual guide package | Leaf items become standalone guides |
-| SCO (interactive content) | Guide with content blocks (no interactive blocks when imported) | SCO interactivity is lost; content text is preserved |
-| Asset (static content) | `image`, `video` blocks; package assets | Direct mapping |
-| Multiple organizations | Multiple dependency trees over the same guide pool | Same guides, different `depends` chains |
+| SCORM Concept                | Pathfinder Equivalent                                           | Notes                                                              |
+| ---------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------ |
+| ZIP package                  | Guide package (JSON + assets)                                   | SCORM is a ZIP; Pathfinder is evolving toward a package model      |
+| `imsmanifest.xml`            | Guide `dependencies` field + proposed metadata                  | Manifest metadata maps to package metadata                         |
+| Organization (activity tree) | Array of guides linked by `depends`/`recommends`                | One SCORM organization → multiple interrelated Pathfinder packages |
+| Item (cluster)               | Guide package that `depends` on child guides                    | Parent items become container guides                               |
+| Item (leaf)                  | Individual guide package                                        | Leaf items become standalone guides                                |
+| SCO (interactive content)    | Guide with content blocks (no interactive blocks when imported) | SCO interactivity is lost; content text is preserved               |
+| Asset (static content)       | `image`, `video` blocks; package assets                         | Direct mapping                                                     |
+| Multiple organizations       | Multiple dependency trees over the same guide pool              | Same guides, different `depends` chains                            |
 
 ### Content-Level Mapping
 
-| SCORM Content | Pathfinder Block | Translation Fidelity |
-|---------------|-----------------|---------------------|
-| HTML instructional pages | `markdown` blocks (via HTML-to-Markdown) or `html` blocks | High — text, headings, lists, tables, code all convert well |
-| Embedded images | `image` block | Direct mapping |
-| Embedded video | `video` block | Direct for standard video; custom players won't translate |
-| Multiple choice questions | `quiz` block (`choices[]`, `multiSelect: false`) | Direct mapping |
-| True/false questions | `quiz` block with 2 boolean choices | Direct mapping |
-| Multi-select questions | `quiz` block (`multiSelect: true`) | Direct mapping |
-| Fill-in-the-blank | `input` block (`inputType: "text"`, `pattern` for validation) | Partial — collects text but assessment semantics differ |
-| Long-form text | `input` block (`inputType: "text"`) | Text is collected but not auto-graded |
-| Matching questions | **No equivalent** | **Gap** |
-| Sequencing/ordering | **No equivalent** | **Gap** |
-| Likert scale | **No equivalent** | **Gap** |
-| Numeric response | `input` block with regex `pattern` | Partial |
-| Drag-and-drop / performance | **No equivalent** | **Gap** |
+| SCORM Content               | Pathfinder Block                                              | Translation Fidelity                                        |
+| --------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
+| HTML instructional pages    | `markdown` blocks (via HTML-to-Markdown) or `html` blocks     | High — text, headings, lists, tables, code all convert well |
+| Embedded images             | `image` block                                                 | Direct mapping                                              |
+| Embedded video              | `video` block                                                 | Direct for standard video; custom players won't translate   |
+| Multiple choice questions   | `quiz` block (`choices[]`, `multiSelect: false`)              | Direct mapping                                              |
+| True/false questions        | `quiz` block with 2 boolean choices                           | Direct mapping                                              |
+| Multi-select questions      | `quiz` block (`multiSelect: true`)                            | Direct mapping                                              |
+| Fill-in-the-blank           | `input` block (`inputType: "text"`, `pattern` for validation) | Partial — collects text but assessment semantics differ     |
+| Long-form text              | `input` block (`inputType: "text"`)                           | Text is collected but not auto-graded                       |
+| Matching questions          | **No equivalent**                                             | **Gap**                                                     |
+| Sequencing/ordering         | **No equivalent**                                             | **Gap**                                                     |
+| Likert scale                | **No equivalent**                                             | **Gap**                                                     |
+| Numeric response            | `input` block with regex `pattern`                            | Partial                                                     |
+| Drag-and-drop / performance | **No equivalent**                                             | **Gap**                                                     |
 
 ### Metadata Mapping
 
-| SCORM Metadata (LOM) | Pathfinder Equivalent | Notes |
-|-----------------------|----------------------|-------|
-| Title | `title` field | Direct |
-| Description | Recommendation rule `description` | Direct |
-| Identifier | `id` field | Direct |
-| Keywords | **No equivalent — proposed: `metadata.keywords`** | Gap |
-| Language | **No equivalent — proposed: `metadata.language`** | Gap |
-| Author | **No equivalent — proposed: `metadata.author`** | Gap |
-| Difficulty | **No equivalent — proposed: `metadata.difficulty`** | Gap |
-| Typical learning time | **No equivalent — proposed: `metadata.duration`** | Gap |
-| Rights / licensing | **No equivalent — proposed: `metadata.rights`** | Gap |
-| Educational context | **No equivalent — proposed: `metadata.context`** | Gap |
-| Technical requirements | `dependencies.testEnvironment` | Partial — test env metadata is close but Grafana-specific |
-| Prerequisites | `dependencies.depends` | Good match via Debian model |
+| SCORM Metadata (LOM)   | Pathfinder Equivalent                               | Notes                                                     |
+| ---------------------- | --------------------------------------------------- | --------------------------------------------------------- |
+| Title                  | `title` field                                       | Direct                                                    |
+| Description            | Recommendation rule `description`                   | Direct                                                    |
+| Identifier             | `id` field                                          | Direct                                                    |
+| Keywords               | **No equivalent — proposed: `metadata.keywords`**   | Gap                                                       |
+| Language               | **No equivalent — proposed: `metadata.language`**   | Gap                                                       |
+| Author                 | **No equivalent — proposed: `metadata.author`**     | Gap                                                       |
+| Difficulty             | **No equivalent — proposed: `metadata.difficulty`** | Gap                                                       |
+| Typical learning time  | **No equivalent — proposed: `metadata.duration`**   | Gap                                                       |
+| Rights / licensing     | **No equivalent — proposed: `metadata.rights`**     | Gap                                                       |
+| Educational context    | **No equivalent — proposed: `metadata.context`**    | Gap                                                       |
+| Technical requirements | `dependencies.testEnvironment`                      | Partial — test env metadata is close but Grafana-specific |
+| Prerequisites          | `dependencies.depends`                              | Good match via Debian model                               |
 
 ### Sequencing Mapping
 
-| SCORM Sequencing | Pathfinder Equivalent | Notes |
-|------------------|----------------------|-------|
-| Linear (forward-only) | `depends` chain: A → B → C | Natural mapping via ordered dependencies |
-| Choice (any order) | `recommends` or no dependency | Guides available without hard prerequisite |
-| Pre-condition rules | `depends` + `conflicts` | Simplified but functionally similar |
-| Post-condition rules | **No equivalent** | Gap — no "on completion, do X" trigger |
-| Rollup rules | **No equivalent** | Gap — no automatic state aggregation from child to parent |
-| Attempt limits | **No equivalent** | Gap |
-| Weighted scoring | **No equivalent** | Gap |
+| SCORM Sequencing      | Pathfinder Equivalent         | Notes                                                     |
+| --------------------- | ----------------------------- | --------------------------------------------------------- |
+| Linear (forward-only) | `depends` chain: A → B → C    | Natural mapping via ordered dependencies                  |
+| Choice (any order)    | `recommends` or no dependency | Guides available without hard prerequisite                |
+| Pre-condition rules   | `depends` + `conflicts`       | Simplified but functionally similar                       |
+| Post-condition rules  | **No equivalent**             | Gap — no "on completion, do X" trigger                    |
+| Rollup rules          | **No equivalent**             | Gap — no automatic state aggregation from child to parent |
+| Attempt limits        | **No equivalent**             | Gap                                                       |
+| Weighted scoring      | **No equivalent**             | Gap                                                       |
 
 ---
 
@@ -348,6 +353,7 @@ This is a natural extension of the evolving package model. The `source` sub-fiel
 **Impact on import**: A SCORM course with 3 modules of 5 lessons each would become 15 individual guides plus 3 module guides plus 1 course guide — but there is no formal entity representing "this is a course called Sales Training 101 containing these modules."
 
 **Proposed resolution**: Introduce a lightweight course/collection manifest — either:
+
 - **(A)** A special guide type (e.g., `"type": "course"`) whose `blocks` contain only `markdown` overview content and whose `dependencies.depends` defines the ordered module list
 - **(B)** A separate `collection.json` manifest that names a set of guides and their intended ordering
 
@@ -364,6 +370,7 @@ Option A is simpler and stays within the existing format; the "course guide" wou
 **Impact on import**: Matching, sequencing, Likert, and performance interactions cannot be faithfully translated. They would degrade to markdown descriptions or be dropped.
 
 **Proposed resolution (incremental)**:
+
 1. **Phase 1**: Degrade unsupported types to `markdown` blocks with the question text rendered as instructional content. Generate an import report flagging the degradation.
 2. **Phase 2**: Add new assessment block types as needed:
    - `matching` — pair items from two lists
@@ -386,6 +393,7 @@ These gaps result in information loss but don't block the import pipeline:
 **Impact on import**: All SCORM scoring data is lost. Imported quizzes function as knowledge checks without grades.
 
 **Proposed resolution**: Consider adding optional scoring metadata:
+
 ```json
 {
   "type": "quiz",
@@ -400,6 +408,7 @@ These gaps result in information loss but don't block the import pipeline:
 ```
 
 Guide-level scoring could aggregate block scores:
+
 ```json
 {
   "scoring": {
@@ -423,6 +432,7 @@ Guide-level scoring could aggregate block scores:
 **Impact on import**: Imported SCORM content loses all LMS integration. Organizations that require compliance tracking or completion certificates cannot use Pathfinder as a replacement.
 
 **Proposed resolution**: This is a large platform capability, not just a schema change. If Pathfinder evolves toward LMS-like features, it would need:
+
 - A completion tracking API
 - Persistent learner records
 - Reporting/analytics dashboard
@@ -453,6 +463,7 @@ More granular resume (within a guide) would require block-level state persistenc
 **Impact on import**: Complex SCORM sequencing logic (e.g., "complete 3 of 5 modules to pass") cannot be expressed. Simple linear ordering translates fine.
 
 **Proposed resolution**: The Debian dependency model already handles linear prerequisites. For more complex patterns:
+
 - `depends` with version/completion constraints: `"depends": [{"id": "module-1", "completion": "any-3-of-5"}]`
 - Or express rollup at the course/collection level
 
@@ -460,13 +471,13 @@ More granular resume (within a guide) would require block-level state persistenc
 
 ### Gaps That Are Acceptable (Won't Address)
 
-| Gap | Rationale |
-|-----|-----------|
-| **No live UI interaction for imported content** | SCORM content is self-contained HTML; it was never designed to drive Grafana's UI. Imported content is informational by nature. Web display mode handles this naturally. |
-| **No SCORM Runtime API emulation** | Pathfinder is not an LMS and should not become one. The import strips SCORM API calls from content. |
-| **No multiple organization support** | A single Pathfinder dependency tree per import is sufficient. If multiple organizations are needed, run the import once per organization. |
-| **No learner preference management** | SCORM's learner preferences (audio level, language, delivery speed) are presentation concerns. Pathfinder's rendering handles these differently. |
-| **Loss of custom JavaScript interactivity** | SCORM SCOs often contain vendor-specific JavaScript for animations, simulations, and custom UIs. This is opaque and cannot be automatically translated to any declarative format. The import report should flag JavaScript-heavy SCOs for manual review. |
+| Gap                                             | Rationale                                                                                                                                                                                                                                                |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No live UI interaction for imported content** | SCORM content is self-contained HTML; it was never designed to drive Grafana's UI. Imported content is informational by nature. Web display mode handles this naturally.                                                                                 |
+| **No SCORM Runtime API emulation**              | Pathfinder is not an LMS and should not become one. The import strips SCORM API calls from content.                                                                                                                                                      |
+| **No multiple organization support**            | A single Pathfinder dependency tree per import is sufficient. If multiple organizations are needed, run the import once per organization.                                                                                                                |
+| **No learner preference management**            | SCORM's learner preferences (audio level, language, delivery speed) are presentation concerns. Pathfinder's rendering handles these differently.                                                                                                         |
+| **Loss of custom JavaScript interactivity**     | SCORM SCOs often contain vendor-specific JavaScript for animations, simulations, and custom UIs. This is opaque and cannot be automatically translated to any declarative format. The import report should flag JavaScript-heavy SCOs for manual review. |
 
 ---
 
@@ -670,6 +681,7 @@ Dependency relationships:
 Extend the Pathfinder guide schema to support SCORM import needs. This work benefits the platform independently of SCORM import.
 
 **Deliverables:**
+
 - [ ] Add `metadata` field to guide schema (Dublin Core / LOM-compatible subset)
   - `description`, `keywords`, `language`, `author`, `difficulty`, `typicalLearningTime`, `rights`, `educationalContext`
   - `source` sub-field for provenance tracking (format, version, importedAt, originalIdentifier)
@@ -684,6 +696,7 @@ Extend the Pathfinder guide schema to support SCORM import needs. This work bene
 Build the core SCORM package parser. This is a standalone tool (CLI) that reads a SCORM ZIP and produces a structured intermediate representation.
 
 **Deliverables:**
+
 - [ ] SCORM ZIP extraction and validation
 - [ ] `imsmanifest.xml` parser (both SCORM 1.2 and 2004)
 - [ ] Organization tree extraction (items, hierarchy, resource references)
@@ -701,6 +714,7 @@ Build the core SCORM package parser. This is a standalone tool (CLI) that reads 
 Transform the intermediate representation into Pathfinder guide packages.
 
 **Deliverables:**
+
 - [ ] HTML-to-Markdown converter (using `turndown` or similar)
 - [ ] Image and video asset extraction with CDN upload manifest
 - [ ] Assessment-to-block transformer:
@@ -721,6 +735,7 @@ Transform the intermediate representation into Pathfinder guide packages.
 Integrate the import pipeline with the Pathfinder ecosystem.
 
 **Deliverables:**
+
 - [ ] Recommendation rule generation (`index.json` per package)
   - Auto-generate rules from SCORM metadata (keywords → URL matching, educational context → platform targeting)
 - [ ] CDN asset upload integration
@@ -735,6 +750,7 @@ Integrate the import pipeline with the Pathfinder ecosystem.
 Add new block types to improve SCORM assessment fidelity.
 
 **Deliverables:**
+
 - [ ] `matching` block type (pair items from two lists)
 - [ ] `ordering` block type (arrange items in correct sequence)
 - [ ] `scale` block type (Likert / numeric scale)
@@ -747,6 +763,7 @@ Add new block types to improve SCORM assessment fidelity.
 Add scoring and completion tracking to close the LMS capability gap. This is a significant platform investment.
 
 **Deliverables:**
+
 - [ ] Per-block scoring metadata (points, weight, objective)
 - [ ] Guide-level scoring aggregation (passing score, weighted objectives)
 - [ ] Completion state persistence (guide-level at minimum)
@@ -761,6 +778,7 @@ Add scoring and completion tracking to close the LMS capability gap. This is a s
 ### DC1: Imported Guides Have No Interactive Elements
 
 SCORM content is self-contained HTML. It was authored without knowledge of Grafana's DOM, selectors, or application state. Therefore:
+
 - Imported guides will have **zero** `interactive`, `multistep`, or `guided` blocks
 - Imported guides will have **no** `reftarget` fields, no `requirements` referencing application state, no `objectives` checking Grafana conditions
 - This is correct and expected — not a failure of the import
@@ -772,6 +790,7 @@ Authors may later enhance imported guides with Pathfinder-native interactive ele
 ### DC2: Lossy Translation Is Expected and Acceptable
 
 SCORM-to-Pathfinder is a **lossy translation** by design. The import report should clearly document what was lost and why. Acceptable losses include:
+
 - Custom JavaScript interactivity (opaque, cannot be translated)
 - SCORM Runtime API integration (Pathfinder is not an LMS)
 - Scoring and grading (unless Phase 5 is implemented)
@@ -824,6 +843,7 @@ This enables downstream tooling to identify imported content, track drift from t
 ### DC7: Security — HTML Sanitization
 
 SCORM packages can contain arbitrary HTML and JavaScript. Per the frontend security rules:
+
 - All HTML content extracted from SCOs **must** be sanitized with DOMPurify before being stored in `html` blocks
 - Prefer converting to `markdown` blocks where possible (inherently safe)
 - Strip all `<script>`, `<iframe>`, `<object>`, `<embed>`, `<applet>`, `<base>`, `<form>` tags
@@ -838,6 +858,7 @@ SCORM packages can contain arbitrary HTML and JavaScript. Per the frontend secur
 ### Q1: Where Does the Import Tool Live?
 
 Options:
+
 - **(A)** In `grafana-pathfinder-app` as a CLI tool (co-located with schema definitions)
 - **(B)** In `interactive-tutorials` as a content pipeline tool (co-located with output)
 - **(C)** In a new `pathfinder-scorm-import` repository
@@ -847,6 +868,7 @@ Recommendation: **(A)** — the tool depends heavily on the Zod schema for valid
 ### Q2: How to Handle Multi-Organization SCORM Packages?
 
 A single SCORM package can contain multiple `<organization>` elements presenting the same content in different structures. Options:
+
 - **(A)** Import only the default organization (simplest)
 - **(B)** Import each organization as a separate package tree (most complete)
 - **(C)** Let the user choose which organization to import via CLI flag
@@ -868,6 +890,7 @@ xAPI (Experience API, also known as Tin Can) is the modern successor to SCORM's 
 ### Q6: Interaction Between Import and the Recommendation Engine
 
 Imported SCORM content likely has no natural mapping to Grafana URL prefixes. Should the recommendation rules default to:
+
 - **(A)** No recommendation rules (content is discoverable only through course navigation)
 - **(B)** Broad rules based on SCORM metadata keywords (e.g., keyword "monitoring" → recommend on `/alerting` pages)
 - **(C)** Manual rule authoring required post-import
@@ -879,6 +902,7 @@ Recommendation: **(A)** by default, with **(B)** as an optional flag. Non-Grafan
 ## References
 
 ### SCORM Specifications
+
 - [SCORM Content Packaging](https://scorm.com/scorm-explained/technical-scorm/content-packaging)
 - [SCORM 2004 Manifest Structure](https://scorm.com/scorm-explained/technical-scorm/content-packaging/manifest-structure)
 - [SCORM Run-Time Reference Guide](https://scorm.com/scorm-explained/technical-scorm/run-time/run-time-reference/)
@@ -887,6 +911,7 @@ Recommendation: **(A)** by default, with **(B)** as an optional flag. Non-Grafan
 - [SCORM 2004 4th Edition RTE Data Model](https://lms.technology/for/scorm/2004/4th_edition/standards/SCORM_2004_4ED_v1_1_RTE_20090814_files/part100.htm)
 
 ### Pathfinder Platform
+
 - `context/assemblies/pathfinder.md` — Assembly architecture, flows, and glossary
 - `context/repos/interactive-tutorials.md` — Guide repository context
 - `context/repos/grafana-pathfinder-app.md` — Plugin context
@@ -899,6 +924,7 @@ Recommendation: **(A)** by default, with **(B)** as an optional flag. Non-Grafan
 - [Guide dependencies design](./guide-dependencies-design.md) — Debian dependency model for guides
 
 ### Related Standards
+
 - [Dublin Core Metadata](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/)
 - [IEEE LOM (Learning Object Metadata)](https://standards.ieee.org/ieee/1484.12.1/7699/)
 - [Debian Package Dependencies](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends)
