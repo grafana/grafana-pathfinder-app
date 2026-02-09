@@ -116,14 +116,14 @@ We adopt the same principle. A Pathfinder package separates metadata (`package.j
 
 As the content corpus grows toward 100-200+ guides, different systems consume package data for different purposes. No single consumer needs the full merged artifact:
 
-| Consumer                    | Reads          | Why                                                                       |
-| --------------------------- | -------------- | ------------------------------------------------------------------------- |
-| Pathfinder plugin           | `content.json` | Renders blocks in the sidebar; metadata is irrelevant                     |
-| Recommender (`build-index`) | `package.json` | Needs `targeting.match` and `description`; blocks are irrelevant          |
-| Learning path engine        | `package.json` | Needs `dependencies` for DAG traversal; blocks are irrelevant             |
-| LMS / catalog search        | `package.json` | Searches by title, category, difficulty, author; blocks are irrelevant    |
-| E2E test runner             | Both           | Needs blocks to execute and `testEnvironment` for routing                 |
-| CLI validator               | Both           | Cross-validates content structure and package metadata                    |
+| Consumer                    | Reads          | Why                                                                    |
+| --------------------------- | -------------- | ---------------------------------------------------------------------- |
+| Pathfinder plugin           | `content.json` | Renders blocks in the sidebar; metadata is irrelevant                  |
+| Recommender (`build-index`) | `package.json` | Needs `targeting.match` and `description`; blocks are irrelevant       |
+| Learning path engine        | `package.json` | Needs `dependencies` for DAG traversal; blocks are irrelevant          |
+| LMS / catalog search        | `package.json` | Searches by title, category, difficulty, author; blocks are irrelevant |
+| E2E test runner             | Both           | Needs blocks to execute and `testEnvironment` for routing              |
+| CLI validator               | Both           | Cross-validates content structure and package metadata                 |
 
 Separating the files means each consumer can parse only the file it needs. A recommender indexing 200 packages reads 200 small `package.json` files rather than 200 large `content.json` files that include potentially hundreds of content blocks each.
 
@@ -369,21 +369,21 @@ Metadata fields live in `package.json`, not in `content.json`. This keeps the bl
 
 ### Fields
 
-| Field         | Type                                  | Default  | Description                                                                                                                               |
-| ------------- | ------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `description` | `string`                              | —        | Full description for discoverability and display                                                                                          |
-| `language`    | `string`                              | `"en"`   | Content language ([BCP 47](https://www.rfc-editor.org/info/bcp47) tag, e.g., `"en"`, `"es"`, `"ja"`). Defaults to `"en"` when absent.    |
-| `category`    | `string`                              | —        | Content category for taxonomy alignment. Convention aligns with docs team taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`. |
-| `author`      | `{ name?: string; team?: string }`    | —        | Content author or owning team                                                                                                             |
+| Field         | Type                               | Default | Description                                                                                                                                      |
+| ------------- | ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `description` | `string`                           | —       | Full description for discoverability and display                                                                                                 |
+| `language`    | `string`                           | `"en"`  | Content language ([BCP 47](https://www.rfc-editor.org/info/bcp47) tag, e.g., `"en"`, `"es"`, `"ja"`). Defaults to `"en"` when absent.            |
+| `category`    | `string`                           | —       | Content category for taxonomy alignment. Convention aligns with docs team taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`. |
+| `author`      | `{ name?: string; team?: string }` | —       | Content author or owning team                                                                                                                    |
 
 ### Rationale for each field
 
-| Field         | Consumer                                            | Rationale                                                                |
-| ------------- | --------------------------------------------------- | ------------------------------------------------------------------------ |
-| `description` | Recommendations, web display, index.json generation | Consolidates `summary` from `index.json` into the package                |
-| `language`    | i18n, SCORM import, web display                     | Minimal overhead, critical for non-English content                       |
-| `category`    | Taxonomy, docs team alignment, recommendations      | Aligns with docs team's journey categories                               |
-| `author`      | Failure routing, attribution, provenance            | Testing strategy identifies ownership as critical for escalation         |
+| Field         | Consumer                                            | Rationale                                                        |
+| ------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
+| `description` | Recommendations, web display, index.json generation | Consolidates `summary` from `index.json` into the package        |
+| `language`    | i18n, SCORM import, web display                     | Minimal overhead, critical for non-English content               |
+| `category`    | Taxonomy, docs team alignment, recommendations      | Aligns with docs team's journey categories                       |
+| `author`      | Failure routing, attribution, provenance            | Testing strategy identifies ownership as critical for escalation |
 
 ### Namespace collision note
 
@@ -400,14 +400,14 @@ If the namespace ever becomes crowded (unlikely given the standards-aligned voca
 
 These fields are not in Phase 1 but the schema is designed to accept them as backward-compatible additions in future phases:
 
-| Field                | Phase       | Reason to defer                                                                                                       |
-| -------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| Field                | Phase       | Reason to defer                                                                                                      |
+| -------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | `estimatedDuration`  | Phase 2+    | No compelling MVP consumer. Format TBD (ISO 8601 duration vs. SCORM `typicalLearningTime`). Needed if SCORM arrives. |
-| `difficulty`         | Phase 2+    | No MVP consumer for filtering or display. Useful for SCORM import and future recommendation ranking.                  |
-| `keywords`           | Phase 2+    | No consumer yet; recommendations use URL-based rules                                                                  |
-| `rights`             | SCORM phase | Only needed for imported content with licensing                                                                        |
-| `source`             | SCORM phase | Provenance tracking for imported content                                                                              |
-| `educationalContext` | SCORM phase | Educational context classification                                                                                    |
+| `difficulty`         | Phase 2+    | No MVP consumer for filtering or display. Useful for SCORM import and future recommendation ranking.                 |
+| `keywords`           | Phase 2+    | No consumer yet; recommendations use URL-based rules                                                                 |
+| `rights`             | SCORM phase | Only needed for imported content with licensing                                                                      |
+| `source`             | SCORM phase | Provenance tracking for imported content                                                                             |
+| `educationalContext` | SCORM phase | Educational context classification                                                                                   |
 
 ---
 
@@ -444,21 +444,18 @@ All references use FQI format (`"repository/id"`) for cross-repo or bare `id` fo
 
 Dependency lists use **conjunctive normal form** (CNF): the outer array is AND, inner arrays are OR. This maps directly to Debian's established syntax where commas separate AND-clauses and pipes separate OR-alternatives.
 
-| JSON                                        | Meaning                          | Debian equivalent       |
-| ------------------------------------------- | -------------------------------- | ----------------------- |
-| `["A", "B"]`                                | A **and** B                      | `A, B`                  |
-| `[["A", "B"]]`                              | A **or** B                       | `A \| B`                |
-| `[["A", "B"], "C"]`                         | (A **or** B) **and** C           | `A \| B, C`             |
-| `["A", ["B", "C"], "D"]`                    | A **and** (B **or** C) **and** D | `A, B \| C, D`          |
+| JSON                     | Meaning                          | Debian equivalent |
+| ------------------------ | -------------------------------- | ----------------- |
+| `["A", "B"]`             | A **and** B                      | `A, B`            |
+| `[["A", "B"]]`           | A **or** B                       | `A \| B`          |
+| `[["A", "B"], "C"]`      | (A **or** B) **and** C           | `A \| B, C`       |
+| `["A", ["B", "C"], "D"]` | A **and** (B **or** C) **and** D | `A, B \| C, D`    |
 
 **Example** — a guide that requires completion of `welcome-to-grafana` AND either `prometheus-grafana-101` or `loki-grafana-101`:
 
 ```json
 {
-  "depends": [
-    "welcome-to-grafana",
-    ["prometheus-grafana-101", "loki-grafana-101"]
-  ]
+  "depends": ["welcome-to-grafana", ["prometheus-grafana-101", "loki-grafana-101"]]
 }
 ```
 
@@ -789,10 +786,10 @@ The Grafana docs team expresses inter-guide relationships in a YAML format:
 
 This maps naturally to the package model:
 
-| YAML field   | Package equivalent            |
-| ------------ | ----------------------------- |
-| `id`         | `id`                          |
-| `category`   | `category`                    |
+| YAML field   | Package equivalent           |
+| ------------ | ---------------------------- |
+| `id`         | `id`                         |
+| `category`   | `category`                   |
 | `links[].to` | `suggests` (or `recommends`) |
 
 The `links.to` relationships are soft recommendations — "completing prom-data-source enables you to better pursue metrics-drilldown." These are `suggests` or `recommends` in Debian vocabulary, not hard `depends`.
@@ -803,13 +800,13 @@ The `category` field aligns directly. The documented convention uses the same ta
 
 Phase 1 metadata field names are chosen to align with established standards where applicable:
 
-| Package field  | Dublin Core      | IEEE LOM                      | Notes                                           |
-| -------------- | ---------------- | ----------------------------- | ----------------------------------------------- |
-| `description`  | `dc:description` | `general.description`         | Direct alignment                                |
-| `language`     | `dc:language`    | `general.language`            | BCP 47 tag; defaults to `"en"`                  |
-| `author.name`  | `dc:creator`     | `lifeCycle.contribute.entity` | Simplified structure                            |
-| `difficulty`*  | —                | `educational.difficulty`      | Deferred to Phase 2+; enum subset of LOM values |
-| `estimatedDuration`* | —           | `educational.typicalLearningTime` | Deferred to Phase 2+; format to be vetted   |
+| Package field         | Dublin Core      | IEEE LOM                          | Notes                                           |
+| --------------------- | ---------------- | --------------------------------- | ----------------------------------------------- |
+| `description`         | `dc:description` | `general.description`             | Direct alignment                                |
+| `language`            | `dc:language`    | `general.language`                | BCP 47 tag; defaults to `"en"`                  |
+| `author.name`         | `dc:creator`     | `lifeCycle.contribute.entity`     | Simplified structure                            |
+| `difficulty`\*        | —                | `educational.difficulty`          | Deferred to Phase 2+; enum subset of LOM values |
+| `estimatedDuration`\* | —                | `educational.typicalLearningTime` | Deferred to Phase 2+; format to be vetted       |
 
 \* Deferred fields — not in Phase 1, but names are vetted against standards now to avoid future renames.
 
@@ -817,15 +814,15 @@ Phase 1 metadata field names are chosen to align with established standards wher
 
 The package format is designed to be the **output target** for a future SCORM import pipeline. The two-file model aligns naturally with SCORM's separation of `imsmanifest.xml` (metadata) from content files:
 
-| SCORM concept              | Package equivalent                      |
-| -------------------------- | --------------------------------------- |
-| Package (ZIP)              | Package directory                       |
-| `imsmanifest.xml` metadata | `package.json`                          |
-| Organization tree          | Multiple packages linked by `depends`   |
-| SCO (interactive content)  | `content.json` with content blocks      |
-| Asset (static content)     | `assets/` directory within package      |
-| Prerequisites              | `package.json` → `depends`              |
-| Sequencing (forward-only)  | Linear `depends` chain                  |
+| SCORM concept              | Package equivalent                    |
+| -------------------------- | ------------------------------------- |
+| Package (ZIP)              | Package directory                     |
+| `imsmanifest.xml` metadata | `package.json`                        |
+| Organization tree          | Multiple packages linked by `depends` |
+| SCO (interactive content)  | `content.json` with content blocks    |
+| Asset (static content)     | `assets/` directory within package    |
+| Prerequisites              | `package.json` → `depends`            |
+| Sequencing (forward-only)  | Linear `depends` chain                |
 
 The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `package.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure.
 
@@ -886,12 +883,12 @@ A flat `testEnvironment` field will be added to `package.json` when Layer 4 E2E 
 
 ### Schema versioning strategy
 
-| Version | Scope                                                                                       |
-| ------- | ------------------------------------------------------------------------------------------- |
-| `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`           |
-| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `package.json`), `assets/` directory     |
+| Version | Scope                                                                                           |
+| ------- | ----------------------------------------------------------------------------------------------- |
+| `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`               |
+| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `package.json`), `assets/` directory         |
 | `1.2.0` | Future: adds `type`, `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment` |
-| `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                             |
+| `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                                 |
 
 Any consumer can inspect `schemaVersion` and decide which fields to expect.
 
@@ -1095,8 +1092,8 @@ Decisions made during the design discussion, with rationale.
 | D13 | Schema version `"1.1.0"` for package extension                   | Backward-compatible addition; minor version bump per semver                                                                                                                                                                                                                                                                                                  |
 | D14 | Separate `content.json` (content) from `package.json` (metadata) | Follows Debian `control`/`data` separation. Multiple consumers (plugin, recommender, LMS, E2E runner) each need different data; separate files avoid full-parsing a large unified file. Block editor stays focused on content; metadata is managed by different roles with different tools. Eliminates merge conflicts between content and metadata changes. |
 | D15 | Optional `assets/` directory for non-JSON resources              | Aligns with SCORM asset packaging. Images, diagrams, and supplementary files live alongside content. Asset resolution deferred but convention established now.                                                                                                                                                                                               |
-| D16 | Flat metadata and dependency fields in `package.json`            | Follows Debian `control` file convention where all fields are peers at the same level. Reduces nesting depth, simplifies authoring and validation. Namespace collision risk is acceptable given the bounded, standards-aligned field inventory (see [namespace collision note](#namespace-collision-note)).                                                    |
-| D17 | CNF OR syntax for dependency lists (nested arrays)               | Maps directly to Debian's comma + pipe semantics (`A \| B, C` → `[["A", "B"], "C"]`). Outer array = AND, inner array = OR. Backwards compatible: existing `["A", "B"]` (all strings) retains AND semantics. No string parsing required; fully validatable with Zod.                                                                                        |
+| D16 | Flat metadata and dependency fields in `package.json`            | Follows Debian `control` file convention where all fields are peers at the same level. Reduces nesting depth, simplifies authoring and validation. Namespace collision risk is acceptable given the bounded, standards-aligned field inventory (see [namespace collision note](#namespace-collision-note)).                                                  |
+| D17 | CNF OR syntax for dependency lists (nested arrays)               | Maps directly to Debian's comma + pipe semantics (`A \| B, C` → `[["A", "B"], "C"]`). Outer array = AND, inner array = OR. Backwards compatible: existing `["A", "B"]` (all strings) retains AND semantics. No string parsing required; fully validatable with Zod.                                                                                          |
 | D18 | Default `language` to `"en"`                                     | All existing content is English. Explicit default avoids mandatory boilerplate while preserving the field for future i18n and SCORM import.                                                                                                                                                                                                                  |
 | D19 | Defer `estimatedDuration` and `difficulty` to Phase 2+           | No compelling MVP consumer for either field. No UI component displays them; no recommender logic consumes them. Field names are vetted against IEEE LOM now to avoid future renames. Will be needed if SCORM import or recommendation ranking arrives.                                                                                                       |
 
