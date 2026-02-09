@@ -6,7 +6,7 @@ globs:
   - "**/*.tsx"
   - "**/*.js"
   - "**/*.jsx"
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Frontend Security Rules
@@ -22,7 +22,7 @@ const clean = DOMPurify.sanitize(untrustedSvg, { USE_PROFILES: { svg: true } });
 return <div dangerouslySetInnerHTML={{ __html: clean }} />;
 ```
 
-**Don’t**
+**Don't**
 ```tsx
 return <div dangerouslySetInnerHTML={{ __html: untrustedSvg }} />;
 ```
@@ -41,7 +41,7 @@ Always prefer these for inserting dynamic text.
 return <li>{data}</li>;
 ```
 
-**Don’t**
+**Don't**
 ```tsx
 return <li dangerouslySetInnerHTML={{ __html: data }} />;
 ```
@@ -51,11 +51,11 @@ Prefer `{}` over `dangerouslySetInnerHTML`. Only allow `dangerouslySetInnerHTML`
 
 ---
 
-## F3 — Don’t Treat URLs as Strings
+## F3 — Don't Treat URLs as Strings
 Always use a proper URL parsing/handling API — e.g., the native **`URL`** constructor, **`URLSearchParams`**, or safe utilities provided by your framework.  
 Prefer the URL Web API directly instead of string concatenation.
 
-**Don’t**
+**Don't**
 ```ts
 // Unsafe string concatenation
 const endpoint = apiBase + '/users?id=' + userId;
@@ -108,7 +108,7 @@ const safeHref = textUtil.sanitizeUrl(url);
 return <a href={safeHref}>{label}</a>;
 ```
 
-**Don’t**
+**Don't**
 ```tsx
 return <div dangerouslySetInnerHTML={{ __html: data }} />;
 <a href={url}>{label}</a>;
@@ -136,7 +136,7 @@ const el = document.createElement('div');
 el.textContent = userInput; // safe text insertion
 ```
 
-**Don’t**
+**Don't**
 ```ts
 el.innerHTML = userInput;
 const script = document.createElement('script');
