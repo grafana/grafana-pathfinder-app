@@ -7,8 +7,18 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
-import { Button, Field, Input, Select, Badge, IconButton, Checkbox, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
+import {
+  Button,
+  Field,
+  Input,
+  Combobox,
+  Badge,
+  IconButton,
+  Checkbox,
+  useStyles2,
+  type ComboboxOption,
+} from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
 import { css, cx } from '@emotion/css';
 // @dnd-kit
 import {
@@ -186,7 +196,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-const ACTION_OPTIONS: Array<SelectableValue<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
+const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
   label: a.label,
 }));
@@ -640,20 +650,17 @@ export function StepEditor({
                       <div style={{ fontWeight: 500, marginBottom: '8px' }}>Edit step {index + 1}</div>
                       <div className={styles.addStepRow}>
                         <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
-                          <Select
+                          <Combobox
                             options={ACTION_OPTIONS}
-                            value={ACTION_OPTIONS.find((o) => o.value === editAction)}
+                            value={editAction}
                             onChange={(opt) => {
-                              if (opt.value) {
-                                setEditAction(opt.value);
-                                // Auto-add default requirements for this action type
-                                const suggestions = suggestDefaultRequirements(opt.value, editReftarget);
-                                if (suggestions.length > 0) {
-                                  setEditRequirements((prev) => mergeRequirements(prev, suggestions));
-                                }
+                              setEditAction(opt.value);
+                              // Auto-add default requirements for this action type
+                              const suggestions = suggestDefaultRequirements(opt.value, editReftarget);
+                              if (suggestions.length > 0) {
+                                setEditRequirements((prev) => mergeRequirements(prev, suggestions));
                               }
                             }}
-                            menuPlacement="top"
                           />
                         </Field>
                         {/* Navigation path - for navigate actions only */}
@@ -920,20 +927,17 @@ export function StepEditor({
         <div className={styles.addStepForm}>
           <div className={styles.addStepRow}>
             <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
-              <Select
+              <Combobox
                 options={ACTION_OPTIONS}
-                value={ACTION_OPTIONS.find((o) => o.value === newAction)}
+                value={newAction}
                 onChange={(opt) => {
-                  if (opt.value) {
-                    setNewAction(opt.value);
-                    // Auto-add default requirements for this action type
-                    const suggestions = suggestDefaultRequirements(opt.value, newReftarget);
-                    if (suggestions.length > 0) {
-                      setNewRequirements((prev) => mergeRequirements(prev, suggestions));
-                    }
+                  setNewAction(opt.value);
+                  // Auto-add default requirements for this action type
+                  const suggestions = suggestDefaultRequirements(opt.value, newReftarget);
+                  if (suggestions.length > 0) {
+                    setNewRequirements((prev) => mergeRequirements(prev, suggestions));
                   }
                 }}
-                menuPlacement="top"
               />
             </Field>
             {/* Navigation path - for navigate actions only */}

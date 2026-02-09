@@ -16,27 +16,7 @@ import type { JsonGuide } from '../types';
 export async function copyGuideToClipboard(guide: JsonGuide, pretty = true): Promise<void> {
   const json = pretty ? JSON.stringify(guide, null, 2) : JSON.stringify(guide);
 
-  // Try modern clipboard API first
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    await navigator.clipboard.writeText(json);
-    return;
-  }
-
-  // Fallback for older browsers
-  const textArea = document.createElement('textarea');
-  textArea.value = json;
-  textArea.style.position = 'fixed';
-  textArea.style.left = '-999999px';
-  textArea.style.top = '-999999px';
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-
-  try {
-    document.execCommand('copy');
-  } finally {
-    document.body.removeChild(textArea);
-  }
+  await navigator.clipboard.writeText(json);
 }
 
 /**

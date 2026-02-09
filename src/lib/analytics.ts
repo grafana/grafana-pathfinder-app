@@ -8,7 +8,7 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security';
-import { getExperimentConfig, FeatureFlags, type ExperimentConfig } from '../utils/openfeature';
+import { getExperimentConfig, type ExperimentConfig } from '../utils/openfeature';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -98,7 +98,7 @@ interface ExperimentAnalyticsEntry {
  */
 function getExperimentVariant(): ExperimentConfig['variant'] | null {
   try {
-    const config = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+    const config = getExperimentConfig('pathfinder.experiment-variant');
     return config.variant;
   } catch {
     return null;
@@ -122,15 +122,15 @@ function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
 
     // Add experiment variant config
     // Structure comes directly from GOFF - allows any experiment configuration
-    const experimentVariantConfig = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+    const experimentVariantConfig = getExperimentConfig('pathfinder.experiment-variant');
     experiments.push({
-      flag: FeatureFlags.EXPERIMENT_VARIANT,
+      flag: 'pathfinder.experiment-variant',
       ...experimentVariantConfig,
     });
 
     // Add additional experiments here as needed:
-    // const anotherExperiment = getExperimentConfig(FeatureFlags.ANOTHER_EXPERIMENT);
-    // experiments.push({ flag: FeatureFlags.ANOTHER_EXPERIMENT, ...anotherExperiment });
+    // const anotherExperiment = getExperimentConfig('pathfinder.another-experiment');
+    // experiments.push({ flag: 'pathfinder.another-experiment', ...anotherExperiment });
 
     return experiments;
   } catch (error) {

@@ -230,24 +230,6 @@ export const ACTION_TYPES = {
 } as const;
 
 /**
- * Action icons - Single source of truth for emoji indicators
- * @deprecated Use ACTION_BADGES for the WYSIWYG editor UI
- * Kept for backward compatibility in other parts of the codebase
- */
-export const ACTION_ICONS: Record<string, string> = {
-  [ACTION_TYPES.BUTTON]: '🔘',
-  [ACTION_TYPES.FORM_FILL]: '📝',
-  [ACTION_TYPES.HIGHLIGHT]: '✨',
-  [ACTION_TYPES.HOVER]: '👆',
-  [ACTION_TYPES.MULTISTEP]: '📋',
-  [ACTION_TYPES.GUIDED]: '🎯',
-  [ACTION_TYPES.QUIZ]: '❓',
-  [ACTION_TYPES.NAVIGATE]: '🧭',
-  [ACTION_TYPES.NOOP]: '📖',
-  [ACTION_TYPES.SEQUENCE]: '📑',
-} as const;
-
-/**
  * Action badges - Text labels for WYSIWYG editor display
  * Short, clear labels that fit in small pill badges
  */
@@ -265,25 +247,9 @@ export const ACTION_BADGES: Record<string, string> = {
 } as const;
 
 /**
- * Default icon for unknown action types
- * @deprecated Use DEFAULT_ACTION_BADGE instead
- */
-export const DEFAULT_ACTION_ICON = '⚡';
-
-/**
  * Default badge label for unknown action types
  */
 export const DEFAULT_ACTION_BADGE = 'Step';
-
-/**
- * Get the emoji icon for an action type
- * @deprecated Use getActionBadge for WYSIWYG editor UI
- * @param actionType - The action type (e.g., 'button', 'highlight')
- * @returns The corresponding emoji, or DEFAULT_ACTION_ICON for unknown types
- */
-export function getActionIcon(actionType: string): string {
-  return ACTION_ICONS[actionType] ?? DEFAULT_ACTION_ICON;
-}
 
 /**
  * Get the text badge label for an action type

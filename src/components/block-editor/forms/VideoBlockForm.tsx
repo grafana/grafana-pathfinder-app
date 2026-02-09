@@ -5,8 +5,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, Select, Alert, useStyles2 } from '@grafana/ui';
-import { SelectableValue } from '@grafana/data';
+import { Button, Field, Input, Combobox, Alert, useStyles2, type ComboboxOption } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { VIDEO_PROVIDERS } from '../constants';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
@@ -21,7 +20,7 @@ function isVideoBlock(block: JsonBlock): block is JsonVideoBlock {
   return block.type === 'video';
 }
 
-const PROVIDER_OPTIONS: Array<SelectableValue<'youtube' | 'native'>> = VIDEO_PROVIDERS.map((p) => ({
+const PROVIDER_OPTIONS: Array<ComboboxOption<'youtube' | 'native'>> = VIDEO_PROVIDERS.map((p) => ({
   value: p.value,
   label: p.label,
 }));
@@ -65,10 +64,8 @@ export function VideoBlockForm({
     [src, provider, title, start, end, onSubmit]
   );
 
-  const handleProviderChange = useCallback((option: SelectableValue<'youtube' | 'native'>) => {
-    if (option.value) {
-      setProvider(option.value);
-    }
+  const handleProviderChange = useCallback((option: ComboboxOption<'youtube' | 'native'>) => {
+    setProvider(option.value);
   }, []);
 
   const isValid = src.trim().length > 0;
@@ -90,11 +87,7 @@ export function VideoBlockForm({
       )}
 
       <Field label="Video Provider" description="Select the video source type">
-        <Select
-          options={PROVIDER_OPTIONS}
-          value={PROVIDER_OPTIONS.find((o) => o.value === provider)}
-          onChange={handleProviderChange}
-        />
+        <Combobox options={PROVIDER_OPTIONS} value={provider} onChange={handleProviderChange} />
       </Field>
 
       <Field label="Video URL" description={getUrlHint()} required>
