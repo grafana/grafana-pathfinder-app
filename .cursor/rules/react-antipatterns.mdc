@@ -1,10 +1,7 @@
 ---
 title: React Anti-Patterns and Code Quality Rule
-description: Critical React patterns the agent must check during reviews and feature development.
-globs:
-  - "**/*.ts"
-  - "**/*.tsx"
-alwaysApply: true
+description: Detailed Do/Don't examples and fix guidance for React anti-patterns R1-R15. Load when a PR review flags a specific pattern or when implementing features that touch hooks, effects, or state management.
+alwaysApply: false
 ---
 
 # React Anti-Patterns and Code Quality Rules

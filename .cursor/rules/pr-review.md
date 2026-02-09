@@ -1,238 +1,92 @@
 ---
-description: Comprehensive PR review checklist for Grafana Pathfinder
-globs:
-  - '**/*.ts'
-  - '**/*.tsx'
+description: Compact PR review orchestrator with unified detection table. Load for /review command or any PR review task.
 ---
 
-# PR Review Guidelines
-
-This document provides structured guidelines for conducting thorough code reviews on pull requests. All reviews should be conducted at a **Principal Engineer level**, focusing on long-term maintainability, testability, and adherence to established patterns.
-
-## Review Process Overview
-
-### Step 1: Understand the Change
-
-- [ ] Read the PR description and linked issues
-- [ ] Provide a brief one-paragraph summary of what the code does
-- [ ] Note any major components being added, changed, or removed
-
-### Step 2: Apply Required Rule Sets
-
-Before reviewing the implementation details, apply the following rule sets:
-
-- [ ] **React Anti-Patterns**: Read and apply rules from @react-antipatterns.mdc (R1-R15)
-- [ ] **Security Guidelines**: Read and apply rules from @frontend-security.mdc (F1-F6)
-
-### Step 3: Evaluate Code Quality Dimensions
-
----
-
-## Testability
-
-Evaluate whether the code can be effectively tested:
-
-- [ ] Are functions pure where possible (same input → same output)?
-- [ ] Are dependencies injected rather than hardcoded?
-- [ ] Are side effects isolated and mockable?
-- [ ] Do components accept props that enable testing different states?
-- [ ] Is there appropriate separation between business logic and UI rendering?
-
-**Red flags:**
-
-- Functions that directly access global state or singletons
-- Components that fetch data internally without abstraction
-- Tightly coupled modules that require extensive mocking
-- Missing or inadequate test coverage for critical paths
-
----
-
-## Modularity
-
-Evaluate the structural organization of the code:
-
-- [ ] Does each module/component have a single, clear responsibility?
-- [ ] Are boundaries between modules well-defined?
-- [ ] Can components be reused in different contexts?
-- [ ] Are imports/dependencies organized logically?
-- [ ] Does the code follow the existing project structure patterns?
-
-**Red flags:**
-
-- Components doing too many unrelated things
-- Circular dependencies
-- God objects that accumulate unrelated functionality
-- Utility functions scattered across multiple locations
-
----
-
-## Maintainability
-
-Evaluate long-term sustainability of the code:
-
-- [ ] Is the code self-documenting with clear naming?
-- [ ] Are complex algorithms or business rules documented?
-- [ ] Is the code DRY (Don't Repeat Yourself)?
-- [ ] Will future developers understand the intent?
-- [ ] Are magic numbers and strings extracted to constants?
-
-**Red flags:**
-
-- Commented-out code left in place
-- Unclear variable/function names
-- Overly clever code that sacrifices readability
-- Missing error handling or edge case coverage
-
----
-
-## Vibe Coding Smells
-
-Watch for signs of AI-assisted code that lacks human review.
-
-**Important**: PR authors are **not responsible** for refactoring existing large components they touch. However, they **should not create new** components that violate these constraints. Focus your review on newly introduced code.
-
-### Large Components
-
-- [ ] **New** components should generally be under 200-300 lines
-- [ ] Flag any **newly created** component file exceeding 400 lines
-- [ ] Check for **new** components with more than 5-6 responsibilities
-- [ ] Existing large components are technical debt but not blocking for the PR
-
-### God Objects
-
-- [ ] Watch for **new** classes/objects that try to do everything
-- [ ] Flag **new** state objects with more than 10 unrelated properties
-- [ ] Identify **new** "manager" or "handler" classes that accumulate logic
-
-### Duplicated Logic
-
-- [ ] Look for copy-paste patterns across files
-- [ ] Identify similar components that could be abstracted
-- [ ] Check for repeated utility functions that should be shared
-
-### Excess Verbosity
-
-- [ ] Flag unnecessarily complex solutions to simple problems
-- [ ] Identify over-engineered abstractions
-- [ ] Look for boilerplate that could be simplified
-
-### Missing Integration
-
-- [ ] Check if new code leverages existing utilities
-- [ ] Verify pattern consistency with the rest of the codebase
-- [ ] Confirm that new components follow established conventions
-
----
-
-## Code Duplication & Pattern Reuse
-
-### Before Approving, Verify:
-
-- [ ] Has the author checked for existing utilities that solve the same problem?
-- [ ] Does new code follow existing patterns in the codebase?
-- [ ] Are there opportunities to extract shared logic?
-- [ ] Is the code consistent with adjacent code in style and approach?
-
-### Common Reusable Patterns in This Repo:
-
-- Check `src/utils/` for existing utility functions
-- Check `src/components/` for existing reusable components
-- Check `src/styles/` for theme-aware styling functions
-- Check `src/hooks/` for existing custom hooks
-
----
-
-## Additional Quality Considerations
-
-### Performance
-
-- [ ] Are expensive calculations memoized appropriately?
-- [ ] Are there potential memory leaks (uncleaned effects)?
-- [ ] Are lists rendered efficiently with proper keys?
-
-### Error Handling
-
-- [ ] Are errors caught and handled gracefully?
-- [ ] Is there appropriate user feedback for failure states?
-- [ ] Are error boundaries in place where needed?
-
-### Accessibility
-
-- [ ] Are interactive elements keyboard-navigable?
-- [ ] Are appropriate ARIA labels provided?
-- [ ] Is color contrast sufficient?
-
-### TypeScript
-
-- [ ] Are types properly defined (avoid `any`)?
-- [ ] Are interfaces/types exported where needed?
-- [ ] Are generics used appropriately?
-
----
-
-## Review Output Format
-
-**Keep review responses terse and focused.** Do not recap every check performed.
-
-### When All Checks Pass
-
-If the PR has no issues, provide a brief response like:
-
-> "LGTM. No security, anti-pattern, or vibe coding issues found. Approve to merge."
-
-Do **not** enumerate every rule checked or every section of this guide. One line is sufficient for a clean PR.
-
-### When Issues Are Found
-
-Only elaborate on specific problems. For each issue:
-
-- State the problem concisely
-- Reference the relevant rule (e.g., R3, F2)
-- Suggest a fix if straightforward
-
-Avoid verbose explanations of rules the code already follows correctly.
-
----
-
-## Review Disposition
-
-After completing the review, provide one of these recommendations:
-
-| Disposition                    | Criteria                                                 |
-| ------------------------------ | -------------------------------------------------------- |
-| **Approve to Merge**           | Code meets all standards, tests pass, no blocking issues |
-| **Approve with Minor Changes** | Small improvements suggested but not blocking            |
-| **Request Changes**            | Blocking issues that must be addressed before merge      |
-
-### Final Checklist
-
-- [ ] PR description accurately describes the change
-- [ ] Tests are included for new functionality
-- [ ] No new linting errors introduced
-- [ ] Security rules (F1-F6) have been verified
-- [ ] React anti-patterns (R1-R15) have been checked
-- [ ] Code follows existing repo patterns
-- [ ] No obvious vibe coding smells
-
----
-
-## Review Comment Best Practices
-
-When leaving feedback:
-
-1. **Be specific**: Point to exact lines and explain the issue
-2. **Be constructive**: Suggest alternatives, not just problems
-3. **Prioritize**: Mark comments as blocking vs. suggestions
-4. **Be respectful**: Critique code, not people
-5. **Explain "why"**: Help the author learn, not just fix
-
-### Comment Prefixes
-
-Use these prefixes to clarify intent:
-
-- `[blocking]` - Must be addressed before merge
-- `[suggestion]` - Nice to have but not required
-- `[question]` - Seeking clarification
-- `[nit]` - Minor style/preference issue
-- `[security]` - Security-related concern (reference F1-F6)
-- `[react]` - React anti-pattern concern (reference R1-R15)
+# PR Review Orchestrator
+
+Conduct a **Principal Engineer level** review in three steps.
+
+## 1. Understand
+
+Read the PR description and linked issues. Write a one-paragraph summary of what changed and why.
+
+## 2. Detect
+
+Scan the diff against the unified detection table below. Security rules (F1-F6) are always loaded; for any other hit, note the rule ID and load the reference file only if the canonical fix is needed.
+
+### Unified detection table
+
+| What to look for | ID | Sev |
+|---|---|---|
+| `useEffect` missing cleanup return (listeners, timers, subscriptions) | R1 | Critical |
+| State read in callback without functional update or ref | R2 | High |
+| Object/array literal in `useEffect` dependency array | R3 | Critical |
+| `fetch`/async in effect without `AbortController` or mounted flag | R4 | High |
+| `.push()`, `.splice()`, direct property assignment on state | R5 | Critical |
+| Risky component tree without `<ErrorBoundary>` | R6 | High |
+| Search/filter effect without cancellation for rapid inputs | R7 | High |
+| Hook call after conditional return or inside if/loop | R8 | Critical |
+| `key={index}` in dynamic (add/remove/reorder) list | R9 | Medium |
+| Promise chain without `.catch()` or `try/catch` | R10 | High |
+| Context provider with frequently-changing value | R11 | Medium |
+| Inline function/object passed to `React.memo` child | R12 | Medium |
+| `useEffect` without dependency array | R13 | Critical |
+| `useState` + `useEffect` to sync derived value | R14 | Medium |
+| DOM listeners on ref without cleanup | R15 | High |
+| `dangerouslySetInnerHTML` without sanitization | F1 | Critical |
+| Untrusted/dynamic SVG without DOMPurify | F2 | Critical |
+| Dynamic text rendered via innerHTML instead of `{}` | F3 | High |
+| URL built via string concatenation instead of `URL` API | F4 | High |
+| Use of `innerHTML`, `outerHTML`, `insertAdjacentHTML` | F5 | Critical |
+| Unvalidated URL scheme (`javascript:`, `data:`) in link/img | F6 | High |
+| Heavy sync computation in render / `useMemo` / effect body | SRE1 | High |
+| `useEffect` with listener/interval and no cleanup | SRE2 | Critical |
+| Component tree / route without `<ErrorBoundary>` | SRE3 | High |
+| Nested components both fetching on mount (waterfall) | SRE4 | High |
+| `localStorage` read/write in render path or loop | SRE5 | Medium |
+| Context provider with unstable value (no `useMemo`) | SRE6 | Medium |
+| Async effect without abort/cancellation | SRE7 | High |
+| Render-then-fetch with loading spinner on LCP element | SRE8 | Medium |
+| `<img>` without dimensions; async content without skeleton | SRE9 | Medium |
+| External script without `defer`/`async` | SRE10 | Medium |
+| New component > 400 lines or > 5 responsibilities | QC1 | Medium |
+| New God object / state bag with > 10 unrelated props | QC2 | Medium |
+| Copy-paste / duplicated logic across files | QC3 | Medium |
+| Existing utility or hook ignored in favor of re-impl | QC4 | Medium |
+| Use of `any`; missing or unexported types | QC5 | Medium |
+| Missing tests for new functionality | QC6 | High |
+| Missing ARIA labels or keyboard navigation on interactive els | QC7 | Medium |
+
+### Escalation pointers
+
+- **R1-R15 hit**: load `@react-antipatterns.mdc` for the canonical Do/Don't example and fix pattern.
+- **SRE1-SRE10 hit**: load `@react-sre-audit.mdc` for the full "10 Commandments" heuristic and remediation plan.
+- **F1-F6 hit**: `frontend-security.mdc` is already loaded (always-apply). Reference it directly.
+
+## 3. Report
+
+**Clean PR** — one line:
+
+> LGTM. No security, anti-pattern, or reliability issues found. Approve to merge.
+
+**Issues found** — for each finding, state the problem, reference the rule ID, and suggest a fix. Keep it terse.
+
+### Comment prefixes
+
+| Prefix | Meaning |
+|---|---|
+| `[blocking]` | Must fix before merge |
+| `[suggestion]` | Nice to have |
+| `[question]` | Seeking clarification |
+| `[nit]` | Minor style preference |
+| `[security]` | Security concern (F1-F6) |
+| `[react]` | React anti-pattern (R1-R15) |
+| `[sre]` | Reliability / performance (SRE1-SRE10) |
+
+### Disposition
+
+| Disposition | Criteria |
+|---|---|
+| **Approve** | Meets all standards, no blocking issues |
+| **Approve with minor** | Small suggestions, nothing blocking |
+| **Request changes** | Blocking issues must be addressed |

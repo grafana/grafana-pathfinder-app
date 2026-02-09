@@ -43,19 +43,14 @@ The following files are important sources of information:
 
 ## PR Reviews
 
-When reviewing a pull request, follow the comprehensive guidelines in:
+Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. It contains a compact detection table covering all concern areas (React anti-patterns R1-R15, security F1-F6, SRE reliability SRE1-SRE10, and quality heuristics QC1-QC7) with pointers to detailed reference files.
 
-- **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** - Complete PR review checklist
+**Tiered rule architecture:**
 
-This guide instructs you to:
-
-1. Conduct a **Principal Engineer level** review focused on long-term code health
-2. Apply **security rules** from `frontend-security.mdc` (F1-F6)
-3. Apply **React anti-pattern checks** from `react-antipatterns.mdc` (R1-R15)
-4. Evaluate **testability, modularity, and maintainability**
-5. Watch for **vibe coding smells**: large components, God objects, duplicated logic
-6. Check for **code duplication** and failure to reuse existing patterns
-7. Verify the change follows established **repo conventions**
+- **Tier 1 (always loaded)**: `frontend-security.mdc` — security rules F1-F6
+- **Tier 1 (on `/review`)**: `pr-review.md` — compact orchestrator with unified detection table
+- **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` — detailed Do/Don't for R1-R15
+- **Tier 2 (loaded on hit)**: `react-sre-audit.mdc` — SRE reliability audit for SRE1-SRE10 (also used by `/attack`)
 
 ## Local development commands
 
