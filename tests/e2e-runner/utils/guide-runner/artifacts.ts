@@ -4,7 +4,7 @@
  * Functions for capturing screenshots, DOM snapshots, and console errors
  * when steps fail. Provides debugging context for CI environments.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md#artifact-collection-on-failure
+ * @see docs/design/e2e-test-runner-design.md#artifact-collection-on-failure
  */
 
 import { Page } from '@playwright/test';

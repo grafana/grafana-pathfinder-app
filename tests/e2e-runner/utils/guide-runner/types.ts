@@ -5,7 +5,7 @@
  * These types are used throughout the test runner for step discovery,
  * execution, and result reporting.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md
+ * @see docs/design/e2e-test-runner-design.md
  */
 
 import { Locator } from '@playwright/test';
@@ -237,7 +237,7 @@ export type AbortReason =
  * Artifacts are captured when a step fails to provide debugging context
  * in CI environments where you can't watch the browser.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md#artifact-collection-on-failure
+ * @see docs/design/e2e-test-runner-design.md#artifact-collection-on-failure
  */
 export interface ArtifactPaths {
   /** Path to screenshot PNG file (POST step execution) */
@@ -267,7 +267,7 @@ export interface ArtifactPaths {
  * - `infrastructure`: TIMEOUT/NETWORK/AUTH → Environmental
  * - `unknown`: Default for anything that can't be reliably classified
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md#error-classification
+ * @see docs/design/e2e-test-runner-design.md#error-classification
  */
 export type ErrorClassification =
   | 'content-drift' // Selector/requirement issues (requires human validation)

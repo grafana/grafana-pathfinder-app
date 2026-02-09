@@ -4,7 +4,7 @@
  * Generates structured JSON reports for E2E test results per design spec.
  * Enables CI integration and programmatic test result analysis.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md#json-output
+ * @see docs/design/e2e-test-runner-design.md#json-output
  */
 
 import { writeFileSync, mkdirSync } from 'fs';
@@ -132,7 +132,7 @@ export interface ReportStepResult {
 /**
  * Complete JSON report structure per design doc.
  *
- * @see tests/e2e-runner/design/e2e-test-runner-design.md#json-output
+ * @see docs/design/e2e-test-runner-design.md#json-output
  */
 export interface E2ETestReport {
   /** Guide metadata */

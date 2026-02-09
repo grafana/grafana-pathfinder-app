@@ -5,7 +5,7 @@
  * enabling swappable auth strategies for different Grafana environments.
  *
  * @module tests/e2e-runner/auth/grafana-auth
- * @see tests/e2e-runner/design/e2e-test-runner-design.md#authentication-module
+ * @see docs/design/e2e-test-runner-design.md#authentication-module
  *
  * ## Architecture
  *
