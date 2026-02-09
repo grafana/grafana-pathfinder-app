@@ -19,6 +19,8 @@ import {
   ImageRenderer,
   ContentParsingError,
   resetInteractiveCounters,
+  registerSectionSteps,
+  getDocumentStepPosition,
   VideoRenderer,
   YouTubeVideoRenderer,
 } from './components/interactive-components';
@@ -33,6 +35,7 @@ import {
 } from '../integrations/assistant-integration';
 import { GuideResponseProvider, useGuideResponses } from '../lib/GuideResponseContext';
 import { substituteVariables } from '../utils/variable-substitution';
+import { STANDALONE_SECTION_ID } from './components/interactive/use-standalone-persistence';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
@@ -466,6 +469,22 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     return undefined;
   }, [parseResult]);
 
+  // Count standalone interactive elements for analytics position tracking.
+  // Elements inside sections are tracked by InteractiveSection; only top-level steps need this.
+  // Computed before early returns to satisfy React hooks rules (useMemo must not be conditional).
+  const totalStandaloneSteps =
+    parseResult.isValid && parseResult.data ? countStandaloneInteractiveSteps(parseResult.data.elements) : 0;
+
+  // Register standalone steps in the global step registry so that
+  // totalDocumentSteps includes BOTH section steps and standalone steps.
+  // This runs in useMemo (before children render) to match InteractiveSection's pattern.
+
+  useMemo(() => {
+    if (totalStandaloneSteps > 0) {
+      registerSectionSteps(STANDALONE_SECTION_ID, totalStandaloneSteps);
+    }
+  }, [totalStandaloneSteps]);
+
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
     console.error('Content parsing failed:', parseResult.errors);
@@ -559,11 +578,24 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     );
   }
 
+  let standaloneStepCounter = 0;
+
   return (
     <div ref={ref}>
-      {parsedContent.elements.map((element, index) =>
-        renderParsedElement(element, `element-${index}`, baseUrl, responses)
-      )}
+      {parsedContent.elements.map((element, index) => {
+        // Compute position for standalone interactive elements (guides without sections)
+        const isStandalone =
+          totalStandaloneSteps > 0 && element.type !== 'interactive-section' && isInteractiveStepElement(element);
+        // Use getDocumentStepPosition for document-wide position (includes section step offsets)
+        const stepPosition = isStandalone
+          ? (() => {
+              const pos = getDocumentStepPosition(STANDALONE_SECTION_ID, standaloneStepCounter);
+              standaloneStepCounter++;
+              return pos;
+            })()
+          : undefined;
+        return renderParsedElement(element, `element-${index}`, baseUrl, responses, stepPosition);
+      })}
     </div>
   );
 }
@@ -670,11 +702,69 @@ function TabContentRenderer({ html }: { html: string }) {
   );
 }
 
+// ============================================================================
+// STANDALONE STEP POSITION TRACKING
+// ============================================================================
+
+/**
+ * Position override for standalone interactive elements (not inside a section).
+ * Sections handle their own step position tracking internally.
+ * This provides equivalent tracking for sectionless guides.
+ */
+interface StandaloneStepPosition {
+  stepIndex: number;
+  totalSteps: number;
+}
+
+/**
+ * Set of ParsedElement types that represent interactive steps.
+ * These are the types that need step position tracking for analytics.
+ */
+const INTERACTIVE_STEP_TYPES = new Set([
+  'interactive-step',
+  'interactive-multi-step',
+  'interactive-guided',
+  'quiz-block',
+  'input-block',
+]);
+
+/**
+ * Check if a ParsedElement is an interactive step (or wraps one).
+ * Used to count standalone interactive elements for position tracking.
+ */
+function isInteractiveStepElement(element: ParsedElement): boolean {
+  if (INTERACTIVE_STEP_TYPES.has(element.type)) {
+    return true;
+  }
+  // Check inside assistant-block-wrapper (wraps a single interactive child)
+  if (element.type === 'assistant-block-wrapper' && element.children) {
+    return element.children.some(
+      (child) => typeof child !== 'string' && INTERACTIVE_STEP_TYPES.has((child as ParsedElement).type)
+    );
+  }
+  return false;
+}
+
+/**
+ * Count standalone interactive step elements in a top-level elements array.
+ * Skips elements inside interactive-section (sections handle their own tracking).
+ */
+function countStandaloneInteractiveSteps(elements: ParsedElement[]): number {
+  return elements.reduce((count, el) => {
+    // Skip sections - they handle their own step tracking
+    if (el.type === 'interactive-section') {
+      return count;
+    }
+    return count + (isInteractiveStepElement(el) ? 1 : 0);
+  }, 0);
+}
+
 function renderParsedElement(
   element: ParsedElement | ParsedElement[],
   key: string | number,
   contentKey?: string,
-  responses: Record<string, unknown> = {}
+  responses: Record<string, unknown> = {},
+  standaloneStepPosition?: StandaloneStepPosition
 ): React.ReactNode {
   if (Array.isArray(element)) {
     return element.map((child, i) => renderParsedElement(child, `${key}-${i}`, contentKey, responses));
@@ -694,11 +784,12 @@ function renderParsedElement(
   };
 
   // Helper to substitute in string children
-  const renderChildren = (children: Array<ParsedElement | string>) =>
+  // Optional childStepPosition allows passing standalone step position through wrappers
+  const renderChildren = (children: Array<ParsedElement | string>, childStepPosition?: StandaloneStepPosition) =>
     children.map((child: ParsedElement | string, childIndex: number) =>
       typeof child === 'string'
         ? sub(child)
-        : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses)
+        : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses, childStepPosition)
     );
 
   // Helper to substitute variables in internal actions (for multistep/guided blocks)
@@ -777,6 +868,9 @@ function renderParsedElement(
           title={sub(element.props.title)}
           lazyRender={element.props.lazyRender}
           scrollContainer={element.props.scrollContainer}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
         >
           {renderChildren(element.children)}
         </InteractiveStep>
@@ -792,6 +886,9 @@ function renderParsedElement(
           objectives={element.props.objectives}
           hints={element.props.hints}
           title={sub(element.props.title)}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
         >
           {renderChildren(element.children)}
         </InteractiveMultiStep>
@@ -808,6 +905,9 @@ function renderParsedElement(
           objectives={element.props.objectives}
           hints={element.props.hints}
           title={sub(element.props.title)}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
         >
           {renderChildren(element.children)}
         </InteractiveGuided>
@@ -823,6 +923,9 @@ function renderParsedElement(
           maxAttempts={element.props.maxAttempts}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
         >
           {renderChildren(element.children)}
         </InteractiveQuiz>
@@ -930,7 +1033,8 @@ function renderParsedElement(
           contentKey={contentKey || ''}
           surroundingContext={element.props.surroundingContext}
         >
-          {renderChildren(element.children)}
+          {/* Pass standalone step position through wrapper to interactive child */}
+          {renderChildren(element.children, standaloneStepPosition)}
         </AssistantBlockWrapper>
       );
     case 'raw-html':

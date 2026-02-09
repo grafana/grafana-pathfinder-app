@@ -18,6 +18,7 @@ import { GuidedAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
 import { sanitizeDocumentationHTML } from '../../../security';
 import { STEP_STATES } from './step-states';
+import { useStandalonePersistence } from './use-standalone-persistence';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -163,6 +164,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
     const [executionError, setExecutionError] = useState<string | null>(null);
     const [wasCancelled, setWasCancelled] = useState(false);
+
+    // Persist standalone step completion across page refreshes
+    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
 
     // Get plugin configuration for auto-detection settings
     const pluginContext = usePluginContext();

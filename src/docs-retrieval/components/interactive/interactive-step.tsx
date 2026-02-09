@@ -23,6 +23,7 @@ import { CodeBlock } from '../docs/code-block';
 import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../../lib/dom';
 import { isCssSelector } from '../../../lib/dom/selector-detector';
 import { STEP_STATES } from './step-states';
+import { useStandalonePersistence } from './use-standalone-persistence';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -203,6 +204,9 @@ export const InteractiveStep = forwardRef<
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
+
+    // Persist standalone step completion across page refreshes
+    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
 
     // Check for customized value from parent AssistantBlockWrapper context
     const assistantBlockValue = useAssistantBlockValue();

@@ -928,6 +928,38 @@ export const interactiveStepStorage = {
       console.warn('Failed to clear all progress for content:', error);
     }
   },
+
+  /**
+   * Count ALL completed step IDs across every section for a given content key.
+   * Scans all localStorage entries matching the content key prefix and sums the
+   * lengths of their step ID arrays. Used to compute a unified completion percentage
+   * that correctly accounts for both section-managed and standalone steps.
+   */
+  countAllCompleted(contentKey: string): number {
+    try {
+      const prefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const value = localStorage.getItem(key);
+          if (value) {
+            try {
+              const ids = JSON.parse(value);
+              if (Array.isArray(ids)) {
+                total += ids.length;
+              }
+            } catch {
+              // Invalid JSON, skip
+            }
+          }
+        }
+      }
+      return total;
+    } catch {
+      return 0;
+    }
+  },
 };
 
 /**

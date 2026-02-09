@@ -6,6 +6,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { useStepChecker } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import { testIds } from '../../../components/testIds';
+import { useStandalonePersistence } from './use-standalone-persistence';
 
 // ============ Types ============
 
@@ -87,6 +88,9 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [attempts, setAttempts] = useState(0);
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
+
+  // Persist standalone step completion across page refreshes
+  useStandalonePersistence(stepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
   const [lastResult, setLastResult] = useState<'none' | 'correct' | 'incorrect'>('none');
   const [showHint, setShowHint] = useState<string | null>(null);
   const [isRevealed, setIsRevealed] = useState(false);
