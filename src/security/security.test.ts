@@ -24,6 +24,16 @@ describe('Security: XSS Prevention with DOMPurify', () => {
     expect(result).not.toContain('alert(');
   });
 
+  it('should allow non-interactive content from any source (after DOMPurify)', () => {
+    const html = '<p>This is regular content with <strong>formatting</strong></p>';
+    const baseUrl = 'https://example.com/some-blog/';
+
+    const result = parseHTMLToComponents(html, baseUrl);
+
+    // Should succeed because there's no interactive content
+    expect(result.isValid).toBe(true);
+  });
+
   it('should strip event handlers', () => {
     const malicious = '<img src=x onerror="alert(\'XSS\')">';
     const result = sanitizeDocumentationHTML(malicious);
@@ -202,137 +212,6 @@ describe('Security: URL Validation - Domain Hijacking Prevention', () => {
       expect(isInteractiveLearningUrl(url1)).toBe(true);
       expect(isInteractiveLearningUrl(url2)).toBe(true);
     });
-  });
-});
-
-describe('Security: Interactive Content Source Validation', () => {
-  it('should accept interactive content from grafana.com', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
-    const baseUrl = 'https://grafana.com/docs/grafana/latest/';
-
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    expect(result.isValid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it('should accept interactive content from bundled sources', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
-    const baseUrl = 'bundled:prometheus-101';
-
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    expect(result.isValid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it('should accept interactive content from interactive-learning.grafana.net', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
-    const baseUrl = 'https://interactive-learning.grafana.net/tutorial/content.json';
-
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    expect(result.isValid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it('should accept interactive content from interactive-learning.grafana-dev.net', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
-    const baseUrl = 'https://interactive-learning.grafana-dev.net/tutorial/unstyled.html';
-
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    expect(result.isValid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it('should REJECT interactive content from untrusted domains', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
-    const baseUrl = 'https://evil.com/tutorials/hack.html';
-
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    expect(result.isValid).toBe(false);
-    expect(result.errors).toContainEqual(
-      expect.objectContaining({
-        type: 'html_sanitization',
-        message: 'Interactive content from untrusted source rejected',
-      })
-    );
-  });
-
-  it('should REJECT interactive content from evil.com', () => {
-    const html = '<li class="interactive" data-targetaction="navigate" data-reftarget="/admin/delete">Click</li>';
-    const baseUrl = 'https://evil.com/grafana.com/docs/';
-
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    expect(result.isValid).toBe(false);
-  });
-
-  it('should ALLOW interactive content from localhost in dev mode', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
-    const localhostUrls = [
-      'http://localhost:5500/tutorial/unstyled.html',
-      'http://127.0.0.1:8080/docs/test.html',
-      'http://127.0.0.1/tutorial.html',
-    ];
-
-    // Reimport with mocked dev mode
-    jest.isolateModules(() => {
-      // Mock dev mode as enabled
-      jest.doMock('../utils/dev-mode', () => ({
-        isDevModeEnabled: () => true,
-        isDevModeEnabledGlobal: () => true,
-        enableDevMode: jest.fn(),
-        disableDevMode: jest.fn(),
-        toggleDevMode: jest.fn(),
-      }));
-
-      const { parseHTMLToComponents: parseWithDevMode } = require('../docs-retrieval/html-parser');
-
-      localhostUrls.forEach((url) => {
-        const result = parseWithDevMode(html, url);
-        expect(result.isValid).toBe(true);
-        expect(result.errors).toHaveLength(0);
-      });
-    });
-  });
-
-  it('should REJECT interactive content from localhost in production mode', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
-    const baseUrl = 'http://localhost:5500/tutorial/unstyled.html';
-
-    // Dev mode is disabled by default in tests
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    expect(result.isValid).toBe(false);
-    expect(result.errors).toContainEqual(
-      expect.objectContaining({
-        type: 'html_sanitization',
-        message: 'Interactive content from untrusted source rejected',
-      })
-    );
-  });
-
-  it('should allow non-interactive content from any source (after DOMPurify)', () => {
-    const html = '<p>This is regular content with <strong>formatting</strong></p>';
-    const baseUrl = 'https://example.com/some-blog/';
-
-    const result = parseHTMLToComponents(html, baseUrl);
-
-    // Should succeed because there's no interactive content
-    expect(result.isValid).toBe(true);
-  });
-
-  it('should allow testing mode bypass when explicitly enabled', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
-    const baseUrl = 'https://untrusted.example.com/test.html';
-
-    // With bypass enabled (debug panel testing)
-    const result = parseHTMLToComponents(html, baseUrl, true);
-
-    expect(result.isValid).toBe(true);
   });
 });
 

@@ -403,10 +403,8 @@ function convertHtmlBlock(block: JsonHtmlBlock, path: string, baseUrl?: string):
       return {
         element: elements[0],
         // Only show migration warning if no interactive elements detected
-        warning: parseResult.data.hasInteractiveElements
-          ? undefined
-          : 'HTML blocks should be migrated to markdown/JSON blocks for better maintainability',
-        hasInteractive: parseResult.data.hasInteractiveElements,
+        warning: 'HTML blocks should be migrated to markdown/JSON blocks for better maintainability',
+        hasInteractive: false,
         hasCode: parseResult.data.hasCodeBlocks,
       };
     }
@@ -418,10 +416,8 @@ function convertHtmlBlock(block: JsonHtmlBlock, path: string, baseUrl?: string):
         props: { className: 'html-block' },
         children: elements,
       },
-      warning: parseResult.data.hasInteractiveElements
-        ? undefined
-        : 'HTML blocks should be migrated to markdown/JSON blocks for better maintainability',
-      hasInteractive: parseResult.data.hasInteractiveElements,
+      warning: 'HTML blocks should be migrated to markdown/JSON blocks for better maintainability',
+      hasInteractive: false,
       hasCode: parseResult.data.hasCodeBlocks,
     };
   } catch (e) {

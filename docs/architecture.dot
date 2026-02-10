@@ -173,7 +173,7 @@ digraph GrafanaPathfinder {
         Flow3_TabMgmt [label="Tab Management\n(CombinedLearningJourneyPanel)"];
         Flow3_Fetcher [label="content-fetcher.ts\n(fetchContent)\n- Determine content type\n- Fetch raw HTML\n- Extract metadata"];
         Flow3_Renderer [label="content-renderer.tsx\n(ContentRenderer)"];
-        Flow3_Parser [label="html-parser.ts\n(parseHTMLToComponents)\n- Parse HTML → React\n- Extract interactive elements\n- Fail-fast error handling"];
+        Flow3_Parser [label="html-parser.ts\n(parseHTMLToComponents)\n- Parse HTML → React\n- General HTML parsing\n- Fail-fast error handling"];
         Flow3_Components [label="Render React Components:\n- InteractiveSection\n- InteractiveStep\n- InteractiveMultiStep\n- InteractiveGuided\n- CodeBlock, Images, Videos"];
         Flow3_DOM [label="Start DOM Monitoring\n(SequentialRequirementsManager)"];
         

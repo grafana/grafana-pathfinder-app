@@ -954,16 +954,8 @@ async function extractLearningJourneyMetadata(html: string, url: string): Promis
  * Extract single doc metadata
  */
 function extractSingleDocMetadata(html: string): SingleDocMetadata {
-  // Check for interactive elements (simple string search)
-  const hasInteractiveElements = html.includes('data-targetaction') || html.includes('class="interactive"');
-
-  // Extract summary from meta description or first paragraph
   const summary = extractDocSummary(html);
-
-  return {
-    hasInteractiveElements,
-    summary,
-  };
+  return { summary };
 }
 
 /**
