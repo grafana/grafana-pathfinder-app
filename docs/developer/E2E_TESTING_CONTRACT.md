@@ -367,6 +367,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 
 - `src/docs-retrieval/components/interactive/data-attributes.contract.test.tsx` - React component attributes
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
+- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
 
 ### Pattern: Dual Assertion
 
