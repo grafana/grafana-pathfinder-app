@@ -55,7 +55,7 @@
     "commander": "^14.0.0",
     "copy-webpack-plugin": "^13.0.1",
     "css-loader": "^7.1.2",
-    "eslint": "^10.0.0",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-jsdoc": "^62.0.0",
     "eslint-plugin-react": "^7.37.5",
