@@ -1,11 +1,15 @@
 // Interactive components
+export { InteractiveSection } from './interactive-section';
 export {
-  InteractiveSection,
-  resetInteractiveCounters,
   registerSectionSteps,
   getDocumentStepPosition,
   getTotalDocumentSteps,
-} from './interactive-section';
+  resetStepRegistry,
+} from './step-registry';
+
+// Backward compatibility alias
+/** @deprecated Use resetStepRegistry instead */
+export { resetStepRegistry as resetInteractiveCounters } from './step-registry';
 export { InteractiveStep } from './interactive-step';
 export { InteractiveMultiStep } from './interactive-multi-step';
 export { InteractiveGuided } from './interactive-guided';

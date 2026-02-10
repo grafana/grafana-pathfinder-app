@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
 import { getContentKey } from './get-content-key';
-import { getTotalDocumentSteps } from './interactive-section';
+import { getTotalDocumentSteps } from './step-registry';
 
 /**
  * Synthetic section ID used for standalone steps (not inside an InteractiveSection).
