@@ -481,7 +481,10 @@ function findBestElementInHierarchy(
 ): HTMLElement {
   // STEP 1: Search siblings and nearby elements for form controls
   // When user clicks SVG/icon near an input, find that input!
-  const nearbyInput = findNearbyFormControl(element, 3);
+  // BUT: Skip this if the element is already inside a button or link —
+  // the user clicked the button itself, not an icon near an input.
+  const closestInteractive = element.closest('button, a');
+  const nearbyInput = closestInteractive ? null : findNearbyFormControl(element, 3);
   if (nearbyInput) {
     return nearbyInput;
   }
