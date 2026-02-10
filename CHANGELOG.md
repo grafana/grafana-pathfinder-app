@@ -1,6 +1,31 @@
 # Changelog
 
-## 1.4.12
+## 1.5.0
+
+### Removed
+
+- **Legacy interactive HTML parsing**: Removed ~800 lines of HTML-based interactive parsing from `html-parser.ts` (#550). Interactive guides are now exclusively produced via the JSON parser path. General HTML parsing (headings, code blocks, images, tables, etc.) remains intact. Golden-path regression tests added.
+
+### Changed
+
+- **Docs panel modularization**: Phased refactor extracting hooks and utilities from `docs-panel.tsx` for better maintainability (#545)
+  - Extracted `useTabOverflow`, `useScrollPositionPreservation`, and `useContentReset` hooks
+  - Extracted `url-validation`, `tab-storage-restore` utilities and `DocsPanelModelOperations` interface
+  - Added 28+ new unit tests across extracted modules
+- **Design documentation**: Flattened package metadata, added AND/OR dependency syntax, deferred fields, and renamed `package.json` → `manifest.json` in design docs (#556)
+- **Agent context optimization**: Reduced always-injected agent context by ~460 lines (#555)
+- **Tiered PR review rules**: Reorganized PR review into compact orchestrator with unified detection table (#554)
+- **Design docs refresh**: Updated reference URLs and removed outdated content (#553)
+
+### Fixed
+
+- **Single steps vs section steps**: Fixed issues with single interactive steps not behaving correctly relative to section steps, including user storage fixes (#549)
+
+### Chore
+
+- Updated npm to v11.9.0 (security) (#548)
+
+## 1.4.13
 
 ### Added
 
