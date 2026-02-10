@@ -201,10 +201,10 @@ Checks that a specific data source exists **and** passes a connection test. Sear
 
 Difference from `has-datasource`:
 
-| Requirement | Checks existence | Checks connectivity |
-| --- | --- | --- |
-| `has-datasource:X` | Yes | No |
-| `datasource-configured:X` | Yes | Yes |
+| Requirement               | Checks existence | Checks connectivity |
+| ------------------------- | ---------------- | ------------------- |
+| `has-datasource:X`        | Yes              | No                  |
+| `datasource-configured:X` | Yes              | Yes                 |
 
 ## Plugin and extension requirements
 
@@ -238,10 +238,10 @@ Verifies a specific plugin is installed **and** enabled (ready to use).
 
 Difference from `has-plugin`:
 
-| Requirement | Checks installed | Checks enabled |
-| --- | --- | --- |
-| `has-plugin:X` | Yes | No |
-| `plugin-enabled:X` | Yes | Yes |
+| Requirement        | Checks installed | Checks enabled |
+| ------------------ | ---------------- | -------------- |
+| `has-plugin:X`     | Yes              | No             |
+| `plugin-enabled:X` | Yes              | Yes            |
 
 ## Dashboard and content requirements
 
@@ -327,21 +327,17 @@ Controls content visibility based on the rendering context. Used for context-awa
 
 Supported values:
 
-| Value | In Pathfinder app | Description |
-| --- | --- | --- |
-| `pathfinder` | Always `true` | Content is shown in the Pathfinder app |
-| `website` | Always `false` | Content is only for website/public docs context |
+| Value        | In Pathfinder app | Description                                     |
+| ------------ | ----------------- | ----------------------------------------------- |
+| `pathfinder` | Always `true`     | Content is shown in the Pathfinder app          |
+| `website`    | Always `false`    | Content is only for website/public docs context |
 
 ```json
 {
   "type": "conditional",
   "conditions": ["renderer:pathfinder"],
-  "whenTrue": [
-    { "type": "markdown", "content": "Click **Show me** below to highlight the button in the Grafana UI." }
-  ],
-  "whenFalse": [
-    { "type": "markdown", "content": "Navigate to the Connections page in your Grafana instance." }
-  ]
+  "whenTrue": [{ "type": "markdown", "content": "Click **Show me** below to highlight the button in the Grafana UI." }],
+  "whenFalse": [{ "type": "markdown", "content": "Navigate to the Connections page in your Grafana instance." }]
 }
 ```
 
@@ -483,11 +479,11 @@ Objectives declare what a guide step will accomplish. They use the same syntax a
 
 ### Objectives vs requirements
 
-| Aspect | Requirements | Objectives |
-| --- | --- | --- |
-| Purpose | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
-| When met | Step becomes enabled | Step is auto-completed |
-| Empty/missing | Always allowed to execute | Must be manually completed |
+| Aspect        | Requirements               | Objectives                         |
+| ------------- | -------------------------- | ---------------------------------- |
+| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
+| When met      | Step becomes enabled       | Step is auto-completed             |
+| Empty/missing | Always allowed to execute  | Must be manually completed         |
 
 ## Validation rules
 
@@ -507,49 +503,49 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 
 ### Common errors
 
-| Invalid | Error | Fix |
-| --- | --- | --- |
-| `is-admin:true` | Unexpected argument | `is-admin` |
-| `has-datasource:` | Missing argument | `has-datasource:prometheus` |
-| `has-datasource` | Unknown type | `has-datasource:X` or `has-datasources` |
-| `on-page:dashboard` | Invalid path format | `on-page:/dashboard` |
-| `min-version:latest` | Invalid version format | `min-version:11.0.0` |
-| `var-myVar` | Missing value | `var-myVar:true` |
-| `var-:value` | Missing variable name | `var-variableName:value` |
+| Invalid              | Error                  | Fix                                     |
+| -------------------- | ---------------------- | --------------------------------------- |
+| `is-admin:true`      | Unexpected argument    | `is-admin`                              |
+| `has-datasource:`    | Missing argument       | `has-datasource:prometheus`             |
+| `has-datasource`     | Unknown type           | `has-datasource:X` or `has-datasources` |
+| `on-page:dashboard`  | Invalid path format    | `on-page:/dashboard`                    |
+| `min-version:latest` | Invalid version format | `min-version:11.0.0`                    |
+| `var-myVar`          | Missing value          | `var-myVar:true`                        |
+| `var-:value`         | Missing variable name  | `var-variableName:value`                |
 
 ## Complete requirements reference table
 
 ### Fixed requirements (no parameters)
 
-| Requirement | Purpose |
-| --- | --- |
-| `navmenu-open` | Navigation menu is open and visible |
-| `exists-reftarget` | Target element exists on the page |
-| `form-valid` | Current form passes validation |
-| `is-logged-in` | User is authenticated |
-| `is-admin` | User has Grafana admin privileges |
-| `is-editor` | User has at least Editor role |
-| `has-datasources` | At least one data source is configured |
-| `dashboard-exists` | At least one dashboard exists |
+| Requirement        | Purpose                                |
+| ------------------ | -------------------------------------- |
+| `navmenu-open`     | Navigation menu is open and visible    |
+| `exists-reftarget` | Target element exists on the page      |
+| `form-valid`       | Current form passes validation         |
+| `is-logged-in`     | User is authenticated                  |
+| `is-admin`         | User has Grafana admin privileges      |
+| `is-editor`        | User has at least Editor role          |
+| `has-datasources`  | At least one data source is configured |
+| `dashboard-exists` | At least one dashboard exists          |
 
 ### Parameterized requirements
 
-| Requirement | Purpose |
-| --- | --- |
-| `on-page:<path>` | User is on a specific page |
-| `has-role:<role>` | User has a specific organizational role |
-| `has-permission:<permission>` | User has a specific Grafana permission |
-| `has-datasource:<identifier>` | Specific data source exists (by name or type) |
+| Requirement                          | Purpose                                                |
+| ------------------------------------ | ------------------------------------------------------ |
+| `on-page:<path>`                     | User is on a specific page                             |
+| `has-role:<role>`                    | User has a specific organizational role                |
+| `has-permission:<permission>`        | User has a specific Grafana permission                 |
+| `has-datasource:<identifier>`        | Specific data source exists (by name or type)          |
 | `datasource-configured:<identifier>` | Specific data source exists and passes connection test |
-| `has-plugin:<pluginId>` | Specific plugin is installed |
-| `plugin-enabled:<pluginId>` | Specific plugin is installed and enabled |
-| `has-dashboard-named:<title>` | Dashboard with specific title exists |
-| `has-feature:<toggle>` | Feature toggle is enabled |
-| `in-environment:<env>` | Running in a specific environment |
-| `min-version:<version>` | Grafana version meets minimum requirement |
-| `section-completed:<sectionId>` | Another section has been completed |
-| `var-<name>:<value>` | Guide variable has expected value |
-| `renderer:<renderer>` | Rendering context matches (`pathfinder` or `website`) |
+| `has-plugin:<pluginId>`              | Specific plugin is installed                           |
+| `plugin-enabled:<pluginId>`          | Specific plugin is installed and enabled               |
+| `has-dashboard-named:<title>`        | Dashboard with specific title exists                   |
+| `has-feature:<toggle>`               | Feature toggle is enabled                              |
+| `in-environment:<env>`               | Running in a specific environment                      |
+| `min-version:<version>`              | Grafana version meets minimum requirement              |
+| `section-completed:<sectionId>`      | Another section has been completed                     |
+| `var-<name>:<value>`                 | Guide variable has expected value                      |
+| `renderer:<renderer>`                | Rendering context matches (`pathfinder` or `website`)  |
 
 ## Error handling and user guidance
 

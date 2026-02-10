@@ -11,15 +11,15 @@ Guided interactions highlight elements and display instructions, then **wait for
 
 ### Guided vs multistep
 
-| Feature | Multistep | Guided |
-| --- | --- | --- |
-| Execution | Fully automated | User performs manually |
-| Hover support | Simulated (limited) | Real hover (works everywhere) |
-| CSS `:hover` | Cannot trigger | Triggers naturally |
-| Learning | Watch automation | Learn by doing |
-| Speed | Fast | User-paced |
-| Reliability | Depends on selectors | Depends on user |
-| Section integration | Runs in sequence | Pauses section |
+| Feature             | Multistep            | Guided                        |
+| ------------------- | -------------------- | ----------------------------- |
+| Execution           | Fully automated      | User performs manually        |
+| Hover support       | Simulated (limited)  | Real hover (works everywhere) |
+| CSS `:hover`        | Cannot trigger       | Triggers naturally            |
+| Learning            | Watch automation     | Learn by doing                |
+| Speed               | Fast                 | User-paced                    |
+| Reliability         | Depends on selectors | Depends on user               |
+| Section integration | Runs in sequence     | Pauses section                |
 
 ## Basic syntax
 
@@ -115,9 +115,7 @@ Controls how long to wait for user action before showing a skip/retry option. De
   "type": "guided",
   "content": "Complex interaction with longer timeout",
   "stepTimeout": 45000,
-  "steps": [
-    { "action": "hover", "reftarget": "div.service-row" }
-  ]
+  "steps": [{ "action": "hover", "reftarget": "div.service-row" }]
 }
 ```
 
@@ -130,9 +128,7 @@ Allows users to skip the entire guided interaction if they cannot complete it.
   "type": "guided",
   "content": "Optional guided step",
   "skippable": true,
-  "steps": [
-    { "action": "hover", "reftarget": "div.row" }
-  ]
+  "steps": [{ "action": "hover", "reftarget": "div.row" }]
 }
 ```
 
@@ -173,9 +169,7 @@ Guided blocks support the same requirements and objectives system as other inter
   "content": "Click the button (only enabled when it exists)",
   "requirements": ["exists-reftarget"],
   "objectives": ["on-page:/dashboards/edit"],
-  "steps": [
-    { "action": "button", "reftarget": "button[aria-label=\"Create\"]" }
-  ]
+  "steps": [{ "action": "button", "reftarget": "button[aria-label=\"Create\"]" }]
 }
 ```
 

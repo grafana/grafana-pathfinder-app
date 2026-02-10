@@ -99,20 +99,20 @@ Finds the Nth occurrence of an element matching the selector **globally across t
 
 #### Quick reference
 
-| Selector | Meaning | Use when |
-| --- | --- | --- |
-| `div:nth-child(3)` | Element that is the 3rd child of its parent | You know the element's position in its parent |
-| `div:nth-of-type(3)` | Element that is the 3rd `div` child of its parent | You know the position among same-type siblings |
-| `div:nth-match(3)` | The 3rd `div` matching this selector in the entire document | You want the Nth global occurrence |
+| Selector             | Meaning                                                     | Use when                                       |
+| -------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| `div:nth-child(3)`   | Element that is the 3rd child of its parent                 | You know the element's position in its parent  |
+| `div:nth-of-type(3)` | Element that is the 3rd `div` child of its parent           | You know the position among same-type siblings |
+| `div:nth-match(3)`   | The 3rd `div` matching this selector in the entire document | You want the Nth global occurrence             |
 
 ### Browser compatibility
 
-| Selector | Native support | Fallback |
-| --- | --- | --- |
-| `:has()` | Chrome 105+, Safari 17.2+, Firefox 140+ | Automatic JS fallback |
-| `:contains()` | Not natively supported (jQuery extension) | Automatic JS fallback |
-| `:nth-match()` | Custom implementation | Uses `querySelectorAll` internally |
-| `:nth-child()`, `:nth-of-type()` | All browsers | Standard CSS |
+| Selector                         | Native support                            | Fallback                           |
+| -------------------------------- | ----------------------------------------- | ---------------------------------- |
+| `:has()`                         | Chrome 105+, Safari 17.2+, Firefox 140+   | Automatic JS fallback              |
+| `:contains()`                    | Not natively supported (jQuery extension) | Automatic JS fallback              |
+| `:nth-match()`                   | Custom implementation                     | Uses `querySelectorAll` internally |
+| `:nth-child()`, `:nth-of-type()` | All browsers                              | Standard CSS                       |
 
 The selector engine automatically detects browser capabilities and provides JavaScript-based fallbacks when native support is missing.
 
@@ -122,34 +122,39 @@ Prefer these tested selectors over brittle CSS classes. When you find a new reli
 
 ### Navigation and core areas
 
-| Component | Preferred selector | Notes |
-| --- | --- | --- |
+| Component               | Preferred selector                                                | Notes                                                                      |
+| ----------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Nav menu item (by href) | `a[data-testid='data-testid Nav menu item'][href='/connections']` | Replace `href` for Connections, Dashboards, Explore, Alerting, Admin, Home |
-| Navigation container | `div[data-testid="data-testid navigation mega-menu"]` | Fallbacks: `ul[aria-label='Navigation']`, `div[data-testid*='navigation']` |
+| Navigation container    | `div[data-testid="data-testid navigation mega-menu"]`             | Fallbacks: `ul[aria-label='Navigation']`, `div[data-testid*='navigation']` |
 
 ### Editor and panel building
 
-| Component | Preferred selector | Notes |
-| --- | --- | --- |
-| Query mode toggle (Code) | `div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]` | Switch to Code mode |
-| Visualization picker toggle | `button[data-testid="data-testid toggle-viz-picker"]` | Opens visualization picker |
-| Panel title input | `input[data-testid="data-testid Panel editor option pane field input Title"]` | Edit panel title |
+| Component                   | Preferred selector                                                              | Notes                      |
+| --------------------------- | ------------------------------------------------------------------------------- | -------------------------- |
+| Query mode toggle (Code)    | `div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]` | Switch to Code mode        |
+| Visualization picker toggle | `button[data-testid="data-testid toggle-viz-picker"]`                           | Opens visualization picker |
+| Panel title input           | `input[data-testid="data-testid Panel editor option pane field input Title"]`   | Edit panel title           |
 
 ### Drilldowns (example)
 
-| Component | Preferred selector | Notes |
-| --- | --- | --- |
-| Metrics drilldown app | `a[data-testid='data-testid Nav menu item'][href='/a/grafana-metricsdrilldown-app/drilldown']` | Opens app entrypoint |
-| Select metric action | `button[data-testid="select-action_<metric_name>"]` | Replace `<metric_name>` |
-| Related metrics tab | `button[data-testid="data-testid Tab Related metrics"]` | Tab toggle |
-| Related logs tab | `button[data-testid="data-testid Tab Related logs"]` | Tab toggle |
+| Component             | Preferred selector                                                                             | Notes                   |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ----------------------- |
+| Metrics drilldown app | `a[data-testid='data-testid Nav menu item'][href='/a/grafana-metricsdrilldown-app/drilldown']` | Opens app entrypoint    |
+| Select metric action  | `button[data-testid="select-action_<metric_name>"]`                                            | Replace `<metric_name>` |
+| Related metrics tab   | `button[data-testid="data-testid Tab Related metrics"]`                                        | Tab toggle              |
+| Related logs tab      | `button[data-testid="data-testid Tab Related logs"]`                                           | Tab toggle              |
 
 ### Buttons by text
 
 For generic buttons, use the `button` action with the button's visible text as the `reftarget`. The system finds buttons by text reliably.
 
 ```json
-{ "type": "interactive", "action": "button", "reftarget": "Add new data source", "content": "Click **Add new data source**" }
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Add new data source",
+  "content": "Click **Add new data source**"
+}
 ```
 
 ```json

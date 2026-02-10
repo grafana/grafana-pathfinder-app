@@ -81,16 +81,16 @@ This hybrid approach provides instance-wide storage with per-user scoping.
 
 Located in `src/utils/dev-mode.ts`:
 
-| Function | Purpose |
-| ----------------------------------- | ------------------------------------------------------------------- |
-| `isDevModeEnabled(config, userId?)` | Check if dev mode is active for a specific user |
-| `enableDevMode(userId, userIds?)` | Add a user to the dev mode access list (async, writes to server) |
-| `disableDevMode()` | Disable dev mode for all users (clears flag and user list) |
-| `disableDevModeForUser(userId, userIds?)` | Remove a specific user from the access list |
-| `toggleDevMode(userId, state, userIds?)` | Toggle dev mode on/off for a specific user |
-| `isDevModeEnabledGlobal()` | Simplified check using `window.__pathfinderPluginConfig` (no config param needed) |
+| Function                                     | Purpose                                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `isDevModeEnabled(config, userId?)`          | Check if dev mode is active for a specific user                                       |
+| `enableDevMode(userId, userIds?)`            | Add a user to the dev mode access list (async, writes to server)                      |
+| `disableDevMode()`                           | Disable dev mode for all users (clears flag and user list)                            |
+| `disableDevModeForUser(userId, userIds?)`    | Remove a specific user from the access list                                           |
+| `toggleDevMode(userId, state, userIds?)`     | Toggle dev mode on/off for a specific user                                            |
+| `isDevModeEnabledGlobal()`                   | Simplified check using `window.__pathfinderPluginConfig` (no config param needed)     |
 | `isAssistantDevModeEnabled(config, userId?)` | Check if assistant dev mode is enabled (requires dev mode + `enableAssistantDevMode`) |
-| `isAssistantDevModeEnabledGlobal()` | Global check for assistant dev mode |
+| `isAssistantDevModeEnabledGlobal()`          | Global check for assistant dev mode                                                   |
 
 ### Assistant dev mode
 

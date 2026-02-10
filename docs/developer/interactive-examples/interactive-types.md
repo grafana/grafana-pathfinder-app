@@ -203,14 +203,14 @@ See [guided-interactions.md](./guided-interactions.md) for detailed documentatio
 
 ## Choosing the right type
 
-| Need | Action/block type |
-| --- | --- |
-| Click by CSS selector | `highlight` |
-| Click by button text | `button` |
-| Enter text / select values | `formfill` |
-| Route change | `navigate` |
-| Hover to reveal hidden UI | `hover` |
-| Informational step (no action) | `noop` |
-| Teach a linear section | `section` |
-| Bundle micro-steps into one (automated) | `multistep` |
-| User performs steps manually | `guided` |
+| Need                                    | Action/block type |
+| --------------------------------------- | ----------------- |
+| Click by CSS selector                   | `highlight`       |
+| Click by button text                    | `button`          |
+| Enter text / select values              | `formfill`        |
+| Route change                            | `navigate`        |
+| Hover to reveal hidden UI               | `hover`           |
+| Informational step (no action)          | `noop`            |
+| Teach a linear section                  | `section`         |
+| Bundle micro-steps into one (automated) | `multistep`       |
+| User performs steps manually            | `guided`          |

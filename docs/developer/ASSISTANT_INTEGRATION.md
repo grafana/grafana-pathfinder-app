@@ -134,9 +134,9 @@ The `data-assistant-type` attribute determines how the assistant customizes your
 </assistant>
 ```
 
-| Attribute             | Required | Values                       | Purpose                                             |
-| --------------------- | -------- | ---------------------------- | --------------------------------------------------- |
-| `data-assistant-id`   | ✅ Yes   | Any unique string            | Identifies this element (used for localStorage key) |
+| Attribute             | Required | Values                               | Purpose                                             |
+| --------------------- | -------- | ------------------------------------ | --------------------------------------------------- |
+| `data-assistant-id`   | ✅ Yes   | Any unique string                    | Identifies this element (used for localStorage key) |
 | `data-assistant-type` | ✅ Yes   | `query`, `config`, `code`, or `text` | Tells assistant what type of content to customize   |
 
 ### Inline vs Block Rendering

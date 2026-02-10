@@ -54,18 +54,18 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 ```typescript
 interface ExperimentConfig {
   variant: 'excluded' | 'control' | 'treatment';
-  pages: string[];       // Target page paths where sidebar should auto-open (treatment only)
-  resetCache?: boolean;  // When toggled true, clears session storage to allow re-triggering auto-open
+  pages: string[]; // Target page paths where sidebar should auto-open (treatment only)
+  resetCache?: boolean; // When toggled true, clears session storage to allow re-triggering auto-open
 }
 ```
 
 **Variant behavior**:
 
-| Variant | Sidebar registered | Auto-open | Behavior |
-| ----------- | ------------------ | --------- | -------------------------------------------------- |
-| `excluded` | Yes | Normal | Not in experiment; normal Pathfinder behavior |
-| `control` | No | No | In experiment; no sidebar (native Grafana help only) |
-| `treatment` | Yes | Yes | In experiment; sidebar auto-opens on target pages |
+| Variant     | Sidebar registered | Auto-open | Behavior                                             |
+| ----------- | ------------------ | --------- | ---------------------------------------------------- |
+| `excluded`  | Yes                | Normal    | Not in experiment; normal Pathfinder behavior        |
+| `control`   | No                 | No        | In experiment; no sidebar (native Grafana help only) |
+| `treatment` | Yes                | Yes       | In experiment; sidebar auto-opens on target pages    |
 
 **Target pages**: The `pages` array contains URL path patterns (with optional `*` wildcard suffix) where auto-open triggers. An empty array means auto-open on all pages.
 
@@ -102,7 +102,7 @@ await OpenFeature.setProviderAndWait(
   OPENFEATURE_DOMAIN,
   new OFREPWebProvider({
     baseUrl: `/apis/features.grafana.app/v0alpha1/namespaces/${namespace}`,
-    pollInterval: -1,    // Flags fetched once on init, no polling
+    pollInterval: -1, // Flags fetched once on init, no polling
     timeoutMs: 10_000,
   }),
   {
@@ -183,7 +183,7 @@ const pathfinderFeatureFlags = {
     valueType: 'boolean',
     values: [true, false],
     defaultValue: false,
-    trackingKey: 'my_new_feature',  // Optional: enables analytics tracking
+    trackingKey: 'my_new_feature', // Optional: enables analytics tracking
   },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 ```
@@ -228,7 +228,7 @@ Feature flags are evaluated via MTFF. To test:
 
 ```javascript
 // View experiment config
-window.__pathfinderExperiment
+window.__pathfinderExperiment;
 ```
 
 ### Local development (Grafana OSS)

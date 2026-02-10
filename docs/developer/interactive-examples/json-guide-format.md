@@ -173,36 +173,36 @@ A single interactive step with "Show me" and "Do it" buttons.
 }
 ```
 
-| Field           | Type     | Required | Default | Description                                                 |
-| --------------- | -------- | -------- | ------- | ----------------------------------------------------------- |
-| `action`        | string   | ✅       | —       | Action type (see below)                                     |
-| `reftarget`     | string   | ✅\*     | —       | CSS selector or button text (\*optional for `noop` actions) |
-| `content`       | string   | ✅       | —       | Markdown description shown to user                          |
-| `targetvalue`   | string   | ❌       | —       | Value for `formfill` actions (supports regex, see below) |
-| `tooltip`       | string   | ❌       | —       | Tooltip shown on highlight (supports markdown)           |
-| `requirements`  | string[] | ❌       | —       | Conditions that must be met                              |
-| `objectives`    | string[] | ❌       | —       | Objectives marked complete after this step               |
-| `skippable`     | boolean  | ❌       | `false` | Allow skipping if requirements fail                      |
-| `hint`          | string   | ❌       | —       | Hint shown when step cannot be completed                 |
-| `formHint`      | string   | ❌       | —       | Hint shown when form validation fails (formfill only)    |
-| `validateInput` | boolean  | ❌       | `false` | Require input to match `targetvalue` pattern             |
-| `showMe`        | boolean  | ❌       | `true`  | Show the "Show me" button                                |
-| `doIt`          | boolean  | ❌       | `true`  | Show the "Do it" button                                  |
-| `completeEarly` | boolean  | ❌       | `false` | Mark step complete BEFORE action executes                          |
-| `verify`        | string   | ❌       | —       | Post-action verification (e.g., `"on-page:/path"`)                 |
-| `lazyRender`    | boolean  | ❌       | `false` | Enable progressive scroll discovery for virtualized containers     |
-| `scrollContainer` | string | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled |
+| Field             | Type     | Required | Default             | Description                                                        |
+| ----------------- | -------- | -------- | ------------------- | ------------------------------------------------------------------ |
+| `action`          | string   | ✅       | —                   | Action type (see below)                                            |
+| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop` actions)        |
+| `content`         | string   | ✅       | —                   | Markdown description shown to user                                 |
+| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex, see below)           |
+| `tooltip`         | string   | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
+| `requirements`    | string[] | ❌       | —                   | Conditions that must be met                                        |
+| `objectives`      | string[] | ❌       | —                   | Objectives marked complete after this step                         |
+| `skippable`       | boolean  | ❌       | `false`             | Allow skipping if requirements fail                                |
+| `hint`            | string   | ❌       | —                   | Hint shown when step cannot be completed                           |
+| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails (formfill only)              |
+| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                       |
+| `showMe`          | boolean  | ❌       | `true`              | Show the "Show me" button                                          |
+| `doIt`            | boolean  | ❌       | `true`              | Show the "Do it" button                                            |
+| `completeEarly`   | boolean  | ❌       | `false`             | Mark step complete BEFORE action executes                          |
+| `verify`          | string   | ❌       | —                   | Post-action verification (e.g., `"on-page:/path"`)                 |
+| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers     |
+| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled |
 
 **Action Types:**
 
-| Action      | Description                      | `reftarget`             | `targetvalue` |
-| ----------- | -------------------------------- | ----------------------- | ------------- |
-| `highlight` | Highlight an element             | CSS selector            | —             |
-| `button`    | Click a button                   | Button text or selector | —             |
-| `formfill`  | Enter text in input              | CSS selector            | Text to enter |
-| `navigate`  | Navigate to URL                  | URL path                | —             |
-| `hover`     | Hover over element               | CSS selector            | —             |
-| `noop`      | Informational step (no action)   | Optional                | —             |
+| Action      | Description                    | `reftarget`             | `targetvalue` |
+| ----------- | ------------------------------ | ----------------------- | ------------- |
+| `highlight` | Highlight an element           | CSS selector            | —             |
+| `button`    | Click a button                 | Button text or selector | —             |
+| `formfill`  | Enter text in input            | CSS selector            | Text to enter |
+| `navigate`  | Navigate to URL                | URL path                | —             |
+| `hover`     | Hover over element             | CSS selector            | —             |
+| `noop`      | Informational step (no action) | Optional                | —             |
 
 **Formfill Validation:**
 
@@ -583,20 +583,20 @@ Collects user responses that can be stored as variables and used elsewhere in th
 }
 ```
 
-| Field               | Type                                      | Required | Default | Description                                                                    |
-| ------------------- | ----------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------ |
-| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                         |
-| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                         |
-| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                |
-| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                |
-| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                     |
-| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                    |
-| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                      |
-| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                              |
-| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                     |
+| Field               | Type                                      | Required | Default | Description                                                                          |
+| ------------------- | ----------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------ |
+| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                               |
+| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                               |
+| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                      |
+| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                      |
+| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                           |
+| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                          |
+| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                            |
+| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                    |
+| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                           |
 | `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType |
-| `requirements`      | string[]                                  | ❌       | —       | Requirements that must be met for this input                                   |
-| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                              |
+| `requirements`      | string[]                                  | ❌       | —       | Requirements that must be met for this input                                         |
+| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                    |
 
 **Text Input Example:**
 
@@ -733,20 +733,20 @@ When `assistantEnabled` is `true`, the block displays a "Customize" button that 
 
 ### Block Types Summary
 
-| Block Type    | Category    | Description                                                       |
-| ------------- | ----------- | ----------------------------------------------------------------- |
-| `markdown`    | Content     | Formatted text with headings, lists, code, tables                 |
-| `html`        | Content     | Raw HTML for migration/custom content                             |
-| `image`       | Content     | Embedded images with optional dimensions                          |
-| `video`       | Content     | YouTube or native HTML5 video embeds                              |
-| `section`     | Structure   | Container for grouped interactive steps with "Do Section"         |
-| `conditional` | Structure   | Shows different content based on runtime conditions               |
-| `assistant`   | Structure   | Wraps blocks with AI-powered customization                        |
+| Block Type    | Category    | Description                                                             |
+| ------------- | ----------- | ----------------------------------------------------------------------- |
+| `markdown`    | Content     | Formatted text with headings, lists, code, tables                       |
+| `html`        | Content     | Raw HTML for migration/custom content                                   |
+| `image`       | Content     | Embedded images with optional dimensions                                |
+| `video`       | Content     | YouTube or native HTML5 video embeds                                    |
+| `section`     | Structure   | Container for grouped interactive steps with "Do Section"               |
+| `conditional` | Structure   | Shows different content based on runtime conditions                     |
+| `assistant`   | Structure   | Wraps blocks with AI-powered customization                              |
 | `interactive` | Interactive | Single-action step (highlight, button, formfill, navigate, hover, noop) |
-| `multistep`   | Interactive | Automated sequence of actions                                     |
-| `guided`      | Interactive | User-performed sequence with detection                            |
-| `quiz`        | Assessment  | Knowledge check with single/multiple choice                       |
-| `input`       | Assessment  | Collects user responses as variables                              |
+| `multistep`   | Interactive | Automated sequence of actions                                           |
+| `guided`      | Interactive | User-performed sequence with detection                                  |
+| `quiz`        | Assessment  | Knowledge check with single/multiple choice                             |
+| `input`       | Assessment  | Collects user responses as variables                                    |
 
 ---
 
@@ -768,19 +768,19 @@ Steps used in `multistep` and `guided` blocks share this structure:
 }
 ```
 
-| Field             | Type     | Required | Default             | Description                                                                  |
-| ----------------- | -------- | -------- | ------------------- | ---------------------------------------------------------------------------- |
-| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop`  |
-| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                          |
-| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                       |
-| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                          |
-| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                     |
-| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                      |
-| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                               |
-| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                        |
-| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                 |
-| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers               |
-| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled           |
+| Field             | Type     | Required | Default             | Description                                                                 |
+| ----------------- | -------- | -------- | ------------------- | --------------------------------------------------------------------------- |
+| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop` |
+| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                         |
+| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                      |
+| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                         |
+| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                    |
+| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                     |
+| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                              |
+| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                       |
+| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                |
+| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers              |
+| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled          |
 
 **Note:** The `tooltip` property is primarily used in `multistep` blocks (shown during automated execution), while `description` is used in `guided` blocks (shown in the steps panel as instructions for the user).
 
@@ -790,18 +790,18 @@ Steps used in `multistep` and `guided` blocks share this structure:
 
 Requirements control when interactive elements are accessible. Common requirements:
 
-| Requirement                      | Description                                      |
-| -------------------------------- | ------------------------------------------------ |
-| `navmenu-open`                   | Navigation menu must be open                     |
-| `is-admin`                       | User must have admin role                        |
-| `is-logged-in`                   | User must be authenticated                       |
-| `exists-reftarget`               | Target element must exist in DOM                 |
-| `on-page:/path`                  | User must be on specific page                    |
-| `has-datasource:X`              | Specific data source must exist                  |
-| `datasource-configured:X`       | Specific data source must exist and pass health check |
-| `has-plugin:X`                  | Specific plugin must be installed                |
-| `plugin-enabled:X`             | Specific plugin must be installed and enabled    |
-| `renderer:pathfinder`           | Content only for Pathfinder app context          |
+| Requirement               | Description                                           |
+| ------------------------- | ----------------------------------------------------- |
+| `navmenu-open`            | Navigation menu must be open                          |
+| `is-admin`                | User must have admin role                             |
+| `is-logged-in`            | User must be authenticated                            |
+| `exists-reftarget`        | Target element must exist in DOM                      |
+| `on-page:/path`           | User must be on specific page                         |
+| `has-datasource:X`        | Specific data source must exist                       |
+| `datasource-configured:X` | Specific data source must exist and pass health check |
+| `has-plugin:X`            | Specific plugin must be installed                     |
+| `plugin-enabled:X`        | Specific plugin must be installed and enabled         |
+| `renderer:pathfinder`     | Content only for Pathfinder app context               |
 
 See [requirements-reference.md](./requirements-reference.md) for the complete list.
 
