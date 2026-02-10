@@ -126,9 +126,8 @@ Use this template:
 
 For deeper context, read these files:
 
-- `tests/TESTING_STRATEGY.md` - Overall testing philosophy and failure classification
-- `tests/e2e-runner/design/MILESTONES.md` - E2E implementation details and known limitations
-- `tests/e2e-runner/design/e2e-test-runner-design.md` - CLI architecture and step execution logic
+- `docs/design/TESTING_STRATEGY.md` - Overall testing philosophy and failure classification
+- `docs/design/e2e-test-runner-design.md` - CLI architecture and step execution logic
 
 ## Exit codes reference
 
