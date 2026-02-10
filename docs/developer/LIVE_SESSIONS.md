@@ -36,15 +36,15 @@ npm run dev
 
 ### Usage
 
-1. **Enable Live Sessions**: Go to Configuration page, enable "Live Sessions (Experimental)"
-2. **Start as Presenter**: Click "Start Live Session" button, share the join code
-3. **Join as Attendee**: Click "Join Live Session", enter the code
-4. **Present**: Click "Show Me" or "Do It" - attendees will see your actions!
+1. **Enable live sessions**: Go to Configuration page (dev mode required), enable "Enable live collaborative learning sessions (Experimental)"
+2. **Start as presenter**: Click "Start live session" button, share the join code
+3. **Join as attendee**: Click "Join live session", enter the code
+4. **Present**: Click "Show me" or "Do it" - attendees will see your actions!
 
 ### Modes
 
-- **Guided Mode**: Attendees see highlights when you click "Show Me"
-- **Follow Mode**: Attendees' Grafana mirrors your "Do It" actions automatically
+- **Guided mode**: Attendees see highlights when you click "Show me"
+- **Follow mode**: Attendees' Grafana mirrors your "Do it" actions automatically
 
 ## Server Management
 
@@ -238,7 +238,7 @@ File: `scripts/peerjs-server.js`
 
 ### Client Settings
 
-File: `src/utils/collaboration/session-manager.ts`
+File: `src/integrations/workshop/session-manager.ts`
 
 ```typescript
 new Peer(peerId, {
