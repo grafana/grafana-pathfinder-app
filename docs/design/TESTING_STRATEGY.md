@@ -67,13 +67,13 @@ content.
   - Reference integrity (do links point to real sections?)
   - Condition validation for interactive requirements
 - **Implementation:**
-  - [`src/validation/validate-guide.ts`](../src/validation/validate-guide.ts) - Core validation logic
-  - [`src/validation/condition-validator.ts`](../src/validation/condition-validator.ts) - Requirements condition validation
-  - [`src/cli/commands/validate.ts`](../src/cli/commands/validate.ts) - CLI command
+  - [`src/validation/validate-guide.ts`](../../src/validation/validate-guide.ts) - Core validation logic
+  - [`src/validation/condition-validator.ts`](../../src/validation/condition-validator.ts) - Requirements condition validation
+  - [`src/cli/commands/validate.ts`](../../src/cli/commands/validate.ts) - CLI command
   - Run via: `npx pathfinder-cli validate ./path/to/guide.json`
   - Use of this CLI is presently in the CI chain for the [https://github.com/grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials) repo.
 
-### Layer 2: Engine Verification (Unit Tests)
+### Layer 2: Engine Verification (Unit Tests) ✅ IMPLEMENTED
 
 - **Goal:** Ensure the Pathfinder plugin itself works, runs on every PR
 - **Checks:**
@@ -82,6 +82,14 @@ content.
   - Does the requirement checking logic work?
 - **Speed:** Seconds.
 - **Owner:** Interactive Learning Plugin Team.
+- **Implementation:** Comprehensive Jest test suite covering:
+  - **Interactive engine core**: state management, sequence management, navigation, global interaction blocking
+  - **Action handlers**: guided, hover, form-fill, focus, button, and navigate handlers
+  - **Requirements and state checking**: requirement checker utilities and hooks, step state, check phases
+  - **Auto-completion**: action matcher for detecting when users complete steps independently
+  - **DOM layer**: selector resolution, generation, detection, enhanced selectors, element validation
+  - **Security**: sanitization, MITM protection, URL validation, log sanitization, context security
+  - **Validation**: guide validation, condition validation, type coupling
 
 ### Layer 3: E2E Integration 🚧 IN PROGRESS
 
@@ -92,10 +100,7 @@ content.
   - Does the "Happy Path" complete successfully?
 - **Tooling:** Playwright-based CLI Runner (`pathfinder-cli e2e`)
 - **Design Documentation:**
-  - [E2E Test Runner Design](./e2e-runner/design/e2e-test-runner-design.md) - Full architecture and design rationale
-  - [Implementation Milestones](./e2e-runner/design/MILESTONES.md) - L3 Phased implementation plan
-  - [L3 Phase 1 Results](./e2e-runner/design/L3-phase1-verification-results.md) - Assumption verification (completed)
-  - [L3 Phase 1 Summary](./e2e-runner/design/L3-PHASE1-SUMMARY.md) - Executive summary of L3 Phase 1
+  - [E2E Test Runner Design](./e2e-test-runner-design.md) - Full architecture and design rationale
 
 ### Layer 4: Live Environment Validation
 
@@ -118,7 +123,7 @@ Layer 4 validation requires **guide-level dependency metadata** to route guides 
 - **Guide dependencies**: Which other guides must be completed first (learning path ordering)
 - **Capability abstraction**: Multiple guides can provide the same abstract capability, enabling flexible learning paths
 
-This structured metadata lives in a `dependencies` object at the guide root level, separate from block-level `requirements` (which remain string arrays for runtime gating). See [Guide Dependencies Design](./e2e-runner/design/guide-dependencies-design.md) for the detailed specification.
+This structured metadata lives in `package.json` alongside the guide's `content.json`, separate from block-level `requirements` (which remain string arrays for runtime gating). See the [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md) for the full specification — particularly the [dependencies](./PATHFINDER-PACKAGE-DESIGN.md#dependencies) and [test environment metadata](./PATHFINDER-PACKAGE-DESIGN.md#future-proofing) sections.
 
 ---
 
@@ -248,12 +253,12 @@ We apply dependency principles to guides:
 
 ## Implementation Status
 
-| Layer            | Status         | Implementation                                                              |
-| :--------------- | :------------- | :-------------------------------------------------------------------------- |
-| Layer 1 (Static) | ✅ Complete    | [`src/validation/`](../src/validation/)                                     |
-| Layer 2 (Unit)   | ✅ Complete    | Existing Jest test suite                                                    |
-| Layer 3 (E2E)    | 🚧 In Progress | See [E2E Test Runner Design](./e2e-runner/design/e2e-test-runner-design.md) |
-| Layer 4 (Live)   | ⏳ Future      | Requires Layer 3 completion                                                 |
+| Layer            | Status         | Implementation                                            |
+| :--------------- | :------------- | :-------------------------------------------------------- |
+| Layer 1 (Static) | ✅ Complete    | [`src/validation/`](../../src/validation/)                |
+| Layer 2 (Unit)   | ✅ Complete    | Comprehensive Jest suite (see Layer 2 description above)  |
+| Layer 3 (E2E)    | 🚧 In Progress | See [E2E Test Runner Design](./e2e-test-runner-design.md) |
+| Layer 4 (Live)   | ⏳ Future      | Requires Layer 3 completion                               |
 
 ---
 
@@ -271,21 +276,17 @@ The following concerns are explicitly **out of scope** for this initiative:
 
 The E2E testing layer is the most complex component. Detailed design and implementation planning:
 
-- **[E2E Test Runner Design](./e2e-runner/design/e2e-test-runner-design.md)** - Complete architecture, CLI interface, step execution logic, error classification, and timing considerations
-- **[Implementation Milestones](./e2e-runner/design/MILESTONES.md)** - 7 L3 phases with 18 discrete milestones (L3-1A through L3-7C)
-- **[L3 Phase 1 Verification Results](./e2e-runner/design/L3-phase1-verification-results.md)** - Detailed assumption verification with code evidence (ARCHIVED)
-- **[L3 Phase 1 Summary](./e2e-runner/design/L3-PHASE1-SUMMARY.md)** - Executive summary of L3 Phase 1 completion (ARCHIVED)
-- **[Manual Verification Guide](./e2e-runner/design/MANUAL-VERIFICATION.md)** - Instructions for testing JSON loading infrastructure
+- **[E2E Test Runner Design](./e2e-test-runner-design.md)** - Complete architecture, CLI interface, step execution logic, error classification, and timing considerations
 
 ### Static Analysis (Layer 1)
 
-- [`src/validation/validate-guide.ts`](../src/validation/validate-guide.ts) - Core guide validation
-- [`src/validation/condition-validator.ts`](../src/validation/condition-validator.ts) - Requirements condition parser
-- [`src/cli/commands/validate.ts`](../src/cli/commands/validate.ts) - CLI command implementation
+- [`src/validation/validate-guide.ts`](../../src/validation/validate-guide.ts) - Core guide validation
+- [`src/validation/condition-validator.ts`](../../src/validation/condition-validator.ts) - Requirements condition parser
+- [`src/cli/commands/validate.ts`](../../src/cli/commands/validate.ts) - CLI command implementation
 
 ### Layer 4 Prerequisites
 
-- **[Guide Dependencies Design](./e2e-runner/design/guide-dependencies-design.md)** - Guide-level metadata schema for environment targeting, dataset requirements, and inter-guide dependencies
+- **[Pathfinder Package Design](./PATHFINDER-PACKAGE-DESIGN.md)** — Guide-level metadata, dependencies, and test environment routing. See [dependencies](./PATHFINDER-PACKAGE-DESIGN.md#dependencies) and [test environment metadata](./PATHFINDER-PACKAGE-DESIGN.md#future-proofing) sections.
 
 ---
 
@@ -293,13 +294,11 @@ The E2E testing layer is the most complex component. Detailed design and impleme
 
 This section establishes the authority hierarchy for E2E testing documentation, preventing duplication and ensuring single sources of truth.
 
-| Document                          | Purpose                                     | Authority                                |
-| --------------------------------- | ------------------------------------------- | ---------------------------------------- |
-| TESTING_STRATEGY.md               | Vision, failure taxonomy, testing pyramid   | Immutable principles                     |
-| e2e-test-runner-design.md         | Architecture, interfaces, specifications    | Single source of truth for specs         |
-| guide-dependencies-design.md      | Guide metadata schema, dependency semantics | Source of truth for guide-level metadata |
-| MILESTONES.md                     | Implementation tasks, acceptance criteria   | References design doc for specs          |
-| L3-phase1-verification-results.md | Historical findings                         | Archived - findings merged into design   |
+| Document                     | Purpose                                   | Authority                                         |
+| ---------------------------- | ----------------------------------------- | ------------------------------------------------- |
+| TESTING_STRATEGY.md          | Vision, failure taxonomy, testing pyramid | Immutable principles                              |
+| e2e-test-runner-design.md    | Architecture, interfaces, specifications  | Single source of truth for E2E specs              |
+| PATHFINDER-PACKAGE-DESIGN.md | Package model, metadata, dependencies     | Source of truth for guide-level metadata and deps |
 
 ### Guide failure ownership model
 
