@@ -47,6 +47,10 @@ const SELECTOR_CONFIG = {
   interactiveTags: ['input', 'select', 'textarea', 'button', 'a', 'label'] as const,
   /** HTML tags that are form controls */
   formControlTags: ['input', 'select', 'textarea'] as const,
+  /** Structural tags that act as component boundaries (panels, sections, etc.) */
+  scopingTags: ['section', 'article', 'main', 'aside', 'nav', 'form', 'header'] as const,
+  /** Maximum depth to search for a scoping ancestor */
+  maxScopingDepth: 8,
   /** Generic button words that need parent context for disambiguation */
   genericButtonWords: [
     'new',
@@ -474,6 +478,39 @@ function isUniqueButtonText(text: string): boolean {
  * Core principle: Find the actual interactive element (input, button, link)
  * with the best testid or id, not wrapper divs.
  */
+
+/**
+ * Find a structural scoping ancestor with a testid.
+ *
+ * Walks up the DOM looking for section/article/main/etc. elements that have
+ * a testid. These represent component boundaries (e.g., Grafana panels) and
+ * provide stable scoping context even when the child testid happens to be
+ * unique on the current page.
+ *
+ * Returns a CSS selector string for the scoping ancestor, or null if none found.
+ */
+function findScopingAncestorSelector(element: HTMLElement): string | null {
+  let current = element.parentElement;
+  let depth = 0;
+
+  while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
+    const tag = current.tagName.toLowerCase();
+
+    if ((SELECTOR_CONFIG.scopingTags as readonly string[]).includes(tag)) {
+      const testId = getAnyTestId(current);
+      if (testId) {
+        const testIdAttr = getTestIdAttr(current);
+        return `${tag}[${testIdAttr}='${testId}']`;
+      }
+    }
+
+    current = current.parentElement;
+    depth++;
+  }
+
+  return null;
+}
+
 function findBestElementInHierarchy(
   element: HTMLElement,
   maxDepth = 5,
@@ -481,7 +518,10 @@ function findBestElementInHierarchy(
 ): HTMLElement {
   // STEP 1: Search siblings and nearby elements for form controls
   // When user clicks SVG/icon near an input, find that input!
-  const nearbyInput = findNearbyFormControl(element, 3);
+  // BUT: Skip this if the element is already inside a button or link —
+  // the user clicked the button itself, not an icon near an input.
+  const closestInteractive = element.closest('button, a');
+  const nearbyInput = closestInteractive ? null : findNearbyFormControl(element, 3);
   if (nearbyInput) {
     return nearbyInput;
   }
@@ -751,8 +791,25 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     const baseSelector = `${tag}[${testIdAttr}='${testId}']`;
     const matches = querySelectorAllEnhanced(baseSelector);
 
+    // Try structural scoping (section/article/main with testid) for stability.
+    // This works for BOTH unique and non-unique testids:
+    // - Unique: adds panel context so selector stays stable if page changes
+    // - Non-unique: scopes to the right panel/section to disambiguate
+    const scopingSelector = findScopingAncestorSelector(bestElement);
+    if (scopingSelector) {
+      const scopedSelector = `${scopingSelector} ${baseSelector}`;
+      try {
+        const scopedMatches = querySelectorAllEnhanced(scopedSelector);
+        if (scopedMatches.elements.length === 1 && scopedMatches.elements[0] === bestElement) {
+          return cleanDynamicAttributes(scopedSelector);
+        }
+      } catch {
+        // Scoped selector failed, fall through
+      }
+    }
+
     if (matches.elements.length === 1) {
-      // Test ID is unique - return simple selector!
+      // Test ID is unique and no scoping parent worked — use simple selector
       return cleanDynamicAttributes(baseSelector);
     }
 
