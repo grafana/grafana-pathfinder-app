@@ -1,366 +1,302 @@
-# Feature Toggles in grafana-pathfinder-app
+# Feature flags in grafana-pathfinder-app
 
-This document explains how feature toggles are implemented in the grafana-pathfinder-app plugin using Grafana's built-in feature toggle system.
+This document explains how feature flags are implemented in the grafana-pathfinder-app plugin using the OpenFeature SDK and Grafana's Multi-Tenant Feature Flag Service (MTFF).
 
 ## Overview
 
-The plugin uses Grafana's core feature toggle system (`config.featureToggles`) to control feature visibility. This approach:
+The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OFREP Web Provider to evaluate feature flags dynamically at runtime via Grafana Cloud's MTFF service. This approach:
 
-- ✅ Leverages Grafana's existing infrastructure
-- ✅ No additional dependencies required
-- ✅ Simple, direct access via `@grafana/runtime`
-- ✅ Works in both OSS and Cloud/Enterprise
-- ✅ Consistent with Grafana's feature flag management
+- Leverages a vendor-neutral open standard (OpenFeature)
+- Supports boolean, string, number, and object-valued flags
+- Enables A/B experiments with variant assignment and targeting
+- Provides domain-isolated evaluation (does not conflict with Grafana core or other plugins)
+- Includes automatic analytics tracking via `TrackingHook`
 
-## Current Feature Toggles
+## Current feature flags
 
-### `grafanaPathfinderAutoOpenSidebar`
+### `pathfinder.auto-open-sidebar`
 
-**Purpose**: Sets the default value for the "Open Panel on Launch" user preference. Users can always change this setting afterwards.
+**Type**: Boolean
 
-**Default**: Not set (undefined) - uses `DEFAULT_OPEN_PANEL_ON_LAUNCH` constant (currently `false`)
+**Purpose**: Controls whether the sidebar automatically opens on first Grafana load per session. Users can always change this setting afterwards via plugin configuration.
+
+**Default**: `false` (uses `DEFAULT_OPEN_PANEL_ON_LAUNCH` constant from `src/constants.ts`)
 
 **Behavior**:
 
-- **Not set** (undefined): Uses `DEFAULT_OPEN_PANEL_ON_LAUNCH` as the default value
-- **`true`**: Sets user preference default to enabled (sidebar will auto-open by default)
-- **`false`**: Sets user preference default to disabled (sidebar won't auto-open by default)
+- **`true`**: Sidebar auto-opens on first page load per session
+- **`false`**: Sidebar only opens when the user explicitly requests it
 
-**Important**: The feature toggle only sets the **initial/default value**. Users can always override it in plugin settings.
+**Important**: The feature flag only sets the **initial/default value**. Users can always override it in plugin settings. The resolution priority is:
 
-**How it works**:
+1. User's saved preference in plugin settings (takes precedence)
+2. Feature flag value from MTFF
+3. `DEFAULT_OPEN_PANEL_ON_LAUNCH` constant (fallback)
 
-1. When plugin settings are first loaded, check if user has saved a preference
-2. If user has a saved preference → use it (user choice takes precedence)
-3. If no saved preference → use feature toggle value as default
-4. If feature toggle not set → use `DEFAULT_OPEN_PANEL_ON_LAUNCH`
+**Multi-instance support**: Auto-open tracking is scoped per Grafana instance using hostname. This ensures that users with multiple Cloud instances (e.g., `company1.grafana.net` and `company2.grafana.net`) will see the sidebar auto-open independently per instance.
 
-**Multi-instance support**: The auto-open tracking is scoped per Grafana instance (using hostname). This ensures that users with multiple Cloud instances (e.g., `company1.grafana.net` and `company2.grafana.net`) will see the sidebar auto-open once per session on each instance independently.
+**Onboarding flow integration**: If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the plugin defers auto-open. It listens for navigation events (`grafana:location-changed` and `locationService.getHistory().listen()`) and triggers auto-open when the user navigates away from onboarding to normal Grafana pages.
 
-**Onboarding flow integration**: If a user first lands on the setup guide onboarding flow, the plugin detects this and defers the auto-open. It listens for navigation events (`grafana:location-changed` and `locationService.getHistory().listen()`) and triggers the auto-open when the user navigates away from onboarding to normal Grafana pages. This prevents interrupting the onboarding experience while ensuring the sidebar still opens automatically.
+**Tracking key**: `auto_open_sidebar`
 
-**Example scenarios**:
+---
 
-```
-Toggle: not set + User hasn't configured = Uses DEFAULT (false) = No auto-open
-Toggle: not set + User enabled it       = Uses user choice (true) = Auto-open ✓
-Toggle: true    + User hasn't configured = Defaults to true = Auto-open ✓
-Toggle: true    + User disabled it       = Uses user choice (false) = No auto-open
-Toggle: false   + User hasn't configured = Defaults to false = No auto-open
-Toggle: false   + User enabled it        = Uses user choice (true) = Auto-open ✓
-```
+### `pathfinder.experiment-variant`
 
-**Use case**: Admins can set the default experience for users, but users always have final control.
+**Type**: Object (`ExperimentConfig`)
 
-**Naming Convention**: camelCase, prefixed with `grafanaPathfinder` to identify plugin-specific toggles
+**Purpose**: A/B experiment for testing Pathfinder's impact on onboarding. Returns a JSON object with variant assignment, target pages, and cache reset control.
 
-## How It Works
+**Default**: `{ variant: 'excluded', pages: [], resetCache: false }`
 
-### Accessing Feature Toggles
-
-Grafana exposes feature toggles to plugins via `config.featureToggles` from `@grafana/runtime`. The plugin uses a simple utility function to check toggle values:
+**Returned object shape**:
 
 ```typescript
-import { config } from '@grafana/runtime';
-
-// Check a feature toggle
-const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
-const isEnabled = featureToggles?.['grafanaPathfinderAutoOpenSidebar'] ?? true;
+interface ExperimentConfig {
+  variant: 'excluded' | 'control' | 'treatment';
+  pages: string[];       // Target page paths where sidebar should auto-open (treatment only)
+  resetCache?: boolean;  // When toggled true, clears session storage to allow re-triggering auto-open
+}
 ```
 
-### Utility Function
+**Variant behavior**:
 
-The plugin provides `getFeatureToggle()` in `src/utils/openfeature.ts`:
+| Variant | Sidebar registered | Auto-open | Behavior |
+| ----------- | ------------------ | --------- | -------------------------------------------------- |
+| `excluded` | Yes | Normal | Not in experiment; normal Pathfinder behavior |
+| `control` | No | No | In experiment; no sidebar (native Grafana help only) |
+| `treatment` | Yes | Yes | In experiment; sidebar auto-opens on target pages |
+
+**Target pages**: The `pages` array contains URL path patterns (with optional `*` wildcard suffix) where auto-open triggers. An empty array means auto-open on all pages.
+
+**Cache reset**: The `resetCache` field allows operators to clear the "already shown" tracking via MTFF, enabling the sidebar to auto-open again for users who have already seen it.
+
+**Tracking key**: `experiment_variant`
+
+---
+
+## How it works
+
+### Architecture
+
+The plugin connects to MTFF via the OFREP (OpenFeature Remote Evaluation Protocol) Web Provider:
+
+```
+Plugin (React)  -->  OpenFeature SDK  -->  OFREPWebProvider  -->  MTFF (/apis/features.grafana.app/...)
+```
+
+### Initialization
+
+OpenFeature is initialized once at plugin load time in `src/module.tsx`:
 
 ```typescript
-import { FeatureFlags, getFeatureToggle } from '../../utils/openfeature';
+import { initializeOpenFeature } from './utils/openfeature';
 
-const ConfigurationForm = () => {
-  // Check feature toggle with default value
-  const autoOpenEnabled = getFeatureToggle(
-    FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH,
-    true // Default value if toggle not found
-  );
+await initializeOpenFeature();
+```
 
-  if (!autoOpenEnabled) {
-    return null; // Hide feature
+This sets up the OFREP provider with the current namespace as targeting context:
+
+```typescript
+await OpenFeature.setProviderAndWait(
+  OPENFEATURE_DOMAIN,
+  new OFREPWebProvider({
+    baseUrl: `/apis/features.grafana.app/v0alpha1/namespaces/${namespace}`,
+    pollInterval: -1,    // Flags fetched once on init, no polling
+    timeoutMs: 10_000,
+  }),
+  {
+    targetingKey: config.namespace,
+    namespace: config.namespace,
+    ...config.openFeatureContext,
   }
-
-  return <div>Feature Content</div>;
-};
+);
 ```
 
-### No Setup Required
+The domain `grafana-pathfinder-app` isolates this plugin's flags from Grafana core and other plugins.
 
-## Adding a New Feature Toggle
+### Evaluating flags
 
-### 1. Define the Toggle Constant
+#### In React components (hooks)
 
-Add the toggle to `src/utils/openfeature.ts`:
-
-```typescript
-export const FeatureFlags = {
-  // Existing toggles...
-
-  // Your new toggle
-  MY_NEW_FEATURE: 'grafanaPathfinderMyNewFeature',
-} as const;
-```
-
-**Naming Convention**: Use camelCase format `grafanaPathfinder<FeatureName>` to identify plugin-specific toggles.
-
-### 2. Use the Toggle in Your Component
+Use the re-exported OpenFeature React hooks:
 
 ```typescript
-import { FeatureFlags, getFeatureToggle } from '../../utils/openfeature';
+import { useBooleanFlag } from '../../utils/openfeature';
 
 const MyComponent = () => {
-  // Check toggle value
-  const isMyFeatureEnabled = getFeatureToggle(
-    FeatureFlags.MY_NEW_FEATURE,
-    false // Default value if toggle not defined
-  );
-
-  if (!isMyFeatureEnabled) {
-    return null; // Hide feature
-  }
-
-  return <div>My Feature Content</div>;
+  const autoOpen = useBooleanFlag('pathfinder.auto-open-sidebar', false);
+  // ...
 };
 ```
 
-### 3. Register the Toggle in Grafana
+Available hooks:
 
-#### For Grafana Cloud/Enterprise
+- `useBooleanFlag(flagName, defaultValue)` - For boolean flags
+- `useStringFlag(flagName, defaultValue)` - For string flags
+- `useNumberFlag(flagName, defaultValue)` - For number flags
 
-Register the toggle in Grafana's feature toggle registry. This is typically done in:
+These hooks must be used within an `OpenFeatureProvider` component tree.
 
-**Location**: `pkg/services/featuremgmt/registry.go` (in Grafana core repository)
+#### In non-React code (synchronous)
 
-**Example**:
+Use `getFeatureFlagValue()` for boolean flags or `getExperimentConfig()` for object-valued experiment flags:
 
-```go
-{
-  Name:            "grafanaPathfinderMyNewFeature",
-  Description:     "Enable my new feature in grafana-pathfinder-app",
-  State:           FeatureStateAlpha, // or Beta, GA
-  Expression:      "true", // or targeting expression
-  RequiresDevMode: false,
-},
+```typescript
+import { getFeatureFlagValue, getExperimentConfig } from '../../utils/openfeature';
+
+// Boolean flag
+const shouldAutoOpen = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
+
+// Experiment config (object flag)
+const experimentConfig = getExperimentConfig('pathfinder.experiment-variant');
+if (experimentConfig.variant === 'treatment') {
+  // Auto-open sidebar on experimentConfig.pages
+}
 ```
 
-**Targeting Options**: You can use expressions to enable toggles conditionally:
+#### Async evaluation with guaranteed readiness
 
-- By organization: `"org == 1"`
-- By user: `"user.login == 'admin'"`
-- By license: `"license.hasLicense()"`
-- Complex expressions: `"org == 1 || user.isGrafanaAdmin()"`
+Use `evaluateFeatureFlag()` when you need to wait for the provider to be ready:
 
-#### For Grafana OSS (Local Development)
+```typescript
+import { evaluateFeatureFlag } from '../../utils/openfeature';
 
-For local testing, you can enable toggles via:
-
-1. **Configuration file** (`custom.ini` or `grafana.ini`):
-
-```ini
-[feature_toggles]
-enable = grafanaPathfinderMyNewFeature
+const autoOpen = await evaluateFeatureFlag('pathfinder.auto-open-sidebar');
 ```
 
-2. **Environment variable**:
+### Analytics tracking
 
-```bash
-GF_FEATURE_TOGGLES_ENABLE=grafanaPathfinderMyNewFeature
+All flag evaluations are automatically tracked via `TrackingHook` (added during initialization). Flags with a `trackingKey` defined in `pathfinderFeatureFlags` are reported to analytics using that key.
+
+## Adding a new feature flag
+
+### 1. Define the flag
+
+Add the flag to `pathfinderFeatureFlags` in `src/utils/openfeature.ts`:
+
+```typescript
+const pathfinderFeatureFlags = {
+  // Existing flags...
+
+  'pathfinder.my-new-feature': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'my_new_feature',  // Optional: enables analytics tracking
+  },
+} as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 ```
 
-3. **Command line**:
+**Naming convention**: Use kebab-case format `pathfinder.<feature-name>`.
 
-```bash
-grafana-server --feature-toggles grafanaPathfinderMyNewFeature
+### 2. Use the flag
+
+```typescript
+// React component
+import { useBooleanFlag } from '../../utils/openfeature';
+
+const MyComponent = () => {
+  const isEnabled = useBooleanFlag('pathfinder.my-new-feature', false);
+  if (!isEnabled) return null;
+  return <div>My feature content</div>;
+};
+
+// Non-React code
+import { getFeatureFlagValue } from '../../utils/openfeature';
+const isEnabled = getFeatureFlagValue('pathfinder.my-new-feature', false);
 ```
+
+### 3. Register the flag in MTFF
+
+Register the flag in the Multi-Tenant Feature Flag Service so it can be evaluated at runtime. This is managed through Grafana's internal MTFF configuration.
+
+### 4. Document the flag
+
+- Add to the "Current feature flags" section in this document
+- Include purpose, type, default, behavior, and tracking key
 
 ## Testing
 
-### Local Development (OSS)
+### Grafana Cloud
 
-1. **Enable the toggle** in your Grafana configuration:
+Feature flags are evaluated via MTFF. To test:
 
-   ```ini
-   [feature_toggles]
-   enable = grafanaPathfinderAutoOpenSidebar
-   ```
-
-2. **Restart Grafana** to apply the toggle
-
-3. **Verify in browser console**:
-   ```javascript
-   // Check if toggle is enabled
-   window.grafanaBootData.settings.featureToggles.grafanaPathfinderAutoOpenSidebar;
-   ```
-
-### Testing Both States
-
-To test both enabled and disabled states:
-
-1. **Enabled**: Set toggle in config and restart Grafana
-2. **Disabled**: Remove toggle from config and restart Grafana
-3. **Default behavior**: Remove toggle and verify default value works correctly
-
-### Cloud/Enterprise Testing
-
-1. **Register toggle** in Grafana's feature toggle registry
-2. **Deploy Grafana** with the new toggle
-3. **Enable toggle** via admin UI or configuration
-4. **Deploy plugin** with code that uses the toggle
-5. **Verify** toggle value in browser DevTools
-
-## Deployment
-
-### Plugin Deployment
-
-The plugin can be deployed independently of Grafana. Feature toggles should be registered in Grafana first, but the plugin will gracefully fall back to default values if toggles are not found.
-
-**Recommended Order**:
-
-1. **Register toggle** in Grafana's feature toggle registry (if needed for Cloud/Enterprise)
-2. **Deploy Grafana** with new toggle
-3. **Deploy plugin** with code that uses the toggle
-
-**Safe Deployment**: Because the plugin uses default values, you can deploy in any order. Missing toggles won't break functionality—they'll just use their defaults.
-
-## Monitoring
-
-### Checking Toggle State
-
-In browser DevTools console:
+1. Register the flag in MTFF with appropriate targeting
+2. Deploy the plugin
+3. Verify in browser console:
 
 ```javascript
-// View all feature toggles
-window.grafanaBootData.settings.featureToggles;
-
-// Check specific toggle
-window.grafanaBootData.settings.featureToggles.grafanaPathfinderMyNewFeature;
-
-// Or via config object
-const config = require('@grafana/runtime').config;
-console.log(config.featureToggles);
+// View experiment config
+window.__pathfinderExperiment
 ```
 
-### Change History
+### Local development (Grafana OSS)
 
-Feature toggle changes are tracked in Grafana's repository:
+MTFF is not available in OSS. Flags will use their default values. To test non-default states, you can:
 
-- View registry changes: `git log -- pkg/services/featuremgmt/registry.go`
-- Toggle state changes logged in Grafana's audit log (Enterprise)
+1. Use the experiment debug utilities exposed on `window.__pathfinderExperiment`
+2. Mock the OpenFeature provider in tests
 
-## Best Practices
+### Testing both states
 
-### 1. Default Values
+- **Default behavior**: Ensure the flag's default value produces correct behavior
+- **Enabled/disabled**: Verify both flag states work correctly
+- **Error handling**: Verify graceful fallback when evaluation fails (should return default value)
+
+## Best practices
+
+### 1. Default values
 
 Always provide sensible defaults that maintain existing behavior if flag evaluation fails:
 
 ```typescript
 // Good: Feature hidden by default if flag fails
-const showNewFeature = useBooleanFlagValue(
-  FeatureFlags.NEW_FEATURE,
-  false // Safe default
-);
+const showNewFeature = useBooleanFlag('pathfinder.new-feature', false);
 
 // Good: Maintain existing behavior if flag fails
-const showExistingFeature = useBooleanFlagValue(
-  FeatureFlags.EXISTING_FEATURE,
-  true // Backward compatible
-);
+const showExistingFeature = useBooleanFlag('pathfinder.existing-feature', true);
 ```
 
-### 2. Toggle Naming
+### 2. Flag naming
 
-- Use descriptive names: `grafanaPathfinderOpenPanelOnLaunchConfig` not `feature1`
-- Include plugin prefix: `grafanaPathfinder<FeatureName>`
-- Use camelCase to match Grafana's convention
+- Use descriptive kebab-case names: `pathfinder.auto-open-sidebar` not `pathfinder.feature1`
+- Always prefix with `pathfinder.` to identify plugin-specific flags
+- Use consistent naming for tracking keys (snake_case): `auto_open_sidebar`
 
-### 3. Toggle Lifecycle
+### 3. Flag lifecycle
 
-1. **Introduction**: Create toggle with default `false`, register in Grafana
+1. **Introduction**: Define flag with safe default, register in MTFF
 2. **Validation**: Enable for testing, gather feedback, adjust targeting
-3. **Stabilization**: Enable for all users once stable, or make feature default
-4. **Cleanup**: Remove toggle from code once feature is permanent, remove from registry
+3. **Stabilization**: Enable for all users once stable
+4. **Cleanup**: Remove flag from code once feature is permanent
 
-### 4. Documentation
+## Common issues
 
-When adding a toggle:
-
-- Document its purpose in code comments
-- Add to `FeatureFlags` constant with descriptive comment
-- Update this document's "Current Feature Toggles" section
-- Include toggle name and purpose in PR description
-
-### 5. Testing
-
-- Test both toggle states (`true` and `false`)
-- Test default value behavior (toggle not registered)
-- Verify graceful degradation when toggle is missing
-- Test in both OSS and Cloud environments if possible
-
-## Common Issues
-
-### Issue: Toggle always returns default value
+### Issue: Flag always returns default value
 
 **Causes**:
 
-1. Toggle not registered in Grafana's feature toggle registry
-2. Grafana hasn't been restarted after adding toggle to config
-3. Toggle name mismatch (check for typos)
-4. Feature toggles not available (`config.featureToggles` is undefined)
+1. `config.namespace` not available (prevents OpenFeature initialization)
+2. MTFF not reachable (network/auth issue)
+3. Flag not registered in MTFF
+4. Flag name mismatch (check for typos)
 
 **Solution**:
 
-- Check toggle is in config: `[feature_toggles] enable = grafanaPathfinderMyToggle`
-- Restart Grafana after config changes
-- Verify in browser console: `window.grafanaBootData.settings.featureToggles`
+- Check browser console for `[OpenFeature]` warnings
+- Verify initialization succeeded (no errors in console)
+- Verify flag name matches MTFF registration exactly
 
-### Issue: Toggle not available in Cloud
+### Issue: Flag not available in OSS
 
-**Cause**: Toggle not registered in Grafana's feature toggle registry.
+**Cause**: MTFF is a Grafana Cloud service. OSS instances cannot reach it.
 
-**Solution**: Register the toggle in `pkg/services/featuremgmt/registry.go` and deploy Grafana.
-
-### Issue: Toggle changes not taking effect
-
-**Cause**: Grafana needs to be restarted after configuration changes.
-
-**Solution**: Restart Grafana. Feature toggles are loaded at startup, not dynamically.
+**Solution**: This is expected. Flags will use their default values in OSS. Design defaults accordingly.
 
 ## References
 
-- [Grafana Feature Toggle Documentation](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/feature-toggles/)
-- [Grafana Runtime Config](https://grafana.com/docs/grafana/latest/developers/plugins/create-a-plugin/extend-a-plugin/add-authentication-for-data-source-plugins/)
-- Internal: `pkg/services/featuremgmt/` in Grafana repository
-
-## Comparison: Feature Toggles vs OpenFeature
-
-### When to use Grafana Feature Toggles (What we use)
-
-- ✅ Plugin features that should be managed by Grafana admins
-- ✅ Features that need to work in both OSS and Cloud
-- ✅ Simple boolean toggles
-- ✅ No additional dependencies needed
-
-### When OpenFeature might be needed
-
-- Plugin wants its own independent feature flag service
-- Complex targeting beyond what Grafana provides
-- Multi-variant experiments (A/B/C testing)
-- Real-time flag updates without restarts
-
-For most plugin use cases, Grafana's built-in feature toggles are sufficient and simpler.
-
-## Support
-
-For questions or issues with feature toggles:
-
-1. Check this documentation first
-2. Verify toggle state in browser console: `window.grafanaBootData.settings.featureToggles`
-3. Check Grafana configuration files
-4. Contact the grafana-pathfinder-app team
-5. For Grafana core toggle issues, see Grafana's feature toggle documentation
+- [OpenFeature specification](https://openfeature.dev/specification)
+- [OpenFeature React SDK](https://openfeature.dev/docs/reference/technologies/client/web/)
+- [OFREP Web Provider](https://github.com/open-feature/js-sdk-contrib/tree/main/libs/providers/ofrep-web)
+- Source: `src/utils/openfeature.ts`
