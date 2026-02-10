@@ -86,8 +86,11 @@ export function useStandalonePersistence(
   const hasRestoredRef = useRef(false);
 
   // REACT: ref tracks latest value so async callbacks avoid stale closures (R2)
+  // Updated in an effect (not during render) to satisfy react-hooks/refs rule.
   const latestCompletedRef = useRef(isLocallyCompleted);
-  latestCompletedRef.current = isLocallyCompleted;
+  useEffect(() => {
+    latestCompletedRef.current = isLocallyCompleted;
+  }, [isLocallyCompleted]);
 
   // Reset restore guard when the step ID changes so the persist effect
   // doesn't run with stale state before the new restore completes.
