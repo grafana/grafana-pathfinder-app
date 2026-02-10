@@ -388,7 +388,7 @@ Based on test results, consider these optimizations:
 After testing, please share results with the team:
 
 1. **Create test report** using template above
-2. **Document in**: `/docs/scale-testing-results/YYYY-MM-DD-N-attendees.md`
+2. **Document in**: `docs/developer/scale-testing-results/YYYY-MM-DD-N-attendees.md` (create directory if needed)
 3. **Update KNOWN_ISSUES.md** with tested limits
 4. **Share findings** in team channel or PR
 
@@ -405,6 +405,5 @@ Based on scale testing findings:
 
 ## References
 
-- Live Sessions Plan: `/plans/collaborative-live-sessions.md`
-- Live Sessions Setup: `/docs/developer/LIVE_SESSIONS.md`
-- Known Issues: `/docs/KNOWN_ISSUES.md`
+- Live Sessions Setup: `docs/developer/LIVE_SESSIONS.md`
+- Known Issues: `docs/developer/KNOWN_ISSUES.md`
