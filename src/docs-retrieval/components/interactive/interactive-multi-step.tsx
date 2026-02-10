@@ -13,8 +13,14 @@ import { INTERACTIVE_CONFIG } from '../../../constants/interactive-config';
 import { InternalAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
 import { STEP_STATES } from './step-states';
+import { useStandalonePersistence } from './use-standalone-persistence';
 
 let anonymousMultiStepCounter = 0;
+
+/** Reset the anonymous multi-step counter (called by resetInteractiveCounters). */
+export function resetMultiStepCounter(): void {
+  anonymousMultiStepCounter = 0;
+}
 
 interface InteractiveMultiStepProps {
   internalActions: InternalAction[];
@@ -156,6 +162,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Local UI state (similar to InteractiveStep)
     const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
+
+    // Persist standalone step completion across page refreshes
+    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
     const [currentActionIndex, setCurrentActionIndex] = useState(-1);
     const [failedStepIndex, setFailedStepIndex] = useState(-1); // Track which step failed for error display
     const [executionError, setExecutionError] = useState<string | null>(null);
