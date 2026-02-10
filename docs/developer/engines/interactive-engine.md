@@ -37,13 +37,25 @@ The Interactive Engine provides the core automation and interaction capabilities
 - Supports section-level blocking to prevent user interference during automation
 - Provides emergency unblock method for safety
 
-**Key Returned Methods**:
+**High-level API** (preferred for most consumers):
 
-- `executeInteractiveAction()` - High-level method to execute any interactive action programmatically
-- `checkRequirementsFromData()` - Validate pre-conditions before action execution
+- `executeInteractiveAction()` - Execute any interactive action programmatically (routes to the appropriate handler)
+- `checkRequirementsFromData()` - Validate pre-conditions from step data before action execution
+- `checkElementRequirements()` - Validate pre-conditions from a DOM element's `data-*` attributes
 - `verifyStepResult()` - Validate post-conditions after action execution
+- `fixNavigationRequirements()` - Attempt to fix navigation-related requirement failures
 - `startSectionBlocking()` / `stopSectionBlocking()` - Control user interaction blocking during multi-step sections
+- `isSectionBlocking()` - Check whether section blocking is currently active
+- `cancelSection()` - Cancel a running section (triggers cancel callback)
 - `forceUnblock()` - Emergency method to clear all blocking overlays
+
+**Low-level action methods** (used internally; available for specialized consumers):
+
+- `interactiveFocus()` - Directly execute a focus/highlight action
+- `interactiveButton()` - Directly execute a button click action
+- `interactiveFormFill()` - Directly execute a form fill action
+- `interactiveNavigate()` - Directly execute a navigation action
+- `interactiveSequence()` - Directly execute a sequence of actions
 
 ## Action Handlers
 
@@ -53,9 +65,9 @@ Located in `src/interactive-engine/action-handlers/`, these specialized classes 
 
 - **`focus-handler.ts`** - Highlights and optionally clicks elements by CSS selector (supports complex selectors, pseudo-selectors)
 - **`button-handler.ts`** - Finds and clicks buttons using intelligent CSS selector or text matching fallback
-- **`form-fill-handler.ts`** - Fills form inputs, textareas, selects, and Monaco editors; supports CLEAR command and special value patterns
+- **`form-fill-handler.ts`** - Fills form inputs, textareas, selects, Monaco editors, and contenteditable elements; supports CLEAR command, combobox pattern detection (ARIA `role="combobox"` with `aria-autocomplete` and Grafana custom patterns), staged tokenization for combobox values, and 1000-char truncation safety
 - **`navigate-handler.ts`** - Navigates to internal Grafana routes or external URLs using locationService
-- **`hover-handler.ts`** - Simulates hover states by dispatching mouse events and applying programmatic hover classes for CSS frameworks
+- **`hover-handler.ts`** - Simulates hover states by dispatching mouse events and applying programmatic hover classes (specifically handles Tailwind `group-hover` patterns)
 - **`guided-handler.ts`** - Coordinates guided interactions where users manually perform actions while the system highlights targets and waits for completion
 
 ### Common Handler Pattern
@@ -93,6 +105,9 @@ The special `sequence` action type (handled directly in `interactive.hook.ts`) e
 - `clearAllHighlights()` - Removes all highlight overlays and comment boxes from the page
 - `showNoopComment()` - Displays centered comment box for informational noop steps
 - `fixNavigationRequirements()` - Attempts to fix navigation-related requirement failures
+- `fixLocationRequirement(targetPath)` - Navigates to a required path to satisfy `on-page:` requirements
+- `expandAllNavigationSections()` - Expands all collapsed navigation sections in the side menu
+- `openAndDockNavigation(element?, options?)` - Opens and docks the Grafana side navigation menu
 
 **Highlight Features**:
 
@@ -157,7 +172,7 @@ The special `sequence` action type (handled directly in `interactive.hook.ts`) e
   - **Header overlay** - Blocks top navigation bar (spans full viewport width)
   - **Full-screen overlay** - Activates when modals are detected (initially hidden)
 - Modal detection system with MutationObserver and polling fallback
-- Automatic overlay switching based on modal state (ARIA dialogs, data-overlay-container)
+- Automatic overlay switching based on modal state (ARIA dialogs, `data-overlay-container`, and the plugin's own `.journey-image-modal` lightbox)
 - Position synchronization using ResizeObserver and window resize/scroll handlers
 - Status indicator with spinner and cancel button (always visible, z-index 10001+)
 - Keyboard shortcut support (Ctrl/Cmd+C to cancel running section)
@@ -179,13 +194,15 @@ Located in `src/interactive-engine/auto-completion/`, this optional subsystem au
 
 ### Action Detection Logic
 
-The `action-detector` determines action type based on element characteristics:
+The `action-detector` determines action type based on element characteristics and available selectors:
 
 - **formfill**: Input fields, textareas, selects (except radio/checkbox)
-- **button**: Buttons with unique text and no testid/aria-label (uses text matching)
-- **highlight**: Clickable elements, buttons with testid (uses CSS selectors)
-- **navigate**: External links (href starts with http)
+- **button**: Buttons identified by text content (text matching heuristic when no unique selector is available)
+- **highlight**: Clickable elements and buttons with `data-testid` or other unique selectors (uses CSS selector matching)
+- **navigate**: External links (href starts with `http`)
 - **hover**: Elements triggered by mouseenter events
+
+The detector also extracts selectors (`data-testid`, `id`, `aria-label`), finds interactive parent elements, and checks focusability to build a complete action descriptor.
 
 ### How It Works
 

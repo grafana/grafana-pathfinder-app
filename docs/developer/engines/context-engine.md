@@ -14,6 +14,7 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - **`context.hook.ts`** - React hook providing context state management and debouncing
 - **`context.init.ts`** - Plugin lifecycle initialization for EchoSrv event logging
 - **`index.ts`** - Public API exports for the context engine
+- **`context-security.test.ts`** - Security test suite (URL validation, sanitization, fallback behavior)
 
 ## Main Service
 
@@ -32,6 +33,20 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - Handles error states with user-friendly messages and automatic fallback
 - Manages event buffering to preserve context when plugin is closed and reopened
 - Implements security measures including HTTPS validation, domain allowlisting, and XSS protection
+
+**Public Methods**:
+
+- `getContextData()` - Collects full Grafana context (path, datasources, dashboard info, tags, platform)
+- `fetchRecommendations(contextData, pluginConfig)` - Fetches recommendations with three-tier fallback
+- `fetchDataSources()` - Fetches all configured datasources via `/api/datasources`
+- `fetchPlugins()` - Fetches all installed plugins via `/api/plugins` (used by requirements manager for `has-plugin:` checks)
+- `fetchDashboardsByName(name)` - Searches dashboards by title via `/api/search` (used by requirements manager for `has-dashboard-named:` and `dashboard-exists` checks)
+- `onContextChange(listener)` - Subscribes to context changes; returns unsubscribe function (used by `SequentialRequirementsManager` for reactive rechecking)
+- `initializeFromRecentEvents()` - Restores datasource/visualization state from event buffer on plugin startup
+- `initializeEchoLogging()` - Registers EchoSrv backend for analytics event capture
+- `getDetectedDatasourceType()` - Returns the current EchoSrv-detected datasource type
+- `getDetectedVisualizationType()` - Returns the current EchoSrv-detected visualization type
+- `getLastRecommenderError()` - Returns last external recommender error state (type, timestamp, message) for debugging
 
 **Context Data Collected**:
 
@@ -62,6 +77,26 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - Provides action handlers for opening learning journeys and docs pages
 - Refreshes recommendations when interactive progress is cleared
 
+**Return Shape**:
+
+- `contextData` - Current context data (path, tags, datasources, dashboard info, etc.)
+- `isLoadingRecommendations` - Whether recommendations are currently being fetched
+- `otherDocsExpanded` - Whether the "other docs" section is expanded
+- `refreshContext()` - Manually trigger a context refresh
+- `refreshRecommendations()` - Manually trigger a recommendations refresh
+- `openLearningJourney(url, title)` - Open a learning journey in the panel
+- `openDocsPage(url, title)` - Open a docs page in the panel
+- `toggleSummaryExpansion(url)` - Toggle recommendation summary expansion
+- `navigateToPath(path)` - Navigate to a Grafana path
+- `toggleOtherDocsExpansion()` - Toggle other docs section visibility
+
+**Backward-compatible Hooks**:
+
+The module also exports two backward-compatible hooks for consumers that only need a subset of the context panel state:
+
+- `useContextData()` - Returns `contextData` only
+- `useRecommendations()` - Returns recommendations, loading state, and error state
+
 ## Context Detection
 
 The engine detects context through multiple sources:
@@ -78,6 +113,8 @@ The engine detects context through multiple sources:
 3. **Backend APIs** - Fetches structured data from Grafana REST APIs:
    - `/api/datasources` - All configured datasources with types and metadata
    - `/api/dashboards/uid/{uid}` - Dashboard metadata including title, tags, and folder
+   - `/api/plugins` - All installed plugins with types and enabled state
+   - `/api/search` - Dashboard search by title (params: `type: 'dash-db'`, `limit: 100`, `deleted: false`)
 
 ## Tag Generation
 
@@ -137,7 +174,10 @@ The engine uses a centralized `TimeoutManager` (`src/utils/timeout-manager.ts`) 
 - Uses configurable delays from `INTERACTIVE_CONFIG` constants
 - Provides `setDebounced()` for operations requiring cancellation
 - Provides `setTimeout()` for simple delays without interference
-- Manages cleanup on component unmount
+- Provides `setInterval()` / `clearInterval()` for managed intervals (prevents interval stacking; used by global-interaction-blocker for modal polling)
+- Provides `isActive()` / `isIntervalActive()` / `getActiveKeys()` for debugging and state checks
+- Manages cleanup on component unmount via `clearAll()`
+- Accessible in React via the `useTimeoutManager()` hook
 
 ## Event Buffering
 
@@ -148,6 +188,7 @@ The service maintains an in-memory event buffer to preserve context across plugi
 - Maximum 10 events stored
 - 5-minute TTL for events
 - Stores datasource type, visualization type, timestamp, and event source
+- Event source strings: `'add'`, `'test'`, `'dashboard-picker'`, `'panel-picker'`, `'{source}-query'` (e.g., `'explore-query'`, `'dashboard-query'`)
 - Automatically cleaned on buffer overflow
 
 **Use Cases**:
@@ -167,8 +208,8 @@ The Context Engine integrates with multiple systems:
 - **Content Fetcher** (`docs-retrieval/content-fetcher.ts`) - Fetches learning journey metadata and content
 - **Context Panel** (`components/docs-panel/context-panel.tsx`) - Primary UI consumer using `useContextPanel()` hook
 - **Timeout Manager** (`utils/timeout-manager.ts`) - Centralized debouncing and timeout management
-- **User Storage** (`lib/user-storage`) - Stores interactive completion percentages
-- **Hash Utility** (`lib/hash.util`) - Hashes user identifiers for privacy
+- **User Storage** (`lib/user-storage.ts`) - Stores interactive completion percentages
+- **Hash Utility** (`lib/hash.util.ts`) - Hashes user identifiers for privacy
 - **Security Utilities** (`security/`) - Text sanitization and URL parsing
 
 **External Dependencies**:
@@ -320,6 +361,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 - `src/context-engine/context.service.ts` - Main service class with all context logic
 - `src/context-engine/context.hook.ts` - React hook for UI integration
 - `src/context-engine/context.init.ts` - Plugin lifecycle initialization
+- `src/context-engine/context-security.test.ts` - Security test suite
 - `src/types/context.types.ts` - TypeScript type definitions
 
 **Bundled Content**:

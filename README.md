@@ -73,8 +73,9 @@ Interactive learning supports creating custom interactive guides in JSON format.
 ### Documentation
 
 - **[JSON Guide Format Reference](docs/developer/interactive-examples/json-guide-format.md)** - Complete reference for the JSON guide structure and all block types
-- **[HTML to JSON Migration Guide](docs/developer/interactive-examples/html-to-json-migration.md)** - How to convert existing HTML guides to JSON format
+- **[Interactive Types](docs/developer/interactive-examples/interactive-types.md)** - Action types, block types, and when to use each
 - **[Requirements Reference](docs/developer/interactive-examples/requirements-reference.md)** - Available requirements for controlling when interactive elements are accessible
+- **[Selectors Reference](docs/developer/interactive-examples/selectors-reference.md)** - How to target DOM elements with the enhanced selector engine
 
 See the [JSON Guide Demo](src/bundled-interactives/json-guide-demo.json) for a complete example of all block types.
 
