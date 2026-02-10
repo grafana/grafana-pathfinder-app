@@ -1,536 +1,329 @@
-# Guided Interactions
+# Guided interactions
 
-Guided interactions provide a middle ground between fully automated "Do it" actions and manual user execution. The system highlights elements and displays instructions, then **waits for the user to manually perform the action** before proceeding to the next step.
+Guided interactions highlight elements and display instructions, then **wait for the user to manually perform the action** before proceeding to the next step. They provide a middle ground between fully automated multistep actions and unassisted manual execution.
 
-## Overview
+## When to use guided
 
-**Use guided interactions when:**
-
-- Actions depend on CSS `:hover` states that can't be programmatically triggered
+- Actions depend on CSS `:hover` states that cannot be programmatically triggered
 - You want users to learn by doing rather than watching automation
-- UI elements are hidden behind hover states (like the RCA Workbench action buttons)
+- UI elements are hidden behind hover states (e.g., RCA Workbench action buttons)
 - You need users to experience the actual interaction flow
 
-**Key differences from multistep:**
+### Guided vs multistep
 
-- **Multistep**: System performs all actions automatically
-- **Guided**: System highlights and waits for user to perform actions manually
+| Feature | Multistep | Guided |
+| --- | --- | --- |
+| Execution | Fully automated | User performs manually |
+| Hover support | Simulated (limited) | Real hover (works everywhere) |
+| CSS `:hover` | Cannot trigger | Triggers naturally |
+| Learning | Watch automation | Learn by doing |
+| Speed | Fast | User-paced |
+| Reliability | Depends on selectors | Depends on user |
+| Section integration | Runs in sequence | Pauses section |
 
-## Basic Syntax
+## Basic syntax
 
-```html
-<div class="interactive" data-targetaction="guided">
-  <!-- Internal action spans define the sequence -->
-  <span class="interactive" data-targetaction="hover" data-reftarget='div[data-cy="wb-list-item"]'>
-    <span class="interactive-comment">Hover to reveal the action buttons</span>
-  </span>
+A guided block contains a `content` description and a `steps` array. Each step specifies an `action` and `reftarget`.
 
-  <span class="interactive" data-targetaction="button" data-reftarget="button.css-8mjxyo">
-    <span class="interactive-comment">Click the revealed button to proceed</span>
-  </span>
-
-  <!-- Description shown to user -->
-  Inspect service details
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Inspect the checkout service details",
+  "steps": [
+    {
+      "action": "hover",
+      "reftarget": "div[data-cy=\"wb-list-item\"]:contains(\"checkoutservice\")",
+      "description": "Hover over the checkout service row to reveal action buttons"
+    },
+    {
+      "action": "button",
+      "reftarget": "Dashboard",
+      "description": "Click the Dashboard button that appeared"
+    }
+  ]
+}
 ```
 
-### Interactive Comments
+The `description` field on each step appears as a tooltip/instruction when that step is highlighted.
 
-Each internal action can have an `interactive-comment` span that appears as a tooltip when that step is highlighted:
+## Supported action types
 
-```html
-<span class="interactive" data-targetaction="hover" data-reftarget=".info-icon">
-  <span class="interactive-comment"> The <strong>info icon</strong> reveals additional details when hovered. </span>
-</span>
+Guided mode supports these action types within its steps:
+
+### Hover
+
+The system highlights the element and waits for the user to hover over it for 500 ms.
+
+```json
+{
+  "type": "guided",
+  "content": "Hover over the table row to reveal actions",
+  "steps": [
+    {
+      "action": "hover",
+      "reftarget": "div.table-row",
+      "description": "Hover your mouse over this row to reveal the action buttons"
+    }
+  ]
+}
 ```
 
-**Benefits:**
+### Button
 
-- Contextual help exactly when user needs it
-- Supports HTML formatting (bold, code, links)
-- Consistent with regular interactive steps
-- Cleaner than inline `<ol>` lists
+The system highlights the button and waits for the user to click it.
 
-## Supported Action Types
-
-Guided mode currently supports three action types:
-
-### 1. Hover Actions
-
-System highlights the element and waits for user to hover over it for 500ms.
-
-```html
-<div class="interactive" data-targetaction="guided">
-  <span class="interactive" data-targetaction="hover" data-reftarget="div.table-row">
-    <span class="interactive-comment">
-      Hover your mouse over this row to reveal the action buttons. They only appear on hover!
-    </span>
-  </span>
-  Hover over the table row to reveal actions
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Open the settings menu",
+  "steps": [
+    {
+      "action": "button",
+      "reftarget": "button[aria-label=\"Settings\"]",
+      "description": "Click the Settings button"
+    }
+  ]
+}
 ```
 
-**Completion Detection**: User's mouse enters the highlighted area and stays for 500ms
+### Highlight
 
-### 2. Button Actions
+Same as button -- waits for the user to click the highlighted element.
 
-System highlights the button and waits for user to click it.
-
-```html
-<div class="interactive" data-targetaction="guided">
-  <span class="interactive" data-targetaction="button" data-reftarget='button[aria-label="Settings"]'> </span>
-  Open the settings menu
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Select the dashboard panel",
+  "steps": [
+    {
+      "action": "highlight",
+      "reftarget": "#dashboard-panel",
+      "description": "Click the panel to select it"
+    }
+  ]
+}
 ```
 
-**Completion Detection**: User clicks the highlighted element
+## Configuration
 
-### 3. Highlight Actions
+### `stepTimeout`
 
-Same as button actions - waits for user to click the element.
+Controls how long to wait for user action before showing a skip/retry option. Default: 30000 ms (30 seconds).
 
-```html
-<div class="interactive" data-targetaction="guided">
-  <span class="interactive" data-targetaction="highlight" data-reftarget="#dashboard-panel"> </span>
-  Select the dashboard panel
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Complex interaction with longer timeout",
+  "stepTimeout": 45000,
+  "steps": [
+    { "action": "hover", "reftarget": "div.service-row" }
+  ]
+}
 ```
 
-**Completion Detection**: User clicks the highlighted element
+### `skippable`
 
-## Multi-Step Guided Sequences
+Allows users to skip the entire guided interaction if they cannot complete it.
 
-Combine multiple actions in sequence. Each step highlights, waits for user completion, then moves to the next.
-
-```html
-<div class="interactive" data-targetaction="guided">
-  <!-- Step 1: Hover to reveal buttons -->
-  <span
-    class="interactive"
-    data-targetaction="hover"
-    data-reftarget='div[data-cy="wb-list-item"]:contains("adaptive-logs-api")'
-  >
-    <span class="interactive-comment">
-      Hover over the <code>adaptive-logs-api</code> row to reveal action buttons. The buttons are hidden until you
-      hover!
-    </span>
-  </span>
-
-  <!-- Step 2: Click revealed button -->
-  <span class="interactive" data-targetaction="button" data-reftarget="button.css-8mjxyo">
-    <span class="interactive-comment"> Click the <strong>graph/dashboard</strong> button that appeared. </span>
-  </span>
-
-  <!-- Step 3: Click another element -->
-  <span class="interactive" data-targetaction="button" data-reftarget='button[data-testid="close-modal"]'>
-    <span class="interactive-comment"> Close the modal to return to the workbench. </span>
-  </span>
-
-  Complete the service inspection workflow
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Optional guided step",
+  "skippable": true,
+  "steps": [
+    { "action": "hover", "reftarget": "div.row" }
+  ]
+}
 ```
 
-## Configuration Options
+Individual steps can also be marked skippable:
 
-### Step Timeout
-
-Control how long to wait for user action before showing skip option (default: 30 seconds):
-
-```html
-<div class="interactive" data-targetaction="guided" data-step-timeout="45000">
-  <!-- 45 second timeout per step -->
-  <span class="interactive" data-targetaction="hover" ...></span>
-  Complex interaction with longer timeout
-</div>
+```json
+{
+  "steps": [
+    { "action": "hover", "reftarget": "div.row", "skippable": true },
+    { "action": "button", "reftarget": "Edit" }
+  ]
+}
 ```
 
-### Skippable Steps
+### `completeEarly`
 
-Allow users to skip the guided interaction if they can't complete it:
+When `true`, the guided block can mark itself complete if the user performs the expected action before the guide formally reaches that step.
 
-```html
-<div class="interactive" data-targetaction="guided" data-skippable="true">
-  <span class="interactive" data-targetaction="hover" ...></span>
-  Optional guided step
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Hover and click the action button",
+  "completeEarly": true,
+  "steps": [
+    { "action": "hover", "reftarget": "tr[data-row-id=\"user-123\"]" },
+    { "action": "button", "reftarget": "Edit" }
+  ]
+}
 ```
 
-### Requirements
+### `requirements` and `objectives`
 
-Guided steps support the same requirements system as other interactive elements:
+Guided blocks support the same requirements and objectives system as other interactive blocks.
 
-```html
-<div class="interactive" data-targetaction="guided" data-requirements="exists-reftarget">
-  <span class="interactive" data-targetaction="button" ...></span>
-  Click the button (only enabled when button exists)
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Click the button (only enabled when it exists)",
+  "requirements": ["exists-reftarget"],
+  "objectives": ["on-page:/dashboards/edit"],
+  "steps": [
+    { "action": "button", "reftarget": "button[aria-label=\"Create\"]" }
+  ]
+}
 ```
 
-## Integration with Sections
+### Per-step requirements
 
-Guided steps integrate seamlessly with interactive sections. When a section encounters a guided step during "Do Section" execution:
+Individual steps can declare their own requirements:
 
-1. **Section pauses** before the guided step
-2. **User must manually click** the guided step's "Start guided interaction" button
-3. **User performs** each action as highlighted
-4. **Step completes** when all actions are done
-5. **User clicks "Resume"** to continue with remaining automated steps
-
-### Example: Mixed Automation and Guided
-
-```html
-<div class="interactive-section" data-requirements="exists-reftarget">
-  <h3>RCA Workbench Investigation</h3>
-
-  <!-- Automated step -->
-  <div class="interactive" data-targetaction="button" data-reftarget="Clear">Clear previous entries</div>
-
-  <!-- Automated step -->
-  <div
-    class="interactive"
-    data-targetaction="formfill"
-    data-reftarget='input[data-testid="search"]'
-    data-targetvalue="adaptive-logs-api"
-  >
-    Search for service
-  </div>
-
-  <!-- GUIDED STEP - section pauses here -->
-  <div class="interactive" data-targetaction="guided">
-    <span
-      class="interactive"
-      data-targetaction="hover"
-      data-reftarget='div[data-cy="wb-list-item"]:contains("adaptive-logs-api")'
-    >
-    </span>
-    <span class="interactive" data-targetaction="button" data-reftarget="button.css-8mjxyo"> </span>
-    Manually inspect service (hover reveals buttons)
-  </div>
-
-  <!-- Automated steps continue after guided completes -->
-  <div class="interactive" data-targetaction="button" data-reftarget="Dashboard">Open dashboard view</div>
-</div>
+```json
+{
+  "type": "guided",
+  "content": "Multi-step with per-action validation",
+  "steps": [
+    {
+      "action": "hover",
+      "reftarget": ".service-row",
+      "requirements": ["exists-reftarget"]
+    },
+    {
+      "action": "button",
+      "reftarget": "button.action-btn",
+      "requirements": ["exists-reftarget"]
+    }
+  ]
+}
 ```
 
-**Execution Flow:**
+## Integration with sections
 
-1. User clicks "Do Section (4 steps)"
+Guided blocks integrate seamlessly with sections. When a section's "Do section" execution reaches a guided block:
+
+1. Section **pauses** before the guided step
+2. User manually clicks the guided step's "Start guided interaction" button
+3. User **performs** each action as highlighted
+4. Step **completes** when all actions are done
+5. User clicks **Resume** to continue with remaining automated steps
+
+### Mixed automation and guided
+
+```json
+{
+  "type": "section",
+  "title": "RCA Workbench investigation",
+  "blocks": [
+    {
+      "type": "interactive",
+      "action": "button",
+      "reftarget": "Clear",
+      "content": "Clear previous entries"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "input[data-testid=\"search\"]",
+      "targetvalue": "adaptive-logs-api",
+      "content": "Search for service"
+    },
+    {
+      "type": "guided",
+      "content": "Manually inspect service (hover reveals buttons)",
+      "steps": [
+        {
+          "action": "hover",
+          "reftarget": "div[data-cy=\"wb-list-item\"]:contains(\"adaptive-logs-api\")",
+          "description": "Hover over the service row to reveal action buttons"
+        },
+        {
+          "action": "button",
+          "reftarget": "Dashboard",
+          "description": "Click the Dashboard button"
+        }
+      ]
+    },
+    {
+      "type": "interactive",
+      "action": "button",
+      "reftarget": "Dashboard",
+      "content": "Open dashboard view"
+    }
+  ]
+}
+```
+
+**Execution flow:**
+
+1. User clicks "Do section (4 steps)"
 2. Steps 1-2 execute automatically
-3. **Section pauses at step 3 (guided)**
-4. User manually clicks guided step's button
+3. Section pauses at step 3 (guided)
+4. User manually starts the guided interaction
 5. User performs hover and click as guided
 6. Guided step completes
 7. User clicks "Resume (1 step)" to finish step 4
 
-## Timeout Behavior
+## Timeout behavior
 
 When a step times out (default 30 seconds):
 
-- **Timer expires**: Progress indicator shows "Timed out"
-- **Error message**: "Step X timed out. Click 'Skip' to continue or 'Retry' to try again."
-- **Options**:
-  - **Retry**: Restart the current step
-  - **Skip**: Mark step as complete and move to next (only if `data-skippable="true"`)
-
-```html
-<div class="interactive" data-targetaction="guided" data-step-timeout="20000" data-skippable="true">
-  <span class="interactive" data-targetaction="hover" ...></span>
-  This step times out after 20 seconds and can be skipped
-</div>
-```
-
-## Real-World Example: RCA Workbench
-
-This example shows the actual Grafana RCA Workbench pattern where action buttons are hidden until hover:
-
-```html
-<div class="interactive-section">
-  <h3>Investigate Service Issues</h3>
-
-  <div class="interactive" data-targetaction="guided" data-requirements="exists-reftarget" data-step-timeout="45000">
-    <!-- Step 1: Hover over the service row to reveal action buttons -->
-    <span
-      class="interactive"
-      data-targetaction="hover"
-      data-reftarget='div[data-cy="wb-list-item"]:contains("adaptive-logs-api")'
-    >
-    </span>
-
-    <!-- Step 2: Click the revealed graph/dashboard button -->
-    <span class="interactive" data-targetaction="button" data-reftarget="button.css-8mjxyo:has(svg.svg-icon)"> </span>
-
-    <p>The RCA Workbench hides action buttons until you hover over a service row. This guided interaction will:</p>
-    <ol>
-      <li>Highlight the service row - <strong>hover your mouse over it</strong></li>
-      <li>Highlight the revealed button - <strong>click it</strong></li>
-    </ol>
-  </div>
-</div>
-```
-
-## Best Practices
-
-### 1. Use Descriptive Messages
-
-Provide clear instructions in the children content:
-
-```html
-<div class="interactive" data-targetaction="guided">
-  <span class="interactive" data-targetaction="hover" ...></span>
-  <span class="interactive" data-targetaction="button" ...></span>
-
-  <strong>What you'll do:</strong>
-  <ol>
-    <li>Hover over the workload row</li>
-    <li>Click the "Dashboard" button that appears</li>
-  </ol>
-</div>
-```
-
-### 2. Set Appropriate Timeouts
-
-- **Simple actions** (single click): 15-20 seconds
-- **Moderate complexity** (hover + click): 30 seconds (default)
-- **Complex workflows** (multiple steps): 45-60 seconds
-
-### 3. Make Complex Steps Skippable
-
-If a step might be confusing or depend on specific UI state:
-
-```html
-<div class="interactive" data-targetaction="guided" data-skippable="true" data-step-timeout="30000">...</div>
-```
-
-### 4. Combine with Requirements
-
-Ensure target elements exist before starting guided interaction:
-
-```html
-<div class="interactive" data-targetaction="guided" data-requirements="exists-reftarget">
-  <span class="interactive" data-targetaction="button" data-reftarget='button[aria-label="Create"]'> </span>
-  Click the Create button
-</div>
-```
-
-### 5. Use in Sections for Mixed Workflows
-
-Combine automated and guided steps for optimal user experience:
-
-```html
-<div class="interactive-section">
-  <h3>Dashboard Setup</h3>
-
-  <!-- Automated: Navigation and setup -->
-  <div class="interactive" data-targetaction="navigate" data-reftarget="/dashboards">Navigate to dashboards</div>
-
-  <!-- Guided: User interaction needed for hover-dependent UI -->
-  <div class="interactive" data-targetaction="guided">
-    <span data-targetaction="hover" data-reftarget=".dashboard-row"></span>
-    <span data-targetaction="button" data-reftarget="Edit"></span>
-    Open dashboard editor
-  </div>
-
-  <!-- Automated: Continue with form filling -->
-  <div class="interactive" data-targetaction="formfill" ...>Set dashboard name</div>
-</div>
-```
-
-## Comparison: Guided vs Multistep
-
-| Feature                 | Multistep            | Guided                        |
-| ----------------------- | -------------------- | ----------------------------- |
-| **Execution**           | Fully automated      | User performs manually        |
-| **Hover support**       | Simulated (limited)  | Real hover (works everywhere) |
-| **CSS :hover**          | Cannot trigger       | Triggers naturally            |
-| **Learning**            | Watch automation     | Learn by doing                |
-| **Speed**               | Fast                 | User-paced                    |
-| **Reliability**         | Depends on selectors | Depends on user               |
-| **Section integration** | Runs in sequence     | Pauses section                |
-
-## Advanced Usage
-
-### Per-Step Requirements
-
-Check requirements for individual internal actions:
-
-```html
-<div class="interactive" data-targetaction="guided">
-  <span
-    class="interactive"
-    data-targetaction="hover"
-    data-reftarget=".service-row"
-    data-requirements="exists-reftarget"
-  >
-  </span>
-  <span
-    class="interactive"
-    data-targetaction="button"
-    data-reftarget="button.action-btn"
-    data-requirements="exists-reftarget"
-  >
-  </span>
-  Multi-step with per-action validation
-</div>
-```
-
-### Complex Selectors
-
-Use enhanced selectors with `:contains()` and `:has()`:
-
-```html
-<div class="interactive" data-targetaction="guided">
-  <span
-    class="interactive"
-    data-targetaction="hover"
-    data-reftarget='div[data-cy="wb-list-item"]:has(p:contains("specific-service"))'
-  >
-  </span>
-  <span class="interactive" data-targetaction="button" data-reftarget='button:text("Dashboard")'> </span>
-  Find and interact with specific service by name
-</div>
-```
-
-### Hints for Context
-
-Provide helpful context via the hints attribute:
-
-```html
-<div
-  class="interactive"
-  data-targetaction="guided"
-  data-hint="Action buttons only appear when hovering over table rows"
->
-  <span data-targetaction="hover" ...></span>
-  <span data-targetaction="button" ...></span>
-  Reveal and click hidden action button
-</div>
-```
+- Progress indicator shows "Timed out"
+- Error message: "Step X timed out. Click 'Skip' to continue or 'Retry' to try again."
+- **Retry**: restarts the current step
+- **Skip**: marks step as complete and moves to next (only when `skippable` is `true`)
 
 ## Troubleshooting
 
-### Guided Step Won't Start
+### Guided step will not start
 
-**Symptom**: "Start guided interaction" button is disabled
+The "Start guided interaction" button is disabled.
 
-**Solutions**:
-
-1. Check requirements are met
+1. Check that requirements are met
 2. Verify target elements exist using browser DevTools
-3. Try "Fix this" button if available
-4. Check selector syntax
+3. Check selector syntax
 
-### Step Times Out Immediately
+### Step times out immediately
 
-**Symptom**: Timeout error appears right away
+Element is not visible, selector does not match, or element is in a closed menu.
 
-**Causes**:
+1. Add `"requirements": ["exists-reftarget"]` to validate target presence
+2. Use "Show me" mode first to verify the selector
+3. Add navigation requirements if needed (e.g., `"on-page:/dashboards"`)
 
-- Element not visible on page
-- Selector doesn't match any elements
-- Element is in closed navigation/menu
+### Click detection not working
 
-**Solutions**:
+User clicks but the step does not complete.
 
-1. Add `data-requirements="exists-reftarget"` to validate
-2. Use "Show me" mode first to verify selector
-3. Add navigation requirements if needed
+- Ensure the click is inside the highlighted element boundary
+- Check the element is not disabled or covered by `pointer-events: none`
+- Verify z-index stacking does not block clicks
 
-### Section Doesn't Resume After Guided
+### Section does not resume after guided
 
-**Symptom**: After completing guided step, "Resume" button doesn't appear
+After completing the guided step, the "Resume" button does not appear.
 
-**Solutions**:
+1. Ensure the guided block is inside a `section` block
+2. Verify section's step index advanced past the guided step
 
-1. Ensure guided step is inside an `interactive-section`
-2. Check that guided step properly calls `onStepComplete`
-3. Verify section's `currentStepIndex` advanced past guided step
+## Technical details
 
-### Click Detection Not Working
+### Event detection
 
-**Symptom**: User clicks but step doesn't complete
+- **Hover**: listens for `mouseenter` + 500 ms dwell time (prevents accidental hovers)
+- **Click**: listens for `click` event with `capture: true` for reliability
+- **Timeout**: configurable per step via `stepTimeout`, defaults to 30000 ms
 
-**Causes**:
+### No full-page blocking
 
-- Clicking outside the highlighted element
-- Element is disabled or has `pointer-events: none`
-- Element is covered by another layer
+Unlike automated steps, guided interactions do not block the page. Users can interact with highlighted elements, scroll for context, or cancel (timeout still applies).
 
-**Solutions**:
+### Limitations
 
-1. Ensure highlight clearly shows clickable area
-2. Check element is actually clickable in DevTools
-3. Verify z-index stacking doesn't block clicks
-
-## Migration from Multistep
-
-If you have a multistep that fails due to CSS hover limitations:
-
-**Before (multistep - may fail):**
-
-```html
-<div class="interactive" data-targetaction="multistep">
-  <span data-targetaction="hover" data-reftarget=".row"></span>
-  <span data-targetaction="button" data-reftarget="Edit"></span>
-  Edit item
-</div>
-```
-
-**After (guided - works reliably):**
-
-```html
-<div class="interactive" data-targetaction="guided">
-  <span data-targetaction="hover" data-reftarget=".row"></span>
-  <span data-targetaction="button" data-reftarget="Edit"></span>
-  Edit item
-</div>
-```
-
-Just change `multistep` to `guided` - the syntax is identical!
-
-## Technical Details
-
-### Event Detection
-
-- **Hover**: Listens for `mouseenter` + 500ms dwell time (prevents accidental hovers)
-- **Click**: Listens for `click` event with `capture: true` for reliability
-- **Timeout**: Configurable per step, defaults to 30 seconds
-
-### Section Integration
-
-When "Do Section" encounters a guided step:
-
-1. Section execution **pauses** (loop exits)
-2. `currentStepIndex` marks the pause point
-3. Section blocking overlay **removed**
-4. User sees highlighted guided step ready to click
-5. After guided completion, "Resume" button continues from next step
-
-### No Full-Page Blocking
-
-Unlike automated steps, guided interactions don't block the page. Users can:
-
-- Interact with the highlighted elements
-- Scroll to see context
-- Cancel by clicking away (timeout still applies)
-
-This design prevents the "spotlight overlay" complexity while maintaining clear visual guidance.
-
-## Limitations
-
-### Not Yet Supported
-
-- **Form fill actions**: Coming in future update
-- **Navigate actions**: Incompatible with guided model (user leaves page)
-- **Nested guided**: Guided steps inside guided steps not supported
-
-### Browser Requirements
-
-- Modern browsers with `AbortController` support
-- Event listeners with `signal` option
-- `mouseenter`/`mouseleave` events
-
-### Performance Considerations
-
-- Each guided step creates temporary event listeners (cleaned up after completion)
-- Timeouts are properly cleared to prevent memory leaks
-- Highlights use existing CSS animation system (no additional overhead)
+- **Form fill actions**: not supported in guided mode
+- **Navigate actions**: incompatible with guided model (user would leave the page)
+- **Nested guided**: guided steps inside guided steps are not supported
