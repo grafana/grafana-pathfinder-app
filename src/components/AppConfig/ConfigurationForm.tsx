@@ -281,7 +281,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             id="tutorial-url"
             data-testid={testIds.appConfig.tutorialUrl}
             value={state.tutorialUrl}
-            placeholder="https://grafana.com/docs/learning-journeys/..."
+            placeholder="https://grafana.com/docs/learning-paths/..."
             onChange={onChangeTutorialUrl}
           />
         </Field>

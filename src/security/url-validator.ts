@@ -114,7 +114,8 @@ export function isAllowedContentUrl(urlString: string): boolean {
       url.pathname.startsWith('/docs/') ||
       url.pathname === '/tutorials' ||
       url.pathname.startsWith('/tutorials/') ||
-      url.pathname.includes('/learning-journeys/')
+      url.pathname.includes('/docs/learning-journeys/') ||
+      url.pathname.includes('/docs/learning-paths/')
     );
   }
 
@@ -147,11 +148,12 @@ export function isGrafanaDocsUrl(urlString: string): boolean {
   }
 
   // Check pathname contains allowed documentation paths
-  // Learning journeys are at /docs/learning-journeys/ so we need includes(), not startsWith()
+  // Learning journeys/paths are at /docs/learning-journeys/ (legacy) or /docs/learning-paths/ so we need includes(), not startsWith()
   return (
     url.pathname.startsWith('/docs/') ||
     url.pathname.startsWith('/tutorials/') ||
-    url.pathname.includes('/learning-journeys/')
+    url.pathname.includes('/docs/learning-journeys/') ||
+    url.pathname.includes('/docs/learning-paths/')
   );
 }
 

@@ -469,7 +469,8 @@ function determineContentType(url: string): ContentType {
   const pathname = parsedUrl.pathname;
 
   if (
-    pathname.includes('/learning-journeys/') || // Can be /docs/learning-journeys/ or /learning-journeys/
+    pathname.includes('/docs/learning-journeys/') ||
+    pathname.includes('/docs/learning-paths/') ||
     pathname.includes('/tutorials/') || // Can be /docs/tutorials/ or /tutorials/
     pathname.match(/\/milestone-\d+/)
   ) {
@@ -692,7 +693,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (primaryResponse.ok) {
                 const primaryContent = await primaryResponse.text();
                 if (primaryContent && primaryContent.trim()) {
-                  return { html: primaryContent, finalUrl: primaryResponse.url || primaryUrl, isNativeJson: primaryIsJson };
+                  return {
+                    html: primaryContent,
+                    finalUrl: primaryResponse.url || primaryUrl,
+                    isNativeJson: primaryIsJson,
+                  };
                 }
               }
             } catch {
@@ -707,7 +712,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (fallbackResponse.ok) {
                 const fallbackContent = await fallbackResponse.text();
                 if (fallbackContent && fallbackContent.trim()) {
-                  return { html: fallbackContent, finalUrl: fallbackResponse.url || fallbackUrl, isNativeJson: !primaryIsJson };
+                  return {
+                    html: fallbackContent,
+                    finalUrl: fallbackResponse.url || fallbackUrl,
+                    isNativeJson: !primaryIsJson,
+                  };
                 }
               }
               lastError = {
@@ -855,8 +864,6 @@ function generateInteractiveLearningVariations(url: string): string[] {
   return variations;
 }
 
-
-
 /**
  * Get content URLs for both JSON and HTML formats
  * Returns URLs to try in order of preference: JSON first, then HTML
@@ -994,13 +1001,19 @@ function extractDocSummary(html: string): string {
  */
 function getLearningJourneyBaseUrl(url: string): string {
   // Handle cases like:
-  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
+  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs (legacy)
+  // https://grafana.com/docs/learning-paths/drilldown-logs/ -> https://grafana.com/docs/learning-paths/drilldown-logs (new)
   // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
   // https://grafana.com/tutorials/alerting-get-started/ -> https://grafana.com/tutorials/alerting-get-started
 
   const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
   if (learningJourneyMatch) {
     return learningJourneyMatch[1];
+  }
+
+  const learningPathMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-paths\/[^\/]+)/);
+  if (learningPathMatch) {
+    return learningPathMatch[1];
   }
 
   const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);

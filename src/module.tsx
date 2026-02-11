@@ -564,9 +564,12 @@ const findDocPage = function (param: string): DocPage | null {
 
   // Case 4: Any Grafana docs URL (fallback for non-curated content)
   // Supports paths like /docs/grafana/latest/... or full URLs like https://grafana.com/docs/...
-  // Also supports /tutorials/ and /learning-journeys/ paths
+  // Also supports /tutorials/, /docs/learning-journeys/ (legacy), and /docs/learning-paths/ paths
   const isPathOnly =
-    param.startsWith('/docs/') || param.startsWith('/tutorials/') || param.includes('/learning-journeys/');
+    param.startsWith('/docs/') ||
+    param.startsWith('/tutorials/') ||
+    param.includes('/docs/learning-journeys/') ||
+    param.includes('/docs/learning-paths/');
   const isFullGrafanaUrl = param.startsWith('https://grafana.com/') || param.startsWith('https://docs.grafana.com/');
 
   if (isPathOnly || isFullGrafanaUrl) {

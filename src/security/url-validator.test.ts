@@ -59,6 +59,7 @@ describe('Grafana URL validators', () => {
       expect(isGrafanaDocsUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
       expect(isGrafanaDocsUrl('https://grafana.com/tutorials/getting-started/')).toBe(true);
       expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-journeys/drilldown-logs/')).toBe(true);
+      expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-paths/drilldown-logs/')).toBe(true);
     });
 
     it('should return false for grafana.com URLs that are not docs', () => {
@@ -194,7 +195,8 @@ describe('Localhost URL validators', () => {
       expect(isAllowedContentUrl('http://localhost:3000/docs')).toBe(true);
       expect(isAllowedContentUrl('http://localhost:3000/docs/grafana/latest/')).toBe(true);
       expect(isAllowedContentUrl('http://127.0.0.1:5500/tutorials/getting-started')).toBe(true);
-      expect(isAllowedContentUrl('http://localhost:3000/learning-journeys/intro')).toBe(true);
+      expect(isAllowedContentUrl('http://localhost:3000/docs/learning-journeys/intro')).toBe(true);
+      expect(isAllowedContentUrl('http://localhost:3000/docs/learning-paths/intro')).toBe(true);
     });
 
     it('should reject localhost URLs without valid docs paths in dev mode', () => {
@@ -284,9 +286,7 @@ describe('GitHub URL validators', () => {
     it('should accept objects.githubusercontent.com URLs (redirect target)', () => {
       // GitHub may redirect raw content to objects.githubusercontent.com for blob storage
       expect(isGitHubRawUrl('https://objects.githubusercontent.com/some-path')).toBe(true);
-      expect(
-        isGitHubRawUrl('https://objects.githubusercontent.com/github-production-release-asset/123456')
-      ).toBe(true);
+      expect(isGitHubRawUrl('https://objects.githubusercontent.com/github-production-release-asset/123456')).toBe(true);
     });
 
     it('should reject non-GitHub URLs', () => {

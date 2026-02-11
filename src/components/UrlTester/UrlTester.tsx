@@ -106,7 +106,9 @@ export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterPr
       const tutorialName = extractTitleFromUrl(testUrl);
 
       // Detect if this is a learning journey URL and use the appropriate handler
-      const isLearningJourneyUrl = cleanedUrl.includes('/learning-journeys/');
+      // Support both /learning-journeys/ (legacy) and /learning-paths/ (new)
+      const isLearningJourneyUrl =
+        cleanedUrl.includes('/learning-journeys/') || cleanedUrl.includes('/learning-paths/');
       if (isLearningJourneyUrl && onOpenLearningJourney) {
         onOpenLearningJourney(testUrl, tutorialName);
       } else {

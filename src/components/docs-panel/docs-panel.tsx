@@ -730,7 +730,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       // Call the model method directly to ensure new tabs are created
       // Use proper URL parsing for security (defense in depth)
       const urlObj = parseUrlSafely(url);
-      const isLearningJourney = urlObj?.pathname.includes('/learning-journeys/');
+      const isLearningJourney =
+        urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
 
       if (isLearningJourney) {
         model.openLearningJourney(url, title);
@@ -955,7 +956,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const title = sessionInfo.config.name;
 
       // Open the tutorial in a new tab
-      if (url.includes('/learning-journeys/')) {
+      if (url.includes('/learning-journeys/') || url.includes('/learning-paths/')) {
         model.openLearningJourney(url, title);
       } else {
         model.openDocsPage(url, title);
