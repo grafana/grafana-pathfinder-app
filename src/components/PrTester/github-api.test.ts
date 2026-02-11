@@ -176,6 +176,14 @@ describe('fetchPrContentFiles', () => {
         status: 'modified',
       });
     }
+
+    // Verify API was called with per_page=100 parameter
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.github.com/repos/grafana/interactive-tutorials/pulls/70/files?per_page=100',
+      expect.objectContaining({
+        headers: expect.any(Object),
+      })
+    );
   });
 
   it('should handle nested content.json paths', async () => {
@@ -448,10 +456,84 @@ describe('fetchPrContentFiles', () => {
     }
   });
 
-  it('should limit returned files to MAX_CONTENT_FILES (100) content.json files maximum', async () => {
+  it('should show warning when GitHub API limit is reached (100+ total files)', async () => {
     const prMetadataResponse = { head: { sha: 'sha123' } };
-    // Create 105 content.json files (exceeds the 100-file limit)
-    const filesResponse = Array.from({ length: 105 }, (_, i) => ({
+    // Simulate GitHub returning exactly 100 files (pagination limit)
+    // Mixed content: 8 content.json files and 92 other files
+    const filesResponse = [
+      ...Array.from({ length: 8 }, (_, i) => ({
+        filename: `guide-${i + 1}/content.json`,
+        status: 'added',
+      })),
+      ...Array.from({ length: 92 }, (_, i) => ({
+        filename: `src/file-${i + 1}.ts`,
+        status: 'modified',
+      })),
+    ];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(8);
+      expect(result.warning).toBeDefined();
+      expect(result.warning).toContain('100+ files');
+      expect(result.warning).toContain('Found 8 content.json');
+      expect(result.warning).toContain('additional guides not shown');
+    }
+  });
+
+  it('should not show warning when PR has fewer than 100 total files', async () => {
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    // PR with 50 total files, 8 are content.json
+    const filesResponse = [
+      ...Array.from({ length: 8 }, (_, i) => ({
+        filename: `guide-${i + 1}/content.json`,
+        status: 'added',
+      })),
+      ...Array.from({ length: 42 }, (_, i) => ({
+        filename: `src/file-${i + 1}.ts`,
+        status: 'modified',
+      })),
+    ];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(8);
+      expect(result.warning).toBeUndefined();
+    }
+  });
+
+  it('should handle PR with 100 total files all being content.json', async () => {
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    // Edge case: all 100 files are content.json
+    const filesResponse = Array.from({ length: 100 }, (_, i) => ({
       filename: `guide-${i + 1}/content.json`,
       status: 'added',
     }));
@@ -473,9 +555,44 @@ describe('fetchPrContentFiles', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.files).toHaveLength(100);
-      // Verify first and last files are returned
-      expect(result.files[0].directoryName).toBe('guide-1');
-      expect(result.files[99].directoryName).toBe('guide-100');
+      // Should show warning because we hit the GitHub API limit
+      expect(result.warning).toBeDefined();
+      expect(result.warning).toContain('100+ files');
+    }
+  });
+
+  it('should handle PR with exactly 99 total files', async () => {
+    const prMetadataResponse = { head: { sha: 'sha123' } };
+    // Just under the pagination limit
+    const filesResponse = [
+      ...Array.from({ length: 10 }, (_, i) => ({
+        filename: `guide-${i + 1}/content.json`,
+        status: 'added',
+      })),
+      ...Array.from({ length: 89 }, (_, i) => ({
+        filename: `src/file-${i + 1}.ts`,
+        status: 'modified',
+      })),
+    ];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(10);
+      expect(result.warning).toBeUndefined();
     }
   });
 
