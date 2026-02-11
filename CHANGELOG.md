@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.1
+
+### Fixed
+
+- **Dev-mode selector generation**: Fixed `findNearbyFormControl()` incorrectly selecting unrelated form controls when clicking elements inside buttons or links; added structural scoping for `data-testid` selectors to improve stability (#557)
+
+### Changed
+
+- **Developer documentation refresh**: Updated developer docs to align with current implementation, including feature flag documentation, interactive types, requirements reference, and selector guidance; removed obsolete HTML-era docs (#560)
+
 ## 1.5.0
 
 ### Removed
