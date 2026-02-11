@@ -546,7 +546,10 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
         const content = await response.text();
         if (content && content.trim()) {
           // SECURITY: Validate the final URL is trusted
-          const finalUrl = response.url;
+          // NOTE: response.url can be empty in proxied/intercepted environments
+          // (e.g., Grafana Cloud). Fall back to the requested URL which was
+          // already validated before entering this function.
+          const finalUrl = response.url || urlVariation;
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
@@ -559,8 +562,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           }
 
           // Detect if this is native JSON content
-          const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(urlVariation);
-          return { html: content, finalUrl: response.url, isNativeJson };
+          const isNativeJson = isJsonContentUrl(finalUrl) || isJsonContentUrl(urlVariation);
+          return { html: content, finalUrl, isNativeJson };
         }
       }
 
@@ -630,7 +633,12 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       const html = await response.text();
       if (html && html.trim()) {
         // SECURITY: Validate redirect target is still trusted
-        const finalUrl = response.url;
+        // NOTE: response.url can be empty in environments where fetch is intercepted
+        // by a proxy, service worker, or platform wrapper (e.g., Grafana Cloud).
+        // Per the Fetch API spec, synthetic Response objects have url === "".
+        // When empty, fall back to the original request URL which was already
+        // validated at the initial trust gate in fetchContent().
+        const finalUrl = response.url || url;
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
@@ -642,6 +650,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             `Redirect target not in trusted domain list.\n` +
               `Original URL: ${url}\n` +
               `Final URL: ${finalUrl}\n` +
+              `response.url: ${response.url}\n` +
               `isAllowedContentUrl: ${isAllowedContentUrl(finalUrl)}`
           );
           lastError = {
@@ -652,6 +661,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         }
 
         // SECURITY: Enforce HTTPS on redirect target
+        // When response.url is empty, finalUrl falls back to the original URL
+        // which has already passed the HTTPS check in fetchContent()
         if (!enforceHttps(finalUrl)) {
           lastError = {
             message: 'Redirect to non-HTTPS URL blocked for security',
@@ -667,7 +678,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
-          const { jsonUrl, htmlUrl } = getContentUrls(response.url);
+          const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
 
           // Determine fetch order based on domain:
           // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
@@ -679,13 +690,13 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           const primaryIsJson = !preferHtmlFirst;
 
           // Try primary format first
-          if (primaryUrl !== response.url) {
+          if (primaryUrl !== finalUrl) {
             try {
               const primaryResponse = await fetch(primaryUrl, fetchOptions);
               if (primaryResponse.ok) {
                 const primaryContent = await primaryResponse.text();
                 if (primaryContent && primaryContent.trim()) {
-                  return { html: primaryContent, finalUrl: primaryResponse.url, isNativeJson: primaryIsJson };
+                  return { html: primaryContent, finalUrl: primaryResponse.url || primaryUrl, isNativeJson: primaryIsJson };
                 }
               }
             } catch {
@@ -694,17 +705,17 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           }
 
           // Fall back to secondary format
-          if (fallbackUrl !== response.url) {
+          if (fallbackUrl !== finalUrl) {
             try {
               const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
               if (fallbackResponse.ok) {
                 const fallbackContent = await fallbackResponse.text();
                 if (fallbackContent && fallbackContent.trim()) {
-                  return { html: fallbackContent, finalUrl: fallbackResponse.url, isNativeJson: !primaryIsJson };
+                  return { html: fallbackContent, finalUrl: fallbackResponse.url || fallbackUrl, isNativeJson: !primaryIsJson };
                 }
               }
               lastError = {
-                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url}`,
+                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${finalUrl}`,
                 errorType: fallbackResponse.status === 404 ? 'not-found' : 'other',
                 statusCode: fallbackResponse.status,
               };
@@ -722,8 +733,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         }
 
         // Content fetched successfully
-        const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(url);
-        return { html, finalUrl: response.url, isNativeJson };
+        const isNativeJson = isJsonContentUrl(finalUrl) || isJsonContentUrl(url);
+        return { html, finalUrl, isNativeJson };
       }
     } else if (response.status >= 300 && response.status < 400) {
       // Handle manual redirect cases
