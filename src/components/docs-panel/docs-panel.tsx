@@ -503,7 +503,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                 isLoading: false,
                 error: null,
                 currentUrl: url,
-                // Sync tab type with content type - docs-like types stay docs-like
+                // Sync tab type with content type - automatically detect interactives
                 type: fetchedContent.type === 'interactive' ? 'interactive' : t.type,
               }
             : t
