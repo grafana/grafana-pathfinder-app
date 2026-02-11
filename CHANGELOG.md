@@ -1,5 +1,129 @@
 # Changelog
 
+## 1.5.1
+
+### Fixed
+
+- **Dev-mode selector generation**: Fixed `findNearbyFormControl()` incorrectly selecting unrelated form controls when clicking elements inside buttons or links; added structural scoping for `data-testid` selectors to improve stability (#557)
+
+### Changed
+
+- **Developer documentation refresh**: Updated developer docs to align with current implementation, including feature flag documentation, interactive types, requirements reference, and selector guidance; removed obsolete HTML-era docs (#560)
+
+## 1.5.0
+
+### Removed
+
+- **Legacy interactive HTML parsing**: Removed ~800 lines of HTML-based interactive parsing from `html-parser.ts` (#550). Interactive guides are now exclusively produced via the JSON parser path. General HTML parsing (headings, code blocks, images, tables, etc.) remains intact. Golden-path regression tests added.
+
+### Changed
+
+- **Docs panel modularization**: Phased refactor extracting hooks and utilities from `docs-panel.tsx` for better maintainability (#545)
+  - Extracted `useTabOverflow`, `useScrollPositionPreservation`, and `useContentReset` hooks
+  - Extracted `url-validation`, `tab-storage-restore` utilities and `DocsPanelModelOperations` interface
+  - Added 28+ new unit tests across extracted modules
+- **Design documentation**: Flattened package metadata, added AND/OR dependency syntax, deferred fields, and renamed `package.json` → `manifest.json` in design docs (#556)
+- **Agent context optimization**: Reduced always-injected agent context by ~460 lines (#555)
+- **Tiered PR review rules**: Reorganized PR review into compact orchestrator with unified detection table (#554)
+- **Design docs refresh**: Updated reference URLs and removed outdated content (#553)
+
+### Fixed
+
+- **Single steps vs section steps**: Fixed issues with single interactive steps not behaving correctly relative to section steps, including user storage fixes (#549)
+
+### Chore
+
+- Updated npm to v11.9.0 (security) (#548)
+
+## 1.4.13
+
+### Added
+
+- **E2E testing contract**: Added `data-test-*` attributes for step state, action type, and substep progress to enable stable E2E testing of interactive and guided blocks (#540)
+- **E2E CLI guided block support**: Expanded E2E CLI runner with guided block discovery tests, timeout calculations, and `data-reftarget` attributes (#544)
+- **E2E guide test runner documentation**: Added developer documentation for the CLI-based E2E test runner (#533)
+- **Default requirements suggester**: Block editor now auto-suggests default requirements when creating interactive steps (#537)
+
+### Fixed
+
+- **Datasource type matching**: `has-datasource` checks now match plugin types with `grafana-` prefix and `-datasource` suffix (e.g., `has-datasource:testdata` matches `grafana-testdata-datasource`), fixing section auto-completion in the cloud first-dashboard tutorial
+- **Collapsed options group expansion**: Interactive steps targeting elements inside collapsed Grafana panel editor options groups now detect the collapsed state and offer a "Fix this" action to expand them
+
+### Changed
+
+- **Improved validation error messages**: Better error messages for nested union fields in guide validation with custom error map (#542)
+- **StorageKeys refactor**: Extracted storage keys into a standalone module to remove browser dependency, improving testability (#538)
+- **Comprehensive documentation refresh**: Major rewrite of developer documentation with strategic context, integration maps, security context, and developer workflows (#543)
+- **Lint deprecation cleanup**: Resolved lint warnings by updating deprecated APIs across 30 files (#547)
+
+### Chore
+
+- Updated dependency webpack to v5.104.1 (security) (#541)
+- Updated dependency sass-loader to v16.0.7 (#546)
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v6.1.0 (#539)
+- Updated grafana/plugin-actions digest to 09d9424 (#536)
+- Updated packages and added jest-dom type declarations
+- Updated agent configuration to use `test:ci` script (#535)
+
+## 1.4.11
+
+### Fixed
+
+- Fixed infinite loop in interactive step completion that caused steps to remain locked after previous step was completed
+
+## 1.4.10
+
+### Fixed
+
+- Issue with learning journeys showing duplicate headers for index pages
+
+## 1.4.9
+
+### Changed
+
+- Updated bundled guide to reflect changes in the Grafana UI
+
+## 1.4.8
+
+### Added
+
+- **JSON editor mode**: New JSON editing mode in block editor with full undo/redo support and line-numbered validation errors (#521)
+  - Switch between visual block editor and raw JSON editing
+  - Validation errors show exact line numbers for quick debugging
+  - Maintains roundtrip fidelity when switching between modes
+- **Step state machine tests**: Added comprehensive unit tests for step state machine and check phases (#526)
+- **PR review guidelines**: Added documentation for PR review workflow in dev tools (#522)
+
+### Changed
+
+- **Conditional block improvements**: Quality of life improvements for editing conditional blocks (#530)
+  - New branch blocks editor for nested conditional content
+  - Collapsible UI sections for better organization
+  - Improved branch titles and visual hierarchy
+- **Block editor snap scrolling**: Improved scroll behavior in block editor for smoother navigation
+- **Docs panel refactoring**: Extracted components and utilities from docs-panel for better maintainability (#508)
+- **My learning refactoring**: Extracted utilities and styles from my-learning tab for maintainability (#507)
+- **Block editor refactoring**: Major code organization improvements to block editor (#504)
+- **CI optimization**: Parallelized quality checks for faster E2E feedback (#505)
+- **PR review workflow**: Improved PR review workflow in dev tools (#520)
+
+### Fixed
+
+- Fixed form validation errors in block builder
+- Fixed objectives recalculation in step state machine (#501)
+- Fixed parent section notification when step objectives are satisfied (#525)
+
+### Removed
+
+- Removed unused `showTarget` property from interactive schema (#506)
+
+### Chore
+
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v6.0.0 (#519)
+- Updated GitHub artifact actions (#517)
+- Updated actions/checkout to v4.3.1 (#435)
+- Updated dependencies: npm v11.8.0, @openfeature/react-sdk v1, commander v14, sass v1.97.3, glob v13
+
 ## 1.4.7
 
 ### Added

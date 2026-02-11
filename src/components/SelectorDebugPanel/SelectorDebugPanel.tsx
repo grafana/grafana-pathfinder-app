@@ -1,4 +1,4 @@
-import React, { useState, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useCallback, lazy, Suspense, useEffect } from 'react';
 import { Button, Badge, Icon, useStyles2, Stack } from '@grafana/ui';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { UrlTester } from 'components/UrlTester';
@@ -12,17 +12,67 @@ const BlockEditor = lazy(() =>
   }))
 );
 
-export interface SelectorDebugPanelProps {
-  onOpenDocsPage?: (url: string, title: string) => void;
+// localStorage keys for section expansion state
+const STORAGE_KEY_BLOCK_EDITOR = 'pathfinder-devtools-block-editor-expanded';
+const STORAGE_KEY_PR_TESTER = 'pathfinder-devtools-pr-tester-expanded';
+const STORAGE_KEY_URL_TESTER = 'pathfinder-devtools-url-tester-expanded';
+
+/**
+ * Get initial expansion state from localStorage with fallback
+ */
+function getInitialExpanded(storageKey: string, defaultValue: boolean): boolean {
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored !== null) {
+      return stored === 'true';
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+  return defaultValue;
 }
 
-export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps = {}) {
+export interface SelectorDebugPanelProps {
+  onOpenDocsPage?: (url: string, title: string) => void;
+  onOpenLearningJourney?: (url: string, title: string) => void;
+}
+
+export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: SelectorDebugPanelProps = {}) {
   const styles = useStyles2(getDebugPanelStyles);
 
-  // Section expansion state
-  const [blockEditorExpanded, setBlockEditorExpanded] = useState(true); // Main authoring tool - expanded by default
-  const [prTesterExpanded, setPrTesterExpanded] = useState(false);
-  const [UrlTesterExpanded, setUrlTesterExpanded] = useState(false);
+  // Section expansion state - initialize from localStorage
+  const [blockEditorExpanded, setBlockEditorExpanded] = useState(() =>
+    getInitialExpanded(STORAGE_KEY_BLOCK_EDITOR, true)
+  );
+  const [prTesterExpanded, setPrTesterExpanded] = useState(() => getInitialExpanded(STORAGE_KEY_PR_TESTER, false));
+  const [UrlTesterExpanded, setUrlTesterExpanded] = useState(() => getInitialExpanded(STORAGE_KEY_URL_TESTER, false));
+
+  // Persist block editor expansion state
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_BLOCK_EDITOR, String(blockEditorExpanded));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [blockEditorExpanded]);
+
+  // Persist PR tester expansion state
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_PR_TESTER, String(prTesterExpanded));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [prTesterExpanded]);
+
+  // Persist URL tester expansion state
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_URL_TESTER, String(UrlTesterExpanded));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [UrlTesterExpanded]);
 
   // Handle leaving dev mode
   const handleLeaveDevMode = useCallback(async () => {
@@ -94,7 +144,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         </div>
         {prTesterExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
-            <PrTester onOpenDocsPage={onOpenDocsPage} />
+            <PrTester onOpenDocsPage={onOpenDocsPage} onOpenLearningJourney={onOpenLearningJourney} />
           </div>
         )}
       </div>

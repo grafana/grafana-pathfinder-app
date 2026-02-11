@@ -1,5 +1,11 @@
 ---
 alwaysApply: false
+description: details on how unit, smoke, integration tests work in this repo and considerations on when/how to write them.
+globs:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/jest.config*"
+  - "**/jest.setup*"
 ---
 # Testing Strategy
 

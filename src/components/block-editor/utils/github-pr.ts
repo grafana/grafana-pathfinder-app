@@ -95,30 +95,10 @@ function buildGitHubUrl(filePath: string): string {
  */
 async function copyToClipboard(json: string): Promise<boolean> {
   try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(json);
-      return true;
-    }
+    await navigator.clipboard.writeText(json);
+    return true;
   } catch (e) {
-    console.warn('Clipboard API failed, trying fallback:', e);
-  }
-
-  // Fallback for older browsers or when clipboard API fails
-  try {
-    const textArea = document.createElement('textarea');
-    textArea.value = json;
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-999999px';
-    textArea.style.top = '-999999px';
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-
-    const success = document.execCommand('copy');
-    document.body.removeChild(textArea);
-    return success;
-  } catch (e) {
-    console.warn('Fallback clipboard copy failed:', e);
+    console.warn('Clipboard copy failed:', e);
     return false;
   }
 }

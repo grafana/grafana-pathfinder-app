@@ -12,8 +12,15 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG } from '../../../constants/interactive-config';
 import { InternalAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
+import { STEP_STATES } from './step-states';
+import { useStandalonePersistence } from './use-standalone-persistence';
 
 let anonymousMultiStepCounter = 0;
+
+/** Reset the anonymous multi-step counter (called by resetInteractiveCounters). */
+export function resetMultiStepCounter(): void {
+  anonymousMultiStepCounter = 0;
+}
 
 interface InteractiveMultiStepProps {
   internalActions: InternalAction[];
@@ -155,6 +162,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Local UI state (similar to InteractiveStep)
     const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
+
+    // Persist standalone step completion across page refreshes
+    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
     const [currentActionIndex, setCurrentActionIndex] = useState(-1);
     const [failedStepIndex, setFailedStepIndex] = useState(-1); // Track which step failed for error display
     const [executionError, setExecutionError] = useState<string | null>(null);
@@ -206,6 +216,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for overall multi-step requirements and objectives
+    // Auto-completion when objectives are met is handled internally by useStepChecker
     const checker = useStepChecker({
       requirements,
       objectives,
@@ -214,6 +225,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
+      disabled, // Pass through for auto-completion suppression
+      onStepComplete, // Pass through for objectives auto-completion
+      onComplete, // Pass through for objectives auto-completion
     });
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
@@ -636,6 +650,24 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         data-internal-actions={JSON.stringify(internalActions)}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-state={
+          isCompletedWithObjectives
+            ? 'completed'
+            : executionError
+              ? 'error'
+              : isExecuting
+                ? 'executing'
+                : checker.isChecking
+                  ? 'checking'
+                  : !checker.isEnabled
+                    ? STEP_STATES.REQUIREMENTS_UNMET
+                    : 'idle'
+        }
+        data-test-substep-index={isExecuting ? currentActionIndex : undefined}
+        data-test-substep-total={internalActions.length}
+        data-test-requirements-state={
+          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+        }
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}

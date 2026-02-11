@@ -165,8 +165,8 @@ export function BlockList({ blocks, operations }: BlockListProps) {
    */
   const handleDropOnSectionInsert = useCallback(
     (activeId: string, activeData: DragData, sectionId: string, insertIndex: number) => {
-      // Guard against nesting sections/conditionals
-      if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+      // Guard against nesting sections (conditionals ARE allowed in sections)
+      if (activeData.blockType === 'section') {
         return;
       }
 
@@ -238,7 +238,8 @@ export function BlockList({ blocks, operations }: BlockListProps) {
    */
   const handleDropOnSectionDrop = useCallback(
     (activeId: string, activeData: DragData, sectionId: string) => {
-      if (activeData.blockType === 'section' || activeData.blockType === 'conditional') {
+      // Guard against nesting sections (conditionals ARE allowed in sections)
+      if (activeData.blockType === 'section') {
         return;
       }
 
@@ -564,9 +565,7 @@ export function BlockList({ blocks, operations }: BlockListProps) {
     activeDragData !== null && (activeDragData.type === 'nested' || activeDragData.type === 'conditional');
 
   const isDraggingUnNestable =
-    activeDragData !== null &&
-    activeDragData.type === 'root' &&
-    (activeDragData.blockType === 'section' || activeDragData.blockType === 'conditional');
+    activeDragData !== null && activeDragData.type === 'root' && activeDragData.blockType === 'section';
 
   const isRootZoneRedundant = useCallback(
     (zoneIndex: number) => isInsertZoneRedundant(activeDragData, 'root-zone', zoneIndex),

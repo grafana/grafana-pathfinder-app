@@ -305,6 +305,96 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     }
   }
 
+  // SPECIAL CASE: Handle E2E test guide from localStorage
+  // This is used by the E2E test runner CLI to inject arbitrary JSON guides for testing
+  if (contentId === 'e2e-test') {
+    try {
+      // Load JSON content from the E2E test key
+      const testContent = localStorage.getItem(StorageKeys.E2E_TEST_GUIDE);
+
+      if (!testContent || testContent.trim() === '') {
+        return {
+          content: null,
+          error: 'No E2E test content available. The E2E runner must inject JSON into localStorage first.',
+        };
+      }
+
+      // Content is already JSON - parse to extract title for metadata
+      let title = 'E2E Test Guide';
+      try {
+        const parsed = JSON.parse(testContent);
+        if (parsed.title) {
+          title = parsed.title;
+        }
+      } catch {
+        // If parsing fails, use default title
+      }
+
+      const rawContent: RawContent = {
+        content: testContent, // Already valid JSON guide format
+        metadata: {
+          title,
+        },
+        type: 'interactive',
+        url,
+        lastFetched: new Date().toISOString(),
+      };
+
+      return { content: rawContent };
+    } catch (error) {
+      console.error('Failed to load E2E test guide:', error);
+      return {
+        content: null,
+        error: `Failed to load E2E test guide: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  // SPECIAL CASE: Handle PR test learning paths from sessionStorage
+  if (contentId.startsWith('pr-tests/')) {
+    try {
+      const pathId = contentId.replace('pr-tests/', '');
+      const storageKey = `pathfinder-bundled-${pathId}`;
+      const pathContent = sessionStorage.getItem(storageKey);
+
+      if (!pathContent || pathContent.trim() === '') {
+        return {
+          content: null,
+          error: 'PR test path not found. It may have expired or been cleared.',
+        };
+      }
+
+      // Content is already JSON - parse to extract title for metadata
+      let title = 'PR Test Path';
+      try {
+        const parsed = JSON.parse(pathContent);
+        if (parsed.title) {
+          title = parsed.title;
+        }
+      } catch {
+        // If parsing fails, use default title
+      }
+
+      const rawContent: RawContent = {
+        content: pathContent, // Already valid JSON guide format
+        metadata: {
+          title,
+        },
+        type: 'interactive',
+        url,
+        lastFetched: new Date().toISOString(),
+      };
+
+      return { content: rawContent };
+    } catch (error) {
+      console.error('Failed to load PR test path:', error);
+      return {
+        content: null,
+        error: `Failed to load test path: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
   // Load bundled interactive from index.json
   // JSON format is the standard - all bundled interactives should be .json files
   try {
@@ -864,16 +954,8 @@ async function extractLearningJourneyMetadata(html: string, url: string): Promis
  * Extract single doc metadata
  */
 function extractSingleDocMetadata(html: string): SingleDocMetadata {
-  // Check for interactive elements (simple string search)
-  const hasInteractiveElements = html.includes('data-targetaction') || html.includes('class="interactive"');
-
-  // Extract summary from meta description or first paragraph
   const summary = extractDocSummary(html);
-
-  return {
-    hasInteractiveElements,
-    summary,
-  };
+  return { summary };
 }
 
 /**

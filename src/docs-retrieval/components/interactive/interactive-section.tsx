@@ -4,10 +4,10 @@ import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements, ActionMonitor } from '../../../interactive-engine';
 import { useStepChecker } from '../../../requirements-manager';
-import { InteractiveStep } from './interactive-step';
-import { InteractiveMultiStep } from './interactive-multi-step';
-import { InteractiveGuided } from './interactive-guided';
-import { InteractiveQuiz } from './interactive-quiz';
+import { InteractiveStep, resetStepCounter } from './interactive-step';
+import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
+import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
+import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -23,14 +23,23 @@ import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/int
 import { getConfigWithDefaults } from '../../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../../types/component-props.types';
 import { testIds } from '../../../components/testIds';
+import { getContentKey } from './get-content-key';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
 
 // Global registry to track all steps across all sections in the document
-const globalStepRegistry: Map<string, number> = new Map(); // sectionId -> number of steps
+interface StepRegistryEntry {
+  stepCount: number;
+  /** Explicit document-order index used to sort entries when computing offsets.
+   *  Entries with lower documentOrder appear first (get lower step offsets). */
+  documentOrder: number;
+}
+const globalStepRegistry: Map<string, StepRegistryEntry> = new Map();
 let totalDocumentSteps = 0;
 let documentStepOffsets: Map<string, number> = new Map(); // sectionId -> starting offset
+/** Auto-incrementing fallback for entries registered without an explicit documentOrder. */
+let autoDocumentOrder = 0;
 
 // Function to reset counters (can be called when new content loads)
 export function resetInteractiveCounters() {
@@ -38,21 +47,43 @@ export function resetInteractiveCounters() {
   globalStepRegistry.clear();
   totalDocumentSteps = 0;
   documentStepOffsets.clear();
+  autoDocumentOrder = 0;
+  // Reset anonymous step ID counters across all step types
+  resetStepCounter();
+  resetMultiStepCounter();
+  resetGuidedCounter();
+  resetQuizCounter();
 }
 
 // Register a section's steps in the global registry (idempotent)
-function registerSectionSteps(sectionId: string, stepCount: number): { offset: number; total: number } {
-  // Update this section's step count
-  globalStepRegistry.set(sectionId, stepCount);
+//
+// `documentOrder` controls how entries are sorted when computing step offsets.
+// ContentProcessor pre-registers ALL entries (sections + standalone) in visual
+// document order *before* children render. When InteractiveSection later re-registers
+// the same sectionId (to update the step count), the original documentOrder is
+// preserved — only the count is updated.
+//
+// Fallback: if no documentOrder is provided and no prior registration exists,
+// an auto-incrementing counter is used so the behaviour degrades gracefully to
+// registration order.
+export function registerSectionSteps(
+  sectionId: string,
+  stepCount: number,
+  documentOrder?: number
+): { offset: number; total: number } {
+  const existing = globalStepRegistry.get(sectionId);
+  // Prefer explicit order → existing order → auto-increment fallback
+  const order = documentOrder ?? existing?.documentOrder ?? autoDocumentOrder++;
+  globalStepRegistry.set(sectionId, { stepCount, documentOrder: order });
 
-  // Recalculate total and offsets from scratch to ensure consistency
-  // This handles re-registration (re-renders) and multiple sections correctly
-  // Use Map's insertion order (document order) instead of sorting alphabetically
+  // Sort entries by documentOrder, then recompute offsets from scratch
+  const sorted = Array.from(globalStepRegistry.entries()).sort(([, a], [, b]) => a.documentOrder - b.documentOrder);
+
   let runningTotal = 0;
-
-  for (const [secId, count] of globalStepRegistry.entries()) {
+  documentStepOffsets.clear();
+  for (const [secId, entry] of sorted) {
     documentStepOffsets.set(secId, runningTotal);
-    runningTotal += count;
+    runningTotal += entry.stepCount;
   }
 
   totalDocumentSteps = runningTotal;
@@ -62,8 +93,13 @@ function registerSectionSteps(sectionId: string, stepCount: number): { offset: n
   return { offset, total: totalDocumentSteps };
 }
 
+// Get the total number of interactive steps across all sections (including standalone)
+export function getTotalDocumentSteps(): number {
+  return totalDocumentSteps;
+}
+
 // Get document-wide position for a step within a section
-function getDocumentStepPosition(
+export function getDocumentStepPosition(
   sectionId: string,
   sectionStepIndex: number
 ): { stepIndex: number; totalSteps: number } {
@@ -122,46 +158,25 @@ export function InteractiveSection({
   const isProgrammaticScrollRef = useRef(false);
 
   // --- Persistence helpers (restore across refresh) ---
-  // Use content URL (not tab ID) so progress persists across tab sessions
-  const getContentKey = useCallback((): string => {
-    try {
-      const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
-      const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
-      const tabId = (window as any).__DocsPluginActiveTabId as string | undefined;
-      // Prefer contentKey (from content.url) for persistence across tab sessions
-      if (contentKey && contentKey.length > 0) {
-        return contentKey;
-      }
-      // Fallback to tabUrl (content URL from tab)
-      if (tabUrl && tabUrl.length > 0) {
-        return tabUrl;
-      }
-      // Last resort: use tabId (but this shouldn't happen in normal flow)
-      if (tabId && tabId.length > 0) {
-        return `tab:${tabId}`;
-      }
-    } catch {
-      // no-op
-    }
-    // Fallback: use current location
-    return typeof window !== 'undefined' ? window.location.pathname : 'unknown';
-  }, []);
+  // Content key resolved via shared utility to ensure persist/restore consistency
 
   // Detect if we're in preview mode (block editor preview)
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
   const isPreviewMode = useMemo(() => {
     const contentKey = getContentKey();
     return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
-  }, [getContentKey]);
+  }, []);
 
   // Persist completed steps using new user storage system
   const persistCompletedSteps = useCallback(
-    (ids: Set<string>, totalSteps?: number) => {
+    (ids: Set<string>) => {
       const contentKey = getContentKey();
       interactiveStepStorage.setCompleted(contentKey, sectionId, ids);
 
-      // Calculate and save completion percentage if total steps is known
-      const percentage = totalSteps && totalSteps > 0 ? Math.round((ids.size / totalSteps) * 100) : undefined;
+      // Compute unified completion percentage across ALL sections (including standalone)
+      const docTotal = getTotalDocumentSteps();
+      const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
+      const percentage = docTotal > 0 ? Math.round((allCompleted / docTotal) * 100) : undefined;
       if (percentage !== undefined) {
         interactiveCompletionStorage.set(contentKey, percentage);
       }
@@ -175,7 +190,7 @@ export function InteractiveSection({
         );
       }
     },
-    [getContentKey, sectionId]
+    [sectionId]
   );
 
   // Toggle collapse state and persist to storage (skip persistence in preview mode)
@@ -187,7 +202,7 @@ export function InteractiveSection({
       const contentKey = getContentKey();
       sectionCollapseStorage.set(contentKey, sectionId, newCollapseState);
     }
-  }, [isCollapsed, getContentKey, sectionId, isPreviewMode]);
+  }, [isCollapsed, sectionId, isPreviewMode]);
 
   // Restore collapse state from storage on mount (skip in preview mode)
   useEffect(() => {
@@ -201,7 +216,7 @@ export function InteractiveSection({
       setIsCollapsed(savedCollapseState);
     };
     restoreCollapseState();
-  }, [getContentKey, sectionId, isPreviewMode]);
+  }, [sectionId, isPreviewMode]);
 
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
@@ -472,7 +487,7 @@ export function InteractiveSection({
         }
       }
     });
-  }, [getContentKey, sectionId, stepComponents]);
+  }, [sectionId, stepComponents]);
 
   // Objectives checking is handled by the step checker hook
 
@@ -522,7 +537,7 @@ export function InteractiveSection({
       // Reset the flag when section becomes incomplete (e.g., after reset)
       hasAutoCollapsedRef.current = false;
     }
-  }, [isCompleted, getContentKey, sectionId, isPreviewMode]);
+  }, [isCompleted, sectionId, isPreviewMode]);
 
   // Get plugin configuration to determine if auto-detection is enabled
   const pluginContext = usePluginContext();
@@ -628,6 +643,12 @@ export function InteractiveSection({
   // Handle individual step completion
   const handleStepComplete = useCallback(
     (stepId: string, skipStateUpdate = false) => {
+      // GUARD: Skip if already completed - prevents infinite loops when callbacks are
+      // retriggered due to useCallback/useEffect dependency chains (R1, R2, R3)
+      if (completedSteps.has(stepId)) {
+        return;
+      }
+
       if (!skipStateUpdate) {
         // Update state normally - React batches these automatically
         const newCompletedSteps = new Set([...completedSteps, stepId]);
@@ -639,7 +660,7 @@ export function InteractiveSection({
           setCurrentStepIndex(currentIndex + 1);
         }
 
-        persistCompletedSteps(newCompletedSteps, stepComponents.length);
+        persistCompletedSteps(newCompletedSteps);
 
         // React's reactive model handles eligibility updates automatically:
         // 1. State updates are batched and applied
@@ -689,7 +710,7 @@ export function InteractiveSection({
         }
 
         // Persist removal
-        persistCompletedSteps(newSet, stepComponents.length);
+        persistCompletedSteps(newSet);
         return newSet;
       });
 
@@ -1049,7 +1070,7 @@ export function InteractiveSection({
           setCompletedSteps((prev) => {
             const newSet = new Set([...prev, stepInfo.stepId]);
             // Persist immediately to ensure green state is preserved
-            persistCompletedSteps(newSet, stepComponents.length);
+            persistCompletedSteps(newSet);
             return newSet;
           });
 
@@ -1227,7 +1248,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, getContentKey, stepComponents, sectionId]);
+  }, [disabled, isRunning, stepComponents, sectionId]);
 
   // Register this section's steps in the global registry BEFORE rendering children
   // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct

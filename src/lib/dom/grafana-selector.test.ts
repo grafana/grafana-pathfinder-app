@@ -4,8 +4,6 @@ import {
   findByGrafanaSelector,
   findOneByGrafanaSelector,
   existsByGrafanaSelector,
-  navSelectors,
-  selectors,
 } from './grafana-selector';
 
 describe('grafana-selector', () => {
@@ -93,26 +91,6 @@ describe('grafana-selector', () => {
 
     it('should return false if element does not exist', () => {
       expect(existsByGrafanaSelector('components.RefreshPicker.runButtonV2')).toBe(false);
-    });
-  });
-
-  describe('navSelectors', () => {
-    it('should create selector by href', () => {
-      const selector = navSelectors.menuItemByHref('/dashboards');
-      expect(selector).toBe("a[data-testid='data-testid Nav menu item'][href='/dashboards']");
-    });
-
-    it('should create selector by text', () => {
-      const selector = navSelectors.menuItemByText('Dashboards');
-      expect(selector).toBe("a[data-testid='data-testid Nav menu item']:contains('Dashboards')");
-    });
-  });
-
-  describe('selectors export', () => {
-    it('should export Grafana selectors', () => {
-      expect(selectors).toBeDefined();
-      expect(selectors.components).toBeDefined();
-      expect(selectors.pages).toBeDefined();
     });
   });
 });

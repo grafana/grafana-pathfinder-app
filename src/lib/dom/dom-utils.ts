@@ -275,6 +275,22 @@ export async function reftargetExistsCheck(
     };
   }
 
+  // Check for collapsed Options Group containers in Grafana's panel editor.
+  // These use data-testid="data-testid Options group {name} toggle" with aria-expanded="false".
+  // When collapsed, child elements are not rendered to the DOM (React conditional rendering).
+  const collapsedOptionsGroups = document.querySelectorAll(
+    'button[data-testid*="Options group"][aria-expanded="false"]'
+  );
+  if (collapsedOptionsGroups.length > 0) {
+    return {
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: `Element not found - may be inside a collapsed options panel`,
+      canFix: true,
+      fixType: 'expand-options-group',
+    };
+  }
+
   return {
     requirement: 'exists-reftarget',
     pass: false,

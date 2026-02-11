@@ -113,18 +113,3 @@ export function existsByGrafanaSelector(selectorPath: string, selectorId?: strin
   const elements = findByGrafanaSelector(selectorPath, selectorId);
   return elements.length > 0;
 }
-
-// Re-export grafanaSelectors for test compatibility (unused in production)
-/** @deprecated Unused in production - kept for test compatibility only */
-export const selectors = grafanaSelectors;
-
-// Navigation selectors for test compatibility (unused in production)
-/** @deprecated Unused in production - kept for test compatibility only */
-export const navSelectors = {
-  menuItemByHref: (href: string): string => {
-    return `a[data-testid='data-testid Nav menu item'][href='${href}']`;
-  },
-  menuItemByText: (text: string): string => {
-    return `a[data-testid='data-testid Nav menu item']:contains('${text}')`;
-  },
-};

@@ -41,6 +41,7 @@ import { z } from 'zod';
 
 import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { StorageKeys } from './storage-keys';
 
 // ============================================================================
 // LEARNING PROGRESS SCHEMA (for defense-in-depth validation)
@@ -87,34 +88,12 @@ const DEFAULT_GUIDE_RESPONSES: GuideResponses = {};
 
 // ============================================================================
 // STORAGE KEYS
+// Re-exported from storage-keys.ts for backward compatibility.
+// The separate file allows importing keys without browser dependencies
+// (e.g., in Playwright E2E tests).
 // ============================================================================
 
-export const StorageKeys = {
-  JOURNEY_COMPLETION: 'grafana-pathfinder-app-journey-completion',
-  INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
-  TABS: 'grafana-pathfinder-app-tabs',
-  ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
-  INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
-  WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview', // HTML content for editor persistence
-  WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json', // JSON content for test preview
-  SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: grafana-pathfinder-app-section-collapse-{contentKey}-{sectionId}
-  // Full screen mode persistence (for page refreshes during recording)
-  FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
-  FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
-  FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
-  FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
-  // Learning paths and badges progress
-  LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
-  // Guide responses from input blocks (user-entered values for variables)
-  GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
-  // Experiment auto-open state (Grafana user storage key)
-  EXPERIMENT_AUTO_OPEN: 'grafana-pathfinder-app-experiment-auto-open',
-  // Experiment session storage key prefixes (used with hostname suffix)
-  // These are sessionStorage keys, not Grafana user storage
-  EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
-  EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
-  EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
-} as const;
+export { StorageKeys, type StorageKeyName, type StorageKeyValue } from './storage-keys';
 
 // Timestamp suffix for conflict resolution
 const TIMESTAMP_SUFFIX = '__timestamp';
@@ -853,6 +832,12 @@ export const tabStorage = {
 };
 
 /**
+ * Cache for countAllCompleted to avoid O(n) localStorage scan on every step completion.
+ * Invalidated by setCompleted, clear, and clearAllForContent operations.
+ */
+const completedCountCache = new Map<string, number>();
+
+/**
  * Interactive step completion storage operations
  */
 export const interactiveStepStorage = {
@@ -875,6 +860,8 @@ export const interactiveStepStorage = {
    */
   async setCompleted(contentKey: string, sectionId: string, completedIds: Set<string>): Promise<void> {
     try {
+      // Invalidate count cache before write so next countAllCompleted() re-scans
+      completedCountCache.delete(contentKey);
       const storage = createUserStorage();
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.setItem(key, Array.from(completedIds));
@@ -888,6 +875,7 @@ export const interactiveStepStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
+      completedCountCache.delete(contentKey);
       const storage = createUserStorage();
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.removeItem(key);
@@ -931,6 +919,7 @@ export const interactiveStepStorage = {
    */
   async clearAllForContent(contentKey: string): Promise<void> {
     try {
+      completedCountCache.delete(contentKey);
       const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
       const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
 
@@ -947,6 +936,47 @@ export const interactiveStepStorage = {
       keysToRemove.forEach((key) => localStorage.removeItem(key));
     } catch (error) {
       console.warn('Failed to clear all progress for content:', error);
+    }
+  },
+
+  /**
+   * Count ALL completed step IDs across every section for a given content key.
+   * Scans all localStorage entries matching the content key prefix and sums the
+   * lengths of their step ID arrays. Used to compute a unified completion percentage
+   * that correctly accounts for both section-managed and standalone steps.
+   *
+   * Results are cached per contentKey and invalidated by setCompleted, clear, and
+   * clearAllForContent to avoid an O(n) localStorage scan on every step completion.
+   */
+  countAllCompleted(contentKey: string): number {
+    const cached = completedCountCache.get(contentKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    try {
+      const prefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const value = localStorage.getItem(key);
+          if (value) {
+            try {
+              const ids = JSON.parse(value);
+              if (Array.isArray(ids)) {
+                total += ids.length;
+              }
+            } catch {
+              // Invalid JSON, skip
+            }
+          }
+        }
+      }
+      completedCountCache.set(contentKey, total);
+      return total;
+    } catch {
+      return 0;
     }
   },
 };

@@ -17,6 +17,8 @@ import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 import { GuidedAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
 import { sanitizeDocumentationHTML } from '../../../security';
+import { STEP_STATES } from './step-states';
+import { useStandalonePersistence } from './use-standalone-persistence';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -74,6 +76,11 @@ function SafeHTML({ html, className }: { html: string; className?: string }) {
 }
 
 let anonymousGuidedCounter = 0;
+
+/** Reset the anonymous guided step counter (called by resetInteractiveCounters). */
+export function resetGuidedCounter(): void {
+  anonymousGuidedCounter = 0;
+}
 
 interface InteractiveGuidedProps {
   internalActions: GuidedAction[];
@@ -163,6 +170,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const [executionError, setExecutionError] = useState<string | null>(null);
     const [wasCancelled, setWasCancelled] = useState(false);
 
+    // Persist standalone step completion across page refreshes
+    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+
     // Get plugin configuration for auto-detection settings
     const pluginContext = usePluginContext();
     const interactiveConfig = useMemo(() => {
@@ -218,6 +228,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for requirements and objectives
+    // Auto-completion when objectives are met is handled internally by useStepChecker
     const checker = useStepChecker({
       requirements,
       objectives,
@@ -227,6 +238,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       skippable,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
+      disabled, // Pass through for auto-completion suppression
+      onStepComplete, // Pass through for objectives auto-completion
+      onComplete, // Pass through for objectives auto-completion
     });
 
     // Combined completion state: objectives always win
@@ -591,7 +605,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return 'checking';
       }
       if (!checker.isEnabled) {
-        return 'requirements-not-met';
+        return STEP_STATES.REQUIREMENTS_UNMET;
       }
       return 'idle';
     })();
@@ -602,6 +616,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-step-id={stepId || renderedStepId}
         data-state={uiState}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-state={uiState}
+        data-test-substep-index={isExecuting ? currentStepIndex : undefined}
+        data-test-substep-total={internalActions.length}
+        data-test-requirements-state={
+          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+        }
       >
         {/* Title and description - always shown */}
         <div className="interactive-step-content">
@@ -674,7 +694,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         {/* ═══════════════════════════════════════════════════════════════════
             STATE: REQUIREMENTS NOT MET (also show during rechecking)
         ═══════════════════════════════════════════════════════════════════ */}
-        {(uiState === 'requirements-not-met' || (uiState === 'checking' && checker.explanation)) &&
+        {(uiState === STEP_STATES.REQUIREMENTS_UNMET || (uiState === 'checking' && checker.explanation)) &&
           checker.explanation && (
             <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
               <div className="interactive-guided-requirement-box">

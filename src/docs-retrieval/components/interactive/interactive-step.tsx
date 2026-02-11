@@ -22,6 +22,8 @@ import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../
 import { CodeBlock } from '../docs/code-block';
 import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../../lib/dom';
 import { isCssSelector } from '../../../lib/dom/selector-detector';
+import { STEP_STATES } from './step-states';
+import { useStandalonePersistence } from './use-standalone-persistence';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -132,6 +134,11 @@ const mapDatasourceTypeToLanguage = (datasourceType: string | null): string => {
 
 let anonymousStepCounter = 0;
 
+/** Reset the anonymous step counter (called by resetInteractiveCounters). */
+export function resetStepCounter(): void {
+  anonymousStepCounter = 0;
+}
+
 export const InteractiveStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },
   InteractiveStepProps
@@ -203,6 +210,9 @@ export const InteractiveStep = forwardRef<
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
 
+    // Persist standalone step completion across page refreshes
+    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+
     // Check for customized value from parent AssistantBlockWrapper context
     const assistantBlockValue = useAssistantBlockValue();
 
@@ -258,6 +268,9 @@ export const InteractiveStep = forwardRef<
       stepIndex, // Pass document-wide step index for sequence awareness
       lazyRender, // Enable progressive scroll discovery for virtualized containers
       scrollContainer, // CSS selector for scroll container
+      disabled, // Pass through for auto-completion suppression
+      onStepComplete, // Pass through for objectives auto-completion
+      onComplete, // Pass through for objectives auto-completion
     });
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
@@ -304,6 +317,9 @@ export const InteractiveStep = forwardRef<
         }
       }
     }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
+
+    // NOTE: Auto-completion when objectives are met is now handled by useStepChecker
+    // via the onObjectivesComplete callback passed above.
 
     const shouldShowExplanation = isPartOfSection
       ? !isNoopAction &&
@@ -815,6 +831,32 @@ export const InteractiveStep = forwardRef<
         data-targetcomment={targetComment}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-state={
+          isCompletedWithObjectives
+            ? 'completed'
+            : isShowRunning || isDoRunning
+              ? 'executing'
+              : checker.isChecking
+                ? 'checking'
+                : !finalIsEnabled
+                  ? STEP_STATES.REQUIREMENTS_UNMET
+                  : 'idle'
+        }
+        data-test-fix-type={checker.fixType || 'none'}
+        data-test-requirements-state={
+          checker.isChecking ? 'checking' : finalIsEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+        }
+        data-test-form-state={
+          targetAction === 'formfill'
+            ? formValidation?.isChecking
+              ? 'checking'
+              : formValidation?.isInvalid
+                ? 'invalid'
+                : formValidation?.isValid
+                  ? 'valid'
+                  : 'idle'
+            : undefined
+        }
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}

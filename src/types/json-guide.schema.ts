@@ -318,6 +318,7 @@ const ConditionalProps = {
   conditions: z.array(z.string()).min(1, 'At least one condition is required'),
   description: z.string().optional(),
   display: z.enum(['inline', 'section']).optional(),
+  reftarget: z.string().optional(),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional(),
   whenFalseSectionConfig: ConditionalSectionConfigSchema.optional(),
 };
@@ -325,7 +326,7 @@ const ConditionalProps = {
 const MAX_NESTING_DEPTH = 5;
 
 // Helper to create depth-limited block schema
-function createBlockSchemaWithDepth(currentDepth: number): z.ZodSchema {
+function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
   if (currentDepth >= MAX_NESTING_DEPTH) {
     // At max depth, only allow non-recursive blocks
     return NonRecursiveBlockSchema;
@@ -411,7 +412,7 @@ export const JsonGuideSchemaStrict = z.object({
  * Use this for forward compatibility - newer guides with new fields won't fail.
  * @coupling Type: JsonGuide
  */
-export const JsonGuideSchema = JsonGuideSchemaStrict.passthrough();
+export const JsonGuideSchema = JsonGuideSchemaStrict.loose();
 
 // ============ TYPE INFERENCE ============
 
@@ -492,6 +493,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'whenFalse',
     'description',
     'display',
+    'reftarget',
     'whenTrueSectionConfig',
     'whenFalseSectionConfig',
   ]),

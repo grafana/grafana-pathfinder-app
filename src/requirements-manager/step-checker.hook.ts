@@ -46,6 +46,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     stepIndex,
     lazyRender,
     scrollContainer,
+    disabled = false,
+    onStepComplete,
+    onComplete,
   } = props;
   const [state, setState] = useState({
     isEnabled: false,
@@ -473,6 +476,17 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         console.warn('lazy-scroll fixType should be handled by button click, not fixRequirement');
         safeSetState((prev) => ({ ...prev, isChecking: false }));
         return;
+      } else if (state.fixType === 'expand-options-group') {
+        // Expand all collapsed Options Group panels in the Grafana panel editor
+        const collapsedToggles = document.querySelectorAll(
+          'button[data-testid*="Options group"][aria-expanded="false"]'
+        ) as NodeListOf<HTMLButtonElement>;
+
+        for (const toggle of collapsedToggles) {
+          toggle.click();
+        }
+        // Wait for React to render the newly expanded children
+        await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
       } else if (state.fixType === 'navigation') {
         // Fix basic navigation requirements (menu open/dock)
         await fixNavigationRequirements();
@@ -613,6 +627,17 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       checkStepRef.current();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally empty - only run on mount
+
+  // Auto-complete notification when objectives are met
+  // When a step's objectives are satisfied, notify the parent via callbacks.
+  // This centralizes a bug fix needed across
+  // interactive-step, interactive-guided, and interactive-multi-step components.
+  useEffect(() => {
+    if (state.completionReason === 'objectives' && !disabled) {
+      onStepComplete?.(stepId);
+      onComplete?.();
+    }
+  }, [state.completionReason, stepId, disabled, onStepComplete, onComplete]);
 
   // Register step checker with global manager for targeted re-checking
   // This is called by context changes (EchoSrv), watchNextStep, and triggerStepCheck

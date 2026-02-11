@@ -35,11 +35,12 @@ Wrap any query or configuration with an `<assistant>` tag to make it customizabl
 
 The `data-assistant-type` attribute determines how the assistant customizes your content:
 
-| Type     | Use For                   | Example                         |
-| -------- | ------------------------- | ------------------------------- |
-| `query`  | PromQL, LogQL, SQL, etc.  | `rate(http_requests_total[5m])` |
-| `config` | URLs, hostnames, settings | `http://prometheus:9090`        |
-| `code`   | YAML, JSON, scripts       | Alert rules, recording rules    |
+| Type     | Use For                        | Example                         |
+| -------- | ------------------------------ | ------------------------------- |
+| `query`  | PromQL, LogQL, SQL, etc.       | `rate(http_requests_total[5m])` |
+| `config` | URLs, hostnames, settings      | `http://prometheus:9090`        |
+| `code`   | YAML, JSON, scripts            | Alert rules, recording rules    |
+| `text`   | Prose, explanations, templates | Descriptive text to personalize |
 
 ### Type 1: `query` - Database Queries
 
@@ -100,6 +101,27 @@ The `data-assistant-type` attribute determines how the assistant customizes your
 - Code is a generic example/template
 - No environment-specific values to customize
 
+### Type 4: `text` - Prose and Explanations
+
+**Best for**: Descriptive text, explanations, or templates that benefit from personalization
+
+```html
+<assistant data-assistant-id="intro-text" data-assistant-type="text">
+  This dashboard monitors your HTTP services running in Kubernetes.
+</assistant>
+```
+
+✅ **Use when:**
+
+- Explanatory text references environment-specific names or concepts
+- Templates need adaptation to the user's setup
+- Prose describes infrastructure that varies by deployment
+
+❌ **Don't use when:**
+
+- Text is purely conceptual with no environment-specific references
+- The content is already universal
+
 ## Basic Usage
 
 ### Required Attributes
@@ -112,10 +134,10 @@ The `data-assistant-type` attribute determines how the assistant customizes your
 </assistant>
 ```
 
-| Attribute             | Required | Values                       | Purpose                                             |
-| --------------------- | -------- | ---------------------------- | --------------------------------------------------- |
-| `data-assistant-id`   | ✅ Yes   | Any unique string            | Identifies this element (used for localStorage key) |
-| `data-assistant-type` | ✅ Yes   | `query`, `config`, or `code` | Tells assistant what type of content to customize   |
+| Attribute             | Required | Values                               | Purpose                                             |
+| --------------------- | -------- | ------------------------------------ | --------------------------------------------------- |
+| `data-assistant-id`   | ✅ Yes   | Any unique string                    | Identifies this element (used for localStorage key) |
+| `data-assistant-type` | ✅ Yes   | `query`, `config`, `code`, or `text` | Tells assistant what type of content to customize   |
 
 ### Inline vs Block Rendering
 
@@ -367,7 +389,7 @@ System Prompt: You are a Grafana prometheus query expert...
 
 ## Related Documentation
 
-- [Prometheus Advanced Queries](../../src/bundled-interactives/prometheus-advanced-queries.ts) - Real tutorial with 28 customizable queries
-- [Interactive Tutorials Guide](./interactive-examples/README.md) - Creating interactive steps
+- [Prometheus Advanced Queries](../../src/bundled-interactives/prometheus-advanced-queries.json) - Real tutorial with customizable queries
+- [Authoring Interactive Journeys](./interactive-examples/authoring-interactive-journeys.md) - Creating interactive steps
 - [Dev Mode](./DEV_MODE.md) - Local development setup
 - [Assistant Integration Code](../../src/integrations/assistant-integration/) - Implementation details

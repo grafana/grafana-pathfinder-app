@@ -7,6 +7,7 @@ import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
+import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
 
@@ -127,7 +128,9 @@ export class GuidedHandler {
         totalSteps,
         action.targetComment,
         action.isSkippable,
-        action.formHint // Pass form hint for formfill validation feedback
+        action.formHint, // Pass form hint for formfill validation feedback
+        action.targetValue, // Pass target value for data-test-target-value attribute
+        action.refTarget! // E2E contract: selector for current target (data-test-reftarget)
       );
 
       // Wait for user to complete the action, skip, cancel, or timeout
@@ -239,6 +242,11 @@ export class GuidedHandler {
     commentBox.setAttribute('data-position', 'center');
     commentBox.setAttribute('data-ready', 'true');
     commentBox.setAttribute('data-noop', 'true');
+
+    // Apply E2E testing contract attributes
+    applyE2ECommentBoxAttributes(commentBox, {
+      actionType: 'noop',
+    });
 
     const content = document.createElement('div');
     content.className = 'interactive-comment-content interactive-comment-glow';
@@ -459,7 +467,9 @@ export class GuidedHandler {
     totalSteps: number,
     customComment?: string,
     isSkippable?: boolean,
-    formHint?: string // Hint for formfill validation
+    formHint?: string, // Hint for formfill validation
+    targetValue?: string, // Target value for data-test-target-value attribute
+    reftarget?: string // E2E contract: selector for current target (data-test-reftarget)
   ): Promise<void> {
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
@@ -505,6 +515,9 @@ export class GuidedHandler {
       undefined, // No previous callback for guided mode
       {
         skipAnimations: stepIndex > 0, // Instant transitions after first step
+        actionType: actionType, // Pass action type for data-test-action attribute
+        targetValue: targetValue, // Pass target value for data-test-target-value attribute
+        reftarget: reftarget, // E2E contract: selector for current target
       }
     );
 

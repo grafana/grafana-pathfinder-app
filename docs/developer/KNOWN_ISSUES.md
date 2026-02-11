@@ -146,7 +146,7 @@ If you encounter issues not listed here:
 **What Works Reliably**:
 
 - Guided and Follow modes
-- All action types (button, formfill, navigate, multistep)
+- All action types (button, formfill, navigate, highlight, hover, noop, multistep, guided)
 - Session creation and joining
 - Mode switching during session
 

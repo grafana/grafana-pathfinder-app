@@ -1,5 +1,11 @@
 // Interactive components
-export { InteractiveSection, resetInteractiveCounters } from './interactive-section';
+export {
+  InteractiveSection,
+  resetInteractiveCounters,
+  registerSectionSteps,
+  getDocumentStepPosition,
+  getTotalDocumentSteps,
+} from './interactive-section';
 export { InteractiveStep } from './interactive-step';
 export { InteractiveMultiStep } from './interactive-multi-step';
 export { InteractiveGuided } from './interactive-guided';

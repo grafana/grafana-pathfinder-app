@@ -126,25 +126,6 @@ export const createReactSdkMock = () => {
 };
 
 /**
- * Create mock for @openfeature/react-sdk (legacy alias)
- *
- * @deprecated Use createReactSdkMock() for React SDK hooks and createWebSdkMock() for OpenFeature core
- *
- * Use this in jest.mock() calls:
- * @example
- * jest.mock('@openfeature/react-sdk', () => require('../test-utils/openfeature-mock').createOpenFeatureMock());
- */
-export const createOpenFeatureMock = () => {
-  const webSdkMock = createWebSdkMock();
-  const reactSdkMock = createReactSdkMock();
-
-  return {
-    ...webSdkMock,
-    ...reactSdkMock,
-  };
-};
-
-/**
  * Setup OpenFeature mock with default values
  *
  * Call this in beforeEach() to reset mock state

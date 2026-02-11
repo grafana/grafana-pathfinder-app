@@ -1,7 +1,7 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 
@@ -22,28 +22,21 @@ const TerminalPanel = lazy(() =>
 );
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults } from '../../constants';
+import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
-import { parseUrlSafely, isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../security';
+import { isDevModeEnabled } from '../../utils/dev-mode';
+import { parseUrlSafely } from '../../security';
 
 import {
   setupScrollTracking,
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
-  enrichWithStepContext,
 } from '../../lib/analytics';
-import {
-  tabStorage,
-  useUserStorage,
-  learningProgressStorage,
-  interactiveStepStorage,
-  interactiveCompletionStorage,
-} from '../../lib/user-storage';
+import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -74,17 +67,24 @@ import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../testIds';
 
 // Import extracted components
-import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions } from './components';
+import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
 // Import extracted utilities
-import { isDocsLikeTab, getTranslatedTitle } from './utils';
-
-// Use the properly extracted styles
-const getStyles = getComponentStyles;
+import {
+  isDocsLikeTab,
+  getTranslatedTitle,
+  restoreTabsFromStorage,
+  restoreActiveTabFromStorage,
+  isGrafanaDocsUrl,
+  cleanDocsUrl,
+} from './utils';
+// Import extracted hooks
+import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
 
 // Import centralized types
 import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
+import type { DocsPanelModelOperations } from './types';
 
-class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
+class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
   public get renderBeforeActivation(): boolean {
@@ -132,8 +132,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async restoreTabsAsync(): Promise<void> {
-    const restoredTabs = await CombinedLearningJourneyPanel.restoreTabsFromStorage();
-    const activeTabId = await CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
+    // Use extracted restore module with dev mode detection
+    const currentUserId = config.bootData.user?.id;
+    const pluginConfig = this.state.pluginConfig || {};
+    const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+
+    const restoredTabs = await restoreTabsFromStorage(tabStorage, { isDevMode });
+    const activeTabId = await restoreActiveTabFromStorage(tabStorage, restoredTabs);
 
     this.setState({
       tabs: restoredTabs,
@@ -160,121 +165,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         }
       }
     }
-  }
-
-  private static async restoreTabsFromStorage(): Promise<LearningJourneyTab[]> {
-    try {
-      const parsedData = await tabStorage.getTabs<PersistedTabData>();
-
-      if (!parsedData || parsedData.length === 0) {
-        // Return default tabs if no stored data
-        return [
-          {
-            id: 'recommendations',
-            title: 'Recommendations',
-            baseUrl: '',
-            currentUrl: '',
-            content: null,
-            isLoading: false,
-            error: null,
-          },
-        ];
-      }
-
-      const tabs: LearningJourneyTab[] = [
-        {
-          id: 'recommendations',
-          title: 'Recommendations', // Will be translated in renderer
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        },
-      ];
-
-      parsedData.forEach((data) => {
-        // Handle devtools tab specially - it has no URLs to validate
-        if (data.type === 'devtools') {
-          tabs.push({
-            id: 'devtools',
-            title: 'Dev Tools',
-            baseUrl: '',
-            currentUrl: '',
-            content: null,
-            isLoading: false,
-            error: null,
-            type: 'devtools',
-          });
-          return;
-        }
-
-        // SECURITY: Validate URLs before restoring from storage
-        // This prevents XSS attacks via storage injection
-        const validateUrl = (url: string): boolean => {
-          const isDevMode = isDevModeEnabledGlobal();
-          return isAllowedContentUrl(url) || (isDevMode && isLocalhostUrl(url)) || (isDevMode && isGitHubRawUrl(url));
-        };
-
-        const isValidBase = validateUrl(data.baseUrl);
-        const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
-
-        if (!isValidBase || !isValidCurrent) {
-          console.warn('Rejected potentially unsafe URL from storage:', {
-            baseUrl: data.baseUrl,
-            currentUrl: data.currentUrl,
-            isValidBase,
-            isValidCurrent,
-          });
-          return; // Skip this tab
-        }
-
-        tabs.push({
-          id: data.id,
-          title: data.title,
-          baseUrl: data.baseUrl,
-          currentUrl: data.currentUrl || data.baseUrl,
-          content: null, // Will be loaded when tab becomes active
-          isLoading: false,
-          error: null,
-          type: data.type || 'learning-journey',
-        });
-      });
-
-      return tabs;
-    } catch (error) {
-      console.error('Failed to restore tabs from storage:', error);
-      return [
-        {
-          id: 'recommendations',
-          title: 'Recommendations',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        },
-      ];
-    }
-  }
-
-  private static async restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): Promise<string> {
-    try {
-      const activeTabId = await tabStorage.getActiveTab();
-
-      if (activeTabId) {
-        const tabExists = tabs.some((t) => t.id === activeTabId);
-
-        // Restore the stored tab if it exists (including devtools - it should persist like normal tabs)
-        // The closeTab method ensures that when all tabs are closed, 'recommendations' is saved to storage
-        // So if storage has 'devtools', it means the user was legitimately on devtools when they refreshed
-        return tabExists ? activeTabId : 'recommendations';
-      }
-    } catch (error) {
-      console.error('Failed to restore active tab from storage:', error);
-    }
-
-    return 'recommendations';
   }
 
   private async saveTabsToStorage(): Promise<void> {
@@ -692,63 +582,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const handRaiseIndicatorRef = React.useRef<HTMLDivElement>(null);
 
   // Global badge celebration queue - shows toasts sequentially when badges are earned
-  const [badgeCelebrationQueue, setBadgeCelebrationQueue] = React.useState<string[]>([]);
-  const [currentCelebrationBadge, setCurrentCelebrationBadge] = React.useState<string | null>(null);
-  const isProcessingQueueRef = React.useRef(false);
+  const {
+    currentCelebrationBadge,
+    queueCount: badgeCelebrationQueueCount,
+    onDismiss: handleDismissGlobalCelebration,
+  } = useBadgeCelebrationQueue();
 
   // Interactive progress state - shows reset button when user has completed steps
   const [hasInteractiveProgress, setHasInteractiveProgress] = React.useState(false);
 
-  // Process the badge queue - show next badge toast
-  React.useEffect(() => {
-    if (badgeCelebrationQueue.length > 0 && !currentCelebrationBadge && !isProcessingQueueRef.current) {
-      isProcessingQueueRef.current = true;
-      // Small delay before showing next toast for better UX
-      const timer = setTimeout(
-        () => {
-          const [nextBadge, ...remaining] = badgeCelebrationQueue;
-          setBadgeCelebrationQueue(remaining);
-          setCurrentCelebrationBadge(nextBadge);
-          isProcessingQueueRef.current = false;
-        },
-        currentCelebrationBadge === null ? 0 : 500
-      ); // No delay for first, 500ms between subsequent
-
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [badgeCelebrationQueue, currentCelebrationBadge]);
-
-  // Listen for badge award events globally (only set up once)
-  React.useEffect(() => {
-    const handleProgressUpdate = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-
-      // Check for new badges from guide completion
-      if (detail?.type === 'guide-completed' && detail?.newBadges?.length > 0) {
-        // Add all new badges to the queue (cap at 3 to avoid overwhelming)
-        const newBadges = detail.newBadges.slice(0, 3) as string[];
-        setBadgeCelebrationQueue((prev) => [...prev, ...newBadges]);
-      }
-    };
-
-    window.addEventListener('learning-progress-updated', handleProgressUpdate);
-
-    return () => {
-      window.removeEventListener('learning-progress-updated', handleProgressUpdate);
-    };
-  }, []);
-
-  // Handle dismissing the current badge celebration
-  const handleDismissGlobalCelebration = React.useCallback(async () => {
-    const badgeId = currentCelebrationBadge;
-    if (badgeId) {
-      // Clear current badge to trigger showing next in queue
-      setCurrentCelebrationBadge(null);
-      // Then persist dismissal to storage
-      await learningProgressStorage.dismissCelebration(badgeId);
-    }
-  }, [currentCelebrationBadge]);
   const {
     isActive: isSessionActive,
     sessionRole,
@@ -954,142 +796,50 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     };
   }, [progressKey]);
 
-  const styles = useStyles2(getStyles);
+  const styles = useStyles2(getComponentStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
 
-  // Tab overflow management - dynamic calculation based on container width
-  const tabBarRef = useRef<HTMLDivElement>(null); // Measure parent instead of child
-  const tabListRef = useRef<HTMLDivElement>(null);
-  const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
-  const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
-  const chevronButtonRef = useRef<HTMLButtonElement>(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const dropdownOpenTimeRef = useRef<number>(0);
-  const [containerWidth, setContainerWidth] = useState<number>(0);
-
-  // Dynamic tab visibility calculation based on container width
-  // Note: Permanent tabs (recommendations, my-learning) are now rendered separately as icon tabs
-  const calculateTabVisibility = useCallback(() => {
-    // Filter out permanent tabs - they're rendered separately as icons
-    const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools');
-
-    if (guideTabs.length === 0) {
-      setVisibleTabs(tabs); // Keep all tabs in state for reference
-      setOverflowedTabs([]);
-      return;
-    }
-
-    // If we don't have container width yet, show minimal tabs
-    if (containerWidth === 0) {
-      setVisibleTabs(tabs);
-      setOverflowedTabs([]);
-      return;
-    }
-
-    // Note: chevron button width is already reserved in containerWidth calculation
-    const tabSpacing = 4; // Gap between tabs (theme.spacing(0.5))
-
-    // Use a more practical minimum: each tab needs at least 80px to be readable
-    // With flex layout, tabs will grow to fill available space proportionally
-    const minTabWidth = 80; // Minimum readable width per tab
-
-    // Account for: permanent tabs (~72px) + divider (~8px) + actions (~50px)
-    const reservedWidth = 130;
-    const availableWidth = Math.max(0, containerWidth - reservedWidth);
-
-    // Determine how many guide tabs can fit
-    let maxVisibleGuideTabs = 0;
-    let widthUsed = 0;
-
-    // Try to fit guide tabs
-    for (let i = 0; i < guideTabs.length; i++) {
-      const tabWidth = minTabWidth + tabSpacing;
-      const spaceNeeded = widthUsed + tabWidth;
-
-      if (spaceNeeded <= availableWidth) {
-        maxVisibleGuideTabs++;
-        widthUsed += tabWidth;
-      } else {
-        break;
-      }
-    }
-
-    // Always show at least 1 guide tab if any exist
-    maxVisibleGuideTabs = Math.max(maxVisibleGuideTabs, Math.min(1, guideTabs.length));
-
-    // Find the active guide tab (if any)
-    const activeGuideTabIndex = guideTabs.findIndex((t) => t.id === activeTabId);
-
-    if (activeGuideTabIndex >= maxVisibleGuideTabs) {
-      // Active guide tab is in overflow, swap it into visible range
-      const visibleGuideTabsArray = [...guideTabs.slice(0, maxVisibleGuideTabs - 1), guideTabs[activeGuideTabIndex]];
-      const overflowGuideTabsArray = [
-        ...guideTabs.slice(maxVisibleGuideTabs - 1, activeGuideTabIndex),
-        ...guideTabs.slice(activeGuideTabIndex + 1),
-      ];
-      setVisibleTabs([
-        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
-        ...visibleGuideTabsArray,
-      ]);
-      setOverflowedTabs(overflowGuideTabsArray);
-    } else {
-      // Normal case - show as many tabs as fit (at least 1 if any exist)
-      setVisibleTabs([
-        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
-        ...guideTabs.slice(0, maxVisibleGuideTabs),
-      ]);
-      setOverflowedTabs(guideTabs.slice(maxVisibleGuideTabs));
-    }
-  }, [tabs, containerWidth, activeTabId]);
-
-  useEffect(() => {
-    calculateTabVisibility();
-  }, [calculateTabVisibility]);
-
-  // ResizeObserver to track container width changes
-  // Re-run when tabs.length changes to handle tab bar appearing/disappearing
-  useEffect(() => {
-    const tabBar = tabBarRef.current;
-    if (!tabBar) {
-      return;
-    }
-
-    // Measure tabBar and reserve space for chevron button
-    const chevronWidth = 120; // Approximate width of chevron button + spacing
-
-    // Set initial width immediately (ResizeObserver may not fire on initial mount)
-    const tabBarWidth = tabBar.getBoundingClientRect().width;
-    const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
-    if (availableForTabs > 0) {
-      setContainerWidth(availableForTabs);
-    }
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const tabBarWidth = entry.contentRect.width;
-        const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
-        setContainerWidth(availableForTabs);
-      }
-    });
-
-    resizeObserver.observe(tabBar);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [tabs.length]);
+  // Tab overflow management - extracted to hook
+  const {
+    tabBarRef,
+    tabListRef,
+    visibleTabs,
+    overflowedTabs,
+    isDropdownOpen,
+    setIsDropdownOpen,
+    dropdownRef,
+    chevronButtonRef,
+    dropdownOpenTimeRef,
+  } = useTabOverflow(tabs, activeTabId);
 
   // Content styles are applied at the component level via CSS classes
 
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Scroll position preservation by tab/URL
-  const scrollPositionRef = useRef<Record<string, number>>({});
-  const lastContentUrlRef = useRef<string>('');
+  // Scroll position preservation - extracted to hook
+  const { restoreScrollPosition } = useScrollPositionPreservation(
+    activeTab?.id,
+    activeTab?.baseUrl,
+    activeTab?.currentUrl
+  );
+
+  // Content reset hook - handles complex storage/state/reload orchestration
+  const handleResetGuide = useContentReset({ model, setHasInteractiveProgress });
+
+  // Helper: Reload active tab content (DRY - was duplicated 3x)
+  const reloadActiveTab = useCallback(
+    (tab: LearningJourneyTab) => {
+      if (isDocsLikeTab(tab.type)) {
+        model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
+      } else {
+        model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);
+      }
+    },
+    [model]
+  );
 
   // Expose current active tab id/url globally for interactive persistence keys
   useEffect(() => {
@@ -1100,60 +850,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       // no-op
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
-
-  // Save scroll position before content changes
-  const saveScrollPosition = useCallback(() => {
-    const scrollableElement = document.getElementById('inner-docs-content');
-    if (scrollableElement && lastContentUrlRef.current) {
-      scrollPositionRef.current[lastContentUrlRef.current] = scrollableElement.scrollTop;
-    }
-  }, []);
-
-  // Restore scroll position when content loads
-  const restoreScrollPosition = useCallback(() => {
-    const contentUrl = activeTab?.currentUrl || activeTab?.baseUrl || '';
-    if (contentUrl && contentUrl !== lastContentUrlRef.current) {
-      lastContentUrlRef.current = contentUrl;
-
-      // Restore saved position if available
-      const savedPosition = scrollPositionRef.current[contentUrl];
-      if (typeof savedPosition === 'number') {
-        const scrollableElement = document.getElementById('inner-docs-content');
-        if (scrollableElement) {
-          // Use requestAnimationFrame to ensure DOM is ready
-          requestAnimationFrame(() => {
-            scrollableElement.scrollTop = savedPosition;
-          });
-        }
-      } else {
-        // New content - scroll to top
-        const scrollableElement = document.getElementById('inner-docs-content');
-        if (scrollableElement) {
-          requestAnimationFrame(() => {
-            scrollableElement.scrollTop = 0;
-          });
-        }
-      }
-    }
-  }, [activeTab?.currentUrl, activeTab?.baseUrl]);
-
-  // Track scroll position continuously
-  useEffect(() => {
-    const scrollableElement = document.getElementById('inner-docs-content');
-    if (!scrollableElement) {
-      return;
-    }
-
-    const handleScroll = () => {
-      saveScrollPosition();
-    };
-
-    scrollableElement.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      scrollableElement.removeEventListener('scroll', handleScroll);
-      saveScrollPosition();
-    };
-  }, [saveScrollPosition]);
 
   // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });
@@ -1269,53 +965,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Tab persistence is now handled explicitly in the model methods
   // No need for automatic saving here as it's done when tabs are created/modified
-
-  // Close dropdown when clicking outside and handle positioning
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        chevronButtonRef.current &&
-        !chevronButtonRef.current.contains(event.target as Node)
-      ) {
-        setIsDropdownOpen(false);
-      }
-    };
-
-    // Position dropdown to prevent clipping
-    const positionDropdown = () => {
-      if (isDropdownOpen && dropdownRef.current && chevronButtonRef.current) {
-        const dropdown = dropdownRef.current;
-        const chevronButton = chevronButtonRef.current;
-
-        // Reset position attributes
-        dropdown.removeAttribute('data-position');
-
-        // Get chevron button position
-        const chevronRect = chevronButton.getBoundingClientRect();
-        const dropdownWidth = Math.min(320, Math.max(220, dropdown.offsetWidth)); // Use CSS min/max values
-
-        // Check if dropdown extends beyond right edge of viewport
-        if (chevronRect.right - dropdownWidth < 20) {
-          // Not enough space on right, position from left
-          dropdown.setAttribute('data-position', 'left');
-        }
-      }
-    };
-
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      // Position dropdown after it's rendered
-      setTimeout(positionDropdown, 0);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-
-    // Return undefined for the else case
-    return undefined;
-  }, [isDropdownOpen]);
+  // Note: Click-outside and dropdown positioning now handled by useTabOverflow hook
 
   // Auto-launch tutorial detection
   useEffect(() => {
@@ -1737,6 +1387,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                   <SelectorDebugPanel
                     onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
+                    onOpenLearningJourney={(url: string, title: string) => model.openLearningJourney(url, title)}
                   />
                 </Suspense>
               </div>
@@ -1760,13 +1411,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
                 contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'}
                 error={activeTab.error}
-                onRetry={() => {
-                  if (isDocsLikeTab(activeTab.type)) {
-                    model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                  } else {
-                    model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                  }
-                }}
+                onRetry={() => reloadActiveTab(activeTab)}
               />
             );
           }
@@ -1777,8 +1422,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             const showMilestoneProgress =
               isLearningJourneyTab &&
               activeTab.content?.type === 'learning-journey' &&
-              activeTab.content.metadata.learningJourney &&
-              activeTab.content.metadata.learningJourney.currentMilestone > 0;
+              activeTab.content.metadata.learningJourney;
 
             return (
               <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
@@ -1834,20 +1478,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     >
                       {(() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
-                        const isBundled = typeof url === 'string' && url.startsWith('bundled:');
-                        let isGrafanaDomain = false;
-                        try {
-                          if (url && typeof url === 'string') {
-                            const parsed = new URL(url);
-                            // Security: Use exact hostname matching from allowlist (no subdomains)
-                            isGrafanaDomain = ALLOWED_GRAFANA_DOCS_HOSTNAMES.includes(parsed.hostname);
-                          }
-                        } catch {
-                          isGrafanaDomain = false;
-                        }
-                        if (url && !isBundled && isGrafanaDomain) {
-                          // Strip /unstyled.html from URL for browser viewing (users want the styled docs page)
-                          const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+                        if (isGrafanaDocsUrl(url)) {
+                          const cleanUrl = cleanDocsUrl(url);
 
                           return (
                             <button
@@ -1881,11 +1513,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           name="sync"
                           onClick={() => {
                             if (activeTab) {
-                              if (isDocsLikeTab(activeTab.type)) {
-                                model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                              } else {
-                                model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                              }
+                              reloadActiveTab(activeTab);
                             }
                           }}
                         />
@@ -1896,39 +1524,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           aria-label={t('docsPanel.resetGuide', 'Reset guide')}
                           title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
                           onClick={async () => {
-                            if (progressKey) {
-                              // Track analytics (use content URL for analytics, not internal storage key)
-                              const analyticsUrl = activeTab?.content?.url || activeTab?.baseUrl || '';
-                              reportAppInteraction(
-                                UserInteraction.ResetProgressClick,
-                                enrichWithStepContext({
-                                  content_url: analyticsUrl,
-                                  content_type: getContentTypeForAnalytics(analyticsUrl, activeTab?.type || 'docs'),
-                                  interaction_location: 'docs_content_meta_header',
-                                })
-                              );
-
-                              // Clear all progress for this content (use content URL to match storage)
-                              await interactiveStepStorage.clearAllForContent(progressKey);
-                              // Also clear the completion percentage so recommendations show updated state
-                              await interactiveCompletionStorage.clear(progressKey);
-                              setHasInteractiveProgress(false);
-
-                              // Dispatch event to notify context panel to refresh recommendations
-                              window.dispatchEvent(
-                                new CustomEvent('interactive-progress-cleared', {
-                                  detail: { contentKey: progressKey },
-                                })
-                              );
-
-                              // Reload content to reset UI state
-                              if (activeTab) {
-                                if (isDocsLikeTab(activeTab.type)) {
-                                  model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                                } else {
-                                  model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-                                }
-                              }
+                            if (progressKey && activeTab) {
+                              await handleResetGuide(progressKey, activeTab);
                             }
                           }}
                         >
@@ -1976,10 +1573,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           className={styles.navButton}
                         />
                         <span className={styles.milestoneText}>
-                          {t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                            current: activeTab.content?.metadata.learningJourney?.currentMilestone,
-                            total: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                          })}
+                          {activeTab.content?.metadata.learningJourney?.currentMilestone === 0
+                            ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
+                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                              })
+                            : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
+                                current: activeTab.content?.metadata.learningJourney?.currentMilestone,
+                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                              })}
                         </span>
                         <IconButton
                           name="arrow-right"
@@ -2199,31 +1800,20 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         anchorRef={handRaiseIndicatorRef}
       />
 
-      {/* Modal backdrop */}
-      {(showPresenterControls || showAttendeeJoin) && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999,
-          }}
-          onClick={() => {
-            setShowPresenterControls(false);
-            setShowAttendeeJoin(false);
-          }}
-        />
-      )}
+      <ModalBackdrop
+        visible={showPresenterControls || showAttendeeJoin}
+        onClose={() => {
+          setShowPresenterControls(false);
+          setShowAttendeeJoin(false);
+        }}
+      />
 
       {/* Global Badge Celebration Toast - shows queued toasts sequentially */}
       {currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
         <BadgeUnlockedToast
           badge={getBadgeById(currentCelebrationBadge)!}
           onDismiss={handleDismissGlobalCelebration}
-          queueCount={badgeCelebrationQueue.length}
+          queueCount={badgeCelebrationQueueCount}
         />
       )}
     </div>

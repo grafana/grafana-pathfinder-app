@@ -14,11 +14,11 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',
-    height: '100%',
     backgroundColor: theme.colors.background.primary,
+    // No height constraint or overflow - let parent scroll container handle scrolling
   }),
 
-  // Header with title and controls
+  // Header with title and controls - sticky so it stays visible when scrolling
   header: css({
     display: 'flex',
     alignItems: 'center',
@@ -28,6 +28,10 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.secondary,
     gap: theme.spacing(1),
     flexWrap: 'wrap',
+    position: 'sticky',
+    top: 0,
+    zIndex: theme.zIndex.navbarFixed,
+    flexShrink: 0,
   }),
 
   headerLeft: css({
@@ -61,11 +65,8 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
   // Main content area
   content: css({
     flex: 1,
-    overflowY: 'auto',
-    overflowX: 'hidden',
+    minHeight: 0,
     padding: theme.spacing(2),
-    // Ensure drag images aren't clipped
-    contain: 'layout',
   }),
 
   // Empty state

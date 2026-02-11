@@ -9,7 +9,7 @@
  * - clearCache(): Clear all Pathfinder storage to reset state
  */
 
-import { getExperimentConfig, FeatureFlags, matchPathPattern, type ExperimentConfig } from './openfeature';
+import { getExperimentConfig, matchPathPattern, type ExperimentConfig } from './openfeature';
 import { experimentAutoOpenStorage, StorageKeys } from '../lib/user-storage';
 
 // Rate limiting for refetch
@@ -220,7 +220,7 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       }
 
       lastRefetchTime = now;
-      const freshConfig = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+      const freshConfig = getExperimentConfig('pathfinder.experiment-variant');
       console.log('[Pathfinder] Experiment config comparison:');
       console.log('  Loaded at init:', {
         variant: experimentConfig.variant,
