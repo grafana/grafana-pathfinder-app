@@ -42,19 +42,26 @@ interface GitHubPrFileEntry {
 }
 
 /** Result type for PR content file fetching */
-export type FetchPrFilesResult = { success: true; files: PrContentFile[] } | { success: false; error: GitHubApiError };
+export type FetchPrFilesResult =
+  | { success: true; files: PrContentFile[]; warning?: string }
+  | { success: false; error: GitHubApiError };
 
 // Pattern to extract owner, repo, and PR number from GitHub PR URL
 const PR_URL_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
 
 /**
- * Maximum content.json files to return from a PR.
+ * Maximum files to fetch from GitHub API per request.
  *
- * GitHub API returns up to 100 files per page without pagination.
- * Set to 100 to match the API's default page size.
- * If a PR has more than 100 content.json files, pagination would be needed.
+ * The GitHub PR files API defaults to 30 files per page, but supports
+ * up to 100 files per page via the `per_page` parameter. We request
+ * the maximum (100) to minimize missed content.json files.
+ *
+ * Limitation: If a PR has >100 total files and content.json files appear
+ * after the first 100 files, those guides won't be detected. This is a
+ * reasonable tradeoff for a dev tool - PRs with >100 files are rare and
+ * should generally be split up anyway.
  */
-const MAX_CONTENT_FILES = 100;
+const MAX_FILES_PER_PAGE = 100;
 
 /**
  * Parse a GitHub PR URL and extract components
@@ -198,13 +205,16 @@ export async function fetchPrContentFiles(
       };
     }
 
-    // Step 2: Fetch PR files list
-    const filesResponse = await fetch(`${baseUrl}/repos/${owner}/${repo}/pulls/${prNumber}/files`, {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-      },
-      signal,
-    });
+    // Step 2: Fetch PR files list (request max 100 files per page)
+    const filesResponse = await fetch(
+      `${baseUrl}/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=${MAX_FILES_PER_PAGE}`,
+      {
+        headers: {
+          Accept: 'application/vnd.github.v3+json',
+        },
+        signal,
+      }
+    );
 
     if (filesResponse.status === 403) {
       const rateLimitRemaining = filesResponse.headers.get('X-RateLimit-Remaining');
@@ -252,10 +262,12 @@ export async function fetchPrContentFiles(
       };
     }
 
-    // Filter for content.json files, limit to MAX_CONTENT_FILES, and construct raw URLs
+    const totalFilesInPr = filesData.length;
+    const mightHaveMoreFiles = totalFilesInPr >= MAX_FILES_PER_PAGE;
+
+    // Filter for content.json files and construct raw URLs
     const contentFiles: PrContentFile[] = (filesData as GitHubPrFileEntry[])
       .filter((file) => typeof file.filename === 'string' && file.filename.endsWith('content.json'))
-      .slice(0, MAX_CONTENT_FILES) // Deliberate limit - see MAX_CONTENT_FILES comment
       .map((file) => ({
         directoryName: extractDirectoryName(file.filename),
         rawUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${headSha}/${file.filename}`,
@@ -272,9 +284,16 @@ export async function fetchPrContentFiles(
       };
     }
 
+    // Generate warning if we hit the GitHub API pagination limit
+    // We can only see the first 100 files from the PR - there might be more content.json files beyond that
+    const warning = mightHaveMoreFiles
+      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentFiles.length} content.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
+      : undefined;
+
     return {
       success: true,
       files: contentFiles,
+      warning,
     };
   } catch (error) {
     // Handle abort errors separately
