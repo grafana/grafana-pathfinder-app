@@ -1073,11 +1073,11 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
 
 /**
  * Find current milestone number from URL - improved version
- * Handles /unstyled.html suffix added during content fetching
+ * Handles /unstyled.html and /content.json suffixes added during content fetching
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
-  // Strip /unstyled.html suffix for comparison (added during content fetching)
-  const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+  // Strip /unstyled.html or /content.json suffixes for comparison (added during content fetching)
+  const cleanUrl = url.replace(/\/(unstyled\.html|content\.json)$/, '');
 
   // Try exact URL match first (with and without trailing slash)
   for (const milestone of milestones) {
