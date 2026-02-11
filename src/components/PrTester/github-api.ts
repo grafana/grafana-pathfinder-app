@@ -50,11 +50,11 @@ const PR_URL_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
 /**
  * Maximum content.json files to return from a PR.
  *
- * This is a deliberate limitation. The PR Tester is designed for testing
- * individual guides during development, not for bulk review of large PRs.
- * Supporting more files would require pagination and create poor UX.
+ * GitHub API returns up to 100 files per page without pagination.
+ * Set to 100 to match the API's default page size.
+ * If a PR has more than 100 content.json files, pagination would be needed.
  */
-const MAX_CONTENT_FILES = 5;
+const MAX_CONTENT_FILES = 100;
 
 /**
  * Parse a GitHub PR URL and extract components
