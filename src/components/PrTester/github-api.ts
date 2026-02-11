@@ -116,8 +116,8 @@ function extractDirectoryName(filePath: string): string {
  * 1. GET /repos/{owner}/{repo}/pulls/{number} - Get head SHA
  * 2. GET /repos/{owner}/{repo}/pulls/{number}/files - Get changed files
  *
- * Note: Returns at most MAX_CONTENT_FILES (5) files. This is a deliberate
- * limitation for this dev tool.
+ * Note: Returns at most MAX_CONTENT_FILES (100) files, matching the GitHub
+ * API's default page size.
  *
  * @param owner - Repository owner
  * @param repo - Repository name

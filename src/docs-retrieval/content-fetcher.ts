@@ -696,7 +696,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (primaryResponse.ok) {
                 const primaryContent = await primaryResponse.text();
                 if (primaryContent && primaryContent.trim()) {
-                  return { html: primaryContent, finalUrl: primaryResponse.url || primaryUrl, isNativeJson: primaryIsJson };
+                  return {
+                    html: primaryContent,
+                    finalUrl: primaryResponse.url || primaryUrl,
+                    isNativeJson: primaryIsJson,
+                  };
                 }
               }
             } catch {
@@ -711,7 +715,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (fallbackResponse.ok) {
                 const fallbackContent = await fallbackResponse.text();
                 if (fallbackContent && fallbackContent.trim()) {
-                  return { html: fallbackContent, finalUrl: fallbackResponse.url || fallbackUrl, isNativeJson: !primaryIsJson };
+                  return {
+                    html: fallbackContent,
+                    finalUrl: fallbackResponse.url || fallbackUrl,
+                    isNativeJson: !primaryIsJson,
+                  };
                 }
               }
               lastError = {

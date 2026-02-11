@@ -448,10 +448,10 @@ describe('fetchPrContentFiles', () => {
     }
   });
 
-  it('should limit returned files to 5 content.json files maximum', async () => {
+  it('should limit returned files to MAX_CONTENT_FILES (100) content.json files maximum', async () => {
     const prMetadataResponse = { head: { sha: 'sha123' } };
-    // Create 8 content.json files
-    const filesResponse = Array.from({ length: 8 }, (_, i) => ({
+    // Create 105 content.json files (exceeds the 100-file limit)
+    const filesResponse = Array.from({ length: 105 }, (_, i) => ({
       filename: `guide-${i + 1}/content.json`,
       status: 'added',
     }));
@@ -472,10 +472,10 @@ describe('fetchPrContentFiles', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.files).toHaveLength(5);
-      // Verify first 5 files are returned
+      expect(result.files).toHaveLength(100);
+      // Verify first and last files are returned
       expect(result.files[0].directoryName).toBe('guide-1');
-      expect(result.files[4].directoryName).toBe('guide-5');
+      expect(result.files[99].directoryName).toBe('guide-100');
     }
   });
 
