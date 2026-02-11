@@ -680,16 +680,12 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
 
-          // Determine fetch order based on domain:
-          // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
-          // - Other sources: JSON first (preferred format)
-          const preferHtmlFirst = isGrafanaComDocsOrTutorials(finalUrl);
+          // Always try JSON first (preferred format), HTML as fallback
+          const primaryUrl = jsonUrl;
+          const fallbackUrl = htmlUrl;
+          const primaryIsJson = true;
 
-          const primaryUrl = preferHtmlFirst ? htmlUrl : jsonUrl;
-          const fallbackUrl = preferHtmlFirst ? jsonUrl : htmlUrl;
-          const primaryIsJson = !preferHtmlFirst;
-
-          // Try primary format first
+          // Try primary format first (content.json)
           if (primaryUrl !== finalUrl) {
             try {
               const primaryResponse = await fetch(primaryUrl, fetchOptions);
@@ -704,7 +700,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             }
           }
 
-          // Fall back to secondary format
+          // Fall back to secondary format (unstyled.html)
           if (fallbackUrl !== finalUrl) {
             try {
               const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
@@ -859,22 +855,7 @@ function generateInteractiveLearningVariations(url: string): string[] {
   return variations;
 }
 
-/**
- * Check if a URL is specifically grafana.com/docs/* or grafana.com/tutorials/*
- * These domains don't have content.json available yet, so we prefer unstyled.html
- * Other sources (like interactive learning domains) should still try JSON first.
- */
-function isGrafanaComDocsOrTutorials(urlString: string): boolean {
-  try {
-    const url = new URL(urlString);
-    // Only match grafana.com (no subdomains) with /docs/ or /tutorials/ paths
-    return (
-      url.hostname === 'grafana.com' && (url.pathname.startsWith('/docs/') || url.pathname.startsWith('/tutorials/'))
-    );
-  } catch {
-    return false;
-  }
-}
+
 
 /**
  * Get content URLs for both JSON and HTML formats
