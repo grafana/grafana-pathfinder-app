@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.2
+
+### Fixed
+
+- **Empty `response.url` in content fetcher**: Fixed "Redirect target is not in trusted domain list" errors on Grafana Cloud environments where platform-level fetch interception produces synthetic responses with empty `response.url`; now falls back to the validated original URL (#564)
+- **GitHub CDN redirect allowlist**: Expanded `isGitHubRawUrl()` to accept `objects.githubusercontent.com` URLs that GitHub redirects to for blob storage, fixing PR Tester failures in dev mode (#562)
+
+### Changed
+
+- **PR Tester file limit**: Increased maximum content files from 5 to 100 to match GitHub API's default page size, preventing silent truncation of large PRs (#565)
+- **PR Tester pagination warning**: Added user-facing warning when a PR may contain more content files than the API returns in a single page (#567)
+
 ## 1.5.1
 
 ### Fixed
