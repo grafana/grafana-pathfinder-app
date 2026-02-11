@@ -284,9 +284,7 @@ describe('GitHub URL validators', () => {
     it('should accept objects.githubusercontent.com URLs (redirect target)', () => {
       // GitHub may redirect raw content to objects.githubusercontent.com for blob storage
       expect(isGitHubRawUrl('https://objects.githubusercontent.com/some-path')).toBe(true);
-      expect(
-        isGitHubRawUrl('https://objects.githubusercontent.com/github-production-release-asset/123456')
-      ).toBe(true);
+      expect(isGitHubRawUrl('https://objects.githubusercontent.com/github-production-release-asset/123456')).toBe(true);
     });
 
     it('should reject non-GitHub URLs', () => {
