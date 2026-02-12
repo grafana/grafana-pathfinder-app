@@ -87,6 +87,12 @@ import type { DocsPanelModelOperations } from './types';
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
+  /**
+   * Module-level guard: prevents restoreTabsAsync() from running more than once,
+   * even across model instances (which can be recreated by Scenes framework).
+   */
+  private static _hasRestoredTabs = false;
+
   public get renderBeforeActivation(): boolean {
     return true;
   }
@@ -132,6 +138,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async restoreTabsAsync(): Promise<void> {
+    // Guard: only restore once per model lifetime to prevent double-restore race condition
+    // where a second restore (triggered by component remount or React Strict Mode) replaces
+    // tabs that already had content loaded, leaving them in {content: null} blank state
+    if (CombinedLearningJourneyPanel._hasRestoredTabs) {
+      return;
+    }
+    CombinedLearningJourneyPanel._hasRestoredTabs = true;
+
     // Use extracted restore module with dev mode detection
     const currentUserId = config.bootData.user?.id;
     const pluginConfig = this.state.pluginConfig || {};

@@ -95,14 +95,59 @@ const DEFAULT_GUIDE_RESPONSES: GuideResponses = {};
 
 export { StorageKeys, type StorageKeyName, type StorageKeyValue } from './storage-keys';
 
-// Timestamp suffix for conflict resolution
+// Timestamp suffix used by the OLD storage format (separate companion keys).
+// Kept for migration detection and cleanup only — new writes use envelope format.
 const TIMESTAMP_SUFFIX = '__timestamp';
 
 /**
- * Gets the timestamp key for a given storage key
+ * Gets the timestamp key for a given storage key (old format, used during migration)
  */
 function getTimestampKey(key: string): string {
   return `${key}${TIMESTAMP_SUFFIX}`;
+}
+
+// ============================================================================
+// ENVELOPE FORMAT HELPERS
+// ============================================================================
+
+/**
+ * Envelope wrapper for Grafana storage values.
+ * Embeds the timestamp alongside the value in a single key, eliminating
+ * the need for separate `__timestamp` companion keys.
+ */
+export interface StorageEnvelope {
+  /** The serialized value (JSON string) */
+  v: string;
+  /** Timestamp in milliseconds */
+  t: number;
+}
+
+/**
+ * Wraps a value and timestamp into an envelope for Grafana storage.
+ * Deletion is represented by an empty-string value with a timestamp.
+ */
+export function wrapEnvelope(serializedValue: string, timestamp: number): string {
+  const envelope: StorageEnvelope = { v: serializedValue, t: timestamp };
+  return JSON.stringify(envelope);
+}
+
+/**
+ * Attempts to unwrap an envelope. Returns null if the value is not in envelope format
+ * (i.e. it's old-format raw data).
+ */
+export function unwrapEnvelope(raw: string | null | undefined): StorageEnvelope | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && 'v' in parsed && 't' in parsed && typeof parsed.t === 'number') {
+      return parsed as StorageEnvelope;
+    }
+  } catch {
+    // Not JSON or not an envelope — old format
+  }
+  return null;
 }
 
 // ============================================================================
@@ -243,11 +288,16 @@ function createLocalStorage(): UserStorage {
 function createHybridStorage(grafanaStorage: any): UserStorage {
   const localStorage = createLocalStorage();
 
-  // Queue for async writes to Grafana storage
+  // Queue for async writes to Grafana storage.
+  // Each entry is an envelope-formatted string ready to be written.
   const writeQueue: Array<{ key: string; value: string }> = [];
   let isProcessingQueue = false;
 
-  // Process queued writes to Grafana storage
+  // Debounce timer for queue processing
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Process queued writes to Grafana storage with deduplication.
+  // Only the latest value per key is sent (earlier writes for the same key are dropped).
   const processQueue = async () => {
     if (isProcessingQueue || writeQueue.length === 0) {
       return;
@@ -255,19 +305,37 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
 
     isProcessingQueue = true;
 
+    // Deduplicate: collapse entries so only the latest value per key is sent
+    const deduped = new Map<string, string>();
     while (writeQueue.length > 0) {
-      const item = writeQueue.shift();
-      if (item) {
-        try {
-          await grafanaStorage.setItem(item.key, item.value);
-        } catch (error) {
-          console.warn(`Failed to sync to Grafana storage: ${item.key}`, error);
-          // Don't retry - localStorage is the immediate source of truth
-        }
+      const item = writeQueue.shift()!;
+      deduped.set(item.key, item.value);
+    }
+
+    for (const [key, value] of deduped) {
+      try {
+        await grafanaStorage.setItem(key, value);
+      } catch (error) {
+        console.warn(`Failed to sync to Grafana storage: ${key}`, error);
+        // Don't retry - localStorage is the immediate source of truth
       }
     }
 
     isProcessingQueue = false;
+  };
+
+  // Schedule queue processing with debounce (500ms) so rapid writes
+  // batch into a single queue drain instead of firing individually.
+  const scheduleQueueProcessing = () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      processQueue().catch((error) => {
+        console.warn('Error processing Grafana storage queue:', error);
+      });
+    }, 500);
   };
 
   return {
@@ -279,29 +347,25 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
     async setItem<T>(key: string, value: T): Promise<void> {
       try {
         const serialized = JSON.stringify(value);
-        const timestamp = Date.now().toString();
+        const timestamp = Date.now();
 
         // 1. Write to localStorage first (synchronous, survives page refresh)
         await localStorage.setItem(key, value);
-        // Store timestamp for conflict resolution
+        // Store timestamp in localStorage for conflict resolution
         await localStorage.setItem(getTimestampKey(key), timestamp);
 
-        // 2. Queue write to Grafana storage (async, eventual consistency)
-        writeQueue.push({ key, value: serialized });
-        writeQueue.push({ key: getTimestampKey(key), value: timestamp });
+        // 2. Queue a single envelope write to Grafana storage (halves API calls)
+        writeQueue.push({ key, value: wrapEnvelope(serialized, timestamp) });
 
-        // Process queue in background (don't await - we don't want to block)
-        processQueue().catch((error) => {
-          console.warn('Error processing Grafana storage queue:', error);
-        });
+        // Process queue in background with debounce
+        scheduleQueueProcessing();
       } catch (error) {
         // If localStorage fails, at least try Grafana storage
         console.warn(`Failed to write to localStorage: ${key}, trying Grafana storage`, error);
         try {
           const serialized = JSON.stringify(value);
-          const timestamp = Date.now().toString();
-          await grafanaStorage.setItem(key, serialized);
-          await grafanaStorage.setItem(getTimestampKey(key), timestamp);
+          const timestamp = Date.now();
+          await grafanaStorage.setItem(key, wrapEnvelope(serialized, timestamp));
         } catch (grafanaError) {
           console.error(`Failed to write to both storages: ${key}`, grafanaError);
           throw grafanaError;
@@ -310,19 +374,16 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
     },
 
     async removeItem(key: string): Promise<void> {
-      const timestamp = Date.now().toString();
+      const timestamp = Date.now();
 
       // Remove from localStorage first
       await localStorage.removeItem(key);
       // Store deletion timestamp so we can resolve conflicts properly
       await localStorage.setItem(getTimestampKey(key), timestamp);
 
-      // Queue removal to Grafana storage (set to empty string with timestamp)
-      writeQueue.push({ key, value: '' });
-      writeQueue.push({ key: getTimestampKey(key), value: timestamp });
-      processQueue().catch((error) => {
-        console.warn('Error processing Grafana storage queue:', error);
-      });
+      // Queue a single envelope write for deletion (empty value with timestamp)
+      writeQueue.push({ key, value: wrapEnvelope('', timestamp) });
+      scheduleQueueProcessing();
     },
 
     async clear(): Promise<void> {
@@ -336,17 +397,93 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
 }
 
 /**
- * Syncs data from Grafana user storage to localStorage on initialization
- * Uses timestamp comparison to keep the most recent data (last-write-wins)
+ * Module-level guard: ensures syncFromGrafanaStorage runs at most once per page lifecycle.
+ * Multiple `useUserStorage()` mounts (React Strict Mode, component remounts) would
+ * otherwise trigger 3-6 syncs per page load, each generating 10-20 API calls.
+ */
+let hasSynced = false;
+
+/**
+ * Reads a key from Grafana storage and returns its value and timestamp,
+ * handling both the new envelope format and the old separate-timestamp format.
+ *
+ * During migration: if the old format is detected (separate `__timestamp` key),
+ * the data is re-written in envelope format and the orphaned timestamp key is deleted
+ * from both Grafana storage and localStorage.
+ */
+async function readGrafanaKeyWithMigration(
+  grafanaStorage: any,
+  key: string
+): Promise<{ value: string | null; timestamp: number; migrated: boolean }> {
+  const rawValue = await grafanaStorage.getItem(key);
+
+  // Try to unwrap as new envelope format first
+  const envelope = unwrapEnvelope(rawValue);
+  if (envelope) {
+    return {
+      value: envelope.v && envelope.v !== '' ? envelope.v : null,
+      timestamp: envelope.t,
+      migrated: false,
+    };
+  }
+
+  // Not envelope format — check for old separate-timestamp format
+  const oldTimestampStr = await grafanaStorage.getItem(getTimestampKey(key));
+  const oldTimestamp = oldTimestampStr ? parseInt(oldTimestampStr, 10) : 0;
+  const hasData = rawValue && rawValue !== '';
+
+  if (oldTimestamp > 0 || hasData) {
+    // Old format detected — migrate to envelope format
+    const migratedValue = hasData ? rawValue : '';
+    const migratedTimestamp = oldTimestamp || Date.now();
+
+    try {
+      // Re-write in envelope format (single key)
+      await grafanaStorage.setItem(key, wrapEnvelope(migratedValue, migratedTimestamp));
+      // Clear orphaned __timestamp key from Grafana storage (API has no removeItem, so set to empty)
+      await grafanaStorage.setItem(getTimestampKey(key), '');
+    } catch (error) {
+      console.warn(`Failed to migrate key to envelope format: ${key}`, error);
+    }
+
+    // Clean up localStorage __timestamp key too
+    try {
+      window.localStorage.removeItem(getTimestampKey(key));
+    } catch {
+      // localStorage cleanup is best-effort
+    }
+
+    return {
+      value: hasData ? rawValue : null,
+      timestamp: migratedTimestamp,
+      migrated: true,
+    };
+  }
+
+  // No data at all
+  return { value: null, timestamp: 0, migrated: false };
+}
+
+/**
+ * Syncs data from Grafana user storage to localStorage on initialization.
+ * Uses timestamp comparison to keep the most recent data (last-write-wins).
+ *
+ * Automatically migrates old-format data (separate `__timestamp` keys) to the
+ * new envelope format and cleans up orphaned keys.
  *
  * Deletion Handling:
- * - Deletions are represented by a timestamp without data (value='')
+ * - Deletions are represented by a timestamp without data (value is empty/null)
  * - If a deletion timestamp is newer than existing data, the deletion is applied
  * - This ensures deletions propagate correctly across devices/sessions
  */
 async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
+  // Guard: only sync once per page lifecycle
+  if (hasSynced) {
+    return;
+  }
+  hasSynced = true;
+
   try {
-    // Get all our storage keys
     const keysToSync = [
       StorageKeys.JOURNEY_COMPLETION,
       StorageKeys.TABS,
@@ -357,84 +494,55 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
 
     for (const key of keysToSync) {
       try {
-        // Get value and timestamp from Grafana storage
-        const grafanaValue = await grafanaStorage.getItem(key);
-        const grafanaTimestampStr = await grafanaStorage.getItem(getTimestampKey(key));
+        // Read from Grafana storage (with automatic migration of old format)
+        const grafana = await readGrafanaKeyWithMigration(grafanaStorage, key);
 
-        // Get value and timestamp from localStorage
-        const localValue = localStorage.getItem(key);
-        const localTimestampStr = localStorage.getItem(getTimestampKey(key));
+        // Read from localStorage
+        const localValue = window.localStorage.getItem(key);
+        const localTimestampRaw = window.localStorage.getItem(getTimestampKey(key));
+        const localTimestamp = localTimestampRaw ? parseInt(localTimestampRaw, 10) : 0;
 
-        // Parse timestamps (default to 0 if not found)
-        const grafanaTimestamp = grafanaTimestampStr ? parseInt(grafanaTimestampStr, 10) : 0;
-        const localTimestamp = localTimestampStr ? parseInt(localTimestampStr, 10) : 0;
-
-        const hasGrafanaData = grafanaValue && grafanaValue !== '';
-        const hasLocalData = localValue && localValue !== '';
-        const hasGrafanaTimestamp = grafanaTimestamp > 0;
+        const hasGrafanaData = grafana.value !== null;
+        const hasLocalData = localValue !== null && localValue !== '';
+        const hasGrafanaTimestamp = grafana.timestamp > 0;
         const hasLocalTimestamp = localTimestamp > 0;
 
         // Conflict resolution based on timestamps
-        // Note: A timestamp without data indicates a deletion
         if (hasGrafanaTimestamp && hasLocalTimestamp) {
-          // Both have timestamps - compare them to resolve conflict
-          if (grafanaTimestamp > localTimestamp) {
+          if (grafana.timestamp > localTimestamp) {
             // Grafana is newer
             if (hasGrafanaData) {
-              // Grafana has newer data - use it
-              localStorage.setItem(key, grafanaValue);
-              localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
+              window.localStorage.setItem(key, grafana.value!);
             } else {
-              // Grafana has newer deletion - apply it
-              localStorage.removeItem(key);
-              localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
+              window.localStorage.removeItem(key);
             }
-          } else if (localTimestamp > grafanaTimestamp) {
-            // localStorage is newer
-            if (hasLocalData) {
-              // localStorage has newer data - sync it back to Grafana
-              await grafanaStorage.setItem(key, localValue);
-              await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
-            } else {
-              // localStorage has newer deletion - sync it back to Grafana
-              await grafanaStorage.setItem(key, '');
-              await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
-            }
+            window.localStorage.setItem(getTimestampKey(key), grafana.timestamp.toString());
+          } else if (localTimestamp > grafana.timestamp) {
+            // localStorage is newer — sync back to Grafana in envelope format
+            const serialized = hasLocalData ? localValue! : '';
+            await grafanaStorage.setItem(key, wrapEnvelope(serialized, localTimestamp));
           }
           // If timestamps are equal, they're in sync
         } else if (hasGrafanaTimestamp && !hasLocalData) {
-          // Only Grafana has timestamp AND localStorage is empty
           if (hasGrafanaData) {
-            // Grafana has data - use it
-            localStorage.setItem(key, grafanaValue);
-            localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
+            window.localStorage.setItem(key, grafana.value!);
+            window.localStorage.setItem(getTimestampKey(key), grafana.timestamp.toString());
           }
-          // Don't apply Grafana deletions if localStorage never had data
         } else if (hasGrafanaTimestamp && hasLocalData) {
           // Grafana has timestamp but localStorage has un-timestamped data
-          // PRESERVE localStorage data - it was likely written before hybrid storage was set up
-          // Assign it a timestamp and sync to Grafana
-          const nowTimestamp = Date.now().toString();
-          localStorage.setItem(getTimestampKey(key), nowTimestamp);
-          await grafanaStorage.setItem(key, localValue);
-          await grafanaStorage.setItem(getTimestampKey(key), nowTimestamp);
+          // PRESERVE localStorage data — assign timestamp and sync to Grafana
+          const nowTimestamp = Date.now();
+          window.localStorage.setItem(getTimestampKey(key), nowTimestamp.toString());
+          await grafanaStorage.setItem(key, wrapEnvelope(localValue!, nowTimestamp));
         } else if (hasLocalTimestamp) {
-          // Only localStorage has timestamp
-          if (hasLocalData) {
-            // localStorage has data - sync it to Grafana
-            await grafanaStorage.setItem(key, localValue);
-            await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
-          } else {
-            // localStorage has deletion - sync it to Grafana
-            await grafanaStorage.setItem(key, '');
-            await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
-          }
+          // Only localStorage has timestamp — sync to Grafana in envelope format
+          const serialized = hasLocalData ? localValue! : '';
+          await grafanaStorage.setItem(key, wrapEnvelope(serialized, localTimestamp));
         } else if (hasLocalData) {
-          // localStorage has data but no timestamp - assign one and sync to Grafana
-          const nowTimestamp = Date.now().toString();
-          localStorage.setItem(getTimestampKey(key), nowTimestamp);
-          await grafanaStorage.setItem(key, localValue);
-          await grafanaStorage.setItem(getTimestampKey(key), nowTimestamp);
+          // localStorage has data but no timestamp — assign one and sync
+          const nowTimestamp = Date.now();
+          window.localStorage.setItem(getTimestampKey(key), nowTimestamp.toString());
+          await grafanaStorage.setItem(key, wrapEnvelope(localValue!, nowTimestamp));
         }
         // If neither has data, nothing to sync
       } catch (error) {
