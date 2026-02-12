@@ -304,6 +304,90 @@ describe('interactive learning redirect fallback behavior', () => {
   });
 });
 
+describe('docs fallback when response.url is empty', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('should derive redirected docs path from HTML metadata before fetching unstyled.html', async () => {
+    const requestedUrl = 'https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/';
+    const staleHtmlUrl = `${requestedUrl}unstyled.html`;
+    const resolvedBaseUrl = 'https://grafana.com/docs/grafana/latest/visualizations/dashboards/manage-dashboards/';
+    const resolvedHtmlUrl = `${resolvedBaseUrl}unstyled.html`;
+
+    const baseHtml = `
+      <html>
+        <head>
+          <title>Manage dashboards</title>
+          <script>window.Path="docs/grafana/latest/visualizations/dashboards/manage-dashboards/index.md"</script>
+        </head>
+        <body>Base content</body>
+      </html>
+    `;
+
+    const unstyledHtml =
+      '<html><head><title>Manage dashboards</title></head><body><h1>Manage dashboards</h1><p>Content</p></body></html>';
+
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === requestedUrl) {
+        // Simulate Cloud/proxy synthetic response where redirect happened but response.url is empty.
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          url: '',
+          headers: new Headers(),
+          text: async () => baseHtml,
+        });
+      }
+
+      if (url === resolvedHtmlUrl) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          url: resolvedHtmlUrl,
+          headers: new Headers(),
+          text: async () => unstyledHtml,
+        });
+      }
+
+      if (url === staleHtmlUrl) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          url,
+          headers: new Headers(),
+          text: async () => '',
+        });
+      }
+
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        url,
+        headers: new Headers(),
+        text: async () => '',
+      });
+    });
+
+    const result = await fetchContent(requestedUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(result.error).toBeUndefined();
+
+    const requestedUrls = (global.fetch as jest.Mock).mock.calls.map((call) => call[0]);
+    expect(requestedUrls).toContain(resolvedHtmlUrl);
+    expect(requestedUrls).not.toContain(staleHtmlUrl);
+  });
+});
+
 describe('fetchContent security validation', () => {
   describe('URL validation at entry point', () => {
     it('should allow grafana.com docs URLs', async () => {

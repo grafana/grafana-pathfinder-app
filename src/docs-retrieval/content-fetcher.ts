@@ -567,6 +567,65 @@ function isJsonContentUrl(url: string): boolean {
 }
 
 /**
+ * Convert docs source-style paths into public URL paths.
+ * Example: docs/grafana/latest/foo/index.md -> /docs/grafana/latest/foo/
+ */
+function normalizeDocsPathFromHtml(rawPath: string): string | undefined {
+  let normalizedPath = rawPath.trim();
+  if (!normalizedPath) {
+    return undefined;
+  }
+
+  if (normalizedPath.startsWith('/')) {
+    normalizedPath = normalizedPath.slice(1);
+  }
+
+  // Some pages expose source paths under docs/sources/.
+  normalizedPath = normalizedPath.replace(/^docs\/sources\//, 'docs/');
+
+  if (!normalizedPath.startsWith('docs/') && !normalizedPath.startsWith('tutorials/')) {
+    return undefined;
+  }
+
+  if (normalizedPath.endsWith('index.md')) {
+    normalizedPath = normalizedPath.slice(0, -'index.md'.length);
+  } else if (normalizedPath.endsWith('.md')) {
+    normalizedPath = normalizedPath.slice(0, -'.md'.length);
+  }
+
+  return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
+}
+
+/**
+ * Resolve docs URL from HTML content when response.url is empty.
+ * Grafana Cloud/proxy fetch interception can return synthetic responses where
+ * redirects were followed server-side but response.url is blank client-side.
+ */
+function resolveDocsUrlFromHtmlFallback(requestUrl: string, html: string): string | undefined {
+  const parsedRequestUrl = parseUrlSafely(requestUrl);
+  if (!parsedRequestUrl) {
+    return undefined;
+  }
+
+  // Prefer window.Path because it points to the active markdown source file.
+  const windowPathMatch = html.match(/window\.Path\s*=\s*["'`]([^"'`]+)["'`]/i);
+  if (windowPathMatch?.[1]) {
+    const normalizedPath = normalizeDocsPathFromHtml(windowPathMatch[1]);
+    if (normalizedPath) {
+      return new URL(normalizedPath, parsedRequestUrl.origin).toString();
+    }
+  }
+
+  // Fall back to data-relpermalink on docs nav wrappers.
+  const relPermalinkMatch = html.match(/data-relpermalink=(["']?)(\/(?:docs|tutorials)\/[^"'>\s]+)\1/i);
+  if (relPermalinkMatch?.[2]) {
+    return new URL(relPermalinkMatch[2], parsedRequestUrl.origin).toString();
+  }
+
+  return undefined;
+}
+
+/**
  * Insert a redirect-aware HTML fallback URL immediately after the current variation.
  * This helps interactive-learning redirects fall back to the redirected unstyled.html
  * instead of retrying unstyled.html on the pre-redirect URL.
@@ -741,7 +800,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         // Per the Fetch API spec, synthetic Response objects have url === "".
         // When empty, fall back to the original request URL which was already
         // validated at the initial trust gate in fetchContent().
-        const finalUrl = response.url || url;
+        let finalUrl = response.url || url;
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
@@ -761,6 +820,22 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             errorType: 'other',
           };
           return { html: null, error: lastError };
+        }
+
+        // In some proxied environments response.url can be empty.
+        // Attempt to recover the resolved docs URL from the HTML payload.
+        if (!response.url && isGrafanaDocsUrl(url)) {
+          const resolvedDocsUrl = resolveDocsUrlFromHtmlFallback(url, html);
+          if (resolvedDocsUrl) {
+            const isResolvedUrlTrusted =
+              isAllowedContentUrl(resolvedDocsUrl) ||
+              (isDevMode && isLocalhostUrl(resolvedDocsUrl)) ||
+              (isDevMode && isGitHubRawUrl(resolvedDocsUrl));
+
+            if (isResolvedUrlTrusted) {
+              finalUrl = resolvedDocsUrl;
+            }
+          }
         }
 
         // SECURITY: Enforce HTTPS on redirect target
