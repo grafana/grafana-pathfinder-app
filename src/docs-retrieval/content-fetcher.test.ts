@@ -92,6 +92,10 @@ describe('null content handling for learning journeys', () => {
 
   it('should fallback to unstyled.html when learning journey milestone content.json returns null', async () => {
     // Mock fetch to handle learning journey milestone requests:
+    // This simulates the actual flow:
+    // 1. Base URL is fetched - returns styled HTML (but code will try content.json first)
+    // 2. content.json is fetched - returns null (server signal to use HTML)
+    // 3. unstyled.html is fetched - returns the actual content
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
       if (url.endsWith('content.json')) {
         const headers = new Headers();
@@ -112,6 +116,8 @@ describe('null content handling for learning journeys', () => {
           headers,
         });
       } else if (url.endsWith('/milestone-1/') || url.endsWith('/milestone-1')) {
+        // Base URL - returns styled HTML
+        // (In reality, the fetchRawHtml function will try content.json first before falling back)
         const headers = new Headers();
         headers.set('Content-Type', 'text/html; charset=utf-8');
         return Promise.resolve({

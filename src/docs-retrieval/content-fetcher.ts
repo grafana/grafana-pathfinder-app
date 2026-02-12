@@ -179,6 +179,48 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       // Validate it's a proper JSON guide structure
       try {
         const parsed = JSON.parse(fetchResult.html);
+
+        // Check if the server returned null as a signal to fetch unstyled.html
+        // JSON.parse("null") returns the JavaScript value null
+        if (parsed === null) {
+          const htmlUrl = finalUrl.replace('/content.json', '/unstyled.html');
+          const htmlFetchResult = await fetchRawHtml(htmlUrl, options);
+
+          if (!htmlFetchResult.html) {
+            return {
+              content: null,
+              error: 'Content not available. The server returned null and no HTML fallback exists.',
+              errorType: 'not-found',
+            };
+          }
+
+          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType);
+          let processedHtml = htmlFetchResult.html;
+
+          if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
+            processedHtml = generateJourneyContentWithExtras(
+              processedHtml,
+              htmlMetadata.learningJourney,
+              options.skipReadyToBegin
+            );
+          }
+
+          jsonContent = wrapContentAsJsonGuide(processedHtml, htmlUrl, htmlMetadata.title);
+
+          // Create content with HTML metadata
+          const rawContent: RawContent = {
+            content: jsonContent,
+            metadata: htmlMetadata,
+            type: contentType,
+            url: htmlUrl,
+            lastFetched: new Date().toISOString(),
+            hashFragment,
+            isNativeJson: false,
+          };
+
+          return { content: rawContent };
+        }
+
         const validationResult = validateGuide(parsed);
 
         if (!validationResult.isValid) {
@@ -693,11 +735,16 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (primaryResponse.ok) {
                 const primaryContent = await primaryResponse.text();
                 if (primaryContent && primaryContent.trim()) {
-                  return {
-                    html: primaryContent,
-                    finalUrl: primaryResponse.url || primaryUrl,
-                    isNativeJson: primaryIsJson,
-                  };
+                  // Check if server returned null as a signal to try unstyled.html
+                  if (primaryContent.trim() === 'null') {
+                    // Fall through to try the HTML fallback
+                  } else {
+                    return {
+                      html: primaryContent,
+                      finalUrl: primaryResponse.url || primaryUrl,
+                      isNativeJson: primaryIsJson,
+                    };
+                  }
                 }
               }
             } catch {
