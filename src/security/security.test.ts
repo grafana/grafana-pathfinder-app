@@ -86,6 +86,7 @@ describe('Security: URL Validation - Domain Hijacking Prevention', () => {
       expect(isGrafanaDocsUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
       expect(isGrafanaDocsUrl('https://grafana.com/tutorials/alert-setup/')).toBe(true);
       expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-journeys/linux/')).toBe(true);
+      expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-paths/linux/')).toBe(true);
     });
 
     it('should accept allowlisted Grafana subdomains with docs paths', () => {
@@ -386,7 +387,8 @@ describe('Security: Path Traversal Prevention (From Security Audit Screenshots)'
         if (
           !parsed.pathname.startsWith('/docs/') &&
           !parsed.pathname.startsWith('/tutorials/') &&
-          !parsed.pathname.includes('/learning-journeys/')
+          !parsed.pathname.includes('/docs/learning-journeys/') &&
+          !parsed.pathname.includes('/docs/learning-paths/')
         ) {
           expect(isValid).toBe(false);
         }

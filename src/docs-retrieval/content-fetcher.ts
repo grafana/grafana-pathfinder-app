@@ -469,7 +469,8 @@ function determineContentType(url: string): ContentType {
   const pathname = parsedUrl.pathname;
 
   if (
-    pathname.includes('/learning-journeys/') || // Can be /docs/learning-journeys/ or /learning-journeys/
+    pathname.includes('/docs/learning-journeys/') ||
+    pathname.includes('/docs/learning-paths/') ||
     pathname.includes('/tutorials/') || // Can be /docs/tutorials/ or /tutorials/
     pathname.match(/\/milestone-\d+/)
   ) {
@@ -680,16 +681,12 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
 
-          // Determine fetch order based on domain:
-          // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
-          // - Other sources: JSON first (preferred format)
-          const preferHtmlFirst = isGrafanaComDocsOrTutorials(finalUrl);
+          // Always try JSON first (preferred format), HTML as fallback
+          const primaryUrl = jsonUrl;
+          const fallbackUrl = htmlUrl;
+          const primaryIsJson = true;
 
-          const primaryUrl = preferHtmlFirst ? htmlUrl : jsonUrl;
-          const fallbackUrl = preferHtmlFirst ? jsonUrl : htmlUrl;
-          const primaryIsJson = !preferHtmlFirst;
-
-          // Try primary format first
+          // Try primary format first (content.json)
           if (primaryUrl !== finalUrl) {
             try {
               const primaryResponse = await fetch(primaryUrl, fetchOptions);
@@ -708,7 +705,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             }
           }
 
-          // Fall back to secondary format
+          // Fall back to secondary format (unstyled.html)
           if (fallbackUrl !== finalUrl) {
             try {
               const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
@@ -868,23 +865,6 @@ function generateInteractiveLearningVariations(url: string): string[] {
 }
 
 /**
- * Check if a URL is specifically grafana.com/docs/* or grafana.com/tutorials/*
- * These domains don't have content.json available yet, so we prefer unstyled.html
- * Other sources (like interactive learning domains) should still try JSON first.
- */
-function isGrafanaComDocsOrTutorials(urlString: string): boolean {
-  try {
-    const url = new URL(urlString);
-    // Only match grafana.com (no subdomains) with /docs/ or /tutorials/ paths
-    return (
-      url.hostname === 'grafana.com' && (url.pathname.startsWith('/docs/') || url.pathname.startsWith('/tutorials/'))
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Get content URLs for both JSON and HTML formats
  * Returns URLs to try in order of preference: JSON first, then HTML
  */
@@ -1021,13 +1001,19 @@ function extractDocSummary(html: string): string {
  */
 function getLearningJourneyBaseUrl(url: string): string {
   // Handle cases like:
-  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
+  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs (legacy)
+  // https://grafana.com/docs/learning-paths/drilldown-logs/ -> https://grafana.com/docs/learning-paths/drilldown-logs (new)
   // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
   // https://grafana.com/tutorials/alerting-get-started/ -> https://grafana.com/tutorials/alerting-get-started
 
   const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
   if (learningJourneyMatch) {
     return learningJourneyMatch[1];
+  }
+
+  const learningPathMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-paths\/[^\/]+)/);
+  if (learningPathMatch) {
+    return learningPathMatch[1];
   }
 
   const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);
@@ -1100,11 +1086,11 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
 
 /**
  * Find current milestone number from URL - improved version
- * Handles /unstyled.html suffix added during content fetching
+ * Handles /unstyled.html and /content.json suffixes added during content fetching
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
-  // Strip /unstyled.html suffix for comparison (added during content fetching)
-  const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+  // Strip /unstyled.html or /content.json suffixes for comparison (added during content fetching)
+  const cleanUrl = url.replace(/\/(unstyled\.html|content\.json)$/, '');
 
   // Try exact URL match first (with and without trailing slash)
   for (const milestone of milestones) {

@@ -1033,7 +1033,9 @@ export class ContextService {
       // Filter out generic learning journeys index pages
       if (
         url === 'https://grafana.com/docs/learning-journeys' ||
-        url === 'https://grafana.com/docs/learning-journeys/'
+        url === 'https://grafana.com/docs/learning-journeys/' ||
+        url === 'https://grafana.com/docs/learning-paths' ||
+        url === 'https://grafana.com/docs/learning-paths/'
       ) {
         return false;
       }
