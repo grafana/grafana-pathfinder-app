@@ -567,12 +567,112 @@ function isJsonContentUrl(url: string): boolean {
 }
 
 /**
+ * Convert docs source-style paths into public URL paths.
+ * Example: docs/grafana/latest/foo/index.md -> /docs/grafana/latest/foo/
+ */
+function normalizeDocsPathFromHtml(rawPath: string): string | undefined {
+  let normalizedPath = rawPath.trim();
+  if (!normalizedPath) {
+    return undefined;
+  }
+
+  if (normalizedPath.startsWith('/')) {
+    normalizedPath = normalizedPath.slice(1);
+  }
+
+  // Some pages expose source paths under docs/sources/.
+  normalizedPath = normalizedPath.replace(/^docs\/sources\//, 'docs/');
+
+  if (!normalizedPath.startsWith('docs/') && !normalizedPath.startsWith('tutorials/')) {
+    return undefined;
+  }
+
+  if (normalizedPath.endsWith('index.md')) {
+    normalizedPath = normalizedPath.slice(0, -'index.md'.length);
+  } else if (normalizedPath.endsWith('.md')) {
+    normalizedPath = normalizedPath.slice(0, -'.md'.length);
+  }
+
+  return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
+}
+
+/**
+ * Resolve docs URL from HTML content when response.url is empty.
+ * Grafana Cloud/proxy fetch interception can return synthetic responses where
+ * redirects were followed server-side but response.url is blank client-side.
+ */
+function resolveDocsUrlFromHtmlFallback(requestUrl: string, html: string): string | undefined {
+  const parsedRequestUrl = parseUrlSafely(requestUrl);
+  if (!parsedRequestUrl) {
+    return undefined;
+  }
+
+  // Prefer window.Path because it points to the active markdown source file.
+  const windowPathMatch = html.match(/window\.Path\s*=\s*["'`]([^"'`]+)["'`]/i);
+  if (windowPathMatch?.[1]) {
+    const normalizedPath = normalizeDocsPathFromHtml(windowPathMatch[1]);
+    if (normalizedPath) {
+      return new URL(normalizedPath, parsedRequestUrl.origin).toString();
+    }
+  }
+
+  // Fall back to data-relpermalink on docs nav wrappers.
+  const relPermalinkMatch = html.match(/data-relpermalink=(["']?)(\/(?:docs|tutorials)\/[^"'>\s]+)\1/i);
+  if (relPermalinkMatch?.[2]) {
+    return new URL(relPermalinkMatch[2], parsedRequestUrl.origin).toString();
+  }
+
+  return undefined;
+}
+
+/**
+ * Insert a redirect-aware HTML fallback URL immediately after the current variation.
+ * This helps interactive-learning redirects fall back to the redirected unstyled.html
+ * instead of retrying unstyled.html on the pre-redirect URL.
+ */
+function enqueueRedirectedHtmlFallback(
+  redirectedUrl: string,
+  pendingUrls: string[],
+  attemptedUrls: Set<string>,
+  currentIndex: number
+): void {
+  if (!isJsonContentUrl(redirectedUrl)) {
+    return;
+  }
+
+  // Build /unstyled.html from a redirected /content.json URL.
+  const redirectedHtmlUrl = redirectedUrl.replace(/\/content\.json(?=$|[?#])/, '/unstyled.html');
+  if (redirectedHtmlUrl === redirectedUrl) {
+    return;
+  }
+
+  const isDevMode = isDevModeEnabledGlobal();
+  const isRedirectedHtmlTrusted =
+    isAllowedContentUrl(redirectedHtmlUrl) ||
+    (isDevMode && isLocalhostUrl(redirectedHtmlUrl)) ||
+    (isDevMode && isGitHubRawUrl(redirectedHtmlUrl));
+
+  if (!isRedirectedHtmlTrusted) {
+    return;
+  }
+
+  if (attemptedUrls.has(redirectedHtmlUrl) || pendingUrls.includes(redirectedHtmlUrl)) {
+    return;
+  }
+
+  // Try redirect-aware fallback immediately after current URL.
+  pendingUrls.splice(currentIndex + 1, 0, redirectedHtmlUrl);
+}
+
+/**
  * Try multiple URL variations in order, returning the first successful result.
  * This is used for content URLs where we want to try content.json first, then unstyled.html.
  */
 async function tryUrlVariations(urls: string[], options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
   let lastError: FetchError | undefined;
+  const pendingUrls = [...urls];
+  const attemptedUrls = new Set<string>();
 
   const fetchOptions: RequestInit = {
     method: 'GET',
@@ -581,9 +681,16 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
     redirect: 'follow',
   };
 
-  for (const urlVariation of urls) {
+  for (let index = 0; index < pendingUrls.length; index++) {
+    const urlVariation = pendingUrls[index];
+    if (attemptedUrls.has(urlVariation)) {
+      continue;
+    }
+    attemptedUrls.add(urlVariation);
+
     try {
       const response = await fetch(urlVariation, fetchOptions);
+      const finalUrl = response.url || urlVariation;
 
       if (response.ok) {
         const content = await response.text();
@@ -592,7 +699,6 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           // NOTE: response.url can be empty in proxied/intercepted environments
           // (e.g., Grafana Cloud). Fall back to the requested URL which was
           // already validated before entering this function.
-          const finalUrl = response.url || urlVariation;
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
@@ -606,8 +712,21 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
           // Detect if this is native JSON content
           const isNativeJson = isJsonContentUrl(finalUrl) || isJsonContentUrl(urlVariation);
+
+          // Some servers return JSON null to indicate no JSON guide exists.
+          // Continue to HTML fallback instead of returning "null" as content.
+          if (isNativeJson && content.trim() === 'null') {
+            enqueueRedirectedHtmlFallback(finalUrl, pendingUrls, attemptedUrls, index);
+            continue;
+          }
+
           return { html: content, finalUrl, isNativeJson };
         }
+      }
+
+      // If content.json redirected, try unstyled.html at redirect target first.
+      if (isJsonContentUrl(urlVariation) && finalUrl !== urlVariation) {
+        enqueueRedirectedHtmlFallback(finalUrl, pendingUrls, attemptedUrls, index);
       }
 
       // 404 means this variation doesn't exist - try next one
@@ -681,7 +800,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         // Per the Fetch API spec, synthetic Response objects have url === "".
         // When empty, fall back to the original request URL which was already
         // validated at the initial trust gate in fetchContent().
-        const finalUrl = response.url || url;
+        let finalUrl = response.url || url;
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
@@ -701,6 +820,22 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             errorType: 'other',
           };
           return { html: null, error: lastError };
+        }
+
+        // In some proxied environments response.url can be empty.
+        // Attempt to recover the resolved docs URL from the HTML payload.
+        if (!response.url && isGrafanaDocsUrl(url)) {
+          const resolvedDocsUrl = resolveDocsUrlFromHtmlFallback(url, html);
+          if (resolvedDocsUrl) {
+            const isResolvedUrlTrusted =
+              isAllowedContentUrl(resolvedDocsUrl) ||
+              (isDevMode && isLocalhostUrl(resolvedDocsUrl)) ||
+              (isDevMode && isGitHubRawUrl(resolvedDocsUrl));
+
+            if (isResolvedUrlTrusted) {
+              finalUrl = resolvedDocsUrl;
+            }
+          }
         }
 
         // SECURITY: Enforce HTTPS on redirect target
