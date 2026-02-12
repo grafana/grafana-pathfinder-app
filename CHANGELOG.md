@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0
+
+### Breaking changes
+
+- **Learning journeys**: The plugin must be updated to this version for all learning journeys to render correctly again due to the migration from unstyled HTML to JSON.
+
 ## 1.6.0
 
 ### Added
