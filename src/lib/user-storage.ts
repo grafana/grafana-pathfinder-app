@@ -322,6 +322,16 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
     }
 
     isProcessingQueue = false;
+
+    // Re-check: items may have been added during the await calls above.
+    // If the debounce timer fired while we were processing, it bailed early
+    // due to the isProcessingQueue guard, leaving those items stranded.
+    // Process them now.
+    if (writeQueue.length > 0) {
+      processQueue().catch((error) => {
+        console.warn('Error processing Grafana storage queue:', error);
+      });
+    }
   };
 
   // Schedule queue processing with debounce (500ms) so rapid writes
@@ -446,12 +456,10 @@ async function readGrafanaKeyWithMigration(
       console.warn(`Failed to migrate key to envelope format: ${key}`, error);
     }
 
-    // Clean up localStorage __timestamp key too
-    try {
-      window.localStorage.removeItem(getTimestampKey(key));
-    } catch {
-      // localStorage cleanup is best-effort
-    }
+    // NOTE: Do NOT clean up localStorage __timestamp key here.
+    // syncFromGrafanaStorage still needs it for conflict resolution, and it must
+    // persist for future page loads. Only Grafana storage migrates to envelope format;
+    // localStorage continues using the separate timestamp key pattern.
 
     return {
       value: hasData ? rawValue : null,
@@ -549,6 +557,11 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
         console.warn(`Failed to sync key from Grafana storage: ${key}`, error);
       }
     }
+
+    // NOTE: We do NOT clean up localStorage __timestamp keys here.
+    // They're still used by the hybrid storage for conflict resolution on future page loads.
+    // The Grafana storage side has been migrated to envelope format, but localStorage
+    // continues using the separate timestamp key pattern.
   } catch (error) {
     console.warn('Failed to sync from Grafana storage:', error);
   }
