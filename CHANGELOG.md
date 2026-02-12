@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.0
+
+### Added
+
+- **Interactive learning journeys**: Learning journeys now support interactive content, allowing guided, hands-on steps within structured learning paths. Expect more learning journeys to become interactive over time.
+
 ## 1.5.2
 
 ### Fixed
