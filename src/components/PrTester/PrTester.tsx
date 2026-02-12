@@ -68,6 +68,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
   });
   const [orderedFiles, setOrderedFiles] = useState<PrContentFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   // User's explicit file selection (only set when user changes selection)
   const [userSelectedFile, setUserSelectedFile] = useState<string | null>(() => {
@@ -266,6 +267,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
 
     setFetchState('fetching');
     setError(null);
+    setWarning(null);
     setFiles([]);
 
     const result = await fetchPrContentFilesFromUrl(cleanedUrl, abortControllerRef.current.signal);
@@ -277,6 +279,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
 
     if (result.success) {
       setFiles(result.files);
+      setWarning(result.warning || null);
       setFetchState('fetched');
     } else {
       setError(result.error.message);
@@ -602,6 +605,15 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         <div className={`${styles.resultBox} ${styles.resultError}`}>
           <p className={styles.resultText}>
             <Icon name="exclamation-triangle" /> {error}
+          </p>
+        </div>
+      )}
+
+      {/* Warning Message */}
+      {warning && (
+        <div className={`${styles.resultBox} ${styles.resultWarning}`}>
+          <p className={styles.resultText}>
+            <Icon name="info-circle" /> {warning}
           </p>
         </div>
       )}

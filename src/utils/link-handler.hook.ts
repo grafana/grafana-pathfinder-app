@@ -188,7 +188,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Parse URL to check pathname (already validated by isValidGrafanaContentUrl)
             const urlObj = parseUrlSafely(fullUrl);
-            const isLearningJourney = urlObj?.pathname.startsWith('/learning-journeys/');
+            const isLearningJourney =
+              urlObj?.pathname.startsWith('/docs/learning-journeys/') ||
+              urlObj?.pathname.startsWith('/docs/learning-paths/');
 
             // Determine if it's a learning journey or regular docs/tutorials
             if (isLearningJourney) {

@@ -13,6 +13,7 @@ const STORAGE_KEY = 'pathfinder-url-tester-url';
 
 export interface UrlTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;
+  onOpenLearningJourney?: (url: string, title: string) => void;
 }
 
 /**
@@ -67,7 +68,7 @@ function validateContentUrl(url: string): UrlValidation {
   };
 }
 
-export const UrlTester = ({ onOpenDocsPage }: UrlTesterProps) => {
+export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterProps) => {
   const styles = useStyles2(getUrlTesterStyles);
   const [testUrl, setTestUrl] = useState(() => {
     try {
@@ -104,13 +105,22 @@ export const UrlTester = ({ onOpenDocsPage }: UrlTesterProps) => {
 
       const tutorialName = extractTitleFromUrl(testUrl);
 
-      onOpenDocsPage(testUrl, tutorialName);
+      // Detect if this is a learning journey URL and use the appropriate handler
+      // Support both /learning-journeys/ (legacy) and /learning-paths/ (new)
+      const isLearningJourneyUrl =
+        cleanedUrl.includes('/learning-journeys/') || cleanedUrl.includes('/learning-paths/');
+      if (isLearningJourneyUrl && onOpenLearningJourney) {
+        onOpenLearningJourney(testUrl, tutorialName);
+      } else {
+        onOpenDocsPage(testUrl, tutorialName);
+      }
+
       setTestSuccess(true);
       setTestError(null);
 
       setTimeout(() => setTestSuccess(false), 2000);
     },
-    [testUrl, onOpenDocsPage]
+    [testUrl, onOpenDocsPage, onOpenLearningJourney]
   );
 
   return (

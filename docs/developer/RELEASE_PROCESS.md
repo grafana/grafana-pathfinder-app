@@ -23,7 +23,7 @@ The project uses **three distinct GitHub Actions workflows** for different relea
   - Allows selection of branch and target environment
   - Supports docs-only publishing option
   - Uses Grafana's shared CI workflows
-  - Publishes to plugin catalog as "pending" status
+  - Does not publish to plugin catalog as pending (disabled via `publish-to-catalog-as-pending: false`)
 
 ## Build Process
 

@@ -67,8 +67,12 @@ The hook returns a comprehensive state object including:
 - `retryCount` / `maxRetries` - Retry progress
 - `completionReason` - How step was completed ('objectives', 'manual', 'skipped')
 - `explanation` - User-friendly message about requirement status
+- `error` - Error message from failed requirement check
 - `canFixRequirement` - Requirement can be automatically fixed
-- `fixType` - Type of fix available ('navigation', 'location', 'lazy-scroll', etc.)
+- `canSkip` - Step can be skipped (based on `skippable` prop)
+- `fixType` - Type of fix available (see [Fix types](#fix-types) below)
+- `targetHref` - Target URL for `location` fix type (used by auto-navigate)
+- `scrollContainer` - CSS selector for `lazy-scroll` fix type (used by progressive scroll discovery)
 - `checkStep()` - Function to manually trigger requirements check
 - `markCompleted()` - Function to manually complete step
 - `markSkipped()` - Function to skip step (if skippable)
@@ -102,8 +106,8 @@ The hook returns a comprehensive state object including:
 **Data Sources & Plugins:**
 
 - `has-datasources` - At least one data source configured
-- `has-datasource:<name>` - Specific data source exists by name
-- `has-datasource:type:<type>` - Data source of specific type exists
+- `has-datasource:<name>` - Specific data source exists by name (routed through unified `has-datasource:` handler)
+- `has-datasource:type:<type>` - Data source of specific type exists (also routed through the unified `has-datasource:` handler, which matches both by name and by type prefix)
 - `datasource-configured:<name>` - Data source is configured and tested
 - `has-plugin:<pluginId>` - Plugin installed and available
 - `plugin-enabled:<pluginId>` - Plugin is enabled
@@ -129,7 +133,7 @@ The hook returns a comprehensive state object including:
 **Workflow & Dependencies:**
 
 - `section-completed:<sectionId>` - Previous section has been completed
-- `var-<name>:<value>` - Guide response variable matches expected value
+- `var-<name>:<value>` - Guide response variable matches expected value (supports `*` wildcard for any non-empty value, `true`/`false` for booleans, and exact string matching)
 - `renderer:<type>` - Running in specific renderer context (pathfinder, website)
 
 **Retry Logic**:
@@ -162,6 +166,15 @@ The system distinguishes between two types of conditions:
 **Priority Hierarchy**: Objectives > Eligibility > Requirements
 
 This design ensures steps don't require users to repeat actions they've already completed, while still gating steps on necessary prerequisites.
+
+## Fix Types
+
+When a requirement check fails, the system may identify an automatic fix. The `fixType` field in the step state indicates which fix is available, and `fixRequirement()` executes it:
+
+- **`navigation`** - Opens and docks the Grafana side navigation menu (fixes `navmenu-open` requirements)
+- **`location`** - Navigates to the required page path (fixes `on-page:<path>` requirements; `targetHref` provides the destination)
+- **`lazy-scroll`** - Progressive scroll discovery for virtualized containers (handled transparently by "Show me" / "Do it" buttons rather than `fixRequirement()`; `scrollContainer` provides the container selector)
+- **`expand-options-group`** - Expands all collapsed "Options group" panels in the Grafana panel editor (clicks `button[data-testid*="Options group"][aria-expanded="false"]` elements)
 
 ## Requirements Explanations System
 
@@ -267,6 +280,18 @@ This design ensures steps don't require users to repeat actions they've already 
 - `manual` - User executed the step
 - `skipped` - User skipped the step
 
+**Actions** (dispatched to the reducer):
+
+- `START_CHECK` - Begin checking (transitions to `checking`)
+- `SET_BLOCKED` - Set blocked state (transitions to `blocked`)
+- `SET_ENABLED` - Set enabled state (transitions to `enabled`)
+- `SET_COMPLETED` - Set completed state (terminal; transitions to `completed`)
+- `SET_ERROR` - Set error state (transitions to `blocked` with error message attached)
+- `UPDATE_RETRY` - Update retry count during retry cycles
+- `RESET` - Reset to initial `idle` state
+
+Note: errors do not create a separate state -- `SET_ERROR` transitions to `blocked` with an error message, keeping the state machine simple while preserving error context.
+
 **Benefits**:
 
 - Prevents impossible state combinations
@@ -348,21 +373,24 @@ The Requirements Manager integrates with:
 
 The requirements manager behavior is controlled through `INTERACTIVE_CONFIG.delays.requirements` and `INTERACTIVE_CONFIG.requirements.heartbeat`:
 
-**Retry Configuration**:
+**Retry Configuration** (`INTERACTIVE_CONFIG.delays.requirements`):
 
-- `maxRetries` - Maximum retry attempts for failed checks
-- `retryDelay` - Milliseconds between retry attempts
+- `maxRetries` - Maximum retry attempts for failed checks (default: **3**)
+- `retryDelay` - Milliseconds between retry attempts (default: **300ms**)
+- `checkTimeout` - Timeout for individual requirement checks (default: **3000ms**)
 
-**Heartbeat Configuration** (optional periodic rechecking):
+**Heartbeat Configuration** (`INTERACTIVE_CONFIG.requirements.heartbeat`) -- optional periodic rechecking:
 
-- `enabled` - Enable/disable heartbeat monitoring
-- `intervalMs` - Milliseconds between heartbeat checks
-- `watchWindowMs` - Maximum duration to monitor a step (0 = infinite)
-- `onlyForFragile` - Only monitor fragile requirements (navmenu-open, exists-reftarget, on-page)
+- `enabled` - Enable/disable heartbeat monitoring (default: **true**)
+- `intervalMs` - Milliseconds between heartbeat checks (default: **3000ms**)
+- `watchWindowMs` - Maximum duration to monitor a step, 0 = infinite (default: **10000ms**)
+- `onlyForFragile` - Only monitor fragile requirements: `navmenu-open`, `exists-reftarget`, `on-page:` (default: **true**)
 
-**Debouncing Configuration**:
+**Debouncing Configuration** (`INTERACTIVE_CONFIG.delays.debouncing`):
 
-- `stateSettling` - Delay for DOM to settle after state changes
+- `stateSettling` - Delay for DOM to settle after state changes (default: **100ms**)
+- `reactiveCheck` - Delay for reactive checks after step completions (default: **50ms**)
+- `requirementsRetry` - Auto-retry delay for failed requirements (default: **10000ms**)
 
 ## Key Design Decisions
 
@@ -382,12 +410,12 @@ Unknown requirement types pass with a warning instead of blocking. This prevents
 The `exists-reftarget` check supports virtualized/lazy-loaded content through progressive scroll discovery, preventing false negatives for elements not yet rendered.
 
 **Fix Automation**:
-Several requirement types support automatic fixes:
+Several requirement types support automatic fixes (see [Fix types](#fix-types) for the full list):
 
-- `navmenu-open` - Auto-open and dock navigation menu
-- `on-page:<path>` - Auto-navigate to required page
-- Location mismatches - Navigate to expected path
-- Parent navigation - Expand collapsed navigation sections
+- `navmenu-open` - Auto-open and dock navigation menu (`navigation` fix type)
+- `on-page:<path>` - Auto-navigate to required page (`location` fix type)
+- `exists-reftarget` with lazy rendering - Progressive scroll discovery (`lazy-scroll` fix type)
+- Options group panels - Expand collapsed options groups (`expand-options-group` fix type)
 
 ## Performance Considerations
 

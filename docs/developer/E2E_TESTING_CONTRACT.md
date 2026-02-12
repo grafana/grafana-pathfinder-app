@@ -12,7 +12,7 @@ Used by the interactive engine to coordinate action execution and state manageme
 
 Examples: `data-targetaction`, `data-reftarget`, `data-targetvalue`, `data-step-id`
 
-See: [`docs/developer/interactive-examples/attributes-and-parameters.md`](./interactive-examples/attributes-and-parameters.md)
+See: [`docs/developer/interactive-examples/json-guide-format.md`](./interactive-examples/json-guide-format.md)
 
 ### New Attributes (E2E Testing Contract)
 
@@ -528,7 +528,7 @@ Consider adding `data-test-version="v1"` to step elements. This allows:
 
 - [E2E Testing Guide](./E2E_TESTING.md) - E2E test runner and CLI
 - [Interactive Engine](./engines/interactive-engine.md) - Interactive system architecture
-- [Attributes and Parameters](./interactive-examples/attributes-and-parameters.md) - Original data-\* attributes (internal state machine)
+- [JSON Guide Format](./interactive-examples/json-guide-format.md) - Block types, properties, and action types reference
 - [Requirements Manager](./engines/requirements-manager.md) - Requirements checking system
 
 ---

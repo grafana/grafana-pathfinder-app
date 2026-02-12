@@ -160,7 +160,7 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
         </div>
         {UrlTesterExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
-            <UrlTester onOpenDocsPage={onOpenDocsPage} />
+            <UrlTester onOpenDocsPage={onOpenDocsPage} onOpenLearningJourney={onOpenLearningJourney} />
           </div>
         )}
       </div>

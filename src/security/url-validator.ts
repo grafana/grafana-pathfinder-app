@@ -114,7 +114,8 @@ export function isAllowedContentUrl(urlString: string): boolean {
       url.pathname.startsWith('/docs/') ||
       url.pathname === '/tutorials' ||
       url.pathname.startsWith('/tutorials/') ||
-      url.pathname.includes('/learning-journeys/')
+      url.pathname.includes('/docs/learning-journeys/') ||
+      url.pathname.includes('/docs/learning-paths/')
     );
   }
 
@@ -147,11 +148,12 @@ export function isGrafanaDocsUrl(urlString: string): boolean {
   }
 
   // Check pathname contains allowed documentation paths
-  // Learning journeys are at /docs/learning-journeys/ so we need includes(), not startsWith()
+  // Learning journeys/paths are at /docs/learning-journeys/ (legacy) or /docs/learning-paths/ so we need includes(), not startsWith()
   return (
     url.pathname.startsWith('/docs/') ||
     url.pathname.startsWith('/tutorials/') ||
-    url.pathname.includes('/learning-journeys/')
+    url.pathname.includes('/docs/learning-journeys/') ||
+    url.pathname.includes('/docs/learning-paths/')
   );
 }
 
@@ -279,13 +281,28 @@ export function isInteractiveLearningUrl(urlString: string): boolean {
 }
 
 /**
+ * Allowed GitHub content delivery hostnames (DEV MODE ONLY)
+ *
+ * GitHub may redirect raw content requests to different CDN endpoints.
+ * All of these are legitimate GitHub infrastructure domains.
+ */
+const ALLOWED_GITHUB_CONTENT_HOSTNAMES = [
+  'raw.githubusercontent.com', // Primary raw file content endpoint
+  'objects.githubusercontent.com', // Git LFS and blob storage (redirect target)
+];
+
+/**
  * Check if URL is a GitHub raw content URL (DEV MODE ONLY)
  *
  * Security: This function is ONLY used in dev mode to allow testing with GitHub content.
  * In production, GitHub URLs are not allowed.
  *
+ * Note: GitHub may redirect raw.githubusercontent.com requests to other CDN domains
+ * like objects.githubusercontent.com for blob storage. All legitimate GitHub content
+ * delivery domains are included in the allowlist.
+ *
  * @param urlString - The URL to validate
- * @returns true if valid GitHub raw URL, false otherwise
+ * @returns true if valid GitHub content URL, false otherwise
  */
 export function isGitHubRawUrl(urlString: string): boolean {
   const url = parseUrlSafely(urlString);
@@ -298,8 +315,8 @@ export function isGitHubRawUrl(urlString: string): boolean {
     return false;
   }
 
-  // Allow raw.githubusercontent.com for raw content
-  return url.hostname === 'raw.githubusercontent.com';
+  // Check hostname is in allowlist (exact match only)
+  return ALLOWED_GITHUB_CONTENT_HOSTNAMES.includes(url.hostname);
 }
 
 export interface UrlValidation {

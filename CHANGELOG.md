@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.6.0
+
+### Added
+
+- **Interactive learning journeys**: Learning journeys now support interactive content, allowing guided, hands-on steps within structured learning paths. Expect more learning journeys to become interactive over time.
+
+## 1.5.2
+
+### Fixed
+
+- **Empty `response.url` in content fetcher**: Fixed "Redirect target is not in trusted domain list" errors on Grafana Cloud environments where platform-level fetch interception produces synthetic responses with empty `response.url`; now falls back to the validated original URL (#564)
+- **GitHub CDN redirect allowlist**: Expanded `isGitHubRawUrl()` to accept `objects.githubusercontent.com` URLs that GitHub redirects to for blob storage, fixing PR Tester failures in dev mode (#562)
+
+### Changed
+
+- **PR Tester file limit**: Increased maximum content files from 5 to 100 to match GitHub API's default page size, preventing silent truncation of large PRs (#565)
+- **PR Tester pagination warning**: Added user-facing warning when a PR may contain more content files than the API returns in a single page (#567)
+
+## 1.5.1
+
+### Fixed
+
+- **Dev-mode selector generation**: Fixed `findNearbyFormControl()` incorrectly selecting unrelated form controls when clicking elements inside buttons or links; added structural scoping for `data-testid` selectors to improve stability (#557)
+
+### Changed
+
+- **Developer documentation refresh**: Updated developer docs to align with current implementation, including feature flag documentation, interactive types, requirements reference, and selector guidance; removed obsolete HTML-era docs (#560)
+
 ## 1.5.0
 
 ### Removed

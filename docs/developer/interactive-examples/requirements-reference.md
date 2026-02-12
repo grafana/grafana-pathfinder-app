@@ -1,385 +1,372 @@
-### Requirements Reference
+# Requirements reference
 
-This comprehensive guide covers all supported requirements for interactive guide elements. Requirements are specified using the `data-requirements` attribute and control when interactive elements become enabled.
+Requirements control when interactive elements become enabled. They are specified as a `requirements` array on any interactive, section, guided, multistep, conditional, or quiz block. All requirements in the array must pass for the block to be enabled.
 
 ## Core concepts
 
-- **Requirements**: Comma-separated conditions in `data-requirements="requirement1,requirement2"`
-- **Validation**: All requirements must pass for the element to become enabled
-- **Live checking**: Event-driven rechecks respond to DOM/nav changes and relevant clicks; optional scoped heartbeat can re-validate fragile prerequisites for a short window
-- **User feedback**: Failed requirements show helpful explanations with "Fix this" or "Retry" buttons
+- **Requirements**: an array of condition strings -- e.g., `["navmenu-open", "on-page:/dashboard"]`
+- **Validation**: all requirements must pass for the element to become enabled
+- **Live checking**: event-driven rechecks respond to DOM/navigation changes and relevant clicks; an optional scoped heartbeat can re-validate fragile prerequisites for a short window
+- **User feedback**: failed requirements show helpful explanations with "Fix this" or "Retry" buttons
 
-## Navigation and UI State Requirements
+## Navigation and UI state requirements
 
 ### `navmenu-open`
 
-**Purpose**: Ensures the navigation menu is open and visible.
+Ensures the navigation menu is open and visible.
 
-```html
-<li
-  class="interactive"
-  data-targetaction="highlight"
-  data-reftarget="a[data-testid='Nav menu item'][href='/connections']"
-  data-requirements="navmenu-open"
->
-  Click Connections in the left-side menu.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "a[data-testid='data-testid Nav menu item'][href='/connections']",
+  "requirements": ["navmenu-open"],
+  "content": "Click **Connections** in the left-side menu."
+}
 ```
 
-**Explanation when failed**: "The navigation menu needs to be open and docked. Click 'Fix this' to automatically open and dock the navigation menu."
-
-Note: If a user closes the navigation after a Fix, the system will re-detect the change and revert the step to the fix state. This is done via enhanced nav change detection and, when enabled, a short heartbeat window for fragile prerequisites.
+If the user closes the navigation after a fix, the system re-detects the change and reverts the step to the fix state.
 
 ### `exists-reftarget`
 
-**Purpose**: Verifies the target element specified in `data-reftarget` exists on the page.
+Verifies the target element specified in `reftarget` exists on the page.
 
-```html
-<li class="interactive" data-targetaction="button" data-reftarget="Save dashboard" data-requirements="exists-reftarget">
-  Save your dashboard changes.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Save dashboard",
+  "requirements": ["exists-reftarget"],
+  "content": "Save your dashboard changes."
+}
 ```
-
-**Explanation when failed**: "The target element must be visible and available on the page."
 
 ### `form-valid`
 
-**Purpose**: Ensures the current form on the page passes validation. Used to prevent proceeding until form inputs are valid.
+Ensures the current form on the page passes validation.
 
-```html
-<li class="interactive" data-targetaction="button" data-reftarget="Save" data-requirements="form-valid">
-  Save your configuration.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Save",
+  "requirements": ["form-valid"],
+  "content": "Save your configuration."
+}
 ```
 
-**Explanation when failed**: "Please fix form validation errors before proceeding."
-
-## Page and Navigation Requirements
+## Page and navigation requirements
 
 ### `on-page:<path>`
 
-**Purpose**: Ensures the user is on a specific page or URL path.
+Ensures the user is on a specific page or URL path.
 
-```html
-<li
-  class="interactive"
-  data-targetaction="highlight"
-  data-reftarget="button[data-testid='add-panel-button']"
-  data-requirements="on-page:/dashboard"
->
-  Add a new panel to your dashboard.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "button[data-testid='add-panel-button']",
+  "requirements": ["on-page:/dashboard"],
+  "content": "Add a new panel to your dashboard."
+}
 ```
 
-**Examples**:
+Examples:
 
-- `on-page:/dashboard` - User must be on any dashboard page
-- `on-page:/connections` - User must be on the connections page
-- `on-page:/admin` - User must be on any admin page
+- `on-page:/dashboard` -- any dashboard page
+- `on-page:/connections` -- connections page
+- `on-page:/admin` -- any admin page
 
-**Explanation when failed**: "Navigate to the '{path}' page first."
-
-## User Authentication and Permissions
+## User authentication and permissions
 
 ### `is-logged-in`
 
-**Purpose**: Ensures the user is authenticated (logged in to Grafana).
+Ensures the user is authenticated.
 
-```html
-<li class="interactive" data-targetaction="navigate" data-reftarget="/dashboards" data-requirements="is-logged-in">
-  View your dashboards.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/dashboards",
+  "requirements": ["is-logged-in"],
+  "content": "View your dashboards."
+}
 ```
-
-**Explanation when failed**: "You must be logged in to perform this action."
 
 ### `is-admin`
 
-**Purpose**: Requires the user to have Grafana admin privileges.
+Requires Grafana admin privileges.
 
-```html
-<li class="interactive" data-targetaction="navigate" data-reftarget="/admin/users" data-requirements="is-admin">
-  Open the user management page.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/admin/users",
+  "requirements": ["is-admin"],
+  "content": "Open the user management page."
+}
 ```
-
-**Explanation when failed**: "You need administrator privileges to perform this action. Please log in as an admin user."
 
 ### `is-editor`
 
-**Purpose**: Requires the user to have at least Editor role in the current organization.
+Requires at least Editor role in the current organization.
 
-```html
-<li class="interactive" data-targetaction="button" data-reftarget="Save dashboard" data-requirements="is-editor">
-  Save your dashboard changes.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Save dashboard",
+  "requirements": ["is-editor"],
+  "content": "Save your dashboard changes."
+}
 ```
-
-**Explanation when failed**: "You need Editor permissions or higher to perform this action."
 
 ### `has-role:<role>`
 
-**Purpose**: Checks if the user has a specific organizational role.
+Checks if the user has a specific organizational role.
 
-**Supported roles**:
+Supported roles: `admin` (or `grafana-admin`), `editor`, `viewer`.
 
-- `admin` or `grafana-admin` - Grafana admin privileges
-- `editor` - Editor permissions or higher
-- `viewer` - Any logged-in user
-
-```html
-<li
-  class="interactive"
-  data-targetaction="button"
-  data-reftarget="Create dashboard"
-  data-requirements="has-role:editor"
->
-  Create a new dashboard.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Create dashboard",
+  "requirements": ["has-role:editor"],
+  "content": "Create a new dashboard."
+}
 ```
-
-**Examples**:
-
-- `has-role:admin` - User must be organization admin
-- `has-role:editor` - User must be editor or admin
-- `has-role:viewer` - User must be logged in
-
-**Explanation when failed**: "You need {role} role or higher to perform this action."
 
 ### `has-permission:<permission>`
 
-**Purpose**: Verifies the user has a specific Grafana permission.
+Verifies the user has a specific Grafana permission.
 
-```html
-<li
-  class="interactive"
-  data-targetaction="navigate"
-  data-reftarget="/datasources/new"
-  data-requirements="has-permission:datasources:create"
->
-  Create a new data source.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/datasources/new",
+  "requirements": ["has-permission:datasources:create"],
+  "content": "Create a new data source."
+}
 ```
 
-**Explanation when failed**: "You need the '{permission}' permission to perform this action."
-
-## Data Source Requirements
+## Data source requirements
 
 ### `has-datasources`
 
-**Purpose**: Ensures at least one data source is configured in Grafana.
+Ensures at least one data source is configured.
 
-```html
-<li
-  class="interactive"
-  data-targetaction="navigate"
-  data-reftarget="/dashboard/new"
-  data-requirements="has-datasources"
->
-  Create your first dashboard.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/dashboard/new",
+  "requirements": ["has-datasources"],
+  "content": "Create your first dashboard."
+}
 ```
-
-**Explanation when failed**: "At least one data source needs to be configured."
 
 ### `has-datasource:<identifier>`
 
-**Purpose**: Checks for a specific data source by name or type.
+Checks for a specific data source by name or type (case-insensitive). Searches name first, then type.
 
-**Search behavior**:
-
-- Searches both name AND type fields (case-insensitive)
-- First match wins (checks name first, then type)
-- No special prefix needed for type matching
-
-```html
-<!-- Matches data source named "prometheus-main" OR type "prometheus-main" -->
-<li
-  class="interactive"
-  data-targetaction="button"
-  data-reftarget="prometheus-datasource"
-  data-requirements="has-datasource:prometheus-main"
->
-  Select your Prometheus data source.
-</li>
-
-<!-- Matches any data source of type "prometheus" OR named "prometheus" -->
-<li
-  class="interactive"
-  data-targetaction="formfill"
-  data-reftarget="textarea[data-testid='query-editor']"
-  data-targetvalue="rate(http_requests_total[5m])"
-  data-requirements="has-datasource:prometheus"
->
-  Enter a Prometheus query.
-</li>
-
-<!-- Matches data source named "loki" OR type "loki" -->
-<li
-  class="interactive"
-  data-targetaction="highlight"
-  data-reftarget="div[data-testid='data-source-card']"
-  data-requirements="has-datasource:loki"
->
-  Configure your Loki data source settings.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "formfill",
+  "reftarget": "textarea[data-testid='query-editor']",
+  "targetvalue": "rate(http_requests_total[5m])",
+  "requirements": ["has-datasource:prometheus"],
+  "content": "Enter a Prometheus query."
+}
 ```
 
-**Explanation when failed**: "The '{identifier}' data source needs to be configured first."
+Does **not** test connectivity -- use `datasource-configured` for that.
 
-## Plugin and Extension Requirements
+### `datasource-configured:<identifier>`
+
+Checks that a specific data source exists **and** passes a connection test. Searches by name or type (case-insensitive), then runs the data source's health check endpoint.
+
+```json
+{
+  "type": "interactive",
+  "action": "formfill",
+  "reftarget": "textarea[data-testid='query-editor']",
+  "targetvalue": "{job=\"grafana\"}",
+  "requirements": ["datasource-configured:loki"],
+  "content": "Enter a Loki query."
+}
+```
+
+Difference from `has-datasource`:
+
+| Requirement               | Checks existence | Checks connectivity |
+| ------------------------- | ---------------- | ------------------- |
+| `has-datasource:X`        | Yes              | No                  |
+| `datasource-configured:X` | Yes              | Yes                 |
+
+## Plugin and extension requirements
 
 ### `has-plugin:<pluginId>`
 
-**Purpose**: Verifies a specific plugin is installed and enabled.
+Verifies a specific plugin is installed (may be disabled).
 
-```html
-<li
-  class="interactive"
-  data-targetaction="navigate"
-  data-reftarget="/a/volkovlabs-rss-datasource"
-  data-requirements="has-plugin:volkovlabs-rss-datasource"
->
-  Configure the RSS data source plugin.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/a/volkovlabs-rss-datasource",
+  "requirements": ["has-plugin:volkovlabs-rss-datasource"],
+  "content": "Configure the RSS data source plugin."
+}
 ```
 
-**Examples**:
+### `plugin-enabled:<pluginId>`
 
-- `has-plugin:grafana-clock-panel` - Clock panel plugin
-- `has-plugin:volkovlabs-rss-datasource` - RSS data source plugin
-- `has-plugin:grafana-piechart-panel` - Pie chart panel plugin
+Verifies a specific plugin is installed **and** enabled (ready to use).
 
-**Explanation when failed**: "The '{pluginId}' plugin needs to be installed and enabled."
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/a/volkovlabs-rss-datasource",
+  "requirements": ["plugin-enabled:volkovlabs-rss-datasource"],
+  "content": "Open the RSS data source plugin."
+}
+```
 
-## Dashboard and Content Requirements
+Difference from `has-plugin`:
+
+| Requirement        | Checks installed | Checks enabled |
+| ------------------ | ---------------- | -------------- |
+| `has-plugin:X`     | Yes              | No             |
+| `plugin-enabled:X` | Yes              | Yes            |
+
+## Dashboard and content requirements
 
 ### `dashboard-exists`
 
-**Purpose**: Ensures at least one dashboard exists in the current organization.
+Ensures at least one dashboard exists in the current organization.
 
-```html
-<li class="interactive" data-targetaction="navigate" data-reftarget="/dashboards" data-requirements="dashboard-exists">
-  View your existing dashboards.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/dashboards",
+  "requirements": ["dashboard-exists"],
+  "content": "View your existing dashboards."
+}
 ```
-
-**Explanation when failed**: "At least one dashboard must exist. Create a dashboard first."
 
 ### `has-dashboard-named:<title>`
 
-**Purpose**: Ensures a dashboard with a specific title exists.
+Ensures a dashboard with a specific title exists (case-insensitive).
 
-```html
-<li
-  class="interactive"
-  data-targetaction="navigate"
-  data-reftarget="/d/monitoring-overview"
-  data-requirements="has-dashboard-named:System Monitoring"
->
-  Open your monitoring dashboard.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/d/monitoring-overview",
+  "requirements": ["has-dashboard-named:System Monitoring"],
+  "content": "Open your monitoring dashboard."
+}
 ```
 
-**Examples**:
-
-- `has-dashboard-named:System Overview` - Exact title match required
-- `has-dashboard-named:Production Metrics` - Case-insensitive matching
-
-**Explanation when failed**: "The dashboard '{title}' needs to exist first. Complete the previous tutorial or create it manually."
-
-## System and Environment Requirements
+## System and environment requirements
 
 ### `has-feature:<toggle>`
 
-**Purpose**: Checks if a Grafana feature toggle is enabled.
+Checks if a Grafana feature toggle is enabled.
 
-```html
-<li
-  class="interactive"
-  data-targetaction="button"
-  data-reftarget="Query splitting"
-  data-requirements="has-feature:queryLibrary"
->
-  Use the query library feature.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Query splitting",
+  "requirements": ["has-feature:queryLibrary"],
+  "content": "Use the query library feature."
+}
 ```
-
-**Examples**:
-
-- `has-feature:alerting` - Alerting system enabled
-- `has-feature:expressions` - Query expressions enabled
-- `has-feature:live` - Live streaming enabled
-
-**Explanation when failed**: "The '{feature}' feature needs to be enabled."
 
 ### `in-environment:<env>`
 
-**Purpose**: Restricts functionality to specific Grafana environments.
+Restricts functionality to specific Grafana environments.
 
-```html
-<li
-  class="interactive"
-  data-targetaction="navigate"
-  data-reftarget="/admin/settings"
-  data-requirements="in-environment:development"
->
-  Access development settings.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/admin/settings",
+  "requirements": ["in-environment:development"],
+  "content": "Access development settings."
+}
 ```
 
-**Examples**:
-
-- `in-environment:development` - Development environment only
-- `in-environment:production` - Production environment only
-- `in-environment:cloud` - Grafana Cloud only
-
-**Explanation when failed**: "This action is only available in the {env} environment."
+Values: `development`, `production`, `cloud`.
 
 ### `min-version:<version>`
 
-**Purpose**: Ensures Grafana version meets minimum requirements.
+Ensures Grafana version meets a minimum semver requirement.
 
-```html
-<li class="interactive" data-targetaction="button" data-reftarget="Scene app" data-requirements="min-version:9.0.0">
-  Open the new scene-based application.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Scene app",
+  "requirements": ["min-version:9.0.0"],
+  "content": "Open the new scene-based application."
+}
 ```
 
-**Examples**:
+## Renderer context requirements
 
-- `min-version:9.0.0` - Requires Grafana 9.0 or higher
-- `min-version:10.2.1` - Requires specific patch version
-- `min-version:8.5.0` - Legacy version requirement
+### `renderer:<renderer>`
 
-**Explanation when failed**: "This feature requires Grafana version {version} or higher."
+Controls content visibility based on the rendering context. Used for context-aware content that should differ between the Pathfinder app and other rendering environments (e.g., a public documentation website).
 
-## Variable Requirements
+Supported values:
+
+| Value        | In Pathfinder app | Description                                     |
+| ------------ | ----------------- | ----------------------------------------------- |
+| `pathfinder` | Always `true`     | Content is shown in the Pathfinder app          |
+| `website`    | Always `false`    | Content is only for website/public docs context |
+
+```json
+{
+  "type": "conditional",
+  "conditions": ["renderer:pathfinder"],
+  "whenTrue": [{ "type": "markdown", "content": "Click **Show me** below to highlight the button in the Grafana UI." }],
+  "whenFalse": [{ "type": "markdown", "content": "Navigate to the Connections page in your Grafana instance." }]
+}
+```
+
+This requirement is evaluated differently by different rendering tools, allowing the same guide source to produce different content in different contexts.
+
+## Variable requirements
 
 ### `var-<variableName>:<expectedValue>`
 
-**Purpose**: Checks if a guide response variable has a specific value. Variables are set by [Input blocks](./json-guide-format.md#input-block).
+Checks if a guide response variable has a specific value. Variables are set by [input blocks](./json-guide-format.md#input-block).
 
 ```json
 {
   "type": "section",
   "title": "Advanced configuration",
   "requirements": ["var-termsAccepted:true"],
-  "blocks": [...]
+  "blocks": []
 }
 ```
 
-**Syntax:** `var-{variableName}:{expectedValue}`
+Syntax: `var-{variableName}:{expectedValue}`
 
-**Examples**:
+Examples:
 
-- `var-termsAccepted:true` - Boolean variable must be `true`
-- `var-experienceLevel:advanced` - Text variable must equal `"advanced"`
-- `var-datasourceName:prometheus` - Variable must match specific value
+- `var-termsAccepted:true` -- boolean variable must be `true`
+- `var-experienceLevel:advanced` -- text variable must equal `"advanced"`
+- `var-datasourceName:prometheus` -- variable must match specific value
 
-**Explanation when failed**: "The variable '{variableName}' must be set to '{expectedValue}'."
-
-**Use cases:**
+Used with conditional blocks:
 
 ```json
 {
@@ -390,86 +377,113 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 }
 ```
 
-See [Variable Substitution](./json-guide-format.md#variable-substitution) for more details on using variables.
+See [variable substitution](./json-guide-format.md#variable-substitution) for more details.
 
----
-
-## Sequential and Dependency Requirements
+## Sequential and dependency requirements
 
 ### `section-completed:<sectionId>`
 
-**Purpose**: Creates dependencies between tutorial sections, ensuring prerequisite sections are completed first.
+Creates dependencies between sections, ensuring prerequisite sections are completed first.
 
-```html
-<span id="setup-datasource" class="interactive" data-targetaction="sequence">
-  <!-- First section content -->
-</span>
-
-<span
-  id="create-dashboard"
-  class="interactive"
-  data-targetaction="sequence"
-  data-requirements="section-completed:setup-datasource"
->
-  <!-- Second section - requires first to be completed -->
-</span>
+```json
+{
+  "type": "section",
+  "id": "create-dashboard",
+  "title": "Create a dashboard",
+  "requirements": ["section-completed:setup-datasource"],
+  "blocks": []
+}
 ```
 
-**Examples**:
+## Combining multiple requirements
 
-- `section-completed:data-source-setup` - Previous section must be done
-- `section-completed:user-onboarding` - Onboarding must be complete
-- `section-completed:basic-configuration` - Basic setup required
+All requirements in the array must pass. Use multiple entries for AND logic.
 
-**Explanation when failed**: "Complete the '{sectionId}' section before continuing to this section."
-
-## Combining Multiple Requirements
-
-Requirements can be combined using commas. **All requirements must pass** for the element to be enabled.
-
-### Common combinations
-
-```html
-<!-- User must be admin AND on admin page -->
-<li
-  class="interactive"
-  data-targetaction="button"
-  data-reftarget="Delete user"
-  data-requirements="is-admin,on-page:/admin/users"
->
-  Remove the selected user.
-</li>
-
-<!-- Must have data source AND be on dashboard page -->
-<li
-  class="interactive"
-  data-targetaction="highlight"
-  data-reftarget="div[data-testid='panel-editor']"
-  data-requirements="has-datasource:prometheus,on-page:/dashboard"
->
-  Configure your panel query.
-</li>
-
-<!-- Plugin required AND specific feature enabled -->
-<li
-  class="interactive"
-  data-targetaction="navigate"
-  data-reftarget="/a/my-custom-app"
-  data-requirements="has-plugin:my-custom-app,has-feature:customApps"
->
-  Launch the custom application.
-</li>
-
-<!-- Sequential dependency with navigation -->
-<li
-  class="interactive"
-  data-targetaction="button"
-  data-reftarget="Add panel"
-  data-requirements="section-completed:datasource-setup,on-page:/dashboard"
->
-  Add your first panel.
-</li>
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Delete user",
+  "requirements": ["is-admin", "on-page:/admin/users"],
+  "content": "Remove the selected user."
+}
 ```
+
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/a/my-custom-app",
+  "requirements": ["has-plugin:my-custom-app", "has-feature:customApps"],
+  "content": "Launch the custom application."
+}
+```
+
+### Progressive requirements
+
+Build complexity gradually:
+
+```json
+[
+  {
+    "type": "interactive",
+    "action": "highlight",
+    "reftarget": "div[data-testid='panel']",
+    "requirements": ["has-datasources"],
+    "content": "Start with any data source."
+  },
+  {
+    "type": "interactive",
+    "action": "highlight",
+    "reftarget": "div[data-testid='panel']",
+    "requirements": ["has-datasource:prometheus"],
+    "content": "Now use Prometheus specifically."
+  },
+  {
+    "type": "interactive",
+    "action": "highlight",
+    "reftarget": "div[data-testid='panel']",
+    "requirements": ["has-datasource:prometheus", "has-feature:expressions", "min-version:9.0.0"],
+    "content": "Use advanced Prometheus expressions."
+  }
+]
+```
+
+## Objectives system
+
+Objectives declare what a guide step will accomplish. They use the same syntax as requirements but serve a different purpose.
+
+### Purpose
+
+1. **Auto-completion**: if an objective is already met when a user visits a guide, the step is automatically marked complete with an "Already done!" message
+2. **Skip unnecessary work**: users do not need to redo steps they have already accomplished
+
+### Syntax
+
+```json
+{
+  "type": "interactive",
+  "action": "button",
+  "reftarget": "Install plugin",
+  "requirements": ["exists-reftarget"],
+  "objectives": ["has-plugin:volkovlabs-rss-datasource"],
+  "content": "Install the RSS data source plugin."
+}
+```
+
+### Key behaviors
+
+- **Objectives always win**: if objectives are met, the step is marked complete regardless of requirements state
+- **All-or-nothing**: when multiple objectives are specified, ALL must be met
+- **Same syntax as requirements**: use any requirement type as an objective
+
+### Objectives vs requirements
+
+| Aspect        | Requirements               | Objectives                         |
+| ------------- | -------------------------- | ---------------------------------- |
+| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
+| When met      | Step becomes enabled       | Step is auto-completed             |
+| Empty/missing | Always allowed to execute  | Must be manually completed         |
 
 ## Validation rules
 
@@ -477,7 +491,7 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 
 ### Limits
 
-- **Maximum 10 components** per condition string (comma-separated)
+- Maximum 10 components per condition string (comma-separated)
 
 ### Syntax rules
 
@@ -499,151 +513,64 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 | `var-myVar`          | Missing value          | `var-myVar:true`                        |
 | `var-:value`         | Missing variable name  | `var-variableName:value`                |
 
-## Objectives system
+## Complete requirements reference table
 
-Objectives declare what a guide step will accomplish. They use the `data-objectives` attribute with the same syntax as requirements.
+### Fixed requirements (no parameters)
 
-### Purpose
+| Requirement        | Purpose                                |
+| ------------------ | -------------------------------------- |
+| `navmenu-open`     | Navigation menu is open and visible    |
+| `exists-reftarget` | Target element exists on the page      |
+| `form-valid`       | Current form passes validation         |
+| `is-logged-in`     | User is authenticated                  |
+| `is-admin`         | User has Grafana admin privileges      |
+| `is-editor`        | User has at least Editor role          |
+| `has-datasources`  | At least one data source is configured |
+| `dashboard-exists` | At least one dashboard exists          |
 
-Objectives serve two key purposes:
+### Parameterized requirements
 
-1. **Auto-completion**: If an objective is already met when a user visits a guide, the step is automatically marked complete
-2. **Skip unnecessary work**: Users don't need to redo steps they've already accomplished
+| Requirement                          | Purpose                                                |
+| ------------------------------------ | ------------------------------------------------------ |
+| `on-page:<path>`                     | User is on a specific page                             |
+| `has-role:<role>`                    | User has a specific organizational role                |
+| `has-permission:<permission>`        | User has a specific Grafana permission                 |
+| `has-datasource:<identifier>`        | Specific data source exists (by name or type)          |
+| `datasource-configured:<identifier>` | Specific data source exists and passes connection test |
+| `has-plugin:<pluginId>`              | Specific plugin is installed                           |
+| `plugin-enabled:<pluginId>`          | Specific plugin is installed and enabled               |
+| `has-dashboard-named:<title>`        | Dashboard with specific title exists                   |
+| `has-feature:<toggle>`               | Feature toggle is enabled                              |
+| `in-environment:<env>`               | Running in a specific environment                      |
+| `min-version:<version>`              | Grafana version meets minimum requirement              |
+| `section-completed:<sectionId>`      | Another section has been completed                     |
+| `var-<name>:<value>`                 | Guide variable has expected value                      |
+| `renderer:<renderer>`                | Rendering context matches (`pathfinder` or `website`)  |
 
-### Syntax
-
-```html
-<li
-  class="interactive"
-  data-targetaction="button"
-  data-reftarget="Install plugin"
-  data-requirements="exists-reftarget"
-  data-objectives="has-plugin:volkovlabs-rss-datasource"
->
-  Install the RSS data source plugin.
-</li>
-```
-
-### Key behaviors
-
-- **Objectives always win**: If objectives are met, the step is marked complete regardless of requirements state
-- **All-or-nothing**: When multiple objectives are specified (comma-separated), ALL must be met
-- **Same syntax as requirements**: Use any requirement type as an objective
-- **"Already done!" message**: Auto-completed steps show this explanation
-
-### Objectives vs Requirements
-
-| Aspect        | Requirements               | Objectives                         |
-| ------------- | -------------------------- | ---------------------------------- |
-| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
-| When met      | Step becomes enabled       | Step is auto-completed             |
-| Empty/missing | Always allowed to execute  | Must be manually completed         |
-
-### Objectives examples
-
-```html
-<!-- Section with objective - auto-completes if plugin is already installed -->
-<section class="interactive" data-targetaction="sequence" data-objectives="has-plugin:grafana-clock-panel">
-  <h2>Install Clock Panel</h2>
-  <!-- Steps here auto-complete if objective is met -->
-</section>
-
-<!-- Step with both requirements and objectives -->
-<li
-  class="interactive"
-  data-requirements="on-page:/connections,exists-reftarget"
-  data-objectives="has-datasource:prometheus"
-  data-targetaction="button"
-  data-reftarget="Add data source"
->
-  Add a Prometheus data source.
-</li>
-```
-
-## Advanced Usage Patterns
-
-### Progressive requirements
-
-Build complexity gradually by using different requirement sets:
-
-```html
-<!-- Basic setup -->
-<li class="interactive" data-requirements="has-datasources">Start with any data source.</li>
-
-<!-- Specific setup -->
-<li class="interactive" data-requirements="has-datasource:prometheus">Now use Prometheus specifically.</li>
-
-<!-- Advanced features -->
-<li class="interactive" data-requirements="has-datasource:prometheus,has-feature:expressions,min-version:9.0.0">
-  Use advanced Prometheus expressions.
-</li>
-```
-
-### Error handling and user guidance
+## Error handling and user guidance
 
 Each requirement provides helpful error messages and, where possible, "Fix this" buttons:
 
 - **Automatic fixes**: `navmenu-open` can auto-open the navigation
-- **Retry buttons**: Most requirements offer retry functionality
-- **Clear explanations**: Users understand what needs to be done
-- **Contextual help**: Error messages explain why the requirement exists
-
-### Testing requirements locally
-
-For development and testing, you can simulate different requirement states:
-
-```javascript
-// In browser console - simulate admin user
-window.grafanaBootData.user.isGrafanaAdmin = true;
-
-// Simulate feature toggles
-window.grafanaBootData.settings.featureToggles.myFeature = true;
-
-// Check current requirements state
-console.log('Current user:', window.grafanaBootData.user);
-console.log('Feature toggles:', window.grafanaBootData.settings.featureToggles);
-```
-
-## Best Practices
-
-### Requirement design
-
-- **Start simple**: Begin with basic requirements, add complexity gradually
-- **User context**: Consider what state users will realistically be in
-- **Clear dependencies**: Make prerequisite relationships obvious
-- **Fallback paths**: Provide alternative ways to meet requirements when possible
-
-### Error messaging
-
-- **Actionable**: Tell users exactly what to do next
-- **Context**: Explain why the requirement exists
-- **Progressive**: Guide users through a logical sequence
-- **Helpful**: Provide "Fix this" options where technically possible
-
-### Performance considerations
-
-- **Efficient checking**: Requirements are checked efficiently with caching
-- **Throttled updates**: Live monitoring is throttled to prevent performance issues
-- **Smart triggers**: Only relevant changes trigger re-evaluation
-- **Graceful degradation**: Failed requirement checks don't break the experience
+- **Retry buttons**: most requirements offer retry functionality
+- **Clear explanations**: users understand what needs to be done
+- **Contextual help**: error messages explain why the requirement exists
 
 ## Troubleshooting
 
-### Common issues
-
-**"Requirements never pass"**:
+**Requirements never pass:**
 
 - Check browser console for detailed error messages
 - Verify requirement syntax matches examples exactly
 - Ensure required elements/data actually exist
 
-**"Requirements pass but shouldn't"**:
+**Requirements pass but should not:**
 
-- Requirements may be cached - try refreshing the page
+- Requirements may be cached -- try refreshing the page
 - Check for typos in requirement names
 - Verify case sensitivity for names and identifiers
 
-**"Fix this button doesn't work"**:
+**"Fix this" button does not work:**
 
 - Only certain requirements support automatic fixing
 - Check browser console for error details
@@ -656,16 +583,4 @@ Enable development mode logging:
 ```javascript
 localStorage.setItem('grafana-docs-debug', 'true');
 // Reload page to see detailed requirement checking logs
-```
-
-Check requirement state:
-
-```javascript
-// Access the sequential requirements manager
-const manager = window.SequentialRequirementsManager?.getInstance();
-if (manager) {
-  // Manager provides step state coordination and reactive checking
-  // Individual step states can be queried via manager.getStepState(stepId)
-  console.log('Manager available for step coordination');
-}
 ```
