@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.1
+
+### Fixed
+
+- **Context panel progress stuck at 0%**: Fixed completion percentage display for learning journeys and interactive guides on the context/recommendations panel. Learning journeys now correctly read from `journeyCompletionStorage` (async), and interactive guides now correctly read from `interactiveCompletionStorage` instead of the wrong storage type.
+
 ## 1.7.0
 
 ### Breaking changes
