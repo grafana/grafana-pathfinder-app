@@ -322,6 +322,13 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
     }
 
     isProcessingQueue = false;
+
+    // Re-check queue: items may have been added during the async network calls.
+    // If the debounce timer fired while we were processing, it bailed due to
+    // isProcessingQueue being true, so those items would be stranded.
+    if (writeQueue.length > 0) {
+      scheduleQueueProcessing();
+    }
   };
 
   // Schedule queue processing with debounce (500ms) so rapid writes
@@ -446,12 +453,9 @@ async function readGrafanaKeyWithMigration(
       console.warn(`Failed to migrate key to envelope format: ${key}`, error);
     }
 
-    // Clean up localStorage __timestamp key too
-    try {
-      window.localStorage.removeItem(getTimestampKey(key));
-    } catch {
-      // localStorage cleanup is best-effort
-    }
+    // NOTE: Do NOT clean up localStorage __timestamp key here.
+    // syncFromGrafanaStorage reads it after this function returns for conflict resolution.
+    // The timestamp key will be overwritten by the sync logic with the correct value.
 
     return {
       value: hasData ? rawValue : null,
