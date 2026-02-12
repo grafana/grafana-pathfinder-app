@@ -567,12 +567,53 @@ function isJsonContentUrl(url: string): boolean {
 }
 
 /**
+ * Insert a redirect-aware HTML fallback URL immediately after the current variation.
+ * This helps interactive-learning redirects fall back to the redirected unstyled.html
+ * instead of retrying unstyled.html on the pre-redirect URL.
+ */
+function enqueueRedirectedHtmlFallback(
+  redirectedUrl: string,
+  pendingUrls: string[],
+  attemptedUrls: Set<string>,
+  currentIndex: number
+): void {
+  if (!isJsonContentUrl(redirectedUrl)) {
+    return;
+  }
+
+  // Build /unstyled.html from a redirected /content.json URL.
+  const redirectedHtmlUrl = redirectedUrl.replace(/\/content\.json(?=$|[?#])/, '/unstyled.html');
+  if (redirectedHtmlUrl === redirectedUrl) {
+    return;
+  }
+
+  const isDevMode = isDevModeEnabledGlobal();
+  const isRedirectedHtmlTrusted =
+    isAllowedContentUrl(redirectedHtmlUrl) ||
+    (isDevMode && isLocalhostUrl(redirectedHtmlUrl)) ||
+    (isDevMode && isGitHubRawUrl(redirectedHtmlUrl));
+
+  if (!isRedirectedHtmlTrusted) {
+    return;
+  }
+
+  if (attemptedUrls.has(redirectedHtmlUrl) || pendingUrls.includes(redirectedHtmlUrl)) {
+    return;
+  }
+
+  // Try redirect-aware fallback immediately after current URL.
+  pendingUrls.splice(currentIndex + 1, 0, redirectedHtmlUrl);
+}
+
+/**
  * Try multiple URL variations in order, returning the first successful result.
  * This is used for content URLs where we want to try content.json first, then unstyled.html.
  */
 async function tryUrlVariations(urls: string[], options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
   let lastError: FetchError | undefined;
+  const pendingUrls = [...urls];
+  const attemptedUrls = new Set<string>();
 
   const fetchOptions: RequestInit = {
     method: 'GET',
@@ -581,9 +622,16 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
     redirect: 'follow',
   };
 
-  for (const urlVariation of urls) {
+  for (let index = 0; index < pendingUrls.length; index++) {
+    const urlVariation = pendingUrls[index];
+    if (attemptedUrls.has(urlVariation)) {
+      continue;
+    }
+    attemptedUrls.add(urlVariation);
+
     try {
       const response = await fetch(urlVariation, fetchOptions);
+      const finalUrl = response.url || urlVariation;
 
       if (response.ok) {
         const content = await response.text();
@@ -592,7 +640,6 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           // NOTE: response.url can be empty in proxied/intercepted environments
           // (e.g., Grafana Cloud). Fall back to the requested URL which was
           // already validated before entering this function.
-          const finalUrl = response.url || urlVariation;
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
@@ -606,8 +653,21 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
           // Detect if this is native JSON content
           const isNativeJson = isJsonContentUrl(finalUrl) || isJsonContentUrl(urlVariation);
+
+          // Some servers return JSON null to indicate no JSON guide exists.
+          // Continue to HTML fallback instead of returning "null" as content.
+          if (isNativeJson && content.trim() === 'null') {
+            enqueueRedirectedHtmlFallback(finalUrl, pendingUrls, attemptedUrls, index);
+            continue;
+          }
+
           return { html: content, finalUrl, isNativeJson };
         }
+      }
+
+      // If content.json redirected, try unstyled.html at redirect target first.
+      if (isJsonContentUrl(urlVariation) && finalUrl !== urlVariation) {
+        enqueueRedirectedHtmlFallback(finalUrl, pendingUrls, attemptedUrls, index);
       }
 
       // 404 means this variation doesn't exist - try next one

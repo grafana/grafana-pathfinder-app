@@ -230,6 +230,80 @@ describe('null content handling for learning journeys', () => {
   });
 });
 
+describe('interactive learning redirect fallback behavior', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('should use redirected unstyled.html when redirected content.json is missing', async () => {
+    const interactiveBaseUrl = 'https://interactive-learning.grafana.net/test-guide/';
+    const interactiveJsonUrl = 'https://interactive-learning.grafana.net/test-guide/content.json';
+    const interactiveHtmlUrl = 'https://interactive-learning.grafana.net/test-guide/unstyled.html';
+    const redirectedJsonUrl = 'https://grafana.com/docs/learning-paths/test-guide/content.json';
+    const redirectedHtmlUrl = 'https://grafana.com/docs/learning-paths/test-guide/unstyled.html';
+
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === interactiveJsonUrl) {
+        // Simulate redirect to grafana.com where content.json is missing.
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          url: redirectedJsonUrl,
+          headers: new Headers(),
+          text: async () => '',
+        });
+      }
+
+      if (url === redirectedHtmlUrl) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          url: redirectedHtmlUrl,
+          headers: new Headers(),
+          text: async () =>
+            '<html><head><title>Redirected guide</title></head><body><h1>Redirected guide</h1><p>Loaded from fallback</p></body></html>',
+        });
+      }
+
+      // This should not be reached if redirect-aware fallback works.
+      if (url === interactiveHtmlUrl) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          url,
+          headers: new Headers(),
+          text: async () => '',
+        });
+      }
+
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        url,
+        headers: new Headers(),
+        text: async () => '',
+      });
+    });
+
+    const result = await fetchContent(interactiveBaseUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(result.error).toBeUndefined();
+
+    const requestedUrls = (global.fetch as jest.Mock).mock.calls.map((call) => call[0]);
+    expect(requestedUrls).toContain(redirectedHtmlUrl);
+    expect(requestedUrls).not.toContain(interactiveHtmlUrl);
+  });
+});
+
 describe('fetchContent security validation', () => {
   describe('URL validation at entry point', () => {
     it('should allow grafana.com docs URLs', async () => {
