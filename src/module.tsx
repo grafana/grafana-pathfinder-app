@@ -601,8 +601,8 @@ const findDocPage = function (param: string): DocPage | null {
   const isPathOnly =
     param.startsWith('/docs/') ||
     param.startsWith('/tutorials/') ||
-    param.includes('/docs/learning-journeys/') ||
-    param.includes('/docs/learning-paths/');
+    param.startsWith('/docs/learning-journeys/') ||
+    param.startsWith('/docs/learning-paths/');
   const isFullGrafanaUrl = param.startsWith('https://grafana.com/') || param.startsWith('https://docs.grafana.com/');
 
   if (isPathOnly || isFullGrafanaUrl) {

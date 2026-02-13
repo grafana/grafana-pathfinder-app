@@ -114,8 +114,8 @@ export function isAllowedContentUrl(urlString: string): boolean {
       url.pathname.startsWith('/docs/') ||
       url.pathname === '/tutorials' ||
       url.pathname.startsWith('/tutorials/') ||
-      url.pathname.includes('/docs/learning-journeys/') ||
-      url.pathname.includes('/docs/learning-paths/')
+      url.pathname.startsWith('/docs/learning-journeys/') ||
+      url.pathname.startsWith('/docs/learning-paths/')
     );
   }
 
@@ -148,12 +148,13 @@ export function isGrafanaDocsUrl(urlString: string): boolean {
   }
 
   // Check pathname contains allowed documentation paths
-  // Learning journeys/paths are at /docs/learning-journeys/ (legacy) or /docs/learning-paths/ so we need includes(), not startsWith()
+  // Learning journeys/paths live under /docs/ so startsWith('/docs/') already covers them,
+  // but explicit checks are kept for documentation of intent
   return (
     url.pathname.startsWith('/docs/') ||
     url.pathname.startsWith('/tutorials/') ||
-    url.pathname.includes('/docs/learning-journeys/') ||
-    url.pathname.includes('/docs/learning-paths/')
+    url.pathname.startsWith('/docs/learning-journeys/') ||
+    url.pathname.startsWith('/docs/learning-paths/')
   );
 }
 
@@ -242,8 +243,8 @@ export function isGrafanaDomain(urlString: string): boolean {
     return false;
   }
 
-  // Only allow http and https protocols
-  if (!allowsHttpOrHttps(url)) {
+  // Only allow https protocol (prevents MITM downgrade attacks)
+  if (!requiresHttps(url)) {
     return false;
   }
 
@@ -326,6 +327,17 @@ export function isGitHubRawUrl(urlString: string): boolean {
 const DEFAULT_REDIRECT = '/';
 
 /**
+ * Route prefixes that must never be used as redirect targets.
+ * Prevents social-engineering deep links that steer users to sensitive pages
+ * (e.g., a "helpful tutorial" link that actually redirects to /logout).
+ *
+ * Matching: a path is denied if it equals the entry exactly OR starts with
+ * the entry followed by `/`. This avoids false positives on unrelated routes
+ * (e.g., `/admin` blocks `/admin/users` but NOT `/administration`).
+ */
+const DENIED_REDIRECT_PATHS = ['/logout', '/admin', '/api', '/profile/password'];
+
+/**
  * Validates and normalizes a redirect path from the `page` query parameter.
  *
  * SECURITY: This function prevents open redirect attacks by:
@@ -334,6 +346,7 @@ const DEFAULT_REDIRECT = '/';
  * - Rejecting cross-origin redirects
  * - Stripping query strings and fragments (only pathname is trusted)
  * - Rejecting path traversal (`../`) even after normalization (defense-in-depth)
+ * - Denying sensitive route prefixes (e.g., /logout, /admin) to block social-engineering redirects
  *
  * Fail-safe: any suspicious input returns `/`, never throws.
  *
@@ -364,6 +377,11 @@ export function validateRedirectPath(input: string): string {
 
     // Defense-in-depth: reject path traversal after normalization
     if (normalized.includes('..')) {
+      return DEFAULT_REDIRECT;
+    }
+
+    // SECURITY: Reject sensitive route prefixes to prevent social-engineering redirects
+    if (DENIED_REDIRECT_PATHS.some((denied) => normalized === denied || normalized.startsWith(denied + '/'))) {
       return DEFAULT_REDIRECT;
     }
 

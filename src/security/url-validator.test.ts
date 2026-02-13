@@ -49,6 +49,11 @@ describe('Grafana URL validators', () => {
       expect(isGrafanaDomain('https://grafana.com.evil.com')).toBe(false);
     });
 
+    it('should reject http:// URLs (require HTTPS)', () => {
+      expect(isGrafanaDomain('http://grafana.com')).toBe(false);
+      expect(isGrafanaDomain('http://grafana.com/docs/grafana/latest/')).toBe(false);
+    });
+
     it('should return false for invalid URLs', () => {
       expect(isGrafanaDomain('not a url')).toBe(false);
       expect(isGrafanaDomain('')).toBe(false);
@@ -71,6 +76,10 @@ describe('Grafana URL validators', () => {
     it('should return false for domain hijacking attempts', () => {
       expect(isGrafanaDocsUrl('https://grafana.com.evil.com/docs/')).toBe(false);
       expect(isGrafanaDocsUrl('https://a-grafana.com/docs/')).toBe(false);
+    });
+
+    it('should reject paths where /docs/learning-journeys/ is not at the start', () => {
+      expect(isGrafanaDocsUrl('https://grafana.com/blog/docs/learning-journeys/foo')).toBe(false);
     });
 
     it('should return false for invalid URLs', () => {
@@ -352,12 +361,10 @@ describe('validateRedirectPath', () => {
       expect(validateRedirectPath('')).toBe('/');
     });
 
-    it('should handle backslash trick', () => {
-      // URL API normalizes backslash to forward slash, resulting in a local path
-      const result = validateRedirectPath('/\\evil.com');
-      // Should be a valid local path (no traversal, same origin)
-      expect(result).not.toContain('..');
-      expect(result.startsWith('/')).toBe(true);
+    it('should reject backslash trick (URL API resolves to different origin)', () => {
+      // URL API treats \ as / in special schemes, so /\evil.com resolves to http://evil.com/
+      // The origin check catches this and returns /
+      expect(validateRedirectPath('/\\evil.com')).toBe('/');
     });
 
     it('should return / for null/undefined inputs', () => {
@@ -368,6 +375,19 @@ describe('validateRedirectPath', () => {
     it('should reject paths not starting with /', () => {
       expect(validateRedirectPath('evil.com/path')).toBe('/');
       expect(validateRedirectPath('relative/path')).toBe('/');
+    });
+
+    it('should reject sensitive route prefixes', () => {
+      expect(validateRedirectPath('/logout')).toBe('/');
+      expect(validateRedirectPath('/admin')).toBe('/');
+      expect(validateRedirectPath('/admin/users')).toBe('/');
+      expect(validateRedirectPath('/api/datasources')).toBe('/');
+      expect(validateRedirectPath('/profile/password')).toBe('/');
+    });
+
+    it('should allow non-sensitive routes that share a prefix', () => {
+      expect(validateRedirectPath('/administration')).toBe('/administration');
+      expect(validateRedirectPath('/profiles')).toBe('/profiles');
     });
   });
 });
