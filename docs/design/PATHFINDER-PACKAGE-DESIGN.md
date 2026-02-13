@@ -10,6 +10,7 @@
 - [Phase 1 schema](#phase-1-schema)
 - [Metadata](#metadata)
 - [Dependencies](#dependencies)
+- [Learning journeys](#learning-journeys)
 - [Targeting](#targeting)
 - [Backwards compatibility](#backwards-compatibility)
 - [CLI extensions](#cli-extensions)
@@ -41,7 +42,7 @@ A SCORM course decomposition produces multiple interrelated guides with rich met
 
 ### Learning journey composition
 
-Docs partners already express inter-guide dependencies in YAML (see [alignment with external formats](#alignment-with-external-formats)). The website team is planning to display guides on the web. Both need guides to be self-describing — carrying their own relationship metadata rather than relying on external manifests.
+Docs partners already express inter-guide dependencies in YAML (see [alignment with external formats](#alignment-with-external-formats)). The website team is planning to display guides on the web. Both need guides to be self-describing — carrying their own relationship metadata rather than relying on external manifests. The [learning journeys](#learning-journeys) section defines the metapackage model that formalizes multi-guide composition.
 
 ### E2E Layer 4 routing
 
@@ -503,6 +504,230 @@ Both coexist. `paths.json` references guides by FQI. The dependency graph is a p
 
 ---
 
+## Learning journeys
+
+A learning journey is an ordered sequence of guides that build toward a larger outcome. Rather than being a single lesson (a guide package), a journey is a series of packages that decompose a complex topic into manageable steps — "Set up infrastructure alerting," "Configure a Linux server integration," "Visualize trace data."
+
+Journeys are **first-class citizens** in the package system and the dependency graph. A downstream guide can declare `"depends": ["infrastructure-alerting"]` and mean "the user has completed the entire alerting journey." Journeys carry their own metadata, targeting, and `provides` capabilities — they are addressable, recommendable, and completable as a unit.
+
+### The metapackage model
+
+Journeys follow the Debian **metapackage** pattern: a package whose primary purpose is to compose other packages into a coherent experience. In Debian, `ubuntu-desktop` is a metapackage that depends on `nautilus`, `gedit`, `gnome-terminal`, and hundreds of other packages. Installing `ubuntu-desktop` gives you a complete desktop environment. The metapackage is the identity handle for the collection; the components are real, independently maintained packages.
+
+We adopt the same principle. A journey is a metapackage. Its steps are real packages — not a special "sub-unit" type, not scoped fragments, not second-class entities. The package system has **one kind of thing**: a package. Some packages are metapackages that compose other packages into a coherent learning experience.
+
+This design decision — **package uniformity** — has structural consequences:
+
+- **One identity model.** Steps have FQIs in the existing `repository/id` format, just like any other package. No fragment notation, no scoped identity, no new addressing scheme.
+- **One set of tools.** The CLI validates steps with the same validation pipeline as standalone guides. The graph command shows steps as real nodes. The index builder can index them. Every tool that works for packages works for steps.
+- **One dependency model.** Steps can (but rarely need to) use `depends`, `recommends`, `provides`, and the full dependency vocabulary. The metapackage uses `steps` for ordering but the dependency graph handles the rest.
+- **Future flexibility.** If a step later becomes independently valuable — or is shared across multiple journeys — the model already supports it without redesign.
+
+### What metapackages buy us
+
+The metapackage model brings specific advantages from Debian's 30 years of package management:
+
+**Collective identity.** A journey is a single name that represents a composed experience. `"depends": ["infrastructure-alerting"]` expresses a relationship with the entire alerting journey. The dependency graph sees one node; the internal decomposition is the journey's concern.
+
+**Composition evolution.** A journey can add, remove, or reorder steps between versions without changing its external identity. The `steps` array in the journey manifest absorbs the evolution. Downstream dependents are unaffected.
+
+**Flavors and reuse.** Different metapackages can compose different subsets of a shared step pool. This is already visible in the content corpus:
+
+| Journey | Steps |
+|---|---|
+| `linux-server-integration` | select-platform, install-alloy, configure-alloy, install-dashboards-alerts, restart-test-connection |
+| `macos-integration` | select-architecture, install-alloy, configure-alloy, install-dashboards-alerts, test-connection |
+| `mysql-integration` | select-platform, install-alloy, configure-alloy, install-dashboards-alerts, test-connection |
+
+Three journeys share `install-alloy`, `configure-alloy`, and `install-dashboards-alerts`. If those steps are real packages, they can be authored once and composed into multiple journeys — exactly as Debian metapackages compose shared components into different desktop experiences.
+
+Step reuse is a structural capability enabled by the model, not a requirement imposed by it. Many journeys will have steps unique to that journey. The model accommodates both patterns without special-casing either.
+
+### What metapackages don't give us
+
+Two aspects of Debian metapackages do not apply:
+
+**Ordering.** In Debian, `Depends: A, B, C` has no ordering semantics — `apt` can install them in any order. Journeys need an explicit linear sequence. The `steps` field (described below) is **new machinery** that does not come from the Debian model. It is layered on top of the metapackage concept.
+
+**Removal semantics.** In Debian, removing a metapackage allows `apt autoremove` to garbage-collect orphaned dependencies. There is no analogue in Pathfinder — you do not "uncomplete" a journey or "uninstall" a step.
+
+### The `type` discriminator
+
+The `manifest.json` `type` field distinguishes guides from journeys. This field was anticipated in [future-proofing](#the-type-discriminator-future) for SCORM; journeys are the first concrete use.
+
+| Type | Meaning | Has `steps`? | Has content blocks? |
+|---|---|---|---|
+| `"guide"` (default) | Single standalone lesson | No | Yes |
+| `"journey"` | Metapackage composing an ordered sequence of guides | Yes | Optional (cover page) |
+| `"course"` | SCORM-imported course (future) | Future | Future |
+| `"module"` | Grouping of related guides without strict ordering (future) | Future | Future |
+
+When `type` is absent, the default is `"guide"`. All existing packages continue to work without changes.
+
+The `"journey"` type establishes the composition pattern that `"course"` and `"module"` will refine for SCORM. See [relationship to SCORM](#relationship-to-scorm) below.
+
+### The `steps` field
+
+Journey manifests declare step ordering via a `steps` array:
+
+```typescript
+/** Ordered array of step directory names within the journey. Advisory linear sequence. */
+steps?: string[];
+```
+
+Each entry in `steps` is a directory name that must exist as a child directory of the journey directory. The array defines the **recommended reading order** — the linear path the UI presents to users.
+
+The `steps` field is valid only when `type` is `"journey"`. The CLI validates that:
+
+- Every entry in `steps` corresponds to a child directory containing at least `content.json`
+- No duplicate entries exist in the array
+- The `steps` array is non-empty when `type` is `"journey"`
+
+### Journey directory structure
+
+A journey directory contains its own `manifest.json` (with `type: "journey"`) and nested step package directories. An optional `content.json` at the journey level serves as a cover page or introduction.
+
+```
+interactive-tutorials/
+├── infrastructure-alerting/                ← journey metapackage
+│   ├── manifest.json                       ← type: "journey", steps: [...]
+│   ├── content.json                        ← optional cover/introduction page
+│   ├── find-data-to-alert/                 ← step package (real package, nested)
+│   │   └── content.json
+│   ├── build-your-query/
+│   │   └── content.json
+│   ├── set-conditions/
+│   │   └── content.json
+│   ├── evaluation-and-labels/
+│   │   └── content.json
+│   ├── notification-settings/
+│   │   └── content.json
+│   ├── save-and-activate/
+│   │   └── content.json
+│   └── monitor-your-rule/
+│       └── content.json
+├── welcome-to-grafana/                     ← standalone guide (unchanged)
+│   ├── content.json
+│   └── manifest.json
+```
+
+This introduces **nested package directories** — a package directory that contains child package directories. The CLI must understand that a directory can contain both its own `manifest.json` and child package directories. This is a structural extension of the [package structure](#package-structure) convention.
+
+Step packages follow the same conventions as any package: they contain at minimum `content.json` and may optionally include `manifest.json` for step-specific metadata (e.g., `testEnvironment` for E2E routing of individual steps). Most steps need only `content.json`.
+
+### Step ordering and completion semantics
+
+**Ordering is advisory.** The `steps` array defines the suggested linear path. The UI presents steps in this order and encourages sequential progression. However, users are always permitted to jump into any step directly. There is no hard gate between steps — the ordering is a recommendation, not an enforcement mechanism.
+
+**Completion is set-based.** "Completing the journey" means completing all steps, regardless of the order in which they were completed. A user who completes steps 1, 3, 5, 2, 4, 6, 7 has completed the journey identically to one who followed the linear path. Journey completion triggers the journey's `provides` capabilities and satisfies downstream `depends` references.
+
+**Partial progress is tracked.** A user who has completed 5 of 7 steps is 71% through the journey. The UI can display progress based on the set of completed steps relative to the total step count.
+
+### Journey-level metadata and dependencies
+
+Journey-level `manifest.json` carries metadata and dependencies for the journey as a whole. Steps inherit the journey's context — they do not independently declare targeting or participate in the dependency graph unless there is a specific reason to do so.
+
+| Concern | Lives on | Rationale |
+|---|---|---|
+| `description`, `category`, `author` | Journey manifest | Describes the journey, not individual steps |
+| `targeting` | Journey manifest | The recommender surfaces the journey, not individual steps |
+| `depends`, `recommends`, `suggests` | Journey manifest | The journey has prerequisites, not individual steps |
+| `provides` | Journey manifest | Completing the journey provides capabilities |
+| `testEnvironment` | Step manifest (optional) | Individual steps may need different test environments |
+| `content.json` | Each step | Steps own their content; the block editor works per-step |
+
+### Example: complete journey package
+
+**`infrastructure-alerting/manifest.json`** — journey metapackage:
+
+```json
+{
+  "schemaVersion": "1.1.0",
+  "id": "infrastructure-alerting",
+  "type": "journey",
+  "repository": "interactive-tutorials",
+  "description": "Create your first infrastructure alert rule in Grafana Cloud, from finding data to monitoring your rule.",
+  "category": "take-action",
+  "author": { "team": "interactive-learning" },
+  "steps": [
+    "find-data-to-alert",
+    "build-your-query",
+    "set-conditions",
+    "evaluation-and-labels",
+    "notification-settings",
+    "save-and-activate",
+    "monitor-your-rule"
+  ],
+  "depends": ["welcome-to-grafana"],
+  "provides": ["infrastructure-alerting-configured"],
+  "recommends": ["prometheus-lj"],
+  "targeting": {
+    "match": { "urlPrefixIn": ["/alerting"] }
+  }
+}
+```
+
+**`infrastructure-alerting/content.json`** — optional cover page:
+
+```json
+{
+  "schemaVersion": "1.1.0",
+  "id": "infrastructure-alerting",
+  "title": "Infrastructure alerting",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Infrastructure alerting\n\nLearn to create alert rules that monitor your infrastructure metrics and logs. This journey walks you through finding data, building queries, setting conditions, and activating your first alert rule."
+    }
+  ]
+}
+```
+
+**`infrastructure-alerting/find-data-to-alert/content.json`** — step content:
+
+```json
+{
+  "schemaVersion": "1.1.0",
+  "id": "infrastructure-alerting-find-data-to-alert",
+  "title": "Find data to alert on",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Before creating an alert rule, you need to know the exact metric or log query you want to monitor..."
+    }
+  ]
+}
+```
+
+### Relationship to `paths.json`
+
+Journey metapackages and curated learning paths (`paths.json`) coexist:
+
+- **`paths.json`** defines editorially curated paths with badges, estimated time, icons, and platform targeting. It is a presentation product.
+- **Journey metapackages** define structurally composed experiences with dependency semantics. They are a content architecture product.
+
+A `paths.json` entry can reference a journey as a single unit, or a journey can subsume the role of a `paths.json` entry entirely. The reconciliation between these two mechanisms is addressed in [Phase 3](#phase-3-learning-journey-integration-2-3-weeks) of the roadmap.
+
+### Relationship to SCORM
+
+The journey metapackage model provides the concrete bridge to SCORM's content organization model:
+
+| SCORM concept | Package model equivalent |
+|---|---|
+| Organization (tree of Items) | Journey metapackage with `steps` |
+| Item (with sequencing rules) | Step ordering via `steps` array |
+| SCO (shareable content object) | Step package (guide) |
+| Forward-only sequencing | Advisory `steps` ordering |
+| Prerequisites | `manifest.json` → `depends` |
+
+SCORM's `Organization` element is structurally equivalent to a journey metapackage: both compose content objects into an ordered sequence with metadata. The SCORM import pipeline (Phase 5-6) does not need to invent a composition model — it writes into the one established by journeys. The future `type: "course"` becomes a refinement of the journey concept (potentially with stricter sequencing semantics), not a separate system.
+
+### Journeys do not nest
+
+A journey's steps are guides (`type: "guide"` or absent). A journey cannot contain another journey as a step. This keeps the model flat and avoids recursive nesting complexity. If hierarchical content organization is needed (course → module → lesson), the SCORM `type` extensions (`"course"`, `"module"`) will address it in a future phase. For now, the composition model is one level deep: journeys contain guides.
+
+---
+
 ## Targeting
 
 Targeting rules are declared in `manifest.json`.
@@ -796,6 +1021,8 @@ The `links.to` relationships are soft recommendations — "completing prom-data-
 
 The `category` field aligns directly. The documented convention uses the same taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`.
 
+The docs team's `*-lj` directory structure — a top-level directory containing ordered sub-directories of guides — maps directly to the [journey metapackage model](#learning-journeys). The top-level directory becomes the journey package with a `manifest.json` declaring `type: "journey"` and a `steps` array. Each sub-directory is a step package.
+
 ### Dublin Core / IEEE LOM
 
 Phase 1 metadata field names are chosen to align with established standards where applicable:
@@ -814,17 +1041,18 @@ Phase 1 metadata field names are chosen to align with established standards wher
 
 The package format is designed to be the **output target** for a future SCORM import pipeline. The two-file model aligns naturally with SCORM's separation of `imsmanifest.xml` (metadata) from content files:
 
-| SCORM concept              | Package equivalent                    |
-| -------------------------- | ------------------------------------- |
-| Package (ZIP)              | Package directory                     |
-| `imsmanifest.xml` metadata | `manifest.json`                       |
-| Organization tree          | Multiple packages linked by `depends` |
-| SCO (interactive content)  | `content.json` with content blocks    |
-| Asset (static content)     | `assets/` directory within package    |
-| Prerequisites              | `manifest.json` → `depends`           |
-| Sequencing (forward-only)  | Linear `depends` chain                |
+| SCORM concept              | Package equivalent                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Package (ZIP)              | Package directory                                                                                             |
+| `imsmanifest.xml` metadata | `manifest.json`                                                                                               |
+| Organization tree          | [Journey metapackage](#learning-journeys) with `steps` array                                                  |
+| Item (with sequencing)     | Step ordering via `steps` array                                                                               |
+| SCO (interactive content)  | Step package — `content.json` with content blocks                                                             |
+| Asset (static content)     | `assets/` directory within package                                                                            |
+| Prerequisites              | `manifest.json` → `depends`                                                                                   |
+| Sequencing (forward-only)  | Advisory `steps` ordering (see [step ordering and completion semantics](#step-ordering-and-completion-semantics)) |
 
-The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `manifest.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure.
+The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `manifest.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure. For multi-SCO courses, the importer produces a journey metapackage with step packages — the same structure used for natively authored learning journeys.
 
 SCORM-specific fields (`source`, `rights`, `educationalContext`) are deferred to the SCORM implementation phase but will be backward-compatible flat additions to `manifest.json`.
 
@@ -857,12 +1085,14 @@ This pattern generalizes to any import source (xAPI, QTI, custom formats). The `
 
 ### The `type` discriminator (future)
 
-Adding `type: "guide" | "course" | "module"` enables:
+The `type` field is introduced with `"guide"` and `"journey"` in [learning journeys](#learning-journeys). Journeys are the first use of this discriminator, establishing the composition pattern.
 
-- SCORM course decomposition (course → modules → guides)
-- Different rendering (course renders as table-of-contents, module as section overview)
-- Different validation rules per type
-- Default: `"guide"` for all existing content
+Future `type` values for SCORM extend the same pattern:
+
+- `"course"`: SCORM course decomposition — a refinement of the journey concept with potentially stricter sequencing semantics (course → modules → guides)
+- `"module"`: Grouping of related guides without strict ordering (section overview rendering)
+
+Both future types will build on the metapackage and `steps` infrastructure established by journeys, not introduce parallel composition machinery. Default remains `"guide"` for all existing content.
 
 ### Test environment metadata (future)
 
@@ -886,8 +1116,8 @@ A flat `testEnvironment` field will be added to `manifest.json` when Layer 4 E2E
 | Version | Scope                                                                                           |
 | ------- | ----------------------------------------------------------------------------------------------- |
 | `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`               |
-| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory        |
-| `1.2.0` | Future: adds `type`, `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment` |
+| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory, `type` and `steps` for journeys |
+| `1.2.0` | Future: adds `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment`; extends `type` with `"course"` and `"module"` |
 | `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                                 |
 
 Any consumer can inspect `schemaVersion` and decide which fields to expect.
@@ -1012,17 +1242,22 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 ### Phase 3: Learning journey integration (2-3 weeks)
 
-**Goal:** Learning paths can use package dependencies alongside curated `paths.json`.
+**Goal:** Journey metapackages are a working package type. The CLI validates journeys, the dependency graph treats them as first-class nodes, and learning paths can use package dependencies alongside curated `paths.json`. See [learning journeys](#learning-journeys) for the full design.
 
 **Deliverables:**
 
+- [ ] Add `type` field to `ManifestJsonSchema` (`"guide"` default, `"journey"`)
+- [ ] Add `steps` field to `ManifestJsonSchema` (ordered `string[]`, valid when `type: "journey"`)
+- [ ] CLI: validate journey directories — nested step packages, `steps` array referencing child directories, cover page `content.json`
+- [ ] CLI: dependency graph treats journeys as single nodes; `--expand-journeys` flag shows internal step structure
+- [ ] Pilot: convert 1-2 existing `*-lj` directories to journey metapackages with `manifest.json`
+- [ ] Validate step reuse: confirm that a step package can appear in multiple journey `steps` arrays
 - [ ] Utility to compute learning paths from dependency DAG
 - [ ] Reconciliation: curated `paths.json` takes priority; dependency-derived paths fill gaps
 - [ ] UI: learning path cards use package metadata (description, category) when available
 - [ ] Align with docs partners' YAML format for learning journey relationships
-- [ ] Validate that `recommends`/`suggests` from packages align with docs team's `links.to` semantics
 
-**Why fourth:** First user-visible payoff of the package model. Content authors and docs partners see dependency declarations reflected in the learning experience.
+**Why fourth:** First user-visible payoff of the package model. Introduces the metapackage composition pattern that SCORM `"course"` and `"module"` types will later build on. Content authors and docs partners see dependency declarations reflected in the learning experience.
 
 ### Phase 4: Test environment metadata (2-3 weeks)
 
@@ -1039,17 +1274,17 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 ### Phase 5: SCORM foundation (3-4 weeks)
 
-**Goal:** Extend the package format for SCORM import needs. Schema extensions only — not the importer itself.
+**Goal:** Extend the package format for SCORM import needs. Schema extensions only — not the importer itself. Builds on the `type` discriminator and metapackage composition model established by journeys in Phase 3.
 
 **Deliverables:**
 
-- [ ] Add `type` field to `ManifestJsonSchema` (`"guide"` | `"course"` | `"module"`)
+- [ ] Extend `type` field with `"course"` and `"module"` values (journey's `"guide"` and `"journey"` already in place from Phase 3)
 - [ ] Add flat `source` field to `manifest.json` for provenance tracking
 - [ ] Add flat `keywords`, `rights`, `educationalContext`, `difficulty`, `estimatedDuration` fields to `manifest.json`
 - [ ] Course/module rendering in web display mode (table-of-contents page)
 - [ ] Design SCORM import pipeline CLI interface
 
-**Why sixth:** Extends the package format so it can receive SCORM-imported content. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
+**Why sixth:** Extends the package format so it can receive SCORM-imported content. The journey metapackage model from Phase 3 provides the composition infrastructure; SCORM types refine it with import-specific semantics. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
 
 ### Phase 6+: SCORM import pipeline
 
@@ -1062,9 +1297,9 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | 0: Schema            | 1-2 weeks | Everything — `content.json` + `manifest.json` model |
 | 1: CLI               | 2-3 weeks | CI validation, cross-file checks, dependency graph  |
 | 2: Pilot             | 1-2 weeks | Proof-of-concept, runtime validation                |
-| 3: Learning journeys | 2-3 weeks | User-visible value, docs partner alignment          |
-| 4: Test environment  | 2-3 weeks | Layer 4 E2E routing                                 |
-| 5: SCORM foundation  | 3-4 weeks | SCORM import readiness, `type` discriminator        |
+| 3: Learning journeys | 2-3 weeks | Metapackage model, `type`/`steps`, docs partner alignment |
+| 4: Test environment  | 2-3 weeks | Layer 4 E2E routing                                      |
+| 5: SCORM foundation  | 3-4 weeks | SCORM import readiness, extends `type` with course/module |
 | 6+: SCORM import     | 15+ weeks | Full SCORM conversion pipeline                      |
 
 Total for Phases 0-4 (core package model): **8-12 weeks**. Delivers a fully functional package system serving learning journeys, E2E testing, and content lifecycle management — before any SCORM work begins.
@@ -1097,6 +1332,11 @@ Decisions made during the design discussion, with rationale.
 | D18 | Default `language` to `"en"`                                      | All existing content is English. Explicit default avoids mandatory boilerplate while preserving the field for future i18n and SCORM import.                                                                                                                                                                                                                                                                                                                                                                                              |
 | D19 | Defer `estimatedDuration` and `difficulty` to Phase 2+            | No compelling MVP consumer for either field. No UI component displays them; no recommender logic consumes them. Field names are vetted against IEEE LOM now to avoid future renames. Will be needed if SCORM import or recommendation ranking arrives.                                                                                                                                                                                                                                                                                   |
 | D20 | Metadata file named `manifest.json`, not `package.json`           | Avoids collision with Node.js `package.json`, which would cause friction with npm, IDEs, GitHub dependency graphs, and toolchain root detection across 100-200+ guide directories. `manifest.json` is semantically accurate (the file is a manifest of identity, metadata, dependencies, and targeting), parallels SCORM's `imsmanifest.xml`, is familiar to web developers (PWA/extension manifests), and survives the Phase 5 `type` expansion (a manifest for a course is still a manifest). No major toolchain claims this filename. |
+| D21 | Journeys use the Debian metapackage model; steps are real packages | Package uniformity — one kind of thing, one identity model, one tooling set. Avoids inventing a "sub-unit" concept with scoped identity, fragment notation, or different validation rules. Follows the Debian metapackage precedent for composing coherent experiences from discrete components. Enables step reuse across journeys (the "flavors" advantage visible in the integration journeys that share `install-alloy`, `configure-alloy`, and `install-dashboards-alerts`). |
+| D22 | `type` discriminator pulled forward with `"guide"` and `"journey"` | Journeys need the type discriminator now. Originally deferred to Phase 5 for SCORM. The journey `type` establishes the composition pattern that SCORM's `"course"` and `"module"` types will refine, not a separate system. |
+| D23 | `steps` is a new ordered array field, not a Debian dependency construct | Debian `Depends` has no ordering semantics — `A, B, C` is conjunction, not sequence. Advisory linear ordering requires new machinery layered on top of the Debian model. The `steps` array is the single source of truth for step ordering; not dependency chains, not filesystem ordering, not a separate paths file. |
+| D24 | Step ordering is advisory; journey completion is set-based | Users can jump into any step directly. Completion = all steps done, regardless of order. The `steps` array is the suggested reading path, not an enforcement mechanism. This matches the design constraint that journeys should encourage but not require sequential progression. |
+| D25 | Nested package directories are permitted | Journey directories contain step package directories. The CLI must handle directory-within-directory package structure. This enables both physical containment (steps live under their journey) and logical flatness (steps are real packages with FQIs). |
 
 ---
 
