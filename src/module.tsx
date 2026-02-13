@@ -215,25 +215,35 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       attemptAutoOpen(200);
     }
 
+    // Dispatch auto-launch-tutorial so docs-panel opens the guide.
+    // Wrapped in a helper so it can fire from the mount listener OR immediately.
+    const dispatchAutoLaunch = () => {
+      setTimeout(() => {
+        const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+          detail: {
+            url: docsPage.url,
+            title: docsPage.title,
+            type: docsPage.type,
+          },
+        });
+        document.dispatchEvent(autoLaunchEvent);
+      }, 500);
+    };
+
     // Launch the guide once the sidebar is mounted on the (possibly new) page.
     // Window event listeners survive client-side route changes, so this works
     // regardless of whether a redirect occurred above.
-    window.addEventListener(
-      'pathfinder-sidebar-mounted',
-      () => {
-        setTimeout(() => {
-          const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-            detail: {
-              url: docsPage.url,
-              title: docsPage.title,
-              type: docsPage.type,
-            },
-          });
-          document.dispatchEvent(autoLaunchEvent);
-        }, 500);
-      },
-      { once: true }
-    );
+    window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
+
+    // Race-condition guard: if the sidebar was already docked from a previous
+    // session, its component mounts before init() runs, so the mount event
+    // fires before the listener above is registered.  Detect this by checking
+    // the global sidebar state and dispatch immediately.
+    if (sidebarState.getIsSidebarMounted()) {
+      // Remove the listener we just added — we don't need it.
+      window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
+      dispatchAutoLaunch();
+    }
   }
 
   // Check if auto-open is enabled
