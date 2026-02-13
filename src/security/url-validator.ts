@@ -319,6 +319,60 @@ export function isGitHubRawUrl(urlString: string): boolean {
   return ALLOWED_GITHUB_CONTENT_HOSTNAMES.includes(url.hostname);
 }
 
+/**
+ * Default redirect path used when validation fails or input is missing.
+ * Always redirects to Grafana home page as a safe fallback.
+ */
+const DEFAULT_REDIRECT = '/';
+
+/**
+ * Validates and normalizes a redirect path from the `page` query parameter.
+ *
+ * SECURITY: This function prevents open redirect attacks by:
+ * - Requiring paths start with exactly one `/` (rejects protocol-relative `//evil.com`)
+ * - Using the URL API to normalize encoded characters (F4)
+ * - Rejecting cross-origin redirects
+ * - Stripping query strings and fragments (only pathname is trusted)
+ * - Rejecting path traversal (`../`) even after normalization (defense-in-depth)
+ *
+ * Fail-safe: any suspicious input returns `/`, never throws.
+ *
+ * @param input - Raw string from the `page` query parameter
+ * @returns A safe, normalized pathname (or `/` as default)
+ */
+export function validateRedirectPath(input: string): string {
+  if (!input || typeof input !== 'string') {
+    return DEFAULT_REDIRECT;
+  }
+
+  // Must start with exactly one forward slash (reject protocol-relative URLs)
+  if (!input.startsWith('/') || input.startsWith('//')) {
+    return DEFAULT_REDIRECT;
+  }
+
+  // SECURITY: Parse with URL API to normalize encoded characters (F4)
+  try {
+    const parsed = new URL(input, window.location.origin);
+
+    // Reject if resolved to different origin
+    if (parsed.origin !== window.location.origin) {
+      return DEFAULT_REDIRECT;
+    }
+
+    // Use ONLY pathname -- strips query and fragment automatically
+    const normalized = parsed.pathname;
+
+    // Defense-in-depth: reject path traversal after normalization
+    if (normalized.includes('..')) {
+      return DEFAULT_REDIRECT;
+    }
+
+    return normalized;
+  } catch {
+    return DEFAULT_REDIRECT;
+  }
+}
+
 export interface UrlValidation {
   isValid: boolean;
   errorMessage?: string;
