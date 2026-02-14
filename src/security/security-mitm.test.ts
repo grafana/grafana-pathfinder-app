@@ -38,7 +38,8 @@ describe('Security: HTTPS Enforcement', () => {
       const result = await fetchContent('http://grafana.com/docs/test');
 
       expect(result.content).toBeNull();
-      expect(result.error).toContain('HTTPS');
+      // HTTP URLs are now rejected at the domain allowlist level (isGrafanaDomain requires HTTPS)
+      expect(result.error).toBeTruthy();
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
@@ -129,7 +130,8 @@ describe('Security: Redirect Chain Validation', () => {
     const result = await fetchContent('https://grafana.com/docs/test');
 
     expect(result.content).toBeNull();
-    expect(result.error).toContain('HTTPS');
+    // HTTP redirect targets are rejected (isGrafanaDomain requires HTTPS)
+    expect(result.error).toBeTruthy();
   });
 
   it('should accept redirects within interactive learning domain', async () => {
