@@ -4,7 +4,7 @@ import { ROUTES } from '../constants';
 import { HomePanel } from '../components/Home';
 
 export const homePage = new SceneAppPage({
-  title: 'Home',
+  title: 'My Learning',
   url: prefixRoute(ROUTES.Home),
   // routePath must be relative (not prefixed) — Grafana 12's RRv6 routing strips the plugin base URL
   routePath: '/',

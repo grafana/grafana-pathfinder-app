@@ -308,7 +308,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       {/* Hero Section */}
       <div className={styles.heroSection}>
         <div className={styles.heroContent}>
-          <h1 className={styles.heroTitle}>{t('myLearning.title', 'My learning')}</h1>
           <p className={styles.heroSubtitle}>
             {t('myLearning.subtitle', 'Track your progress, earn badges, and master Grafana')}
           </p>
