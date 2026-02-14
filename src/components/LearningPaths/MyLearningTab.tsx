@@ -11,6 +11,7 @@ import { t } from '@grafana/i18n';
 
 import { useLearningPaths, BADGES } from '../../learning-paths';
 import { LearningPathCard } from './LearningPathCard';
+import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
@@ -67,11 +68,7 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
         {/* Badge Icon with glow effect */}
         <div className={iconWrapperClass}>
           {!isLegacy && <div className={styles.iconGlow} />}
-          {badge.emoji ? (
-            <span className={styles.badgeEmoji}>{badge.emoji}</span>
-          ) : (
-            <Icon name={badge.icon as any} size="xxxl" />
-          )}
+          <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xxxl" emojiClassName={styles.badgeEmoji} />
           {isEarned && !isLegacy && (
             <div className={styles.checkmark}>
               <Icon name="check" size="sm" />
@@ -352,7 +349,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           <h2 className={styles.sectionTitle}>{t('myLearning.learningPaths', 'Learning paths')}</h2>
           {sortedPaths.length > 4 && (
             <button className={styles.expandButton} onClick={() => setShowAllPaths(!showAllPaths)}>
-              {showAllPaths ? 'Show less' : `View all (${sortedPaths.length})`}
+              {showAllPaths
+                ? t('myLearning.showLess', 'Show less')
+                : t('myLearning.viewAll', 'View all ({{count}})', { count: sortedPaths.length })}
               <Icon name={showAllPaths ? 'angle-up' : 'angle-down'} size="sm" />
             </button>
           )}
@@ -407,7 +406,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           <Icon name="star" size="md" className={styles.sectionIcon} />
           <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
           <button className={styles.expandButton} onClick={() => setShowAllBadges(!showAllBadges)}>
-            {showAllBadges ? 'Show less' : `View all (${totalBadges})`}
+            {showAllBadges
+              ? t('myLearning.showLess', 'Show less')
+              : t('myLearning.viewAll', 'View all ({{count}})', { count: totalBadges })}
             <Icon name={showAllBadges ? 'angle-up' : 'angle-down'} size="sm" />
           </button>
         </div>
@@ -446,11 +447,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                 title={isLegacy ? 'This badge was earned in a previous version' : undefined}
               >
                 <div className={styles.badgeIconWrapper}>
-                  {badge.emoji ? (
-                    <span className={styles.badgeEmojiSmall}>{badge.emoji}</span>
-                  ) : (
-                    <Icon name={badge.icon as any} size="xl" />
-                  )}
+                  <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xl" emojiClassName={styles.badgeEmojiSmall} />
                   {isEarned && !isLegacy && (
                     <div className={styles.badgeCheckmark}>
                       <Icon name="check" size="xs" />

@@ -1666,7 +1666,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   )}
 
                   {/* Go home button - always visible at bottom of content */}
-                  <div style={{ padding: '16px', textAlign: 'center' }}>
+                  <div className={styles.contentFooterAction}>
                     <Button
                       variant="secondary"
                       icon="book-open"

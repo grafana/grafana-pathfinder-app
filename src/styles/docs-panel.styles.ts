@@ -620,6 +620,11 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
       flexShrink: 0,
     },
   }),
+  // Footer action centered at the bottom of guide content
+  contentFooterAction: css({
+    padding: theme.spacing(2),
+    textAlign: 'center' as const,
+  }),
   // Return to Editor Banner - shown for WYSIWYG preview tabs
   returnToEditorBanner: css({
     padding: theme.spacing(1, 2),

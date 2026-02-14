@@ -11,6 +11,7 @@ import { useStyles2, Icon } from '@grafana/ui';
 
 import type { BadgeUnlockedToastProps } from '../../types/learning-paths.types';
 import { getBadgeUnlockedToastStyles } from './learning-paths.styles';
+import { BadgeIcon } from './BadgeIcon';
 
 // Auto-dismiss duration in milliseconds
 const AUTO_DISMISS_DURATION = 5000;
@@ -102,11 +103,13 @@ export function BadgeUnlockedToast({ badge, onDismiss, queueCount = 0 }: BadgeUn
 
         {/* Badge icon */}
         <div className={styles.badgeContainer}>
-          {badge.emoji ? (
-            <span className={styles.badgeEmoji}>{badge.emoji}</span>
-          ) : (
-            <Icon name={badge.icon as any} size="xxxl" className={styles.badgeIcon} />
-          )}
+          <BadgeIcon
+            emoji={badge.emoji}
+            icon={badge.icon}
+            size="xxxl"
+            emojiClassName={styles.badgeEmoji}
+            iconClassName={styles.badgeIcon}
+          />
         </div>
 
         {/* Badge info */}
