@@ -42,6 +42,7 @@ A SCORM course decomposition produces multiple interrelated guides with rich met
 ### Learning journey composition
 
 Docs partners already express inter-guide dependencies in YAML (see [alignment with external formats](#alignment-with-external-formats)). The website team is planning to display guides on the web. Both need guides to be self-describing — carrying their own relationship metadata rather than relying on external manifests.
+As JSON is the lingua franca within Grafana itself, the YAML needs to migrate to JSONi, or we need to have tooling which makes the different all but invisible to authors and operators alike.
 
 ### E2E Layer 4 routing
 
@@ -50,24 +51,44 @@ The [testing strategy](./TESTING_STRATEGY.md) requires guide-level metadata (tie
 ### Content-as-Code lifecycle
 
 As the content corpus grows from ~45 guides toward 100-200+, decentralized ownership becomes essential. Each guide package should carry enough metadata to be self-describing for CI, recommendation, testing, and rendering — without depending on centralized manifests.
+At the same time, for the convenience of operators and software engineers, all data and metadata needs to be mergeable into one large datastructure. This maximizes optionality for 
 
 ---
 
 ## Design principles
 
-1. **Backwards compatible.** All new fields are optional. Existing guides with only `{ schemaVersion, id, title, blocks }` continue to pass validation without changes.
+0. **We steal from the best**: We will lean heavily on standards and Best Current Practices which have stood the test of time.
 
-2. **Self-describing.** A package carries enough metadata to be understood in isolation — its identity, its dependencies, its recommended targeting, and its authorship.
+1. **Clean versioning**: SemVer is the least bad option we have, with one extra allowance for private/security releases. APIs, schemas, guides, and all other components follow SemVer, but allow one more layer of version with x.y.z[.A]. Otherwise, SemVer is followed for everything.
 
-3. **Debian-inspired dependencies.** We adopt the proven dependency vocabulary from the [Debian package system](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends), which has refined these semantics over decades.
+2. **AS/400-inspired forward and backward compatiblity.** The change or introduction of mandatory data is a breaking change and requires a new major version. Code can always import and handle **at least** the last two major versions, and whatever major versions were valid in the most current release of the previous major version Grafana release. Upon the release of a new major version of Grafana, we will backport the tooling to upgrade packages. Where it makes sense, we will create tooling to downgrade guides etc to the latest version understood by the most current x-1.y.z Grafana release. If feasible, we steal from git-annex and retain the upgrade/downgrade functionality ~forever.
 
-4. **Grafana-first, extensible later.** The format serves Grafana interactive guides today. It is designed with open extensibility for non-Grafana content (SCORM import, compliance training, etc.) but does not gold-plate for those use cases now.
+3. **Debian-inspired naming and dependencies.** We adopt the proven dependency semantics and vocabulary from the [Debian package system](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends), which has refined these semantics over decades.
 
-5. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced.
+4. **Packages are atomic.** A package carries all metadata to be understood in isolation — its identity, its dependencies, its recommended targeting, and its authorship.
 
-6. **Vet field names against standards.** Before finalizing metadata field names, cross-reference Dublin Core, IEEE LOM, and SCORM to avoid backward-incompatible renames later.
+5. **Packages are mergeable**: Following the Prometheus model, we group by what makes sense, even if it is not useful in all cases. As a specific example, an arbitrary amount of guides can be merged. Their dependencies will merge cleanly. Their content will merge cleanly. The result will still have "all dependencies" and "all content" separated cleanly
 
-7. **Separate content from metadata.** Content (`content.json`) and package metadata (`manifest.json`) live in separate files within the package directory. Different consumers read only the file they need; different roles author only the file they own. This follows the Debian model where `control` metadata is physically separate from package data.
+6. **Most specific wins**: In case there are two packages with the same name, the newest one is taken by default.
+
+TODO: do we want package sources which come later to win? that would make e.g. "i have my own custom repo" trivial to merge.
+TODO: what if foo depends on bar 2.0, but bar 3.0 is newest and thus won the merge? there are several approaches, but which is good?
+
+7. **We do not write, parse, or understand this by hand**: For all operations that make sense, we have robust tooling in place. This tooling is backend-only. JavaScript is forbidden, it is Go only. The tooling can be compiled into Grafana and into a CLI tool at least.
+
+8. **Opinionated and Big Tent** We are developing for Grafana, but we maximize optionality and interoperability. We will strive to be able to cleanly import from at least SCORM, IEEE LOM, Dublin Core. We will strive to copy the naming conventions. Where we can not copy the names, we will have documentation of what translates to what, and we will surface this documentation as part of the UI/UX of both Grafana and the CLI tool. We will opportunistically support export into those formats.
+
+9. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced. The recommender will honor hard requirements.
+
+TODO: to maximize flexibility, my gut is to have a root level "content" field in content.json and similar for the rest. it looks weird if you look at the file by hand, but it makes whole potential problem domains go away. also, at that point, why even have two files? you're not supposed to touch it by hand...
+  * Addendum: i want to think about this as JSON-mainly. i don't care about files. if you package three guides and half a duck into one file for some reason, be my guest.
+  * 7. **Separate content from metadata.** Content (`content.json`) and package metadata (`manifest.json`) live in separate files within the package directory. Different consumers read only the file they need; different roles author only the file they own. This follows the Debian model where `control` metadata is physically separate from package data.
+
+TODO
+  * do we need two dependencies for "this is a learning experience" and "this is a course with required content"? -- likely not as we can assign a metapackage with "do this, period." for the mandatory cases
+  * can we express the recommender input as dependencies? do we want to?
+  * we need a linter for guides as some people will create / edit them by hand or with third party tooling. that linting output should be usable as input for both humans and e.g. Claude
+
 
 ---
 
