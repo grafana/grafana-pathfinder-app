@@ -22,7 +22,7 @@ const TerminalPanel = lazy(() =>
 );
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
+import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -1664,6 +1664,20 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       }}
                     />
                   )}
+
+                  {/* Go home button - always visible at bottom of content */}
+                  <div style={{ padding: '16px', textAlign: 'center' }}>
+                    <Button
+                      variant="secondary"
+                      icon="home-alt"
+                      size="md"
+                      onClick={() => {
+                        window.location.assign(PLUGIN_BASE_URL);
+                      }}
+                    >
+                      {t('docsPanel.returnToMyLearning', 'Return to my learning')}
+                    </Button>
+                  </div>
                 </div>
               </div>
             );
