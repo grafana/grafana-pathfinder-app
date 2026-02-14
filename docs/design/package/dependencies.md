@@ -1,0 +1,94 @@
+# Dependencies
+
+> Part of the [Pathfinder package design](../PATHFINDER-PACKAGE-DESIGN.md).
+> See also: [Identity and resolution](./identity-and-resolution.md) · [Learning journeys](./learning-journeys.md)
+
+---
+
+Dependency fields live flat at the top level of `manifest.json`, alongside metadata fields. They express structural relationships between guides — prerequisites, recommendations, capabilities, and conflicts.
+
+## Fields
+
+Dependency fields live flat at the top level of `manifest.json`, alongside metadata and targeting. Each dependency field that accepts guide references (`depends`, `recommends`, `suggests`) uses the `DependencyList` type, which supports AND/OR logic. Fields that declare capabilities or relationships (`provides`, `conflicts`, `replaces`) use plain `string[]`.
+
+```typescript
+/**
+ * A dependency clause: either a single reference (string)
+ * or an OR-group of alternatives (string[]).
+ */
+type DependencyClause = string | string[];
+
+/**
+ * A list of dependency clauses combined with AND.
+ * Each clause is either a bare string (single reference)
+ * or an array of strings (OR-group of alternatives).
+ *
+ * Follows Debian's dependency syntax in JSON form:
+ * - Debian: `A | B, C`  (comma = AND, pipe = OR)
+ * - JSON:   `[["A", "B"], "C"]`
+ */
+type DependencyList = DependencyClause[];
+```
+
+All references use FQI format (`"repository/id"`) for cross-repo or bare `id` for same-repo. See [identity model](./identity-and-resolution.md).
+
+## AND/OR semantics
+
+Dependency lists use **conjunctive normal form** (CNF): the outer array is AND, inner arrays are OR. This maps directly to Debian's established syntax where commas separate AND-clauses and pipes separate OR-alternatives.
+
+| JSON                     | Meaning                          | Debian equivalent |
+| ------------------------ | -------------------------------- | ----------------- |
+| `["A", "B"]`             | A **and** B                      | `A, B`            |
+| `[["A", "B"]]`           | A **or** B                       | `A \| B`          |
+| `[["A", "B"], "C"]`      | (A **or** B) **and** C           | `A \| B, C`       |
+| `["A", ["B", "C"], "D"]` | A **and** (B **or** C) **and** D | `A, B \| C, D`    |
+
+**Example** — a guide that requires completion of `welcome-to-grafana` AND either `prometheus-grafana-101` or `loki-grafana-101`:
+
+```json
+{
+  "depends": ["welcome-to-grafana", ["prometheus-grafana-101", "loki-grafana-101"]]
+}
+```
+
+This complements virtual capabilities (`provides`): OR-groups express direct alternatives between concrete guides, while `provides` expresses abstract capability satisfaction. Both mechanisms coexist.
+
+## Dependency semantics
+
+These follow the [Debian package dependency model](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends) exactly:
+
+| Field        | Semantics                                                                                             | Example                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `depends`    | Guide B **must** be completed before A is accessible. Hard gate.                                      | `"depends": ["intro-to-alerting"]`        |
+| `recommends` | Most users benefit from completing B first, but it's not required. System may prompt but won't block. | `"recommends": ["prometheus-quickstart"]` |
+| `suggests`   | B contains related content that enhances understanding of A. Informational only.                      | `"suggests": ["oncall-integration"]`      |
+| `provides`   | Completing A satisfies any dependency on capability X. Enables virtual capabilities.                  | `"provides": ["datasource-configured"]`   |
+| `conflicts`  | A and B cannot be meaningfully used together (deprecated content, mutually exclusive environments).   | `"conflicts": ["deprecated-alerting-v9"]` |
+| `replaces`   | A supersedes B entirely. Completion of A may mark B as unnecessary.                                   | `"replaces": ["alerting-techniques-v10"]` |
+
+## Virtual capabilities
+
+The `provides` field enables flexible learning paths. Multiple guides can provide the same abstract capability:
+
+- `prometheus-grafana-101` provides `"datasource-configured"`
+- `loki-grafana-101` provides `"datasource-configured"`
+- `first-dashboard` depends on `"datasource-configured"` — either guide satisfies it
+
+## Relationship to block-level requirements
+
+| Concern         | Block-level `requirements`                     | Guide-level dependencies                                |
+| --------------- | ---------------------------------------------- | ------------------------------------------------------- |
+| **Scope**       | Single step/block                              | Entire guide                                            |
+| **Purpose**     | Runtime gating ("can this step execute now?")  | Structural metadata ("what does this guide need?")      |
+| **Format**      | String array (`["has-datasource:prometheus"]`) | Flat fields (`depends`, `recommends`, etc.) with CNF OR |
+| **Evaluation**  | Real-time in browser during guide execution    | Pre-flight by test runner; UI filtering                 |
+| **Persistence** | No                                             | Capabilities persist on guide completion                |
+
+## Relationship to learning paths
+
+Learning paths exist as **both** curated collections and dependency-derived structures:
+
+- **Curated**: `paths.json` continues to define editorially curated learning paths with explicit ordering, badging, and presentation metadata. This is a human editorial product.
+- **Derived**: The dependency graph formed by `depends`/`recommends`/`suggests` is a structural relationship that the recommender can exploit to compute on-the-fly learning paths based on user context and graph topology.
+
+Both coexist. `paths.json` references guides by FQI. The dependency graph is a parallel structure that enriches the recommender's understanding of content relationships.
