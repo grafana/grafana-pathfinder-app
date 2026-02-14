@@ -1,24 +1,24 @@
 import { EmbeddedScene, SceneAppPage, SceneFlexItem, SceneFlexLayout } from '@grafana/scenes';
 import { prefixRoute } from '../utils/utils.routing';
 import { ROUTES } from '../constants';
-import { CombinedLearningJourneyPanel } from '../components/docs-panel/docs-panel';
+import { HomePanel } from '../components/Home';
 
-export const docsPage = new SceneAppPage({
-  title: 'Documentation',
-  url: prefixRoute(ROUTES.Context),
+export const homePage = new SceneAppPage({
+  title: 'Home',
+  url: prefixRoute(ROUTES.Home),
   // routePath must be relative (not prefixed) — Grafana 12's RRv6 routing strips the plugin base URL
-  routePath: ROUTES.Context,
-  getScene: contextScene,
+  routePath: '/',
+  getScene: homeScene,
 });
 
-function contextScene() {
+function homeScene() {
   return new EmbeddedScene({
     body: new SceneFlexLayout({
       children: [
         new SceneFlexItem({
           width: '100%',
-          height: 600,
-          body: new CombinedLearningJourneyPanel({}), // Pass empty config, will use defaults
+          height: '100%',
+          body: new HomePanel({}),
         }),
       ],
     }),
