@@ -143,7 +143,7 @@ interface RecommendationsSectionProps {
   toggleOtherDocsExpansion: () => void;
 }
 
-const RecommendationsSection = memo(function RecommendationsSection({
+export const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
   featuredRecommendations,
   isLoadingRecommendations,

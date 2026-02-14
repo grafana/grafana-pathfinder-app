@@ -58,7 +58,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
   };
 
   const handleMyLearningClick = () => {
-    window.location.assign(PLUGIN_BASE_URL);
+    locationService.push(PLUGIN_BASE_URL);
   };
 
   return (

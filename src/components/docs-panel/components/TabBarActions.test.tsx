@@ -7,14 +7,17 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TabBarActions } from './TabBarActions';
 import { testIds } from '../../testIds';
+import { PLUGIN_BASE_URL } from '../../../constants';
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility
 jest.mock('@grafana/runtime', () => {
   const mockPublish = jest.fn();
+  const mockPush = jest.fn();
   return {
     getAppEvents: jest.fn(() => ({ publish: mockPublish })),
-    locationService: { push: jest.fn() },
+    locationService: { push: mockPush },
     __mockPublish: mockPublish, // Export for test access
+    __mockPush: mockPush, // Export for test access
   };
 });
 
@@ -33,7 +36,7 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 // Get mock reference after imports
-const { __mockPublish: mockPublish } = jest.requireMock('@grafana/runtime');
+const { __mockPublish: mockPublish, __mockPush: mockPush } = jest.requireMock('@grafana/runtime');
 
 describe('TabBarActions', () => {
   beforeEach(() => {
@@ -99,16 +102,13 @@ describe('TabBarActions', () => {
   });
 
   describe('My learning button', () => {
-    it('invokes click handler (jsdom does not support location.assign; navigation covered by e2e)', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-
+    it('navigates to my learning home page when clicked', () => {
       render(<TabBarActions />);
 
       const myLearningButton = screen.getByTestId(testIds.docsPanel.myLearningTab);
       fireEvent.click(myLearningButton);
 
-      expect(consoleSpy).toHaveBeenCalled(); // jsdom logs "Not implemented: navigation"
-      consoleSpy.mockRestore();
+      expect(mockPush).toHaveBeenCalledWith(PLUGIN_BASE_URL);
     });
   });
 });
