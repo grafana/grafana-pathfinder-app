@@ -15,7 +15,7 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { learningProgressStorage, journeyCompletionStorage } from '../../lib/user-storage';
-import type { EarnedBadge } from '../../types';
+import type { EarnedBadge, GuideMetadataEntry } from '../../types';
 
 // Import paths data for guide metadata
 import pathsData from '../../learning-paths/paths.json';
@@ -67,7 +67,11 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
         {/* Badge Icon with glow effect */}
         <div className={iconWrapperClass}>
           {!isLegacy && <div className={styles.iconGlow} />}
-          <Icon name={badge.icon as any} size="xxxl" />
+          {badge.emoji ? (
+            <span className={styles.badgeEmoji}>{badge.emoji}</span>
+          ) : (
+            <Icon name={badge.icon as any} size="xxxl" />
+          )}
           {isEarned && !isLegacy && (
             <div className={styles.checkmark}>
               <Icon name="check" size="sm" />
@@ -207,12 +211,13 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   // Handle opening a guide
   const handleOpenGuide = useCallback(
     (guideId: string) => {
-      const guideMetadata = (pathsData.guideMetadata as Record<string, { title: string }>)[guideId];
+      const guideMetadata = (pathsData.guideMetadata as Record<string, GuideMetadataEntry>)[guideId];
       const title = guideMetadata?.title || guideId;
+      const guideUrl = guideMetadata?.url ?? `bundled:${guideId}`;
 
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
-        content_url: `bundled:${guideId}`,
+        content_url: guideUrl,
         content_type: 'learning-journey',
         interaction_location: 'my_learning_tab',
       });
@@ -233,7 +238,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         });
       }
 
-      onOpenGuide(`bundled:${guideId}`, title);
+      onOpenGuide(guideUrl, title);
     },
     [onOpenGuide, paths, getPathProgress, getPathGuides]
   );
@@ -432,7 +437,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                 title={isLegacy ? 'This badge was earned in a previous version' : undefined}
               >
                 <div className={styles.badgeIconWrapper}>
-                  <Icon name={badge.icon as any} size="xl" />
+                  {badge.emoji ? (
+                    <span className={styles.badgeEmojiSmall}>{badge.emoji}</span>
+                  ) : (
+                    <Icon name={badge.icon as any} size="xl" />
+                  )}
                   {isEarned && !isLegacy && (
                     <div className={styles.badgeCheckmark}>
                       <Icon name="check" size="xs" />

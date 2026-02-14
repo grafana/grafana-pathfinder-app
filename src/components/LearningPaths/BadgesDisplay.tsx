@@ -89,7 +89,11 @@ function BadgeItem({ badge, onClick }: BadgeItemProps) {
         tabIndex={isEarned ? 0 : undefined}
       >
         <span className={cx(styles.badgeIcon, isEarned && styles.badgeIconEarned, !isEarned && styles.badgeIconLocked)}>
-          <Icon name={badge.icon as any} size="xl" />
+          {badge.emoji ? (
+            <span className={styles.badgeEmoji}>{badge.emoji}</span>
+          ) : (
+            <Icon name={badge.icon as any} size="xl" />
+          )}
         </span>
         <span className={cx(styles.badgeTitle, isEarned && styles.badgeTitleEarned)}>{badge.title}</span>
       </div>
@@ -121,7 +125,11 @@ export function CompactBadgesDisplay({ badges, maxVisible = 4 }: CompactBadgesDi
       {visibleBadges.map((badge) => (
         <Tooltip key={badge.id} content={badge.title} placement="top">
           <span className={cx(styles.badgeIcon, styles.badgeIconEarned)}>
-            <Icon name={badge.icon as any} size="md" />
+            {badge.emoji ? (
+              <span className={styles.badgeEmojiCompact}>{badge.emoji}</span>
+            ) : (
+              <Icon name={badge.icon as any} size="md" />
+            )}
           </span>
         </Tooltip>
       ))}

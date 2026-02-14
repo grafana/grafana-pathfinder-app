@@ -137,5 +137,25 @@ describe('HomePanelRenderer', () => {
         expect.objectContaining({ url: 'bundled:first-dashboard', title: 'Create your first dashboard' })
       );
     });
+
+    it('supports URL-based (remote) guides', () => {
+      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
+      const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+
+      render(<HomePanelRenderer />);
+      expect(capturedOnOpenGuide).toBeDefined();
+
+      const remoteUrl = 'https://interactive-learning.grafana.net/guides/prometheus-lj/add-data-source/content.json';
+      capturedOnOpenGuide!(remoteUrl, 'Add the Prometheus data source');
+
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'pathfinder-auto-open-docs',
+          detail: { url: remoteUrl, title: 'Add the Prometheus data source' },
+        })
+      );
+
+      dispatchSpy.mockRestore();
+    });
   });
 });

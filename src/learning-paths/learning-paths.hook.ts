@@ -15,6 +15,7 @@ import type {
   EarnedBadge,
   UseLearningPathsReturn,
   StreakInfo,
+  GuideMetadataEntry,
 } from '../types/learning-paths.types';
 
 import { learningProgressStorage } from '../lib/user-storage';
@@ -58,8 +59,8 @@ function filterPathsByPlatform(paths: LearningPath[]): LearningPath[] {
 /**
  * Gets guide metadata from paths.json
  */
-function getGuideMetadata(guideId: string): { title: string; estimatedMinutes: number } {
-  const metadata = (pathsData.guideMetadata as Record<string, { title: string; estimatedMinutes: number }>)[guideId];
+function getGuideMetadata(guideId: string): GuideMetadataEntry {
+  const metadata = (pathsData.guideMetadata as Record<string, GuideMetadataEntry>)[guideId];
   return metadata || { title: guideId, estimatedMinutes: 5 };
 }
 

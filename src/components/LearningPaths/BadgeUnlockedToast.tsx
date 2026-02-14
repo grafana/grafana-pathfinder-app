@@ -102,7 +102,11 @@ export function BadgeUnlockedToast({ badge, onDismiss, queueCount = 0 }: BadgeUn
 
         {/* Badge icon */}
         <div className={styles.badgeContainer}>
-          <Icon name={badge.icon as any} size="xxxl" className={styles.badgeIcon} />
+          {badge.emoji ? (
+            <span className={styles.badgeEmoji}>{badge.emoji}</span>
+          ) : (
+            <Icon name={badge.icon as any} size="xxxl" className={styles.badgeIcon} />
+          )}
         </div>
 
         {/* Badge info */}

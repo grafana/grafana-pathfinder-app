@@ -403,6 +403,14 @@ export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
     badgeIconLegacy: css({
       color: isDark ? '#A1886B' : '#8B7765',
     }),
+    badgeEmoji: css({
+      fontSize: 24,
+      lineHeight: 1,
+    }),
+    badgeEmojiCompact: css({
+      fontSize: 16,
+      lineHeight: 1,
+    }),
     badgeIcon: css({
       fontSize: 24,
       lineHeight: 1,
@@ -514,6 +522,11 @@ export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
     }),
     badgeIcon: css({
       color: celebrationGreen,
+      filter: `drop-shadow(0 0 8px ${celebrationGreen})`,
+    }),
+    badgeEmoji: css({
+      fontSize: 48,
+      lineHeight: 1,
       filter: `drop-shadow(0 0 8px ${celebrationGreen})`,
     }),
     badgeTitle: css({

@@ -46,6 +46,17 @@ export interface PathGuide {
   isCurrent: boolean;
 }
 
+/**
+ * Metadata for a single guide within a learning path (from paths.json).
+ * Bundled guides omit `url`; remote guides include one.
+ */
+export interface GuideMetadataEntry {
+  title: string;
+  estimatedMinutes: number;
+  /** Remote URL for non-bundled guides. Omit for bundled guides. */
+  url?: string;
+}
+
 // ============================================================================
 // BADGE TYPES
 // ============================================================================
@@ -70,6 +81,8 @@ export interface Badge {
   description: string;
   /** Grafana icon name */
   icon: string;
+  /** Emoji character displayed instead of Grafana Icon when present */
+  emoji?: string;
   /** Trigger condition for earning this badge */
   trigger: BadgeTrigger;
 }
