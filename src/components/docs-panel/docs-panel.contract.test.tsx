@@ -65,7 +65,6 @@ describe('E2E Contract: Docs panel test IDs', () => {
     });
 
     it('tab(id) pattern', () => {
-      expect(testIds.docsPanel.tab('my-learning')).toBe('docs-panel-tab-my-learning');
       expect(testIds.docsPanel.tab('devtools')).toBe('docs-panel-tab-devtools');
     });
 
@@ -247,9 +246,8 @@ describe('E2E Contract: Window globals assigned in docs-panel', () => {
 describe.skip('E2E Contract: Docs panel full render (covered by e2e)', () => {
   it.todo('renders container with docs-panel-container');
   it.todo('renders tab bar, tab list, content area with stable test IDs');
-  it.todo('renders recommendations and my-learning tabs; devtools tab when dev mode');
+  it.todo('renders recommendations tab; devtools tab when dev mode');
   it.todo('default active tab is recommendations');
-  it.todo('switching to my-learning updates content area');
   it.todo('loading state shows docs-panel-loading-state');
   it.todo('error state shows docs-panel-error-state with retry');
 });

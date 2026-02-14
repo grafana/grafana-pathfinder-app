@@ -1,13 +1,12 @@
 /**
  * Tests for HomePanelRenderer (composition root).
- * Verifies page shell rendering, loading state, and guide-open interaction.
- * Card-specific rendering tests live in PathCard.test.tsx.
+ * Verifies that MyLearningTab is rendered and guide-open callbacks work correctly.
+ * MyLearningTab internals are tested separately in the LearningPaths domain.
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { HomePanelRenderer } from './HomePanel';
-import type { UseLearningPathsReturn } from '../../types/learning-paths.types';
 import { sidebarState } from '../../global-state/sidebar';
 import { linkInterceptionState } from '../../global-state/link-interception';
 
@@ -20,10 +19,8 @@ jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class SceneObjectBase {},
 }));
 
-// Mock @grafana/ui - provide simple stand-ins for Icon and Spinner
+// Mock @grafana/ui - provide simple stand-ins
 jest.mock('@grafana/ui', () => ({
-  Icon: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} />,
-  Spinner: () => <span data-testid="spinner" />,
   useStyles2: (fn: any) => fn(mockTheme),
 }));
 
@@ -50,15 +47,18 @@ const mockTheme = {
   zIndex: { modal: 1000 },
 };
 
-// Mock @grafana/i18n (required by some transitive Grafana UI deps)
-jest.mock('@grafana/i18n', () => ({
-  t: jest.fn((_key: string, fallback: string) => fallback),
+// Capture onOpenGuide prop passed to MyLearningTab
+let capturedOnOpenGuide: ((url: string, title: string) => void) | undefined;
+
+jest.mock('../LearningPaths', () => ({
+  MyLearningTab: ({ onOpenGuide }: { onOpenGuide: (url: string, title: string) => void }) => {
+    capturedOnOpenGuide = onOpenGuide;
+    return <div data-testid="my-learning-tab">MyLearningTab</div>;
+  },
 }));
 
-// Mock the learning-paths hook
-const mockUseLearningPaths = jest.fn<UseLearningPathsReturn, []>();
-jest.mock('../../learning-paths', () => ({
-  useLearningPaths: () => mockUseLearningPaths(),
+jest.mock('../docs-panel/components', () => ({
+  MyLearningErrorBoundary: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
 // Mock global state
@@ -77,70 +77,26 @@ jest.mock('../../global-state/link-interception', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-const baseLearningPathsReturn: UseLearningPathsReturn = {
-  paths: [
-    {
-      id: 'getting-started',
-      title: 'Getting started with Grafana',
-      description: 'Learn the essentials.',
-      guides: ['welcome-to-grafana', 'first-dashboard'],
-      badgeId: 'grafana-fundamentals',
-      targetPlatform: 'oss',
-      estimatedMinutes: 25,
-      icon: 'grafana',
-    },
-  ],
-  allBadges: [],
-  badgesWithStatus: [],
-  progress: { completedGuides: [], earnedBadges: [], streakDays: 0, lastActivityDate: '', pendingCelebrations: [] },
-  getPathGuides: jest.fn((pathId: string) => {
-    if (pathId === 'getting-started') {
-      return [
-        { id: 'welcome-to-grafana', title: 'Welcome to Grafana', completed: true, isCurrent: false },
-        { id: 'first-dashboard', title: 'Create your first dashboard', completed: false, isCurrent: true },
-      ];
-    }
-    return [];
-  }),
-  getPathProgress: jest.fn(() => 50),
-  isPathCompleted: jest.fn(() => false),
-  markGuideCompleted: jest.fn(),
-  dismissCelebration: jest.fn(),
-  streakInfo: { days: 0, isActiveToday: false, isAtRisk: false },
-  isLoading: false,
-};
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe('HomePanelRenderer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseLearningPaths.mockReturnValue(baseLearningPathsReturn);
+    capturedOnOpenGuide = undefined;
   });
 
-  // ---------- Page shell ---------------------------------------------------
+  // ---------- Composition ---------------------------------------------------
 
-  describe('page shell', () => {
-    it('shows a spinner while loading', () => {
-      mockUseLearningPaths.mockReturnValue({ ...baseLearningPathsReturn, isLoading: true });
+  describe('composition', () => {
+    it('renders MyLearningTab', () => {
       render(<HomePanelRenderer />);
-      expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      expect(screen.getByTestId('my-learning-tab')).toBeInTheDocument();
     });
 
-    it('renders the page title and subtitle', () => {
+    it('renders home-page container', () => {
       render(<HomePanelRenderer />);
-      expect(screen.getByText('Pathfinder')).toBeInTheDocument();
-      expect(screen.getByText(/Interactive learning paths/)).toBeInTheDocument();
-    });
-
-    it('renders a card for each learning path', () => {
-      render(<HomePanelRenderer />);
-      expect(screen.getByTestId('path-card-getting-started')).toBeInTheDocument();
+      expect(screen.getByTestId('home-page')).toBeInTheDocument();
     });
   });
 
@@ -152,7 +108,8 @@ describe('HomePanelRenderer', () => {
       const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
 
       render(<HomePanelRenderer />);
-      fireEvent.click(screen.getByTestId('guide-item-first-dashboard'));
+      expect(capturedOnOpenGuide).toBeDefined();
+      capturedOnOpenGuide!('bundled:first-dashboard', 'Create your first dashboard');
 
       expect(dispatchSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -168,7 +125,8 @@ describe('HomePanelRenderer', () => {
       (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(false);
 
       render(<HomePanelRenderer />);
-      fireEvent.click(screen.getByTestId('guide-item-first-dashboard'));
+      expect(capturedOnOpenGuide).toBeDefined();
+      capturedOnOpenGuide!('bundled:first-dashboard', 'Create your first dashboard');
 
       expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('home_page');
       expect(sidebarState.openSidebar).toHaveBeenCalledWith(

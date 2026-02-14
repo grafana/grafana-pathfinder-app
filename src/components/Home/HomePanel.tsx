@@ -2,18 +2,19 @@
  * Home panel
  *
  * SceneObjectBase wrapper + React composition root for the home page.
- * Wires up hooks, passes props to child components, and handles top-level layout.
+ * Renders MyLearningTab as the full-page learning hub at /a/grafana-pathfinder-app.
+ * Guide opens are dispatched to the sidebar panel.
  */
 
 import React, { useCallback } from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
-import { Spinner, useStyles2 } from '@grafana/ui';
+import { useStyles2 } from '@grafana/ui';
 
-import { useLearningPaths } from '../../learning-paths';
 import { sidebarState } from '../../global-state/sidebar';
 import { linkInterceptionState } from '../../global-state/link-interception';
+import { MyLearningTab } from '../LearningPaths';
+import { MyLearningErrorBoundary } from '../docs-panel/components';
 import { getHomePageStyles } from './home.styles';
-import { PathCard } from './PathCard';
 
 // ============================================================================
 // SCENE OBJECT
@@ -31,10 +32,9 @@ export class HomePanel extends SceneObjectBase<HomePanelState> {
 
 export function HomePanelRenderer() {
   const styles = useStyles2(getHomePageStyles);
-  const { paths, getPathGuides, getPathProgress, isPathCompleted, isLoading } = useLearningPaths();
 
-  const handleOpenGuide = useCallback((guideId: string, title: string) => {
-    const detail = { url: `bundled:${guideId}`, title };
+  const handleOpenGuide = useCallback((url: string, title: string) => {
+    const detail = { url, title };
 
     if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));
@@ -49,36 +49,11 @@ export function HomePanelRenderer() {
     }
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className={styles.container}>
-        <Spinner />
-      </div>
-    );
-  }
-
   return (
     <div className={styles.container} data-testid="home-page">
-      <header className={styles.header}>
-        <h1 className={styles.title}>Pathfinder</h1>
-        <p className={styles.subtitle}>
-          Interactive learning paths to help you get the most out of Grafana. Pick up where you left off or start
-          something new.
-        </p>
-      </header>
-
-      <div className={styles.pathsGrid}>
-        {paths.map((path) => (
-          <PathCard
-            key={path.id}
-            path={path}
-            guides={getPathGuides(path.id)}
-            progress={getPathProgress(path.id)}
-            completed={isPathCompleted(path.id)}
-            onOpenGuide={handleOpenGuide}
-          />
-        ))}
-      </div>
+      <MyLearningErrorBoundary>
+        <MyLearningTab onOpenGuide={handleOpenGuide} />
+      </MyLearningErrorBoundary>
     </div>
   );
 }

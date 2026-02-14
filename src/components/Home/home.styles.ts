@@ -1,8 +1,8 @@
 /**
  * Home page layout styles
  *
- * Theme-aware styles for the home page container, header, and grid.
- * Card-specific styles live in path-card.styles.ts.
+ * Minimal container style for the full-page wrapper.
+ * MyLearningTab handles its own internal layout.
  */
 
 import { css } from '@emotion/css';
@@ -13,33 +13,10 @@ export const getHomePageStyles = (theme: GrafanaTheme2) => {
     container: css({
       display: 'flex',
       flexDirection: 'column',
-      gap: theme.spacing(3),
       padding: theme.spacing(3),
       maxWidth: 960,
       margin: '0 auto',
       width: '100%',
-    }),
-    header: css({
-      display: 'flex',
-      flexDirection: 'column',
-      gap: theme.spacing(1),
-    }),
-    title: css({
-      margin: 0,
-      fontSize: theme.typography.h3.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
-    }),
-    subtitle: css({
-      margin: 0,
-      fontSize: theme.typography.body.fontSize,
-      color: theme.colors.text.secondary,
-      lineHeight: 1.5,
-    }),
-    pathsGrid: css({
-      display: 'flex',
-      flexDirection: 'column',
-      gap: theme.spacing(2),
     }),
   };
 };

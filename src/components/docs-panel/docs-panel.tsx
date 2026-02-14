@@ -52,7 +52,7 @@ import {
 import { getJourneyProgress, setJourneyCompletionPercentage } from '../../docs-retrieval/learning-journey-helpers';
 
 import { ContextPanel } from './context-panel';
-import { MyLearningTab, BadgeUnlockedToast } from '../LearningPaths';
+import { BadgeUnlockedToast } from '../LearningPaths';
 import { getBadgeById } from '../../learning-paths';
 
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
@@ -67,7 +67,7 @@ import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../testIds';
 
 // Import extracted components
-import { MyLearningErrorBoundary, LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
+import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
 // Import extracted utilities
 import {
   isDocsLikeTab,
@@ -103,15 +103,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       {
         id: 'recommendations',
         title: 'Recommendations',
-        baseUrl: '',
-        currentUrl: '',
-        content: null,
-        isLoading: false,
-        error: null,
-      },
-      {
-        id: 'my-learning',
-        title: 'My learning',
         baseUrl: '',
         currentUrl: '',
         content: null,
@@ -184,9 +175,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   private async saveTabsToStorage(): Promise<void> {
     try {
       // Save user-opened tabs and devtools tab (devtools persists across refreshes)
-      // Recommendations and my-learning are permanent tabs and don't need persistence
+      // Recommendations is a permanent tab and doesn't need persistence
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
+        .filter((tab) => tab.id !== 'recommendations')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -702,9 +693,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
     // Only restore if we haven't loaded tabs yet
-    // Check if tabs only contain the default system tabs (recommendations and my-learning)
-    const hasOnlyDefaultTabs =
-      tabs.length === 2 && tabs.every((tab) => tab.id === 'recommendations' || tab.id === 'my-learning');
+    // Check if tabs only contain the default system tab (recommendations)
+    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0].id === 'recommendations';
 
     if (hasOnlyDefaultTabs) {
       model.restoreTabsAsync();
@@ -1181,14 +1171,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           >
             <Icon name="document-info" size="md" />
           </button>
-          <button
-            className={`${styles.iconTab} ${activeTabId === 'my-learning' ? styles.iconTabActive : ''}`}
-            onClick={() => model.setActiveTab('my-learning')}
-            title={t('docsPanel.myLearning', 'My learning')}
-            data-testid={testIds.docsPanel.tab('my-learning')}
-          >
-            <Icon name="book-open" size="md" />
-          </button>
           {isDevMode && (
             <button
               className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
@@ -1202,13 +1184,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </div>
 
         {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length >
-          0 && <div className={styles.tabDivider} />}
+        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
+          <div className={styles.tabDivider} />
+        )}
 
         {/* Guide tabs with titles */}
         <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
           {visibleTabs
-            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
+            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
             .map((tab) => {
               return (
                 <button
@@ -1264,8 +1247,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             })}
         </div>
 
-        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
-          .length > 0 && (
+        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
           <div className={styles.tabOverflow}>
             <button
               ref={chevronButtonRef}
@@ -1277,30 +1259,20 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 setIsDropdownOpen(!isDropdownOpen);
               }}
               aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
-                count: overflowedTabs.filter(
-                  (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
-                ).length,
+                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length,
               })}
               aria-expanded={isDropdownOpen}
               aria-haspopup="true"
               data-testid={testIds.docsPanel.tabOverflowButton}
             >
               <Icon name="angle-down" size="sm" />
-              <span>
-                +
-                {
-                  overflowedTabs.filter(
-                    (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
-                  ).length
-                }
-              </span>
+              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length}</span>
             </button>
           </div>
         )}
 
         {isDropdownOpen &&
-          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
-            .length > 0 && (
+          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
             <div
               ref={dropdownRef}
               className={styles.tabDropdown}
@@ -1309,7 +1281,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               data-testid={testIds.docsPanel.tabDropdown}
             >
               {overflowedTabs
-                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
+                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
                 .map((tab) => {
                   return (
                     <button
@@ -1380,19 +1352,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           // Show recommendations tab
           if (isRecommendationsTab) {
             return <contextPanel.Component model={contextPanel} />;
-          }
-
-          // Show my learning tab (wrapped in error boundary - R6)
-          if (activeTabId === 'my-learning') {
-            return (
-              <MyLearningErrorBoundary>
-                <MyLearningTab
-                  onOpenGuide={(url, title) => {
-                    model.openLearningJourney(url, title);
-                  }}
-                />
-              </MyLearningErrorBoundary>
-            );
           }
 
           // Show dev tools tab
@@ -1721,8 +1680,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </Suspense>
       )}
 
-      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement, my-learning has its own */}
-      {!isRecommendationsTab && activeTabId !== 'my-learning' && !isDocsLikeTab(activeTab?.type) && (
+      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
+      {!isRecommendationsTab && !isDocsLikeTab(activeTab?.type) && (
         <>
           <FeedbackButton
             contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}

@@ -5,5 +5,3 @@
  */
 
 export { HomePanel, HomePanelRenderer } from './HomePanel';
-export { PathCard } from './PathCard';
-export type { PathCardProps } from './PathCard';
