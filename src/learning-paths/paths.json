@@ -258,33 +258,33 @@
     "mysql-add-data-source": {
       "title": "Add the MySQL data source",
       "estimatedMinutes": 3,
-      "url": "https://interactive-learning.grafana.net/guides/mysql-lj/add-data-source/content.json"
+      "url": "https://interactive-learning.grafana.net/guides/mysql-data-source-lj/add-data-source/content.json"
     },
     "mysql-configure-datasource": {
       "title": "Configure the data source",
       "estimatedMinutes": 3,
-      "url": "https://interactive-learning.grafana.net/guides/mysql-lj/configure-datasource/content.json"
+      "url": "https://interactive-learning.grafana.net/guides/mysql-data-source-lj/configure-datasource/content.json"
     },
     "mysql-test-connection": {
       "title": "Test the connection",
       "estimatedMinutes": 3,
-      "url": "https://interactive-learning.grafana.net/guides/mysql-lj/test-connection/content.json"
+      "url": "https://interactive-learning.grafana.net/guides/mysql-data-source-lj/test-connection/content.json"
     },
     "mysql-verify-mysql-data": {
       "title": "Verify MySQL data",
       "estimatedMinutes": 3,
-      "url": "https://interactive-learning.grafana.net/guides/mysql-lj/verify-mysql-data/content.json"
+      "url": "https://interactive-learning.grafana.net/guides/mysql-data-source-lj/verify-mysql-data/content.json"
     },
 
     "github-install-github-plugin": {
       "title": "Install the GitHub plugin",
       "estimatedMinutes": 4,
-      "url": "https://interactive-learning.grafana.net/guides/github-lj/install-github-plugin/content.json"
+      "url": "https://interactive-learning.grafana.net/guides/github-data-source-lj/install-github-plugin/content.json"
     },
     "github-config-github-datasource": {
       "title": "Configure the GitHub data source",
       "estimatedMinutes": 4,
-      "url": "https://interactive-learning.grafana.net/guides/github-lj/config-github-datasource/content.json"
+      "url": "https://interactive-learning.grafana.net/guides/github-data-source-lj/config-github-datasource/content.json"
     },
 
     "linux-select-platform": {
