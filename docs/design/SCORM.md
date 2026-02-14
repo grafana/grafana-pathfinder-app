@@ -494,7 +494,7 @@ The importer writes both `content.json` (converted SCO content) and `package.jso
 
 ### Phase 0: Schema foundation
 
-> **Covered by the Pathfinder package design.** Phase 0 schema work (metadata fields, `type` discriminator, dependency validation) is specified in the [package design roadmap](./PATHFINDER-PACKAGE-DESIGN.md#phased-roadmap) as Phases 0-1 (schema foundation + CLI validation) and Phase 5 (SCORM foundation — `type`, `metadata.source`, `metadata.keywords`, `metadata.rights`, `metadata.educationalContext`). This SCORM implementation plan begins at Phase 1 below, assuming the package model is in place.
+> **Covered by the Pathfinder package design.** Phase 0 schema work (metadata fields, `type` discriminator, dependency validation) is specified in the [implementation plan](./PACKAGE-IMPLEMENTATION-PLAN.md) as Phases 0-1 (schema foundation + CLI validation) and Phase 5 (SCORM foundation — `type`, `metadata.source`, `metadata.keywords`, `metadata.rights`, `metadata.educationalContext`). This SCORM implementation plan begins at Phase 1 below, assuming the package model is in place.
 
 ### Phase 1: SCORM parser + content extractor (3-4 weeks)
 
