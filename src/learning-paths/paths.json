@@ -23,7 +23,7 @@
     {
       "id": "prometheus-ds",
       "title": "Connect a Prometheus data source",
-      "description": "Set up and verify a Prometheus data source connection in Grafana Cloud.",
+      "description": "Set up and verify a Prometheus data source connection in Grafana.",
       "guides": [
         "prometheus-add-data-source",
         "prometheus-add-data-source-url",
@@ -32,14 +32,14 @@
         "prometheus-verify-ds-connection"
       ],
       "badgeId": "flame-keeper",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 15,
       "icon": "database"
     },
     {
       "id": "mysql-ds",
       "title": "Connect a MySQL data source",
-      "description": "Add, configure, and verify a MySQL data source in Grafana Cloud.",
+      "description": "Add, configure, and verify a MySQL data source in Grafana.",
       "guides": [
         "mysql-add-data-source",
         "mysql-configure-datasource",
@@ -47,7 +47,7 @@
         "mysql-verify-mysql-data"
       ],
       "badgeId": "dolphin-rider",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 12,
       "icon": "database"
     },
@@ -57,7 +57,7 @@
       "description": "Install the GitHub plugin and configure it as a data source.",
       "guides": ["github-install-github-plugin", "github-config-github-datasource"],
       "badgeId": "octocat-ally",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 8,
       "icon": "link"
     },
@@ -120,7 +120,7 @@
         "drilldown-metrics-add-metric-dashboard"
       ],
       "badgeId": "metric-miner",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 15,
       "icon": "search"
     },
@@ -137,7 +137,7 @@
         "drilldown-logs-add-log-dashboard"
       ],
       "badgeId": "log-whisperer",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 20,
       "icon": "document-info"
     },
@@ -152,7 +152,7 @@
         "drilldown-traces-view-details-trace-span"
       ],
       "badgeId": "trace-archaeologist",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 12,
       "icon": "compass"
     },
@@ -167,7 +167,7 @@
         "viz-metrics-save-dashboard"
       ],
       "badgeId": "dashboard-artisan",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 15,
       "icon": "dashboard"
     },
@@ -184,7 +184,7 @@
         "viz-traces-test-dashboard"
       ],
       "badgeId": "trace-cartographer",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 20,
       "icon": "palette"
     },
@@ -202,7 +202,7 @@
         "alerting-monitor-your-rule"
       ],
       "badgeId": "alert-guardian",
-      "targetPlatform": "cloud",
+      "targetPlatform": "oss",
       "estimatedMinutes": 25,
       "icon": "bell"
     }

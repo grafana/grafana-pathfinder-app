@@ -142,6 +142,7 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
 export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const styles = useStyles2(getMyLearningStyles);
   const [showAllBadges, setShowAllBadges] = useState(false);
+  const [showAllPaths, setShowAllPaths] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
   const [hideCompletedPaths, setHideCompletedPaths] = useState(false);
 
@@ -190,6 +191,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     () => paths.filter((path) => isPathCompleted(path.id)).length,
     [paths, isPathCompleted]
   );
+
+  // Paths to display (first 4 by default, or all when expanded)
+  const displayedPaths = showAllPaths ? sortedPaths : sortedPaths.slice(0, 4);
 
   // Calculate progress for selected badge
   const selectedBadgeProgress = useMemo(() => {
@@ -346,6 +350,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={styles.sectionHeader}>
           <Icon name="book-open" size="md" className={styles.sectionIcon} />
           <h2 className={styles.sectionTitle}>{t('myLearning.learningPaths', 'Learning paths')}</h2>
+          {sortedPaths.length > 4 && (
+            <button className={styles.expandButton} onClick={() => setShowAllPaths(!showAllPaths)}>
+              {showAllPaths ? 'Show less' : `View all (${sortedPaths.length})`}
+              <Icon name={showAllPaths ? 'angle-up' : 'angle-down'} size="sm" />
+            </button>
+          )}
           {/* Hide completed toggle */}
           {completedPathsCount > 0 && (
             <label className={styles.hideCompletedToggle}>
@@ -364,7 +374,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         </p>
 
         <div className={styles.pathsGrid}>
-          {sortedPaths.map((path, index) => {
+          {displayedPaths.map((path, index) => {
             const pathProgress = getPathProgress(path.id);
             const pathCompleted = isPathCompleted(path.id);
             // Expand the first in-progress path by default

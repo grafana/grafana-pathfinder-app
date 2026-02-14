@@ -52,7 +52,10 @@ function filterPathsByPlatform(paths: LearningPath[]): LearningPath[] {
     if (!path.targetPlatform) {
       return true; // No platform restriction
     }
-    return path.targetPlatform === edition;
+    if (edition === 'cloud') {
+      return true; // Cloud sees everything (superset of OSS)
+    }
+    return path.targetPlatform === 'oss'; // OSS only sees OSS paths
   });
 }
 
