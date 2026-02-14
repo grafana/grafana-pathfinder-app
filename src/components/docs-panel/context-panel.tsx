@@ -1,13 +1,13 @@
 import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge, Alert, Button } from '@grafana/ui';
 import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
-import { locationService, config } from '@grafana/runtime';
+import { locationService, config, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
@@ -192,8 +192,22 @@ const RecommendationsSection = memo(function RecommendationsSection({
     return (
       <>
         <div className={styles.emptyContainer} data-testid={testIds.contextPanel.emptyState}>
-          <Icon name="info-circle" />
-          <span>No recommendations available for your current context.</span>
+          <Button
+            icon="home-alt"
+            variant="secondary"
+            onClick={() => {
+              // Close the extension sidebar
+              const appEvents = getAppEvents();
+              appEvents.publish({
+                type: 'close-extension-sidebar',
+                payload: {},
+              });
+              // Navigate to the home page
+              locationService.push('/a/grafana-pathfinder-app');
+            }}
+          >
+            My learning
+          </Button>
         </div>
         {showEnableRecommenderBanner && <EnableRecommenderBanner />}
       </>
