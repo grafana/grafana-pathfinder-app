@@ -77,6 +77,10 @@ describe('E2E Contract: Docs panel test IDs', () => {
       expect(testIds.docsPanel.tabDropdown).toBe('docs-panel-tab-dropdown');
       expect(testIds.docsPanel.tabDropdownItem('tab-1')).toBe('docs-panel-tab-dropdown-item-tab-1');
     });
+
+    it('myLearningTab', () => {
+      expect(testIds.docsPanel.myLearningTab).toBe('docs-panel-tab-my-learning');
+    });
   });
 
   describe('devTools preview IDs (used in docs-panel content)', () => {
@@ -123,7 +127,10 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
       'testIds.devTools.returnToEditorButton',
     ],
   },
-  { file: 'components/TabBarActions.tsx', references: ['testIds.docsPanel.closeButton'] },
+  {
+    file: 'components/TabBarActions.tsx',
+    references: ['testIds.docsPanel.closeButton', 'testIds.docsPanel.myLearningTab'],
+  },
   { file: 'components/LoadingIndicator.tsx', references: ['testIds.docsPanel.loadingState'] },
   { file: 'components/ErrorDisplay.tsx', references: ['testIds.docsPanel.errorState'] },
 ];

@@ -55,6 +55,13 @@ describe('TabBarActions', () => {
       expect(closeButton).toBeInTheDocument();
     });
 
+    it('renders My learning button with correct test ID', () => {
+      render(<TabBarActions />);
+
+      const myLearningButton = screen.getByTestId(testIds.docsPanel.myLearningTab);
+      expect(myLearningButton).toBeInTheDocument();
+    });
+
     it('applies className prop to container', () => {
       const { container } = render(<TabBarActions className="custom-actions-class" />);
 
@@ -88,6 +95,20 @@ describe('TabBarActions', () => {
         action: 'close_sidebar',
         source: 'header_close_button',
       });
+    });
+  });
+
+  describe('My learning button', () => {
+    it('invokes click handler (jsdom does not support location.assign; navigation covered by e2e)', () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      render(<TabBarActions />);
+
+      const myLearningButton = screen.getByTestId(testIds.docsPanel.myLearningTab);
+      fireEvent.click(myLearningButton);
+
+      expect(consoleSpy).toHaveBeenCalled(); // jsdom logs "Not implemented: navigation"
+      consoleSpy.mockRestore();
     });
   });
 });

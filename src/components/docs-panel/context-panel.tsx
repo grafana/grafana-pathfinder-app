@@ -13,7 +13,7 @@ import { locationService, config, getAppEvents } from '@grafana/runtime';
 import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
-import { getConfigWithDefaults } from '../../constants';
+import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../testIds';
 
@@ -203,10 +203,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                 payload: {},
               });
               // Navigate to the home page
-              locationService.push('/a/grafana-pathfinder-app');
+              locationService.push(PLUGIN_BASE_URL);
             }}
           >
-            My learning
+            {t('docsPanel.myLearning', 'My learning')}
           </Button>
         </div>
         {showEnableRecommenderBanner && <EnableRecommenderBanner />}

@@ -68,7 +68,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
         size="sm"
         tooltip={t('docsPanel.myLearning', 'My learning')}
         onClick={handleMyLearningClick}
-        aria-label="My learning"
+        aria-label={t('docsPanel.myLearning', 'My learning')}
         data-testid={testIds.docsPanel.myLearningTab}
       />
       <Dropdown
