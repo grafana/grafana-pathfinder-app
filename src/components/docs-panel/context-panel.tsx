@@ -193,7 +193,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
       <>
         <div className={styles.emptyContainer} data-testid={testIds.contextPanel.emptyState}>
           <Button
-            icon="home-alt"
+            icon="book-open"
             variant="secondary"
             onClick={() => {
               // Close the extension sidebar

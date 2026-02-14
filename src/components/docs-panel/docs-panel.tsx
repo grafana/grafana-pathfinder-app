@@ -1669,7 +1669,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   <div style={{ padding: '16px', textAlign: 'center' }}>
                     <Button
                       variant="secondary"
-                      icon="home-alt"
+                      icon="book-open"
                       size="md"
                       onClick={() => {
                         window.location.assign(PLUGIN_BASE_URL);
