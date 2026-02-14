@@ -71,24 +71,13 @@ At the same time, for the convenience of operators and software engineers, all d
 
 6. **Most specific wins**: In case there are two packages with the same name, the newest one is taken by default.
 
-TODO: do we want package sources which come later to win? that would make e.g. "i have my own custom repo" trivial to merge.
-TODO: what if foo depends on bar 2.0, but bar 3.0 is newest and thus won the merge? there are several approaches, but which is good?
+7. **Separate content from metadata.** Content (`content.json`) and package metadata (`manifest.json`) live in separate files within the package directory. Different consumers read only the file they need; different roles author only the file they own. This follows the Debian model where `control` metadata is physically separate from package data.
 
-7. **We do not write, parse, or understand this by hand**: For all operations that make sense, we have robust tooling in place. This tooling is backend-only. JavaScript is forbidden, it is Go only. The tooling can be compiled into Grafana and into a CLI tool at least.
+8. **We do not write, parse, or understand this by hand**: For all operations that make sense, we have robust tooling in place. This tooling is backend-only. JavaScript is forbidden, it is Go only. The tooling can be compiled into Grafana and into a CLI tool at least.
 
-8. **Opinionated and Big Tent** We are developing for Grafana, but we maximize optionality and interoperability. We will strive to be able to cleanly import from at least SCORM, IEEE LOM, Dublin Core. We will strive to copy the naming conventions. Where we can not copy the names, we will have documentation of what translates to what, and we will surface this documentation as part of the UI/UX of both Grafana and the CLI tool. We will opportunistically support export into those formats.
+9. **Opinionated and Big Tent** We are developing for Grafana, but we maximize optionality and interoperability. We will strive to be able to cleanly import from at least SCORM, IEEE LOM, Dublin Core. We will strive to copy the naming conventions. Where we can not copy the names, we will have documentation of what translates to what, and we will surface this documentation as part of the UI/UX of both Grafana and the CLI tool. We will opportunistically support export into those formats.
 
-9. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced. The recommender will honor hard requirements.
-
-TODO: to maximize flexibility, my gut is to have a root level "content" field in content.json and similar for the rest. it looks weird if you look at the file by hand, but it makes whole potential problem domains go away. also, at that point, why even have two files? you're not supposed to touch it by hand...
-  * Addendum: i want to think about this as JSON-mainly. i don't care about files. if you package three guides and half a duck into one file for some reason, be my guest.
-  * 7. **Separate content from metadata.** Content (`content.json`) and package metadata (`manifest.json`) live in separate files within the package directory. Different consumers read only the file they need; different roles author only the file they own. This follows the Debian model where `control` metadata is physically separate from package data.
-
-TODO
-  * do we need two dependencies for "this is a learning experience" and "this is a course with required content"? -- likely not as we can assign a metapackage with "do this, period." for the mandatory cases
-  * can we express the recommender input as dependencies? do we want to?
-  * we need a linter for guides as some people will create / edit them by hand or with third party tooling. that linting output should be usable as input for both humans and e.g. Claude
-
+10. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced. The recommender will honor hard requirements.
 
 ---
 
