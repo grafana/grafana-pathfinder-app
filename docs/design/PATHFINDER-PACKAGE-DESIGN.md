@@ -506,9 +506,9 @@ Both coexist. `paths.json` references guides by FQI. The dependency graph is a p
 
 ## Learning journeys
 
-A learning journey is an ordered sequence of guides that build toward a larger outcome. Rather than being a single lesson (a guide package), a journey is a series of packages that decompose a complex topic into manageable steps — "Set up infrastructure alerting," "Configure a Linux server integration," "Visualize trace data."
+A learning journey is an ordered sequence of guides that build toward a larger outcome. Not a single guide package, a series of packages that decompose a complex topic into manageable steps — "Set up infrastructure alerting," "Configure a Linux server integration," "Visualize trace data."
 
-Journeys are **first-class citizens** in the package system and the dependency graph. A downstream guide can declare `"depends": ["infrastructure-alerting"]` and mean "the user has completed the entire alerting journey." Journeys carry their own metadata, targeting, and `provides` capabilities — they are addressable, recommendable, and completable as a unit.
+Journeys are packages and contribute in the same way in the package system and the dependency graph. Other guides can `"depends": ["infrastructure-alerting"]` and mean "the user has completed the entire alerting journey." Journeys carry their own metadata, targeting, and `provides` capabilities — they are addressable, recommendable, and completable as a unit.
 
 ### The metapackage model
 
@@ -516,22 +516,15 @@ Journeys follow the Debian **metapackage** pattern: a package whose primary purp
 
 We adopt the same principle. A journey is a metapackage. Its steps are real packages — not a special "sub-unit" type, not scoped fragments, not second-class entities. The package system has **one kind of thing**: a package. Some packages are metapackages that compose other packages into a coherent learning experience.
 
-This design decision — **package uniformity** — has structural consequences:
+### Metapackage Advantages
+
+We're adopting the Debian model so we can get the advantages they've had for 30 years of package management:
 
 - **One identity model.** Steps have FQIs in the existing `repository/id` format, just like any other package. No fragment notation, no scoped identity, no new addressing scheme.
 - **One set of tools.** The CLI validates steps with the same validation pipeline as standalone guides. The graph command shows steps as real nodes. The index builder can index them. Every tool that works for packages works for steps.
-- **One dependency model.** Steps can (but rarely need to) use `depends`, `recommends`, `provides`, and the full dependency vocabulary. The metapackage uses `steps` for ordering but the dependency graph handles the rest.
-- **Future flexibility.** If a step later becomes independently valuable — or is shared across multiple journeys — the model already supports it without redesign.
-
-### What metapackages buy us
-
-The metapackage model brings specific advantages from Debian's 30 years of package management:
-
-**Collective identity.** A journey is a single name that represents a composed experience. `"depends": ["infrastructure-alerting"]` expresses a relationship with the entire alerting journey. The dependency graph sees one node; the internal decomposition is the journey's concern.
-
-**Composition evolution.** A journey can add, remove, or reorder steps between versions without changing its external identity. The `steps` array in the journey manifest absorbs the evolution. Downstream dependents are unaffected.
-
-**Flavors and reuse.** Different metapackages can compose different subsets of a shared step pool. This is already visible in the content corpus:
+- **One dependency model.** Steps can use `depends`, `recommends`, `provides`, and the full dependency vocabulary. The metapackage uses `steps` for ordering but the dependency graph handles the rest.
+- **Composition evolution.** A journey can add, remove, or reorder steps between versions without changing its external identity. The `steps` array in the journey manifest absorbs the evolution. Downstream dependents are unaffected.
+- **Flavors and reuse.** Different metapackages can compose different subsets of a shared step pool. This is already visible in the content corpus:
 
 | Journey | Steps |
 |---|---|
@@ -547,7 +540,7 @@ Step reuse is a structural capability enabled by the model, not a requirement im
 
 Two aspects of Debian metapackages do not apply:
 
-**Ordering.** In Debian, `Depends: A, B, C` has no ordering semantics — `apt` can install them in any order. Journeys need an explicit linear sequence. The `steps` field (described below) is **new machinery** that does not come from the Debian model. It is layered on top of the metapackage concept.
+**Ordering.** In Debian, `Depends: A, B, C` has no ordering semantics. Journeys need an explicit linear sequence. The `steps` field (described below) is **new machinery** that does not come from the Debian model. It is layered on top of the metapackage concept.
 
 **Removal semantics.** In Debian, removing a metapackage allows `apt autoremove` to garbage-collect orphaned dependencies. There is no analogue in Pathfinder — you do not "uncomplete" a journey or "uninstall" a step.
 
@@ -617,7 +610,7 @@ Step packages follow the same conventions as any package: they contain at minimu
 
 ### Step ordering and completion semantics
 
-**Ordering is advisory.** The `steps` array defines the suggested linear path. The UI presents steps in this order and encourages sequential progression. However, users are always permitted to jump into any step directly. There is no hard gate between steps — the ordering is a recommendation, not an enforcement mechanism.
+**Ordering is advisory.** The `steps` array defines the suggested linear path. The UI presents steps in this order and encourages sequential progression. However, users are always permitted to jump into any step directly. The "steps" of a learning journey are packages like any other, and so can be used independently subject to dependencies.
 
 **Completion is set-based.** "Completing the journey" means completing all steps, regardless of the order in which they were completed. A user who completes steps 1, 3, 5, 2, 4, 6, 7 has completed the journey identically to one who followed the linear path. Journey completion triggers the journey's `provides` capabilities and satisfies downstream `depends` references.
 
@@ -625,16 +618,14 @@ Step packages follow the same conventions as any package: they contain at minimu
 
 ### Journey-level metadata and dependencies
 
-Journey-level `manifest.json` carries metadata and dependencies for the journey as a whole. Steps inherit the journey's context — they do not independently declare targeting or participate in the dependency graph unless there is a specific reason to do so.
+Journey-level `manifest.json` carries metadata and dependencies for the journey as a whole. Steps inherit the journey's context — they do not independently declare targeting or participate in the dependency graph unless there is a specific reason to do so. Other than that, journey metadata is the same as package metadata, differingly only with:
 
-| Concern | Lives on | Rationale |
-|---|---|---|
-| `description`, `category`, `author` | Journey manifest | Describes the journey, not individual steps |
-| `targeting` | Journey manifest | The recommender surfaces the journey, not individual steps |
-| `depends`, `recommends`, `suggests` | Journey manifest | The journey has prerequisites, not individual steps |
-| `provides` | Journey manifest | Completing the journey provides capabilities |
-| `testEnvironment` | Step manifest (optional) | Individual steps may need different test environments |
-| `content.json` | Each step | Steps own their content; the block editor works per-step |
+* `type: "journey"`
+* `steps: ["step1", "step2"]`
+
+TBD decision: whether or not steps underneath a journey should inherit
+some metadata from the journey package. Leaning towards "no", because
+the principle is that the underlying packages are independently reusable.
 
 ### Example: complete journey package
 
@@ -703,7 +694,8 @@ Journey-level `manifest.json` carries metadata and dependencies for the journey 
 
 Journey metapackages and curated learning paths (`paths.json`) coexist:
 
-- **`paths.json`** defines editorially curated paths with badges, estimated time, icons, and platform targeting. It is a presentation product.
+- **`paths.json`** defines editorially curated paths with badges, estimated time, icons, and platform targeting. They are currently a stand-in for not
+yet having this structure, and will need to be migrated in due time.
 - **Journey metapackages** define structurally composed experiences with dependency semantics. They are a content architecture product.
 
 A `paths.json` entry can reference a journey as a single unit, or a journey can subsume the role of a `paths.json` entry entirely. The reconciliation between these two mechanisms is addressed in [Phase 3](#phase-3-learning-journey-integration-2-3-weeks) of the roadmap.
@@ -722,9 +714,10 @@ The journey metapackage model provides the concrete bridge to SCORM's content or
 
 SCORM's `Organization` element is structurally equivalent to a journey metapackage: both compose content objects into an ordered sequence with metadata. The SCORM import pipeline (Phase 5-6) does not need to invent a composition model — it writes into the one established by journeys. The future `type: "course"` becomes a refinement of the journey concept (potentially with stricter sequencing semantics), not a separate system.
 
-### Journeys do not nest
+### TBD Decision: Can Journeys Nest?
 
-A journey's steps are guides (`type: "guide"` or absent). A journey cannot contain another journey as a step. This keeps the model flat and avoids recursive nesting complexity. If hierarchical content organization is needed (course → module → lesson), the SCORM `type` extensions (`"course"`, `"module"`) will address it in a future phase. For now, the composition model is one level deep: journeys contain guides.
+* Yes: if journeys are just metapackages, metapackages can contain metapackages (everything is a first class package)
+* No: A journey's steps are guides (`type: "guide"` or absent). A journey cannot contain another journey as a step. This keeps the model flat and avoids recursive nesting complexity. If hierarchical content organization is needed (course → module → lesson), the SCORM `type` extensions (`"course"`, `"module"`) will address it in a future phase. For now, the composition model is one level deep: journeys contain guides.
 
 ---
 
@@ -734,22 +727,9 @@ Targeting rules are declared in `manifest.json`.
 
 ### Purpose
 
-Packages carry an advisory `targeting` field that suggests how the recommender should surface the content. The recommender retains full authority to override, modify, or ignore these suggestions.
+Packages carry an **advisory** `targeting` field that suggests how the recommender should surface the content. The recommender retains full authority to override, modify, or ignore these suggestions.
 
 ### Structure
-
-```typescript
-interface GuideTargeting {
-  /**
-   * Match expression following the recommender's MatchExpr grammar.
-   * Loosely validated in the package schema — the authoritative definition
-   * lives in the grafana-recommender service.
-   *
-   * @see recommender repo (internal)
-   */
-  match?: Record<string, unknown>;
-}
-```
 
 The `match` field follows the recommender's `MatchExpr` grammar, which supports:
 
@@ -760,6 +740,8 @@ The `match` field follows the recommender's `MatchExpr` grammar, which supports:
 - Tag matching: `tag`, `tagIn`, `allTags`
 - Cohort targeting: `cohort`, `cohortIn`
 - Platform targeting: `targetPlatform`, `targetPlatformIn`
+
+**We introduce nothing novel here, we only reuse MatchExpr**.
 
 ### Example
 
