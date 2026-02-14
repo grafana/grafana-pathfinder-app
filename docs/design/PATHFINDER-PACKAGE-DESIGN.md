@@ -18,7 +18,7 @@
 - [Alignment with external formats](#alignment-with-external-formats)
 - [Future-proofing](#future-proofing)
 - [Deferred concerns](#deferred-concerns)
-- [Phased roadmap](#phased-roadmap)
+- [Implementation plan](#implementation-plan)
 - [Decision log](#decision-log)
 
 ---
@@ -608,11 +608,11 @@ We're adopting the Debian model so we can get the advantages they've had for 30 
 - **Composition evolution.** A journey can add, remove, or reorder steps between versions without changing its external identity. The `steps` array in the journey manifest absorbs the evolution. Downstream dependents are unaffected.
 - **Flavors and reuse.** Different metapackages can compose different subsets of a shared step pool. This is already visible in the content corpus:
 
-| Journey | Steps |
-|---|---|
+| Journey                    | Steps                                                                                               |
+| -------------------------- | --------------------------------------------------------------------------------------------------- |
 | `linux-server-integration` | select-platform, install-alloy, configure-alloy, install-dashboards-alerts, restart-test-connection |
-| `macos-integration` | select-architecture, install-alloy, configure-alloy, install-dashboards-alerts, test-connection |
-| `mysql-integration` | select-platform, install-alloy, configure-alloy, install-dashboards-alerts, test-connection |
+| `macos-integration`        | select-architecture, install-alloy, configure-alloy, install-dashboards-alerts, test-connection     |
+| `mysql-integration`        | select-platform, install-alloy, configure-alloy, install-dashboards-alerts, test-connection         |
 
 Three journeys share `install-alloy`, `configure-alloy`, and `install-dashboards-alerts`. If those steps are real packages, they can be authored once and composed into multiple journeys — exactly as Debian metapackages compose shared components into different desktop experiences.
 
@@ -630,12 +630,12 @@ Two aspects of Debian metapackages do not apply:
 
 The `manifest.json` `type` field distinguishes guides from journeys. This field was anticipated in [future-proofing](#the-type-discriminator-future) for SCORM; journeys are the first concrete use.
 
-| Type | Meaning | Has `steps`? | Has content blocks? |
-|---|---|---|---|
-| `"guide"` (default) | Single standalone lesson | No | Yes |
-| `"journey"` | Metapackage composing an ordered sequence of guides | Yes | Optional (cover page) |
-| `"course"` | SCORM-imported course (future) | Future | Future |
-| `"module"` | Grouping of related guides without strict ordering (future) | Future | Future |
+| Type                | Meaning                                                     | Has `steps`? | Has content blocks?   |
+| ------------------- | ----------------------------------------------------------- | ------------ | --------------------- |
+| `"guide"` (default) | Single standalone lesson                                    | No           | Yes                   |
+| `"journey"`         | Metapackage composing an ordered sequence of guides         | Yes          | Optional (cover page) |
+| `"course"`          | SCORM-imported course (future)                              | Future       | Future                |
+| `"module"`          | Grouping of related guides without strict ordering (future) | Future       | Future                |
 
 When `type` is absent, the default is `"guide"`. All existing packages continue to work without changes.
 
@@ -702,8 +702,8 @@ Step packages follow the same conventions as any package: they contain at minimu
 
 Journey-level `manifest.json` carries metadata and dependencies for the journey as a whole. Steps inherit the journey's context — they do not independently declare targeting or participate in the dependency graph unless there is a specific reason to do so. Other than that, journey metadata is the same as package metadata, differingly only with:
 
-* `type: "journey"`
-* `steps: ["step1", "step2"]`
+- `type: "journey"`
+- `steps: ["step1", "step2"]`
 
 TBD decision: whether or not steps underneath a journey should inherit
 some metadata from the journey package. Leaning towards "no", because
@@ -777,29 +777,29 @@ the principle is that the underlying packages are independently reusable.
 Journey metapackages and curated learning paths (`paths.json`) coexist:
 
 - **`paths.json`** defines editorially curated paths with badges, estimated time, icons, and platform targeting. They are currently a stand-in for not
-yet having this structure, and will need to be migrated in due time.
+  yet having this structure, and will need to be migrated in due time.
 - **Journey metapackages** define structurally composed experiences with dependency semantics. They are a content architecture product.
 
-A `paths.json` entry can reference a journey as a single unit, or a journey can subsume the role of a `paths.json` entry entirely. The reconciliation between these two mechanisms is addressed in [Phase 3](#phase-3-learning-journey-integration-2-3-weeks) of the roadmap.
+A `paths.json` entry can reference a journey as a single unit, or a journey can subsume the role of a `paths.json` entry entirely. The reconciliation between these two mechanisms is addressed in [the learning journey integration phase](./PACKAGE-IMPLEMENTATION-PLAN.md#phase-4-learning-journey-integration).
 
 ### Relationship to SCORM
 
 The journey metapackage model provides the concrete bridge to SCORM's content organization model:
 
-| SCORM concept | Package model equivalent |
-|---|---|
-| Organization (tree of Items) | Journey metapackage with `steps` |
-| Item (with sequencing rules) | Step ordering via `steps` array |
-| SCO (shareable content object) | Step package (guide) |
-| Forward-only sequencing | Advisory `steps` ordering |
-| Prerequisites | `manifest.json` → `depends` |
+| SCORM concept                  | Package model equivalent         |
+| ------------------------------ | -------------------------------- |
+| Organization (tree of Items)   | Journey metapackage with `steps` |
+| Item (with sequencing rules)   | Step ordering via `steps` array  |
+| SCO (shareable content object) | Step package (guide)             |
+| Forward-only sequencing        | Advisory `steps` ordering        |
+| Prerequisites                  | `manifest.json` → `depends`      |
 
 SCORM's `Organization` element is structurally equivalent to a journey metapackage: both compose content objects into an ordered sequence with metadata. The SCORM import pipeline (Phase 5-6) does not need to invent a composition model — it writes into the one established by journeys. The future `type: "course"` becomes a refinement of the journey concept (potentially with stricter sequencing semantics), not a separate system.
 
 ### TBD Decision: Can Journeys Nest?
 
-* Yes: if journeys are just metapackages, metapackages can contain metapackages (everything is a first class package)
-* No: A journey's steps are guides (`type: "guide"` or absent). A journey cannot contain another journey as a step. This keeps the model flat and avoids recursive nesting complexity. If hierarchical content organization is needed (course → module → lesson), the SCORM `type` extensions (`"course"`, `"module"`) will address it in a future phase. For now, the composition model is one level deep: journeys contain guides.
+- Yes: if journeys are just metapackages, metapackages can contain metapackages (everything is a first class package)
+- No: A journey's steps are guides (`type: "guide"` or absent). A journey cannot contain another journey as a step. This keeps the model flat and avoids recursive nesting complexity. If hierarchical content organization is needed (course → module → lesson), the SCORM `type` extensions (`"course"`, `"module"`) will address it in a future phase. For now, the composition model is one level deep: journeys contain guides.
 
 ---
 
@@ -1105,15 +1105,15 @@ Phase 1 metadata field names are chosen to align with established standards wher
 
 The package format is designed to be the **output target** for a future SCORM import pipeline. The two-file model aligns naturally with SCORM's separation of `imsmanifest.xml` (metadata) from content files:
 
-| SCORM concept              | Package equivalent                                                                                            |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Package (ZIP)              | Package directory                                                                                             |
-| `imsmanifest.xml` metadata | `manifest.json`                                                                                               |
-| Organization tree          | [Journey metapackage](#learning-journeys) with `steps` array                                                  |
-| Item (with sequencing)     | Step ordering via `steps` array                                                                               |
-| SCO (interactive content)  | Step package — `content.json` with content blocks                                                             |
-| Asset (static content)     | `assets/` directory within package                                                                            |
-| Prerequisites              | `manifest.json` → `depends`                                                                                   |
+| SCORM concept              | Package equivalent                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Package (ZIP)              | Package directory                                                                                                 |
+| `imsmanifest.xml` metadata | `manifest.json`                                                                                                   |
+| Organization tree          | [Journey metapackage](#learning-journeys) with `steps` array                                                      |
+| Item (with sequencing)     | Step ordering via `steps` array                                                                                   |
+| SCO (interactive content)  | Step package — `content.json` with content blocks                                                                 |
+| Asset (static content)     | `assets/` directory within package                                                                                |
+| Prerequisites              | `manifest.json` → `depends`                                                                                       |
 | Sequencing (forward-only)  | Advisory `steps` ordering (see [step ordering and completion semantics](#step-ordering-and-completion-semantics)) |
 
 The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `manifest.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure. For multi-SCO courses, the importer produces a journey metapackage with step packages — the same structure used for natively authored learning journeys.
@@ -1177,12 +1177,12 @@ A flat `testEnvironment` field will be added to `manifest.json` when Layer 4 E2E
 
 ### Schema versioning strategy
 
-| Version | Scope                                                                                           |
-| ------- | ----------------------------------------------------------------------------------------------- |
-| `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`               |
-| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory, `type` and `steps` for journeys |
+| Version | Scope                                                                                                                                  |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`                                                      |
+| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory, `type` and `steps` for journeys              |
 | `1.2.0` | Future: adds `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment`; extends `type` with `"course"` and `"module"` |
-| `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                                 |
+| `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                                                                        |
 
 Any consumer can inspect `schemaVersion` and decide which fields to expect.
 
@@ -1248,126 +1248,10 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 ---
 
-## Phased roadmap
+## Implementation plan
 
-### Phase 0: Schema and repository foundation (1-2 weeks)
-
-**Goal:** Define the two-file schema model (`ContentJsonSchema` + `ManifestJsonSchema`) and the repository index (`repository.json`) that resolves package ids to filesystem paths. Zero runtime changes. Full backwards compatibility.
-
-**Deliverables:**
-
-- [ ] Define `ContentJsonSchema` for `content.json` (`schemaVersion`, `id`, `title`, `blocks`)
-- [ ] Define `ManifestJsonSchema` for `manifest.json` (flat metadata fields, flat dependency fields, `targeting`)
-- [ ] Define shared sub-schemas (`DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`)
-- [ ] Retain merged `JsonGuideSchemaStrict` for backwards compatibility with single-file guides
-- [ ] Add `KNOWN_FIELDS._manifest` for `manifest.json` fields
-- [ ] Bump `CURRENT_SCHEMA_VERSION` to `"1.1.0"`
-- [ ] Define `repository.json` specification (id → `{ path }` mapping, compiled build artifact)
-- [ ] Implement `pathfinder-cli build-repository` command (scans package tree, emits `repository.json`)
-- [ ] Add pre-commit hook for `interactive-tutorials` that regenerates `repository.json` on commit
-- [ ] CI verification: rebuild `repository.json` from scratch, diff against committed version, fail on divergence
-- [ ] Add unit tests for content schema, package schema, cross-file ID consistency, and repository index generation
-- [ ] Run `validate:strict` to confirm all existing guides still pass
-- [ ] Update schema-coupling documentation
-
-**Why first:** Everything downstream depends on the schema accepting these fields, the two-file model being defined, and the resolution mechanism being in place. Without `repository.json`, FQIs cannot be resolved to filesystem paths — especially for nested journey step packages.
-
-### Phase 1: CLI package validation (2-3 weeks)
-
-**Goal:** The CLI can validate a directory as a package (both `content.json` and `manifest.json`) and validate cross-package dependencies.
-
-**Deliverables:**
-
-- [ ] `--package` flag: validate a directory (expects `content.json`, optionally `manifest.json`)
-- [ ] Cross-file consistency: `id` match between `content.json` and `manifest.json`
-- [ ] `--packages` flag: validate a tree of package directories
-- [ ] Dependency graph validator: resolution, cycle detection, capability coverage (reads from `manifest.json`)
-- [ ] Cross-repo reference warnings (unresolvable without external metadata)
-- [ ] `graph` command: output dependency DAG as text or DOT format
-- [ ] Asset reference validation: warn if `content.json` references assets not in `assets/`
-- [ ] Integration tests with sample package trees (valid and invalid, with and without `manifest.json`)
-
-**Why second:** Enables CI validation of packages in `interactive-tutorials` before guides are converted. Tooling is ready before content migrates.
-
-### Phase 2: Pilot package migration (1-2 weeks)
-
-**Goal:** Convert 3-5 existing guides to the two-file package format and validate end-to-end.
-
-**Deliverables:**
-
-- [ ] Convert `welcome-to-grafana`, `prometheus-grafana-101`, `first-dashboard` to directory packages
-- [ ] For each, create `manifest.json` with flat metadata (description, language, category, author)
-- [ ] Add dependency fields (depends, provides, suggests) to `manifest.json` to express the "Getting started" learning path
-- [ ] Add `targeting` with recommender match expressions to `manifest.json`
-- [ ] Verify plugin loads and renders `content.json` correctly (ignoring `manifest.json` at runtime)
-- [ ] Verify `validate --packages` passes in CI (validates both files)
-- [ ] Document the two-file package authoring workflow for content authors and metadata managers
-
-**Why third:** Proof-of-concept that validates schema, CLI, and runtime work together. Small scope (3-5 guides) catches issues early.
-
-### Phase 3: Learning journey integration (2-3 weeks)
-
-**Goal:** Journey metapackages are a working package type. The CLI validates journeys, the dependency graph treats them as first-class nodes, and learning paths can use package dependencies alongside curated `paths.json`. See [learning journeys](#learning-journeys) for the full design.
-
-**Deliverables:**
-
-- [ ] Add `type` field to `ManifestJsonSchema` (`"guide"` default, `"journey"`)
-- [ ] Add `steps` field to `ManifestJsonSchema` (ordered `string[]`, valid when `type: "journey"`)
-- [ ] CLI: validate journey directories — nested step packages, `steps` array referencing child directories, cover page `content.json`
-- [ ] CLI: dependency graph treats journeys as single nodes; `--expand-journeys` flag shows internal step structure
-- [ ] Pilot: convert 1-2 existing `*-lj` directories to journey metapackages with `manifest.json`
-- [ ] Validate step reuse: confirm that a step package can appear in multiple journey `steps` arrays
-- [ ] Utility to compute learning paths from dependency DAG
-- [ ] Reconciliation: curated `paths.json` takes priority; dependency-derived paths fill gaps
-- [ ] UI: learning path cards use package metadata (description, category) when available
-- [ ] Align with docs partners' YAML format for learning journey relationships
-
-**Why fourth:** First user-visible payoff of the package model. Introduces the metapackage composition pattern that SCORM `"course"` and `"module"` types will later build on. Content authors and docs partners see dependency declarations reflected in the learning experience.
-
-### Phase 4: Test environment metadata (2-3 weeks)
-
-**Goal:** Guides declare test environment requirements; E2E runner uses them for routing.
-
-**Deliverables:**
-
-- [ ] Add flat `testEnvironment` field to `ManifestJsonSchema` (tier, minVersion, datasets, plugins, datasources)
-- [ ] Extend CLI validation for testEnvironment fields in `manifest.json`
-- [ ] E2E runner reads `manifest.json` for testEnvironment routing decisions
-- [ ] Document testEnvironment authoring guidelines (authored in `manifest.json`)
-
-**Why fifth:** Layer 4 foundation from the testing strategy. Depends on the package format being stable and adopted.
-
-### Phase 5: SCORM foundation (3-4 weeks)
-
-**Goal:** Extend the package format for SCORM import needs. Schema extensions only — not the importer itself. Builds on the `type` discriminator and metapackage composition model established by journeys in Phase 3.
-
-**Deliverables:**
-
-- [ ] Extend `type` field with `"course"` and `"module"` values (journey's `"guide"` and `"journey"` already in place from Phase 3)
-- [ ] Add flat `source` field to `manifest.json` for provenance tracking
-- [ ] Add flat `keywords`, `rights`, `educationalContext`, `difficulty`, `estimatedDuration` fields to `manifest.json`
-- [ ] Course/module rendering in web display mode (table-of-contents page)
-- [ ] Design SCORM import pipeline CLI interface
-
-**Why sixth:** Extends the package format so it can receive SCORM-imported content. The journey metapackage model from Phase 3 provides the composition infrastructure; SCORM types refine it with import-specific semantics. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
-
-### Phase 6+: SCORM import pipeline
-
-Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-5 is the foundation it writes to.
-
-### Summary
-
-| Phase                | Effort    | Unlocks                                             |
-| -------------------- | --------- | --------------------------------------------------- |
-| 0: Schema            | 1-2 weeks | Everything — `content.json` + `manifest.json` model |
-| 1: CLI               | 2-3 weeks | CI validation, cross-file checks, dependency graph  |
-| 2: Pilot             | 1-2 weeks | Proof-of-concept, runtime validation                |
-| 3: Learning journeys | 2-3 weeks | Metapackage model, `type`/`steps`, docs partner alignment |
-| 4: Test environment  | 2-3 weeks | Layer 4 E2E routing                                      |
-| 5: SCORM foundation  | 3-4 weeks | SCORM import readiness, extends `type` with course/module |
-| 6+: SCORM import     | 15+ weeks | Full SCORM conversion pipeline                      |
-
-Total for Phases 0-4 (core package model): **8-12 weeks**. Delivers a fully functional package system serving learning journeys, E2E testing, and content lifecycle management — before any SCORM work begins.
+The phased implementation plan for this design is maintained separately in
+[PACKAGE-IMPLEMENTATION-PLAN.md](./PACKAGE-IMPLEMENTATION-PLAN.md).
 
 ---
 
@@ -1375,36 +1259,36 @@ Total for Phases 0-4 (core package model): **8-12 weeks**. Delivers a fully func
 
 Decisions made during the design discussion, with rationale.
 
-| #   | Decision                                                          | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| --- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | Packages are directories containing `content.json`                | Natural extension point for assets, sidecars; aligns with SCORM decomposition                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| D2  | Identity: `repository` token + `id`, FQI = `repository/id`        | Follows Debian model; repository is a token, not a URL; resolution is external                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| D3  | Default repository: `"interactive-tutorials"`                     | Backwards compat for all existing guides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| D4  | Bare ID references resolve within same repository                 | Concise same-repo references; cross-repo uses FQI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| D5  | Namespacing from Phase 1                                          | Avoids collision risk as multi-repo becomes real; semantic IDs over UUIDs                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| D6  | Single `category` string                                          | Aligns with docs team taxonomy; multi-category deferred                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| D7  | `targeting.match` follows recommender's MatchExpr grammar         | Package suggests, recommender decides; loosely validated to avoid coupling                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| D8  | Learning paths: both curated and derived                          | `paths.json` is editorial; dependency graph is structural; both coexist                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| D9  | Multi-repo; resolution deferred                                   | Packages across repos is a known requirement; resolution mechanism is future work                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| D10 | Grafana-first, extensible for non-Grafana                         | No gold-plating for SCORM; open extensibility is the goal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| D11 | `build-index` deferred                                            | Recommender currently uses separately maintained `index.json`; future CLI command                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| D12 | Vet metadata field names against standards                        | Cross-reference Dublin Core / IEEE LOM / SCORM before finalizing names                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| D13 | Schema version `"1.1.0"` for package extension                    | Backward-compatible addition; minor version bump per semver                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| D14 | Separate `content.json` (content) from `manifest.json` (metadata) | Follows Debian `control`/`data` separation. Multiple consumers (plugin, recommender, LMS, E2E runner) each need different data; separate files avoid full-parsing a large unified file. Block editor stays focused on content; metadata is managed by different roles with different tools. Eliminates merge conflicts between content and metadata changes.                                                                                                                                                                             |
-| D15 | Optional `assets/` directory for non-JSON resources               | Aligns with SCORM asset packaging. Images, diagrams, and supplementary files live alongside content. Asset resolution deferred but convention established now.                                                                                                                                                                                                                                                                                                                                                                           |
-| D16 | Flat metadata and dependency fields in `manifest.json`            | Follows Debian `control` file convention where all fields are peers at the same level. Reduces nesting depth, simplifies authoring and validation. Namespace collision risk is acceptable given the bounded, standards-aligned field inventory (see [namespace collision note](#namespace-collision-note)).                                                                                                                                                                                                                              |
-| D17 | CNF OR syntax for dependency lists (nested arrays)                | Maps directly to Debian's comma + pipe semantics (`A \| B, C` → `[["A", "B"], "C"]`). Outer array = AND, inner array = OR. Backwards compatible: existing `["A", "B"]` (all strings) retains AND semantics. No string parsing required; fully validatable with Zod.                                                                                                                                                                                                                                                                      |
-| D18 | Default `language` to `"en"`                                      | All existing content is English. Explicit default avoids mandatory boilerplate while preserving the field for future i18n and SCORM import.                                                                                                                                                                                                                                                                                                                                                                                              |
-| D19 | Defer `estimatedDuration` and `difficulty` to Phase 2+            | No compelling MVP consumer for either field. No UI component displays them; no recommender logic consumes them. Field names are vetted against IEEE LOM now to avoid future renames. Will be needed if SCORM import or recommendation ranking arrives.                                                                                                                                                                                                                                                                                   |
-| D20 | Metadata file named `manifest.json`, not `package.json`           | Avoids collision with Node.js `package.json`, which would cause friction with npm, IDEs, GitHub dependency graphs, and toolchain root detection across 100-200+ guide directories. `manifest.json` is semantically accurate (the file is a manifest of identity, metadata, dependencies, and targeting), parallels SCORM's `imsmanifest.xml`, is familiar to web developers (PWA/extension manifests), and survives the Phase 5 `type` expansion (a manifest for a course is still a manifest). No major toolchain claims this filename. |
-| D21 | Journeys use the Debian metapackage model; steps are real packages | Package uniformity — one kind of thing, one identity model, one tooling set. Avoids inventing a "sub-unit" concept with scoped identity, fragment notation, or different validation rules. Follows the Debian metapackage precedent for composing coherent experiences from discrete components. Enables step reuse across journeys (the "flavors" advantage visible in the integration journeys that share `install-alloy`, `configure-alloy`, and `install-dashboards-alerts`). |
-| D22 | `type` discriminator pulled forward with `"guide"` and `"journey"` | Journeys need the type discriminator now. Originally deferred to Phase 5 for SCORM. The journey `type` establishes the composition pattern that SCORM's `"course"` and `"module"` types will refine, not a separate system. |
-| D23 | `steps` is a new ordered array field, not a Debian dependency construct | Debian `Depends` has no ordering semantics — `A, B, C` is conjunction, not sequence. Advisory linear ordering requires new machinery layered on top of the Debian model. The `steps` array is the single source of truth for step ordering; not dependency chains, not filesystem ordering, not a separate paths file. |
-| D24 | Step ordering is advisory; journey completion is set-based | Users can jump into any step directly. Completion = all steps done, regardless of order. The `steps` array is the suggested reading path, not an enforcement mechanism. This matches the design constraint that journeys should encourage but not require sequential progression. |
-| D25 | Nested package directories are permitted | Journey directories contain step package directories. The CLI must handle directory-within-directory package structure. This enables both physical containment (steps live under their journey) and logical flatness (steps are real packages with FQIs). |
-| D26 | Package ids do not encode filesystem paths | Coupling identity to physical layout means any directory reorganization changes the id, cascading into every package that references it in `depends`, `recommends`, `steps`, or any other field. Ids are stable flat tokens; the mapping from id to path is an external concern handled by the repository index. |
-| D27 | Repository-level `repository.json` for id-to-path resolution | Follows the Debian `Packages` index precedent. Each repository publishes a compiled `repository.json` mapping package ids to relative filesystem paths. Consumers read the index for resolution — no tree scanning, no path encoding in ids. Values are `{ path }` objects for future extensibility. Fields with a single source of truth elsewhere (e.g., `type`) are excluded to avoid duplication. |
-| D28 | `repository.json` is compiled, never hand-authored | Generated by `pathfinder-cli build-repository`, regenerated by pre-commit hook, verified in CI by rebuild-and-diff. Follows the lockfile pattern: committed for fast reads, always reproducible from source. Because it is entirely compiled, it can safely be extended with denormalized metadata in the future without drift risk. |
+| #   | Decision                                                                | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Packages are directories containing `content.json`                      | Natural extension point for assets, sidecars; aligns with SCORM decomposition                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D2  | Identity: `repository` token + `id`, FQI = `repository/id`              | Follows Debian model; repository is a token, not a URL; resolution is external                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| D3  | Default repository: `"interactive-tutorials"`                           | Backwards compat for all existing guides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| D4  | Bare ID references resolve within same repository                       | Concise same-repo references; cross-repo uses FQI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D5  | Namespacing from Phase 1                                                | Avoids collision risk as multi-repo becomes real; semantic IDs over UUIDs                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D6  | Single `category` string                                                | Aligns with docs team taxonomy; multi-category deferred                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D7  | `targeting.match` follows recommender's MatchExpr grammar               | Package suggests, recommender decides; loosely validated to avoid coupling                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D8  | Learning paths: both curated and derived                                | `paths.json` is editorial; dependency graph is structural; both coexist                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D9  | Multi-repo; resolution deferred                                         | Packages across repos is a known requirement; resolution mechanism is future work                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D10 | Grafana-first, extensible for non-Grafana                               | No gold-plating for SCORM; open extensibility is the goal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D11 | `build-index` deferred                                                  | Recommender currently uses separately maintained `index.json`; future CLI command                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D12 | Vet metadata field names against standards                              | Cross-reference Dublin Core / IEEE LOM / SCORM before finalizing names                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| D13 | Schema version `"1.1.0"` for package extension                          | Backward-compatible addition; minor version bump per semver                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| D14 | Separate `content.json` (content) from `manifest.json` (metadata)       | Follows Debian `control`/`data` separation. Multiple consumers (plugin, recommender, LMS, E2E runner) each need different data; separate files avoid full-parsing a large unified file. Block editor stays focused on content; metadata is managed by different roles with different tools. Eliminates merge conflicts between content and metadata changes.                                                                                                                                                                             |
+| D15 | Optional `assets/` directory for non-JSON resources                     | Aligns with SCORM asset packaging. Images, diagrams, and supplementary files live alongside content. Asset resolution deferred but convention established now.                                                                                                                                                                                                                                                                                                                                                                           |
+| D16 | Flat metadata and dependency fields in `manifest.json`                  | Follows Debian `control` file convention where all fields are peers at the same level. Reduces nesting depth, simplifies authoring and validation. Namespace collision risk is acceptable given the bounded, standards-aligned field inventory (see [namespace collision note](#namespace-collision-note)).                                                                                                                                                                                                                              |
+| D17 | CNF OR syntax for dependency lists (nested arrays)                      | Maps directly to Debian's comma + pipe semantics (`A \| B, C` → `[["A", "B"], "C"]`). Outer array = AND, inner array = OR. Backwards compatible: existing `["A", "B"]` (all strings) retains AND semantics. No string parsing required; fully validatable with Zod.                                                                                                                                                                                                                                                                      |
+| D18 | Default `language` to `"en"`                                            | All existing content is English. Explicit default avoids mandatory boilerplate while preserving the field for future i18n and SCORM import.                                                                                                                                                                                                                                                                                                                                                                                              |
+| D19 | Defer `estimatedDuration` and `difficulty` to Phase 2+                  | No compelling MVP consumer for either field. No UI component displays them; no recommender logic consumes them. Field names are vetted against IEEE LOM now to avoid future renames. Will be needed if SCORM import or recommendation ranking arrives.                                                                                                                                                                                                                                                                                   |
+| D20 | Metadata file named `manifest.json`, not `package.json`                 | Avoids collision with Node.js `package.json`, which would cause friction with npm, IDEs, GitHub dependency graphs, and toolchain root detection across 100-200+ guide directories. `manifest.json` is semantically accurate (the file is a manifest of identity, metadata, dependencies, and targeting), parallels SCORM's `imsmanifest.xml`, is familiar to web developers (PWA/extension manifests), and survives the Phase 5 `type` expansion (a manifest for a course is still a manifest). No major toolchain claims this filename. |
+| D21 | Journeys use the Debian metapackage model; steps are real packages      | Package uniformity — one kind of thing, one identity model, one tooling set. Avoids inventing a "sub-unit" concept with scoped identity, fragment notation, or different validation rules. Follows the Debian metapackage precedent for composing coherent experiences from discrete components. Enables step reuse across journeys (the "flavors" advantage visible in the integration journeys that share `install-alloy`, `configure-alloy`, and `install-dashboards-alerts`).                                                        |
+| D22 | `type` discriminator pulled forward with `"guide"` and `"journey"`      | Journeys need the type discriminator now. Originally deferred to Phase 5 for SCORM. The journey `type` establishes the composition pattern that SCORM's `"course"` and `"module"` types will refine, not a separate system.                                                                                                                                                                                                                                                                                                              |
+| D23 | `steps` is a new ordered array field, not a Debian dependency construct | Debian `Depends` has no ordering semantics — `A, B, C` is conjunction, not sequence. Advisory linear ordering requires new machinery layered on top of the Debian model. The `steps` array is the single source of truth for step ordering; not dependency chains, not filesystem ordering, not a separate paths file.                                                                                                                                                                                                                   |
+| D24 | Step ordering is advisory; journey completion is set-based              | Users can jump into any step directly. Completion = all steps done, regardless of order. The `steps` array is the suggested reading path, not an enforcement mechanism. This matches the design constraint that journeys should encourage but not require sequential progression.                                                                                                                                                                                                                                                        |
+| D25 | Nested package directories are permitted                                | Journey directories contain step package directories. The CLI must handle directory-within-directory package structure. This enables both physical containment (steps live under their journey) and logical flatness (steps are real packages with FQIs).                                                                                                                                                                                                                                                                                |
+| D26 | Package ids do not encode filesystem paths                              | Coupling identity to physical layout means any directory reorganization changes the id, cascading into every package that references it in `depends`, `recommends`, `steps`, or any other field. Ids are stable flat tokens; the mapping from id to path is an external concern handled by the repository index.                                                                                                                                                                                                                         |
+| D27 | Repository-level `repository.json` for id-to-path resolution            | Follows the Debian `Packages` index precedent. Each repository publishes a compiled `repository.json` mapping package ids to relative filesystem paths. Consumers read the index for resolution — no tree scanning, no path encoding in ids. Values are `{ path }` objects for future extensibility. Fields with a single source of truth elsewhere (e.g., `type`) are excluded to avoid duplication.                                                                                                                                    |
+| D28 | `repository.json` is compiled, never hand-authored                      | Generated by `pathfinder-cli build-repository`, regenerated by pre-commit hook, verified in CI by rebuild-and-diff. Follows the lockfile pattern: committed for fast reads, always reproducible from source. Because it is entirely compiled, it can safely be extended with denormalized metadata in the future without drift risk.                                                                                                                                                                                                     |
 
 ---
 
