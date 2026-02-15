@@ -556,6 +556,10 @@ The recommender currently only consumes `index.json`. Evolving it to consume ric
 
 Packages will eventually be serialized to Kubernetes CRDs for the app platform backend. The package format is designed to map cleanly, but the CRD schema, API version, and serialization tooling are not designed here.
 
+### `conflicts` and `replaces` enforcement
+
+The `conflicts` and `replaces` dependency fields are included in the schema from Phase 1 for strict adherence to the Debian dependency vocabulary. The graph builder represents them as edges and the graph lint validates symmetric conflict declarations. However, no runtime system enforces these fields in the MVP — no recommender suppression, no UI warnings, no completion state migration. Enforcement behavior will be defined when a concrete consumer needs it. See [dependencies — deferred enforcement](./package/dependencies.md#deferred-enforcement-conflicts-and-replaces) for the full rationale.
+
 ### Non-Grafana content
 
 The format supports non-Grafana content by design (no Grafana-specific assumptions in `metadata`), but Phase 1 targets Grafana interactive guides exclusively. Non-Grafana use cases (sales training, compliance) are enabled by the extensible schema but not actively developed.
