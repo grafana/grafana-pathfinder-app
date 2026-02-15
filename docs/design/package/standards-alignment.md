@@ -139,7 +139,7 @@ The package format uses plain JSON with no Grafana-specific runtime dependencies
 apiVersion: pathfinder.grafana.com/v1alpha1
 kind: Guide
 metadata:
-  name: interactive-tutorials-prometheus-grafana-101
+  name: prometheus-grafana-101
 spec:
   # From content.json
   id: prometheus-grafana-101

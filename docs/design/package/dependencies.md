@@ -30,7 +30,7 @@ type DependencyClause = string | string[];
 type DependencyList = DependencyClause[];
 ```
 
-All references use FQI format (`"repository/id"`) for cross-repo or bare `id` for same-repo. See [identity model](./identity-and-resolution.md).
+All references use bare globally-unique IDs. See [identity model](./identity-and-resolution.md).
 
 ## AND/OR semantics
 
@@ -55,16 +55,27 @@ This complements virtual capabilities (`provides`): OR-groups express direct alt
 
 ## Dependency semantics
 
-These follow the [Debian package dependency model](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends) exactly:
+These follow the [Debian package dependency model](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends):
 
-| Field        | Semantics                                                                                             | Example                                   |
-| ------------ | ----------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `depends`    | Guide B **must** be completed before A is accessible. Hard gate.                                      | `"depends": ["intro-to-alerting"]`        |
-| `recommends` | Most users benefit from completing B first, but it's not required. System may prompt but won't block. | `"recommends": ["prometheus-quickstart"]` |
-| `suggests`   | B contains related content that enhances understanding of A. Informational only.                      | `"suggests": ["oncall-integration"]`      |
-| `provides`   | Completing A satisfies any dependency on capability X. Enables virtual capabilities.                  | `"provides": ["datasource-configured"]`   |
-| `conflicts`  | A and B cannot be meaningfully used together (deprecated content, mutually exclusive environments).   | `"conflicts": ["deprecated-alerting-v9"]` |
-| `replaces`   | A supersedes B entirely. Completion of A may mark B as unnecessary.                                   | `"replaces": ["alerting-techniques-v10"]` |
+| Field        | Semantics                                                                                             | MVP enforcement | Example                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------- |
+| `depends`    | Guide B **must** be completed before A is accessible. Hard gate.                                      | Yes             | `"depends": ["intro-to-alerting"]`        |
+| `recommends` | Most users benefit from completing B first, but it's not required. System may prompt but won't block. | Yes             | `"recommends": ["prometheus-quickstart"]` |
+| `suggests`   | B contains related content that enhances understanding of A. Informational only.                      | Yes             | `"suggests": ["oncall-integration"]`      |
+| `provides`   | Completing A satisfies any dependency on capability X. Enables virtual capabilities.                  | Yes             | `"provides": ["datasource-configured"]`   |
+| `conflicts`  | A and B cannot be meaningfully used together (deprecated content, mutually exclusive environments).   | Deferred        | `"conflicts": ["deprecated-alerting-v9"]` |
+| `replaces`   | A supersedes B entirely. Completion of A may mark B as unnecessary.                                   | Deferred        | `"replaces": ["alerting-techniques-v10"]` |
+
+### Deferred enforcement: `conflicts` and `replaces`
+
+The `conflicts` and `replaces` fields are included in the schema from Phase 1 for strict adherence to the Debian dependency vocabulary. Content authors can declare these relationships immediately, and the graph builder will represent them as edges in the dependency graph. However, **no runtime system enforces these fields in the MVP**. Specifically:
+
+- **`conflicts`**: The graph lint validates symmetric declarations (warns if A conflicts with B but B doesn't conflict with A). The graph command visualizes conflict edges. But neither the recommender nor the plugin UI acts on conflict declarations — a user can complete both conflicting guides without restriction.
+- **`replaces`**: The graph lint and graph command represent replacement edges. But no system hides replaced guides, transfers completion state, or suppresses replaced content from recommendations.
+
+This is a deliberate design call: the fields exist so that content authors can declare the relationships as they author packages, building up a correct dependency graph from day one. Enforcement behavior (recommender suppression, UI warnings, completion state migration) will be defined when a concrete consumer needs it. Defining enforcement without a consumer would risk specifying the wrong behavior.
+
+In Debian, `Conflicts` triggers hard mutual exclusion and `Replaces` (with `Breaks`) triggers automatic package removal during upgrades. The learning content domain does not have direct analogues to these mechanics — you cannot "uninstall" a completed guide. The future enforcement design will need to define what conflict and replacement mean for completed content, likely as recommender-level signals rather than hard system constraints.
 
 ## Virtual capabilities
 
@@ -91,4 +102,4 @@ Learning paths exist as **both** curated collections and dependency-derived stru
 - **Curated**: `paths.json` continues to define editorially curated learning paths with explicit ordering, badging, and presentation metadata. This is a human editorial product.
 - **Derived**: The dependency graph formed by `depends`/`recommends`/`suggests` is a structural relationship that the recommender can exploit to compute on-the-fly learning paths based on user context and graph topology.
 
-Both coexist. `paths.json` references guides by FQI. The dependency graph is a parallel structure that enriches the recommender's understanding of content relationships.
+Both coexist. `paths.json` references guides by bare ID. The dependency graph is a parallel structure that enriches the recommender's understanding of content relationships.

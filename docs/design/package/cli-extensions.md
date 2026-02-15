@@ -110,18 +110,18 @@ npx pathfinder-cli validate --packages ./guides/
 
 Package-level validation adds checks that single-file validation cannot perform:
 
-| Check                         | What it validates                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| Directory structure           | Package directory contains `content.json`                                               |
-| ID consistency (directory)    | `content.json` `id` matches directory name                                              |
-| ID consistency (cross-file)   | `manifest.json` `id` matches `content.json` `id` (when both present)                    |
-| Manifest.json structure       | `manifest.json` passes `ManifestJsonSchema` validation (when present)                   |
-| Dependency resolution (local) | All same-repo `depends`/`recommends` reference guide IDs that exist in the tree         |
-| Circular dependency detection | No cycles in the dependency graph                                                       |
-| Capability coverage           | Every `depends` target either exists as a guide ID or is `provides`-d by some guide     |
-| Cross-repo references         | Warns on unresolvable cross-repo references (cannot validate without external metadata) |
-| Conflict consistency          | `conflicts` pairs that are not symmetric generate a warning                             |
-| Assets directory              | Warns if `content.json` references assets that don't exist in `assets/`                 |
+| Check                         | What it validates                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------- |
+| Directory structure           | Package directory contains `content.json`                                           |
+| ID consistency (directory)    | `content.json` `id` matches directory name                                          |
+| ID consistency (cross-file)   | `manifest.json` `id` matches `content.json` `id` (when both present)                |
+| Manifest.json structure       | `manifest.json` passes `ManifestJsonSchema` validation (when present)               |
+| Dependency resolution (local) | All same-repo `depends`/`recommends` reference guide IDs that exist in the tree     |
+| Circular dependency detection | No cycles in the dependency graph                                                   |
+| Capability coverage           | Every `depends` target either exists as a guide ID or is `provides`-d by some guide |
+| Unresolvable references       | Warns on dependency targets not found in any known repository index                 |
+| Conflict consistency          | `conflicts` pairs that are not symmetric generate a warning                         |
+| Assets directory              | Warns if `content.json` references assets that don't exist in `assets/`             |
 
 ## Dependency graph command (new)
 
