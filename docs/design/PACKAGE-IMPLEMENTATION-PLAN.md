@@ -42,20 +42,53 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 - [ ] Define `ContentJsonSchema` for `content.json` (`schemaVersion`, `id`, `title`, `blocks`)
 - [ ] Define `ManifestJsonSchema` for `manifest.json` (flat metadata fields, flat dependency fields, `targeting`)
-- [ ] Include `testEnvironment` field in `ManifestJsonSchema` from day one — the schema accepts it with no consumer required yet, so content can declare test requirements as soon as guides are migrated and the e2e CLI can consume them incrementally
+- [ ] **Package identity model:**
+  - [ ] Package IDs are bare strings, globally unique (e.g., `"welcome-to-grafana"`)
+  - [ ] No repository prefix in IDs (not `"repo/id"`, just `"id"`)
+  - [ ] `repository` field in manifest is provenance metadata, not part of identity or resolution
+  - [ ] Dependencies reference bare IDs: `depends: ["foo"]` not `depends: ["repo/foo"]`
+  - [ ] Allows packages to move between repositories without ID changes
+  - [ ] Resolution handled by service (Phase 2), not by parsing ID syntax
+- [ ] **Manifest field requirements and defaults:**
+  - [ ] **Hard requirements (ERROR if missing):** `id`, `type`
+  - [ ] **Defaults with INFO validation message:**
+    - `repository` → `"interactive-tutorials"`
+    - `language` → `"en"`
+    - `schemaVersion` → `CURRENT_SCHEMA_VERSION` (currently `"1.1.0"`)
+    - `depends` → `[]`
+    - `recommends` → `[]`
+    - `suggests` → `[]`
+    - `provides` → `[]`
+    - `conflicts` → `[]`
+    - `replaces` → `[]`
+  - [ ] **Defaults with WARN validation message:**
+    - `description` → `undefined`
+    - `category` → `undefined`
+    - `targeting` → `undefined`
+    - `startingLocation` → `"/"` (URL path where guide expects to execute before step 1)
+  - [ ] **Defaults with INFO validation message:**
+    - `author` → `undefined`
+    - `testEnvironment` → default structure indicating Grafana Cloud is required
+  - [ ] **Conditional ERROR:** `steps` is required when `type: "journey"`
+  - [ ] Schema uses Zod `.default()` chaining to apply defaults during parsing
+  - [ ] CLI validation emits ERROR/WARN/INFO messages based on missing field severity
+- [ ] Include `testEnvironment` field in `ManifestJsonSchema` from day one with default structure
 - [ ] Define shared sub-schemas (`DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`)
 - [ ] Retain merged `JsonGuideSchemaStrict` for backwards compatibility with single-file guides
 - [ ] Add `KNOWN_FIELDS._manifest` for `manifest.json` fields
 - [ ] Bump `CURRENT_SCHEMA_VERSION` to `"1.1.0"`
-- [ ] Define `repository.json` specification (id → `{ path }` mapping, compiled build artifact)
-- [ ] Implement `pathfinder-cli build-repository` command (scans package tree, emits `repository.json`)
+- [ ] Define `repository.json` specification (bare package id → `{ path, ...metadata }` mapping, compiled build artifact)
+- [ ] Denormalize manifest metadata into `repository.json` entries: each entry uses bare package ID as key and includes `{ path, title, description, category, type, startingLocation, depends, recommends, suggests, provides, conflicts, replaces }` — enables dependency graph building without re-reading every `manifest.json`
+- [ ] Example structure: `{ "welcome-to-grafana": { "path": "welcome-to-grafana/", "title": "...", "type": "guide", ... } }`
+- [ ] **Forward compatibility:** repository.json format serves both static catalog aggregation (Phase 2 MVP) and future repository registry ingestion (Phase 6). Design for dual use: build-time aggregation and runtime discovery.
+- [ ] Implement `pathfinder-cli build-repository` command (scans package tree, reads both `content.json` and `manifest.json` for each package, emits denormalized `repository.json` with bare IDs)
 - [ ] Add pre-commit hook for `interactive-tutorials` that regenerates `repository.json` on commit
 - [ ] CI verification: rebuild `repository.json` from scratch, diff against committed version, fail on divergence
 - [ ] Add Layer 1 unit tests for content schema, package schema, cross-file ID consistency, and repository index generation — extending the existing validation infrastructure in `src/validation/`
 - [ ] Run `validate:strict` to confirm all existing guides still pass
 - [ ] Update schema-coupling documentation
 
-**Why first:** Everything downstream depends on the schema accepting these fields, the two-file model being defined, and the resolution mechanism being in place. Without `repository.json`, FQIs cannot be resolved to filesystem paths — especially for nested journey step packages.
+**Why first:** Everything downstream depends on the schema accepting these fields, the two-file model being defined, and the identity model being established. Without `repository.json`, package IDs cannot be resolved to filesystem paths — especially for nested journey step packages.
 
 ### Phase 1: CLI package validation (Layer 1 completion)
 
@@ -68,10 +101,32 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] `--package` flag: validate a directory (expects `content.json`, optionally `manifest.json`)
 - [ ] Cross-file consistency: `id` match between `content.json` and `manifest.json`
 - [ ] `--packages` flag: validate a tree of package directories
-- [ ] Dependency graph validator: resolution, cycle detection, capability coverage (reads from `manifest.json`)
-- [ ] Cross-repo reference warnings (unresolvable without external metadata)
-- [ ] `graph` command: output dependency DAG as text or DOT format
 - [ ] Asset reference validation: warn if `content.json` references assets not in `assets/`
+- [ ] **Dependency graph builder:**
+  - [ ] `build-graph` command: iterate over hardcoded repository list `["interactive-tutorials"]`, read each `repository.json` denormalized index, construct in-memory graph from metadata
+  - [ ] Graph representation: nodes (full manifest metadata from denormalized `repository.json`) + edges (typed relationships)
+  - [ ] Edge types: `depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`
+  - [ ] Output format: D3 JSON with structure `{ nodes: GraphNode[], edges: GraphEdge[], metadata: {...} }`
+  - [ ] `GraphNode` schema: `{ id, repository, title?, description?, category?, type, startingLocation, ...fullManifest }` (includes all manifest fields with defaults applied)
+    - `id`: bare package ID (globally unique, e.g., `"welcome-to-grafana"`)
+    - `repository`: provenance metadata (where package originated, e.g., `"interactive-tutorials"`)
+  - [ ] `GraphEdge` schema: `{ source, target, type }` where `source` and `target` are bare package IDs
+  - [ ] Handles packages with defaulted fields: missing dependency arrays treated as empty (no edges created), undefined metadata fields included in node as `undefined`
+  - [ ] CNF dependency clauses: simplified implementation creates edges to all mentioned packages regardless of AND/OR semantics (note as limitation for future work — OR clauses are imprecise in this representation)
+  - [ ] Virtual capability handling in graph output:
+    - Graph command output (D3 JSON): virtual capabilities appear as virtual nodes (distinguished by a `virtual: true` flag on the node) with `provides` edges from real packages. This preserves the abstraction in visualization.
+    - Runtime dependency resolution: virtual nodes are resolved to their providing packages directly (no virtual node in the resolution path — just "is any provider completed?")
+  - [ ] **Virtual capability resolution:**
+    - [ ] Build a provides map: scan all packages' `provides` arrays to create a mapping from virtual capability name → set of providing package IDs
+    - [ ] Dependency targets are satisfied if they match a real package ID **or** if any package in the catalog declares `provides: ["that-target"]`
+    - [ ] Virtual capability names declared in `provides` do NOT need to exist as real packages — this follows the Debian virtual package model (e.g., `"datasource-configured"` is a virtual capability provided by multiple real packages)
+  - [ ] Graph lint checks against global catalog (all WARN severity during migration phase, no ERROR):
+    - Dependency target doesn't exist as a real package ID AND is not provided by any package in the catalog (broken reference)
+    - Cycle detection in `depends` chains (error-level semantic issue)
+    - Cycle detection in `recommends` chains (warning-level semantic issue)
+    - Orphaned packages (no incoming or outgoing edges)
+    - Packages with undefined `description` or `category` (quality issue)
+  - [ ] `graph` command: wrapper that invokes `build-graph` and outputs D3 JSON to stdout or file
 - [ ] `testEnvironment` field validation (present in schema since Phase 0)
 - [ ] Integration tests with sample package trees (valid and invalid, with and without `manifest.json`)
 
@@ -79,19 +134,90 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 ### Phase 2: Plugin runtime resolution
 
-**Goal:** The plugin can consume packages at runtime — loading directory packages, resolving fully-qualified identifiers, and reading repository indexes.
+**Goal:** The plugin can consume packages at runtime — loading bundled content locally and resolving non-bundled packages via static catalog (MVP). Architecture designed for forward compatibility with repository registry service (Phase 6).
 
 **Testing layers:** Layer 2
 
+**Architecture:**
+
+The plugin uses a two-tier resolution strategy:
+
+1. **Bundled content** (shipped with plugin): Local resolution via bundled dependency graph — baseline tutorials that work offline
+2. **Non-bundled content** (external packages): Static catalog resolution — extended content fetched from CDN
+
+**Design constraint:** Static bundled content requires plugin updates to change (acceptable for OSS baseline, does not scale for full catalog). This motivates the static catalog for extended content and future registry service for dynamic updates.
+
 **Deliverables:**
 
-- [ ] Package loader: load directory packages (`content.json` + `manifest.json`) with bare file fallback for single-file guides
-- [ ] FQI parser: split `repository/id` identifiers, bare id resolution for default repository
-- [ ] `repository.json` reader: parse and cache the repository index at runtime
-- [ ] Dependency resolver: resolve `depends`, `suggests`, and `provides` for navigation and recommendations
-- [ ] Layer 2 unit tests for package loader, FQI parser, repository reader, and dependency resolver
+- [ ] **Bundled content resolution:**
+  - [ ] Plugin ships with bundled dependency graph JSON (generated from `build-graph` in Phase 1)
+  - [ ] Graph includes only packages bundled with plugin (not `interactive-tutorials` packages)
+  - [ ] Graph structure: `{ packages: { [id]: { manifest, contentUrl, repository } }, edges: [...] }`
+  - [ ] Local package loader: resolve bare ID → lookup in bundled graph → load content from bundled location
+  - [ ] Example bundled graph entry:
+    ```json
+    {
+      "packages": {
+        "welcome-to-grafana": {
+          "manifest": {
+            /* full manifest with defaults applied */
+          },
+          "contentUrl": "/bundled/welcome-to-grafana/content.json",
+          "repository": "grafana-core-tutorials"
+        }
+      },
+      "edges": [{ "source": "welcome-to-grafana", "target": "first-dashboard", "type": "recommends" }]
+    }
+    ```
+- [ ] **Static catalog resolution (MVP approach):**
+  - [ ] Build process: CLI aggregates all `repository.json` files into single `packages-catalog.json`, published to CDN
+  - [ ] Catalog format: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository } } }`
+  - [ ] Example catalog entry:
+    ```json
+    {
+      "version": "1.0.0",
+      "packages": {
+        "prometheus-grafana-101": {
+          "contentUrl": "https://cdn.grafana.com/packages/v1/prometheus-grafana-101/content.json",
+          "manifestUrl": "https://cdn.grafana.com/packages/v1/prometheus-grafana-101/manifest.json",
+          "repository": "interactive-tutorials"
+        }
+      }
+    }
+    ```
+  - [ ] Plugin fetch strategy:
+    1. On startup, fetch catalog from CDN: `GET https://packages.grafana.com/catalog.json`
+    2. Cache in memory for session
+    3. Fall back to bundled catalog if fetch fails (offline/OSS support)
+  - [ ] Plugin resolution flow:
+    1. Check bundled graph for package ID (baseline content)
+    2. If not bundled, lookup in static catalog (extended content)
+    3. Fetch content from resolved URLs
+  - [ ] Resolution interface abstraction (forward compatibility with Phase 6 registry):
+    ```typescript
+    interface PackageResolution {
+      id: string;
+      contentUrl: string;
+      manifestUrl: string;
+      repository: string;
+    }
+    interface PackageResolver {
+      resolve(packageId: string): Promise<PackageResolution>;
+    }
+    ```
+  - [ ] MVP implements with static catalog; Phase 6 registry implements same interface with dynamic queries
+- [ ] **Package loader:**
+  - [ ] Load directory packages (`content.json` + `manifest.json`) from resolved locations
+  - [ ] Fallback to single-file guides for backwards compatibility
+  - [ ] Handle both local (bundled) and remote (HTTP) content sources
+- [ ] **Dependency resolver:**
+  - [ ] Resolve `depends`, `suggests`, and `provides` relationships using bundled graph or service
+  - [ ] **Provides-aware resolution:** when checking whether a `depends` target is satisfied, check both real package completion and virtual capability satisfaction (i.e., has the user completed any package that `provides` the target capability?)
+  - [ ] Support navigation and recommendations based on dependency edges
+  - [ ] Handle circular dependencies gracefully
+- [ ] Layer 2 unit tests for bundled resolution, service resolution (mocked endpoint), package loader, and dependency resolver
 
-**Why third:** Bridges the gap between static validation (Phases 0-1) and real content migration (Phase 3). Without runtime resolution, the plugin cannot load packages even if they pass validation.
+**Why third:** Bridges the gap between static validation (Phases 0-1) and real content migration (Phase 3). Establishes the runtime architecture for both bundled and distributed packages. Without runtime resolution, the plugin cannot load packages even if they pass validation.
 
 ### Phase 3: Pilot package migration
 
@@ -110,6 +236,16 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] Verify `validate --packages` passes in CI (validates both files)
 - [ ] Extend e2e CLI to read `manifest.json` for pre-flight environment checks (Layer 3 enhancement)
 - [ ] Document the two-file package authoring workflow for content authors and metadata managers
+- [ ] **Journey migration tooling:**
+  - [ ] `migrate-journeys` command: tool-assisted migration of existing journey metadata
+  - [ ] Reads `website/content/docs/learning-journeys/journeys.yaml` (external repo) for dependency graph data
+  - [ ] Reads markdown front-matter from `website/content/docs/learning-journeys/*.md` for title, description, and metadata
+  - [ ] Generates draft `manifest.json` files for all `*-lj` directories in `interactive-tutorials`
+  - [ ] Uses bare package IDs throughout (no repository prefix in `id` field or dependency references)
+  - [ ] Sets `repository: "interactive-tutorials"` as provenance metadata (not used for resolution)
+  - [ ] Maps `journeys.yaml` `links.to` relationships → `recommends` field in `manifest.json` using bare IDs (soft dependencies, not hard `depends`)
+  - [ ] Extracts `startingLocation` from existing `index.json` `url` field or `targeting.match` URL rules during migration (first URL from targeting becomes `startingLocation`, falls back to `"/"` if no URL rules present)
+  - [ ] Outputs draft manifests for human review and refinement before committing
 
 **Why fourth:** Proof-of-concept that validates schema, CLI, and runtime work together. Small scope (3-5 guides) catches issues early. Layer 3 e2e integration validates the full authoring-to-testing pipeline.
 
@@ -122,9 +258,14 @@ This plan is designed to support and further the [content testing strategy](./TE
 **Deliverables:**
 
 - [ ] Add `type` field to `ManifestJsonSchema` (`"guide"` default, `"journey"`)
-- [ ] Add `steps` field to `ManifestJsonSchema` (ordered `string[]`, valid when `type: "journey"`)
-- [ ] CLI: validate journey directories — nested step packages, `steps` array referencing child directories, cover page `content.json`
-- [ ] CLI: dependency graph treats journeys as single nodes; `--expand-journeys` flag shows internal step structure
+- [ ] Add `steps` field to `ManifestJsonSchema` (ordered `string[]` of bare package IDs, valid when `type: "journey"`)
+- [ ] CLI: validate journey packages — `steps` array entries resolve to existing packages in the repository index (by bare ID), cover page `content.json`. Steps may be nested child directories (organizational convenience for journey-specific steps) or independent top-level packages (for shared/reused steps). The CLI validates via repository index resolution, not filesystem child-directory checks.
+- [ ] **Dependency graph representation for journeys:**
+  - [ ] Journey metapackages appear as regular nodes with `type: "journey"` (everything is a package)
+  - [ ] Journey steps appear as independent package nodes in the graph (they are packages, can be reused across multiple journeys)
+  - [ ] Journey metapackage has edges to its steps: linear `recommends` chain from journey node to each step in `steps` array order
+  - [ ] `steps` array contains bare package IDs (e.g., `["step-1", "step-2"]`), no repository prefix
+  - [ ] Graph lint: journey `steps` references must resolve to existing packages in global catalog
 - [ ] Pilot: convert 1-2 existing `*-lj` directories to journey metapackages with `manifest.json`
 - [ ] Validate step reuse: confirm that a step package can appear in multiple journey `steps` arrays
 - [ ] Utility to compute learning paths from dependency DAG
@@ -151,7 +292,59 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **Why sixth:** Layer 4 foundation from the testing strategy. Depends on the package format being stable and adopted. Narrower than originally scoped because `testEnvironment` schema (Phase 0) and e2e CLI reading (Phase 3) are already complete.
 
-### Phase 6: SCORM foundation
+### Phase 6: Repository registry service
+
+**Goal:** Replace static catalog (Phase 2 MVP) with dynamic repository registry service that supports multiple repositories, rapid content updates without plugin releases, and scalable multi-repo ecosystem.
+
+**Deliverables:**
+
+- [ ] **Registry service architecture:**
+  - [ ] Service endpoint: `GET /registry` returns list of known repositories with their locations
+  - [ ] Service endpoint: `GET /resolve/{packageId}` returns package resolution (same format as Phase 2 static catalog)
+  - [ ] Example registry response:
+    ```json
+    {
+      "repositories": {
+        "interactive-tutorials": "https://cdn.grafana.com/repos/interactive-tutorials/",
+        "partner-integrations": "https://partners.grafana.com/packages/"
+      }
+    }
+    ```
+  - [ ] Example resolution response (same as Phase 2 interface):
+    ```json
+    {
+      "id": "welcome-to-grafana",
+      "contentUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/content.json",
+      "manifestUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/manifest.json",
+      "repository": "interactive-tutorials"
+    }
+    ```
+- [ ] **Catalog aggregation:**
+  - [ ] Service dynamically aggregates all `repository.json` files from known repositories
+  - [ ] Maintains global catalog in memory/cache (refresh on interval or webhook trigger)
+  - [ ] Detects and reports package ID collisions across repositories (ERROR on duplicate IDs)
+- [ ] **Repository discovery:**
+  - [ ] Config-driven registry: service reads repository list from configuration file
+  - [ ] Repositories can be added/removed without service code changes
+  - [ ] Each repository publishes `repository.json` at known location
+- [ ] **Plugin integration:**
+  - [ ] Plugin detects registry availability (feature flag or endpoint probe)
+  - [ ] If registry available, use dynamic resolution; otherwise fall back to static catalog (Phase 2)
+  - [ ] Same `PackageResolver` interface — only implementation changes
+  - [ ] Gradual cutover: can run both approaches simultaneously during transition
+- [ ] **Performance and reliability:**
+  - [ ] Resolution result caching (per-session in plugin, TTL-based in service)
+  - [ ] Service monitoring: track resolution failures, catalog staleness, repository availability
+  - [ ] Graceful degradation: if specific repository unavailable, serve from cached catalog
+- [ ] **Use cases that justify registry over static catalog:**
+  - [ ] Rapid content updates: new packages available immediately without plugin release
+  - [ ] Partner/team repositories: independent content publishing without central coordination
+  - [ ] Multi-tenancy: different users/orgs see different package catalogs (future extension)
+  - [ ] Scale: 1000+ packages across many repositories
+
+**Why seventh:** Addresses scalability limitations of static catalog (Phase 2). Enables rapid content updates, independent repository management, and ecosystem growth. Static catalog remains as fallback for offline/OSS support.
+
+### Phase 7: SCORM foundation
 
 **Goal:** Extend the package format for SCORM import needs. Schema extensions only — not the importer itself. Builds on the `type` discriminator and metapackage composition model established by journeys in Phase 4.
 
@@ -163,11 +356,11 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] Course/module rendering in web display mode (table-of-contents page)
 - [ ] Design SCORM import pipeline CLI interface
 
-**Why seventh:** Extends the package format so it can receive SCORM-imported content. The journey metapackage model from Phase 4 provides the composition infrastructure; SCORM types refine it with import-specific semantics. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
+**Why eighth:** Extends the package format so it can receive SCORM-imported content. The journey metapackage model from Phase 4 provides the composition infrastructure; SCORM types refine it with import-specific semantics. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
 
-### Phase 7+: SCORM import pipeline
+### Phase 8+: SCORM import pipeline
 
-Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-6 is the foundation it writes to.
+Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-7 is the foundation it writes to.
 
 ---
 
@@ -177,9 +370,10 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | ----------------------------------- | ----------------------------------------------------------------------------- | ----------------- |
 | 0: Schema foundation                | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema | Layer 1           |
 | 1: CLI package validation           | CI validation, cross-file checks, dependency graph                            | Layer 1           |
-| 2: Plugin runtime resolution        | Package loading, FQI resolution, runtime dependency graph                     | Layer 2           |
+| 2: Plugin runtime resolution        | Package loading, static catalog resolution, runtime dependency graph (MVP)    | Layer 2           |
 | 3: Pilot package migration          | Proof-of-concept, runtime validation, e2e pre-flight checks                   | Layer 2 + Layer 3 |
 | 4: Learning journey integration     | Metapackage model, `type`/`steps`, docs partner alignment                     | Layer 1 + Layer 2 |
 | 5: Layer 4 test environment routing | Managed environment routing, version matrix, dataset provisioning             | Layer 4           |
-| 6: SCORM foundation                 | SCORM import readiness, extends `type` with course/module                     | —                 |
-| 7+: SCORM import pipeline           | Full SCORM conversion pipeline                                                | —                 |
+| 6: Repository registry service      | Dynamic multi-repo resolution, rapid content updates, ecosystem scale         | —                 |
+| 7: SCORM foundation                 | SCORM import readiness, extends `type` with course/module                     | —                 |
+| 8+: SCORM import pipeline           | Full SCORM conversion pipeline                                                | —                 |
