@@ -95,6 +95,8 @@ TODO: what if foo depends on bar 2.0, but bar 3.0 is newest and thus won the mer
 
 A package is a **directory** containing at minimum `content.json`. A `manifest.json` file carries metadata, dependencies, and targeting. An optional `assets/` directory holds non-JSON resources (images, diagrams, supplementary files). The directory name matches the guide `id`:
 
+TODO: fundamental question: do we even want two files if everything is just JSON fragments anyway
+
 ```
 interactive-tutorials/
 ├── welcome-to-grafana/
@@ -105,6 +107,8 @@ interactive-tutorials/
 │   ├── manifest.json
 │   └── assets/               ← optional non-JSON assets
 │       └── architecture.png
+├── onboarding-exomployess/
+│   └── manifest.json          ← metapacakage
 ├── first-dashboard/
 │   └── content.json          ← manifest.json optional; standalone guide
 └── advanced-alerting/
