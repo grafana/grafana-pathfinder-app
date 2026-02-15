@@ -43,9 +43,10 @@ Example from the project: the recommender panel's URL filtering created an impli
 
 ## Progressive enhancement and graceful degradation
 
-Features degrade gracefully when dependencies are unavailable. The system should always provide *some* value rather than failing entirely.
+Features degrade gracefully when dependencies are unavailable. The system should always provide _some_ value rather than failing entirely.
 
 Established patterns:
+
 - External recommender unavailable --> fall back to static recommendations
 - Content fetch failure --> error message with retry, not blank screen
 - Unknown requirements --> pass with warning (fail-open), not hard block
@@ -84,6 +85,7 @@ Hew to Grafana conventions and APIs rather than inventing custom patterns. Use G
 The system assists but does not override the user. Automated actions should be cancellable. Recovery should be prompted, not forced. Tutorial guidance should help users learn, not do everything for them.
 
 Established patterns:
+
 - Ctrl+C cancellation for section execution
 - "Fix this" as a prompt rather than silent correction (for medium-recoverability divergences)
 - Auto-detection is opt-in
@@ -97,6 +99,7 @@ Established patterns:
 DOM observation and event listening are scoped to the minimum necessary. MutationObservers watch specific attributes, not entire subtrees. Event listeners are registered on specific elements, not globally, unless there's a clear reason.
 
 Established patterns:
+
 - Debounced DOM observer (800ms) watching specific attributes
 - Selective reactive checking (only eligible, non-completed steps)
 - Centralized TimeoutManager to prevent competing timeout mechanisms

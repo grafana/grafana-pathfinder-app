@@ -78,13 +78,13 @@ These describe how you reason, not what you output:
 
 When the user requests a specific focus, shift emphasis accordingly:
 
-| Lens | Focus |
-|------|-------|
-| **Feasibility** | Can this actually be built? What's the execution risk for an agent or developer? |
-| **Architecture** | Does this fit the system's shape? Where does it violate established principles? |
-| **Interface** | Are the contracts between components clean, minimal, and well-defined? |
-| **Phasing** | Is the incremental plan sound? Are phase boundaries clean? Can each phase deliver value independently? |
-| **Adversarial** | What goes wrong? What are the edge cases? How does this fail? What does a user do that the design doesn't anticipate? |
+| Lens             | Focus                                                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Feasibility**  | Can this actually be built? What's the execution risk for an agent or developer?                                      |
+| **Architecture** | Does this fit the system's shape? Where does it violate established principles?                                       |
+| **Interface**    | Are the contracts between components clean, minimal, and well-defined?                                                |
+| **Phasing**      | Is the incremental plan sound? Are phase boundaries clean? Can each phase deliver value independently?                |
+| **Adversarial**  | What goes wrong? What are the edge cases? How does this fail? What does a user do that the design doesn't anticipate? |
 
 The default review blends all lenses. The user can request a specific one: "review this with the adversarial lens."
 
