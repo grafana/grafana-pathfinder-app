@@ -67,27 +67,26 @@ At the same time, for the convenience of operators and software engineers, all d
 
 4. **Packages are atomic.** A package carries all metadata to be understood in isolation — its identity, its dependencies, its recommended targeting, and its authorship.
 
-5. **Packages are mergeable**: Following the Prometheus model, we group by what makes sense, even if it is not useful in all cases. As a specific example, an arbitrary amount of guides can be merged. Their dependencies will merge cleanly. Their content will merge cleanly. The result will still have "all dependencies" and "all content" separated cleanly
+TODO: do they also contain all **data**? my gut is yes. Debian's package format is a weak part hidden by tooling. archives of archives, etc. Also, binaries are large, guides are not. i can see the argument of adding e.g. a large video in a distinct file. so maybe the reasonable cut-off for using different files is not "metadata vs data" but "text vs blobs"
+adding to this: the other approach is to zip everything up. all the office formats etc do it -- but in a cloud native world, that seems very very cumbersome
 
-6. **Most specific wins**: In case there are two packages with the same name, the newest one is taken by default.
+5. **Packages are mergeable**: Following the Prometheus model, we group by what makes sense, even if it is not useful in all cases. As a specific example, an arbitrary amount of guides can be merged. Their dependencies will merge cleanly. Their content will merge cleanly. The result will still have "all dependencies" and "all content" separated cleanly in the data structure.
 
-TODO: do we want package sources which come later to win? that would make e.g. "i have my own custom repo" trivial to merge.
+6. **files don't matter**: It does not matter in how many files, buckets, web endpoints, Git branches, or whatever else the packages exist; the way to merge into one big JSON is always obvious. This means carrying single-entry root level entries in many files. We accept this.
+
+6. **Most specific wins**: In case there are two packages with the same name. In order of decreasing priority
+  * Manually set priority on a repository [0-1000], default 500. lower is stronger
+  * Higher package version
+  * Newest entry read from the repository list (if i have "default" and then "my custom repo" for packages, i want my custom package)
+
+TODO: debian has "highest priority wins" which i always found confusing is not aligned with modern best current practices.
 TODO: what if foo depends on bar 2.0, but bar 3.0 is newest and thus won the merge? there are several approaches, but which is good?
 
-7. **We do not write, parse, or understand this by hand**: For all operations that make sense, we have robust tooling in place. This tooling is backend-only. JavaScript is forbidden, it is Go only. The tooling can be compiled into Grafana and into a CLI tool at least.
+7. **We do not touch packages by hand, and tooling is behind APIs**: For all operations that make sense, we have robust tooling in place. This tooling must be behind properly version APIs to avoid the slippery slope of having UI/front-end only code. The tooling can be compiled into Grafana and into a CLI tool at least. The tooling will always include good linters -- legible to both humans and e.g. Claude -- to speed up third party integrations and development.
 
-8. **Opinionated and Big Tent** We are developing for Grafana, but we maximize optionality and interoperability. We will strive to be able to cleanly import from at least SCORM, IEEE LOM, Dublin Core. We will strive to copy the naming conventions. Where we can not copy the names, we will have documentation of what translates to what, and we will surface this documentation as part of the UI/UX of both Grafana and the CLI tool. We will opportunistically support export into those formats.
+8. **Opinionated and Big Tent** We are developing for Grafana, but we maximize optionality and interoperability with best reasonable effort. We will strive to be able to cleanly import from at least SCORM, IEEE LOM, Dublin Core. We will strive to copy the naming conventions. Where we can not copy the names, we will have documentation of what translates to what, and we will surface this documentation as part of the UI/UX of both Grafana and the CLI tool. We will opportunistically support export into those formats.
 
-9. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced. The recommender will honor hard requirements.
-
-TODO: to maximize flexibility, my gut is to have a root level "content" field in content.json and similar for the rest. it looks weird if you look at the file by hand, but it makes whole potential problem domains go away. also, at that point, why even have two files? you're not supposed to touch it by hand...
-  * Addendum: i want to think about this as JSON-mainly. i don't care about files. if you package three guides and half a duck into one file for some reason, be my guest.
-  * 7. **Separate content from metadata.** Content (`content.json`) and package metadata (`manifest.json`) live in separate files within the package directory. Different consumers read only the file they need; different roles author only the file they own. This follows the Debian model where `control` metadata is physically separate from package data.
-
-TODO
-  * do we need two dependencies for "this is a learning experience" and "this is a course with required content"? -- likely not as we can assign a metapackage with "do this, period." for the mandatory cases
-  * can we express the recommender input as dependencies? do we want to?
-  * we need a linter for guides as some people will create / edit them by hand or with third party tooling. that linting output should be usable as input for both humans and e.g. Claude
+9. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced. The recommender will honor hard requirements of e.g. onboarding, compliance, or certification training.
 
 
 ---
