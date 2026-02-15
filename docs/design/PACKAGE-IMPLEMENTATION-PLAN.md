@@ -80,6 +80,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] Define `repository.json` specification (bare package id → `{ path, ...metadata }` mapping, compiled build artifact)
 - [ ] Denormalize manifest metadata into `repository.json` entries: each entry uses bare package ID as key and includes `{ path, title, description, category, type, startingLocation, depends, recommends, suggests, provides, conflicts, replaces }` — enables dependency graph building without re-reading every `manifest.json`
 - [ ] Example structure: `{ "welcome-to-grafana": { "path": "welcome-to-grafana/", "title": "...", "type": "guide", ... } }`
+- [ ] **Forward compatibility:** repository.json format serves both static catalog aggregation (Phase 2 MVP) and future repository registry ingestion (Phase 6). Design for dual use: build-time aggregation and runtime discovery.
 - [ ] Implement `pathfinder-cli build-repository` command (scans package tree, reads both `content.json` and `manifest.json` for each package, emits denormalized `repository.json` with bare IDs)
 - [ ] Add pre-commit hook for `interactive-tutorials` that regenerates `repository.json` on commit
 - [ ] CI verification: rebuild `repository.json` from scratch, diff against committed version, fail on divergence
@@ -127,7 +128,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 ### Phase 2: Plugin runtime resolution
 
-**Goal:** The plugin can consume packages at runtime — loading bundled content locally and resolving non-bundled packages via resolution service.
+**Goal:** The plugin can consume packages at runtime — loading bundled content locally and resolving non-bundled packages via static catalog (MVP). Architecture designed for forward compatibility with repository registry service (Phase 6).
 
 **Testing layers:** Layer 2
 
@@ -135,8 +136,10 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 The plugin uses a two-tier resolution strategy:
 
-1. **Bundled content** (shipped with plugin): Local resolution via bundled dependency graph
-2. **Non-bundled content** (external packages): Service-based resolution via HTTP endpoint
+1. **Bundled content** (shipped with plugin): Local resolution via bundled dependency graph — baseline tutorials that work offline
+2. **Non-bundled content** (external packages): Static catalog resolution — extended content fetched from CDN
+
+**Design constraint:** Static bundled content requires plugin updates to change (acceptable for OSS baseline, does not scale for full catalog). This motivates the static catalog for extended content and future registry service for dynamic updates.
 
 **Deliverables:**
 
@@ -160,16 +163,43 @@ The plugin uses a two-tier resolution strategy:
       "edges": [{ "source": "welcome-to-grafana", "target": "first-dashboard", "type": "recommends" }]
     }
     ```
-- [ ] **Service-based resolution:**
-  - [ ] Resolution service endpoint: `GET https://repo.service/resolve/{packageId}`
-  - [ ] Service maintains global catalog (aggregates all `repository.json` files)
-  - [ ] Service response: `{ contentUrl: "...", manifestUrl: "...", repository: "..." }` OR HTTP redirect to package location
+- [ ] **Static catalog resolution (MVP approach):**
+  - [ ] Build process: CLI aggregates all `repository.json` files into single `packages-catalog.json`, published to CDN
+  - [ ] Catalog format: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository } } }`
+  - [ ] Example catalog entry:
+    ```json
+    {
+      "version": "1.0.0",
+      "packages": {
+        "prometheus-grafana-101": {
+          "contentUrl": "https://cdn.grafana.com/packages/v1/prometheus-grafana-101/content.json",
+          "manifestUrl": "https://cdn.grafana.com/packages/v1/prometheus-grafana-101/manifest.json",
+          "repository": "interactive-tutorials"
+        }
+      }
+    }
+    ```
+  - [ ] Plugin fetch strategy:
+    1. On startup, fetch catalog from CDN: `GET https://packages.grafana.com/catalog.json`
+    2. Cache in memory for session
+    3. Fall back to bundled catalog if fetch fails (offline/OSS support)
   - [ ] Plugin resolution flow:
-    1. Check bundled graph for package ID
-    2. If not bundled, call resolution service endpoint
-    3. Cache resolution results per session
-    4. Fetch content from resolved URLs
-  - [ ] Fallback: if service unavailable, bundled content still works (offline/OSS support)
+    1. Check bundled graph for package ID (baseline content)
+    2. If not bundled, lookup in static catalog (extended content)
+    3. Fetch content from resolved URLs
+  - [ ] Resolution interface abstraction (forward compatibility with Phase 6 registry):
+    ```typescript
+    interface PackageResolution {
+      id: string;
+      contentUrl: string;
+      manifestUrl: string;
+      repository: string;
+    }
+    interface PackageResolver {
+      resolve(packageId: string): Promise<PackageResolution>;
+    }
+    ```
+  - [ ] MVP implements with static catalog; Phase 6 registry implements same interface with dynamic queries
 - [ ] **Package loader:**
   - [ ] Load directory packages (`content.json` + `manifest.json`) from resolved locations
   - [ ] Fallback to single-file guides for backwards compatibility
@@ -255,7 +285,59 @@ The plugin uses a two-tier resolution strategy:
 
 **Why sixth:** Layer 4 foundation from the testing strategy. Depends on the package format being stable and adopted. Narrower than originally scoped because `testEnvironment` schema (Phase 0) and e2e CLI reading (Phase 3) are already complete.
 
-### Phase 6: SCORM foundation
+### Phase 6: Repository registry service
+
+**Goal:** Replace static catalog (Phase 2 MVP) with dynamic repository registry service that supports multiple repositories, rapid content updates without plugin releases, and scalable multi-repo ecosystem.
+
+**Deliverables:**
+
+- [ ] **Registry service architecture:**
+  - [ ] Service endpoint: `GET /registry` returns list of known repositories with their locations
+  - [ ] Service endpoint: `GET /resolve/{packageId}` returns package resolution (same format as Phase 2 static catalog)
+  - [ ] Example registry response:
+    ```json
+    {
+      "repositories": {
+        "interactive-tutorials": "https://cdn.grafana.com/repos/interactive-tutorials/",
+        "partner-integrations": "https://partners.grafana.com/packages/"
+      }
+    }
+    ```
+  - [ ] Example resolution response (same as Phase 2 interface):
+    ```json
+    {
+      "id": "welcome-to-grafana",
+      "contentUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/content.json",
+      "manifestUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/manifest.json",
+      "repository": "interactive-tutorials"
+    }
+    ```
+- [ ] **Catalog aggregation:**
+  - [ ] Service dynamically aggregates all `repository.json` files from known repositories
+  - [ ] Maintains global catalog in memory/cache (refresh on interval or webhook trigger)
+  - [ ] Detects and reports package ID collisions across repositories (ERROR on duplicate IDs)
+- [ ] **Repository discovery:**
+  - [ ] Config-driven registry: service reads repository list from configuration file
+  - [ ] Repositories can be added/removed without service code changes
+  - [ ] Each repository publishes `repository.json` at known location
+- [ ] **Plugin integration:**
+  - [ ] Plugin detects registry availability (feature flag or endpoint probe)
+  - [ ] If registry available, use dynamic resolution; otherwise fall back to static catalog (Phase 2)
+  - [ ] Same `PackageResolver` interface — only implementation changes
+  - [ ] Gradual cutover: can run both approaches simultaneously during transition
+- [ ] **Performance and reliability:**
+  - [ ] Resolution result caching (per-session in plugin, TTL-based in service)
+  - [ ] Service monitoring: track resolution failures, catalog staleness, repository availability
+  - [ ] Graceful degradation: if specific repository unavailable, serve from cached catalog
+- [ ] **Use cases that justify registry over static catalog:**
+  - [ ] Rapid content updates: new packages available immediately without plugin release
+  - [ ] Partner/team repositories: independent content publishing without central coordination
+  - [ ] Multi-tenancy: different users/orgs see different package catalogs (future extension)
+  - [ ] Scale: 1000+ packages across many repositories
+
+**Why seventh:** Addresses scalability limitations of static catalog (Phase 2). Enables rapid content updates, independent repository management, and ecosystem growth. Static catalog remains as fallback for offline/OSS support.
+
+### Phase 7: SCORM foundation
 
 **Goal:** Extend the package format for SCORM import needs. Schema extensions only — not the importer itself. Builds on the `type` discriminator and metapackage composition model established by journeys in Phase 4.
 
@@ -267,11 +349,11 @@ The plugin uses a two-tier resolution strategy:
 - [ ] Course/module rendering in web display mode (table-of-contents page)
 - [ ] Design SCORM import pipeline CLI interface
 
-**Why seventh:** Extends the package format so it can receive SCORM-imported content. The journey metapackage model from Phase 4 provides the composition infrastructure; SCORM types refine it with import-specific semantics. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
+**Why eighth:** Extends the package format so it can receive SCORM-imported content. The journey metapackage model from Phase 4 provides the composition infrastructure; SCORM types refine it with import-specific semantics. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
 
-### Phase 7+: SCORM import pipeline
+### Phase 8+: SCORM import pipeline
 
-Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-6 is the foundation it writes to.
+Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-7 is the foundation it writes to.
 
 ---
 
@@ -281,9 +363,10 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | ----------------------------------- | ----------------------------------------------------------------------------- | ----------------- |
 | 0: Schema foundation                | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema | Layer 1           |
 | 1: CLI package validation           | CI validation, cross-file checks, dependency graph                            | Layer 1           |
-| 2: Plugin runtime resolution        | Package loading, FQI resolution, runtime dependency graph                     | Layer 2           |
+| 2: Plugin runtime resolution        | Package loading, static catalog resolution, runtime dependency graph (MVP)    | Layer 2           |
 | 3: Pilot package migration          | Proof-of-concept, runtime validation, e2e pre-flight checks                   | Layer 2 + Layer 3 |
 | 4: Learning journey integration     | Metapackage model, `type`/`steps`, docs partner alignment                     | Layer 1 + Layer 2 |
 | 5: Layer 4 test environment routing | Managed environment routing, version matrix, dataset provisioning             | Layer 4           |
-| 6: SCORM foundation                 | SCORM import readiness, extends `type` with course/module                     | —                 |
-| 7+: SCORM import pipeline           | Full SCORM conversion pipeline                                                | —                 |
+| 6: Repository registry service      | Dynamic multi-repo resolution, rapid content updates, ecosystem scale         | —                 |
+| 7: SCORM foundation                 | SCORM import readiness, extends `type` with course/module                     | —                 |
+| 8+: SCORM import pipeline           | Full SCORM conversion pipeline                                                | —                 |
