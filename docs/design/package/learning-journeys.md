@@ -19,7 +19,7 @@ We adopt the same principle. A journey is a metapackage. Its steps are real pack
 
 We're adopting the Debian model so we can get the advantages they've had for 30 years of package management:
 
-- **One identity model.** Steps have FQIs in the existing `repository/id` format, just like any other package. No fragment notation, no scoped identity, no new addressing scheme.
+- **One identity model.** Steps have bare IDs, just like any other package. No fragment notation, no scoped identity, no new addressing scheme.
 - **One set of tools.** The CLI validates steps with the same validation pipeline as standalone guides. The graph command shows steps as real nodes. The index builder can index them. Every tool that works for packages works for steps.
 - **One dependency model.** Steps can use `depends`, `recommends`, `provides`, and the full dependency vocabulary. The metapackage uses `steps` for ordering but the dependency graph handles the rest.
 - **Composition evolution.** A journey can add, remove, or reorder steps between versions without changing its external identity. The `steps` array in the journey manifest absorbs the evolution. Downstream dependents are unaffected.

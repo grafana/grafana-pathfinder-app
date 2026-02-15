@@ -7,11 +7,31 @@
 
 ## Identity model
 
-Packages are identified by a **repository** token and a local **id**. The fully qualified identifier (FQI) is `repository/id`.
+Packages are identified by a **bare ID** — a globally unique string such as `"welcome-to-grafana"` or `"infrastructure-alerting-find-data-to-alert"`. IDs contain no repository prefix, no path information, and no structural encoding. They are flat tokens, like Debian package names (`nginx`, `python3`, `libssl-dev`).
 
-### Repository
+### Bare IDs everywhere
 
-The `repository` field is a short name token that identifies which collection of guides this package belongs to. It is **not** a resolvable URL — it is a stable token, analogous to a Debian repository name ("main", "contrib", "backports").
+All references throughout the system use bare IDs:
+
+- Dependency references: `"depends": ["welcome-to-grafana"]`
+- Learning path definitions (`paths.json`)
+- Journey step arrays: `"steps": ["find-data-to-alert", "build-your-query"]`
+- Recommender rules
+- Future CRD serialization
+
+There is no qualified or scoped reference syntax. The system that resolves a bare ID to a content location is the [package resolver](#package-resolution), not the ID format itself. This means packages can move between repositories without changing their identity or breaking any references.
+
+### Global uniqueness
+
+Because IDs are bare and globally scoped, uniqueness must be enforced:
+
+- **Build time:** `pathfinder-cli build-repository` detects duplicate IDs within a single repository
+- **Catalog aggregation:** The static catalog build (Phase 2) and registry service (Phase 6) detect ID collisions across repositories and report them as errors
+- **Convention:** IDs are descriptive slug strings (e.g., `"prometheus-grafana-101"`, `"infrastructure-alerting-find-data-to-alert"`). Journey step IDs are prefixed with the journey name by convention to avoid collisions, but this is a naming convention, not a structural requirement
+
+### The `repository` field
+
+The `repository` field in `manifest.json` is **provenance metadata** — it records which repository a package originated from. It is not part of the package's identity and is not used for resolution.
 
 Examples:
 
@@ -19,118 +39,105 @@ Examples:
 - `"private-guides"` — a private team's guide collection
 - `"sales-enablement"` — a non-Grafana content collection (future)
 
-The mapping from repository token to a concrete location (GitHub repo, API endpoint, artifact registry) is an **external concern**, resolved by a configuration layer that is out of scope for this design. This allows the same package format to work across GitHub, Bitbucket, internal APIs, or any future storage backend.
-
-### Fully qualified identifier
-
-The FQI is always `repository/id`:
-
-- `interactive-tutorials/welcome-to-grafana`
-- `private-guides/onboarding-101`
-
-FQIs are used in:
-
-- Dependency references (`depends`, `recommends`, etc.)
-- Learning path definitions (`paths.json`)
-- Recommender rules
-- Future CRD serialization
-
-### Bare ID resolution
-
-When a dependency reference contains no `/`, it is resolved within the same repository. This makes same-repo references concise. In `manifest.json`:
-
-```json
-{
-  "id": "advanced-alerting",
-  "repository": "interactive-tutorials",
-  "depends": ["intro-to-alerting"],
-  "recommends": ["private-guides/deep-dive-alerting"]
-}
-```
-
-Here `"intro-to-alerting"` resolves to `interactive-tutorials/intro-to-alerting` (same repo). `"private-guides/deep-dive-alerting"` is a cross-repo reference.
-
-### Default repository
-
-When `repository` is absent, the default is `"interactive-tutorials"`. This provides backwards compatibility for all existing guides, which live in the `interactive-tutorials` repo and do not carry a `repository` field.
+When `repository` is absent, the default is `"interactive-tutorials"`. This provides backwards compatibility for all existing guides.
 
 ---
 
 ## Repository index
 
-An FQI identifies a package (`interactive-tutorials/welcome-to-grafana`), but identification is not location. For flat package structures where the `id` matches the directory name, the mapping from FQI to filesystem path is trivial. Nested directories break this: a journey step with id `infrastructure-alerting-find-data-to-alert` lives at `infrastructure-alerting/find-data-to-alert/content.json` — the id carries no structural hint about where to find the content.
+A bare ID identifies a package (`welcome-to-grafana`), but identification is not location. For flat package structures where the `id` matches the directory name, the mapping is trivial. Nested directories break this: a journey step with id `infrastructure-alerting-find-data-to-alert` lives at `infrastructure-alerting/find-data-to-alert/content.json` — the id carries no structural hint about where to find the content.
 
-Three resolution strategies are possible:
-
-1. **Full tree scan.** Walk the repository, read every `content.json`, build an id → path map at runtime. Expensive and fragile at scale.
-2. **Encode paths in identifiers.** Make the id mirror the filesystem hierarchy. This couples identity to physical layout — any directory reorganization changes the id, cascading into every package that references it in `depends`, `recommends`, `steps`, or any other dependency field. This is unacceptable.
-3. **Repository-level index.** Each repository publishes a compiled index that maps ids to paths. Consumers read the index; no scanning, no path encoding.
-
-We adopt strategy 3, following the Debian precedent.
-
-### The Debian precedent
-
-Debian package names are flat tokens: `nginx`, `python3`, `libssl-dev`. No path information, no filesystem hint. Resolution works through the **`Packages`** index — a file served by every Debian repository that maps package names to metadata and physical locations:
-
-```
-Package: nginx
-Version: 1.18.0-6
-Filename: pool/main/n/nginx/nginx_1.18.0-6_amd64.deb
-Depends: nginx-core (>= 1.18.0-6) | nginx-full (>= 1.18.0-6)
-Description: small, powerful, scalable web/proxy server
-```
-
-The `Filename` field tells `apt` where within the repository to fetch the `.deb`. The package name `nginx` never changes, even if the repository reorganizes its `pool/` directory structure. The `Packages` file is always a **compiled build artifact**, generated by tools like `dpkg-scanpackages` — never hand-edited.
-
-We adopt the same model: each Pathfinder repository contains a `repository.json` that maps package ids to their paths within the repository.
+Each repository publishes a compiled `repository.json` that maps bare package IDs to filesystem paths and denormalized metadata, following the Debian `Packages` index precedent. Debian's `Packages` file maps flat package names (`nginx`) to physical locations (`pool/main/n/nginx/...`) and includes denormalized metadata (`Description`, `Depends`, etc.) — all generated by `dpkg-scanpackages`, never hand-edited. We adopt the same model.
 
 ### The `repository.json` file
 
-Each repository root contains a `repository.json` file. It is a top-level JSON object where keys are package ids and values are objects containing at minimum a `path` field:
+Each repository root contains a `repository.json` file. It is a top-level JSON object where keys are bare package IDs and values are objects containing the package path and denormalized manifest metadata:
 
 ```json
 {
-  "welcome-to-grafana": { "path": "welcome-to-grafana" },
-  "infrastructure-alerting": { "path": "infrastructure-alerting" },
-  "infrastructure-alerting-find-data-to-alert": { "path": "infrastructure-alerting/find-data-to-alert" },
-  "infrastructure-alerting-build-your-query": { "path": "infrastructure-alerting/build-your-query" },
-  "infrastructure-alerting-set-conditions": { "path": "infrastructure-alerting/set-conditions" }
+  "welcome-to-grafana": {
+    "path": "welcome-to-grafana/",
+    "title": "Welcome to Grafana",
+    "type": "guide",
+    "description": "Get started with the Grafana UI.",
+    "category": "query-visualize",
+    "startingLocation": "/",
+    "depends": [],
+    "recommends": ["first-dashboard"],
+    "suggests": [],
+    "provides": [],
+    "conflicts": [],
+    "replaces": []
+  },
+  "infrastructure-alerting": {
+    "path": "infrastructure-alerting/",
+    "title": "Infrastructure alerting",
+    "type": "journey",
+    "description": "Create your first infrastructure alert rule.",
+    "category": "take-action",
+    "startingLocation": "/alerting",
+    "depends": ["welcome-to-grafana"],
+    "recommends": ["prometheus-lj"],
+    "suggests": [],
+    "provides": ["infrastructure-alerting-configured"],
+    "conflicts": [],
+    "replaces": []
+  },
+  "infrastructure-alerting-find-data-to-alert": {
+    "path": "infrastructure-alerting/find-data-to-alert/",
+    "title": "Find data to alert on",
+    "type": "guide"
+  }
 }
 ```
 
-The `path` is relative to the repository root directory. Values are objects (not bare strings) so that the schema can be extended with additional denormalized fields in the future without breaking consumers.
+The `path` is relative to the repository root directory. Denormalized metadata fields (`title`, `type`, `description`, `category`, `startingLocation`, and all dependency arrays) are included so that consumers can build dependency graphs, search catalogs, and compute learning paths from `repository.json` alone — without re-reading every individual `manifest.json`.
 
-The `repository.json` file deliberately excludes fields that have a single source of truth elsewhere. For example, `type` is not included — it belongs in the package's `manifest.json`. Consumers who need `type` resolve the path from `repository.json` and then read the package's `manifest.json`. This avoids duplication that could diverge, even in a compiled index.
+**Denormalization decision:** The `repository.json` file includes metadata that has its source of truth in each package's `manifest.json`. This denormalization is safe because `repository.json` is always a compiled build artifact — regenerated from source on every commit and verified in CI. It cannot diverge from the source-of-truth files because it is never hand-edited. Packages without `manifest.json` have only `path` and `title` (read from `content.json`); other fields use schema defaults.
 
 ### Compilation, not authoring
 
 `repository.json` is a **compiled build artifact**, never hand-authored. A CLI command (`pathfinder-cli build-repository`) scans the repository tree:
 
 1. Walk the directory tree
-2. For each directory containing `content.json`, read the `id` field
-3. Record the mapping: `id → relative path from repository root`
-4. Write `repository.json`
+2. For each directory containing `content.json`, read `content.json` and optionally `manifest.json`
+3. Record the mapping: bare ID → `{ path, ...denormalized metadata }`
+4. Apply schema defaults for missing manifest fields
+5. Write `repository.json`
 
 This file is committed to the repository. A **pre-commit hook** regenerates it on every commit, ensuring it stays in sync with the actual package tree. The CI build chain verifies consistency: compile the index from scratch, diff against the committed version, fail if they diverge. This follows the lockfile pattern — committed for fast reads, but always verifiably reproducible from source.
 
-Because the file is entirely compiled, it can safely be extended with denormalized metadata from `manifest.json` in the future (e.g., `title`, `description`, `targeting.match`) without drift risk. Any such extension is a future decision; the initial specification includes only `path`.
+### Package resolution
 
-### FQI resolution flow
+Given a bare ID like `infrastructure-alerting-find-data-to-alert`, the system resolves it to a loadable content location through a tiered resolution strategy. The resolution tiers are tried in order:
 
-Given an FQI like `interactive-tutorials/infrastructure-alerting-find-data-to-alert`:
+1. **Bundled content** — look up the ID in the bundled dependency graph shipped with the plugin. This covers baseline tutorials that work offline.
+2. **Static catalog** — look up the ID in a `packages-catalog.json` fetched from CDN at startup. This covers extended content beyond the bundled baseline.
+3. **Registry service** (Phase 6) — query a dynamic registry endpoint. This covers rapid content updates and multi-repo ecosystem scale.
 
-1. **Parse the FQI**: split on first `/` → repository token `interactive-tutorials`, id `infrastructure-alerting-find-data-to-alert`
-2. **Resolve the repository token** to a location (currently hardcoded for `interactive-tutorials`; future configuration layer maps tokens to locations — see [deferred concerns](../PATHFINDER-PACKAGE-DESIGN.md#deferred-concerns))
-3. **Read `repository.json`** from the repository root
-4. **Look up the id** → `{ "path": "infrastructure-alerting/find-data-to-alert" }`
-5. **Load the package** at `{repo_root}/infrastructure-alerting/find-data-to-alert/content.json`
+If tier 1 misses, try tier 2. If tier 2 misses, try tier 3 (when available). If all tiers miss, the package is unresolvable.
 
-For bare id references (same-repo, no `/`), steps 1-2 are skipped — the id is looked up directly in the current repository's `repository.json`.
+All tiers return the same resolution shape:
+
+```typescript
+interface PackageResolution {
+  id: string;
+  contentUrl: string;
+  manifestUrl: string;
+  repository: string;
+}
+
+interface PackageResolver {
+  resolve(packageId: string): Promise<PackageResolution>;
+}
+```
+
+The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. The MVP implements static catalog resolution; the Phase 6 registry service implements the same interface with dynamic queries. The plugin can run both approaches simultaneously during transition, falling back gracefully if a tier is unavailable.
 
 ### Relationship to `index.json`
 
 Today, the recommender consumes a hand-maintained `index.json` for targeting rules (`title`, `summary`, `url`, `match`, `targetPlatform`). In the package model, all of this metadata moves into packages: `targeting` and `description` in `manifest.json`, `title` in `content.json`.
 
-After the migration to the package format, `index.json` becomes unnecessary. The recommender's input can be derived from `repository.json` — either by reading it directly (once denormalized metadata is included) or by a build step that reads `repository.json` for resolution and then extracts targeting data from each package's `manifest.json`.
+After the migration to the package format, `index.json` becomes unnecessary. The recommender's input can be derived from `repository.json`, which includes denormalized metadata from each package's `manifest.json`.
 
 The migration is incremental: as packages gain `manifest.json` with `targeting`, those entries are compiled into `repository.json`. Guides that haven't migrated yet retain their entries in the legacy `index.json`. When the last guide migrates, `index.json` is deleted.

@@ -30,7 +30,7 @@ type DependencyClause = string | string[];
 type DependencyList = DependencyClause[];
 ```
 
-All references use FQI format (`"repository/id"`) for cross-repo or bare `id` for same-repo. See [identity model](./identity-and-resolution.md).
+All references use bare globally-unique IDs. See [identity model](./identity-and-resolution.md).
 
 ## AND/OR semantics
 
@@ -91,4 +91,4 @@ Learning paths exist as **both** curated collections and dependency-derived stru
 - **Curated**: `paths.json` continues to define editorially curated learning paths with explicit ordering, badging, and presentation metadata. This is a human editorial product.
 - **Derived**: The dependency graph formed by `depends`/`recommends`/`suggests` is a structural relationship that the recommender can exploit to compute on-the-fly learning paths based on user context and graph topology.
 
-Both coexist. `paths.json` references guides by FQI. The dependency graph is a parallel structure that enriches the recommender's understanding of content relationships.
+Both coexist. `paths.json` references guides by bare ID. The dependency graph is a parallel structure that enriches the recommender's understanding of content relationships.
