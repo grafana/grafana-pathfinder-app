@@ -9,9 +9,19 @@
 
 import { BADGES } from './badges';
 import pathsData from './paths.json';
+import ljPathsData from './lj-temp-metadata.json';
 import type { LearningPath } from '../types/learning-paths.types';
 
-const paths = pathsData.paths as LearningPath[];
+// Merge paths from both files (lj-temp-metadata.json contains learning journey paths)
+// Deduplicate by path ID, preferring paths.json entries over lj-temp-metadata.json
+const allPaths = [...(pathsData.paths as LearningPath[]), ...(ljPathsData.paths as LearningPath[])];
+const pathsMap = new Map<string, LearningPath>();
+for (const path of allPaths) {
+  if (!pathsMap.has(path.id)) {
+    pathsMap.set(path.id, path);
+  }
+}
+const paths = Array.from(pathsMap.values());
 
 describe('paths.json / badges.ts data integrity', () => {
   it('every path badgeId has a matching BADGES entry with a path-completed trigger', () => {
@@ -33,7 +43,9 @@ describe('paths.json / badges.ts data integrity', () => {
   });
 
   it('every guide in a path has a guideMetadata entry', () => {
-    const metadataKeys = Object.keys(pathsData.guideMetadata);
+    // Merge guideMetadata from both files
+    const allMetadata = { ...pathsData.guideMetadata, ...ljPathsData.guideMetadata };
+    const metadataKeys = Object.keys(allMetadata);
     for (const path of paths) {
       for (const guideId of path.guides) {
         expect(metadataKeys).toContain(guideId);
@@ -42,7 +54,8 @@ describe('paths.json / badges.ts data integrity', () => {
   });
 
   it('remote guides have a valid URL in guideMetadata', () => {
-    const metadata = pathsData.guideMetadata as Record<
+    // Merge guideMetadata from both files
+    const metadata = { ...pathsData.guideMetadata, ...ljPathsData.guideMetadata } as Record<
       string,
       { title: string; estimatedMinutes: number; url?: string }
     >;
