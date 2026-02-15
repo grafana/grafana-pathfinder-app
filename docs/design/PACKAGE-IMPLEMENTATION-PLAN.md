@@ -42,20 +42,52 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 - [ ] Define `ContentJsonSchema` for `content.json` (`schemaVersion`, `id`, `title`, `blocks`)
 - [ ] Define `ManifestJsonSchema` for `manifest.json` (flat metadata fields, flat dependency fields, `targeting`)
-- [ ] Include `testEnvironment` field in `ManifestJsonSchema` from day one — the schema accepts it with no consumer required yet, so content can declare test requirements as soon as guides are migrated and the e2e CLI can consume them incrementally
+- [ ] **Package identity model:**
+  - [ ] Package IDs are bare strings, globally unique (e.g., `"welcome-to-grafana"`)
+  - [ ] No repository prefix in IDs (not `"repo/id"`, just `"id"`)
+  - [ ] `repository` field in manifest is provenance metadata, not part of identity or resolution
+  - [ ] Dependencies reference bare IDs: `depends: ["foo"]` not `depends: ["repo/foo"]`
+  - [ ] Allows packages to move between repositories without ID changes
+  - [ ] Resolution handled by service (Phase 2), not by parsing ID syntax
+- [ ] **Manifest field requirements and defaults:**
+  - [ ] **Hard requirements (ERROR if missing):** `id`, `type`
+  - [ ] **Defaults with INFO validation message:**
+    - `repository` → `"interactive-tutorials"`
+    - `language` → `"en"`
+    - `schemaVersion` → `CURRENT_SCHEMA_VERSION` (currently `"1.1.0"`)
+    - `depends` → `[]`
+    - `recommends` → `[]`
+    - `suggests` → `[]`
+    - `provides` → `[]`
+    - `conflicts` → `[]`
+    - `replaces` → `[]`
+  - [ ] **Defaults with WARN validation message:**
+    - `description` → `undefined`
+    - `category` → `undefined`
+    - `targeting` → `undefined`
+    - `startingLocation` → `"/"` (URL path where guide expects to execute before step 1)
+  - [ ] **Defaults with INFO validation message:**
+    - `author` → `undefined`
+    - `testEnvironment` → default structure indicating Grafana Cloud is required
+  - [ ] **Conditional ERROR:** `steps` is required when `type: "journey"`
+  - [ ] Schema uses Zod `.default()` chaining to apply defaults during parsing
+  - [ ] CLI validation emits ERROR/WARN/INFO messages based on missing field severity
+- [ ] Include `testEnvironment` field in `ManifestJsonSchema` from day one with default structure
 - [ ] Define shared sub-schemas (`DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`)
 - [ ] Retain merged `JsonGuideSchemaStrict` for backwards compatibility with single-file guides
 - [ ] Add `KNOWN_FIELDS._manifest` for `manifest.json` fields
 - [ ] Bump `CURRENT_SCHEMA_VERSION` to `"1.1.0"`
-- [ ] Define `repository.json` specification (id → `{ path }` mapping, compiled build artifact)
-- [ ] Implement `pathfinder-cli build-repository` command (scans package tree, emits `repository.json`)
+- [ ] Define `repository.json` specification (bare package id → `{ path, ...metadata }` mapping, compiled build artifact)
+- [ ] Denormalize manifest metadata into `repository.json` entries: each entry uses bare package ID as key and includes `{ path, title, description, category, type, startingLocation, depends, recommends, suggests, provides, conflicts, replaces }` — enables dependency graph building without re-reading every `manifest.json`
+- [ ] Example structure: `{ "welcome-to-grafana": { "path": "welcome-to-grafana/", "title": "...", "type": "guide", ... } }`
+- [ ] Implement `pathfinder-cli build-repository` command (scans package tree, reads both `content.json` and `manifest.json` for each package, emits denormalized `repository.json` with bare IDs)
 - [ ] Add pre-commit hook for `interactive-tutorials` that regenerates `repository.json` on commit
 - [ ] CI verification: rebuild `repository.json` from scratch, diff against committed version, fail on divergence
 - [ ] Add Layer 1 unit tests for content schema, package schema, cross-file ID consistency, and repository index generation — extending the existing validation infrastructure in `src/validation/`
 - [ ] Run `validate:strict` to confirm all existing guides still pass
 - [ ] Update schema-coupling documentation
 
-**Why first:** Everything downstream depends on the schema accepting these fields, the two-file model being defined, and the resolution mechanism being in place. Without `repository.json`, FQIs cannot be resolved to filesystem paths — especially for nested journey step packages.
+**Why first:** Everything downstream depends on the schema accepting these fields, the two-file model being defined, and the identity model being established. Without `repository.json`, package IDs cannot be resolved to filesystem paths — especially for nested journey step packages.
 
 ### Phase 1: CLI package validation (Layer 1 completion)
 
@@ -68,10 +100,26 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] `--package` flag: validate a directory (expects `content.json`, optionally `manifest.json`)
 - [ ] Cross-file consistency: `id` match between `content.json` and `manifest.json`
 - [ ] `--packages` flag: validate a tree of package directories
-- [ ] Dependency graph validator: resolution, cycle detection, capability coverage (reads from `manifest.json`)
-- [ ] Cross-repo reference warnings (unresolvable without external metadata)
-- [ ] `graph` command: output dependency DAG as text or DOT format
 - [ ] Asset reference validation: warn if `content.json` references assets not in `assets/`
+- [ ] **Dependency graph builder:**
+  - [ ] `build-graph` command: iterate over hardcoded repository list `["interactive-tutorials"]`, read each `repository.json` denormalized index, construct in-memory graph from metadata
+  - [ ] Graph representation: nodes (full manifest metadata from denormalized `repository.json`) + edges (typed relationships)
+  - [ ] Edge types: `depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`
+  - [ ] Output format: D3 JSON with structure `{ nodes: GraphNode[], edges: GraphEdge[], metadata: {...} }`
+  - [ ] `GraphNode` schema: `{ id, repository, title?, description?, category?, type, startingLocation, ...fullManifest }` (includes all manifest fields with defaults applied)
+    - `id`: bare package ID (globally unique, e.g., `"welcome-to-grafana"`)
+    - `repository`: provenance metadata (where package originated, e.g., `"interactive-tutorials"`)
+  - [ ] `GraphEdge` schema: `{ source, target, type }` where `source` and `target` are bare package IDs
+  - [ ] Handles packages with defaulted fields: missing dependency arrays treated as empty (no edges created), undefined metadata fields included in node as `undefined`
+  - [ ] CNF dependency clauses: simplified implementation creates edges to all mentioned packages regardless of AND/OR semantics (note as limitation for future work — OR clauses are imprecise in this representation)
+  - [ ] Graph lint checks against global catalog (all WARN severity during migration phase, no ERROR):
+    - Dependency target doesn't exist in global catalog (broken reference)
+    - `provides: ["foo"]` implies package `foo` must exist in global catalog (everything is a package, not a virtual capability)
+    - Cycle detection in `depends` chains (error-level semantic issue)
+    - Cycle detection in `recommends` chains (warning-level semantic issue)
+    - Orphaned packages (no incoming or outgoing edges)
+    - Packages with undefined `description` or `category` (quality issue)
+  - [ ] `graph` command: wrapper that invokes `build-graph` and outputs D3 JSON to stdout or file
 - [ ] `testEnvironment` field validation (present in schema since Phase 0)
 - [ ] Integration tests with sample package trees (valid and invalid, with and without `manifest.json`)
 
@@ -79,19 +127,60 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 ### Phase 2: Plugin runtime resolution
 
-**Goal:** The plugin can consume packages at runtime — loading directory packages, resolving fully-qualified identifiers, and reading repository indexes.
+**Goal:** The plugin can consume packages at runtime — loading bundled content locally and resolving non-bundled packages via resolution service.
 
 **Testing layers:** Layer 2
 
+**Architecture:**
+
+The plugin uses a two-tier resolution strategy:
+
+1. **Bundled content** (shipped with plugin): Local resolution via bundled dependency graph
+2. **Non-bundled content** (external packages): Service-based resolution via HTTP endpoint
+
 **Deliverables:**
 
-- [ ] Package loader: load directory packages (`content.json` + `manifest.json`) with bare file fallback for single-file guides
-- [ ] FQI parser: split `repository/id` identifiers, bare id resolution for default repository
-- [ ] `repository.json` reader: parse and cache the repository index at runtime
-- [ ] Dependency resolver: resolve `depends`, `suggests`, and `provides` for navigation and recommendations
-- [ ] Layer 2 unit tests for package loader, FQI parser, repository reader, and dependency resolver
+- [ ] **Bundled content resolution:**
+  - [ ] Plugin ships with bundled dependency graph JSON (generated from `build-graph` in Phase 1)
+  - [ ] Graph includes only packages bundled with plugin (not `interactive-tutorials` packages)
+  - [ ] Graph structure: `{ packages: { [id]: { manifest, contentUrl, repository } }, edges: [...] }`
+  - [ ] Local package loader: resolve bare ID → lookup in bundled graph → load content from bundled location
+  - [ ] Example bundled graph entry:
+    ```json
+    {
+      "packages": {
+        "welcome-to-grafana": {
+          "manifest": {
+            /* full manifest with defaults applied */
+          },
+          "contentUrl": "/bundled/welcome-to-grafana/content.json",
+          "repository": "grafana-core-tutorials"
+        }
+      },
+      "edges": [{ "source": "welcome-to-grafana", "target": "first-dashboard", "type": "recommends" }]
+    }
+    ```
+- [ ] **Service-based resolution:**
+  - [ ] Resolution service endpoint: `GET https://repo.service/resolve/{packageId}`
+  - [ ] Service maintains global catalog (aggregates all `repository.json` files)
+  - [ ] Service response: `{ contentUrl: "...", manifestUrl: "...", repository: "..." }` OR HTTP redirect to package location
+  - [ ] Plugin resolution flow:
+    1. Check bundled graph for package ID
+    2. If not bundled, call resolution service endpoint
+    3. Cache resolution results per session
+    4. Fetch content from resolved URLs
+  - [ ] Fallback: if service unavailable, bundled content still works (offline/OSS support)
+- [ ] **Package loader:**
+  - [ ] Load directory packages (`content.json` + `manifest.json`) from resolved locations
+  - [ ] Fallback to single-file guides for backwards compatibility
+  - [ ] Handle both local (bundled) and remote (HTTP) content sources
+- [ ] **Dependency resolver:**
+  - [ ] Resolve `depends`, `suggests`, and `provides` relationships using bundled graph or service
+  - [ ] Support navigation and recommendations based on dependency edges
+  - [ ] Handle circular dependencies gracefully
+- [ ] Layer 2 unit tests for bundled resolution, service resolution (mocked endpoint), package loader, and dependency resolver
 
-**Why third:** Bridges the gap between static validation (Phases 0-1) and real content migration (Phase 3). Without runtime resolution, the plugin cannot load packages even if they pass validation.
+**Why third:** Bridges the gap between static validation (Phases 0-1) and real content migration (Phase 3). Establishes the runtime architecture for both bundled and distributed packages. Without runtime resolution, the plugin cannot load packages even if they pass validation.
 
 ### Phase 3: Pilot package migration
 
@@ -110,6 +199,16 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] Verify `validate --packages` passes in CI (validates both files)
 - [ ] Extend e2e CLI to read `manifest.json` for pre-flight environment checks (Layer 3 enhancement)
 - [ ] Document the two-file package authoring workflow for content authors and metadata managers
+- [ ] **Journey migration tooling:**
+  - [ ] `migrate-journeys` command: tool-assisted migration of existing journey metadata
+  - [ ] Reads `website/content/docs/learning-journeys/journeys.yaml` (external repo) for dependency graph data
+  - [ ] Reads markdown front-matter from `website/content/docs/learning-journeys/*.md` for title, description, and metadata
+  - [ ] Generates draft `manifest.json` files for all `*-lj` directories in `interactive-tutorials`
+  - [ ] Uses bare package IDs throughout (no repository prefix in `id` field or dependency references)
+  - [ ] Sets `repository: "interactive-tutorials"` as provenance metadata (not used for resolution)
+  - [ ] Maps `journeys.yaml` `links.to` relationships → `recommends` field in `manifest.json` using bare IDs (soft dependencies, not hard `depends`)
+  - [ ] Extracts `startingLocation` from existing `index.json` `url` field or `targeting.match` URL rules during migration (first URL from targeting becomes `startingLocation`, falls back to `"/"` if no URL rules present)
+  - [ ] Outputs draft manifests for human review and refinement before committing
 
 **Why fourth:** Proof-of-concept that validates schema, CLI, and runtime work together. Small scope (3-5 guides) catches issues early. Layer 3 e2e integration validates the full authoring-to-testing pipeline.
 
@@ -122,9 +221,14 @@ This plan is designed to support and further the [content testing strategy](./TE
 **Deliverables:**
 
 - [ ] Add `type` field to `ManifestJsonSchema` (`"guide"` default, `"journey"`)
-- [ ] Add `steps` field to `ManifestJsonSchema` (ordered `string[]`, valid when `type: "journey"`)
-- [ ] CLI: validate journey directories — nested step packages, `steps` array referencing child directories, cover page `content.json`
-- [ ] CLI: dependency graph treats journeys as single nodes; `--expand-journeys` flag shows internal step structure
+- [ ] Add `steps` field to `ManifestJsonSchema` (ordered `string[]` of bare package IDs, valid when `type: "journey"`)
+- [ ] CLI: validate journey directories — nested step packages, `steps` array referencing child packages by bare ID, cover page `content.json`
+- [ ] **Dependency graph representation for journeys:**
+  - [ ] Journey metapackages appear as regular nodes with `type: "journey"` (everything is a package)
+  - [ ] Journey steps appear as independent package nodes in the graph (they are packages, can be reused across multiple journeys)
+  - [ ] Journey metapackage has edges to its steps: linear `recommends` chain from journey node to each step in `steps` array order
+  - [ ] `steps` array contains bare package IDs (e.g., `["step-1", "step-2"]`), no repository prefix
+  - [ ] Graph lint: journey `steps` references must resolve to existing packages in global catalog
 - [ ] Pilot: convert 1-2 existing `*-lj` directories to journey metapackages with `manifest.json`
 - [ ] Validate step reuse: confirm that a step package can appear in multiple journey `steps` arrays
 - [ ] Utility to compute learning paths from dependency DAG
