@@ -66,6 +66,7 @@ At the same time, for the convenience of operators and software engineers, all d
 3. **Debian-inspired naming and dependencies.** We adopt the proven dependency semantics and vocabulary from the [Debian package system](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends), which has refined these semantics over decades.
 
 4. **Packages are atomic.** A package carries all metadata to be understood in isolation — its identity, its dependencies, its recommended targeting, and its authorship.
+   One important property resulting from this is that **repositories do not give identity**.
 
 TODO: do they also contain all **data**? my gut is yes. Debian's package format is a weak part hidden by tooling. archives of archives, etc. Also, binaries are large, guides are not. i can see the argument of adding e.g. a large video in a distinct file. so maybe the reasonable cut-off for using different files is not "metadata vs data" but "text vs blobs"
 adding to this: the other approach is to zip everything up. all the office formats etc do it -- but in a cloud native world, that seems very very cumbersome
@@ -78,6 +79,7 @@ adding to this: the other approach is to zip everything up. all the office forma
   * Manually set priority on a repository [0-1000], default 500. lower is stronger
   * Higher package version
   * Newest entry read from the repository list (if i have "default" and then "my custom repo" for packages, i want my custom package)
+  Crucially, we do not allow package-level priorities. This prevents global overrides of the locally-relevant world view
 
 TODO: debian has "highest priority wins" which i always found confusing is not aligned with modern best current practices.
 TODO: what if foo depends on bar 2.0, but bar 3.0 is newest and thus won the merge? there are several approaches, but which is good?
