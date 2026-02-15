@@ -133,6 +133,74 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
 }
 
 // ============================================================================
+// BADGE GRID ITEM COMPONENT
+// ============================================================================
+
+interface BadgeGridItemProps {
+  badge: EarnedBadge;
+  index: number;
+  completedGuides: string[];
+  streakDays: number;
+  paths: Array<{ id: string; guides: string[] }>;
+  styles: ReturnType<typeof getMyLearningStyles>;
+  onSelect: (badge: EarnedBadge) => void;
+}
+
+function BadgeGridItem({ badge, index, completedGuides, streakDays, paths, styles, onSelect }: BadgeGridItemProps) {
+  const isEarned = !!badge.earnedAt;
+  const isLegacy = badge.isLegacy;
+  const baseBadge = BADGES.find((b) => b.id === badge.id);
+  const badgeProgress = baseBadge ? getBadgeProgress(baseBadge, completedGuides, streakDays, paths) : null;
+
+  // Determine the badge item class based on state
+  const badgeItemClass = isLegacy
+    ? `${styles.badgeItem} ${styles.badgeItemLegacy}`
+    : isEarned
+      ? `${styles.badgeItem} ${styles.badgeItemEarned}`
+      : `${styles.badgeItem} ${styles.badgeItemLocked}`;
+
+  return (
+    <button
+      className={badgeItemClass}
+      onClick={() => onSelect(badge)}
+      style={{ animationDelay: `${index * 50}ms` }}
+      title={isLegacy ? 'This badge was earned in a previous version' : undefined}
+    >
+      <div className={styles.badgeIconWrapper}>
+        <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xl" emojiClassName={styles.badgeEmojiSmall} />
+        {isEarned && !isLegacy && (
+          <div className={styles.badgeCheckmark}>
+            <Icon name="check" size="xs" />
+          </div>
+        )}
+        {isLegacy && (
+          <div className={styles.badgeLegacyIndicator}>
+            <Icon name="history" size="xs" />
+          </div>
+        )}
+      </div>
+      <div className={styles.badgeInfo}>
+        <span
+          className={`${styles.badgeTitle} ${!isEarned && !isLegacy ? styles.badgeTitleLocked : ''} ${isLegacy ? styles.badgeTitleLegacy : ''}`}
+        >
+          {badge.title}
+        </span>
+        {!isEarned && !isLegacy && badgeProgress && (
+          <div className={styles.badgeMiniProgress}>
+            <div className={styles.badgeMiniProgressTrack}>
+              <div className={styles.badgeMiniProgressBar} style={{ width: `${badgeProgress.percentage}%` }} />
+            </div>
+            <span className={styles.badgeMiniProgressText}>
+              {badgeProgress.current}/{badgeProgress.total}
+            </span>
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -260,7 +328,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const totalBadgesEarned = progress.earnedBadges.length;
   const totalBadges = badgesWithStatus.length;
 
-  // Sort badges: unearned first (by progress %), then earned (most recent first)
+  // Sort badges: earned first (most recent first), then unearned (by progress %)
   const sortedBadges = useMemo(() => {
     const pathsForProgress = paths.map((p) => ({ id: p.id, guides: p.guides }));
 
@@ -268,9 +336,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       const aEarned = !!a.earnedAt;
       const bEarned = !!b.earnedAt;
 
-      // Unearned badges come first
+      // Earned badges come first
       if (aEarned !== bEarned) {
-        return aEarned ? 1 : -1;
+        return aEarned ? -1 : 1;
       }
 
       // Both earned: sort by earnedAt (most recent first)
@@ -418,70 +486,18 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
         {/* Badges Grid */}
         <div className={`${styles.badgesGrid} ${showAllBadges ? styles.badgesGridExpanded : ''}`}>
-          {displayedBadges.map((badge, index) => {
-            const isEarned = !!badge.earnedAt;
-            const isLegacy = badge.isLegacy;
-            const baseBadge = BADGES.find((b) => b.id === badge.id);
-            const badgeProgress = baseBadge
-              ? getBadgeProgress(
-                  baseBadge,
-                  progress.completedGuides,
-                  progress.streakDays,
-                  paths.map((p) => ({ id: p.id, guides: p.guides }))
-                )
-              : null;
-
-            // Determine the badge item class based on state
-            const badgeItemClass = isLegacy
-              ? `${styles.badgeItem} ${styles.badgeItemLegacy}`
-              : isEarned
-                ? `${styles.badgeItem} ${styles.badgeItemEarned}`
-                : `${styles.badgeItem} ${styles.badgeItemLocked}`;
-
-            return (
-              <button
-                key={badge.id}
-                className={badgeItemClass}
-                onClick={() => setSelectedBadge(badge)}
-                style={{ animationDelay: `${index * 50}ms` }}
-                title={isLegacy ? 'This badge was earned in a previous version' : undefined}
-              >
-                <div className={styles.badgeIconWrapper}>
-                  <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xl" emojiClassName={styles.badgeEmojiSmall} />
-                  {isEarned && !isLegacy && (
-                    <div className={styles.badgeCheckmark}>
-                      <Icon name="check" size="xs" />
-                    </div>
-                  )}
-                  {isLegacy && (
-                    <div className={styles.badgeLegacyIndicator}>
-                      <Icon name="history" size="xs" />
-                    </div>
-                  )}
-                </div>
-                <div className={styles.badgeInfo}>
-                  <span
-                    className={`${styles.badgeTitle} ${!isEarned && !isLegacy ? styles.badgeTitleLocked : ''} ${isLegacy ? styles.badgeTitleLegacy : ''}`}
-                  >
-                    {badge.title}
-                  </span>
-                  {!isEarned && !isLegacy && badgeProgress && (
-                    <div className={styles.badgeMiniProgress}>
-                      <div className={styles.badgeMiniProgressTrack}>
-                        <div
-                          className={styles.badgeMiniProgressBar}
-                          style={{ width: `${badgeProgress.percentage}%` }}
-                        />
-                      </div>
-                      <span className={styles.badgeMiniProgressText}>
-                        {badgeProgress.current}/{badgeProgress.total}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+          {displayedBadges.map((badge, index) => (
+            <BadgeGridItem
+              key={badge.id}
+              badge={badge}
+              index={index}
+              completedGuides={progress.completedGuides}
+              streakDays={progress.streakDays}
+              paths={paths.map((p) => ({ id: p.id, guides: p.guides }))}
+              styles={styles}
+              onSelect={setSelectedBadge}
+            />
+          ))}
         </div>
       </div>
 
