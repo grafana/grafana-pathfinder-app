@@ -100,7 +100,8 @@ Answer the question directly. Don't run the full review protocol unless asked. P
 
 ### When the user says "capture this" or "update the doc"
 
-Only then do you modify the design document. Make precisely the changes discussed. Use the same writing style and structure as the existing document. Do not reorganize other sections.
+Only then do you modify the design document. Make precisely the changes discussed. Use the same writing style and structure as the existing document. Do not reorganize other sections. After modifying
+design documents, run `npm run prettier` to make sure document formatting is aligned with what the build system requires.
 
 ### When the user proposes a design decision
 
