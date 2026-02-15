@@ -113,9 +113,15 @@ This plan is designed to support and further the [content testing strategy](./TE
   - [ ] `GraphEdge` schema: `{ source, target, type }` where `source` and `target` are bare package IDs
   - [ ] Handles packages with defaulted fields: missing dependency arrays treated as empty (no edges created), undefined metadata fields included in node as `undefined`
   - [ ] CNF dependency clauses: simplified implementation creates edges to all mentioned packages regardless of AND/OR semantics (note as limitation for future work — OR clauses are imprecise in this representation)
+  - [ ] Virtual capability handling in graph output:
+    - Graph command output (D3 JSON): virtual capabilities appear as virtual nodes (distinguished by a `virtual: true` flag on the node) with `provides` edges from real packages. This preserves the abstraction in visualization.
+    - Runtime dependency resolution: virtual nodes are resolved to their providing packages directly (no virtual node in the resolution path — just "is any provider completed?")
+  - [ ] **Virtual capability resolution:**
+    - [ ] Build a provides map: scan all packages' `provides` arrays to create a mapping from virtual capability name → set of providing package IDs
+    - [ ] Dependency targets are satisfied if they match a real package ID **or** if any package in the catalog declares `provides: ["that-target"]`
+    - [ ] Virtual capability names declared in `provides` do NOT need to exist as real packages — this follows the Debian virtual package model (e.g., `"datasource-configured"` is a virtual capability provided by multiple real packages)
   - [ ] Graph lint checks against global catalog (all WARN severity during migration phase, no ERROR):
-    - Dependency target doesn't exist in global catalog (broken reference)
-    - `provides: ["foo"]` implies package `foo` must exist in global catalog (everything is a package, not a virtual capability)
+    - Dependency target doesn't exist as a real package ID AND is not provided by any package in the catalog (broken reference)
     - Cycle detection in `depends` chains (error-level semantic issue)
     - Cycle detection in `recommends` chains (warning-level semantic issue)
     - Orphaned packages (no incoming or outgoing edges)
@@ -206,6 +212,7 @@ The plugin uses a two-tier resolution strategy:
   - [ ] Handle both local (bundled) and remote (HTTP) content sources
 - [ ] **Dependency resolver:**
   - [ ] Resolve `depends`, `suggests`, and `provides` relationships using bundled graph or service
+  - [ ] **Provides-aware resolution:** when checking whether a `depends` target is satisfied, check both real package completion and virtual capability satisfaction (i.e., has the user completed any package that `provides` the target capability?)
   - [ ] Support navigation and recommendations based on dependency edges
   - [ ] Handle circular dependencies gracefully
 - [ ] Layer 2 unit tests for bundled resolution, service resolution (mocked endpoint), package loader, and dependency resolver
@@ -252,7 +259,7 @@ The plugin uses a two-tier resolution strategy:
 
 - [ ] Add `type` field to `ManifestJsonSchema` (`"guide"` default, `"journey"`)
 - [ ] Add `steps` field to `ManifestJsonSchema` (ordered `string[]` of bare package IDs, valid when `type: "journey"`)
-- [ ] CLI: validate journey directories — nested step packages, `steps` array referencing child packages by bare ID, cover page `content.json`
+- [ ] CLI: validate journey packages — `steps` array entries resolve to existing packages in the repository index (by bare ID), cover page `content.json`. Steps may be nested child directories (organizational convenience for journey-specific steps) or independent top-level packages (for shared/reused steps). The CLI validates via repository index resolution, not filesystem child-directory checks.
 - [ ] **Dependency graph representation for journeys:**
   - [ ] Journey metapackages appear as regular nodes with `type: "journey"` (everything is a package)
   - [ ] Journey steps appear as independent package nodes in the graph (they are packages, can be reused across multiple journeys)

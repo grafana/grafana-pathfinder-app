@@ -87,9 +87,19 @@ Each repository root contains a `repository.json` file. It is a top-level JSON o
     "path": "infrastructure-alerting/find-data-to-alert/",
     "title": "Find data to alert on",
     "type": "guide"
+  },
+  "install-alloy": {
+    "path": "install-alloy/",
+    "title": "Install Grafana Alloy",
+    "type": "guide",
+    "description": "Download and install Grafana Alloy on your platform.",
+    "category": "data-availability",
+    "provides": ["alloy-installed"]
   }
 }
 ```
+
+Note that `infrastructure-alerting-find-data-to-alert` is a journey-specific step nested under its journey directory (`infrastructure-alerting/find-data-to-alert/`), while `install-alloy` is a shared step that lives as an independent top-level package (`install-alloy/`). Both are real packages resolved by bare ID through the repository index. Multiple journeys (e.g., `linux-server-integration`, `macos-integration`) can reference `install-alloy` in their `steps` arrays without physical duplication.
 
 The `path` is relative to the repository root directory. Denormalized metadata fields (`title`, `type`, `description`, `category`, `startingLocation`, and all dependency arrays) are included so that consumers can build dependency graphs, search catalogs, and compute learning paths from `repository.json` alone — without re-reading every individual `manifest.json`.
 

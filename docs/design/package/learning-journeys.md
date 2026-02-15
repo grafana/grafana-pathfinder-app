@@ -63,47 +63,52 @@ The `"journey"` type establishes the composition pattern that `"course"` and `"m
 Journey manifests declare step ordering via a `steps` array:
 
 ```typescript
-/** Ordered array of step directory names within the journey. Advisory linear sequence. */
+/** Ordered array of bare package IDs that form the journey. Advisory linear sequence. */
 steps?: string[];
 ```
 
-Each entry in `steps` is a directory name that must exist as a child directory of the journey directory. The array defines the **recommended reading order** — the linear path the UI presents to users.
+Each entry in `steps` is a **bare package ID** that must resolve to an existing package in the repository index. The array defines the **recommended reading order** — the linear path the UI presents to users.
+
+Steps may be physically nested as child directories of the journey (organizational convenience for journey-specific steps) or may be independent top-level packages (for steps shared across multiple journeys). The `steps` array makes no assumption about physical location — resolution is handled by the repository index, following the same bare-ID-to-path resolution used everywhere else in the package system. This follows the Debian convention where metapackage dependencies are independently located packages, not physically contained within the metapackage.
 
 The `steps` field is valid only when `type` is `"journey"`. The CLI validates that:
 
-- Every entry in `steps` corresponds to a child directory containing at least `content.json`
+- Every entry in `steps` resolves to an existing package in the repository index
 - No duplicate entries exist in the array
 - The `steps` array is non-empty when `type` is `"journey"`
 
 ## Journey directory structure
 
-A journey directory contains its own `manifest.json` (with `type: "journey"`) and nested step package directories. An optional `content.json` at the journey level serves as a cover page or introduction.
+A journey directory contains its own `manifest.json` (with `type: "journey"`) and an optional `content.json` at the journey level that serves as a cover page or introduction. Journey-specific steps may be nested as child directories; shared steps live as independent top-level packages.
 
 ```
 interactive-tutorials/
 ├── infrastructure-alerting/                ← journey metapackage
 │   ├── manifest.json                       ← type: "journey", steps: [...]
 │   ├── content.json                        ← optional cover/introduction page
-│   ├── find-data-to-alert/                 ← step package (real package, nested)
+│   ├── find-data-to-alert/                 ← journey-specific step (nested)
 │   │   └── content.json
-│   ├── build-your-query/
+│   ├── build-your-query/                   ← journey-specific step (nested)
 │   │   └── content.json
-│   ├── set-conditions/
-│   │   └── content.json
-│   ├── evaluation-and-labels/
-│   │   └── content.json
-│   ├── notification-settings/
-│   │   └── content.json
-│   ├── save-and-activate/
-│   │   └── content.json
-│   └── monitor-your-rule/
+│   └── set-conditions/                     ← journey-specific step (nested)
+│       └── content.json
+├── install-alloy/                          ← shared step (top-level, reusable)
+│   ├── content.json
+│   └── manifest.json
+├── configure-alloy/                        ← shared step (top-level, reusable)
+│   └── content.json
+├── linux-server-integration/               ← another journey reusing shared steps
+│   ├── manifest.json                       ← steps: ["select-platform", "install-alloy", "configure-alloy", ...]
+│   └── select-platform/                    ← journey-specific step (nested)
 │       └── content.json
 ├── welcome-to-grafana/                     ← standalone guide (unchanged)
 │   ├── content.json
 │   └── manifest.json
 ```
 
-This introduces **nested package directories** — a package directory that contains child package directories. The CLI must understand that a directory can contain both its own `manifest.json` and child package directories. This is a structural extension of the [package structure](../PATHFINDER-PACKAGE-DESIGN.md#package-structure) convention.
+In this example, `install-alloy` and `configure-alloy` are shared steps that appear in the `steps` arrays of multiple journeys (`linux-server-integration`, `macos-integration`, `mysql-integration`). They live as independent top-level packages — following the Debian convention where metapackage dependencies live in the pool independently, not physically contained within any metapackage. Journey-specific steps like `find-data-to-alert` and `select-platform` are nested under their journey for organizational convenience.
+
+This introduces **nested package directories** — a package directory that may contain child package directories. The CLI must understand that a directory can contain both its own `manifest.json` and child package directories. This is a structural extension of the [package structure](../PATHFINDER-PACKAGE-DESIGN.md#package-structure) convention. Nesting is optional; the `steps` array uses bare package IDs resolved via the repository index regardless of physical location.
 
 Step packages follow the same conventions as any package: they contain at minimum `content.json` and may optionally include `manifest.json` for step-specific metadata (e.g., `testEnvironment` for E2E routing of individual steps). Most steps need only `content.json`.
 
