@@ -365,6 +365,26 @@ describe('Security: Attribute Preservation', () => {
   });
 });
 
+describe('Security: Template Variable Passthrough', () => {
+  it('should preserve Grafana template variables ${...}', () => {
+    const html = '<code>Query: ${variable}</code>';
+    const result = sanitizeDocumentationHTML(html);
+    expect(result).toContain('${variable}');
+  });
+
+  it('should preserve Pathfinder variables {{...}}', () => {
+    const html = '<p>Value: {{PATHFINDER_VARIABLE}}</p>';
+    const result = sanitizeDocumentationHTML(html);
+    expect(result).toContain('{{PATHFINDER_VARIABLE}}');
+  });
+
+  it('should preserve shell variables in code blocks', () => {
+    const html = '<pre><code>export PATH="${HOME}/bin:$PATH"</code></pre>';
+    const result = sanitizeDocumentationHTML(html);
+    expect(result).toContain('${HOME}');
+  });
+});
+
 describe('Security: Path Traversal Prevention (From Security Audit Screenshots)', () => {
   it('should reject path traversal attempts in URLs', () => {
     // These are the EXACT attacks from the security audit screenshots
