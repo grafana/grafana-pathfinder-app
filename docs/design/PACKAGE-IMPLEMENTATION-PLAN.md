@@ -84,8 +84,8 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] Example structure: `{ "welcome-to-grafana": { "path": "welcome-to-grafana/", "title": "...", "type": "guide", ... } }`
 - [ ] **Forward compatibility:** repository.json format serves both static catalog aggregation (Phase 4) and future repository registry ingestion (Phase 7). Design for dual use: build-time aggregation and runtime discovery.
 - [ ] Implement `pathfinder-cli build-repository` command (scans package tree, reads both `content.json` and `manifest.json` for each package, emits denormalized `repository.json` with bare IDs)
-- [ ] Add pre-commit hook for `interactive-tutorials` that regenerates `repository.json` on commit
-- [ ] CI verification: rebuild `repository.json` from scratch, diff against committed version, fail on divergence
+- [ ] CI verification for plugin repo: rebuild bundled `repository.json` from scratch, diff against committed version, fail on divergence (committed lockfile approach — appropriate for low-velocity bundled content)
+- [ ] Note: `interactive-tutorials` uses CI-generated `repository.json` published to CDN rather than committed lockfile — see Phase 4 for that repository's publication strategy
 - [ ] Add Layer 1 unit tests for content schema, package schema, cross-file ID consistency, and repository index generation — extending the existing validation infrastructure in `src/validation/`
 - [ ] Run `validate:strict` to confirm all existing guides still pass
 - [ ] Update schema-coupling documentation
@@ -219,8 +219,13 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] Add dependency fields (depends, provides, suggests) to `manifest.json` to express the "Getting started" learning path
 - [ ] Add `targeting` with recommender match expressions to `manifest.json`
 - [ ] Pilot guides include `testEnvironment` in their manifests
+- [ ] **`interactive-tutorials` repository index publication:**
+  - [ ] `repository.json` generated as a CI build artifact during the `interactive-tutorials` CI pipeline, not committed to git
+  - [ ] Published to CDN alongside guide content — always available to the plugin runtime without being a tracked file in the repository
+  - [ ] Same `pathfinder-cli build-repository` command as Phase 0/2, different publication strategy: CI-generated + CDN-published rather than committed lockfile (appropriate for high-velocity content repository where guides change frequently)
+  - [ ] Dependency graph JSON follows the same CI-generated + CDN-published pattern
 - [ ] **Static catalog resolution:**
-  - [ ] Build process: CLI aggregates all `repository.json` files into single `packages-catalog.json`, published to CDN
+  - [ ] Build process: CLI aggregates all `repository.json` files (bundled committed lockfile + CDN-published remote indexes) into single `packages-catalog.json`, published to CDN
   - [ ] Catalog format: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository } } }`
   - [ ] Plugin fetch strategy: on startup, fetch catalog from CDN; cache in memory for session; fall back to bundled repository if fetch fails (offline/OSS support)
   - [ ] Plugin resolution flow: check bundled repository first (baseline content), then static catalog (extended content)
