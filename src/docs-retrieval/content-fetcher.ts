@@ -179,6 +179,48 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       // Validate it's a proper JSON guide structure
       try {
         const parsed = JSON.parse(fetchResult.html);
+
+        // Check if the server returned null as a signal to fetch unstyled.html
+        // JSON.parse("null") returns the JavaScript value null
+        if (parsed === null) {
+          const htmlUrl = finalUrl.replace('/content.json', '/unstyled.html');
+          const htmlFetchResult = await fetchRawHtml(htmlUrl, options);
+
+          if (!htmlFetchResult.html) {
+            return {
+              content: null,
+              error: 'Content not available. The server returned null and no HTML fallback exists.',
+              errorType: 'not-found',
+            };
+          }
+
+          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType);
+          let processedHtml = htmlFetchResult.html;
+
+          if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
+            processedHtml = generateJourneyContentWithExtras(
+              processedHtml,
+              htmlMetadata.learningJourney,
+              options.skipReadyToBegin
+            );
+          }
+
+          jsonContent = wrapContentAsJsonGuide(processedHtml, htmlUrl, htmlMetadata.title);
+
+          // Create content with HTML metadata
+          const rawContent: RawContent = {
+            content: jsonContent,
+            metadata: htmlMetadata,
+            type: contentType,
+            url: htmlUrl,
+            lastFetched: new Date().toISOString(),
+            hashFragment,
+            isNativeJson: false,
+          };
+
+          return { content: rawContent };
+        }
+
         const validationResult = validateGuide(parsed);
 
         if (!validationResult.isValid) {
@@ -681,54 +723,64 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
 
-          // Always try JSON first (preferred format), HTML as fallback
-          const primaryUrl = jsonUrl;
-          const fallbackUrl = htmlUrl;
-          const primaryIsJson = true;
+          // Determine if this URL type supports content.json
+          // Learning journeys and interactive learning URLs have content.json
+          // Regular docs pages only have unstyled.html
+          const urlPath = new URL(finalUrl).pathname;
+          const hasContentJson =
+            urlPath.includes('/learning-journeys/') ||
+            urlPath.includes('/learning-paths/') ||
+            isInteractiveLearningUrl(finalUrl);
 
-          // Try primary format first (content.json)
-          if (primaryUrl !== finalUrl) {
+          // Try content.json first only for URLs that support it
+          if (hasContentJson && jsonUrl !== finalUrl) {
             try {
-              const primaryResponse = await fetch(primaryUrl, fetchOptions);
-              if (primaryResponse.ok) {
-                const primaryContent = await primaryResponse.text();
-                if (primaryContent && primaryContent.trim()) {
-                  return {
-                    html: primaryContent,
-                    finalUrl: primaryResponse.url || primaryUrl,
-                    isNativeJson: primaryIsJson,
-                  };
+              const jsonResponse = await fetch(jsonUrl, fetchOptions);
+              if (jsonResponse.ok) {
+                const jsonContent = await jsonResponse.text();
+                if (jsonContent && jsonContent.trim()) {
+                  // Check if server returned null as a signal to try unstyled.html
+                  if (jsonContent.trim() !== 'null') {
+                    return {
+                      html: jsonContent,
+                      finalUrl: jsonResponse.url || jsonUrl,
+                      isNativeJson: true,
+                    };
+                  }
+                  // Fall through to try the HTML fallback
                 }
               }
             } catch {
-              // Primary fetch failed - fall through to fallback
+              // JSON fetch failed - fall through to HTML fallback
             }
           }
 
-          // Fall back to secondary format (unstyled.html)
-          if (fallbackUrl !== finalUrl) {
+          // Fetch unstyled.html (fallback for learning journeys, primary for regular docs)
+          if (htmlUrl !== finalUrl) {
             try {
-              const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
-              if (fallbackResponse.ok) {
-                const fallbackContent = await fallbackResponse.text();
-                if (fallbackContent && fallbackContent.trim()) {
+              const htmlResponse = await fetch(htmlUrl, fetchOptions);
+              if (htmlResponse.ok) {
+                const htmlContent = await htmlResponse.text();
+                if (htmlContent && htmlContent.trim()) {
                   return {
-                    html: fallbackContent,
-                    finalUrl: fallbackResponse.url || fallbackUrl,
-                    isNativeJson: !primaryIsJson,
+                    html: htmlContent,
+                    finalUrl: htmlResponse.url || htmlUrl,
+                    isNativeJson: false,
                   };
                 }
               }
               lastError = {
-                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${finalUrl}`,
-                errorType: fallbackResponse.status === 404 ? 'not-found' : 'other',
-                statusCode: fallbackResponse.status,
+                message: hasContentJson
+                  ? `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${finalUrl}`
+                  : `Cannot load Grafana content. unstyled.html not found at: ${finalUrl}`,
+                errorType: htmlResponse.status === 404 ? 'not-found' : 'other',
+                statusCode: htmlResponse.status,
               };
               return { html: null, error: lastError };
-            } catch (fallbackError) {
+            } catch (htmlError) {
               lastError = {
                 message: `Cannot load Grafana content. Content fetch failed: ${
-                  fallbackError instanceof Error ? fallbackError.message : 'Unknown error'
+                  htmlError instanceof Error ? htmlError.message : 'Unknown error'
                 }`,
                 errorType: 'other',
               };

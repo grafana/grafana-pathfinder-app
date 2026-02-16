@@ -6,7 +6,7 @@ import {
   DEFAULT_RECOMMENDER_TIMEOUT,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
-import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
+import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
@@ -644,7 +644,9 @@ export class ContextService {
   }
 
   /**
-   * Process learning journey recommendations to add metadata
+   * Process learning journey and interactive recommendations to add metadata
+   * - Learning journeys store completion in journeyCompletionStorage
+   * - Interactives store completion in interactiveCompletionStorage (via step completion)
    */
   private static async processLearningJourneys(
     recommendations: Recommendation[],
@@ -652,7 +654,13 @@ export class ContextService {
   ): Promise<Recommendation[]> {
     return Promise.all(
       recommendations.map(async (rec) => {
-        if (rec.type === 'learning-journey' || !rec.type) {
+        // Process learning journeys, interactives, and items without a type
+        // Bundled interactives (prefixed with 'bundled:') are handled separately in buildBundledInteractiveRecommendations
+        if (rec.type === 'learning-journey' || rec.type === 'interactive' || !rec.type) {
+          // Skip bundled interactives - they're handled by buildBundledInteractiveRecommendations
+          if (rec.url?.startsWith('bundled:')) {
+            return rec;
+          }
           // Skip fetching if URL is empty
           if (!rec.url || rec.url.trim() === '') {
             return {
@@ -666,7 +674,13 @@ export class ContextService {
 
           try {
             const result = await fetchContent(rec.url);
-            const completionPercentage = getJourneyCompletionPercentage(rec.url);
+            // Use correct storage based on type:
+            // - Interactives store completion via step completion in interactiveCompletionStorage
+            // - Learning journeys use journeyCompletionStorage
+            const completionPercentage =
+              rec.type === 'interactive'
+                ? await interactiveCompletionStorage.get(rec.url)
+                : await getJourneyCompletionPercentageAsync(rec.url);
 
             // Extract learning journey data from the unified content
             const milestones = result.content?.metadata.learningJourney?.milestones || [];
@@ -681,12 +695,16 @@ export class ContextService {
             };
           } catch (error) {
             console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
+            const completionPercentage =
+              rec.type === 'interactive'
+                ? await interactiveCompletionStorage.get(rec.url)
+                : await getJourneyCompletionPercentageAsync(rec.url);
             return {
               ...rec,
               totalSteps: 0,
               milestones: [],
               summary: rec.summary || '',
-              completionPercentage: getJourneyCompletionPercentage(rec.url),
+              completionPercentage,
             };
           }
         }
