@@ -121,11 +121,13 @@ This file is committed to the repository. A **pre-commit hook** regenerates it o
 
 Given a bare ID like `infrastructure-alerting-find-data-to-alert`, the system resolves it to a loadable content location through a tiered resolution strategy. The resolution tiers are tried in order:
 
-1. **Bundled content** — look up the ID in the bundled dependency graph shipped with the plugin. This covers baseline tutorials that work offline.
+1. **Bundled content** — look up the ID in the bundled `repository.json` shipped with the plugin. This covers baseline tutorials that work offline.
 2. **Static catalog** — look up the ID in a `packages-catalog.json` fetched from CDN at startup. This covers extended content beyond the bundled baseline.
-3. **Registry service** (Phase 6) — query a dynamic registry endpoint. This covers rapid content updates and multi-repo ecosystem scale.
+3. **Registry service** (Phase 7) — query a dynamic registry endpoint. This covers rapid content updates and multi-repo ecosystem scale.
 
 If tier 1 misses, try tier 2. If tier 2 misses, try tier 3 (when available). If all tiers miss, the package is unresolvable.
+
+The plugin runtime reads `repository.json` directly for resolution and dependency metadata. It does **not** consume the CLI-generated dependency graph — that artifact is for the recommender service, visualization, and lint tooling. This keeps client memory bounded as the content corpus grows.
 
 All tiers return the same resolution shape:
 
@@ -135,14 +137,25 @@ interface PackageResolution {
   contentUrl: string;
   manifestUrl: string;
   repository: string;
+  /** Populated when resolve options request content loading */
+  manifest?: ManifestJson;
+  /** Populated when resolve options request content loading */
+  content?: ContentJson;
+}
+
+interface ResolveOptions {
+  /** When true, fetch and populate manifest and content on the resolution result */
+  loadContent?: boolean;
 }
 
 interface PackageResolver {
-  resolve(packageId: string): Promise<PackageResolution>;
+  resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution>;
 }
 ```
 
-The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. The MVP implements static catalog resolution; the Phase 6 registry service implements the same interface with dynamic queries. The plugin can run both approaches simultaneously during transition, falling back gracefully if a tier is unavailable.
+The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. Resolution always returns the package ID and URLs. When `loadContent` is requested, the resolver also fetches and populates the `manifest` and `content` objects on the result. Callers that only need to know where a package is (e.g., catalog UI) skip the load; callers that need the actual package (e.g., the plugin renderer) pass the flag.
+
+Repositories are internal to the resolver — they are URLs that point to indexes, not first-class objects. The resolver knows its set of repository URLs, fetches their indexes, and builds a merged lookup. The MVP implements bundled resolution; the static catalog and Phase 7 registry service implement the same interface with remote sources. The plugin can run multiple resolution tiers simultaneously during transition, falling back gracefully if a tier is unavailable.
 
 ### Relationship to `index.json`
 

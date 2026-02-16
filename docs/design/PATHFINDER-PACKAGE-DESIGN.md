@@ -208,6 +208,8 @@ interface ManifestJson {
   category?: string;
   /** Content author or owning team */
   author?: { name?: string; team?: string };
+  /** URL path where guide expects to begin execution (default: "/") */
+  startingLocation?: string;
 
   // --- Dependencies (Debian-style) ---
 
@@ -262,6 +264,8 @@ interface JsonGuide {
   category?: string;
   /** Content author or owning team */
   author?: { name?: string; team?: string };
+  /** URL path where guide expects to begin execution (default: "/") */
+  startingLocation?: string;
 
   // --- Dependencies (Debian-style) ---
 
@@ -314,6 +318,7 @@ A package with both files:
     "name": "Enablement Team",
     "team": "interactive-learning"
   },
+  "startingLocation": "/connections",
   "depends": ["welcome-to-grafana"],
   "recommends": ["first-dashboard"],
   "suggests": ["loki-grafana-101", "prometheus-advanced-queries"],
@@ -336,21 +341,23 @@ Metadata fields live in `manifest.json`, not in `content.json`. This keeps the b
 
 ### Fields
 
-| Field         | Type                               | Default | Description                                                                                                                                      |
-| ------------- | ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `description` | `string`                           | —       | Full description for discoverability and display                                                                                                 |
-| `language`    | `string`                           | `"en"`  | Content language ([BCP 47](https://www.rfc-editor.org/info/bcp47) tag, e.g., `"en"`, `"es"`, `"ja"`). Defaults to `"en"` when absent.            |
-| `category`    | `string`                           | —       | Content category for taxonomy alignment. Convention aligns with docs team taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`. |
-| `author`      | `{ name?: string; team?: string }` | —       | Content author or owning team                                                                                                                    |
+| Field              | Type                               | Default | Description                                                                                                                                      |
+| ------------------ | ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `description`      | `string`                           | —       | Full description for discoverability and display                                                                                                 |
+| `language`         | `string`                           | `"en"`  | Content language ([BCP 47](https://www.rfc-editor.org/info/bcp47) tag, e.g., `"en"`, `"es"`, `"ja"`). Defaults to `"en"` when absent.            |
+| `category`         | `string`                           | —       | Content category for taxonomy alignment. Convention aligns with docs team taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`. |
+| `author`           | `{ name?: string; team?: string }` | —       | Content author or owning team                                                                                                                    |
+| `startingLocation` | `string`                           | `"/"`   | URL path where guide expects to begin execution. Explicit contract for guide execution context.                                                  |
 
 ### Rationale for each field
 
-| Field         | Consumer                                            | Rationale                                                        |
-| ------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
-| `description` | Recommendations, web display, index.json generation | Consolidates `summary` from `index.json` into the package        |
-| `language`    | i18n, SCORM import, web display                     | Minimal overhead, critical for non-English content               |
-| `category`    | Taxonomy, docs team alignment, recommendations      | Aligns with docs team's journey categories                       |
-| `author`      | Failure routing, attribution, provenance            | Testing strategy identifies ownership as critical for escalation |
+| Field              | Consumer                                            | Rationale                                                                             |
+| ------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `description`      | Recommendations, web display, index.json generation | Consolidates `summary` from `index.json` into the package                             |
+| `language`         | i18n, SCORM import, web display                     | Minimal overhead, critical for non-English content                                    |
+| `category`         | Taxonomy, docs team alignment, recommendations      | Aligns with docs team's journey categories                                            |
+| `author`           | Failure routing, attribution, provenance            | Testing strategy identifies ownership as critical for escalation                      |
+| `startingLocation` | Auto-recovery, e2e routing, recommender index       | Explicit contract for guide execution context; replaces implicit URL-based assumption |
 
 ### Namespace collision note
 
@@ -467,7 +474,7 @@ Until `build-index` is implemented, `index.json` continues to be maintained sepa
 
 For `content.json`: the existing `KNOWN_FIELDS._guide` applies unchanged. If `content.json` contains metadata/dependency/targeting fields (e.g., from a legacy single-file guide), they are accepted via `.passthrough()` but the canonical location is `manifest.json`.
 
-For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'repository'`, `'description'`, `'language'`, `'category'`, `'author'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
+For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'repository'`, `'description'`, `'language'`, `'category'`, `'author'`, `'startingLocation'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
 
 ### Schema version
 
@@ -480,13 +487,14 @@ The version bumps from `"1.0.0"` to `"1.1.0"`:
 
 ### Default values
 
-| Field           | Default when absent                                                                          |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| `manifest.json` | No package metadata (standalone guide with content only)                                     |
-| `repository`    | `"interactive-tutorials"`                                                                    |
-| `language`      | `"en"`                                                                                       |
-| `targeting`     | No targeting (not recommended contextually; only reachable via direct link or learning path) |
-| `assets/`       | No assets                                                                                    |
+| Field              | Default when absent                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------- |
+| `manifest.json`    | No package metadata (standalone guide with content only)                                     |
+| `repository`       | `"interactive-tutorials"`                                                                    |
+| `language`         | `"en"`                                                                                       |
+| `startingLocation` | `"/"`                                                                                        |
+| `targeting`        | No targeting (not recommended contextually; only reachable via direct link or learning path) |
+| `assets/`          | No assets                                                                                    |
 
 ### Migration path
 
@@ -538,15 +546,15 @@ These are explicitly out of scope for this design but are documented here for fu
 
 ### Multi-repository package discovery
 
-With bare IDs, the system needs a way to discover packages across multiple independently managed repositories. The [implementation plan](./PACKAGE-IMPLEMENTATION-PLAN.md) addresses this in two phases: a static catalog (Phase 2) aggregates all `repository.json` files into a single `packages-catalog.json` published to CDN, and a registry service (Phase 6) provides dynamic resolution with automatic catalog aggregation. Both implement the same `PackageResolver` interface (see [package resolution](./package/identity-and-resolution.md#package-resolution)).
+With bare IDs, the system needs a way to discover packages across multiple independently managed repositories. The [implementation plan](./PACKAGE-IMPLEMENTATION-PLAN.md) addresses this in phases: bundled content is migrated first as a local repository (Phase 2), a static catalog (Phase 4) aggregates all `repository.json` files into a single `packages-catalog.json` published to CDN, and a registry service (Phase 7) provides dynamic resolution with automatic catalog aggregation. All implement the same `PackageResolver` interface (see [package resolution](./package/identity-and-resolution.md#package-resolution)).
 
-Until multi-repo is needed, `interactive-tutorials` is the only repository and resolution is handled by the bundled dependency graph.
+Until multi-repo is needed, the bundled repository is the only repository and resolution is handled by reading `repository.json` directly.
 
 ### Recommender index generation and `index.json` retirement
 
 Today, the recommender consumes a hand-maintained `index.json` for targeting rules. After packages carry their own `targeting` in `manifest.json`, the recommender's input can be derived from `repository.json`, which includes denormalized metadata from each package's `manifest.json`.
 
-The migration is incremental: as packages gain `manifest.json`, their targeting is compiled into the repository index. Guides that haven't migrated retain entries in the legacy `index.json`. When the last guide migrates, `index.json` is deleted. The details of the recommender's consumption format (whether it reads `repository.json` directly or receives a transformed subset) are deferred until the pilot migration (Phase 3) validates the end-to-end flow.
+The migration is incremental: as packages gain `manifest.json`, their targeting is compiled into the repository index. Guides that haven't migrated retain entries in the legacy `index.json`. When the last guide migrates, `index.json` is deleted. The details of the recommender's consumption format (whether it reads `repository.json` directly or receives a transformed subset) are deferred until the pilot migration (Phase 4) validates the end-to-end flow.
 
 ### Recommender consumption of package metadata
 
