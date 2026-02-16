@@ -76,6 +76,7 @@ adding to this: the other approach is to zip everything up. all the office forma
 5. **Packages are mergeable**: Following the Prometheus model, we group by what makes sense, even if it is not useful in all cases. As a specific example, an arbitrary amount of guides can be merged. Their dependencies will merge cleanly. Their content will merge cleanly. The result will still have "all dependencies" and "all content" separated cleanly in the data structure.
 
 6. **files don't matter**: It does not matter in how many files, buckets, web endpoints, Git branches, or whatever else the packages exist; the way to merge into one big JSON is always obvious. This means carrying single-entry root level entries in many files. We accept this.
+  NB: For human convenience and for tool speed-up, we will split up content and metadata for now.
 
 6. **Most specific wins**: In case there are two packages with the same name. In order of decreasing priority
   * Manually set priority on a repository [0-1000], default 500. lower is stronger
@@ -105,28 +106,22 @@ TODO: fundamental question: do we even want two files if everything is just JSON
 interactive-tutorials/
 ├── welcome-to-grafana/
 │   ├── content.json          ← content blocks (block editor's domain)
-│   └── manifest.json          ← metadata, dependencies, targeting
-├── prometheus-grafana-101/
+│   └── metadata.json         ← metadata, dependencies, targeting
+├── ten-guides-in-one/
 │   ├── content.json
-│   ├── manifest.json
-│   └── assets/               ← optional non-JSON assets
-│       └── architecture.png
-├── onboarding-exomployess/
-│   └── manifest.json          ← metapacakage
-├── first-dashboard/
-│   └── content.json          ← manifest.json optional; standalone guide
-└── advanced-alerting/
-    ├── content.json
-    └── manifest.json
+│   └── metadata.json
+├── onboarding-eomployees/
+│   └── metadata.json         ← metapacakage
+└── kinda_wrong_but_allowed
+    └── YOLO.json             ← should this be allowed to work?
 ```
 
 ### Files in a package
 
 | File            | Required | Owner                                  | Contains                                           |
 | --------------- | -------- | -------------------------------------- | -------------------------------------------------- |
-| `content.json`  | Yes      | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`           |
-| `manifest.json` | No       | Product, enablement, recommender teams | Flat metadata, dependency fields, `targeting`      |
-| `assets/`       | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources |
+| `metadata.json` | Yes      | Product, enablement, recommender teams | Flat metadata, dependency fields, `targeting`      |
+| `content.json`  | No       | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`           |
 
 For backwards compatibility, bare files (`welcome-to-grafana.json`) continue to work. The directory convention is adopted for new guides and migrated incrementally.
 
@@ -319,9 +314,10 @@ A package with both files:
 
 ```json
 {
-  "schemaVersion": "1.1.0",
-  "id": "prometheus-grafana-101",
+  "schemaVersion": "0.1.0",
+  "name": "prometheus-grafana-101",
   "title": "Prometheus & Grafana 101",
+  "languages": [{ "en:
   "blocks": [{ "type": "markdown", "content": "# Prometheus & Grafana 101\n\nIn this guide..." }]
 }
 ```
@@ -330,15 +326,15 @@ A package with both files:
 
 ```json
 {
-  "schemaVersion": "1.1.0",
-  "id": "prometheus-grafana-101",
-  "repository": "interactive-tutorials",
+  "schemaVersion": "0.1.0",
+  "name": "prometheus-grafana-101",
+  "version": "1.2.3",
   "description": "Learn to use Prometheus and Grafana to monitor your infrastructure.",
   "language": "en",
   "category": "data-availability",
   "author": {
     "name": "Enablement Team",
-    "team": "interactive-learning"
+    "email": "interactive-learning"
   },
   "depends": ["welcome-to-grafana"],
   "recommends": ["first-dashboard"],

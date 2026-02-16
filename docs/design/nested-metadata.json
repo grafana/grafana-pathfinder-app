@@ -16,7 +16,7 @@
               {
                 "depends": [
                   {
-                    "grafana/grafana": "12.0",
+                    "grafana/grafana": "12.0.0",
                     "thing_without_version": ""
                   }
                 ]
@@ -26,7 +26,7 @@
               {
                 "depends": [
                   {
-                    "grafana/grafana": "12.0"
+                    "grafana/grafana": "12.0.0"
                   }
                 ]
               }
