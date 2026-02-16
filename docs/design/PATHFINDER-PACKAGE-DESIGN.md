@@ -53,7 +53,7 @@ The [testing strategy](./TESTING_STRATEGY.md) requires guide-level metadata (tie
 ### Content-as-Code lifecycle
 
 As the content corpus grows from ~45 guides toward 100-200+, decentralized ownership becomes essential. Each guide package should carry enough metadata to be self-describing for CI, recommendation, testing, and rendering — without depending on centralized manifests.
-At the same time, for the convenience of operators and software engineers, all data and metadata needs to be mergeable into one large datastructure. This maximizes optionality for 
+At the same time, for the convenience of operators and software engineers, all data and metadata needs to be mergeable into one large datastructure. This maximizes optionality for build tooling, indexing, and consumption patterns — each consumer can work with either the distributed packages or the merged aggregate as appropriate.
 
 ---
 
