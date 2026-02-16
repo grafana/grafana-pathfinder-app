@@ -7,7 +7,7 @@ import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
-import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
+import { UserProfileBar } from '../UserProfileBar';
 import { locationService, config, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system

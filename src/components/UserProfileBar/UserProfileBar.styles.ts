@@ -1,6 +1,17 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
+const skeletonBase = (theme: GrafanaTheme2) => ({
+  height: '16px',
+  borderRadius: theme.shape.radius.default,
+  backgroundColor: theme.colors.background.secondary,
+  animation: 'pulse 1.5s ease-in-out infinite',
+  '@keyframes pulse': {
+    '0%, 100%': { opacity: 0.4 },
+    '50%': { opacity: 0.8 },
+  },
+});
+
 export const getUserProfileBarStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
@@ -29,7 +40,7 @@ export const getUserProfileBarStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
   }),
   bookIcon: css({
-    color: theme.isDark ? '#8ab8ff' : '#1f62c0',
+    color: theme.colors.primary.text,
     flexShrink: 0,
   }),
   statValue: css({
@@ -80,25 +91,11 @@ export const getUserProfileBarStyles = (theme: GrafanaTheme2) => ({
     borderBottom: `1px solid ${theme.colors.border.weak}`,
   }),
   skeletonBlock: css({
+    ...skeletonBase(theme),
     width: '48px',
-    height: '16px',
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.secondary,
-    animation: 'pulse 1.5s ease-in-out infinite',
-    '@keyframes pulse': {
-      '0%, 100%': { opacity: 0.4 },
-      '50%': { opacity: 0.8 },
-    },
   }),
   skeletonBlockWide: css({
+    ...skeletonBase(theme),
     width: '96px',
-    height: '16px',
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.secondary,
-    animation: 'pulse 1.5s ease-in-out infinite',
-    '@keyframes pulse': {
-      '0%, 100%': { opacity: 0.4 },
-      '50%': { opacity: 0.8 },
-    },
   }),
 });

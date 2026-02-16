@@ -113,6 +113,14 @@ describe('UserProfileBar', () => {
     expect(screen.queryByTestId('user-profile-bar')).not.toBeInTheDocument();
   });
 
+  it('provides aria-labels on stat spans for screen readers', () => {
+    render(<UserProfileBar onOpenGuide={onOpenGuide} />);
+
+    expect(screen.getByLabelText('3 of 16 badges earned')).toBeInTheDocument();
+    expect(screen.getByLabelText('7 learning guides completed')).toBeInTheDocument();
+    expect(screen.getByLabelText('3-day learning streak — keep it going!')).toBeInTheDocument();
+  });
+
   it('renders star and fire emoji icons', () => {
     render(<UserProfileBar onOpenGuide={onOpenGuide} />);
 

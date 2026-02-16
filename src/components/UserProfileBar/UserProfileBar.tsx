@@ -40,7 +40,13 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
           total: badgesTotal,
         })}
       >
-        <span className={styles.stat}>
+        <span
+          className={styles.stat}
+          aria-label={t('userProfileBar.badgesTooltip', '{{- earned}} of {{- total}} badges earned', {
+            earned: badgesEarned,
+            total: badgesTotal,
+          })}
+        >
           <span className={styles.starEmoji} aria-hidden="true">
             ⭐
           </span>
@@ -56,7 +62,12 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
           count: guidesCompleted,
         })}
       >
-        <span className={styles.stat}>
+        <span
+          className={styles.stat}
+          aria-label={t('userProfileBar.guidesTooltip', '{{- count}} learning guides completed', {
+            count: guidesCompleted,
+          })}
+        >
           <Icon name="book" size="sm" className={styles.bookIcon} />
           <span className={styles.statValue}>{guidesCompleted}</span> {t('userProfileBar.guides', 'guides')}
         </span>
@@ -69,7 +80,12 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
             days: streakDays,
           })}
         >
-          <span className={styles.stat}>
+          <span
+            className={styles.stat}
+            aria-label={t('userProfileBar.streakTooltip', '{{- days}}-day learning streak — keep it going!', {
+              days: streakDays,
+            })}
+          >
             <span className={styles.fireEmoji} aria-hidden="true">
               🔥
             </span>
