@@ -583,7 +583,7 @@ The phased implementation plan for this design is maintained separately in
 
 ## Decision log
 
-28 design decisions with rationale are tracked in the decision log, covering identity model, dependency semantics, metadata conventions, journey composition, and repository indexing.
+35 design decisions with rationale are tracked in the decision log, covering identity model, dependency semantics, metadata conventions, journey composition, repository indexing, multi-repo resolution strategy, and implementation phasing.
 
 > **Full decision log:** [package/decision-log.md](./package/decision-log.md)
 

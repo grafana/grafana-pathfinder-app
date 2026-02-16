@@ -127,9 +127,7 @@ Journey-level `manifest.json` carries metadata and dependencies for the journey 
 - `type: "journey"`
 - `steps: ["step1", "step2"]`
 
-TBD decision: whether or not steps underneath a journey should inherit
-some metadata from the journey package. Leaning towards "no", because
-the principle is that the underlying packages are independently reusable.
+**Decision: steps do not inherit metadata from the journey.** Steps are independently reusable packages — that is the core value proposition of the metapackage model. If step behavior changed depending on which journey references it (inherited targeting, inherited category), it would introduce context-dependent identity, undermining the "one kind of thing" principle. A step should behave the same whether it appears in `infrastructure-alerting`, `linux-server-integration`, or is referenced standalone. If a journey needs to customize how a step appears in its context (e.g., different introduction text), that is a presentation concern for the UI layer, not a metadata inheritance concern.
 
 ## Example: complete journey package
 
@@ -198,11 +196,12 @@ the principle is that the underlying packages are independently reusable.
 
 Journey metapackages and curated learning paths (`paths.json`) coexist:
 
-- **`paths.json`** defines editorially curated paths with badges, estimated time, icons, and platform targeting. They are currently a stand-in for not
-  yet having this structure, and will need to be migrated in due time.
-- **Journey metapackages** define structurally composed experiences with dependency semantics. They are a content architecture product.
+- **`paths.json`** defines editorially curated paths with badges, estimated time, icons, and platform targeting. It is a lightweight, inadequate predecessor to the dependency graph specification — a stand-in for not yet having the structural model that journey metapackages provide.
+- **Journey metapackages** define structurally composed experiences with dependency semantics. They are the target replacement for `paths.json`.
 
-A `paths.json` entry can reference a journey as a single unit, or a journey can subsume the role of a `paths.json` entry entirely. The reconciliation between these two mechanisms is addressed in [the learning journey integration phase](../PACKAGE-IMPLEMENTATION-PLAN.md#phase-4-learning-journey-integration).
+**End-state:** `paths.json` will be retired after all migration work is complete. Journey metapackages subsume its role — ordering comes from `steps`, metadata comes from `manifest.json`, and dependency relationships come from the graph. During the transition, `paths.json` remains as a fallback and curated paths take priority over dependency-derived paths. A separate milestone will be needed to migrate everything that depends on `paths.json` (badges, icons, platform targeting, estimated time) into the package model before `paths.json` can be deleted.
+
+The reconciliation between these two mechanisms during transition is addressed in [the learning journey integration phase](../PACKAGE-IMPLEMENTATION-PLAN.md#phase-4-learning-journey-integration).
 
 ## Relationship to SCORM
 
@@ -218,7 +217,10 @@ The journey metapackage model provides the concrete bridge to SCORM's content or
 
 SCORM's `Organization` element is structurally equivalent to a journey metapackage: both compose content objects into an ordered sequence with metadata. The SCORM import pipeline (Phase 5-6) does not need to invent a composition model — it writes into the one established by journeys. The future `type: "course"` becomes a refinement of the journey concept (potentially with stricter sequencing semantics), not a separate system.
 
-## TBD Decision: Can Journeys Nest?
+## Decision: journey nesting is scoped out for Phase 5
 
-- Yes: if journeys are just metapackages, metapackages can contain metapackages (everything is a first class package)
-- No: A journey's steps are guides (`type: "guide"` or absent). A journey cannot contain another journey as a step. This keeps the model flat and avoids recursive nesting complexity. If hierarchical content organization is needed (course → module → lesson), the SCORM `type` extensions (`"course"`, `"module"`) will address it in a future phase. For now, the composition model is one level deep: journeys contain guides.
+**Decision:** Journey nesting is not supported in Phase 5. A journey's steps are guides (`type: "guide"` or absent). A journey cannot contain another journey as a step.
+
+**Rationale:** The MVP can be successful without supporting nested journeys. Flat composition keeps validation, completion tracking, progress computation, and UI rendering simple. Recursive nesting adds complexity at every layer — what does "71% of a journey that contains a 50%-complete sub-journey" mean for progress display?
+
+**This is an MVP scoping choice, not a semantic limitation of the model.** The Debian package model permits metapackages to depend on other metapackages, and virtual capabilities can be provided by packages that themselves depend on other virtual capabilities. Nothing in the package identity model, the dependency vocabulary, or the `provides` mechanism prevents a future phase from allowing `steps` to reference other journeys. If hierarchical content organization is needed (course -> module -> lesson), it can be introduced as a backward-compatible extension — either through the SCORM `type` extensions (`"course"`, `"module"`) or by relaxing the `steps` constraint to accept `type: "journey"` entries.

@@ -226,7 +226,7 @@ This plan is designed to support and further the [content testing strategy](./TE
   - [ ] Dependency graph JSON follows the same CI-generated + CDN-published pattern
 - [ ] **Static catalog resolution:**
   - [ ] Build process: CLI aggregates all `repository.json` files (bundled committed lockfile + CDN-published remote indexes) into single `packages-catalog.json`, published to CDN
-  - [ ] Catalog format: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository } } }`
+  - [ ] Catalog format includes denormalized metadata: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository, title, type, description, category, startingLocation, depends, recommends, suggests, provides, conflicts, replaces } } }` — structurally equivalent to `repository.json` but with URLs instead of paths, enabling dependency resolution from the catalog alone without additional per-package manifest fetches
   - [ ] Plugin fetch strategy: on startup, fetch catalog from CDN; cache in memory for session; fall back to bundled repository if fetch fails (offline/OSS support)
   - [ ] Plugin resolution flow: check bundled repository first (baseline content), then static catalog (extended content)
   - [ ] Same `PackageResolver` interface — adds a second resolution tier
