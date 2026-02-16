@@ -768,8 +768,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
 
   // Check for interactive progress when content changes to show reset button
-  // Use content URL (not tab ID) so progress persists across tab sessions
-  const progressKey = activeTab?.content?.url || activeTab?.baseUrl || '';
+  // MUST use currentUrl || baseUrl (not content.url) to match getContentKey() in interactive sections.
+  // content.url includes "/content.json" suffix which causes a key mismatch with saved progress.
+  const progressKey = activeTab?.currentUrl || activeTab?.baseUrl || '';
 
   // Helper to check and update progress state
   const checkProgress = React.useCallback(() => {
