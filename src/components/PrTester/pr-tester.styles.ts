@@ -84,6 +84,12 @@ export const getPrTesterStyles = (theme: GrafanaTheme2) => ({
     borderColor: theme.colors.error.border,
   }),
 
+  resultWarning: css({
+    color: theme.colors.warning.text,
+    backgroundColor: theme.colors.warning.transparent,
+    borderColor: theme.colors.warning.border,
+  }),
+
   resultText: css({
     fontSize: theme.typography.bodySmall.fontSize,
     margin: 0,

@@ -179,6 +179,48 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       // Validate it's a proper JSON guide structure
       try {
         const parsed = JSON.parse(fetchResult.html);
+
+        // Check if the server returned null as a signal to fetch unstyled.html
+        // JSON.parse("null") returns the JavaScript value null
+        if (parsed === null) {
+          const htmlUrl = finalUrl.replace('/content.json', '/unstyled.html');
+          const htmlFetchResult = await fetchRawHtml(htmlUrl, options);
+
+          if (!htmlFetchResult.html) {
+            return {
+              content: null,
+              error: 'Content not available. The server returned null and no HTML fallback exists.',
+              errorType: 'not-found',
+            };
+          }
+
+          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType);
+          let processedHtml = htmlFetchResult.html;
+
+          if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
+            processedHtml = generateJourneyContentWithExtras(
+              processedHtml,
+              htmlMetadata.learningJourney,
+              options.skipReadyToBegin
+            );
+          }
+
+          jsonContent = wrapContentAsJsonGuide(processedHtml, htmlUrl, htmlMetadata.title);
+
+          // Create content with HTML metadata
+          const rawContent: RawContent = {
+            content: jsonContent,
+            metadata: htmlMetadata,
+            type: contentType,
+            url: htmlUrl,
+            lastFetched: new Date().toISOString(),
+            hashFragment,
+            isNativeJson: false,
+          };
+
+          return { content: rawContent };
+        }
+
         const validationResult = validateGuide(parsed);
 
         if (!validationResult.isValid) {
@@ -469,7 +511,8 @@ function determineContentType(url: string): ContentType {
   const pathname = parsedUrl.pathname;
 
   if (
-    pathname.includes('/learning-journeys/') || // Can be /docs/learning-journeys/ or /learning-journeys/
+    pathname.includes('/docs/learning-journeys/') ||
+    pathname.includes('/docs/learning-paths/') ||
     pathname.includes('/tutorials/') || // Can be /docs/tutorials/ or /tutorials/
     pathname.match(/\/milestone-\d+/)
   ) {
@@ -546,7 +589,10 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
         const content = await response.text();
         if (content && content.trim()) {
           // SECURITY: Validate the final URL is trusted
-          const finalUrl = response.url;
+          // NOTE: response.url can be empty in proxied/intercepted environments
+          // (e.g., Grafana Cloud). Fall back to the requested URL which was
+          // already validated before entering this function.
+          const finalUrl = response.url || urlVariation;
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
@@ -559,8 +605,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           }
 
           // Detect if this is native JSON content
-          const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(urlVariation);
-          return { html: content, finalUrl: response.url, isNativeJson };
+          const isNativeJson = isJsonContentUrl(finalUrl) || isJsonContentUrl(urlVariation);
+          return { html: content, finalUrl, isNativeJson };
         }
       }
 
@@ -630,7 +676,12 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       const html = await response.text();
       if (html && html.trim()) {
         // SECURITY: Validate redirect target is still trusted
-        const finalUrl = response.url;
+        // NOTE: response.url can be empty in environments where fetch is intercepted
+        // by a proxy, service worker, or platform wrapper (e.g., Grafana Cloud).
+        // Per the Fetch API spec, synthetic Response objects have url === "".
+        // When empty, fall back to the original request URL which was already
+        // validated at the initial trust gate in fetchContent().
+        const finalUrl = response.url || url;
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
@@ -642,6 +693,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             `Redirect target not in trusted domain list.\n` +
               `Original URL: ${url}\n` +
               `Final URL: ${finalUrl}\n` +
+              `response.url: ${response.url}\n` +
               `isAllowedContentUrl: ${isAllowedContentUrl(finalUrl)}`
           );
           lastError = {
@@ -652,6 +704,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         }
 
         // SECURITY: Enforce HTTPS on redirect target
+        // When response.url is empty, finalUrl falls back to the original URL
+        // which has already passed the HTTPS check in fetchContent()
         if (!enforceHttps(finalUrl)) {
           lastError = {
             message: 'Redirect to non-HTTPS URL blocked for security',
@@ -667,52 +721,66 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
-          const { jsonUrl, htmlUrl } = getContentUrls(response.url);
+          const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
 
-          // Determine fetch order based on domain:
-          // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
-          // - Other sources: JSON first (preferred format)
-          const preferHtmlFirst = isGrafanaComDocsOrTutorials(finalUrl);
+          // Determine if this URL type supports content.json
+          // Learning journeys and interactive learning URLs have content.json
+          // Regular docs pages only have unstyled.html
+          const urlPath = new URL(finalUrl).pathname;
+          const hasContentJson =
+            urlPath.includes('/learning-journeys/') ||
+            urlPath.includes('/learning-paths/') ||
+            isInteractiveLearningUrl(finalUrl);
 
-          const primaryUrl = preferHtmlFirst ? htmlUrl : jsonUrl;
-          const fallbackUrl = preferHtmlFirst ? jsonUrl : htmlUrl;
-          const primaryIsJson = !preferHtmlFirst;
-
-          // Try primary format first
-          if (primaryUrl !== response.url) {
+          // Try content.json first only for URLs that support it
+          if (hasContentJson && jsonUrl !== finalUrl) {
             try {
-              const primaryResponse = await fetch(primaryUrl, fetchOptions);
-              if (primaryResponse.ok) {
-                const primaryContent = await primaryResponse.text();
-                if (primaryContent && primaryContent.trim()) {
-                  return { html: primaryContent, finalUrl: primaryResponse.url, isNativeJson: primaryIsJson };
+              const jsonResponse = await fetch(jsonUrl, fetchOptions);
+              if (jsonResponse.ok) {
+                const jsonContent = await jsonResponse.text();
+                if (jsonContent && jsonContent.trim()) {
+                  // Check if server returned null as a signal to try unstyled.html
+                  if (jsonContent.trim() !== 'null') {
+                    return {
+                      html: jsonContent,
+                      finalUrl: jsonResponse.url || jsonUrl,
+                      isNativeJson: true,
+                    };
+                  }
+                  // Fall through to try the HTML fallback
                 }
               }
             } catch {
-              // Primary fetch failed - fall through to fallback
+              // JSON fetch failed - fall through to HTML fallback
             }
           }
 
-          // Fall back to secondary format
-          if (fallbackUrl !== response.url) {
+          // Fetch unstyled.html (fallback for learning journeys, primary for regular docs)
+          if (htmlUrl !== finalUrl) {
             try {
-              const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
-              if (fallbackResponse.ok) {
-                const fallbackContent = await fallbackResponse.text();
-                if (fallbackContent && fallbackContent.trim()) {
-                  return { html: fallbackContent, finalUrl: fallbackResponse.url, isNativeJson: !primaryIsJson };
+              const htmlResponse = await fetch(htmlUrl, fetchOptions);
+              if (htmlResponse.ok) {
+                const htmlContent = await htmlResponse.text();
+                if (htmlContent && htmlContent.trim()) {
+                  return {
+                    html: htmlContent,
+                    finalUrl: htmlResponse.url || htmlUrl,
+                    isNativeJson: false,
+                  };
                 }
               }
               lastError = {
-                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url}`,
-                errorType: fallbackResponse.status === 404 ? 'not-found' : 'other',
-                statusCode: fallbackResponse.status,
+                message: hasContentJson
+                  ? `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${finalUrl}`
+                  : `Cannot load Grafana content. unstyled.html not found at: ${finalUrl}`,
+                errorType: htmlResponse.status === 404 ? 'not-found' : 'other',
+                statusCode: htmlResponse.status,
               };
               return { html: null, error: lastError };
-            } catch (fallbackError) {
+            } catch (htmlError) {
               lastError = {
                 message: `Cannot load Grafana content. Content fetch failed: ${
-                  fallbackError instanceof Error ? fallbackError.message : 'Unknown error'
+                  htmlError instanceof Error ? htmlError.message : 'Unknown error'
                 }`,
                 errorType: 'other',
               };
@@ -722,8 +790,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         }
 
         // Content fetched successfully
-        const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(url);
-        return { html, finalUrl: response.url, isNativeJson };
+        const isNativeJson = isJsonContentUrl(finalUrl) || isJsonContentUrl(url);
+        return { html, finalUrl, isNativeJson };
       }
     } else if (response.status >= 300 && response.status < 400) {
       // Handle manual redirect cases
@@ -846,23 +914,6 @@ function generateInteractiveLearningVariations(url: string): string[] {
   variations.push(`${baseUrl}/unstyled.html`);
 
   return variations;
-}
-
-/**
- * Check if a URL is specifically grafana.com/docs/* or grafana.com/tutorials/*
- * These domains don't have content.json available yet, so we prefer unstyled.html
- * Other sources (like interactive learning domains) should still try JSON first.
- */
-function isGrafanaComDocsOrTutorials(urlString: string): boolean {
-  try {
-    const url = new URL(urlString);
-    // Only match grafana.com (no subdomains) with /docs/ or /tutorials/ paths
-    return (
-      url.hostname === 'grafana.com' && (url.pathname.startsWith('/docs/') || url.pathname.startsWith('/tutorials/'))
-    );
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -1002,13 +1053,19 @@ function extractDocSummary(html: string): string {
  */
 function getLearningJourneyBaseUrl(url: string): string {
   // Handle cases like:
-  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
+  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs (legacy)
+  // https://grafana.com/docs/learning-paths/drilldown-logs/ -> https://grafana.com/docs/learning-paths/drilldown-logs (new)
   // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
   // https://grafana.com/tutorials/alerting-get-started/ -> https://grafana.com/tutorials/alerting-get-started
 
   const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
   if (learningJourneyMatch) {
     return learningJourneyMatch[1];
+  }
+
+  const learningPathMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-paths\/[^\/]+)/);
+  if (learningPathMatch) {
+    return learningPathMatch[1];
   }
 
   const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);
@@ -1081,11 +1138,11 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
 
 /**
  * Find current milestone number from URL - improved version
- * Handles /unstyled.html suffix added during content fetching
+ * Handles /unstyled.html and /content.json suffixes added during content fetching
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
-  // Strip /unstyled.html suffix for comparison (added during content fetching)
-  const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+  // Strip /unstyled.html or /content.json suffixes for comparison (added during content fetching)
+  const cleanUrl = url.replace(/\/(unstyled\.html|content\.json)$/, '');
 
   // Try exact URL match first (with and without trailing slash)
   for (const milestone of milestones) {

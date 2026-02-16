@@ -86,6 +86,7 @@ describe('Security: URL Validation - Domain Hijacking Prevention', () => {
       expect(isGrafanaDocsUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
       expect(isGrafanaDocsUrl('https://grafana.com/tutorials/alert-setup/')).toBe(true);
       expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-journeys/linux/')).toBe(true);
+      expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-paths/linux/')).toBe(true);
     });
 
     it('should accept allowlisted Grafana subdomains with docs paths', () => {
@@ -364,6 +365,26 @@ describe('Security: Attribute Preservation', () => {
   });
 });
 
+describe('Security: Template Variable Passthrough', () => {
+  it('should preserve Grafana template variables ${...}', () => {
+    const html = '<code>Query: ${variable}</code>';
+    const result = sanitizeDocumentationHTML(html);
+    expect(result).toContain('${variable}');
+  });
+
+  it('should preserve Pathfinder variables {{...}}', () => {
+    const html = '<p>Value: {{PATHFINDER_VARIABLE}}</p>';
+    const result = sanitizeDocumentationHTML(html);
+    expect(result).toContain('{{PATHFINDER_VARIABLE}}');
+  });
+
+  it('should preserve shell variables in code blocks', () => {
+    const html = '<pre><code>export PATH="${HOME}/bin:$PATH"</code></pre>';
+    const result = sanitizeDocumentationHTML(html);
+    expect(result).toContain('${HOME}');
+  });
+});
+
 describe('Security: Path Traversal Prevention (From Security Audit Screenshots)', () => {
   it('should reject path traversal attempts in URLs', () => {
     // These are the EXACT attacks from the security audit screenshots
@@ -386,7 +407,8 @@ describe('Security: Path Traversal Prevention (From Security Audit Screenshots)'
         if (
           !parsed.pathname.startsWith('/docs/') &&
           !parsed.pathname.startsWith('/tutorials/') &&
-          !parsed.pathname.includes('/learning-journeys/')
+          !parsed.pathname.includes('/docs/learning-journeys/') &&
+          !parsed.pathname.includes('/docs/learning-paths/')
         ) {
           expect(isValid).toBe(false);
         }

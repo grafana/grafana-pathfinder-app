@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.7.1
+
+### Fixed
+
+- **Context panel progress stuck at 0%**: Fixed completion percentage display for learning journeys and interactive guides on the context/recommendations panel. Learning journeys now correctly read from `journeyCompletionStorage` (async), and interactive guides now correctly read from `interactiveCompletionStorage` instead of the wrong storage type.
+
+## 1.7.0
+
+### Breaking changes
+
+- **Learning journeys**: The plugin must be updated to this version for all learning journeys to render correctly again due to the migration from unstyled HTML to JSON.
+
+## 1.6.0
+
+### Added
+
+- **Interactive learning journeys**: Learning journeys now support interactive content, allowing guided, hands-on steps within structured learning paths. Expect more learning journeys to become interactive over time.
+
+## 1.5.2
+
+### Fixed
+
+- **Empty `response.url` in content fetcher**: Fixed "Redirect target is not in trusted domain list" errors on Grafana Cloud environments where platform-level fetch interception produces synthetic responses with empty `response.url`; now falls back to the validated original URL (#564)
+- **GitHub CDN redirect allowlist**: Expanded `isGitHubRawUrl()` to accept `objects.githubusercontent.com` URLs that GitHub redirects to for blob storage, fixing PR Tester failures in dev mode (#562)
+
+### Changed
+
+- **PR Tester file limit**: Increased maximum content files from 5 to 100 to match GitHub API's default page size, preventing silent truncation of large PRs (#565)
+- **PR Tester pagination warning**: Added user-facing warning when a PR may contain more content files than the API returns in a single page (#567)
+
 ## 1.5.1
 
 ### Fixed

@@ -11,7 +11,7 @@ import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
-import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
+import { isGrafanaDocsUrl, isInteractiveLearningUrl, validateRedirectPath } from './security';
 import {
   initializeOpenFeature,
   getFeatureFlagValue,
@@ -166,7 +166,14 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Check for doc query parameter to auto-open specific docs page
   const urlParams = new URLSearchParams(window.location.search);
   const docsParam = urlParams.get('doc');
+  const pageParam = urlParams.get('page');
   const docsPage = docsParam ? findDocPage(docsParam) : null;
+
+  // Determine redirect target (only when doc param is present)
+  // Priority: explicit page param > bundled guide target > /
+  // SECURITY: page is only processed when doc is also present,
+  // preventing the plugin page from becoming a general-purpose redirector
+  const redirectTarget = docsParam ? validateRedirectPath(pageParam || docsPage?.targetPage || '/') : null;
 
   // Warn if docsParam is present but no docsPage is found
   // This can happen for malformed params or unsupported URL formats
@@ -176,44 +183,67 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       docsParam,
       '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
     );
+    // Redirect to home and open sidebar to Recommendations
+    // This gives the user a useful landing instead of a dead plugin page
+    sidebarState.setPendingOpenSource('url_param', 'auto-open');
+    attemptAutoOpen(200);
+    // Navigate away from the dead plugin page
+    setTimeout(() => {
+      locationService.replace('/');
+    }, 300);
   }
 
   if (docsPage) {
-    // listen for completion
-    window.addEventListener(
-      'auto-launch-complete',
-      (e) => {
-        // remove doc param from URL to prevent re-triggering on refresh
-        const url = new URL(window.location.href);
-        url.searchParams.delete('doc');
-        window.history.replaceState({}, '', url.toString());
-      },
-      { once: true }
-    );
+    const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
 
     // Set source for analytics before opening (auto-open from URL param)
     sidebarState.setPendingOpenSource('url_param', 'auto-open');
 
-    // open the sidebar
-    attemptAutoOpen(200);
+    if (needsRedirect) {
+      // Redirect FIRST so the center console renders the target page
+      // before the sidebar opens and the guide content fetch begins.
+      // Using replace() avoids a back-button loop.
+      locationService.replace(redirectTarget);
+      // Longer delay: let the new page render before opening sidebar
+      attemptAutoOpen(500);
+    } else {
+      // No redirect needed -- strip doc/page params and open sidebar normally
+      const url = new URL(window.location.href);
+      url.searchParams.delete('doc');
+      url.searchParams.delete('page');
+      window.history.replaceState({}, '', url.toString());
+      attemptAutoOpen(200);
+    }
 
-    // open the docs page once the sidebar is mounted
-    window.addEventListener(
-      'pathfinder-sidebar-mounted',
-      () => {
-        setTimeout(() => {
-          const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-            detail: {
-              url: docsPage.url,
-              title: docsPage.title,
-              type: docsPage.type,
-            },
-          });
-          document.dispatchEvent(autoLaunchEvent);
-        }, 500);
-      },
-      { once: true }
-    );
+    // Dispatch auto-launch-tutorial so docs-panel opens the guide.
+    // Wrapped in a helper so it can fire from the mount listener OR immediately.
+    const dispatchAutoLaunch = () => {
+      setTimeout(() => {
+        const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+          detail: {
+            url: docsPage.url,
+            title: docsPage.title,
+            type: docsPage.type,
+          },
+        });
+        document.dispatchEvent(autoLaunchEvent);
+      }, 500);
+    };
+
+    // Launch the guide once the sidebar is mounted on the (possibly new) page.
+    // Window event listeners survive client-side route changes, so this works
+    // regardless of whether a redirect occurred above.
+    window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
+
+    // Race-condition guard: if the sidebar was already docked from a previous
+    // session, its component mounts before init() runs, so the mount event
+    // fires before the listener above is registered.  Detect this by checking
+    // the global sidebar state and dispatch immediately.
+    if (sidebarState.getIsSidebarMounted()) {
+      // Remove the listener we just added — we don't need it.
+      window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
+      dispatchAutoLaunch();
+    }
   }
 
   // Check if auto-open is enabled
@@ -485,6 +515,8 @@ interface DocPage {
   type: 'docs-page' | 'learning-journey';
   url: string;
   title: string;
+  /** Optional target page path for deep link redirect (e.g., /explore) */
+  targetPage?: string;
 }
 
 /**
@@ -507,6 +539,7 @@ const findDocPage = function (param: string): DocPage | null {
           type: 'docs-page', // Bundled interactives are essentially learning journeys
           url: param,
           title: interactive.title || interactive.id,
+          targetPage: Array.isArray(interactive.url) ? interactive.url[0] : undefined,
         };
       }
     } catch (e) {
@@ -564,9 +597,12 @@ const findDocPage = function (param: string): DocPage | null {
 
   // Case 4: Any Grafana docs URL (fallback for non-curated content)
   // Supports paths like /docs/grafana/latest/... or full URLs like https://grafana.com/docs/...
-  // Also supports /tutorials/ and /learning-journeys/ paths
+  // Also supports /tutorials/, /docs/learning-journeys/ (legacy), and /docs/learning-paths/ paths
   const isPathOnly =
-    param.startsWith('/docs/') || param.startsWith('/tutorials/') || param.includes('/learning-journeys/');
+    param.startsWith('/docs/') ||
+    param.startsWith('/tutorials/') ||
+    param.startsWith('/docs/learning-journeys/') ||
+    param.startsWith('/docs/learning-paths/');
   const isFullGrafanaUrl = param.startsWith('https://grafana.com/') || param.startsWith('https://docs.grafana.com/');
 
   if (isPathOnly || isFullGrafanaUrl) {

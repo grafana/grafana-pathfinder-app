@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.5.1",
+  "version": "1.7.1",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -137,5 +137,5 @@
   "overrides": {
     "@grafana/runtime": "^12.3.0-18562067081"
   },
-  "packageManager": "npm@11.9.0"
+  "packageManager": "npm@11.10.0"
 }

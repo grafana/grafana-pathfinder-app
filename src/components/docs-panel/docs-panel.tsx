@@ -87,6 +87,12 @@ import type { DocsPanelModelOperations } from './types';
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
+  /**
+   * Module-level guard: prevents restoreTabsAsync() from running more than once,
+   * even across model instances (which can be recreated by Scenes framework).
+   */
+  private static _hasRestoredTabs = false;
+
   public get renderBeforeActivation(): boolean {
     return true;
   }
@@ -132,6 +138,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async restoreTabsAsync(): Promise<void> {
+    // Guard: only restore once per model lifetime to prevent double-restore race condition
+    // where a second restore (triggered by component remount or React Strict Mode) replaces
+    // tabs that already had content loaded, leaving them in {content: null} blank state
+    if (CombinedLearningJourneyPanel._hasRestoredTabs) {
+      return;
+    }
+    CombinedLearningJourneyPanel._hasRestoredTabs = true;
+
     // Use extracted restore module with dev mode detection
     const currentUserId = config.bootData.user?.id;
     const pluginConfig = this.state.pluginConfig || {};
@@ -503,7 +517,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                 isLoading: false,
                 error: null,
                 currentUrl: url,
-                // Sync tab type with content type - docs-like types stay docs-like
+                // Sync tab type with content type - automatically detect interactives
                 type: fetchedContent.type === 'interactive' ? 'interactive' : t.type,
               }
             : t
@@ -730,7 +744,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       // Call the model method directly to ensure new tabs are created
       // Use proper URL parsing for security (defense in depth)
       const urlObj = parseUrlSafely(url);
-      const isLearningJourney = urlObj?.pathname.includes('/learning-journeys/');
+      const isLearningJourney =
+        urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
 
       if (isLearningJourney) {
         model.openLearningJourney(url, title);
@@ -955,7 +970,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const title = sessionInfo.config.name;
 
       // Open the tutorial in a new tab
-      if (url.includes('/learning-journeys/')) {
+      if (url.includes('/learning-journeys/') || url.includes('/learning-paths/')) {
         model.openLearningJourney(url, title);
       } else {
         model.openDocsPage(url, title);

@@ -269,8 +269,22 @@ export function sanitizeDocumentationHTML(html: string): string {
     // Forbid dangerous iframe attributes
     FORBID_ATTR: ['srcdoc'], // srcdoc can contain XSS payloads
 
-    // Additional security settings
-    SAFE_FOR_TEMPLATES: true,
+    // Template injection protection
+    //
+    // We render user-supplied Markdown at runtime.
+    // That Markdown can contain legitimate template syntax that get stripped by DOMPurify:
+    //  - Shell scripts: ${VARIABLE}
+    //  - TraceQL queries: ${variable}
+    //  - Pathfinder variables: {{variable}}
+    //
+    // We can't use HTML entity escaping because DOMPurify decodes entities before checking them.
+    //
+    // React doesn't execute ${...} or {{...}} syntax.
+    // It renders content with `parseHTMLToComponents`.
+    // We avoid `dangerouslySetInnerHTML` used for user content.
+    //
+    // If Pathfinder ever integrates a template engine, this decision must be revisited.
+    SAFE_FOR_TEMPLATES: false,
     WHOLE_DOCUMENT: false,
     RETURN_DOM: false,
     RETURN_DOM_FRAGMENT: false,
