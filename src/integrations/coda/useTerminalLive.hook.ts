@@ -30,6 +30,14 @@ import type { Terminal } from '@xterm/xterm';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
+/** Error indicating authentication failure - requires re-registration */
+export class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthenticationError';
+  }
+}
+
 /** Plugin ID for constructing API paths */
 const PLUGIN_ID = 'grafana-pathfinder-app';
 
@@ -118,27 +126,55 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
    * Create a new VM via the plugin backend
    */
   const createVM = useCallback(async (): Promise<VMResponse> => {
-    const response = await lastValueFrom(
-      getBackendSrv().fetch<VMResponse>({
-        url: `/api/plugins/${PLUGIN_ID}/resources/vms`,
-        method: 'POST',
-        data: { template: 'vm-gcp' },
-      })
-    );
-    return response.data;
+    try {
+      const response = await lastValueFrom(
+        getBackendSrv().fetch<VMResponse>({
+          url: `/api/plugins/${PLUGIN_ID}/resources/vms`,
+          method: 'POST',
+          data: { template: 'vm-aws' },
+        })
+      );
+      return response.data;
+    } catch (err: unknown) {
+      // Check for 401/authentication errors - require re-registration
+      const error = err as { status?: number; data?: { error?: string } };
+      if (error.status === 401 || error.status === 503) {
+        const message = error.data?.error || 'Authentication failed';
+        if (message.includes('not registered') || message.includes('authentication failed')) {
+          throw new AuthenticationError(
+            'Coda registration expired or invalid. Please re-register in Plugin Configuration.'
+          );
+        }
+      }
+      throw err;
+    }
   }, []);
 
   /**
    * Get VM status from the plugin backend
    */
   const getVM = useCallback(async (id: string): Promise<VMResponse> => {
-    const response = await lastValueFrom(
-      getBackendSrv().fetch<VMResponse>({
-        url: `/api/plugins/${PLUGIN_ID}/resources/vms/${id}`,
-        method: 'GET',
-      })
-    );
-    return response.data;
+    try {
+      const response = await lastValueFrom(
+        getBackendSrv().fetch<VMResponse>({
+          url: `/api/plugins/${PLUGIN_ID}/resources/vms/${id}`,
+          method: 'GET',
+        })
+      );
+      return response.data;
+    } catch (err: unknown) {
+      // Check for 401/authentication errors - require re-registration
+      const error = err as { status?: number; data?: { error?: string } };
+      if (error.status === 401 || error.status === 503) {
+        const message = error.data?.error || 'Authentication failed';
+        if (message.includes('not registered') || message.includes('authentication failed')) {
+          throw new AuthenticationError(
+            'Coda registration expired or invalid. Please re-register in Plugin Configuration.'
+          );
+        }
+      }
+      throw err;
+    }
   }, []);
 
   /**
@@ -451,8 +487,9 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
             currentVmId = null;
             setVmId(null);
           } else {
-            // VM exists but not active yet - wait for it
-            terminal.writeln(`\x1b[90m   ├─ VM state: ${existingVm.state}, waiting...\x1b[0m`);
+            // VM exists but not active yet - wait for it to become active
+            terminal.writeln(`\x1b[90m   ├─ VM state: ${existingVm.state}, waiting for VM to become active...\x1b[0m`);
+            await waitForVM(currentVmId, terminal);
           }
         } catch {
           // VM doesn't exist anymore, provision a new one
@@ -482,13 +519,21 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
       terminal.writeln('\x1b[90m   └─ Establishing SSH connection...\x1b[0m');
       connectLiveStream(currentVmId, terminal);
     } catch (err) {
+      const isAuthError = err instanceof AuthenticationError;
       const errorMessage = err instanceof Error ? err.message : 'Connection failed';
       terminal.writeln('');
       terminal.writeln('\x1b[31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
       terminal.writeln(`\x1b[31m  ✖ Connection failed: ${errorMessage}\x1b[0m`);
       terminal.writeln('\x1b[31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
       terminal.writeln('');
-      terminal.writeln('\x1b[90m  Press "Connect" to try again.\x1b[0m');
+      if (isAuthError) {
+        terminal.writeln('\x1b[33m  To fix this:\x1b[0m');
+        terminal.writeln('\x1b[90m  1. Go to Administration > Plugins > Interactive learning\x1b[0m');
+        terminal.writeln('\x1b[90m  2. Enable dev mode and Coda terminal\x1b[0m');
+        terminal.writeln('\x1b[90m  3. Enter your enrollment key and click "Register with Coda"\x1b[0m');
+      } else {
+        terminal.writeln('\x1b[90m  Press "Connect" to try again.\x1b[0m');
+      }
       setError(errorMessage);
       setStatus('error');
     }

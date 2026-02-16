@@ -8,14 +8,14 @@ import (
 
 // Settings contains the plugin configuration from Grafana.
 type Settings struct {
-	// BrokkrURL is the base URL for the Brokkr API
-	BrokkrURL string `json:"brokkrUrl"`
+	// CodaRegistered indicates whether this instance has successfully registered with Coda
+	CodaRegistered bool `json:"codaRegistered"`
 
-	// BrokkrUsername is the username for Brokkr API authentication
-	BrokkrUsername string `json:"brokkrUsername"`
+	// EnrollmentKey is the key used to register with the Coda API (from secureJsonData)
+	EnrollmentKey string `json:"-"`
 
-	// BrokkrPassword is the password for Brokkr API authentication (from secureJsonData)
-	BrokkrPassword string `json:"-"`
+	// JwtToken is the JWT token received after registration (from secureJsonData)
+	JwtToken string `json:"-"`
 }
 
 // ParseSettings parses the plugin settings from Grafana's AppInstanceSettings.
@@ -29,9 +29,12 @@ func ParseSettings(appSettings backend.AppInstanceSettings) (*Settings, error) {
 		}
 	}
 
-	// Get secure settings (passwords, API keys, etc.)
-	if password, ok := appSettings.DecryptedSecureJSONData["brokkrPassword"]; ok {
-		settings.BrokkrPassword = password
+	// Get secure settings (enrollment key, JWT token)
+	if enrollmentKey, ok := appSettings.DecryptedSecureJSONData["codaEnrollmentKey"]; ok {
+		settings.EnrollmentKey = enrollmentKey
+	}
+	if jwtToken, ok := appSettings.DecryptedSecureJSONData["codaJwtToken"]; ok {
+		settings.JwtToken = jwtToken
 	}
 
 	return settings, nil

@@ -10,7 +10,11 @@ import (
 	"time"
 )
 
-// VM represents a Brokkr VM instance.
+// CodaAPIURL is the hardcoded URL for the Coda backend API.
+// This URL is constant and does not need to be configured.
+const CodaAPIURL = "https://coda.lg.grafana-dev.com"
+
+// VM represents a Coda VM instance.
 type VM struct {
 	ID           string       `json:"id"`
 	Template     string       `json:"template"`
@@ -36,24 +40,93 @@ type VMListResponse struct {
 	VMs []VM `json:"vms"`
 }
 
-// BrokkrClient handles communication with the Brokkr VM provisioning backend.
-type BrokkrClient struct {
-	baseURL  string
-	username string
-	password string
+// RegisterRequest represents the request body for registering with Coda.
+type RegisterRequest struct {
+	EnrollmentKey string `json:"enrollmentKey"`
+	InstanceID    string `json:"instanceId"`
+	InstanceURL   string `json:"instanceUrl,omitempty"`
+}
+
+// RegisterResponse represents the response from the registration endpoint.
+type RegisterResponse struct {
+	Token        string `json:"token"`
+	JTI          string `json:"jti"`
+	Sub          string `json:"sub"`
+	Scope        string `json:"scope"`
+	InstanceName string `json:"instanceName"`
+	ExpiresAt    string `json:"expiresAt"`
+}
+
+// CodaClient handles communication with the Coda VM provisioning backend.
+type CodaClient struct {
+	jwtToken string
 	client   *http.Client
 }
 
-// NewBrokkrClient creates a new Brokkr API client.
-func NewBrokkrClient(baseURL, username, password string) *BrokkrClient {
-	return &BrokkrClient{
-		baseURL:  baseURL,
-		username: username,
-		password: password,
+// NewCodaClient creates a new Coda API client with JWT authentication.
+func NewCodaClient(jwtToken string) *CodaClient {
+	return &CodaClient{
+		jwtToken: jwtToken,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// setAuthHeader sets the Authorization header with the JWT Bearer token.
+func (c *CodaClient) setAuthHeader(req *http.Request) {
+	if c.jwtToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.jwtToken)
+	}
+}
+
+// Register registers this Grafana instance with the Coda API using an enrollment key.
+// Returns a JWT token that should be stored in secureJsonData for future API calls.
+func Register(ctx context.Context, enrollmentKey, instanceID, instanceURL string) (*RegisterResponse, error) {
+	payload := RegisterRequest{
+		EnrollmentKey: enrollmentKey,
+		InstanceID:    instanceID,
+		InstanceURL:   instanceURL,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal registration request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, CodaAPIURL+"/api/v1/auth/register", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create registration request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send registration request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("invalid enrollment key")
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf("too many registration attempts, please try again later")
+	}
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("registration failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var registerResp RegisterResponse
+	if err := json.NewDecoder(resp.Body).Decode(&registerResp); err != nil {
+		return nil, fmt.Errorf("failed to decode registration response: %w", err)
+	}
+
+	return &registerResp, nil
 }
 
 // CreateVMRequest represents the request body for creating a VM.
@@ -63,8 +136,8 @@ type CreateVMRequest struct {
 	Config   map[string]interface{} `json:"config,omitempty"`
 }
 
-// CreateVM requests a new VM from Brokkr.
-func (c *BrokkrClient) CreateVM(ctx context.Context, template, owner string) (*VM, error) {
+// CreateVM requests a new VM from Coda.
+func (c *CodaClient) CreateVM(ctx context.Context, template, owner string) (*VM, error) {
 	payload := CreateVMRequest{
 		Template: template,
 		Owner:    owner,
@@ -76,12 +149,12 @@ func (c *BrokkrClient) CreateVM(ctx context.Context, template, owner string) (*V
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/vms", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, CodaAPIURL+"/api/v1/vms", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
@@ -89,6 +162,10 @@ func (c *BrokkrClient) CreateVM(ctx context.Context, template, owner string) (*V
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
+	}
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -104,19 +181,23 @@ func (c *BrokkrClient) CreateVM(ctx context.Context, template, owner string) (*V
 }
 
 // GetVM fetches the status and credentials of a VM.
-func (c *BrokkrClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/vms/"+vmID, nil)
+func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CodaAPIURL+"/api/v1/vms/"+vmID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	c.setAuthHeader(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
+	}
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("VM not found: %s", vmID)
@@ -136,19 +217,23 @@ func (c *BrokkrClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
 }
 
 // DeleteVM initiates the destruction of a VM.
-func (c *BrokkrClient) DeleteVM(ctx context.Context, vmID string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/vms/"+vmID, nil)
+func (c *CodaClient) DeleteVM(ctx context.Context, vmID string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, CodaAPIURL+"/api/v1/vms/"+vmID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	c.setAuthHeader(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
+	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -159,19 +244,23 @@ func (c *BrokkrClient) DeleteVM(ctx context.Context, vmID string) error {
 }
 
 // ListVMs returns all VMs.
-func (c *BrokkrClient) ListVMs(ctx context.Context) ([]VM, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/vms", nil)
+func (c *CodaClient) ListVMs(ctx context.Context) ([]VM, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CodaAPIURL+"/api/v1/vms", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	c.setAuthHeader(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -187,7 +276,7 @@ func (c *BrokkrClient) ListVMs(ctx context.Context) ([]VM, error) {
 }
 
 // WaitForVM polls the VM status until it becomes active or errors.
-func (c *BrokkrClient) WaitForVM(ctx context.Context, vmID string, timeout time.Duration) (*VM, error) {
+func (c *CodaClient) WaitForVM(ctx context.Context, vmID string, timeout time.Duration) (*VM, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 

@@ -72,7 +72,8 @@
     ]
   },
   "secureJsonFields": {
-    "brokkrPassword": true
+    "codaEnrollmentKey": true,
+    "codaJwtToken": true
   },
   "dependencies": {
     "grafanaDependency": ">=12.3.0-0",

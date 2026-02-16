@@ -22,8 +22,8 @@ var (
 type App struct {
 	backend.CallResourceHandler
 
-	// Brokkr client for VM management
-	brokkr *BrokkrClient
+	// Coda client for VM management (uses JWT Bearer token auth)
+	coda *CodaClient
 
 	// Active terminal sessions (vmID -> session)
 	sessions sync.Map
@@ -51,16 +51,12 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 		logger:   logger,
 	}
 
-	// Initialize Brokkr client if configured
-	if settings.BrokkrURL != "" {
-		app.brokkr = NewBrokkrClient(
-			settings.BrokkrURL,
-			settings.BrokkrUsername,
-			settings.BrokkrPassword,
-		)
-		logger.Info("Brokkr client initialized", "url", settings.BrokkrURL)
+	// Initialize Coda client if JWT token is available
+	if settings.JwtToken != "" {
+		app.coda = NewCodaClient(settings.JwtToken)
+		logger.Info("Coda client initialized with JWT token", "url", CodaAPIURL)
 	} else {
-		logger.Warn("Brokkr URL not configured, VM features disabled")
+		logger.Warn("Coda JWT token not configured, VM features disabled until registration")
 	}
 
 	// Set up HTTP routes using httpadapter
@@ -90,10 +86,10 @@ func (a *App) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) 
 	status := backend.HealthStatusOk
 	message := "Plugin is running"
 
-	// Check if Brokkr is configured and reachable
-	if a.brokkr == nil {
+	// Check if Coda is configured (has JWT token)
+	if a.coda == nil {
 		status = backend.HealthStatusUnknown
-		message = "Brokkr not configured"
+		message = "Coda not registered - configure enrollment key and register to enable VM features"
 	}
 
 	return &backend.CheckHealthResult{

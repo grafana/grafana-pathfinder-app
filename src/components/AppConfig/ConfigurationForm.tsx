@@ -1,5 +1,5 @@
-import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
+import React, { useState, useEffect, useCallback, useRef, ChangeEvent } from 'react';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Spinner } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
@@ -14,12 +14,12 @@ import {
   DEFAULT_PEERJS_PORT,
   DEFAULT_PEERJS_KEY,
   DEFAULT_ENABLE_CODA_TERMINAL,
-  DEFAULT_BROKKR_URL,
-  DEFAULT_BROKKR_USERNAME,
+  CODA_API_URL,
+  PLUGIN_BACKEND_URL,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
-import { config } from '@grafana/runtime';
+import { config, getBackendSrv } from '@grafana/runtime';
 
 type JsonData = DocsPluginConfig;
 
@@ -39,10 +39,8 @@ type State = {
   peerjsKey: string;
   // Coda terminal (experimental)
   enableCodaTerminal: boolean;
-  // Brokkr VM provisioning (for Coda terminal backend)
-  brokkrUrl: string;
-  brokkrUsername: string;
-  brokkrPassword: string;
+  // Coda enrollment key (for JWT registration)
+  codaEnrollmentKey: string;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -65,11 +63,16 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
     enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
-    brokkrUrl: jsonData?.brokkrUrl || DEFAULT_BROKKR_URL,
-    brokkrUsername: jsonData?.brokkrUsername || DEFAULT_BROKKR_USERNAME,
-    brokkrPassword: '', // Password is stored in secureJsonData, never loaded into state
+    codaEnrollmentKey: '', // Enrollment key is stored in secureJsonData, never loaded into state
   }));
   const [isSaving, setIsSaving] = useState(false);
+
+  // Coda registration state
+  const codaRegistered = jsonData?.codaRegistered ?? false;
+  const hasProvisionedKey = plugin.meta.secureJsonFields?.codaEnrollmentKey ?? false;
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const autoRegisterAttempted = useRef(false);
 
   // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
   // Get current user ID for scoping
@@ -193,25 +196,99 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
-  const onChangeBrokkrUrl = (event: ChangeEvent<HTMLInputElement>) => {
+  const onChangeCodaEnrollmentKey = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
-      brokkrUrl: event.target.value.trim(),
+      codaEnrollmentKey: event.target.value,
     });
+    // Clear any previous registration error when user types
+    setRegistrationError(null);
   };
 
-  const onChangeBrokkrUsername = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      brokkrUsername: event.target.value.trim(),
-    });
-  };
+  // Handle Coda registration - extracted as callback for reuse in auto-registration
+  const performCodaRegistration = useCallback(async (enrollmentKeyOverride?: string) => {
+    // Check if we have either a user-entered key or a provisioned key
+    const keyToUse = enrollmentKeyOverride ?? '';
+    if (!keyToUse && !hasProvisionedKey) {
+      setRegistrationError('No enrollment key available');
+      return;
+    }
 
-  const onChangeBrokkrPassword = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      brokkrPassword: event.target.value,
-    });
+    setIsRegistering(true);
+    setRegistrationError(null);
+
+    try {
+      // Generate a unique instance ID based on the Grafana instance
+      const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
+      const instanceUrl = window.location.origin;
+
+      // Call the plugin backend to register with Coda
+      // Backend resources are accessed via /api/plugins/{pluginId}/resources/{path}
+      // If enrollmentKey is empty, the backend will use the provisioned key from secureJsonData
+      const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
+        enrollmentKey: keyToUse, // Empty string if using provisioned key
+        instanceId,
+        instanceUrl,
+      });
+
+      // Save the JWT token to secureJsonData and update registration status
+      // Only update enrollment key if user provided a new one (don't overwrite provisioned key with empty)
+      const secureJsonDataUpdate: Record<string, string> = {
+        codaJwtToken: response.token,
+      };
+      if (keyToUse) {
+        secureJsonDataUpdate.codaEnrollmentKey = keyToUse;
+      }
+
+      await updatePluginSettings(plugin.meta.id, {
+        enabled,
+        pinned,
+        jsonData: {
+          ...jsonData,
+          codaRegistered: true,
+        },
+        secureJsonData: secureJsonDataUpdate,
+      });
+
+      // Reload page to apply changes
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Failed to register with Coda:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to register with Coda. Please check your enrollment key.';
+      setRegistrationError(errorMessage);
+      setIsRegistering(false);
+    }
+  }, [hasProvisionedKey, enabled, pinned, jsonData, plugin.meta.id]);
+
+  // Auto-register with Coda when a provisioned enrollment key exists but not yet registered
+  useEffect(() => {
+    // Only auto-register once per mount, when:
+    // - Coda terminal is enabled
+    // - There's a provisioned key
+    // - Not already registered
+    // - Not currently registering
+    if (
+      state.enableCodaTerminal &&
+      hasProvisionedKey &&
+      !codaRegistered &&
+      !isRegistering &&
+      !autoRegisterAttempted.current
+    ) {
+      autoRegisterAttempted.current = true;
+      console.log('Auto-registering with Coda using provisioned enrollment key...');
+      performCodaRegistration();
+    }
+  }, [state.enableCodaTerminal, hasProvisionedKey, codaRegistered, isRegistering, performCodaRegistration]);
+
+  // Manual registration handler (for when no provisioned key exists)
+  const onRegisterWithCoda = () => {
+    if (!state.codaEnrollmentKey) {
+      setRegistrationError('Please enter an enrollment key');
+      return;
+    }
+    performCodaRegistration(state.codaEnrollmentKey);
   };
 
   const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
@@ -253,21 +330,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsPort: state.peerjsPort,
         peerjsKey: state.peerjsKey,
         enableCodaTerminal: state.enableCodaTerminal,
-        brokkrUrl: state.brokkrUrl,
-        brokkrUsername: state.brokkrUsername,
       };
-
-      // Build secureJsonData only if password was changed
-      const secureJsonData: Record<string, string> = {};
-      if (state.brokkrPassword) {
-        secureJsonData.brokkrPassword = state.brokkrPassword;
-      }
 
       await updatePluginSettings(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: newJsonData,
-        ...(Object.keys(secureJsonData).length > 0 ? { secureJsonData } : {}),
       });
 
       // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
@@ -574,56 +642,93 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
                   <Text variant="body">
                     <strong>This feature is experimental and requires backend infrastructure.</strong> The terminal panel
-                    will be visible in the sidebar but connection functionality requires a separate backend service to be
-                    running. This is intended for development and testing purposes only.
+                    will be visible in the sidebar but connection functionality requires the Coda backend service. This
+                    is intended for development and testing purposes only.
                   </Text>
                 </Alert>
 
-                {/* Brokkr VM provisioning configuration */}
+                {/* Coda registration configuration */}
                 <div className={s.marginTop}>
-                  <Text variant="h6">Brokkr VM provisioning</Text>
+                  <Text variant="h6">Coda Backend Registration</Text>
                   <div style={{ marginTop: '8px', marginBottom: '16px' }}>
                     <Text variant="body" color="secondary">
-                      Configure the Brokkr backend service for VM provisioning. The terminal connects to VMs provisioned
-                      by Brokkr.
+                      Register this Grafana instance with the Coda backend to enable VM provisioning. The API URL is
+                      pre-configured: <code>{CODA_API_URL}</code>
                     </Text>
                   </div>
 
-                  <Field label="Brokkr URL" description="Base URL of the Brokkr API (e.g., http://localhost:8080)">
-                    <Input
-                      width={60}
-                      value={state.brokkrUrl}
-                      onChange={onChangeBrokkrUrl}
-                      placeholder="http://localhost:8080"
-                    />
-                  </Field>
+                  {/* Registration status */}
+                  {codaRegistered ? (
+                    <Alert severity="success" title="Registered with Coda" className={s.marginTop}>
+                      <Text variant="body">
+                        This instance is registered with the Coda backend. VM provisioning is enabled.
+                      </Text>
+                    </Alert>
+                  ) : hasProvisionedKey ? (
+                    /* Auto-registration flow when provisioned key exists */
+                    <>
+                      {isRegistering && (
+                        <Alert severity="info" title="Auto-registering with Coda" className={s.marginTop}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Spinner inline={true} />
+                            <Text variant="body">
+                              Registering this instance with Coda using the provisioned enrollment key...
+                            </Text>
+                          </div>
+                        </Alert>
+                      )}
 
-                  <Field label="Username" description="Username for Brokkr API authentication">
-                    <Input
-                      width={40}
-                      value={state.brokkrUsername}
-                      onChange={onChangeBrokkrUsername}
-                      placeholder="brokkr"
-                    />
-                  </Field>
+                      {registrationError && (
+                        <Alert severity="error" title="Auto-registration failed" className={s.marginTop}>
+                          <Text variant="body">
+                            {registrationError}
+                            <br />
+                            <br />
+                            Please check the provisioned enrollment key in your plugin configuration or contact your
+                            administrator.
+                          </Text>
+                        </Alert>
+                      )}
+                    </>
+                  ) : (
+                    /* Manual registration flow when no provisioned key */
+                    <>
+                      <Field
+                        label="Enrollment key"
+                        description="Enter the enrollment key provided by your Coda administrator to register this instance"
+                      >
+                        <Input
+                          type="password"
+                          width={60}
+                          value={state.codaEnrollmentKey}
+                          onChange={onChangeCodaEnrollmentKey}
+                          placeholder="Enter enrollment key"
+                          disabled={isRegistering}
+                        />
+                      </Field>
 
-                  <Field
-                    label="Password"
-                    description="Password for Brokkr API authentication (stored securely)"
-                  >
-                    <Input
-                      type="password"
-                      width={40}
-                      value={state.brokkrPassword}
-                      onChange={onChangeBrokkrPassword}
-                      placeholder={plugin.meta.secureJsonFields?.brokkrPassword ? '••••••••' : 'Enter password'}
-                    />
-                  </Field>
+                      {registrationError && (
+                        <Alert severity="error" title="Registration failed" className={s.marginTop}>
+                          <Text variant="body">{registrationError}</Text>
+                        </Alert>
+                      )}
 
-                  {plugin.meta.secureJsonFields?.brokkrPassword && !state.brokkrPassword && (
-                    <Text variant="bodySmall" color="secondary">
-                      Password is configured. Leave empty to keep the existing password.
-                    </Text>
+                      <div className={s.marginTop}>
+                        <Button
+                          variant="primary"
+                          onClick={onRegisterWithCoda}
+                          disabled={isRegistering || !state.codaEnrollmentKey}
+                        >
+                          {isRegistering ? (
+                            <>
+                              <Spinner inline={true} /> Registering...
+                            </>
+                          ) : (
+                            'Register with Coda'
+                          )}
+                        </Button>
+                      </div>
+                    </>
                   )}
                 </div>
               </>

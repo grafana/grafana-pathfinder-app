@@ -94,16 +94,16 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 		}, nil
 	}
 
-	// Check if Brokkr is configured
-	if a.brokkr == nil {
-		a.logger.Error("Brokkr not configured for stream subscription")
+	// Check if Coda is configured (has JWT token)
+	if a.coda == nil {
+		a.logger.Error("Coda not registered for stream subscription")
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusNotFound,
 		}, nil
 	}
 
 	// Verify VM exists and is active
-	vm, err := a.brokkr.GetVM(ctx, vmID)
+	vm, err := a.coda.GetVM(ctx, vmID)
 	if err != nil {
 		a.logger.Error("Failed to get VM for subscription", "vmID", vmID, "error", err)
 		return &backend.SubscribeStreamResponse{
@@ -188,6 +188,18 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 	}, nil
 }
 
+// sendStreamError sends an error message to the frontend via the stream
+func sendStreamError(sender *backend.StreamSender, errMsg string) {
+	output := TerminalStreamOutput{
+		Type:  "error",
+		Error: errMsg,
+	}
+	jsonBytes, _ := json.Marshal(output)
+	frame := data.NewFrame("terminal")
+	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+	sender.SendFrame(frame, data.IncludeAll)
+}
+
 // RunStream is called once for each active stream subscription.
 // It runs for the lifetime of the stream, sending data to the client.
 func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
@@ -196,23 +208,31 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	// Parse channel path: terminal/{vmId}
 	parts := strings.Split(req.Path, "/")
 	if len(parts) != 2 || parts[0] != "terminal" {
-		return fmt.Errorf("invalid path: %s", req.Path)
+		errMsg := fmt.Sprintf("invalid path: %s", req.Path)
+		sendStreamError(sender, errMsg)
+		return fmt.Errorf(errMsg)
 	}
 
 	vmID := parts[1]
 
 	// Get VM credentials
-	if a.brokkr == nil {
-		return fmt.Errorf("Brokkr not configured")
+	if a.coda == nil {
+		errMsg := "Coda not registered - configure enrollment key and register first"
+		sendStreamError(sender, errMsg)
+		return fmt.Errorf(errMsg)
 	}
 
-	vm, err := a.brokkr.GetVM(ctx, vmID)
+	vm, err := a.coda.GetVM(ctx, vmID)
 	if err != nil {
+		errMsg := fmt.Sprintf("failed to get VM: %v", err)
+		sendStreamError(sender, errMsg)
 		return fmt.Errorf("failed to get VM: %w", err)
 	}
 
 	if vm.State != "active" || vm.Credentials == nil {
-		return fmt.Errorf("VM not ready: state=%s", vm.State)
+		errMsg := fmt.Sprintf("VM not ready: state=%s", vm.State)
+		sendStreamError(sender, errMsg)
+		return fmt.Errorf(errMsg)
 	}
 
 	// Create context that cancels when stream ends
@@ -267,6 +287,8 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			"host", vm.Credentials.PublicIP,
 			"port", vm.Credentials.SSHPort,
 		)
+		errMsg := fmt.Sprintf("SSH connection failed: %v", err)
+		sendStreamError(sender, errMsg)
 		return fmt.Errorf("failed to create terminal session: %w", err)
 	}
 	defer session.Close()

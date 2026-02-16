@@ -3,6 +3,10 @@ import { config } from '@grafana/runtime';
 
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
+// Backend API URL for plugin resource endpoints
+// Grafana routes backend resource calls through /api/plugins/{pluginId}/resources/
+export const PLUGIN_BACKEND_URL = `/api/plugins/${pluginJson.id}/resources`;
+
 // Default configuration values
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana.com';
@@ -28,9 +32,9 @@ export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled 
 // Coda Terminal defaults (experimental dev feature)
 export const DEFAULT_ENABLE_CODA_TERMINAL = false; // Experimental - disabled by default
 
-// Brokkr VM provisioning defaults (for Coda terminal backend)
-export const DEFAULT_BROKKR_URL = '';
-export const DEFAULT_BROKKR_USERNAME = '';
+// Coda API configuration (hardcoded URL - no longer configurable)
+// The Coda backend uses JWT authentication via enrollment keys
+export const CODA_API_URL = 'https://coda.lg.grafana-dev.com';
 
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
@@ -89,10 +93,9 @@ export interface DocsPluginConfig {
   peerjsKey?: string;
   // Coda Terminal (Experimental dev feature for interactive sandbox)
   enableCodaTerminal?: boolean;
-  // Brokkr VM provisioning (backend for Coda terminal)
-  brokkrUrl?: string;
-  brokkrUsername?: string;
-  // Note: brokkrPassword is stored in secureJsonData, not here
+  // Coda registration status (JWT auth)
+  // Note: codaEnrollmentKey and codaJwtToken are stored in secureJsonData, not here
+  codaRegistered?: boolean; // Whether this instance has successfully registered with Coda
 }
 
 // Helper functions to get configuration values with defaults
@@ -124,9 +127,8 @@ export const getConfigWithDefaults = (
   peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
   // Coda Terminal
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
-  // Brokkr
-  brokkrUrl: config.brokkrUrl || DEFAULT_BROKKR_URL,
-  brokkrUsername: config.brokkrUsername || DEFAULT_BROKKR_USERNAME,
+  // Coda registration
+  codaRegistered: config.codaRegistered ?? false,
 });
 
 /**

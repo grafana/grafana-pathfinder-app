@@ -16,6 +16,9 @@ import (
 // Grafana's /api/live/publish endpoint blocks frontend publishing to plugin channels
 // (returns 403 Forbidden). We use this HTTP endpoint for terminal input instead.
 func (a *App) registerRoutes(mux *http.ServeMux) {
+	// Coda registration endpoint
+	mux.HandleFunc("/coda/register", a.handleCodaRegister)
+
 	// VM management endpoints
 	mux.HandleFunc("/vms", a.handleVMs)
 	mux.HandleFunc("/vms/", a.handleVMByID)
@@ -131,15 +134,68 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// CreateVMRequest represents the request body for creating a VM.
+// CodaRegisterRequest represents the request body for Coda registration.
+type CodaRegisterRequest struct {
+	EnrollmentKey string `json:"enrollmentKey"`
+	InstanceID    string `json:"instanceId"`
+	InstanceURL   string `json:"instanceUrl,omitempty"`
+}
+
+// handleCodaRegister registers this plugin instance with the Coda API.
+// Returns a JWT token that should be stored in secureJsonData.
+func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CodaRegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.writeError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Use enrollment key from request or fall back to settings
+	enrollmentKey := req.EnrollmentKey
+	if enrollmentKey == "" {
+		enrollmentKey = a.settings.EnrollmentKey
+	}
+
+	if enrollmentKey == "" {
+		a.writeError(w, "Enrollment key is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.InstanceID == "" {
+		a.writeError(w, "Instance ID is required", http.StatusBadRequest)
+		return
+	}
+
+	a.logger.Info("Registering with Coda API", "instanceId", req.InstanceID)
+
+	// Call Coda registration endpoint
+	result, err := Register(r.Context(), enrollmentKey, req.InstanceID, req.InstanceURL)
+	if err != nil {
+		a.logger.Error("Failed to register with Coda", "error", err)
+		a.writeError(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	a.logger.Info("Successfully registered with Coda", "instanceId", req.InstanceID, "jti", result.JTI)
+
+	// Return the token to the frontend so it can be saved to secureJsonData
+	a.writeJSON(w, result, http.StatusCreated)
+}
+
+// CreateVMHTTPRequest represents the request body for creating a VM.
 type CreateVMHTTPRequest struct {
 	Template string `json:"template"`
 }
 
-// handleCreateVM creates a new VM via Brokkr.
+// handleCreateVM creates a new VM via Coda.
 func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
-	if a.brokkr == nil {
-		a.writeError(w, "Brokkr not configured", http.StatusServiceUnavailable)
+	if a.coda == nil {
+		a.writeError(w, "Coda not registered - configure enrollment key and register first", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -150,7 +206,7 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Template == "" {
-		req.Template = "vm-gcp" // Default template
+		req.Template = "vm-aws" // Default template
 	}
 
 	// Get user from Grafana context header
@@ -161,10 +217,15 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 	a.logger.Info("Creating VM", "template", req.Template, "user", user)
 
-	vm, err := a.brokkr.CreateVM(r.Context(), req.Template, user)
+	vm, err := a.coda.CreateVM(r.Context(), req.Template, user)
 	if err != nil {
 		a.logger.Error("Failed to create VM", "error", err)
-		a.writeError(w, err.Error(), http.StatusInternalServerError)
+		// Check if this is an auth error
+		if strings.Contains(err.Error(), "authentication failed") {
+			a.writeError(w, err.Error(), http.StatusUnauthorized)
+		} else {
+			a.writeError(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -173,16 +234,18 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 // handleGetVM returns VM status and credentials.
 func (a *App) handleGetVM(w http.ResponseWriter, r *http.Request, vmID string) {
-	if a.brokkr == nil {
-		a.writeError(w, "Brokkr not configured", http.StatusServiceUnavailable)
+	if a.coda == nil {
+		a.writeError(w, "Coda not registered - configure enrollment key and register first", http.StatusServiceUnavailable)
 		return
 	}
 
-	vm, err := a.brokkr.GetVM(r.Context(), vmID)
+	vm, err := a.coda.GetVM(r.Context(), vmID)
 	if err != nil {
 		a.logger.Error("Failed to get VM", "vmID", vmID, "error", err)
 		if strings.Contains(err.Error(), "not found") {
 			a.writeError(w, "VM not found", http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "authentication failed") {
+			a.writeError(w, err.Error(), http.StatusUnauthorized)
 		} else {
 			a.writeError(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -194,8 +257,8 @@ func (a *App) handleGetVM(w http.ResponseWriter, r *http.Request, vmID string) {
 
 // handleDeleteVM destroys a VM.
 func (a *App) handleDeleteVM(w http.ResponseWriter, r *http.Request, vmID string) {
-	if a.brokkr == nil {
-		a.writeError(w, "Brokkr not configured", http.StatusServiceUnavailable)
+	if a.coda == nil {
+		a.writeError(w, "Coda not registered - configure enrollment key and register first", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -203,9 +266,14 @@ func (a *App) handleDeleteVM(w http.ResponseWriter, r *http.Request, vmID string
 	user := r.Header.Get("X-Grafana-User")
 	a.logger.Info("Deleting VM", "vmID", vmID, "user", user)
 
-	if err := a.brokkr.DeleteVM(r.Context(), vmID); err != nil {
+	if err := a.coda.DeleteVM(r.Context(), vmID); err != nil {
 		a.logger.Error("Failed to delete VM", "vmID", vmID, "error", err)
-		a.writeError(w, err.Error(), http.StatusInternalServerError)
+		// Check if this is an auth error
+		if strings.Contains(err.Error(), "authentication failed") {
+			a.writeError(w, err.Error(), http.StatusUnauthorized)
+		} else {
+			a.writeError(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -214,15 +282,20 @@ func (a *App) handleDeleteVM(w http.ResponseWriter, r *http.Request, vmID string
 
 // handleListVMs returns all VMs.
 func (a *App) handleListVMs(w http.ResponseWriter, r *http.Request) {
-	if a.brokkr == nil {
-		a.writeError(w, "Brokkr not configured", http.StatusServiceUnavailable)
+	if a.coda == nil {
+		a.writeError(w, "Coda not registered - configure enrollment key and register first", http.StatusServiceUnavailable)
 		return
 	}
 
-	vms, err := a.brokkr.ListVMs(r.Context())
+	vms, err := a.coda.ListVMs(r.Context())
 	if err != nil {
 		a.logger.Error("Failed to list VMs", "error", err)
-		a.writeError(w, err.Error(), http.StatusInternalServerError)
+		// Check if this is an auth error
+		if strings.Contains(err.Error(), "authentication failed") {
+			a.writeError(w, err.Error(), http.StatusUnauthorized)
+		} else {
+			a.writeError(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -232,8 +305,8 @@ func (a *App) handleListVMs(w http.ResponseWriter, r *http.Request) {
 // handleHealth returns the plugin health status.
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
-		"status":          "ok",
-		"brokkrConfigured": a.brokkr != nil,
+		"status":         "ok",
+		"codaRegistered": a.coda != nil,
 	}
 	a.writeJSON(w, status, http.StatusOK)
 }
