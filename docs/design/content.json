@@ -1,43 +1,11 @@
-[
-  {
-    "schemaVersion": "0.1.0",
-    "packages": [
-      {
-        "name": "prometheus-grafana-101",
-        "version": "1.2.3",
-        "title": "Prometheus & Grafana 101",
-        "languages_or_should_we_call_this_content": [
-          {
-            "en": [
-              {
-                "type": "markdown",
-                "content": "# Prometheus & Grafana 101\n\nIn this guide..."
-              }
-            ],
-            "de": [
-              {
-                "type": "markdown",
-                "content": "# Prometheus & Grafana 101\n\nIn diesem Kurs..."
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "name": "how-to-moist",
-        "title": "The Tom show",
-        "version": "7.8.9",
-        "languages": [
-          {
-            "en": [
-              {
-                "type": "markdown",
-                "content": "# Weeeeeellecome... to the Punderdome"
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-]
+{
+  "schemaVersion": "1.1.0",
+  "id": "prometheus-grafana-101",
+  "title": "Prometheus & Grafana 101",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Prometheus & Grafana 101\n\nIn this guide, you will learn how to set up Prometheus as a data source and visualize your metrics in Grafana."
+    }
+  ]
+}
