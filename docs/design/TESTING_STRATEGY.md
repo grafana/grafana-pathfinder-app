@@ -123,7 +123,7 @@ Layer 4 validation requires **guide-level dependency metadata** to route guides 
 - **Guide dependencies**: Which other guides must be completed first (learning path ordering)
 - **Capability abstraction**: Multiple guides can provide the same abstract capability, enabling flexible learning paths
 
-This structured metadata lives in `package.json` alongside the guide's `content.json`, separate from block-level `requirements` (which remain string arrays for runtime gating). See the [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md) for the full specification — particularly the [dependencies](./PATHFINDER-PACKAGE-DESIGN.md#dependencies) and [test environment metadata](./PATHFINDER-PACKAGE-DESIGN.md#future-proofing) sections.
+This structured metadata lives in `manifest.json` alongside the guide's `content.json`, separate from block-level `requirements` (which remain string arrays for runtime gating). See the [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md) for the full specification — particularly the [dependencies](./PATHFINDER-PACKAGE-DESIGN.md#dependencies) and [test environment metadata](./PATHFINDER-PACKAGE-DESIGN.md#future-proofing) sections.
 
 ---
 

@@ -18,6 +18,7 @@ export {
   isLocalhostUrl,
   isAllowedContentUrl,
   validateTutorialUrl,
+  validateRedirectPath,
   isYouTubeDomain,
   isVimeoDomain,
   type UrlValidation,
