@@ -5,6 +5,7 @@ import React, { useMemo, useEffect, Component, ReactNode } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
+import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
@@ -128,7 +129,7 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
 
 function getSceneApp() {
   return new SceneApp({
-    pages: [docsPage],
+    pages: [homePage, docsPage],
   });
 }
 

@@ -65,7 +65,6 @@ describe('E2E Contract: Docs panel test IDs', () => {
     });
 
     it('tab(id) pattern', () => {
-      expect(testIds.docsPanel.tab('my-learning')).toBe('docs-panel-tab-my-learning');
       expect(testIds.docsPanel.tab('devtools')).toBe('docs-panel-tab-devtools');
     });
 
@@ -77,6 +76,10 @@ describe('E2E Contract: Docs panel test IDs', () => {
       expect(testIds.docsPanel.tabOverflowButton).toBe('docs-panel-tab-overflow-button');
       expect(testIds.docsPanel.tabDropdown).toBe('docs-panel-tab-dropdown');
       expect(testIds.docsPanel.tabDropdownItem('tab-1')).toBe('docs-panel-tab-dropdown-item-tab-1');
+    });
+
+    it('myLearningTab', () => {
+      expect(testIds.docsPanel.myLearningTab).toBe('docs-panel-tab-my-learning');
     });
   });
 
@@ -124,7 +127,10 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
       'testIds.devTools.returnToEditorButton',
     ],
   },
-  { file: 'components/TabBarActions.tsx', references: ['testIds.docsPanel.closeButton'] },
+  {
+    file: 'components/TabBarActions.tsx',
+    references: ['testIds.docsPanel.closeButton', 'testIds.docsPanel.myLearningTab'],
+  },
   { file: 'components/LoadingIndicator.tsx', references: ['testIds.docsPanel.loadingState'] },
   { file: 'components/ErrorDisplay.tsx', references: ['testIds.docsPanel.errorState'] },
 ];
@@ -247,9 +253,8 @@ describe('E2E Contract: Window globals assigned in docs-panel', () => {
 describe.skip('E2E Contract: Docs panel full render (covered by e2e)', () => {
   it.todo('renders container with docs-panel-container');
   it.todo('renders tab bar, tab list, content area with stable test IDs');
-  it.todo('renders recommendations and my-learning tabs; devtools tab when dev mode');
+  it.todo('renders recommendations tab; devtools tab when dev mode');
   it.todo('default active tab is recommendations');
-  it.todo('switching to my-learning updates content area');
   it.todo('loading state shows docs-panel-loading-state');
   it.todo('error state shows docs-panel-error-state with retry');
 });

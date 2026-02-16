@@ -11,6 +11,7 @@ import { cx } from '@emotion/css';
 
 import type { BadgesDisplayProps, EarnedBadge } from '../../types/learning-paths.types';
 import { getBadgesDisplayStyles } from './learning-paths.styles';
+import { BadgeIcon } from './BadgeIcon';
 
 /**
  * Grid display of all badges
@@ -89,7 +90,7 @@ function BadgeItem({ badge, onClick }: BadgeItemProps) {
         tabIndex={isEarned ? 0 : undefined}
       >
         <span className={cx(styles.badgeIcon, isEarned && styles.badgeIconEarned, !isEarned && styles.badgeIconLocked)}>
-          <Icon name={badge.icon as any} size="xl" />
+          <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xl" emojiClassName={styles.badgeEmoji} />
         </span>
         <span className={cx(styles.badgeTitle, isEarned && styles.badgeTitleEarned)}>{badge.title}</span>
       </div>
@@ -121,7 +122,7 @@ export function CompactBadgesDisplay({ badges, maxVisible = 4 }: CompactBadgesDi
       {visibleBadges.map((badge) => (
         <Tooltip key={badge.id} content={badge.title} placement="top">
           <span className={cx(styles.badgeIcon, styles.badgeIconEarned)}>
-            <Icon name={badge.icon as any} size="md" />
+            <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="md" emojiClassName={styles.badgeEmojiCompact} />
           </span>
         </Tooltip>
       ))}

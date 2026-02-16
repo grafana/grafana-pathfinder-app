@@ -9,6 +9,7 @@ import { IconButton, Dropdown, Menu } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
+import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../testIds';
 
 export interface TabBarActionsProps {
@@ -56,8 +57,20 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
     });
   };
 
+  const handleMyLearningClick = () => {
+    locationService.push(PLUGIN_BASE_URL);
+  };
+
   return (
     <div className={className}>
+      <IconButton
+        name="book-open"
+        size="sm"
+        tooltip={t('docsPanel.myLearning', 'My learning')}
+        onClick={handleMyLearningClick}
+        aria-label={t('docsPanel.myLearning', 'My learning')}
+        data-testid={testIds.docsPanel.myLearningTab}
+      />
       <Dropdown
         placement="bottom-end"
         overlay={
