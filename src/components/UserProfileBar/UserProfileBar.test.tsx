@@ -10,6 +10,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 import { UserProfileBar } from './UserProfileBar';
 import { useNextLearningAction, type LearningProfileSummary } from '../../learning-paths';
+import { testIds } from '../testIds';
 
 // ============================================================================
 // MOCKS
@@ -80,7 +81,7 @@ describe('UserProfileBar', () => {
   it('renders next action link with correct title', () => {
     render(<UserProfileBar onOpenGuide={onOpenGuide} />);
 
-    const nextButton = screen.getByTestId('user-profile-bar-next-action');
+    const nextButton = screen.getByTestId(testIds.contextPanel.userProfileBarNextAction);
     expect(nextButton).toBeInTheDocument();
     expect(screen.getByText('Next: Prometheus & Grafana 101')).toBeInTheDocument();
   });
@@ -88,7 +89,7 @@ describe('UserProfileBar', () => {
   it('calls onOpenGuide with correct url and title when next action is clicked', () => {
     render(<UserProfileBar onOpenGuide={onOpenGuide} />);
 
-    fireEvent.click(screen.getByTestId('user-profile-bar-next-action'));
+    fireEvent.click(screen.getByTestId(testIds.contextPanel.userProfileBarNextAction));
 
     expect(onOpenGuide).toHaveBeenCalledTimes(1);
     expect(onOpenGuide).toHaveBeenCalledWith('bundled:prometheus-101', 'Prometheus & Grafana 101');
@@ -99,9 +100,9 @@ describe('UserProfileBar', () => {
 
     render(<UserProfileBar onOpenGuide={onOpenGuide} />);
 
-    expect(screen.getByTestId('user-profile-bar-all-complete')).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.contextPanel.userProfileBarAllComplete)).toBeInTheDocument();
     expect(screen.getByText('All paths complete!')).toBeInTheDocument();
-    expect(screen.queryByTestId('user-profile-bar-next-action')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.contextPanel.userProfileBarNextAction)).not.toBeInTheDocument();
   });
 
   it('shows loading skeleton when isLoading is true', () => {
@@ -109,8 +110,8 @@ describe('UserProfileBar', () => {
 
     render(<UserProfileBar onOpenGuide={onOpenGuide} />);
 
-    expect(screen.getByTestId('user-profile-bar-loading')).toBeInTheDocument();
-    expect(screen.queryByTestId('user-profile-bar')).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.contextPanel.userProfileBarLoading)).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.contextPanel.userProfileBar)).not.toBeInTheDocument();
   });
 
   it('provides aria-labels on stat spans for screen readers', () => {

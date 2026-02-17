@@ -12,6 +12,7 @@ import { t } from '@grafana/i18n';
 
 import { useNextLearningAction } from '../../learning-paths';
 import { getUserProfileBarStyles } from './UserProfileBar.styles';
+import { testIds } from '../testIds';
 
 interface UserProfileBarProps {
   onOpenGuide: (url: string, title: string) => void;
@@ -23,7 +24,7 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
 
   if (isLoading) {
     return (
-      <div className={styles.skeleton} data-testid="user-profile-bar-loading">
+      <div className={styles.skeleton} data-testid={testIds.contextPanel.userProfileBarLoading}>
         <div className={styles.skeletonBlock} />
         <div className={styles.skeletonBlock} />
         <div className={styles.skeletonBlockWide} />
@@ -32,7 +33,7 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
   }
 
   return (
-    <div className={styles.container} data-testid="user-profile-bar">
+    <div className={styles.container} data-testid={testIds.contextPanel.userProfileBar}>
       {/* Badge count */}
       <Tooltip
         content={t('userProfileBar.badgesTooltip', '{{- earned}} of {{- total}} badges earned', {
@@ -105,7 +106,7 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
           <button
             className={styles.nextAction}
             onClick={() => onOpenGuide(nextAction.guideUrl, nextAction.guideTitle)}
-            data-testid="user-profile-bar-next-action"
+            data-testid={testIds.contextPanel.userProfileBarNextAction}
           >
             <Icon name="arrow-right" size="sm" />
             <span className={styles.nextActionLabel}>
@@ -115,7 +116,7 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
         </Tooltip>
       ) : (
         <Tooltip content={t('userProfileBar.allCompleteTooltip', "You've completed every learning path — nice work!")}>
-          <span className={styles.allComplete} data-testid="user-profile-bar-all-complete">
+          <span className={styles.allComplete} data-testid={testIds.contextPanel.userProfileBarAllComplete}>
             <Icon name="check-circle" size="sm" />
             {t('userProfileBar.allComplete', 'All paths complete!')}
           </span>
