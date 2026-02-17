@@ -2,7 +2,7 @@
   "rules": [
     {
       "title": "Monitor a Linux server in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/linux-server-integration/",
+      "url": "https://grafana.com/docs/learning-paths/linux-server-integration/",
       "description": "Step-by-step guide: Monitor a Linux server in Grafana Cloud.",
       "type": "learning-journey",
       "match": {
@@ -22,7 +22,7 @@
     },
     {
       "title": "Monitor a macOS system in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/macos-integration/",
+      "url": "https://grafana.com/docs/learning-paths/macos-integration/",
       "description": "Step-by-step guide: Monitor a macOS system in Grafana Cloud.",
       "type": "learning-journey",
       "match": {
@@ -38,7 +38,7 @@
     },
     {
       "title": "Connect to a Prometheus data source in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/prometheus/",
+      "url": "https://grafana.com/docs/learning-paths/prometheus/",
       "description": "Step-by-step guide: Connect to a Prometheus data source in Grafana Cloud.",
       "type": "learning-journey",
       "match": {
@@ -102,7 +102,7 @@
     },
     {
       "title": "Monitor collector health using Grafana Fleet Management",
-      "url": "https://grafana.com/docs/learning-journeys/fleet-mgt-monitor-health/",
+      "url": "https://grafana.com/docs/learning-paths/fleet-mgt-monitor-health/",
       "description": "Step-by-step guide: Monitor collector health using Grafana Fleet Management.",
       "type": "learning-journey",
       "match": {
@@ -118,7 +118,7 @@
     },
     {
       "title": "Send logs to Grafana Cloud using Alloy",
-      "url": "https://grafana.com/docs/learning-journeys/send-logs-alloy-loki/",
+      "url": "https://grafana.com/docs/learning-paths/send-logs-alloy-loki/",
       "description": "Step-by-step guide: Send logs to Grafana Cloud using Alloy.",
       "type": "learning-journey",
       "match": {
@@ -182,7 +182,7 @@
     },
     {
       "title": "Monitor collector health using Grafana Fleet Management",
-      "url": "https://grafana.com/docs/learning-journeys/fleet-mgt-monitor-health/",
+      "url": "https://grafana.com/docs/learning-paths/fleet-mgt-monitor-health/",
       "description": "Step-by-step guide: Monitor collector health using Grafana Fleet Management.",
       "type": "learning-journey",
       "match": {
@@ -246,7 +246,7 @@
     },
     {
       "title": "Visualize JSON data using the Infinity data source",
-      "url": "https://grafana.com/docs/learning-journeys/infinity-json/",
+      "url": "https://grafana.com/docs/learning-paths/infinity-json/",
       "description": "Step-by-step guide: Visualize JSON data using the Infinity data source.",
       "type": "learning-journey",
       "match": {
@@ -276,7 +276,7 @@
     },
     {
       "title": "Visualize CSV data using the Infinity data source",
-      "url": "https://grafana.com/docs/learning-journeys/infinity-csv/",
+      "url": "https://grafana.com/docs/learning-paths/infinity-csv/",
       "description": "Step-by-step guide: Visualize CSV data using the Infinity data source.",
       "type": "learning-journey",
       "match": {
@@ -295,7 +295,7 @@
     },
     {
       "title": "Connect to a Prometheus data source in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/prometheus/",
+      "url": "https://grafana.com/docs/learning-paths/prometheus/",
       "description": "Step-by-step guide: Connect to a Prometheus data source in Grafana Cloud.",
       "type": "learning-journey",
       "match": {
@@ -1647,7 +1647,7 @@
     },
     {
       "title": "Create a private connection to a data source",
-      "url": "https://grafana.com/docs/learning-journeys/private-data-source-connect/",
+      "url": "https://grafana.com/docs/learning-paths/private-data-source-connect/",
       "description": "Step-by-step guide: Create a private connection to a data source.",
       "type": "learning-journey",
       "match": {
@@ -1743,7 +1743,7 @@
     },
     {
       "title": "Connect to a GitHub data source in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/github-data-source/",
+      "url": "https://grafana.com/docs/learning-paths/github-data-source/",
       "description": "A learning journey that shows you how to connect GitHub repository data in Grafana Cloud.",
       "type": "learning-journey",
       "match": {
@@ -1752,7 +1752,7 @@
     },
     {
       "title": "Send traces to Grafana Cloud using Alloy",
-      "url": "https://grafana.com/docs/learning-journeys/send-traces-alloy/",
+      "url": "https://grafana.com/docs/learning-paths/send-traces-alloy/",
       "description": "A learning journey that shows you how to send traces to Grafana Cloud using Grafana Alloy for distributed tracing and observability.",
       "type": "learning-journey",
       "match": {
@@ -1768,7 +1768,7 @@
     },
     {
       "title": "Send metrics to Grafana Cloud using Prometheus remote write",
-      "url": "https://grafana.com/docs/learning-journeys/prom-remote-write/",
+      "url": "https://grafana.com/docs/learning-paths/prom-remote-write/",
       "description": "A learning journey that shows you how to send metrics to Grafana Cloud using Prometheus remote write.",
       "type": "learning-journey",
       "match": {

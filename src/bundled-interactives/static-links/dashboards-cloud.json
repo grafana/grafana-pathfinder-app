@@ -30,7 +30,7 @@
     },
     {
       "title": "Visualize metrics in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/visualization-metrics/add-visualization/",
+      "url": "https://grafana.com/docs/learning-paths/visualization-metrics/add-visualization/",
       "description": "Step-by-step guide: Visualize metrics in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -46,7 +46,7 @@
     },
     {
       "title": "Visualize logs in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/visualization-logs/",
+      "url": "https://grafana.com/docs/learning-paths/visualization-logs/",
       "description": "Step-by-step guide: Visualize logs in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -62,7 +62,7 @@
     },
     {
       "title": "Visualize traces in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/visualization-traces/",
+      "url": "https://grafana.com/docs/learning-paths/visualization-traces/",
       "description": "Step-by-step guide: Visualize traces in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -174,7 +174,7 @@
     },
     {
       "title": "Visualize metrics in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/visualization-metrics/",
+      "url": "https://grafana.com/docs/learning-paths/visualization-metrics/",
       "description": "Step-by-step guide: Visualize metrics in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -212,7 +212,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -288,7 +288,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -326,7 +326,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -364,7 +364,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -402,7 +402,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -459,7 +459,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -497,7 +497,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -535,7 +535,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -573,7 +573,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -611,7 +611,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -649,7 +649,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -668,7 +668,7 @@
     },
     {
       "title": "Visualize logs in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/visualization-logs/add-visualization/",
+      "url": "https://grafana.com/docs/learning-paths/visualization-logs/add-visualization/",
       "description": "Step-by-step guide: Visualize logs in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -706,7 +706,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -763,7 +763,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -801,7 +801,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -839,7 +839,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -877,7 +877,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -915,7 +915,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -953,7 +953,7 @@
     },
     {
       "title": "Visualize traces in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/visualization-traces/",
+      "url": "https://grafana.com/docs/learning-paths/visualization-traces/",
       "description": "Step-by-step guide: Visualize traces in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -972,7 +972,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -1010,7 +1010,7 @@
     },
     {
       "title": "Visualize traces in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/visualization-traces/",
+      "url": "https://grafana.com/docs/learning-paths/visualization-traces/",
       "description": "Step-by-step guide: Visualize traces in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -1048,7 +1048,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -1086,7 +1086,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -1124,7 +1124,7 @@
     },
     {
       "title": "Transform data in a Grafana Cloud dashboard",
-      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "url": "https://grafana.com/docs/learning-paths/data-transformation/",
       "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
       "type": "learning-journey",
       "match": {
@@ -1143,7 +1143,7 @@
     },
     {
       "title": "Visualize GitHub data source in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/github-visualize/",
+      "url": "https://grafana.com/docs/learning-paths/github-visualize/",
       "description": "A learning journey that shows you how to visualize GitHub repository data in Grafana Cloud.",
       "type": "learning-journey",
       "match": {

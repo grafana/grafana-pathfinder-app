@@ -18,7 +18,7 @@
     },
     {
       "title": "Explore data using Metrics Drilldown",
-      "url": "https://grafana.com/docs/learning-journeys/drilldown-metrics/",
+      "url": "https://grafana.com/docs/learning-paths/drilldown-metrics/",
       "description": "Step-by-step guide: Explore data using Metrics Drilldown.",
       "type": "learning-journey",
       "match": {
@@ -50,7 +50,7 @@
     },
     {
       "title": "Explore logs using Logs Drilldown",
-      "url": "https://grafana.com/docs/learning-journeys/drilldown-logs/",
+      "url": "https://grafana.com/docs/learning-paths/drilldown-logs/",
       "description": "Step-by-step guide: Explore logs using Logs Drilldown.",
       "type": "learning-journey",
       "match": {
@@ -82,7 +82,7 @@
     },
     {
       "title": "Use Traces Drilldown to identify high latency service requests",
-      "url": "https://grafana.com/docs/learning-journeys/drilldown-traces/",
+      "url": "https://grafana.com/docs/learning-paths/drilldown-traces/",
       "description": "Step-by-step guide: Use Traces Drilldown to identify high latency service requests.",
       "type": "learning-journey",
       "match": {

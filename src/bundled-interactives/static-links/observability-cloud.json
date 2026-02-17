@@ -2,8 +2,8 @@
   "rules": [
     {
       "title": "Monitor AWS resources with Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/monitor-aws-resources/",
-      "description": "A learning journey that shows you how to monitor AWS resources using Grafana Cloud Provider Observability.",
+      "url": "https://grafana.com/docs/learning-paths/monitor-aws-resources/",
+      "description": "A learning path that shows you how to monitor AWS resources using Grafana Cloud Provider Observability.",
       "type": "learning-journey",
       "match": {
         "and": [
@@ -630,7 +630,7 @@
     },
     {
       "title": "Monitor Kubernetes cluster infrastructure in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/kubernetes/",
+      "url": "https://grafana.com/docs/learning-paths/kubernetes/",
       "description": "Step-by-step guide: Monitor Kubernetes cluster infrastructure in Grafana Cloud.",
       "type": "learning-journey",
       "match": {
