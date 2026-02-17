@@ -124,7 +124,7 @@ describe('UserProfileBar', () => {
   it('renders star and fire emoji icons', () => {
     render(<UserProfileBar onOpenGuide={onOpenGuide} />);
 
-    expect(screen.getByText('⭐')).toBeInTheDocument();
+    expect(screen.getByText('🏆')).toBeInTheDocument();
     expect(screen.getByText('🔥')).toBeInTheDocument();
   });
 });

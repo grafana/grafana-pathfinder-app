@@ -48,7 +48,7 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
           })}
         >
           <span className={styles.starEmoji} aria-hidden="true">
-            ⭐
+            🏆
           </span>
           <span className={styles.statValue}>
             {badgesEarned}/{badgesTotal}
