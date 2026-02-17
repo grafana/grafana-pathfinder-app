@@ -8,7 +8,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 // import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults, DocsPluginConfig } from './constants';
+import { getConfigWithDefaults, DocsPluginConfig, PLUGIN_BASE_URL } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl, validateRedirectPath } from './security';
@@ -173,7 +173,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Priority: explicit page param > bundled guide target > /
   // SECURITY: page is only processed when doc is also present,
   // preventing the plugin page from becoming a general-purpose redirector
-  const redirectTarget = docsParam ? validateRedirectPath(pageParam || docsPage?.targetPage || '/') : null;
+  const redirectTarget = docsParam ? validateRedirectPath(pageParam || docsPage?.targetPage || PLUGIN_BASE_URL) : null;
 
   // Warn if docsParam is present but no docsPage is found
   // This can happen for malformed params or unsupported URL formats

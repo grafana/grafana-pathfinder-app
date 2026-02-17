@@ -1,4 +1,5 @@
-import { wrapEnvelope, unwrapEnvelope } from './user-storage';
+import { wrapEnvelope, unwrapEnvelope, interactiveStepStorage, interactiveCompletionStorage } from './user-storage';
+import { StorageKeys } from './storage-keys';
 
 // ============================================================================
 // ENVELOPE FORMAT TESTS
@@ -106,5 +107,96 @@ describe('unwrapEnvelope', () => {
     // A real envelope has a numeric timestamp
     const newFormat = JSON.stringify({ v: 'data', t: 42 });
     expect(unwrapEnvelope(newFormat)).toEqual({ v: 'data', t: 42 });
+  });
+});
+
+// ============================================================================
+// interactiveStepStorage.clearAll TESTS
+// ============================================================================
+
+describe('interactiveStepStorage.clearAll', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('should remove all INTERACTIVE_STEPS_PREFIX keys from localStorage', async () => {
+    // Seed step completion data for two different guides
+    localStorage.setItem(`${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-1`, JSON.stringify(['step-1']));
+    localStorage.setItem(`${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-b-section-1`, JSON.stringify(['step-2']));
+
+    await interactiveStepStorage.clearAll();
+
+    expect(localStorage.getItem(`${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-1`)).toBeNull();
+    expect(localStorage.getItem(`${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-b-section-1`)).toBeNull();
+  });
+
+  it('should remove all SECTION_COLLAPSE_PREFIX keys from localStorage', async () => {
+    localStorage.setItem(`${StorageKeys.SECTION_COLLAPSE_PREFIX}guide-a-section-1`, JSON.stringify(true));
+    localStorage.setItem(`${StorageKeys.SECTION_COLLAPSE_PREFIX}guide-b-section-2`, JSON.stringify(false));
+
+    await interactiveStepStorage.clearAll();
+
+    expect(localStorage.getItem(`${StorageKeys.SECTION_COLLAPSE_PREFIX}guide-a-section-1`)).toBeNull();
+    expect(localStorage.getItem(`${StorageKeys.SECTION_COLLAPSE_PREFIX}guide-b-section-2`)).toBeNull();
+  });
+
+  it('should not remove unrelated localStorage keys', async () => {
+    localStorage.setItem('some-other-key', 'keep-me');
+    localStorage.setItem(StorageKeys.LEARNING_PROGRESS, JSON.stringify({ completedGuides: [] }));
+    localStorage.setItem(`${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-1`, JSON.stringify(['step-1']));
+
+    await interactiveStepStorage.clearAll();
+
+    expect(localStorage.getItem('some-other-key')).toBe('keep-me');
+    expect(localStorage.getItem(StorageKeys.LEARNING_PROGRESS)).not.toBeNull();
+  });
+
+  it('should invalidate completedCountCache so countAllCompleted returns 0', async () => {
+    // Seed data and prime the cache
+    localStorage.setItem(`${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-1`, JSON.stringify(['s1', 's2']));
+    const beforeClear = interactiveStepStorage.countAllCompleted('guide-a');
+    expect(beforeClear).toBe(2);
+
+    await interactiveStepStorage.clearAll();
+
+    // Cache should be invalidated and localStorage should be empty
+    const afterClear = interactiveStepStorage.countAllCompleted('guide-a');
+    expect(afterClear).toBe(0);
+  });
+
+  it('should not throw on empty localStorage', async () => {
+    await expect(interactiveStepStorage.clearAll()).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// interactiveCompletionStorage.clearAll TESTS
+// ============================================================================
+
+describe('interactiveCompletionStorage.clearAll', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('should remove the INTERACTIVE_COMPLETION key from localStorage', async () => {
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ 'guide-a': 100, 'guide-b': 50 }));
+
+    await interactiveCompletionStorage.clearAll();
+
+    expect(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION)).toBeNull();
+  });
+
+  it('should not throw on empty localStorage', async () => {
+    await expect(interactiveCompletionStorage.clearAll()).resolves.toBeUndefined();
+  });
+
+  it('should not affect other storage keys', async () => {
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ 'guide-a': 100 }));
+    localStorage.setItem(StorageKeys.LEARNING_PROGRESS, JSON.stringify({ completedGuides: ['g1'] }));
+
+    await interactiveCompletionStorage.clearAll();
+
+    expect(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION)).toBeNull();
+    expect(localStorage.getItem(StorageKeys.LEARNING_PROGRESS)).not.toBeNull();
   });
 });

@@ -57,47 +57,6 @@ export const getStateStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-// Section header styles
-export const getSectionHeaderStyles = (theme: GrafanaTheme2) => ({
-  sectionHeader: css({
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    padding: theme.spacing(1.5, 1),
-    textAlign: 'center',
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
-    marginBottom: theme.spacing(1),
-    position: 'relative',
-  }),
-  headerIcon: css({
-    color: theme.colors.primary.main,
-    marginBottom: theme.spacing(1),
-  }),
-  titleContainer: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    justifyContent: 'center',
-  }),
-  sectionTitle: css({
-    margin: 0,
-    fontSize: theme.typography.h5.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    color: theme.colors.text.primary,
-  }),
-  betaBadge: css({
-    fontSize: '11px',
-    fontWeight: theme.typography.fontWeightMedium,
-  }),
-  sectionSubtitle: css({
-    margin: 0,
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    maxWidth: '400px',
-  }),
-});
-
 // Recommendation card styles
 export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
   recommendationsContainer: css({
@@ -771,7 +730,6 @@ export const getDebugStyles = (theme: GrafanaTheme2) => ({
 export const getStyles = (theme: GrafanaTheme2) => ({
   ...getContainerStyles(theme),
   ...getStateStyles(theme),
-  ...getSectionHeaderStyles(theme),
   ...getRecommendationCardStyles(theme),
   ...getCardMetadataStyles(theme),
   ...getSummaryStyles(theme),
