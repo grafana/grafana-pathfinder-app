@@ -202,7 +202,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async openLearningJourney(url: string, title?: string): Promise<string> {
-    const finalTitle = title || 'Learning journey';
+    const finalTitle = title || 'Learning path';
     const tabId = this.generateTabId();
 
     const newTab: LearningJourneyTab = {
@@ -1419,11 +1419,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   </div>
                 )}
 
-                {/* Content Meta for learning journey pages (when no milestone progress is shown) */}
+                {/* Content Meta for learning path pages (when no milestone progress is shown) */}
                 {isLearningJourneyTab && !showMilestoneProgress && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
-                      <span>{t('docsPanel.learningJourney', 'Learning journey')}</span>
+                      <span>{t('docsPanel.learningJourney', 'Learning path')}</span>
                     </div>
                     <small>
                       {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0

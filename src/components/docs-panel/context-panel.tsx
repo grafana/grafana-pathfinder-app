@@ -22,7 +22,7 @@ const getRecommendationIcon = (type?: string): IconName => {
   if (type === 'docs-page') {
     return 'file-alt';
   }
-  // Both interactive guides and learning journeys use the rocket icon
+  // Both interactive guides and learning paths use the rocket icon
   return 'rocket';
 };
 
@@ -35,7 +35,7 @@ const getRecommendationButtonText = (type?: string, completionPercentage?: numbe
   if (completionPercentage && completionPercentage > 0 && completionPercentage < 100) {
     return t('contextPanel.resume', 'Resume');
   }
-  // Both learning journeys and interactive guides use "Start"
+  // Both learning paths and interactive guides use "Start"
   return t('contextPanel.start', 'Start');
 };
 
@@ -47,7 +47,7 @@ const getRecommendationCtaText = (type?: string): string => {
   if (type === 'interactive') {
     return t('contextPanel.startInteractiveGuide', 'Start interactive guide');
   }
-  return t('contextPanel.startLearningJourney', 'Start learning journey');
+  return t('contextPanel.startLearningJourney', 'Start learning path');
 };
 
 /** Get category label for display as a tag below the title */
@@ -58,7 +58,7 @@ const getCategoryLabel = (type?: string): string => {
   if (type === 'docs-page') {
     return t('contextPanel.categoryDocsPage', 'Docs page');
   }
-  return t('contextPanel.categoryLearningJourney', 'Learning journey');
+  return t('contextPanel.categoryLearningJourney', 'Learning path');
 };
 
 /** Get category tag style class name based on recommendation type */
@@ -297,7 +297,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                       </div>
                     </div>
 
-                    {/* Only show summary/milestones for learning journeys or docs with summaries */}
+                    {/* Only show summary/milestones for learning paths or docs with summaries */}
                     {(!isDocsOnlyRecommendation(recommendation.type) || recommendation.summary) && (
                       <>
                         <div className={styles.cardMetadata}>
@@ -327,7 +327,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                               <span>{t('contextPanel.summary', 'Summary')}</span>
                               <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                             </button>
-                            {/* Show completion percentage for learning journeys */}
+                            {/* Show completion percentage for learning paths */}
                             {!isDocsOnlyRecommendation(recommendation.type) &&
                               typeof recommendation.completionPercentage === 'number' && (
                                 <div className={styles.completionInfo}>
@@ -352,7 +352,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                               </div>
                             )}
 
-                            {/* Only show milestones for learning journeys */}
+                            {/* Only show milestones for learning paths */}
                             {!isDocsOnlyRecommendation(recommendation.type) &&
                               (recommendation.totalSteps ?? 0) > 0 &&
                               recommendation.milestones && (
@@ -506,7 +506,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                     </div>
                   </div>
 
-                  {/* Only show summary/milestones for learning journeys or docs with summaries */}
+                  {/* Only show summary/milestones for learning paths or docs with summaries */}
                   {(!isDocsOnlyRecommendation(recommendation.type) || recommendation.summary) && (
                     <>
                       <div className={styles.cardMetadata}>
@@ -537,7 +537,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             <span>{t('contextPanel.summary', 'Summary')}</span>
                             <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                           </button>
-                          {/* Show completion percentage for learning journeys */}
+                          {/* Show completion percentage for learning paths */}
                           {!isDocsOnlyRecommendation(recommendation.type) &&
                             typeof recommendation.completionPercentage === 'number' && (
                               <div className={styles.completionInfo}>
@@ -565,7 +565,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             </div>
                           )}
 
-                          {/* Only show milestones for learning journeys */}
+                          {/* Only show milestones for learning paths */}
                           {!isDocsOnlyRecommendation(recommendation.type) &&
                             (recommendation.totalSteps ?? 0) > 0 &&
                             recommendation.milestones && (
@@ -656,7 +656,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           </div>
         )}
 
-        {/* Other Documentation Section - all items beyond top 4, including learning journeys */}
+        {/* Other Documentation Section - all items beyond top 4, including learning paths */}
         {secondaryDocs.length > 0 && (
           <div className={styles.otherDocsSection} data-testid={testIds.contextPanel.otherDocsSection}>
             <div className={styles.otherDocsHeader}>
