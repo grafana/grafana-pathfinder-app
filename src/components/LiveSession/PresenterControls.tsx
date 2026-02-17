@@ -42,9 +42,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
     }
 
     if (!tutorialUrl || tutorialUrl.trim() === '') {
-      setError(
-        'Please open a tutorial before creating a session. Open a learning path or documentation page first.'
-      );
+      setError('Please open a tutorial before creating a session. Open a learning path or documentation page first.');
       return;
     }
 
