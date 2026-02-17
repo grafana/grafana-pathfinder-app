@@ -234,8 +234,6 @@ export interface UseLearningPathsReturn {
   streakInfo: StreakInfo;
   /** Loading state */
   isLoading: boolean;
-  /** Whether dynamic guide data is still being fetched for URL-based paths */
-  isDynamicLoading: boolean;
 }
 
 /**

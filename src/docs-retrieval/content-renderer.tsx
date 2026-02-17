@@ -322,10 +322,13 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       const detail = (event as CustomEvent).detail;
       const currentTabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
       if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
-        // Only trigger if the event is for the current page (contentKey should contain the tab URL or vice versa)
-        const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
-        const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
-        if (eventKeyNorm.startsWith(tabUrlNorm) || tabUrlNorm.startsWith(eventKeyNorm)) {
+        // Only trigger if the event is for the current page
+        // Normalize URLs by stripping trailing slashes and common file suffixes
+        const normalizeUrl = (url: string) =>
+          url.replace(/\/(content\.json|unstyled\.html)$/, '').replace(/\/+$/, '');
+        const eventKeyNorm = normalizeUrl(detail.contentKey);
+        const tabUrlNorm = normalizeUrl(currentTabUrl);
+        if (eventKeyNorm === tabUrlNorm) {
           guideCompleteCalledRef.current = true;
           onGuideCompleteRef.current?.();
         }
