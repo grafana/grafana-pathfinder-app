@@ -10,7 +10,6 @@
     "noRecommendations": "No recommendations available for your current context",
     "otherDocumentation": "Other documentation",
     "percentComplete": "{{percent}}% complete",
-    "recommendedLearning": "Recommended learning",
     "resume": "Resume",
     "start": "Start",
     "startInteractiveGuide": "Start interactive guide",
@@ -49,6 +48,17 @@
     "showMoreTabs_one": "Show {{count}} more tab",
     "showMoreTabs_other": "Show {{count}} more tabs",
     "switchToTab": "Switch to {{title}}"
+  },
+  "userProfileBar": {
+    "allComplete": "All paths complete!",
+    "allCompleteTooltip": "You've completed every learning path — nice work!",
+    "badgesTooltip": "{{- earned}} of {{- total}} badges earned",
+    "days": "days",
+    "guides": "guides",
+    "guidesTooltip": "{{- count}} learning guides completed",
+    "nextGuide": "Next: {{- title}}",
+    "nextTooltip": "Continue \"{{- pathTitle}}\" — {{- percent}}% done",
+    "streakTooltip": "{{- days}}-day learning streak — keep it going!"
   },
   "feedbackButton": {
     "ariaLabel": "Give feedback about this plugin",

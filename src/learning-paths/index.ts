@@ -8,6 +8,10 @@
 // Main hook
 export { useLearningPaths, useGuideCompletion } from './learning-paths.hook';
 
+// Profile summary hook
+export { useNextLearningAction, computeNextAction } from './useNextLearningAction';
+export type { LearningProfileSummary, NextLearningAction } from './useNextLearningAction';
+
 // Badge utilities
 export {
   BADGES,

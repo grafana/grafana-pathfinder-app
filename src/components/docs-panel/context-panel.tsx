@@ -1,12 +1,13 @@
 import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Badge, Alert, Button } from '@grafana/ui';
+import { Icon, useStyles2, Card, Alert, Button } from '@grafana/ui';
 import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
+import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
 import { locationService, config, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system
@@ -784,18 +785,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
       <div className={styles.content}>
         <div className={styles.contextSections}>
-          {/* Header Section - Always Visible */}
-          <div className={styles.sectionHeader}>
-            <div className={styles.titleContainer}>
-              <h2 className={styles.sectionTitle} data-testid={testIds.contextPanel.heading}>
-                {t('contextPanel.recommendedLearning', 'Recommended learning')}
-              </h2>
-              <Badge text="Beta" color="blue" className={styles.betaBadge} />
-            </div>
-            <p className={styles.sectionSubtitle}>
-              {t('contextPanel.subtitle', "Interactive guides and resources based on what you're working on.")}
-            </p>
-          </div>
+          {/* User profile bar with learning stats and next action */}
+          <UserProfileBar onOpenGuide={openLearningJourney} />
 
           {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}
           <RecommendationsSection

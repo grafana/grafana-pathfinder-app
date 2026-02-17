@@ -43,7 +43,10 @@ export const testIds = {
   // Context Panel - Recommendations and content
   contextPanel: {
     container: 'context-panel-container',
-    heading: 'context-panel-heading',
+    userProfileBar: 'user-profile-bar',
+    userProfileBarLoading: 'user-profile-bar-loading',
+    userProfileBarNextAction: 'user-profile-bar-next-action',
+    userProfileBarAllComplete: 'user-profile-bar-all-complete',
     recommendationsContainer: 'context-panel-recommendations-container',
     recommendationsGrid: 'context-panel-recommendations-grid',
     recommendationCard: (index: number) => `context-panel-recommendation-card-${index}`,

@@ -869,6 +869,19 @@ export const interactiveCompletionStorage = {
       console.warn('Failed to cleanup interactive completions:', error);
     }
   },
+
+  /**
+   * Clears ALL interactive completion data.
+   * Used by the "Reset progress" action to wipe completion percentages for every guide.
+   */
+  async clearAll(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.INTERACTIVE_COMPLETION);
+    } catch (error) {
+      console.warn('Failed to clear all interactive completions:', error);
+    }
+  },
 };
 
 /**
@@ -1069,6 +1082,30 @@ export const interactiveStepStorage = {
    * Results are cached per contentKey and invalidated by setCompleted, clear, and
    * clearAllForContent to avoid an O(n) localStorage scan on every step completion.
    */
+  /**
+   * Clear ALL interactive step and section collapse data across every content key.
+   * Used by the "Reset progress" action to ensure guides don't instantly re-complete.
+   * Also fully invalidates the in-memory completedCountCache.
+   */
+  async clearAll(): Promise<void> {
+    try {
+      completedCountCache.clear();
+      const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
+      const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
+
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+    } catch (error) {
+      console.warn('Failed to clear all interactive step data:', error);
+    }
+  },
+
   countAllCompleted(contentKey: string): number {
     const cached = completedCountCache.get(contentKey);
     if (cached !== undefined) {
