@@ -269,6 +269,14 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
         boxShadow: `0 0 8px ${isDark ? 'rgba(161, 136, 107, 0.3)' : 'rgba(139, 119, 101, 0.3)'}`,
       },
     }),
+    badgeEmoji: css({
+      fontSize: 40,
+      lineHeight: 1,
+    }),
+    badgeEmojiSmall: css({
+      fontSize: 24,
+      lineHeight: 1,
+    }),
     badgeIconWrapper: css({
       position: 'relative',
       flexShrink: 0,

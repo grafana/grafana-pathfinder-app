@@ -166,5 +166,6 @@ export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;
 export const DOCS_BASE_URL = DEFAULT_DOCS_BASE_URL;
 
 export enum ROUTES {
-  Context = '',
+  Home = '',
+  Context = 'context',
 }

@@ -23,11 +23,13 @@ There is no qualified or scoped reference syntax. The system that resolves a bar
 
 ### Global uniqueness
 
-Because IDs are bare and globally scoped, uniqueness must be enforced:
+Because IDs are bare and globally scoped, uniqueness is enforced at two levels:
 
-- **Build time:** `pathfinder-cli build-repository` detects duplicate IDs within a single repository
-- **Catalog aggregation:** The static catalog build (Phase 2) and registry service (Phase 6) detect ID collisions across repositories and report them as errors
-- **Convention:** IDs are descriptive slug strings (e.g., `"prometheus-grafana-101"`, `"infrastructure-alerting-find-data-to-alert"`). Journey step IDs are prefixed with the journey name by convention to avoid collisions, but this is a naming convention, not a structural requirement
+- **Within a repository:** `pathfinder-cli build-repository` detects duplicate IDs within a single repository and reports them as errors. Two packages in the same repository cannot share an ID.
+- **Across repositories:** Cross-repository ID collisions are resolved by **tiered clobber semantics**, not treated as hard errors. Repositories are ordered by authority tier — Grafana core is always the highest tier. When the same ID exists in multiple repositories, the highest-tier repository wins and the lower-tier package is silently shadowed. The `PackageResolver` implements this by searching repositories in tier order and returning the first match (see [package resolution](#package-resolution)).
+- **Convention:** IDs are descriptive slug strings (e.g., `"prometheus-grafana-101"`, `"infrastructure-alerting-find-data-to-alert"`). Journey step IDs are prefixed with the journey name by convention to avoid collisions, but this is a naming convention, not a structural requirement.
+
+**Shadowing contract:** Downstream repositories (partner content, team-specific guides) accept that Grafana core can shadow any of their IDs. If a downstream repo creates package X and Grafana core later introduces its own package X, the downstream content becomes unreachable through the resolver. This is the expected trade-off of a flat namespace with tiered authority — the same model used by DNS search domains and Python's `sys.path`. Content authors in downstream repositories should use distinctive, descriptive IDs to minimize collision risk.
 
 ### The `repository` field
 
@@ -121,11 +123,15 @@ This file is committed to the repository. A **pre-commit hook** regenerates it o
 
 Given a bare ID like `infrastructure-alerting-find-data-to-alert`, the system resolves it to a loadable content location through a tiered resolution strategy. The resolution tiers are tried in order:
 
-1. **Bundled content** — look up the ID in the bundled dependency graph shipped with the plugin. This covers baseline tutorials that work offline.
+1. **Bundled content** — look up the ID in the bundled `repository.json` shipped with the plugin. This covers baseline tutorials that work offline.
 2. **Static catalog** — look up the ID in a `packages-catalog.json` fetched from CDN at startup. This covers extended content beyond the bundled baseline.
-3. **Registry service** (Phase 6) — query a dynamic registry endpoint. This covers rapid content updates and multi-repo ecosystem scale.
+3. **Registry service** (Phase 7) — query a dynamic registry endpoint. This covers rapid content updates and multi-repo ecosystem scale.
 
 If tier 1 misses, try tier 2. If tier 2 misses, try tier 3 (when available). If all tiers miss, the package is unresolvable.
+
+This tier ordering intentionally implements **clobber semantics**: if the same package ID exists in multiple tiers, the highest-priority tier wins. Bundled content (tier 1) shadows static catalog content, which shadows registry content. This means Grafana core packages always take precedence over downstream repository packages, providing a clean authority hierarchy without requiring structural namespacing.
+
+The plugin runtime reads `repository.json` directly for resolution and dependency metadata. It does **not** consume the CLI-generated dependency graph — that artifact is for the recommender service, visualization, and lint tooling. This keeps client memory bounded as the content corpus grows.
 
 All tiers return the same resolution shape:
 
@@ -135,14 +141,25 @@ interface PackageResolution {
   contentUrl: string;
   manifestUrl: string;
   repository: string;
+  /** Populated when resolve options request content loading */
+  manifest?: ManifestJson;
+  /** Populated when resolve options request content loading */
+  content?: ContentJson;
+}
+
+interface ResolveOptions {
+  /** When true, fetch and populate manifest and content on the resolution result */
+  loadContent?: boolean;
 }
 
 interface PackageResolver {
-  resolve(packageId: string): Promise<PackageResolution>;
+  resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution>;
 }
 ```
 
-The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. The MVP implements static catalog resolution; the Phase 6 registry service implements the same interface with dynamic queries. The plugin can run both approaches simultaneously during transition, falling back gracefully if a tier is unavailable.
+The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. Resolution always returns the package ID and URLs. When `loadContent` is requested, the resolver also fetches and populates the `manifest` and `content` objects on the result. Callers that only need to know where a package is (e.g., catalog UI) skip the load; callers that need the actual package (e.g., the plugin renderer) pass the flag.
+
+Repositories are internal to the resolver — they are URLs that point to indexes, not first-class objects. The resolver knows its set of repository URLs, fetches their indexes, and builds a merged lookup. The MVP implements bundled resolution; the static catalog and Phase 7 registry service implement the same interface with remote sources. The plugin can run multiple resolution tiers simultaneously during transition, falling back gracefully if a tier is unavailable.
 
 ### Relationship to `index.json`
 

@@ -668,6 +668,37 @@ export const getBlockPreviewStyles = (theme: GrafanaTheme2) => ({
     margin: 0,
   }),
 
+  previewActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+  }),
+
+  resetButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    backgroundColor: 'transparent',
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease-in-out',
+
+    '&:hover': {
+      color: theme.colors.text.primary,
+      borderColor: theme.colors.border.medium,
+      backgroundColor: theme.colors.action.hover,
+    },
+
+    '&:focus-visible': {
+      outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: '2px',
+    },
+  }),
+
   previewBadge: css({
     marginLeft: theme.spacing(1),
   }),

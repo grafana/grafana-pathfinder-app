@@ -113,6 +113,10 @@ export const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
         color: isDark ? '#A1886B' : '#8B7765',
       },
     }),
+    badgeEmoji: css({
+      fontSize: 40,
+      lineHeight: 1,
+    }),
     iconGlow: css({
       position: 'absolute',
       inset: -6,

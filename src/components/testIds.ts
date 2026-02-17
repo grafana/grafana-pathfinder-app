@@ -34,6 +34,7 @@ export const testIds = {
     tabDropdown: 'docs-panel-tab-dropdown',
     tabDropdownItem: (tabId: string) => `docs-panel-tab-dropdown-item-${tabId}`,
     content: 'docs-panel-content',
+    myLearningTab: 'docs-panel-tab-my-learning',
     recommendationsTab: 'docs-panel-tab-recommendations',
     loadingState: 'docs-panel-loading-state',
     errorState: 'docs-panel-error-state',

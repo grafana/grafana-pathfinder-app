@@ -1,19 +1,19 @@
 import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge, Alert, Button } from '@grafana/ui';
 import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
-import { locationService, config } from '@grafana/runtime';
+import { locationService, config, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
-import { getConfigWithDefaults } from '../../constants';
+import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../testIds';
 
@@ -143,7 +143,7 @@ interface RecommendationsSectionProps {
   toggleOtherDocsExpansion: () => void;
 }
 
-const RecommendationsSection = memo(function RecommendationsSection({
+export const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
   featuredRecommendations,
   isLoadingRecommendations,
@@ -192,8 +192,22 @@ const RecommendationsSection = memo(function RecommendationsSection({
     return (
       <>
         <div className={styles.emptyContainer} data-testid={testIds.contextPanel.emptyState}>
-          <Icon name="info-circle" />
-          <span>No recommendations available for your current context.</span>
+          <Button
+            icon="book-open"
+            variant="secondary"
+            onClick={() => {
+              // Close the extension sidebar
+              const appEvents = getAppEvents();
+              appEvents.publish({
+                type: 'close-extension-sidebar',
+                payload: {},
+              });
+              // Navigate to the home page
+              locationService.push(PLUGIN_BASE_URL);
+            }}
+          >
+            {t('docsPanel.myLearning', 'My learning')}
+          </Button>
         </div>
         {showEnableRecommenderBanner && <EnableRecommenderBanner />}
       </>
