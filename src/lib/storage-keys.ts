@@ -23,6 +23,8 @@ export const StorageKeys = {
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
   FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
   FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
+  // Learning journey milestone completion (per-milestone tracking for URL-based paths)
+  MILESTONE_COMPLETION: 'grafana-pathfinder-app-milestone-completion',
   // Learning paths and badges progress
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
   // Guide responses from input blocks (user-entered values for variables)

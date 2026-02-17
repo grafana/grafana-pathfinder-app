@@ -9,9 +9,9 @@
 import { useMemo } from 'react';
 
 import { useLearningPaths } from './learning-paths.hook';
-import type { LearningPath, PathGuide, GuideMetadataEntry } from '../types/learning-paths.types';
+import type { LearningPath, PathGuide } from '../types/learning-paths.types';
 
-import pathsData from './paths.json';
+import { getPathsData } from './paths-data';
 
 // ============================================================================
 // TYPES
@@ -92,9 +92,15 @@ export function computeNextAction(deps: ComputeNextActionDeps): NextLearningActi
     return null;
   }
 
-  // Look up guide metadata for URL
-  const metadata = (pathsData.guideMetadata as Record<string, GuideMetadataEntry>)[currentGuide.id];
-  const guideUrl = metadata?.url ?? `bundled:${currentGuide.id}`;
+  // For URL-based paths, point to the path URL (opens as learning-journey)
+  // For static paths, look up individual guide metadata
+  let guideUrl: string;
+  if (targetPath.url) {
+    guideUrl = targetPath.url;
+  } else {
+    const metadata = getPathsData().guideMetadata[currentGuide.id];
+    guideUrl = metadata?.url ?? `bundled:${currentGuide.id}`;
+  }
 
   return {
     guideId: currentGuide.id,

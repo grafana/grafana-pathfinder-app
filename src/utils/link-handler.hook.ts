@@ -8,7 +8,7 @@ import {
   enrichWithStepContext,
   getContentTypeForAnalytics,
 } from '../lib/analytics';
-import { getJourneyProgress } from '../docs-retrieval/learning-journey-helpers';
+import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../docs-retrieval/learning-journey-helpers';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -507,6 +507,22 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             interaction_location: 'bottom_navigation',
             completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
           });
+
+          // Mark current milestone done if it has no interactive steps
+          if (activeTab?.content?.type === 'learning-journey' && activeTab?.currentUrl && activeTab?.baseUrl) {
+            const hasInteractiveSteps = (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
+            if (!hasInteractiveSteps) {
+              const slug = getMilestoneSlug(activeTab.currentUrl);
+              if (slug) {
+                markMilestoneDone(
+                  activeTab.baseUrl,
+                  slug,
+                  activeTab.content?.metadata?.learningJourney?.totalMilestones
+                );
+              }
+            }
+          }
+
           model.navigateToNextMilestone();
         }
       }

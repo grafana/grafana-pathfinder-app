@@ -37,5 +37,6 @@ export {
   getMilestoneProgress,
 } from './streak-tracker';
 
-// Path data
-export { default as pathsData } from './paths.json';
+// Path data (runtime platform selection)
+export { getPathsData } from './paths-data';
+export type { PathsDataSet } from './paths-data';

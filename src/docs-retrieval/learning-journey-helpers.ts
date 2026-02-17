@@ -10,7 +10,7 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from './content.types';
-import { journeyCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
 
 /**
  * Navigation helpers - these work with metadata, not DOM
@@ -372,4 +372,59 @@ export function getAllJourneyCompletions(): Record<string, number> {
 
 export async function getAllJourneyCompletionsAsync(): Promise<Record<string, number>> {
   return journeyCompletionStorage.getAll();
+}
+
+// ============================================================================
+// MILESTONE COMPLETION HELPERS
+// ============================================================================
+
+/**
+ * Extracts the milestone slug (guide ID) from a milestone URL.
+ * e.g. "https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/" -> "select-platform"
+ * e.g. "https://grafana.com/docs/.../select-platform/content.json" -> "select-platform"
+ */
+export function getMilestoneSlug(milestoneUrl: string): string {
+  // Strip content.json or unstyled.html suffixes added during content fetching
+  const cleanUrl = milestoneUrl.replace(/\/(content\.json|unstyled\.html)$/, '');
+  const segments = cleanUrl.replace(/\/+$/, '').split('/');
+  return segments[segments.length - 1] || '';
+}
+
+/**
+ * Marks a learning journey milestone as completed.
+ * - Persists the milestone slug in milestoneCompletionStorage
+ * - Calls learningProgressStorage.markGuideCompleted to bridge to the learning paths badge/progress system
+ * - When totalMilestones is provided and all milestones are done, awards the path badge
+ *   (URL-based paths have guides: [] in static data so the normal badge flow cannot detect completion)
+ */
+export async function markMilestoneDone(
+  journeyBaseUrl: string,
+  milestoneSlug: string,
+  totalMilestones?: number
+): Promise<void> {
+  if (!milestoneSlug) {
+    return;
+  }
+  await milestoneCompletionStorage.markCompleted(journeyBaseUrl, milestoneSlug);
+  await learningProgressStorage.markGuideCompleted(milestoneSlug);
+
+  // Award the path badge when all milestones in the journey are complete
+  if (totalMilestones && totalMilestones > 0) {
+    const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
+    if (completed.size >= totalMilestones) {
+      const { getPathsData } = await import('../learning-paths/paths-data');
+      const normalizedBase = journeyBaseUrl.replace(/\/+$/, '');
+      const path = getPathsData().paths.find((p) => p.url && normalizedBase.startsWith(p.url.replace(/\/+$/, '')));
+      if (path?.badgeId) {
+        await learningProgressStorage.awardBadge(path.badgeId);
+      }
+    }
+  }
+}
+
+/**
+ * Checks if a milestone has already been completed.
+ */
+export async function isMilestoneCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
+  return milestoneCompletionStorage.isCompleted(journeyBaseUrl, milestoneSlug);
 }
