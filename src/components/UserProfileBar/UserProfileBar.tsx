@@ -15,10 +15,11 @@ import { getUserProfileBarStyles } from './UserProfileBar.styles';
 import { testIds } from '../testIds';
 
 interface UserProfileBarProps {
-  onOpenGuide: (url: string, title: string) => void;
+  onOpenLearningJourney: (url: string, title: string) => void;
+  onOpenDocsPage: (url: string, title: string) => void;
 }
 
-export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
+export function UserProfileBar({ onOpenLearningJourney, onOpenDocsPage }: UserProfileBarProps) {
   const styles = useStyles2(getUserProfileBarStyles);
   const { badgesEarned, badgesTotal, guidesCompleted, streakDays, nextAction, isLoading } = useNextLearningAction();
 
@@ -105,7 +106,15 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
         >
           <button
             className={styles.nextAction}
-            onClick={() => onOpenGuide(nextAction.guideUrl, nextAction.guideTitle)}
+            onClick={() => {
+              // Use openDocsPage for bundled: URLs (interactive content),
+              // otherwise use openLearningJourney for learning journey content
+              if (nextAction.guideUrl.startsWith('bundled:')) {
+                onOpenDocsPage(nextAction.guideUrl, nextAction.guideTitle);
+              } else {
+                onOpenLearningJourney(nextAction.guideUrl, nextAction.guideTitle);
+              }
+            }}
             data-testid={testIds.contextPanel.userProfileBarNextAction}
           >
             <Icon name="arrow-right" size="sm" />

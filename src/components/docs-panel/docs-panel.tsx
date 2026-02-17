@@ -847,6 +847,26 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     [model]
   );
 
+  // Listen for progress cleared events to refresh open guides when reset from MyLearningTab
+  React.useEffect(() => {
+    const handleProgressCleared = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      // '*' means all progress was cleared, otherwise check if it matches current tab
+      if (detail?.contentKey === '*' || detail?.contentKey === progressKey) {
+        setHasInteractiveProgress(false);
+        // Reload active tab to refresh interactive guide state
+        if (activeTab) {
+          reloadActiveTab(activeTab);
+        }
+      }
+    };
+
+    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
+    return () => {
+      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
+    };
+  }, [progressKey, activeTab, reloadActiveTab]);
+
   // Expose current active tab id/url globally for interactive persistence keys
   useEffect(() => {
     try {

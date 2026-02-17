@@ -786,7 +786,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
       <div className={styles.content}>
         <div className={styles.contextSections}>
           {/* User profile bar with learning stats and next action */}
-          <UserProfileBar onOpenGuide={openLearningJourney} />
+          <UserProfileBar onOpenLearningJourney={openLearningJourney} onOpenDocsPage={openDocsPage} />
 
           {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}
           <RecommendationsSection
