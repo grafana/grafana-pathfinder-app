@@ -9,7 +9,7 @@ import { DocsPluginConfig } from '../constants';
 import { ContextPanel } from '../components/docs-panel/context-panel';
 
 /**
- * Learning Journey or Documentation Tab
+ * Learning Path or Documentation Tab
  * Represents an open tab in the docs panel
  */
 export interface LearningJourneyTab {

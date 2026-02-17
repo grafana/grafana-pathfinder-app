@@ -32,7 +32,7 @@ const isRetryableError = (error: string): boolean => {
  */
 export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, contentType, className, onRetry }) => {
   const isRetryable = isRetryableError(error);
-  const contentTypeLabel = contentType === 'documentation' ? 'documentation' : 'learning journey';
+  const contentTypeLabel = contentType === 'documentation' ? 'documentation' : 'learning path';
 
   return (
     <div className={className} data-testid={testIds.docsPanel.errorState}>

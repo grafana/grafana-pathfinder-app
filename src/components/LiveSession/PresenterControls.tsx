@@ -42,9 +42,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
     }
 
     if (!tutorialUrl || tutorialUrl.trim() === '') {
-      setError(
-        'Please open a tutorial before creating a session. Open a learning journey or documentation page first.'
-      );
+      setError('Please open a tutorial before creating a session. Open a learning path or documentation page first.');
       return;
     }
 
@@ -221,7 +219,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
           ) : (
             <>
               <Alert severity="warning" title="" style={{ marginTop: '8px', marginBottom: '8px' }}>
-                No tutorial open. Please open a learning journey or docs page in a tab first.
+                No tutorial open. Please open a learning path or docs page in a tab first.
               </Alert>
             </>
           )}

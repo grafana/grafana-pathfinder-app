@@ -88,7 +88,7 @@ describe('null content handling for learning journeys', () => {
     '<html><head><title>Milestone 1: Getting Started</title></head><body><h1>Milestone 1</h1><p>Learn the basics</p></body></html>';
   const styledHtml =
     "<html><head><title>Not this page</title></head><body><h1>It has styling!</h1><p>We don't want this</p></body></html>";
-  const journeyUrl = 'https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/';
+  const journeyUrl = 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-1/';
 
   it('should fallback to unstyled.html when learning journey milestone content.json returns null', async () => {
     // Mock fetch to handle learning journey milestone requests:
@@ -156,7 +156,7 @@ describe('null content handling for learning journeys', () => {
         { type: 'text', content: 'In this guide, you will learn...' },
       ],
     };
-    const journeyUrl = 'https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/';
+    const journeyUrl = 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-1/';
 
     // Mock fetch to return valid JSON for learning journey milestone
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
@@ -195,7 +195,7 @@ describe('null content handling for learning journeys', () => {
   });
 
   it('should return error when learning journey milestone has null content.json and no unstyled.html', async () => {
-    const milestoneUrl = 'https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-2/';
+    const milestoneUrl = 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-2/';
 
     const jsonHeaders = new Headers();
     jsonHeaders.set('Content-Type', 'application/json');
@@ -208,7 +208,7 @@ describe('null content handling for learning journeys', () => {
       .mockResolvedValueOnce({
         ok: true,
         text: async () => 'null',
-        url: 'https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-2/content.json',
+        url: 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-2/content.json',
         headers: jsonHeaders,
       })
       .mockResolvedValueOnce({

@@ -1048,7 +1048,7 @@ export class ContextService {
     return recommendations.filter((rec) => {
       const url = rec.url;
 
-      // Filter out generic learning journeys index pages
+      // Filter out generic learning paths index pages
       if (
         url === 'https://grafana.com/docs/learning-journeys' ||
         url === 'https://grafana.com/docs/learning-journeys/' ||

@@ -13,13 +13,21 @@ import { t } from '@grafana/i18n';
  * @returns The translated title or the original if no translation exists
  */
 export const getTranslatedTitle = (title: string): string => {
-  // Handle 'Learning journey' (with lowercase 'j') from tab creation
-  if (title === 'Learning journey') {
-    return t('docsPanel.learningJourney', 'Learning journey');
+  // Handle 'Learning path' (with lowercase 'p') from tab creation
+  if (title === 'Learning path') {
+    return t('docsPanel.learningJourney', 'Learning path');
   }
-  // Handle 'Learning Journey' (with uppercase 'J') from older data or translations
+  // Handle 'Learning Path' (with uppercase 'P') from older data or translations
+  if (title === 'Learning Path') {
+    return t('docsPanel.learningJourney', 'Learning Path');
+  }
+  // Handle old 'Learning journey' (with lowercase 'j') for backwards compatibility
+  if (title === 'Learning journey') {
+    return t('docsPanel.learningJourney', 'Learning path');
+  }
+  // Handle old 'Learning Journey' (with uppercase 'J') for backwards compatibility
   if (title === 'Learning Journey') {
-    return t('docsPanel.learningJourney', 'Learning Journey');
+    return t('docsPanel.learningJourney', 'Learning Path');
   }
   if (title === 'Documentation') {
     return t('docsPanel.documentation', 'Documentation');

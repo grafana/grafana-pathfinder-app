@@ -18,7 +18,7 @@
     },
     {
       "title": "Get started with Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/grafana-cloud-onboarding/",
+      "url": "https://grafana.com/docs/learning-paths/grafana-cloud-onboarding/",
       "description": "",
       "type": "learning-journey",
       "match": {

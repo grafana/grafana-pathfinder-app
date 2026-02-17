@@ -192,7 +192,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               urlObj?.pathname.startsWith('/docs/learning-journeys/') ||
               urlObj?.pathname.startsWith('/docs/learning-paths/');
 
-            // Determine if it's a learning journey or regular docs/tutorials
+            // Determine if it's a learning path or regular docs/tutorials
             if (isLearningJourney) {
               model.openLearningJourney(fullUrl, linkText);
             } else {

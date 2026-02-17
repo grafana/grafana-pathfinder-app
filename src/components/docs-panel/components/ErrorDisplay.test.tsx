@@ -44,7 +44,7 @@ describe('ErrorDisplay', () => {
     it('shows appropriate title for learning-journey content type', () => {
       render(<ErrorDisplay error="Error" contentType="learning-journey" />);
 
-      expect(screen.getByText('Unable to load learning journey')).toBeInTheDocument();
+      expect(screen.getByText('Unable to load learning path')).toBeInTheDocument();
     });
   });
 

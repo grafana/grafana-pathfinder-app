@@ -19,7 +19,7 @@ export const TERMS_AND_CONDITIONS_CONTENT = `
 
 <h3>How Grafana uses your data</h3>
 <ul>
-<li><strong>Personalized recommendations</strong> - to provide documentation and learning journeys that are contextually relevant</li>
+<li><strong>Personalized recommendations</strong> - to provide documentation and learning paths that are contextually relevant</li>
 <li><strong>Service improvement</strong> - to enhance the quality and accuracy of recommendations</li>
 <li><strong>Analytics</strong> - to evaluate which recommendations are most useful to users</li>
 </ul>

@@ -724,7 +724,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
 
           // Determine if this URL type supports content.json
-          // Learning journeys and interactive learning URLs have content.json
+          // Learning paths and interactive learning URLs have content.json
           // Regular docs pages only have unstyled.html
           const urlPath = new URL(finalUrl).pathname;
           const hasContentJson =
