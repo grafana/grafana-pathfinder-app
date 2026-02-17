@@ -333,7 +333,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       await interactiveStepStorage.clearAll();
       await interactiveCompletionStorage.clearAll();
 
-      // Notify any open guide tabs to refresh their state
+      // Notify the context engine to refresh recommendations.
+      // Note: already-open interactive guide tabs may still show stale completed
+      // steps until the user closes and reopens them, because individual tab
+      // components don't re-read from storage on this event. Acceptable here
+      // since reset-progress is a dev/QA tool, not a primary user flow.
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
           detail: { contentKey: '*' },
