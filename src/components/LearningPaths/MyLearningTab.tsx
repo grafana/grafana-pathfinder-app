@@ -15,7 +15,12 @@ import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { learningProgressStorage, journeyCompletionStorage } from '../../lib/user-storage';
+import {
+  learningProgressStorage,
+  journeyCompletionStorage,
+  interactiveStepStorage,
+  interactiveCompletionStorage,
+} from '../../lib/user-storage';
 import type { EarnedBadge, GuideMetadataEntry } from '../../types';
 
 // Import paths data for guide metadata
@@ -316,11 +321,24 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
       await learningProgressStorage.clear();
-      // Also clear journey completion percentages
+
+      // Clear journey completion percentages
       const completions = await journeyCompletionStorage.getAll();
       for (const url of Object.keys(completions)) {
         await journeyCompletionStorage.clear(url);
       }
+
+      // Clear all interactive guide step and completion state
+      // This prevents guides from instantly re-completing when reopened
+      await interactiveStepStorage.clearAll();
+      await interactiveCompletionStorage.clearAll();
+
+      // Notify any open guide tabs to refresh their state
+      window.dispatchEvent(
+        new CustomEvent('interactive-progress-cleared', {
+          detail: { contentKey: '*' },
+        })
+      );
     }
   }, []);
 
