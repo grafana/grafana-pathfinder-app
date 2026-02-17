@@ -5,14 +5,15 @@
  * Uses the same styling as the main docs panel for consistent appearance.
  */
 
-import React, { useMemo } from 'react';
-import { useStyles2, Alert, Badge } from '@grafana/ui';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { useStyles2, Alert, Badge, Icon } from '@grafana/ui';
 import { getBlockPreviewStyles } from './block-editor.styles';
 import { parseJsonGuide } from '../../docs-retrieval/json-parser';
 import { ContentRenderer } from '../../docs-retrieval/content-renderer';
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { interactiveStepStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import type { JsonGuide } from './types';
 import type { RawContent } from '../../docs-retrieval/content.types';
 
@@ -30,6 +31,58 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
   const journeyStyles = useStyles2(journeyContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
+
+  // State for reset functionality
+  const [hasInteractiveProgress, setHasInteractiveProgress] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+
+  // Progress key matches the URL used in content rendering
+  const progressKey = `block-editor://preview/${guide.id}`;
+
+  // Check for interactive progress on mount and when guide changes
+  useEffect(() => {
+    interactiveStepStorage.hasProgress(progressKey).then(setHasInteractiveProgress);
+  }, [progressKey]);
+
+  // Listen for progress saved events to update reset button reactively
+  useEffect(() => {
+    const handleProgressSaved = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      // Only update if this event is for the current guide's content
+      if (detail?.contentKey === progressKey && detail?.hasProgress) {
+        setHasInteractiveProgress(true);
+      }
+    };
+
+    window.addEventListener('interactive-progress-saved', handleProgressSaved);
+    return () => {
+      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
+    };
+  }, [progressKey]);
+
+  // Handle reset guide progress
+  const handleReset = useCallback(async () => {
+    try {
+      // Clear storage
+      await interactiveStepStorage.clearAllForContent(progressKey);
+      await interactiveCompletionStorage.clear(progressKey);
+
+      // Update local state
+      setHasInteractiveProgress(false);
+
+      // Dispatch cross-component event (notifies recommendations panel)
+      window.dispatchEvent(
+        new CustomEvent('interactive-progress-cleared', {
+          detail: { contentKey: progressKey },
+        })
+      );
+
+      // Increment reset key to force ContentRenderer remount
+      setResetKey((prev) => prev + 1);
+    } catch (error) {
+      console.error('[BlockPreview] Failed to reset guide progress:', error);
+    }
+  }, [progressKey]);
 
   // Validate the guide and prepare for rendering
   const { content, errors, warnings, isEmpty } = useMemo(() => {
@@ -97,7 +150,9 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
       <div className={styles.container}>
         <div className={styles.previewHeader}>
           <h3 className={styles.previewTitle}>{guide.title}</h3>
-          <Badge text="Preview" color="blue" className={styles.previewBadge} />
+          <div className={styles.previewActions}>
+            <Badge text="Preview" color="blue" className={styles.previewBadge} />
+          </div>
         </div>
         <Alert title="Empty Guide" severity="info">
           Add blocks to see a preview of your guide.
@@ -110,7 +165,20 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
     <div className={styles.container}>
       <div className={styles.previewHeader}>
         <h3 className={styles.previewTitle}>{guide.title}</h3>
-        <Badge text="Preview" color="blue" className={styles.previewBadge} />
+        <div className={styles.previewActions}>
+          {hasInteractiveProgress && (
+            <button
+              className={styles.resetButton}
+              onClick={handleReset}
+              aria-label="Reset guide"
+              title="Resets all interactive steps"
+            >
+              <Icon name="history-alt" size="sm" />
+              <span>Reset guide</span>
+            </button>
+          )}
+          <Badge text="Preview" color="blue" className={styles.previewBadge} />
+        </div>
       </div>
 
       {/* Show warnings if any */}
@@ -125,7 +193,12 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
       )}
 
       {/* Render the content using existing pipeline with proper styling */}
-      <ContentRenderer content={content} className={`${journeyStyles} ${interactiveStyles} ${prismStyles}`} />
+      {/* key={resetKey} forces remount when reset is triggered, resetting all interactive component state */}
+      <ContentRenderer
+        key={resetKey}
+        content={content}
+        className={`${journeyStyles} ${interactiveStyles} ${prismStyles}`}
+      />
     </div>
   );
 }
