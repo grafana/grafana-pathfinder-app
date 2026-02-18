@@ -8,20 +8,22 @@
  */
 
 import { BADGES } from './badges';
-import pathsData from './paths.json';
-import ljPathsData from './lj-temp-metadata.json';
-import type { LearningPath } from '../types/learning-paths.types';
+import ossPathsData from './paths.json';
+import cloudPathsData from './paths-cloud.json';
+import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 
-// Merge paths from both files (lj-temp-metadata.json contains learning journey paths)
-// Deduplicate by path ID, preferring paths.json entries over lj-temp-metadata.json
-const allPaths = [...(pathsData.paths as LearningPath[]), ...(ljPathsData.paths as LearningPath[])];
+// Merge OSS + cloud paths (cloud adds URL-based paths, OSS has static bundled paths)
+const allPaths = [...(ossPathsData.paths as LearningPath[]), ...(cloudPathsData.paths as LearningPath[])];
+// Deduplicate by path ID (cloud overrides OSS if same ID exists)
 const pathsMap = new Map<string, LearningPath>();
 for (const path of allPaths) {
-  if (!pathsMap.has(path.id)) {
-    pathsMap.set(path.id, path);
-  }
+  pathsMap.set(path.id, path);
 }
 const paths = Array.from(pathsMap.values());
+const allGuideMetadata = {
+  ...ossPathsData.guideMetadata,
+  ...cloudPathsData.guideMetadata,
+} as Record<string, GuideMetadataEntry>;
 
 describe('paths.json / badges.ts data integrity', () => {
   it('every path badgeId has a matching BADGES entry with a path-completed trigger', () => {
@@ -42,25 +44,29 @@ describe('paths.json / badges.ts data integrity', () => {
     }
   });
 
-  it('every guide in a path has a guideMetadata entry', () => {
-    // Merge guideMetadata from both files
-    const allMetadata = { ...pathsData.guideMetadata, ...ljPathsData.guideMetadata };
-    const metadataKeys = Object.keys(allMetadata);
+  it('every guide in a static path has a guideMetadata entry', () => {
+    const metadataKeys = Object.keys(allGuideMetadata);
     for (const path of paths) {
+      // URL-based paths have empty guides (fetched dynamically at runtime)
+      if (path.url) {
+        continue;
+      }
       for (const guideId of path.guides) {
         expect(metadataKeys).toContain(guideId);
       }
     }
   });
 
-  it('remote guides have a valid URL in guideMetadata', () => {
-    // Merge guideMetadata from both files
-    const metadata = { ...pathsData.guideMetadata, ...ljPathsData.guideMetadata } as Record<
-      string,
-      { title: string; estimatedMinutes: number; url?: string }
-    >;
+  it('URL-based paths have a valid url and empty guides', () => {
+    const urlPaths = paths.filter((p) => p.url);
+    for (const path of urlPaths) {
+      expect(path.url).toMatch(/^https:\/\//);
+      expect(path.guides).toEqual([]);
+    }
+  });
 
-    for (const [, entry] of Object.entries(metadata)) {
+  it('remote guides have a valid URL in guideMetadata', () => {
+    for (const [, entry] of Object.entries(allGuideMetadata)) {
       if (entry.url) {
         expect(entry.url).toMatch(/^https:\/\//);
         expect(entry.url).toContain('interactive-learning.grafana.net');
@@ -68,14 +74,28 @@ describe('paths.json / badges.ts data integrity', () => {
     }
   });
 
+  it('cloud file adds paths not in the OSS file', () => {
+    const ossPathIds = new Set((ossPathsData.paths as LearningPath[]).map((p) => p.id));
+    const cloudOnlyPaths = (cloudPathsData.paths as LearningPath[]).filter((p) => !ossPathIds.has(p.id));
+    expect(cloudOnlyPaths.length).toBeGreaterThan(0);
+  });
+
+  it('no path ID collisions between OSS and cloud files', () => {
+    const ossPathIds = new Set((ossPathsData.paths as LearningPath[]).map((p) => p.id));
+    const cloudPathIds = new Set((cloudPathsData.paths as LearningPath[]).map((p) => p.id));
+    for (const id of ossPathIds) {
+      expect(cloudPathIds.has(id)).toBe(false);
+    }
+  });
+
   it('learning journey badges have an emoji field', () => {
-    // Badges with path-completed triggers on cloud paths should have emoji
-    const cloudPathIds = new Set(paths.filter((p) => p.targetPlatform === 'cloud').map((p) => p.id));
-    const cloudPathBadges = BADGES.filter(
+    // Badges for URL-based (cloud) paths should have emoji
+    const cloudPathIds = new Set((cloudPathsData.paths as LearningPath[]).map((p) => p.id));
+    const cloudBadges = BADGES.filter(
       (b) => b.trigger.type === 'path-completed' && cloudPathIds.has((b.trigger as { pathId: string }).pathId)
     );
 
-    for (const badge of cloudPathBadges) {
+    for (const badge of cloudBadges) {
       expect(badge.emoji).toBeDefined();
       expect(badge.emoji!.length).toBeGreaterThan(0);
     }

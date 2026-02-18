@@ -38,6 +38,7 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
     getPathGuides,
     getPathProgress,
     isPathCompleted,
+    resetPath,
     dismissCelebration,
     streakInfo,
     isLoading,
@@ -45,10 +46,20 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
 
   // Handle opening a guide
   const handleContinue = useCallback(
-    (guideId: string) => {
+    (guideId: string, pathId: string) => {
+      // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
+      const parentPath = paths.find((p) => p.id === pathId);
+
+      // URL-based path — open the path's base URL
+      if (parentPath?.url) {
+        onOpenGuide(parentPath.url);
+        return;
+      }
+
+      // Static guide — open by guideId
       onOpenGuide(guideId);
     },
-    [onOpenGuide]
+    [onOpenGuide, paths]
   );
 
   // Handle badge celebration dismissal
@@ -103,6 +114,7 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
             progress={getPathProgress(path.id)}
             isCompleted={isPathCompleted(path.id)}
             onContinue={handleContinue}
+            onReset={resetPath}
           />
         ))}
       </div>

@@ -37,6 +37,14 @@ export const BADGES: Badge[] = [
     trigger: { type: 'path-completed', pathId: 'observability-basics' },
   },
   {
+    id: 'cloud-explorer',
+    title: 'Cloud Explorer',
+    description: 'Complete the "Getting started with Grafana Cloud" learning path',
+    icon: 'cloud',
+    emoji: '☁️',
+    trigger: { type: 'path-completed', pathId: 'cloud-getting-started' },
+  },
+  {
     id: 'consistent-learner',
     title: 'Consistent Learner',
     description: 'Maintain a 3-day learning streak',
@@ -53,30 +61,6 @@ export const BADGES: Badge[] = [
 
   // ---- Learning journey path-completion badges ----
   {
-    id: 'flame-keeper',
-    title: 'Flame Keeper',
-    description: 'Tamed the fire of Prometheus and connected it to Grafana',
-    icon: 'database',
-    emoji: '🔥',
-    trigger: { type: 'path-completed', pathId: 'prometheus-ds' },
-  },
-  {
-    id: 'dolphin-rider',
-    title: 'Dolphin Rider',
-    description: 'Rode the MySQL dolphin all the way to a working data source',
-    icon: 'database',
-    emoji: '🐬',
-    trigger: { type: 'path-completed', pathId: 'mysql-ds' },
-  },
-  {
-    id: 'octocat-ally',
-    title: 'Octocat Ally',
-    description: 'Befriended the Octocat and piped GitHub data into Grafana',
-    icon: 'link',
-    emoji: '🐙',
-    trigger: { type: 'path-completed', pathId: 'github-ds' },
-  },
-  {
     id: 'penguin-wrangler',
     title: 'Penguin Wrangler',
     description: 'Wrangled a Linux server into full observability with Alloy',
@@ -85,20 +69,12 @@ export const BADGES: Badge[] = [
     trigger: { type: 'path-completed', pathId: 'linux-server-integration' },
   },
   {
-    id: 'apple-harvester',
-    title: 'Apple Harvester',
-    description: 'Harvested telemetry from the Apple orchard with Alloy',
-    icon: 'monitor',
-    emoji: '🍏',
-    trigger: { type: 'path-completed', pathId: 'macos-integration' },
-  },
-  {
-    id: 'dolphin-tamer',
-    title: 'Dolphin Tamer',
-    description: 'Tamed the full MySQL integration pipeline with Alloy',
-    icon: 'plug',
-    emoji: '🐬',
-    trigger: { type: 'path-completed', pathId: 'mysql-integration' },
+    id: 'log-visualizer',
+    title: 'Log Visualizer',
+    description: 'Built a logs dashboard that tells the story behind the data',
+    icon: 'dashboard',
+    emoji: '📊',
+    trigger: { type: 'path-completed', pathId: 'visualization-logs' },
   },
   {
     id: 'metric-miner',
@@ -117,28 +93,12 @@ export const BADGES: Badge[] = [
     trigger: { type: 'path-completed', pathId: 'drilldown-logs' },
   },
   {
-    id: 'trace-archaeologist',
-    title: 'Trace Archaeologist',
-    description: 'Unearthed hidden performance secrets from distributed traces',
-    icon: 'compass',
-    emoji: '🦴',
-    trigger: { type: 'path-completed', pathId: 'drilldown-traces' },
-  },
-  {
     id: 'dashboard-artisan',
     title: 'Dashboard Artisan',
     description: 'Crafted a metrics dashboard with the skill of a Renaissance painter',
     icon: 'dashboard',
     emoji: '🎨',
     trigger: { type: 'path-completed', pathId: 'visualization-metrics' },
-  },
-  {
-    id: 'trace-cartographer',
-    title: 'Trace Cartographer',
-    description: 'Mapped the invisible paths of distributed traces onto a dashboard',
-    icon: 'palette',
-    emoji: '🗺️',
-    trigger: { type: 'path-completed', pathId: 'visualization-traces' },
   },
   {
     id: 'alert-guardian',
@@ -199,7 +159,10 @@ function checkTrigger(trigger: BadgeTrigger, progress: LearningProgress, paths: 
  */
 function isPathCompleted(pathId: string, progress: LearningProgress, paths: LearningPath[]): boolean {
   const path = paths.find((p) => p.id === pathId);
-  if (!path) {
+  if (!path || path.guides.length === 0) {
+    // URL-based paths have guides: [] in static data (fetched dynamically).
+    // [].every() returns true (vacuous truth), which would award badges immediately.
+    // Badge awarding for URL-based paths is handled in markMilestoneDone instead.
     return false;
   }
 

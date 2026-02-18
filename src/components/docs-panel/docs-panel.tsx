@@ -1,7 +1,7 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 
@@ -49,7 +49,13 @@ import {
 } from '../../docs-retrieval';
 
 // Import learning journey helpers
-import { getJourneyProgress, setJourneyCompletionPercentage } from '../../docs-retrieval/learning-journey-helpers';
+import {
+  getJourneyProgress,
+  setJourneyCompletionPercentage,
+  getMilestoneSlug,
+  markMilestoneDone,
+  isLastMilestone,
+} from '../../docs-retrieval/learning-journey-helpers';
 
 import { ContextPanel } from './context-panel';
 import { BadgeUnlockedToast } from '../LearningPaths';
@@ -847,8 +853,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     [model]
   );
 
-  // Expose current active tab id/url globally for interactive persistence keys
-  useEffect(() => {
+  // Expose current active tab id/url globally for interactive persistence keys.
+  // MUST be useLayoutEffect so the globals are set before children's useEffect
+  // (progress restoration) runs. useEffect runs bottom-up (children first),
+  // so a parent useEffect would still hold the PREVIOUS milestone's URL when
+  // InteractiveSection restores progress. useLayoutEffect fires synchronously
+  // before any passive effects, guaranteeing the correct URL is available.
+  useLayoutEffect(() => {
     try {
       (window as any).__DocsPluginActiveTabId = activeTab?.id || '';
       (window as any).__DocsPluginActiveTabUrl = activeTab?.currentUrl || activeTab?.baseUrl || '';
@@ -856,6 +867,37 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       // no-op
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
+
+  // Auto-complete last milestone on arrival if it has no interactive steps.
+  // The last milestone has no "Next" button, so there is no click-based trigger
+  // to mark it as done. We wait for the DOM to render, then check for interactive
+  // step elements. If none are found, we mark the milestone complete immediately.
+  useEffect(() => {
+    if (!stableContent || stableContent.type !== 'learning-journey' || !activeTab?.currentUrl || !activeTab?.baseUrl) {
+      return;
+    }
+
+    if (!isLastMilestone(stableContent)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const container = contentRef?.current;
+      if (!container) {
+        return;
+      }
+
+      const hasInteractiveSteps = container.querySelectorAll('[data-step-id]').length > 0;
+      if (!hasInteractiveSteps) {
+        const slug = getMilestoneSlug(activeTab.currentUrl!);
+        if (slug) {
+          void markMilestoneDone(activeTab.baseUrl!, slug, stableContent.metadata?.learningJourney?.totalMilestones);
+        }
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [stableContent, activeTab?.currentUrl, activeTab?.baseUrl, contentRef]);
 
   // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });
@@ -1572,6 +1614,26 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                               completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
                             });
 
+                            // Mark current milestone done if it has no interactive steps
+                            if (
+                              activeTab.content?.type === 'learning-journey' &&
+                              activeTab.currentUrl &&
+                              activeTab.baseUrl
+                            ) {
+                              const hasInteractiveSteps =
+                                (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
+                              if (!hasInteractiveSteps) {
+                                const slug = getMilestoneSlug(activeTab.currentUrl);
+                                if (slug) {
+                                  void markMilestoneDone(
+                                    activeTab.baseUrl,
+                                    slug,
+                                    activeTab.content?.metadata?.learningJourney?.totalMilestones
+                                  );
+                                }
+                              }
+                            }
+
                             model.navigateToNextMilestone();
                           }}
                           tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
@@ -1647,6 +1709,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 >
                   {stableContent && (
                     <ContentRenderer
+                      key={activeTab?.currentUrl || stableContent.url}
                       content={stableContent}
                       containerRef={contentRef}
                       className={`${
@@ -1657,10 +1720,24 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         restoreScrollPosition();
                       }}
                       onGuideComplete={() => {
-                        // Mark bundled guides as 100% complete when all interactive sections finish
                         const baseUrl = activeTab?.baseUrl || stableContent.url;
+
+                        // Mark bundled guides as 100% complete when all interactive steps finish
                         if (baseUrl?.startsWith('bundled:')) {
                           setJourneyCompletionPercentage(baseUrl, 100);
+                        }
+
+                        // Mark learning journey milestones as done when all interactive steps finish
+                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
+                          const slug = getMilestoneSlug(activeTab.currentUrl);
+                          const journeyBase = activeTab.baseUrl;
+                          if (slug && journeyBase) {
+                            markMilestoneDone(
+                              journeyBase,
+                              slug,
+                              stableContent.metadata?.learningJourney?.totalMilestones
+                            );
+                          }
                         }
                       }}
                     />

@@ -21,10 +21,10 @@ import {
   interactiveStepStorage,
   interactiveCompletionStorage,
 } from '../../lib/user-storage';
-import type { EarnedBadge, GuideMetadataEntry } from '../../types';
+import type { EarnedBadge } from '../../types';
 
-// Import paths data for guide metadata
-import pathsData from '../../learning-paths/paths.json';
+// Import paths data for guide metadata (runtime platform selection)
+import { getPathsData } from '../../learning-paths/paths-data';
 
 // Badge utilities extracted for testability
 import { getBadgeProgress, getBadgeRequirementText, type BadgeProgressInfo } from './badge-utils';
@@ -216,8 +216,17 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
   const [hideCompletedPaths, setHideCompletedPaths] = useState(false);
 
-  const { paths, badgesWithStatus, progress, getPathGuides, getPathProgress, isPathCompleted, streakInfo, isLoading } =
-    useLearningPaths();
+  const {
+    paths,
+    badgesWithStatus,
+    progress,
+    getPathGuides,
+    getPathProgress,
+    isPathCompleted,
+    resetPath,
+    streakInfo,
+    isLoading,
+  } = useLearningPaths();
 
   // Sort and filter paths: in-progress first, then not-started, then completed
   const sortedPaths = useMemo(() => {
@@ -284,8 +293,25 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   // Handle opening a guide
   const handleOpenGuide = useCallback(
-    (guideId: string) => {
-      const guideMetadata = (pathsData.guideMetadata as Record<string, GuideMetadataEntry>)[guideId];
+    (guideId: string, pathId: string) => {
+      // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
+      const parentPath = paths.find((p) => p.id === pathId);
+
+      // URL-based path — open as learning journey
+      if (parentPath?.url) {
+        reportAppInteraction(UserInteraction.OpenResourceClick, {
+          content_title: parentPath.title,
+          content_url: parentPath.url,
+          content_type: 'learning-journey',
+          interaction_location: 'my_learning_tab',
+        });
+
+        onOpenGuide(parentPath.url, parentPath.title);
+        return;
+      }
+
+      // Static guide — open the individual guide content
+      const guideMetadata = getPathsData().guideMetadata[guideId];
       const title = guideMetadata?.title || guideId;
       const guideUrl = guideMetadata?.url ?? `bundled:${guideId}`;
 
@@ -297,7 +323,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       });
 
       // Track learning path progress when user opens a guide from a path
-      const parentPath = paths.find((p) => p.guides.includes(guideId));
       if (parentPath) {
         const pathProgress = getPathProgress(parentPath.id);
         const pathGuides = getPathGuides(parentPath.id);
@@ -477,6 +502,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                 progress={pathProgress}
                 isCompleted={pathCompleted}
                 onContinue={handleOpenGuide}
+                onReset={resetPath}
                 defaultExpanded={isFirstInProgress}
               />
             );

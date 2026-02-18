@@ -8,7 +8,7 @@
 import type { Badge } from '../../types';
 
 // Import paths data for guide metadata (used in getBadgeRequirementText)
-import pathsData from '../../learning-paths/paths.json';
+import { getPathsData } from '../../learning-paths/paths-data';
 
 /**
  * Information about a badge's progress toward completion
@@ -101,9 +101,7 @@ export function getBadgeRequirementText(badge: Badge): string {
     case 'guide-completed':
       return trigger.guideId ? `Complete the "${trigger.guideId}" guide` : 'Complete any learning guide';
     case 'path-completed':
-      const pathTitle =
-        (pathsData.paths as Array<{ id: string; title: string }>).find((p) => p.id === trigger.pathId)?.title ||
-        trigger.pathId;
+      const pathTitle = getPathsData().paths.find((p) => p.id === trigger.pathId)?.title || trigger.pathId;
       return `Complete all guides in the "${pathTitle}" learning path`;
     case 'streak':
       return `Maintain a ${trigger.days}-day learning streak`;

@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { config } from '@grafana/runtime';
 
 import type {
   LearningPath,
@@ -18,12 +17,17 @@ import type {
   GuideMetadataEntry,
 } from '../types/learning-paths.types';
 
-import { learningProgressStorage } from '../lib/user-storage';
+import {
+  learningProgressStorage,
+  interactiveStepStorage,
+  interactiveCompletionStorage,
+  journeyCompletionStorage,
+  milestoneCompletionStorage,
+} from '../lib/user-storage';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
-
-// Import path definitions
-import pathsData from './paths.json';
+import { getPathsData } from './paths-data';
+import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
 
 // ============================================================================
 // CONSTANTS
@@ -40,32 +44,6 @@ const DEFAULT_PROGRESS: LearningProgress = {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Filters paths based on current Grafana edition
- */
-function filterPathsByPlatform(paths: LearningPath[]): LearningPath[] {
-  const isCloud = config.bootData?.settings?.cloudMigrationIsTarget ?? false;
-  const edition = isCloud ? 'cloud' : 'oss';
-
-  return paths.filter((path) => {
-    if (!path.targetPlatform) {
-      return true; // No platform restriction
-    }
-    if (edition === 'cloud') {
-      return true; // Cloud sees everything (superset of OSS)
-    }
-    return path.targetPlatform === 'oss'; // OSS only sees OSS paths
-  });
-}
-
-/**
- * Gets guide metadata from paths.json
- */
-function getGuideMetadata(guideId: string): GuideMetadataEntry {
-  const metadata = (pathsData.guideMetadata as Record<string, GuideMetadataEntry>)[guideId];
-  return metadata || { title: guideId, estimatedMinutes: 5 };
-}
 
 /**
  * Formats a legacy badge ID into a readable title
@@ -103,10 +81,77 @@ export function useLearningPaths(): UseLearningPathsReturn {
   const [progress, setProgress] = useState<LearningProgress>(DEFAULT_PROGRESS);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filter paths by platform (needed for badge checking)
-  const paths = useMemo(() => {
-    return filterPathsByPlatform(pathsData.paths as LearningPath[]);
+  // Dynamic guide data fetched from index.json for URL-based paths
+  const [dynamicGuideData, setDynamicGuideData] = useState<Record<string, FetchedPathGuides>>({});
+  const [isDynamicLoading, setIsDynamicLoading] = useState(false);
+
+  // Get raw paths for the current platform (OSS or Cloud)
+  const rawPaths = useMemo(() => {
+    return getPathsData().paths;
   }, []);
+
+  // Fetch dynamic guides for URL-based paths on mount
+  useEffect(() => {
+    const urlPaths = rawPaths.filter((p) => p.url);
+    if (urlPaths.length === 0) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    setIsDynamicLoading(true);
+
+    void (async () => {
+      const results: Record<string, FetchedPathGuides> = {};
+
+      await Promise.all(
+        urlPaths.map(async (path) => {
+          const data = await fetchPathGuides(path.url!, abortController.signal);
+          if (data) {
+            results[path.id] = data;
+          }
+        })
+      );
+
+      if (!abortController.signal.aborted) {
+        setDynamicGuideData(results);
+        setIsDynamicLoading(false);
+      }
+    })();
+
+    return () => {
+      abortController.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Build effective paths: merge dynamic guides into URL-based paths
+  const paths = useMemo((): LearningPath[] => {
+    return rawPaths.map((path) => {
+      const dynamic = dynamicGuideData[path.id];
+      if (path.url && dynamic) {
+        return { ...path, guides: dynamic.guides };
+      }
+      return path;
+    });
+  }, [rawPaths, dynamicGuideData]);
+
+  /**
+   * Gets guide metadata, checking dynamic data first then static
+   */
+  const resolveGuideMetadata = useCallback(
+    (guideId: string): GuideMetadataEntry => {
+      // Check dynamic metadata from all fetched URL-based paths
+      for (const data of Object.values(dynamicGuideData)) {
+        if (data.guideMetadata[guideId]) {
+          return data.guideMetadata[guideId];
+        }
+      }
+      // Fall back to static metadata from paths.json / paths-cloud.json
+      const { guideMetadata } = getPathsData();
+      return guideMetadata[guideId] || { title: guideId, estimatedMinutes: 5 };
+    },
+    [dynamicGuideData]
+  );
 
   // Load progress from storage
   // Badge awarding is now handled in user-storage.ts when guides complete
@@ -224,7 +269,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
           foundCurrent = true;
         }
 
-        const metadata = getGuideMetadata(guideId);
+        const metadata = resolveGuideMetadata(guideId);
 
         return {
           id: guideId,
@@ -234,7 +279,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
         };
       });
     },
-    [paths, progress.completedGuides]
+    [paths, progress.completedGuides, resolveGuideMetadata]
   );
 
   // Get completion percentage for a path
@@ -288,6 +333,75 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [progress]
   );
 
+  // Reset a path's progress (clears guides and interactive steps, keeps badges)
+  const resetPath = useCallback(
+    async (pathId: string): Promise<void> => {
+      const path = paths.find((p) => p.id === pathId);
+      if (!path) {
+        return;
+      }
+
+      if (path.url) {
+        // URL-based path: clear milestone tracking and journey completion
+        await milestoneCompletionStorage.clear(path.url);
+        await journeyCompletionStorage.clear(path.url);
+
+        // Remove milestone slugs from completedGuides (path.guides contains fetched slugs)
+        if (path.guides.length > 0) {
+          await learningProgressStorage.removeCompletedGuides(path.guides);
+        }
+
+        // Clear interactive steps for milestone URLs (iterate over completed milestones)
+        // Since we don't have the full milestone URLs stored, clear by prefix pattern
+        // The content keys for milestones start with the path URL
+        const [completions, journeyCompletions] = await Promise.all([
+          interactiveCompletionStorage.getAll(),
+          journeyCompletionStorage.getAll(),
+        ]);
+
+        const normalizedUrl = path.url.replace(/\/+$/, '');
+
+        // Batch clear operations for better performance with many milestones
+        await Promise.all([
+          ...Object.keys(completions)
+            .filter((key) => key.startsWith(normalizedUrl))
+            .map((key) =>
+              Promise.all([interactiveCompletionStorage.clear(key), interactiveStepStorage.clearAllForContent(key)])
+            ),
+          ...Object.keys(journeyCompletions)
+            .filter((key) => key.startsWith(normalizedUrl))
+            .map((key) => journeyCompletionStorage.clear(key)),
+        ]);
+      } else {
+        // Static bundled path: clear each guide's progress (batched for performance)
+        await Promise.all(
+          path.guides.map((guideId) => {
+            const contentKey = `bundled:${guideId}`;
+            return Promise.all([
+              interactiveStepStorage.clearAllForContent(contentKey),
+              interactiveCompletionStorage.clear(contentKey),
+              journeyCompletionStorage.clear(contentKey),
+            ]);
+          })
+        );
+
+        // Remove guide IDs from completedGuides
+        await learningProgressStorage.removeCompletedGuides(path.guides);
+      }
+
+      // Dispatch event to notify UI components to refresh
+      window.dispatchEvent(
+        new CustomEvent('interactive-progress-cleared', {
+          detail: { contentKey: '*', pathId },
+        })
+      );
+
+      // Reload progress to update UI
+      await loadProgress({ current: true });
+    },
+    [paths, loadProgress]
+  );
+
   return {
     paths,
     allBadges: BADGES,
@@ -297,9 +411,11 @@ export function useLearningPaths(): UseLearningPathsReturn {
     getPathProgress,
     isPathCompleted,
     markGuideCompleted,
+    resetPath,
     dismissCelebration,
     streakInfo,
     isLoading,
+    isDynamicLoading,
   };
 }
 
