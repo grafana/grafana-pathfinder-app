@@ -59,7 +59,8 @@ describe('fetchPathGuides', () => {
     const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://grafana.com/docs/learning-paths/linux-server-integration/index.json'
+      'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
+      { signal: undefined }
     );
     expect(result).not.toBeNull();
     expect(result!.guides).toEqual(['select-platform', 'install-alloy', 'configure-alloy']);
@@ -127,7 +128,7 @@ describe('fetchPathGuides', () => {
     expect(result).toBeNull();
   });
 
-  it('strips trailing slash from URL before appending index.json', async () => {
+  it('handles trailing slash correctly when building URL', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => [],
@@ -136,7 +137,46 @@ describe('fetchPathGuides', () => {
     await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://grafana.com/docs/learning-paths/linux-server-integration/index.json'
+      'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
+      { signal: undefined }
     );
+  });
+
+  it('handles URL without trailing slash', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    });
+
+    await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
+      { signal: undefined }
+    );
+  });
+
+  it('passes AbortSignal to fetch', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    });
+
+    const controller = new AbortController();
+    await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/', controller.signal);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
+      { signal: controller.signal }
+    );
+  });
+
+  it('returns null when fetch is aborted', async () => {
+    const abortError = new DOMException('Aborted', 'AbortError');
+    mockFetch.mockRejectedValueOnce(abortError);
+
+    const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
+
+    expect(result).toBeNull();
   });
 });

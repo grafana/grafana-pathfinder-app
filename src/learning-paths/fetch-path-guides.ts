@@ -42,24 +42,25 @@ function slugFromPermalink(relpermalink: string): string {
  *
  * @param pathUrl - The base docs URL for the learning path
  *                  (e.g. "https://grafana.com/docs/learning-paths/linux-server-integration/")
+ * @param signal - Optional AbortSignal to cancel the fetch
  * @returns Guide IDs and metadata, or null on failure
  */
-export async function fetchPathGuides(pathUrl: string): Promise<FetchedPathGuides | null> {
-  const baseUrl = pathUrl.replace(/\/+$/, '');
-  const indexJsonUrl = `${baseUrl}/index.json`;
+export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Promise<FetchedPathGuides | null> {
+  // SECURITY: constructed URL with URL API (F3)
+  const indexJsonUrl = new URL('index.json', pathUrl.endsWith('/') ? pathUrl : `${pathUrl}/`);
 
   try {
-    const response = await fetch(indexJsonUrl);
+    const response = await fetch(indexJsonUrl.toString(), { signal });
 
     if (!response.ok) {
-      console.warn(`[fetchPathGuides] Failed to fetch (${response.status}): ${indexJsonUrl}`);
+      console.warn(`[fetchPathGuides] Failed to fetch (${response.status}): ${indexJsonUrl.toString()}`);
       return null;
     }
 
     const data = await response.json();
 
     if (!Array.isArray(data)) {
-      console.warn(`[fetchPathGuides] Unexpected response shape from ${indexJsonUrl}`);
+      console.warn(`[fetchPathGuides] Unexpected response shape from ${indexJsonUrl.toString()}`);
       return null;
     }
 
@@ -86,7 +87,10 @@ export async function fetchPathGuides(pathUrl: string): Promise<FetchedPathGuide
 
     return { guides, guideMetadata };
   } catch (error) {
-    console.warn(`[fetchPathGuides] Failed to fetch guides from ${indexJsonUrl}:`, error);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return null;
+    }
+    console.warn(`[fetchPathGuides] Failed to fetch guides from ${indexJsonUrl.toString()}:`, error);
     return null;
   }
 }

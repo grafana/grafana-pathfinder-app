@@ -97,7 +97,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       return;
     }
 
-    const mounted = { current: true };
+    const abortController = new AbortController();
     setIsDynamicLoading(true);
 
     void (async () => {
@@ -105,21 +105,21 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
       await Promise.all(
         urlPaths.map(async (path) => {
-          const data = await fetchPathGuides(path.url!);
+          const data = await fetchPathGuides(path.url!, abortController.signal);
           if (data) {
             results[path.id] = data;
           }
         })
       );
 
-      if (mounted.current) {
+      if (!abortController.signal.aborted) {
         setDynamicGuideData(results);
         setIsDynamicLoading(false);
       }
     })();
 
     return () => {
-      mounted.current = false;
+      abortController.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -354,28 +354,36 @@ export function useLearningPaths(): UseLearningPathsReturn {
         // Clear interactive steps for milestone URLs (iterate over completed milestones)
         // Since we don't have the full milestone URLs stored, clear by prefix pattern
         // The content keys for milestones start with the path URL
-        const completions = await interactiveCompletionStorage.getAll();
-        const journeyCompletions = await journeyCompletionStorage.getAll();
+        const [completions, journeyCompletions] = await Promise.all([
+          interactiveCompletionStorage.getAll(),
+          journeyCompletionStorage.getAll(),
+        ]);
 
-        for (const key of Object.keys(completions)) {
-          if (key.startsWith(path.url.replace(/\/+$/, ''))) {
-            await interactiveCompletionStorage.clear(key);
-            await interactiveStepStorage.clearAllForContent(key);
-          }
-        }
-        for (const key of Object.keys(journeyCompletions)) {
-          if (key.startsWith(path.url.replace(/\/+$/, ''))) {
-            await journeyCompletionStorage.clear(key);
-          }
-        }
+        const normalizedUrl = path.url.replace(/\/+$/, '');
+
+        // Batch clear operations for better performance with many milestones
+        await Promise.all([
+          ...Object.keys(completions)
+            .filter((key) => key.startsWith(normalizedUrl))
+            .map((key) =>
+              Promise.all([interactiveCompletionStorage.clear(key), interactiveStepStorage.clearAllForContent(key)])
+            ),
+          ...Object.keys(journeyCompletions)
+            .filter((key) => key.startsWith(normalizedUrl))
+            .map((key) => journeyCompletionStorage.clear(key)),
+        ]);
       } else {
-        // Static bundled path: clear each guide's progress
-        for (const guideId of path.guides) {
-          const contentKey = `bundled:${guideId}`;
-          await interactiveStepStorage.clearAllForContent(contentKey);
-          await interactiveCompletionStorage.clear(contentKey);
-          await journeyCompletionStorage.clear(contentKey);
-        }
+        // Static bundled path: clear each guide's progress (batched for performance)
+        await Promise.all(
+          path.guides.map((guideId) => {
+            const contentKey = `bundled:${guideId}`;
+            return Promise.all([
+              interactiveStepStorage.clearAllForContent(contentKey),
+              interactiveCompletionStorage.clear(contentKey),
+              journeyCompletionStorage.clear(contentKey),
+            ]);
+          })
+        );
 
         // Remove guide IDs from completedGuides
         await learningProgressStorage.removeCompletedGuides(path.guides);

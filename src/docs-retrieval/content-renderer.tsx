@@ -322,10 +322,12 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       const detail = (event as CustomEvent).detail;
       const currentTabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
       if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
-        // Only trigger if the event is for the current page (contentKey should contain the tab URL or vice versa)
+        // Only trigger if the event is for the current page (strict equality after normalization).
+        // Bidirectional startsWith would produce false matches when URLs share a common prefix
+        // (e.g., /docs/dashboard matching /docs/dashboard-variables).
         const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
         const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
-        if (eventKeyNorm.startsWith(tabUrlNorm) || tabUrlNorm.startsWith(eventKeyNorm)) {
+        if (eventKeyNorm === tabUrlNorm) {
           guideCompleteCalledRef.current = true;
           onGuideCompleteRef.current?.();
         }

@@ -414,7 +414,7 @@ export async function markMilestoneDone(
     if (completed.size >= totalMilestones) {
       const { getPathsData } = await import('../learning-paths/paths-data');
       const normalizedBase = journeyBaseUrl.replace(/\/+$/, '');
-      const path = getPathsData().paths.find((p) => p.url && normalizedBase.startsWith(p.url.replace(/\/+$/, '')));
+      const path = getPathsData().paths.find((p) => p.url && normalizedBase === p.url.replace(/\/+$/, ''));
       if (path?.badgeId) {
         await learningProgressStorage.awardBadge(path.badgeId);
       }
