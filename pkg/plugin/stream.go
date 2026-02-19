@@ -32,6 +32,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -197,7 +198,7 @@ func sendStreamError(sender *backend.StreamSender, errMsg string) {
 	jsonBytes, _ := json.Marshal(output)
 	frame := data.NewFrame("terminal")
 	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
-	sender.SendFrame(frame, data.IncludeAll)
+	_ = sender.SendFrame(frame, data.IncludeAll)
 }
 
 // RunStream is called once for each active stream subscription.
@@ -209,13 +210,13 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	if !ok {
 		errMsg := fmt.Sprintf("invalid path: %s", req.Path)
 		sendStreamError(sender, errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("invalid path: %s", req.Path)
 	}
 
 	if a.coda == nil {
 		errMsg := "Coda not registered - configure enrollment key and register first"
 		sendStreamError(sender, errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	vm, err := a.coda.GetVM(ctx, vmID)
@@ -228,7 +229,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	if vm.State != "active" || vm.Credentials == nil {
 		errMsg := fmt.Sprintf("VM not ready: state=%s", vm.State)
 		sendStreamError(sender, errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("VM not ready: state=%s", vm.State)
 	}
 
 	streamCtx, cancel := context.WithCancel(ctx)
@@ -258,7 +259,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 		frame := data.NewFrame("terminal")
 		frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
-		sender.SendFrame(frame, data.IncludeAll)
+		_ = sender.SendFrame(frame, data.IncludeAll)
 	}
 
 	a.logger.Info("Creating SSH session",
@@ -353,7 +354,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	jsonBytes, _ = json.Marshal(disconnectedOutput)
 	frame = data.NewFrame("terminal")
 	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
-	sender.SendFrame(frame, data.IncludeAll)
+	_ = sender.SendFrame(frame, data.IncludeAll)
 
 	a.logger.Info("RunStream ended", "vmID", vmID)
 	return nil

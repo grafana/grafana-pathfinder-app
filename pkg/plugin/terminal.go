@@ -221,7 +221,7 @@ func (ts *TerminalSession) forwardStderr() {
 		n, err := ts.stderr.Read(buf)
 		if err != nil {
 			if err != io.EOF && !ts.isClosed() {
-				// Stderr EOF is normal, don't report as error
+				log.DefaultLogger.Warn("stderr read error", "error", err, "vmID", ts.VMID)
 			}
 			return
 		}

@@ -130,7 +130,7 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // CodaRegisterRequest represents the request body for Coda registration.
@@ -323,5 +323,5 @@ func (a *App) writeJSON(w http.ResponseWriter, data interface{}, statusCode int)
 func (a *App) writeError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
