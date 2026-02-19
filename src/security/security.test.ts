@@ -579,6 +579,33 @@ describe('Security: sanitizeHtmlUrl', () => {
     expect(sanitizeHtmlUrl('JAVASCRIPT:alert(1)')).toBe('');
   });
 
+  it('should block javascript: URLs with embedded control characters (CVE-2018-5143 bypass)', () => {
+    // Per WHATWG URL spec, browsers strip tabs/newlines before parsing the scheme
+    // These must all be blocked to prevent XSS
+    expect(sanitizeHtmlUrl('java\tscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('java\nscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('java\rscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('j\ta\tv\ta\ts\tc\tr\ti\tp\tt:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('\t\n\rjavascript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('javascript\t:\talert(1)')).toBe('');
+  });
+
+  it('should block data: URLs with embedded control characters', () => {
+    expect(sanitizeHtmlUrl('da\tta:text/html,<script>alert(1)</script>')).toBe('');
+    expect(sanitizeHtmlUrl('d\na\rt\ta:payload')).toBe('');
+  });
+
+  it('should block vbscript: URLs with embedded control characters', () => {
+    expect(sanitizeHtmlUrl('vb\tscript:MsgBox("XSS")')).toBe('');
+    expect(sanitizeHtmlUrl('vb\nscript:alert(1)')).toBe('');
+  });
+
+  it('should strip control characters from safe URLs', () => {
+    // Control characters should be removed from the output
+    expect(sanitizeHtmlUrl('https://grafana\t.com/docs/')).toBe('https://grafana.com/docs/');
+    expect(sanitizeHtmlUrl('https://grafana.com/\ndocs/')).toBe('https://grafana.com/docs/');
+  });
+
   it('should block data: URLs', () => {
     expect(sanitizeHtmlUrl('data:text/html,<script>alert(1)</script>')).toBe('');
     expect(sanitizeHtmlUrl('DATA:text/html,payload')).toBe('');

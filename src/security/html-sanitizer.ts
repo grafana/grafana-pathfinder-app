@@ -396,10 +396,13 @@ export function sanitizeHtmlUrl(url: string): string {
     return '';
   }
   const trimmed = url.trim();
-  if (/^(javascript|data|vbscript):/i.test(trimmed)) {
+  // Strip ASCII control characters (0x00-0x1f) that browsers remove during URL parsing.
+  // This prevents bypass attacks like "java\tscript:" which browsers interpret as "javascript:".
+  const normalized = trimmed.replace(/[\x00-\x1f]/g, '');
+  if (/^(javascript|data|vbscript):/i.test(normalized)) {
     return '';
   }
-  return escapeHtml(trimmed);
+  return escapeHtml(normalized);
 }
 
 /**
