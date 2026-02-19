@@ -574,15 +574,20 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const currentUserId = config.bootData.user?.id;
   const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
 
-  // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console
-  const logSession = React.useCallback(
-    (...args: unknown[]) => {
-      if (isDevMode) {
-        console.log(...args);
-      }
-    },
-    [isDevMode]
-  );
+  // Keep isDevMode current for the stable logger callback
+  const isDevModeRef = React.useRef(isDevMode);
+  React.useEffect(() => {
+    isDevModeRef.current = isDevMode;
+  }, [isDevMode]);
+
+  // SECURITY: Stable logger that reads from ref - doesn't pollute dependency arrays
+  // This prevents duplicate tab creation when isDevMode changes (the auto-open tutorial
+  // effect would re-run and call openLearningJourney/openDocsPage again)
+  const logSession = React.useCallback((...args: unknown[]) => {
+    if (isDevModeRef.current) {
+      console.log(...args);
+    }
+  }, []);
 
   // Set global config for utility functions that can't access React context
   (window as any).__pathfinderPluginConfig = pluginConfig;

@@ -171,14 +171,15 @@ describe('NavigateHandler', () => {
     });
 
     it('should block data: URLs that start with http prefix', async () => {
-      // Regression: ensure URLs that parse but have wrong protocol are blocked
+      // URL 'http://data:text/html,...' fails to parse because "text/html,..." is not a valid port
+      // parseUrlSafely returns null, so the URL is blocked
       const dataUrl = { ...mockData, reftarget: 'http://data:text/html,<script>alert(1)</script>' };
 
       await navigateHandler.execute(dataUrl, true);
 
-      // URL parses but hostname is "data" - protocol is still http: so it passes,
-      // but this is a valid http URL (just a weird hostname) not a data: scheme
-      // The startsWith('http://') check gates entry, parseUrlSafely validates structure
+      // Verify the malformed URL was blocked
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+      expect(locationService.push).not.toHaveBeenCalled();
     });
 
     it('should allow legitimate https URLs through validation', async () => {
