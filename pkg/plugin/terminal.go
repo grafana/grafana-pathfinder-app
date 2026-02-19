@@ -129,7 +129,7 @@ func NewTerminalSession(vmID string, creds *Credentials, onOutput func([]byte), 
 
 	session, err := client.NewSession()
 	if err != nil {
-		client.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to create SSH session: %w", err)
 	}
 
@@ -142,35 +142,35 @@ func NewTerminalSession(vmID string, creds *Credentials, onOutput func([]byte), 
 
 	// Default terminal size, will be resized by client
 	if err := session.RequestPty("xterm-256color", 24, 80, modes); err != nil {
-		session.Close()
-		client.Close()
+		_ = session.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to request PTY: %w", err)
 	}
 
 	stdin, err := session.StdinPipe()
 	if err != nil {
-		session.Close()
-		client.Close()
+		_ = session.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to get stdin pipe: %w", err)
 	}
 
 	stdout, err := session.StdoutPipe()
 	if err != nil {
-		session.Close()
-		client.Close()
+		_ = session.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 
 	stderr, err := session.StderrPipe()
 	if err != nil {
-		session.Close()
-		client.Close()
+		_ = session.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
 	if err := session.Shell(); err != nil {
-		session.Close()
-		client.Close()
+		_ = session.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to start shell: %w", err)
 	}
 

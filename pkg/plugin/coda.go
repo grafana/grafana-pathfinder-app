@@ -106,7 +106,7 @@ func Register(ctx context.Context, enrollmentKey, instanceID, instanceURL string
 	if err != nil {
 		return nil, fmt.Errorf("failed to send registration request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("invalid enrollment key")
@@ -161,7 +161,7 @@ func (c *CodaClient) CreateVM(ctx context.Context, template, owner string) (*VM,
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
@@ -193,7 +193,7 @@ func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
@@ -229,7 +229,7 @@ func (c *CodaClient) DeleteVM(ctx context.Context, vmID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
@@ -256,7 +256,7 @@ func (c *CodaClient) ListVMs(ctx context.Context) ([]VM, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")

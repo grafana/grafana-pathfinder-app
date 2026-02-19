@@ -101,7 +101,7 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 
 	// Check if Coda is configured (has JWT token)
 	if a.coda == nil {
-		a.logger.Error("Coda not registered for stream subscription")
+		a.logger.Error("coda not registered for stream subscription")
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusNotFound,
 		}, nil
@@ -214,7 +214,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	}
 
 	if a.coda == nil {
-		errMsg := "Coda not registered - configure enrollment key and register first"
+		errMsg := "coda not registered - configure enrollment key and register first"
 		sendStreamError(sender, errMsg)
 		return errors.New(errMsg)
 	}
@@ -283,7 +283,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		sendStreamError(sender, errMsg)
 		return fmt.Errorf("failed to create terminal session: %w", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	// Close any previous session for this VM (e.g. stale reconnect) before
 	// registering the new one, so we don't leak SSH connections.

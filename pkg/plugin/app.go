@@ -74,7 +74,7 @@ func (a *App) Dispose() {
 	// Close all active terminal sessions
 	a.sessions.Range(func(key, value interface{}) bool {
 		if session, ok := value.(*TerminalSession); ok {
-			session.Close()
+			_ = session.Close()
 		}
 		return true
 	})
