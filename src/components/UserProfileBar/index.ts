@@ -1,0 +1,1 @@
+export { UserProfileBar } from './UserProfileBar';

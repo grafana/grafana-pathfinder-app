@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.8.0
+
+### Added
+
+- **Home page**: New dedicated home page (`/a/grafana-pathfinder-app`) serving as a centralized learning hub with learning paths, badges, and progress tracking. Accessible via a "My learning" button in the sidebar, with automatic redirect when the recommender is empty (#579)
+- **User profile bar**: Replaced the "Recommended learning" header in the context panel with a compact profile bar showing badge progress, guide count, streak info, and a CTA to open the next recommended guide (#585)
+- **12 new path-completion badges**: New badges with whimsical names and emoji icons, earned badges appear first in the grid sorted by most recent, with legacy badge indicators for badges earned in previous versions (#579)
+- **Deep link page redirect**: Added `page` query parameter to deep links so that after the sidebar launches a guide, the center console navigates to a relevant Grafana page (e.g., `?doc=bundled:first-dashboard&page=/explore`) (#574)
+
+### Changed
+
+- **Renamed "learning journey" to "learning path"**: Updated all UI references from "learning journey" to "learning path" for consistency (#586)
+- **Template variable passthrough**: Grafana template variables (`${variable}`) are now preserved and rendered in markdown content instead of being stripped by sanitization (#573)
+- **Content fetching improvements**: Now renders `content.json` first if available for all docs, with `null` value handling to avoid fetch errors (#569, #571)
+
+### Fixed
+
+- **Learning path progress**: Fixed completion percentage display and added "Restart" button for completed learning paths with confirmation UI. Improved handling for URL-based paths and milestone auto-completion (#587)
+- **Reset progress**: The "Reset progress" button now clears per-guide interactive step completion data, preventing guides from instantly re-completing when reopened (#585)
+- **User storage performance**: Introduced envelope-based storage format replacing separate timestamp companion keys, with automatic migration of old-format data. Improves reliability and performance of cross-device syncing (#570)
+
+### Chore
+
+- Updated npm to v11.10.0 (#577)
+
 ## 1.7.1
 
 ### Fixed

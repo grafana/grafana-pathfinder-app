@@ -12,14 +12,24 @@ jest.mock('@grafana/i18n', () => ({
 
 describe('getTranslatedTitle', () => {
   describe('translates known system titles', () => {
-    it('translates "Learning journey" (lowercase j)', () => {
-      const result = getTranslatedTitle('Learning journey');
-      expect(result).toBe('[translated:docsPanel.learningJourney]Learning journey');
+    it('translates "Learning path" (lowercase p)', () => {
+      const result = getTranslatedTitle('Learning path');
+      expect(result).toBe('[translated:docsPanel.learningJourney]Learning path');
     });
 
-    it('translates "Learning Journey" (uppercase J)', () => {
+    it('translates "Learning Path" (uppercase P)', () => {
+      const result = getTranslatedTitle('Learning Path');
+      expect(result).toBe('[translated:docsPanel.learningJourney]Learning Path');
+    });
+
+    it('translates legacy "Learning journey" (lowercase j) for backwards compatibility', () => {
+      const result = getTranslatedTitle('Learning journey');
+      expect(result).toBe('[translated:docsPanel.learningJourney]Learning path');
+    });
+
+    it('translates legacy "Learning Journey" (uppercase J) for backwards compatibility', () => {
       const result = getTranslatedTitle('Learning Journey');
-      expect(result).toBe('[translated:docsPanel.learningJourney]Learning Journey');
+      expect(result).toBe('[translated:docsPanel.learningJourney]Learning Path');
     });
 
     it('translates "Documentation"', () => {
@@ -35,8 +45,8 @@ describe('getTranslatedTitle', () => {
     });
 
     it('preserves custom title with similar but not exact text', () => {
-      const result = getTranslatedTitle('Learning journeys'); // plural
-      expect(result).toBe('Learning journeys');
+      const result = getTranslatedTitle('Learning paths'); // plural
+      expect(result).toBe('Learning paths');
     });
 
     it('preserves empty string', () => {

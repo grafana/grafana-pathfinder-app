@@ -15,11 +15,16 @@ import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { learningProgressStorage, journeyCompletionStorage } from '../../lib/user-storage';
-import type { EarnedBadge, GuideMetadataEntry } from '../../types';
+import {
+  learningProgressStorage,
+  journeyCompletionStorage,
+  interactiveStepStorage,
+  interactiveCompletionStorage,
+} from '../../lib/user-storage';
+import type { EarnedBadge } from '../../types';
 
-// Import paths data for guide metadata
-import pathsData from '../../learning-paths/paths.json';
+// Import paths data for guide metadata (runtime platform selection)
+import { getPathsData } from '../../learning-paths/paths-data';
 
 // Badge utilities extracted for testability
 import { getBadgeProgress, getBadgeRequirementText, type BadgeProgressInfo } from './badge-utils';
@@ -211,8 +216,17 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
   const [hideCompletedPaths, setHideCompletedPaths] = useState(false);
 
-  const { paths, badgesWithStatus, progress, getPathGuides, getPathProgress, isPathCompleted, streakInfo, isLoading } =
-    useLearningPaths();
+  const {
+    paths,
+    badgesWithStatus,
+    progress,
+    getPathGuides,
+    getPathProgress,
+    isPathCompleted,
+    resetPath,
+    streakInfo,
+    isLoading,
+  } = useLearningPaths();
 
   // Sort and filter paths: in-progress first, then not-started, then completed
   const sortedPaths = useMemo(() => {
@@ -279,8 +293,25 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   // Handle opening a guide
   const handleOpenGuide = useCallback(
-    (guideId: string) => {
-      const guideMetadata = (pathsData.guideMetadata as Record<string, GuideMetadataEntry>)[guideId];
+    (guideId: string, pathId: string) => {
+      // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
+      const parentPath = paths.find((p) => p.id === pathId);
+
+      // URL-based path — open as learning journey
+      if (parentPath?.url) {
+        reportAppInteraction(UserInteraction.OpenResourceClick, {
+          content_title: parentPath.title,
+          content_url: parentPath.url,
+          content_type: 'learning-journey',
+          interaction_location: 'my_learning_tab',
+        });
+
+        onOpenGuide(parentPath.url, parentPath.title);
+        return;
+      }
+
+      // Static guide — open the individual guide content
+      const guideMetadata = getPathsData().guideMetadata[guideId];
       const title = guideMetadata?.title || guideId;
       const guideUrl = guideMetadata?.url ?? `bundled:${guideId}`;
 
@@ -292,7 +323,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       });
 
       // Track learning path progress when user opens a guide from a path
-      const parentPath = paths.find((p) => p.guides.includes(guideId));
       if (parentPath) {
         const pathProgress = getPathProgress(parentPath.id);
         const pathGuides = getPathGuides(parentPath.id);
@@ -316,11 +346,28 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
       await learningProgressStorage.clear();
-      // Also clear journey completion percentages
+
+      // Clear journey completion percentages
       const completions = await journeyCompletionStorage.getAll();
       for (const url of Object.keys(completions)) {
         await journeyCompletionStorage.clear(url);
       }
+
+      // Clear all interactive guide step and completion state
+      // This prevents guides from instantly re-completing when reopened
+      await interactiveStepStorage.clearAll();
+      await interactiveCompletionStorage.clearAll();
+
+      // Notify the context engine to refresh recommendations.
+      // Note: already-open interactive guide tabs may still show stale completed
+      // steps until the user closes and reopens them, because individual tab
+      // components don't re-read from storage on this event. Acceptable here
+      // since reset-progress is a dev/QA tool, not a primary user flow.
+      window.dispatchEvent(
+        new CustomEvent('interactive-progress-cleared', {
+          detail: { contentKey: '*' },
+        })
+      );
     }
   }, []);
 
@@ -455,6 +502,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                 progress={pathProgress}
                 isCompleted={pathCompleted}
                 onContinue={handleOpenGuide}
+                onReset={resetPath}
                 defaultExpanded={isFirstInProgress}
               />
             );

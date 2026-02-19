@@ -49,6 +49,12 @@ export type FetchPrFilesResult =
 // Pattern to extract owner, repo, and PR number from GitHub PR URL
 const PR_URL_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
 
+// SECURITY: Validates Git commit SHA format (40 hex characters)
+const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
+// SECURITY: Detects path traversal and control characters in file paths
+const UNSAFE_PATH_PATTERN = /\.\.|[\x00-\x1f\x7f]/;
+
 /**
  * Maximum files to fetch from GitHub API per request.
  *
@@ -117,6 +123,27 @@ function extractDirectoryName(filePath: string): string {
 }
 
 /**
+ * Build a GitHub API URL using the URL API for safe path construction.
+ * Encodes path components to prevent path injection.
+ */
+function buildGitHubApiUrl(baseUrl: string, ...pathSegments: Array<string | number>): string {
+  const encodedPath = pathSegments.map((seg) => encodeURIComponent(String(seg))).join('/');
+  return new URL(`/${encodedPath}`, baseUrl).toString();
+}
+
+/**
+ * Build a raw.githubusercontent.com URL for a file in a repo.
+ * Handles filenames with directory separators by encoding each path component individually.
+ */
+function buildRawContentUrl(owner: string, repo: string, sha: string, filename: string): string {
+  const fileSegments = filename.split('/').map(encodeURIComponent);
+  const fullPath = [encodeURIComponent(owner), encodeURIComponent(repo), encodeURIComponent(sha), ...fileSegments].join(
+    '/'
+  );
+  return new URL(`/${fullPath}`, 'https://raw.githubusercontent.com').toString();
+}
+
+/**
  * Fetch content.json files from a GitHub PR
  *
  * Makes two sequential GitHub API calls:
@@ -142,7 +169,8 @@ export async function fetchPrContentFiles(
 
   try {
     // Step 1: Fetch PR metadata to get head SHA
-    const prResponse = await fetch(`${baseUrl}/repos/${owner}/${repo}/pulls/${prNumber}`, {
+    const prApiUrl = buildGitHubApiUrl(baseUrl, 'repos', owner, repo, 'pulls', prNumber);
+    const prResponse = await fetch(prApiUrl, {
       headers: {
         Accept: 'application/vnd.github.v3+json',
       },
@@ -194,7 +222,7 @@ export async function fetchPrContentFiles(
     const prData: GitHubPrMetadata = await prResponse.json();
     const headSha = prData.head?.sha;
 
-    if (!headSha) {
+    if (!headSha || !SHA_PATTERN.test(headSha)) {
       return {
         success: false,
         error: {
@@ -206,15 +234,14 @@ export async function fetchPrContentFiles(
     }
 
     // Step 2: Fetch PR files list (request max 100 files per page)
-    const filesResponse = await fetch(
-      `${baseUrl}/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=${MAX_FILES_PER_PAGE}`,
-      {
-        headers: {
-          Accept: 'application/vnd.github.v3+json',
-        },
-        signal,
-      }
-    );
+    const filesApiUrl = new URL(buildGitHubApiUrl(baseUrl, 'repos', owner, repo, 'pulls', prNumber, 'files'));
+    filesApiUrl.searchParams.set('per_page', String(MAX_FILES_PER_PAGE));
+    const filesResponse = await fetch(filesApiUrl.toString(), {
+      headers: {
+        Accept: 'application/vnd.github.v3+json',
+      },
+      signal,
+    });
 
     if (filesResponse.status === 403) {
       const rateLimitRemaining = filesResponse.headers.get('X-RateLimit-Remaining');
@@ -267,10 +294,15 @@ export async function fetchPrContentFiles(
 
     // Filter for content.json files and construct raw URLs
     const contentFiles: PrContentFile[] = (filesData as GitHubPrFileEntry[])
-      .filter((file) => typeof file.filename === 'string' && file.filename.endsWith('content.json'))
+      .filter(
+        (file) =>
+          typeof file.filename === 'string' &&
+          file.filename.endsWith('content.json') &&
+          !UNSAFE_PATH_PATTERN.test(file.filename)
+      )
       .map((file) => ({
         directoryName: extractDirectoryName(file.filename),
-        rawUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${headSha}/${file.filename}`,
+        rawUrl: buildRawContentUrl(owner, repo, headSha, file.filename),
         status: file.status as PrContentFile['status'],
       }));
 

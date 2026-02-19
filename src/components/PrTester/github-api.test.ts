@@ -135,9 +135,10 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should fetch and filter content.json files from a PR', async () => {
+    const validSha = 'abc123def456abc123def456abc123def45678ab';
     // Mock PR metadata response
     const prMetadataResponse = {
-      head: { sha: 'abc123def456' },
+      head: { sha: validSha },
     };
 
     // Mock PR files response
@@ -167,12 +168,12 @@ describe('fetchPrContentFiles', () => {
       expect(result.files).toHaveLength(2);
       expect(result.files[0]).toEqual({
         directoryName: 'guide-one',
-        rawUrl: 'https://raw.githubusercontent.com/grafana/interactive-tutorials/abc123def456/guide-one/content.json',
+        rawUrl: `https://raw.githubusercontent.com/grafana/interactive-tutorials/${validSha}/guide-one/content.json`,
         status: 'added',
       });
       expect(result.files[1]).toEqual({
         directoryName: 'guide-two',
-        rawUrl: 'https://raw.githubusercontent.com/grafana/interactive-tutorials/abc123def456/guide-two/content.json',
+        rawUrl: `https://raw.githubusercontent.com/grafana/interactive-tutorials/${validSha}/guide-two/content.json`,
         status: 'modified',
       });
     }
@@ -187,7 +188,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should handle nested content.json paths', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [{ filename: 'category/subcategory/guide/content.json', status: 'added' }];
 
     (global.fetch as jest.Mock)
@@ -211,7 +212,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should return no_files error when no content.json found', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [
       { filename: 'README.md', status: 'modified' },
       { filename: 'package.json', status: 'modified' },
@@ -272,7 +273,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should return rate_limited error when rate limit exceeded on files fetch', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
 
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce({
@@ -358,7 +359,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should return forbidden error for 403 without rate limit on files fetch', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
 
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce({
@@ -400,7 +401,7 @@ describe('fetchPrContentFiles', () => {
 
   it('should pass AbortSignal to fetch calls', async () => {
     const controller = new AbortController();
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [{ filename: 'guide/content.json', status: 'added' }];
 
     (global.fetch as jest.Mock)
@@ -432,7 +433,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should return api_error when files response is not an array', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const malformedResponse = { error: 'something went wrong' }; // Not an array
 
     (global.fetch as jest.Mock)
@@ -457,7 +458,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should show warning when GitHub API limit is reached (100+ total files)', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     // Simulate GitHub returning exactly 100 files (pagination limit)
     // Mixed content: 8 content.json files and 92 other files
     const filesResponse = [
@@ -496,7 +497,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should not show warning when PR has fewer than 100 total files', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     // PR with 50 total files, 8 are content.json
     const filesResponse = [
       ...Array.from({ length: 8 }, (_, i) => ({
@@ -531,7 +532,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should handle PR with 100 total files all being content.json', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     // Edge case: all 100 files are content.json
     const filesResponse = Array.from({ length: 100 }, (_, i) => ({
       filename: `guide-${i + 1}/content.json`,
@@ -562,7 +563,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should handle PR with exactly 99 total files', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     // Just under the pagination limit
     const filesResponse = [
       ...Array.from({ length: 10 }, (_, i) => ({
@@ -597,7 +598,7 @@ describe('fetchPrContentFiles', () => {
   });
 
   it('should handle files with invalid filename gracefully', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [
       { filename: 'valid/content.json', status: 'added' },
       { filename: null, status: 'added' }, // Invalid filename
@@ -628,6 +629,101 @@ describe('fetchPrContentFiles', () => {
       expect(result.files[1].directoryName).toBe('another');
     }
   });
+
+  it('should reject invalid SHA format from API response', async () => {
+    const prMetadataResponse = { head: { sha: 'not-a-valid-sha' } };
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(prMetadataResponse),
+    });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe('api_error');
+      expect(result.error.message).toContain('head SHA');
+    }
+  });
+
+  it('should reject SHA that is too short', async () => {
+    const prMetadataResponse = { head: { sha: 'abc123' } };
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(prMetadataResponse),
+    });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe('api_error');
+    }
+  });
+
+  it('should filter out files with path traversal in filename', async () => {
+    const validSha = '0123456789abcdef0123456789abcdef01234567';
+    const prMetadataResponse = { head: { sha: validSha } };
+    const filesResponse = [
+      { filename: 'safe-guide/content.json', status: 'added' },
+      { filename: '../../../etc/passwd/content.json', status: 'added' },
+      { filename: 'guide/../../../evil/content.json', status: 'added' },
+    ];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].directoryName).toBe('safe-guide');
+    }
+  });
+
+  it('should filter out files with control characters in filename', async () => {
+    const validSha = '0123456789abcdef0123456789abcdef01234567';
+    const prMetadataResponse = { head: { sha: validSha } };
+    const filesResponse = [
+      { filename: 'safe/content.json', status: 'added' },
+      { filename: 'evil\x00guide/content.json', status: 'added' },
+      { filename: 'evil\nguide/content.json', status: 'added' },
+    ];
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(prMetadataResponse),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(filesResponse),
+      });
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].directoryName).toBe('safe');
+    }
+  });
 });
 
 describe('fetchPrContentFilesFromUrl', () => {
@@ -652,7 +748,7 @@ describe('fetchPrContentFilesFromUrl', () => {
   });
 
   it('should parse URL and fetch files for valid PR URLs', async () => {
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [{ filename: 'guide/content.json', status: 'added' }];
 
     (global.fetch as jest.Mock)
@@ -683,7 +779,7 @@ describe('fetchPrContentFilesFromUrl', () => {
 
   it('should forward AbortSignal to fetchPrContentFiles', async () => {
     const controller = new AbortController();
-    const prMetadataResponse = { head: { sha: 'sha123' } };
+    const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [{ filename: 'guide/content.json', status: 'added' }];
 
     (global.fetch as jest.Mock)

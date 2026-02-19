@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
@@ -182,10 +182,26 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     completedSectionsRef.current = new Set();
   }, [content?.url]);
 
+  // Ref to track the current content URL - updated synchronously before effects run
+  // This allows handlers to detect if they're stale (created for different content)
+  const currentContentUrlRef = useRef<string | undefined>(content?.url);
+  currentContentUrlRef.current = content?.url;
+
   // Track interactive section completions for guide-level completion
   // Use debounced check to ensure DOM is stable before counting sections
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Capture the content URL at effect creation time
+    const effectContentUrl = content?.url;
+
+    // CRITICAL: Prevent handlers from triggering completion until content has "settled"
+    // Old components may still fire events during the transition period.
+    // Wait a short time before allowing completion to ensure old events have flushed.
+    let isSettled = false;
+    const settleTimer = setTimeout(() => {
+      isSettled = true;
+    }, 200); // 200ms settling time for old components to unmount
 
     // Count interactive sections from the DOM
     const countSections = (): number => {
@@ -206,6 +222,14 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         if (guideCompleteCalledRef.current) {
           return;
         }
+        // CRITICAL: Don't trigger completion until content has settled
+        if (!isSettled) {
+          return;
+        }
+        // CRITICAL: Validate this check is still for the current content
+        if (effectContentUrl !== currentContentUrlRef.current) {
+          return; // This check was scheduled for different content
+        }
         const totalSections = countSections();
         if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
           guideCompleteCalledRef.current = true;
@@ -217,6 +241,17 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     const handleSectionComplete = (event: Event) => {
       const { sectionId } = (event as CustomEvent).detail;
       completedSectionsRef.current.add(sectionId);
+
+      // CRITICAL: Don't trigger completion until content has settled
+      // This prevents old component events from triggering completion on new content
+      if (!isSettled) {
+        return; // Content hasn't settled yet
+      }
+
+      // Also validate handler is for current content
+      if (effectContentUrl !== currentContentUrlRef.current) {
+        return; // This handler was created for different content
+      }
 
       // Count sections at the time of completion to ensure accurate count
       const totalSections = countSections();
@@ -242,6 +277,16 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         return;
       }
 
+      // CRITICAL: Don't trigger completion until content has settled
+      if (!isSettled) {
+        return;
+      }
+
+      // CRITICAL: Validate this handler is still for the current content
+      if (effectContentUrl !== currentContentUrlRef.current) {
+        return; // This handler was created for different content
+      }
+
       const sections = container.querySelectorAll('[data-interactive-section="true"]');
       if (sections.length === 0) {
         return;
@@ -256,20 +301,58 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       }
     };
 
+    // Listen for unified progress events (covers standalone steps outside sections)
+    // Standalone steps don't dispatch interactive-step-completed; they use
+    // interactive-progress-saved with a unified completionPercentage instead.
+    // IMPORTANT: Must verify the event's contentKey matches the current page to avoid
+    // cross-milestone contamination (stale events from a previous milestone triggering
+    // completion on the newly loaded milestone).
+    const handleProgressSaved = (event: Event) => {
+      if (guideCompleteCalledRef.current) {
+        return;
+      }
+      // CRITICAL: Don't trigger completion until content has settled
+      if (!isSettled) {
+        return;
+      }
+      // CRITICAL: Check if this handler is still for the current content
+      if (effectContentUrl !== currentContentUrlRef.current) {
+        return; // This handler was created for different content
+      }
+      const detail = (event as CustomEvent).detail;
+      const currentTabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
+        // Only trigger if the event is for the current page (strict equality after normalization).
+        // Bidirectional startsWith would produce false matches when URLs share a common prefix
+        // (e.g., /docs/dashboard matching /docs/dashboard-variables).
+        const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
+        const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
+        if (eventKeyNorm === tabUrlNorm) {
+          guideCompleteCalledRef.current = true;
+          onGuideCompleteRef.current?.();
+        }
+      }
+    };
+
     window.addEventListener('interactive-section-completed', handleSectionComplete);
     window.addEventListener('interactive-step-completed', handleStepComplete);
+    window.addEventListener('interactive-progress-saved', handleProgressSaved);
 
     return () => {
       window.removeEventListener('interactive-section-completed', handleSectionComplete);
       window.removeEventListener('interactive-step-completed', handleStepComplete);
+      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
+      clearTimeout(settleTimer);
       if (debounceTimer) {
         clearTimeout(debounceTimer);
       }
     };
   }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
 
-  // Expose current content key globally for interactive persistence
-  useEffect(() => {
+  // Expose current content key globally for interactive persistence.
+  // MUST be useLayoutEffect so the global is set before children's useEffect
+  // (progress restoration) runs — prevents stale key from a previous milestone.
+  useLayoutEffect(() => {
     try {
       (window as any).__DocsPluginContentKey = content?.url || '';
     } catch {

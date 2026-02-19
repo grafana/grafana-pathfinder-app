@@ -20,7 +20,7 @@ export interface LearningPath {
   title: string;
   /** Brief description of what the user will learn */
   description: string;
-  /** Ordered array of guide IDs from bundled-interactives */
+  /** Ordered array of guide IDs. Empty when `url` is set (guides fetched dynamically). */
   guides: string[];
   /** Badge ID awarded upon path completion */
   badgeId: string;
@@ -30,6 +30,8 @@ export interface LearningPath {
   estimatedMinutes?: number;
   /** Icon name for the path (Grafana icon) */
   icon?: string;
+  /** Remote docs URL for paths backed by a learning journey. When set, guides are fetched from {url}index.json */
+  url?: string;
 }
 
 /**
@@ -47,7 +49,7 @@ export interface PathGuide {
 }
 
 /**
- * Metadata for a single guide within a learning path (from paths.json).
+ * Metadata for a single guide within a learning path (from paths.json / paths-cloud.json).
  * Bundled guides omit `url`; remote guides include one.
  */
 export interface GuideMetadataEntry {
@@ -157,7 +159,9 @@ export interface LearningPathCardProps {
   /** Whether this path is fully completed */
   isCompleted: boolean;
   /** Callback when user clicks to continue/start the path */
-  onContinue: (guideId: string) => void;
+  onContinue: (guideId: string, pathId: string) => void;
+  /** Callback when user clicks to reset the path (optional) */
+  onReset?: (pathId: string) => void;
 }
 
 /**
@@ -222,12 +226,16 @@ export interface UseLearningPathsReturn {
   isPathCompleted: (pathId: string) => boolean;
   /** Mark a guide as completed (triggers badge checks) */
   markGuideCompleted: (guideId: string) => Promise<void>;
+  /** Reset a path's progress (clears guides, interactive steps, keeps badges) */
+  resetPath: (pathId: string) => Promise<void>;
   /** Dismiss a pending celebration */
   dismissCelebration: (badgeId: string) => Promise<void>;
   /** Current streak display info */
   streakInfo: StreakInfo;
   /** Loading state */
   isLoading: boolean;
+  /** Whether dynamic guide data is still being fetched for URL-based paths */
+  isDynamicLoading: boolean;
 }
 
 /**

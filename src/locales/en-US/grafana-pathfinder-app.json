@@ -2,7 +2,7 @@
   "contextPanel": {
     "categoryDocsPage": "Docs page",
     "categoryInteractiveGuide": "Interactive guide",
-    "categoryLearningJourney": "Learning journey",
+    "categoryLearningJourney": "Learning path",
     "failedToLoad": "Failed to load recommendations: {{error}}",
     "items_one": "{{count}} item",
     "items_other": "{{count}} items",
@@ -10,11 +10,10 @@
     "noRecommendations": "No recommendations available for your current context",
     "otherDocumentation": "Other documentation",
     "percentComplete": "{{percent}}% complete",
-    "recommendedLearning": "Recommended learning",
     "resume": "Resume",
     "start": "Start",
     "startInteractiveGuide": "Start interactive guide",
-    "startLearningJourney": "Start learning journey",
+    "startLearningJourney": "Start learning path",
     "subtitle": "Interactive guides and resources based on what you're working on.",
     "summary": "Summary",
     "view": "View",
@@ -26,7 +25,7 @@
     "documentation": "Documentation",
     "giveFeedback": "Give feedback",
     "interactiveJourney": "Interactive journey",
-    "learningJourney": "Learning journey",
+    "learningJourney": "Learning path",
     "loading": "Loading...",
     "menuAriaLabel": "More options",
     "menuTooltip": "More options",
@@ -49,6 +48,17 @@
     "showMoreTabs_one": "Show {{count}} more tab",
     "showMoreTabs_other": "Show {{count}} more tabs",
     "switchToTab": "Switch to {{title}}"
+  },
+  "userProfileBar": {
+    "allComplete": "All paths complete!",
+    "allCompleteTooltip": "You've completed every learning path — nice work!",
+    "badgesTooltip": "{{- earned}} of {{- total}} badges earned",
+    "days": "days",
+    "guides": "guides",
+    "guidesTooltip": "{{- count}} learning guides completed",
+    "nextGuide": "Next: {{- title}}",
+    "nextTooltip": "Continue \"{{- pathTitle}}\" — {{- percent}}% done",
+    "streakTooltip": "{{- days}}-day learning streak — keep it going!"
   },
   "feedbackButton": {
     "ariaLabel": "Give feedback about this plugin",

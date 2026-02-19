@@ -66,7 +66,7 @@
     },
     {
       "title": "Create metric alert rules in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/alerting-metrics/",
+      "url": "https://grafana.com/docs/learning-paths/alerting-metrics/",
       "description": "Step-by-step guide: Create metric alert rules in Grafana Cloud.",
       "type": "learning-journey",
       "match": {
@@ -82,7 +82,7 @@
     },
     {
       "title": "Create log alert rules with Grafana Alerting",
-      "url": "https://grafana.com/docs/learning-journeys/logs-alert-creation",
+      "url": "https://grafana.com/docs/learning-paths/logs-alert-creation",
       "description": "Step-by-step guide: Create log alert rules with Grafana Alerting.",
       "type": "learning-journey",
       "match": {

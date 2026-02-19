@@ -10,7 +10,8 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from './content.types';
-import { journeyCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
 /**
  * Navigation helpers - these work with metadata, not DOM
@@ -176,7 +177,7 @@ function addReadyToBeginButton(content: string, metadata: LearningJourneyMetadat
         <h3>Ready to begin?</h3>
         <button class="journey-ready-button" 
                 data-journey-start="true" 
-                data-milestone-url="${firstMilestone.url}">
+                data-milestone-url="${sanitizeHtmlUrl(firstMilestone.url)}">
           <span class="journey-ready-icon">▶</span>
           Ready to Begin
         </button>
@@ -197,18 +198,18 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
 
   const sideJourneysHtml = `
     <div class="journey-side-journeys">
-      <h3 class="journey-side-journeys-title">${sideJourneys.heading}</h3>
+      <h3 class="journey-side-journeys-title">${escapeHtml(sideJourneys.heading)}</h3>
       <ul class="journey-side-journeys-list">
         ${sideJourneys.items
           .map(
             (item) => `
           <li class="journey-side-journey-item">
-            <a href="${item.link}" 
+            <a href="${sanitizeHtmlUrl(item.link)}" 
                target="_blank" 
                rel="noopener noreferrer"
                data-side-journey-link="true"
                class="journey-side-journey-link">
-              ${item.title}
+              ${escapeHtml(item.title)}
             </a>
           </li>
         `
@@ -228,16 +229,16 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
 
   const relatedJourneysHtml = `
     <div class="journey-related-journeys">
-      <h3 class="journey-related-journeys-title">${relatedJourneys.heading}</h3>
+      <h3 class="journey-related-journeys-title">${escapeHtml(relatedJourneys.heading)}</h3>
       <ul class="journey-related-journeys-list">
         ${relatedJourneys.items
           .map(
             (item) => `
           <li class="journey-related-journey-item">
-            <a href="${item.link}"
+            <a href="${sanitizeHtmlUrl(item.link)}"
                data-related-journey-link="true"
                class="journey-related-journey-link">
-              ${item.title}
+              ${escapeHtml(item.title)}
             </a>
           </li>
         `
@@ -253,10 +254,10 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
 function addConclusionImageToContent(content: string, conclusionImage: ConclusionImage): string {
   const conclusionImageHtml = `
     <div class="journey-conclusion-image">
-      <img src="${conclusionImage.src}" 
+      <img src="${sanitizeHtmlUrl(conclusionImage.src)}" 
            alt="Journey conclusion" 
-           width="${conclusionImage.width}" 
-           height="${conclusionImage.height}"
+           width="${escapeHtml(String(conclusionImage.width))}" 
+           height="${escapeHtml(String(conclusionImage.height))}"
            class="journey-conclusion-img" />
     </div>
   `;
@@ -372,4 +373,59 @@ export function getAllJourneyCompletions(): Record<string, number> {
 
 export async function getAllJourneyCompletionsAsync(): Promise<Record<string, number>> {
   return journeyCompletionStorage.getAll();
+}
+
+// ============================================================================
+// MILESTONE COMPLETION HELPERS
+// ============================================================================
+
+/**
+ * Extracts the milestone slug (guide ID) from a milestone URL.
+ * e.g. "https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/" -> "select-platform"
+ * e.g. "https://grafana.com/docs/.../select-platform/content.json" -> "select-platform"
+ */
+export function getMilestoneSlug(milestoneUrl: string): string {
+  // Strip content.json or unstyled.html suffixes added during content fetching
+  const cleanUrl = milestoneUrl.replace(/\/(content\.json|unstyled\.html)$/, '');
+  const segments = cleanUrl.replace(/\/+$/, '').split('/');
+  return segments[segments.length - 1] || '';
+}
+
+/**
+ * Marks a learning journey milestone as completed.
+ * - Persists the milestone slug in milestoneCompletionStorage
+ * - Calls learningProgressStorage.markGuideCompleted to bridge to the learning paths badge/progress system
+ * - When totalMilestones is provided and all milestones are done, awards the path badge
+ *   (URL-based paths have guides: [] in static data so the normal badge flow cannot detect completion)
+ */
+export async function markMilestoneDone(
+  journeyBaseUrl: string,
+  milestoneSlug: string,
+  totalMilestones?: number
+): Promise<void> {
+  if (!milestoneSlug) {
+    return;
+  }
+  await milestoneCompletionStorage.markCompleted(journeyBaseUrl, milestoneSlug);
+  await learningProgressStorage.markGuideCompleted(milestoneSlug);
+
+  // Award the path badge when all milestones in the journey are complete
+  if (totalMilestones && totalMilestones > 0) {
+    const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
+    if (completed.size >= totalMilestones) {
+      const { getPathsData } = await import('../learning-paths/paths-data');
+      const normalizedBase = journeyBaseUrl.replace(/\/+$/, '');
+      const path = getPathsData().paths.find((p) => p.url && normalizedBase === p.url.replace(/\/+$/, ''));
+      if (path?.badgeId) {
+        await learningProgressStorage.awardBadge(path.badgeId);
+      }
+    }
+  }
+}
+
+/**
+ * Checks if a milestone has already been completed.
+ */
+export async function isMilestoneCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
+  return milestoneCompletionStorage.isCompleted(journeyBaseUrl, milestoneSlug);
 }

@@ -1,0 +1,79 @@
+{
+  "paths": [
+    {
+      "id": "cloud-getting-started",
+      "title": "Getting started with Grafana Cloud",
+      "description": "Take a guided tour of Grafana Cloud and create your first dashboard.",
+      "guides": ["first-dashboard-cloud"],
+      "badgeId": "cloud-explorer",
+      "estimatedMinutes": 10,
+      "icon": "grafana"
+    },
+    {
+      "id": "linux-server-integration",
+      "title": "Monitor a Linux server",
+      "description": "Set up full Linux server observability with Alloy in Grafana Cloud.",
+      "url": "https://grafana.com/docs/learning-paths/linux-server-integration/",
+      "guides": [],
+      "badgeId": "penguin-wrangler",
+      "estimatedMinutes": 20,
+      "icon": "server"
+    },
+    {
+      "id": "visualization-logs",
+      "title": "Build a logs dashboard",
+      "description": "Create a multi-panel logs dashboard with variables and filters.",
+      "url": "https://grafana.com/docs/learning-paths/visualization-logs/",
+      "guides": [],
+      "badgeId": "log-visualizer",
+      "estimatedMinutes": 20,
+      "icon": "dashboard"
+    },
+    {
+      "id": "drilldown-logs",
+      "title": "Explore logs with drilldown",
+      "description": "View, search, filter, and visualize logs using Logs Drilldown.",
+      "url": "https://grafana.com/docs/learning-paths/drilldown-logs/",
+      "guides": [],
+      "badgeId": "log-whisperer",
+      "estimatedMinutes": 20,
+      "icon": "document-info"
+    },
+    {
+      "id": "drilldown-metrics",
+      "title": "Explore metrics with drilldown",
+      "description": "Search, analyze, and visualize metrics using Metrics Drilldown.",
+      "url": "https://grafana.com/docs/learning-paths/drilldown-metrics/",
+      "guides": [],
+      "badgeId": "metric-miner",
+      "estimatedMinutes": 15,
+      "icon": "search"
+    },
+    {
+      "id": "visualization-metrics",
+      "title": "Build a metrics dashboard",
+      "description": "Add visualizations, write queries, and save a metrics dashboard.",
+      "url": "https://grafana.com/docs/learning-paths/visualization-metrics/",
+      "guides": [],
+      "badgeId": "dashboard-artisan",
+      "estimatedMinutes": 15,
+      "icon": "dashboard"
+    },
+    {
+      "id": "infrastructure-alerting",
+      "title": "Set up infrastructure alerting",
+      "description": "Create an alert rule from data selection to activation and monitoring.",
+      "url": "https://grafana.com/docs/learning-paths/infrastructure-alerting/",
+      "guides": [],
+      "badgeId": "alert-guardian",
+      "estimatedMinutes": 25,
+      "icon": "bell"
+    }
+  ],
+  "guideMetadata": {
+    "first-dashboard-cloud": {
+      "title": "Create your first dashboard in Grafana Cloud",
+      "estimatedMinutes": 10
+    }
+  }
+}

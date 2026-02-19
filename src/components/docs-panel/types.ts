@@ -22,7 +22,7 @@ export interface DocsPanelModelOperations {
   /** Open a docs page in a new tab */
   openDocsPage(url: string, title?: string, skipReadyToBegin?: boolean): Promise<string>;
 
-  /** Load content for a learning journey tab */
+  /** Load content for a learning path tab */
   loadTabContent(tabId: string, url: string): Promise<void>;
 
   /** Load content for a docs-like tab */
@@ -34,10 +34,10 @@ export interface DocsPanelModelOperations {
   /** Set the active tab by ID */
   setActiveTab(tabId: string): void;
 
-  /** Navigate to the next milestone in the current learning journey */
+  /** Navigate to the next milestone in the current learning path */
   navigateToNextMilestone(): Promise<void>;
 
-  /** Navigate to the previous milestone in the current learning journey */
+  /** Navigate to the previous milestone in the current learning path */
   navigateToPreviousMilestone(): Promise<void>;
 
   /** Check if navigation to next milestone is possible */

@@ -773,6 +773,54 @@ export const journeyCompletionStorage = {
 };
 
 /**
+ * Milestone completion storage operations
+ *
+ * Tracks which milestones within a learning journey have been completed.
+ * Stored as a map of journeyBaseUrl -> array of completed milestone slugs.
+ */
+export const milestoneCompletionStorage = {
+  async getCompleted(journeyBaseUrl: string): Promise<Set<string>> {
+    try {
+      const storage = createUserStorage();
+      const data = await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION);
+      const slugs = data?.[journeyBaseUrl] || [];
+      return new Set(slugs);
+    } catch {
+      return new Set();
+    }
+  },
+
+  async markCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+      const existing = new Set(data[journeyBaseUrl] || []);
+      existing.add(milestoneSlug);
+      data[journeyBaseUrl] = Array.from(existing);
+      await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+    } catch (error) {
+      console.warn('Failed to save milestone completion:', error);
+    }
+  },
+
+  async isCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
+    const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
+    return completed.has(milestoneSlug);
+  },
+
+  async clear(journeyBaseUrl: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+      delete data[journeyBaseUrl];
+      await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+    } catch (error) {
+      console.warn('Failed to clear milestone completion:', error);
+    }
+  },
+};
+
+/**
  * Interactive guide completion storage operations
  *
  * Stores completion percentage for interactive guides (bundled and external).
@@ -867,6 +915,19 @@ export const interactiveCompletionStorage = {
       }
     } catch (error) {
       console.warn('Failed to cleanup interactive completions:', error);
+    }
+  },
+
+  /**
+   * Clears ALL interactive completion data.
+   * Used by the "Reset progress" action to wipe completion percentages for every guide.
+   */
+  async clearAll(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.INTERACTIVE_COMPLETION);
+    } catch (error) {
+      console.warn('Failed to clear all interactive completions:', error);
     }
   },
 };
@@ -1069,6 +1130,30 @@ export const interactiveStepStorage = {
    * Results are cached per contentKey and invalidated by setCompleted, clear, and
    * clearAllForContent to avoid an O(n) localStorage scan on every step completion.
    */
+  /**
+   * Clear ALL interactive step and section collapse data across every content key.
+   * Used by the "Reset progress" action to ensure guides don't instantly re-complete.
+   * Also fully invalidates the in-memory completedCountCache.
+   */
+  async clearAll(): Promise<void> {
+    try {
+      completedCountCache.clear();
+      const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
+      const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
+
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+    } catch (error) {
+      console.warn('Failed to clear all interactive step data:', error);
+    }
+  },
+
   countAllCompleted(contentKey: string): number {
     const cached = completedCountCache.get(contentKey);
     if (cached !== undefined) {
@@ -1363,10 +1448,8 @@ export const learningProgressStorage = {
     try {
       // Import badge checking utilities dynamically to avoid circular deps
       const { getBadgesToAward, getBadgeById } = await import('../learning-paths/badges');
-      const pathsData = await import('../learning-paths/paths.json');
-      // Cast paths to correct type (JSON import has string literals, we need the union type)
-      type LearningPath = import('../types/learning-paths.types').LearningPath;
-      const paths = pathsData.paths as unknown as LearningPath[];
+      const { getPathsData } = await import('../learning-paths/paths-data');
+      const paths = getPathsData().paths;
 
       const progress = await learningProgressStorage.get();
       if (!progress.completedGuides.includes(guideId)) {
@@ -1504,6 +1587,27 @@ export const learningProgressStorage = {
       return progress.completedGuides.includes(guideId);
     } catch {
       return false;
+    }
+  },
+
+  /**
+   * Removes specific guide IDs from completedGuides (for path reset).
+   * Preserves badges and other progress.
+   */
+  async removeCompletedGuides(guideIds: string[]): Promise<void> {
+    try {
+      const progress = await learningProgressStorage.get();
+      progress.completedGuides = progress.completedGuides.filter((id) => !guideIds.includes(id));
+      await learningProgressStorage.update(progress);
+
+      // Notify listeners that progress has changed
+      window.dispatchEvent(
+        new CustomEvent('learning-progress-updated', {
+          detail: { type: 'guides-removed', guideIds },
+        })
+      );
+    } catch (error) {
+      console.warn('Failed to remove completed guides:', error);
     }
   },
 

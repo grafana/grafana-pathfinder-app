@@ -706,8 +706,8 @@
     },
     {
       "title": "Understand billing and usage in Grafana Cloud",
-      "url": "https://grafana.com/docs/learning-journeys/billing-usage/",
-      "description": "A learning journey that teaches you how to understand and manage your billing and usage, identify cost drivers, and set up alerts to control spending.",
+      "url": "https://grafana.com/docs/learning-paths/billing-usage/",
+      "description": "A learning path that teaches you how to understand and manage your billing and usage, identify cost drivers, and set up alerts to control spending.",
       "type": "learning-journey",
       "match": {
         "and": [
