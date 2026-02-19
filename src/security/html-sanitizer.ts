@@ -402,7 +402,7 @@ export function sanitizeHtmlUrl(url: string): string {
   if (/^(javascript|data|vbscript):/i.test(stripped)) {
     return '';
   }
-  return escapeHtml(trimmed);
+  return escapeHtml(stripped);
 }
 
 /**
