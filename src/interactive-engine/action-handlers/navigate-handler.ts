@@ -2,6 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { locationService } from '@grafana/runtime';
+import { parseUrlSafely } from '../../security/url-validator';
 
 export class NavigateHandler {
   constructor(
@@ -43,6 +44,12 @@ export class NavigateHandler {
     // Use Grafana's idiomatic navigation pattern via locationService
     // This handles both internal Grafana routes and external URLs appropriately
     if (data.reftarget.startsWith('http://') || data.reftarget.startsWith('https://')) {
+      // SECURITY: Validate external URL scheme to prevent javascript:/data: injection
+      const parsed = parseUrlSafely(data.reftarget);
+      if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
+        console.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${data.reftarget.slice(0, 100)}`);
+        return;
+      }
       // External URL - open in new tab to preserve current Grafana session
       window.open(data.reftarget, '_blank', 'noopener,noreferrer');
     } else {

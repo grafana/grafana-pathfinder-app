@@ -11,6 +11,7 @@ import {
   ConclusionImage,
 } from './content.types';
 import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
 /**
  * Navigation helpers - these work with metadata, not DOM
@@ -176,7 +177,7 @@ function addReadyToBeginButton(content: string, metadata: LearningJourneyMetadat
         <h3>Ready to begin?</h3>
         <button class="journey-ready-button" 
                 data-journey-start="true" 
-                data-milestone-url="${firstMilestone.url}">
+                data-milestone-url="${sanitizeHtmlUrl(firstMilestone.url)}">
           <span class="journey-ready-icon">▶</span>
           Ready to Begin
         </button>
@@ -197,18 +198,18 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
 
   const sideJourneysHtml = `
     <div class="journey-side-journeys">
-      <h3 class="journey-side-journeys-title">${sideJourneys.heading}</h3>
+      <h3 class="journey-side-journeys-title">${escapeHtml(sideJourneys.heading)}</h3>
       <ul class="journey-side-journeys-list">
         ${sideJourneys.items
           .map(
             (item) => `
           <li class="journey-side-journey-item">
-            <a href="${item.link}" 
+            <a href="${sanitizeHtmlUrl(item.link)}" 
                target="_blank" 
                rel="noopener noreferrer"
                data-side-journey-link="true"
                class="journey-side-journey-link">
-              ${item.title}
+              ${escapeHtml(item.title)}
             </a>
           </li>
         `
@@ -228,16 +229,16 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
 
   const relatedJourneysHtml = `
     <div class="journey-related-journeys">
-      <h3 class="journey-related-journeys-title">${relatedJourneys.heading}</h3>
+      <h3 class="journey-related-journeys-title">${escapeHtml(relatedJourneys.heading)}</h3>
       <ul class="journey-related-journeys-list">
         ${relatedJourneys.items
           .map(
             (item) => `
           <li class="journey-related-journey-item">
-            <a href="${item.link}"
+            <a href="${sanitizeHtmlUrl(item.link)}"
                data-related-journey-link="true"
                class="journey-related-journey-link">
-              ${item.title}
+              ${escapeHtml(item.title)}
             </a>
           </li>
         `
@@ -253,10 +254,10 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
 function addConclusionImageToContent(content: string, conclusionImage: ConclusionImage): string {
   const conclusionImageHtml = `
     <div class="journey-conclusion-image">
-      <img src="${conclusionImage.src}" 
+      <img src="${sanitizeHtmlUrl(conclusionImage.src)}" 
            alt="Journey conclusion" 
-           width="${conclusionImage.width}" 
-           height="${conclusionImage.height}"
+           width="${escapeHtml(String(conclusionImage.width))}" 
+           height="${escapeHtml(String(conclusionImage.height))}"
            class="journey-conclusion-img" />
     </div>
   `;

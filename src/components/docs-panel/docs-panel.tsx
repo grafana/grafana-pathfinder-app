@@ -574,6 +574,22 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const currentUserId = config.bootData.user?.id;
   const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
 
+  // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
+  // Stored in a ref so it never causes effect re-runs when isDevMode toggles.
+  const logSessionRef = React.useRef((...args: unknown[]) => {
+    if (isDevMode) {
+      console.log(...args);
+    }
+  });
+  logSessionRef.current = (...args: unknown[]) => {
+    if (isDevMode) {
+      console.log(...args);
+    }
+  };
+  const logSession = React.useCallback((...args: unknown[]) => {
+    logSessionRef.current(...args);
+  }, []);
+
   // Set global config for utility functions that can't access React context
   (window as any).__pathfinderPluginConfig = pluginConfig;
 
@@ -665,9 +681,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         isRaised,
       });
 
-      console.log(`[DocsPanel] Hand ${isRaised ? 'raised' : 'lowered'} by ${attendeeName}`);
+      logSession(`[DocsPanel] Hand ${isRaised ? 'raised' : 'lowered'} by ${attendeeName}`);
     },
-    [sessionManager, sessionInfo, attendeeName]
+    [sessionManager, sessionInfo, attendeeName, logSession]
   );
 
   // Listen for hand raise events (presenter only)
@@ -676,15 +692,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       return;
     }
 
-    console.log('[DocsPanel] Setting up hand raise event listener for presenter');
+    logSession('[DocsPanel] Setting up hand raise event listener for presenter');
 
     const cleanup = onEvent((event) => {
-      console.log('[DocsPanel] Presenter received event:', event.type, event);
+      logSession('[DocsPanel] Presenter received event:', event.type, event);
 
       if (event.type === 'hand_raise') {
         if (event.isRaised) {
           // Show toast notification when someone raises their hand
-          console.log('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
+          logSession('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
           getAppEvents().publish({
             type: 'alert-success',
             payload: ['Live session', `${event.attendeeName} has raised their hand`],
@@ -694,7 +710,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     });
 
     return cleanup;
-  }, [sessionRole, onEvent]);
+  }, [sessionRole, onEvent, logSession]);
 
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
@@ -925,18 +941,18 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Initialize ActionCaptureSystem when creating session as presenter
   useEffect(() => {
     if (sessionRole === 'presenter' && sessionManager && sessionInfo && !actionCaptureRef.current) {
-      console.log('[DocsPanel] Initializing ActionCaptureSystem for presenter');
+      logSession('[DocsPanel] Initializing ActionCaptureSystem for presenter');
       actionCaptureRef.current = new ActionCaptureSystem(sessionManager, sessionInfo.sessionId);
       actionCaptureRef.current.startCapture();
     }
 
     // Cleanup when ending session
     if (sessionRole !== 'presenter' && actionCaptureRef.current) {
-      console.log('[DocsPanel] Cleaning up ActionCaptureSystem');
+      logSession('[DocsPanel] Cleaning up ActionCaptureSystem');
       actionCaptureRef.current.stopCapture();
       actionCaptureRef.current = null;
     }
-  }, [sessionRole, sessionManager, sessionInfo]);
+  }, [sessionRole, sessionManager, sessionInfo, logSession]);
 
   // ============================================================================
   // Live Session Effects (Attendee)
@@ -945,22 +961,22 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Initialize ActionReplaySystem when joining as attendee
   useEffect(() => {
     if (sessionRole === 'attendee' && navigationManagerRef.current && attendeeMode && !actionReplayRef.current) {
-      console.log(`[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
+      logSession(`[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
       actionReplayRef.current = new ActionReplaySystem(attendeeMode, navigationManagerRef.current);
     }
 
     // Update mode if it changes
     if (sessionRole === 'attendee' && actionReplayRef.current && attendeeMode) {
       actionReplayRef.current.setMode(attendeeMode);
-      console.log(`[DocsPanel] Updated ActionReplaySystem mode to ${attendeeMode}`);
+      logSession(`[DocsPanel] Updated ActionReplaySystem mode to ${attendeeMode}`);
     }
 
     // Cleanup when leaving session
     if (sessionRole !== 'attendee' && actionReplayRef.current) {
-      console.log('[DocsPanel] Cleaning up ActionReplaySystem');
+      logSession('[DocsPanel] Cleaning up ActionReplaySystem');
       actionReplayRef.current = null;
     }
-  }, [sessionRole, attendeeMode]);
+  }, [sessionRole, attendeeMode, logSession]);
 
   // Listen for session events and replay them (attendee only)
   useEffect(() => {
@@ -968,14 +984,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       return;
     }
 
-    console.log('[DocsPanel] Setting up event listener for attendee');
+    logSession('[DocsPanel] Setting up event listener for attendee');
 
     const cleanup = onEvent((event) => {
-      console.log('[DocsPanel] Received event:', event.type);
+      logSession('[DocsPanel] Received event:', event.type);
 
       // Handle session end
       if (event.type === 'session_end') {
-        console.log('[DocsPanel] Presenter ended the session');
+        logSession('[DocsPanel] Presenter ended the session');
         endSession();
 
         // Show notification to attendee
@@ -992,12 +1008,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     });
 
     return cleanup;
-  }, [sessionRole, onEvent, endSession]);
+  }, [sessionRole, onEvent, endSession, logSession]);
 
   // Auto-open tutorial when joining session as attendee
   useEffect(() => {
     if (sessionRole === 'attendee' && sessionInfo?.config.tutorialUrl) {
-      console.log('[DocsPanel] Auto-opening tutorial:', sessionInfo.config.tutorialUrl);
+      logSession('[DocsPanel] Auto-opening tutorial:', sessionInfo.config.tutorialUrl);
 
       const url = sessionInfo.config.tutorialUrl;
       const title = sessionInfo.config.name;
@@ -1009,7 +1025,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         model.openDocsPage(url, title);
       }
     }
-  }, [sessionRole, sessionInfo, model]);
+  }, [sessionRole, sessionInfo, model, logSession]);
 
   // Tab persistence is now handled explicitly in the model methods
   // No need for automatic saving here as it's done when tabs are created/modified
@@ -1143,7 +1159,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                 mode: newMode,
                               } as any);
                             }
-                            console.log('[DocsPanel] Switched to Guided mode');
+                            logSession('[DocsPanel] Switched to Guided mode');
                           }
                         }}
                         tooltip="Only see highlights when presenter clicks Show Me"
@@ -1172,7 +1188,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                 mode: newMode,
                               } as any);
                             }
-                            console.log('[DocsPanel] Switched to Follow mode');
+                            logSession('[DocsPanel] Switched to Follow mode');
                           }
                         }}
                         tooltip="Execute actions automatically when presenter clicks Do It"

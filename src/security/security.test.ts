@@ -5,7 +5,7 @@
  * Based on security audit from meeting with Kristian Bremberg.
  */
 
-import { sanitizeDocumentationHTML } from './html-sanitizer';
+import { sanitizeDocumentationHTML, escapeHtml, sanitizeHtmlUrl } from './html-sanitizer';
 import { parseHTMLToComponents } from '../docs-retrieval/html-parser';
 import {
   parseUrlSafely,
@@ -530,5 +530,106 @@ describe('Security: Regression Prevention', () => {
     // DOMPurify should strip the javascript: URL
     expect(result).not.toContain('javascript:');
     expect(result).not.toContain('alert(');
+  });
+});
+
+describe('Security: escapeHtml', () => {
+  it('should escape HTML special characters', () => {
+    expect(escapeHtml('<script>alert("XSS")</script>')).toBe('&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;');
+  });
+
+  it('should escape ampersands', () => {
+    expect(escapeHtml('foo & bar')).toBe('foo &amp; bar');
+  });
+
+  it('should escape single quotes', () => {
+    expect(escapeHtml("it's")).toBe('it&#x27;s');
+  });
+
+  it('should handle all special characters together', () => {
+    expect(escapeHtml('<a href="url">it\'s & done</a>')).toBe(
+      '&lt;a href=&quot;url&quot;&gt;it&#x27;s &amp; done&lt;/a&gt;'
+    );
+  });
+
+  it('should pass through safe strings unchanged', () => {
+    expect(escapeHtml('Hello World 123')).toBe('Hello World 123');
+  });
+
+  it('should return empty string for empty/null input', () => {
+    expect(escapeHtml('')).toBe('');
+    expect(escapeHtml(null as unknown as string)).toBe('');
+    expect(escapeHtml(undefined as unknown as string)).toBe('');
+  });
+
+  it('should prevent attribute breakout via title injection', () => {
+    const maliciousTitle = '"><img onerror=alert(1) src=x>';
+    const escaped = escapeHtml(maliciousTitle);
+    // The < and > are escaped, preventing HTML element creation
+    expect(escaped).not.toContain('<img');
+    expect(escaped).not.toContain('<');
+    expect(escaped).toBe('&quot;&gt;&lt;img onerror=alert(1) src=x&gt;');
+  });
+});
+
+describe('Security: sanitizeHtmlUrl', () => {
+  it('should block javascript: URLs', () => {
+    expect(sanitizeHtmlUrl('javascript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('JavaScript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('JAVASCRIPT:alert(1)')).toBe('');
+  });
+
+  it('should block data: URLs', () => {
+    expect(sanitizeHtmlUrl('data:text/html,<script>alert(1)</script>')).toBe('');
+    expect(sanitizeHtmlUrl('DATA:text/html,payload')).toBe('');
+  });
+
+  it('should block vbscript: URLs', () => {
+    expect(sanitizeHtmlUrl('vbscript:MsgBox("XSS")')).toBe('');
+  });
+
+  it('should allow https: URLs', () => {
+    expect(sanitizeHtmlUrl('https://grafana.com/docs/')).toBe('https://grafana.com/docs/');
+  });
+
+  it('should allow http: URLs', () => {
+    expect(sanitizeHtmlUrl('http://localhost:3000/test')).toBe('http://localhost:3000/test');
+  });
+
+  it('should escape HTML characters in safe URLs', () => {
+    expect(sanitizeHtmlUrl('https://example.com/path?a=1&b=2')).toBe('https://example.com/path?a=1&amp;b=2');
+  });
+
+  it('should trim whitespace', () => {
+    expect(sanitizeHtmlUrl('  https://grafana.com/  ')).toBe('https://grafana.com/');
+  });
+
+  it('should return empty string for empty/null input', () => {
+    expect(sanitizeHtmlUrl('')).toBe('');
+    expect(sanitizeHtmlUrl(null as unknown as string)).toBe('');
+  });
+
+  it('should block javascript: URLs with embedded tab characters', () => {
+    expect(sanitizeHtmlUrl('java\tscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('j\ta\tv\ta\tscript:alert(1)')).toBe('');
+  });
+
+  it('should block javascript: URLs with embedded newline/carriage-return', () => {
+    expect(sanitizeHtmlUrl('java\nscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('java\rscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('java\r\nscript:alert(1)')).toBe('');
+  });
+
+  it('should block data: URLs with embedded control characters', () => {
+    expect(sanitizeHtmlUrl('da\tta:text/html,<script>alert(1)</script>')).toBe('');
+    expect(sanitizeHtmlUrl('d\na\rta:text/html,payload')).toBe('');
+  });
+
+  it('should block vbscript: URLs with embedded control characters', () => {
+    expect(sanitizeHtmlUrl('vb\tscript:MsgBox("XSS")')).toBe('');
+  });
+
+  it('should block schemes with null bytes', () => {
+    expect(sanitizeHtmlUrl('java\x00script:alert(1)')).toBe('');
   });
 });
