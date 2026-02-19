@@ -1,0 +1,67 @@
+[
+  {
+    "schemaVersion": "0.1.0",
+    "packages": [
+      {
+        "name": "prometheus-grafana-101",
+        "version": "1.2.3",
+        "authors": [
+          "Foobar team",
+          "someemail@domain.tld",
+          "That Other Team"
+        ],
+        "build-depends": [
+          {
+            "grafana/grafana": "12.0.0"
+          },
+          "thing-without-version"
+        ],
+        "install-depends": [
+          {
+            "grafana/grafana": "12.0.0"
+          },
+          "package-foo"
+        ],
+        "course-depends": [
+          {
+            "welcome-to-grafana": "1.2.3"
+          },
+          "thing-without-version",
+          "and-this",
+          "and-that",
+          [
+            "this",
+            "is",
+            "a",
+            "logical",
+            "or"
+          ]
+        ],
+        "course-depends-ordered": [
+          "pre-work",
+          "actual-work",
+          "more-work",
+          "victory-lap"
+        ],
+        "course-recommends": [
+          "first-dashboard"
+        ],
+        "course-suggests": [
+          "loki-grafana-101",
+          "prometheus-advanced-queries"
+        ],
+        "course-provides": [
+          "datasource-configured"
+        ],
+        "recommender-match": [
+          {
+            "urlPrefixIn": "/connections"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    ]
+  }
+]
