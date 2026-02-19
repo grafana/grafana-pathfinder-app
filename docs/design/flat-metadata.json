@@ -14,21 +14,21 @@
           {
             "grafana/grafana": "12.0.0"
           },
-          "thing_without_version"
+          "thing-without-version"
         ],
         "install-depends": [
           {
             "grafana/grafana": "12.0.0"
           },
-          "thing_without_version"
+          "package-foo"
         ],
         "course-depends": [
           {
             "welcome-to-grafana": "1.2.3"
           },
-          "thing_without_version",
-          "and_this",
-          "and_that",
+          "thing-without-version",
+          "and-this",
+          "and-that",
           [
             "this",
             "is",
@@ -37,11 +37,11 @@
             "or"
           ]
         ],
-        "course-depends-sequenced": [
-          "pre_work",
-          "actual_work",
-          "more_work",
-          "victory_lap"
+        "course-depends-ordered": [
+          "pre-work",
+          "actual-work",
+          "more-work",
+          "victory-lap"
         ],
         "course-recommends": [
           "first-dashboard"
