@@ -1,0 +1,18 @@
+[
+  {
+    "schemaVersion": "0.1.0",
+    "packages": [
+      {
+        "name": "prometheus-grafana-101",
+        "version": "1.2.3",
+        "title": "Prometheus & Grafana 101",
+        "content": [
+          {
+            "type": "markdown",
+            "content": "# Prometheus & Grafana 101\n\nIn this guide..."
+          }
+        ]
+      }
+    ]
+  }
+]
