@@ -574,15 +574,21 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const currentUserId = config.bootData.user?.id;
   const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
 
-  // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console
-  const logSession = React.useCallback(
-    (...args: unknown[]) => {
-      if (isDevMode) {
-        console.log(...args);
-      }
-    },
-    [isDevMode]
-  );
+  // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
+  // Stored in a ref so it never causes effect re-runs when isDevMode toggles.
+  const logSessionRef = React.useRef((...args: unknown[]) => {
+    if (isDevMode) {
+      console.log(...args);
+    }
+  });
+  logSessionRef.current = (...args: unknown[]) => {
+    if (isDevMode) {
+      console.log(...args);
+    }
+  };
+  const logSession = React.useCallback((...args: unknown[]) => {
+    logSessionRef.current(...args);
+  }, []);
 
   // Set global config for utility functions that can't access React context
   (window as any).__pathfinderPluginConfig = pluginConfig;
