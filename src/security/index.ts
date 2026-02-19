@@ -25,7 +25,7 @@ export {
 } from './url-validator';
 
 // HTML sanitization
-export { sanitizeDocumentationHTML, sanitizeTextForDisplay } from './html-sanitizer';
+export { sanitizeDocumentationHTML, sanitizeTextForDisplay, escapeHtml, sanitizeHtmlUrl } from './html-sanitizer';
 
 // Log sanitization
 export { sanitizeForLogging } from './log-sanitizer';

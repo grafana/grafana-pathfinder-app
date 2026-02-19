@@ -365,6 +365,44 @@ export function sanitizeDocumentationHTML(html: string): string {
 }
 
 /**
+ * Escapes HTML special characters for safe interpolation into HTML template literals.
+ * Use this for text content that will be placed inside HTML elements.
+ *
+ * @param text - Plain text to escape
+ * @returns Escaped string safe for HTML interpolation
+ */
+export function escapeHtml(text: string): string {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+/**
+ * Sanitizes a URL for safe use in HTML href/src attributes.
+ * Rejects dangerous URI schemes (javascript:, data:, vbscript:) and
+ * HTML-escapes the result to prevent attribute breakout.
+ *
+ * @param url - URL string to sanitize
+ * @returns Sanitized URL safe for href/src attributes, or empty string if dangerous
+ */
+export function sanitizeHtmlUrl(url: string): string {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+  const trimmed = url.trim();
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) {
+    return '';
+  }
+  return escapeHtml(trimmed);
+}
+
+/**
  * Sanitizes text fields from external APIs (e.g., recommender service).
  * Strips all HTML tags and returns plain text to prevent XSS injection.
  * Use this for fields like title, summary, description from untrusted sources.
