@@ -396,7 +396,10 @@ export function sanitizeHtmlUrl(url: string): string {
     return '';
   }
   const trimmed = url.trim();
-  if (/^(javascript|data|vbscript):/i.test(trimmed)) {
+  // SECURITY: Strip ASCII control characters (\x00-\x1f, \x7f) before the scheme check.
+  // Browsers strip these per the WHATWG URL spec, so "java\tscript:" resolves to "javascript:".
+  const stripped = trimmed.replace(/[\x00-\x1f\x7f]/g, '');
+  if (/^(javascript|data|vbscript):/i.test(stripped)) {
     return '';
   }
   return escapeHtml(trimmed);

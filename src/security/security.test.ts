@@ -608,4 +608,28 @@ describe('Security: sanitizeHtmlUrl', () => {
     expect(sanitizeHtmlUrl('')).toBe('');
     expect(sanitizeHtmlUrl(null as unknown as string)).toBe('');
   });
+
+  it('should block javascript: URLs with embedded tab characters', () => {
+    expect(sanitizeHtmlUrl('java\tscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('j\ta\tv\ta\tscript:alert(1)')).toBe('');
+  });
+
+  it('should block javascript: URLs with embedded newline/carriage-return', () => {
+    expect(sanitizeHtmlUrl('java\nscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('java\rscript:alert(1)')).toBe('');
+    expect(sanitizeHtmlUrl('java\r\nscript:alert(1)')).toBe('');
+  });
+
+  it('should block data: URLs with embedded control characters', () => {
+    expect(sanitizeHtmlUrl('da\tta:text/html,<script>alert(1)</script>')).toBe('');
+    expect(sanitizeHtmlUrl('d\na\rta:text/html,payload')).toBe('');
+  });
+
+  it('should block vbscript: URLs with embedded control characters', () => {
+    expect(sanitizeHtmlUrl('vb\tscript:MsgBox("XSS")')).toBe('');
+  });
+
+  it('should block schemes with null bytes', () => {
+    expect(sanitizeHtmlUrl('java\x00script:alert(1)')).toBe('');
+  });
 });
