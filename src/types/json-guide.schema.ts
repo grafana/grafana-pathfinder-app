@@ -267,6 +267,22 @@ export const JsonInputBlockSchema = z.object({
   datasourceFilter: z.string().optional(),
 });
 
+// ============ TERMINAL BLOCK SCHEMA ============
+
+/**
+ * Schema for terminal command block.
+ * @coupling Type: JsonTerminalBlock
+ */
+export const JsonTerminalBlockSchema = z.object({
+  type: z.literal('terminal'),
+  command: z.string().min(1, 'Terminal command is required'),
+  content: z.string().min(1, 'Terminal content is required'),
+  requirements: z.array(z.string()).optional(),
+  objectives: z.array(z.string()).optional(),
+  skippable: z.boolean().optional(),
+  hint: z.string().optional(),
+});
+
 // ============ BLOCK UNION (Non-recursive blocks) ============
 
 /**
@@ -283,6 +299,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonGuidedBlockSchema,
   JsonQuizBlockSchema,
   JsonInputBlockSchema,
+  JsonTerminalBlockSchema,
 ]);
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
@@ -524,6 +541,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'datasourceFilter',
   ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
+  terminal: new Set(['type', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
 };
 
 /**
@@ -543,4 +561,5 @@ export const VALID_BLOCK_TYPES = new Set([
   'quiz',
   'input',
   'assistant',
+  'terminal',
 ]);

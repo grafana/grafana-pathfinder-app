@@ -13,6 +13,7 @@ export enum FixedRequirementType {
   IS_EDITOR = 'is-editor',
   DASHBOARD_EXISTS = 'dashboard-exists',
   FORM_VALID = 'form-valid',
+  IS_TERMINAL_ACTIVE = 'is-terminal-active',
 }
 
 // Parameterized requirement prefixes

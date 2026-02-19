@@ -8,6 +8,3 @@ apps:
     jsonData:
       # Set to true after successful registration with Coda
       codaRegistered: false
-    secureJsonData:
-      # Enrollment key for Coda registration (from coda-jwt-key secret in coda namespace)
-      codaEnrollmentKey: ''

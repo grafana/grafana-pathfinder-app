@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "terminal-demo",
+  "title": "Terminal commands demo",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Terminal commands demo\n\nThis guide demonstrates the **terminal** block type. Each step provides a shell command you can **copy** to your clipboard or **execute** directly in the connected Coda terminal."
+    },
+    {
+      "type": "section",
+      "id": "terminal-basics",
+      "title": "Basic terminal commands",
+      "blocks": [
+        {
+          "type": "terminal",
+          "command": "echo \"Hello from Pathfinder!\"",
+          "content": "Print a welcome message to verify your terminal connection is working.",
+          "requirements": ["is-terminal-active"],
+          "hint": "Connect to the terminal first using the panel at the bottom of the sidebar."
+        },
+        {
+          "type": "terminal",
+          "command": "ls -la",
+          "content": "List the files in the current directory with detailed information.",
+          "requirements": ["is-terminal-active"]
+        },
+        {
+          "type": "terminal",
+          "command": "cat /etc/os-release",
+          "content": "Display the operating system information of the connected environment.",
+          "requirements": ["is-terminal-active"]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "terminal-exploration",
+      "title": "Explore the environment",
+      "blocks": [
+        {
+          "type": "terminal",
+          "command": "whoami && hostname",
+          "content": "Check your current user and the hostname of the machine.",
+          "requirements": ["is-terminal-active"]
+        },
+        {
+          "type": "terminal",
+          "command": "df -h",
+          "content": "View disk usage in a human-readable format.",
+          "requirements": ["is-terminal-active"],
+          "skippable": true
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "You've completed the terminal demo. You can now use **terminal** blocks in your own guides to provide executable commands alongside tutorials."
+    }
+  ]
+}

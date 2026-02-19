@@ -206,61 +206,65 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   };
 
   // Handle Coda registration - extracted as callback for reuse in auto-registration
-  const performCodaRegistration = useCallback(async (enrollmentKeyOverride?: string) => {
-    // Check if we have either a user-entered key or a provisioned key
-    const keyToUse = enrollmentKeyOverride ?? '';
-    if (!keyToUse && !hasProvisionedKey) {
-      setRegistrationError('No enrollment key available');
-      return;
-    }
-
-    setIsRegistering(true);
-    setRegistrationError(null);
-
-    try {
-      // Generate a unique instance ID based on the Grafana instance
-      const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
-      const instanceUrl = window.location.origin;
-
-      // Call the plugin backend to register with Coda
-      // Backend resources are accessed via /api/plugins/{pluginId}/resources/{path}
-      // If enrollmentKey is empty, the backend will use the provisioned key from secureJsonData
-      const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
-        enrollmentKey: keyToUse, // Empty string if using provisioned key
-        instanceId,
-        instanceUrl,
-      });
-
-      // Save the JWT token to secureJsonData and update registration status
-      // Only update enrollment key if user provided a new one (don't overwrite provisioned key with empty)
-      const secureJsonDataUpdate: Record<string, string> = {
-        codaJwtToken: response.token,
-      };
-      if (keyToUse) {
-        secureJsonDataUpdate.codaEnrollmentKey = keyToUse;
+  const performCodaRegistration = useCallback(
+    async (enrollmentKeyOverride?: string) => {
+      // Check if we have either a user-entered key or a provisioned key
+      const keyToUse = enrollmentKeyOverride ?? '';
+      if (!keyToUse && !hasProvisionedKey) {
+        setRegistrationError('No enrollment key available');
+        return;
       }
 
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: {
-          ...jsonData,
-          codaRegistered: true,
-        },
-        secureJsonData: secureJsonDataUpdate,
-      });
+      setIsRegistering(true);
+      setRegistrationError(null);
 
-      // Reload page to apply changes
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    } catch (error) {
-      console.error('Failed to register with Coda:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to register with Coda. Please check your enrollment key.';
-      setRegistrationError(errorMessage);
-      setIsRegistering(false);
-    }
-  }, [hasProvisionedKey, enabled, pinned, jsonData, plugin.meta.id]);
+      try {
+        // Generate a unique instance ID based on the Grafana instance
+        const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
+        const instanceUrl = window.location.origin;
+
+        // Call the plugin backend to register with Coda
+        // Backend resources are accessed via /api/plugins/{pluginId}/resources/{path}
+        // If enrollmentKey is empty, the backend will use the provisioned key from secureJsonData
+        const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
+          enrollmentKey: keyToUse, // Empty string if using provisioned key
+          instanceId,
+          instanceUrl,
+        });
+
+        // Save the JWT token to secureJsonData and update registration status
+        // Only update enrollment key if user provided a new one (don't overwrite provisioned key with empty)
+        const secureJsonDataUpdate: Record<string, string> = {
+          codaJwtToken: response.token,
+        };
+        if (keyToUse) {
+          secureJsonDataUpdate.codaEnrollmentKey = keyToUse;
+        }
+
+        await updatePluginSettings(plugin.meta.id, {
+          enabled,
+          pinned,
+          jsonData: {
+            ...jsonData,
+            codaRegistered: true,
+          },
+          secureJsonData: secureJsonDataUpdate,
+        });
+
+        // Reload page to apply changes
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } catch (error) {
+        console.error('Failed to register with Coda:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to register with Coda. Please check your enrollment key.';
+        setRegistrationError(errorMessage);
+        setIsRegistering(false);
+      }
+    },
+    [hasProvisionedKey, enabled, pinned, jsonData, plugin.meta.id]
+  );
 
   // Auto-register with Coda when a provisioned enrollment key exists but not yet registered
   useEffect(() => {
@@ -278,7 +282,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     ) {
       autoRegisterAttempted.current = true;
       console.log('Auto-registering with Coda using provisioned enrollment key...');
-      performCodaRegistration();
+      queueMicrotask(() => performCodaRegistration());
     }
   }, [state.enableCodaTerminal, hasProvisionedKey, codaRegistered, isRegistering, performCodaRegistration]);
 
@@ -641,9 +645,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               <>
                 <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
                   <Text variant="body">
-                    <strong>This feature is experimental and requires backend infrastructure.</strong> The terminal panel
-                    will be visible in the sidebar but connection functionality requires the Coda backend service. This
-                    is intended for development and testing purposes only.
+                    <strong>This feature is experimental and requires backend infrastructure.</strong> The terminal
+                    panel will be visible in the sidebar but connection functionality requires the Coda backend service.
+                    This is intended for development and testing purposes only.
                   </Text>
                 </Alert>
 
@@ -658,14 +662,15 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   </div>
 
                   {/* Registration status */}
-                  {codaRegistered ? (
+                  {codaRegistered && (
                     <Alert severity="success" title="Registered with Coda" className={s.marginTop}>
                       <Text variant="body">
                         This instance is registered with the Coda backend. VM provisioning is enabled.
                       </Text>
                     </Alert>
-                  ) : hasProvisionedKey ? (
-                    /* Auto-registration flow when provisioned key exists */
+                  )}
+
+                  {!codaRegistered && hasProvisionedKey && (
                     <>
                       {isRegistering && (
                         <Alert severity="info" title="Auto-registering with Coda" className={s.marginTop}>
@@ -690,46 +695,57 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                         </Alert>
                       )}
                     </>
-                  ) : (
-                    /* Manual registration flow when no provisioned key */
-                    <>
-                      <Field
-                        label="Enrollment key"
-                        description="Enter the enrollment key provided by your Coda administrator to register this instance"
-                      >
-                        <Input
-                          type="password"
-                          width={60}
-                          value={state.codaEnrollmentKey}
-                          onChange={onChangeCodaEnrollmentKey}
-                          placeholder="Enter enrollment key"
-                          disabled={isRegistering}
-                        />
-                      </Field>
-
-                      {registrationError && (
-                        <Alert severity="error" title="Registration failed" className={s.marginTop}>
-                          <Text variant="body">{registrationError}</Text>
-                        </Alert>
-                      )}
-
-                      <div className={s.marginTop}>
-                        <Button
-                          variant="primary"
-                          onClick={onRegisterWithCoda}
-                          disabled={isRegistering || !state.codaEnrollmentKey}
-                        >
-                          {isRegistering ? (
-                            <>
-                              <Spinner inline={true} /> Registering...
-                            </>
-                          ) : (
-                            'Register with Coda'
-                          )}
-                        </Button>
-                      </div>
-                    </>
                   )}
+
+                  {/* Manual registration - always available as fallback */}
+                  <div className={s.marginTop}>
+                    <Text variant="h6">
+                      {codaRegistered ? 'Re-register with a different key' : 'Manual registration'}
+                    </Text>
+                    <div style={{ marginTop: '8px', marginBottom: '16px' }}>
+                      <Text variant="body" color="secondary">
+                        Enter an enrollment key to {codaRegistered ? 're-register' : 'register'} this instance manually.
+                      </Text>
+                    </div>
+
+                    <Field
+                      label="Enrollment key"
+                      description="Enter the enrollment key provided by your Coda administrator"
+                    >
+                      <Input
+                        type="password"
+                        width={60}
+                        value={state.codaEnrollmentKey}
+                        onChange={onChangeCodaEnrollmentKey}
+                        placeholder="Enter enrollment key"
+                        disabled={isRegistering}
+                      />
+                    </Field>
+
+                    {registrationError && !hasProvisionedKey && (
+                      <Alert severity="error" title="Registration failed" className={s.marginTop}>
+                        <Text variant="body">{registrationError}</Text>
+                      </Alert>
+                    )}
+
+                    <div className={s.marginTopSmall}>
+                      <Button
+                        variant={codaRegistered ? 'secondary' : 'primary'}
+                        onClick={onRegisterWithCoda}
+                        disabled={isRegistering || !state.codaEnrollmentKey}
+                      >
+                        {isRegistering ? (
+                          <>
+                            <Spinner inline={true} /> Registering...
+                          </>
+                        ) : codaRegistered ? (
+                          'Re-register with Coda'
+                        ) : (
+                          'Register with Coda'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </>
             )}

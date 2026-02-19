@@ -100,6 +100,7 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
+  const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -114,6 +115,10 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
     if (inputDisposerRef.current) {
       inputDisposerRef.current.dispose();
       inputDisposerRef.current = null;
+    }
+    if (handshakeTimeoutRef.current) {
+      clearTimeout(handshakeTimeoutRef.current);
+      handshakeTimeoutRef.current = null;
     }
   }, []);
 
@@ -209,6 +214,15 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                 reject(new Error(vm.errorMessage || 'VM provisioning failed'));
                 break;
 
+              case 'destroying':
+              case 'destroyed':
+                if (pollingIntervalRef.current) {
+                  clearInterval(pollingIntervalRef.current);
+                  pollingIntervalRef.current = null;
+                }
+                reject(new Error('VM has been destroyed'));
+                break;
+
               case 'provisioning':
                 terminal.writeln(`\x1b[90m   │  ⏳ Booting... (${attempts * 2}s)\x1b[0m`);
                 break;
@@ -277,51 +291,30 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
   }, []);
 
   /**
-   * Parse terminal output from a DataFrame message
-   */
-  /**
    * Parse terminal output from a Grafana Live message.
    * Handles both wire format (DataFrameJSON: {schema, data}) and in-memory format (DataFrame: {fields}).
    */
   const parseTerminalOutput = useCallback((message: DataFrame | DataFrameJSON): TerminalStreamOutput | null => {
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:parseTerminalOutput',message:'Parsing message',data:{messageKeys:Object.keys(message)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-
       // Convert wire format (DataFrameJSON) to in-memory DataFrame if needed
       let frame: DataFrame;
       if ('schema' in message && 'data' in message) {
-        // Wire format - use Grafana's built-in converter
         frame = dataFrameFromJSON(message as DataFrameJSON);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:parseTerminalOutput',message:'Converted from wire format',data:{fieldCount:frame.fields?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C-fix'})}).catch(()=>{});
-        // #endregion
       } else {
         frame = message as DataFrame;
       }
 
-      // Extract data from the DataFrame
       if (frame.fields && frame.fields.length > 0) {
         const dataField = frame.fields[0];
         if (dataField.values && dataField.values.length > 0) {
           const jsonStr = dataField.values[0];
           if (typeof jsonStr === 'string') {
-            const parsed = JSON.parse(jsonStr) as TerminalStreamOutput;
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:parseTerminalOutput',message:'Parsed successfully',data:{type:parsed.type,hasData:!!parsed.data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C-fix'})}).catch(()=>{});
-            // #endregion
-            return parsed;
+            return JSON.parse(jsonStr) as TerminalStreamOutput;
           }
         }
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:parseTerminalOutput',message:'Parse returned null - no data in frame',data:{fieldCount:frame.fields?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-    } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:parseTerminalOutput',message:'Parse error',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
+    } catch {
+      // Parse failures are non-fatal; the stream will deliver subsequent messages
     }
     return null;
   }, []);
@@ -338,31 +331,36 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
         return;
       }
 
-      // Channel address for terminal streaming
-      // Format: plugin/{pluginId}/{path}
+      // Append a unique nonce so Grafana Live always starts a fresh RunStream,
+      // even when reconnecting to the same VM. Without this, resubscribing to
+      // the same channel path while the old RunStream is tearing down can cause
+      // the backend to never invoke a new RunStream, leaving us stuck.
+      const nonce = Date.now();
       const address: LiveChannelAddress = {
         scope: LiveChannelScope.Plugin,
         namespace: PLUGIN_ID,
-        path: `terminal/${id}`,
+        path: `terminal/${id}/${nonce}`,
       };
 
       currentVmIdRef.current = id;
 
-      // Subscribe to the stream
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:connectLiveStream',message:'Subscribing to stream',data:{scope:address.scope,namespace:address.namespace,path:address.path},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
+      // Safety-net timeout: if the backend never sends "connected" (e.g. SSH
+      // dial blocks or RunStream fails silently), surface an error instead of
+      // hanging forever. 35 s > the 30 s SSH dial timeout on the backend.
+      const SSH_HANDSHAKE_TIMEOUT_MS = 35_000;
+      handshakeTimeoutRef.current = setTimeout(() => {
+        handshakeTimeoutRef.current = null;
+        cleanup();
+        setError('SSH handshake timed out');
+        setStatus('error');
+        terminal.writeln('\r\n\x1b[31m✖ SSH handshake timed out — the VM may be unreachable.\x1b[0m');
+        terminal.writeln('\x1b[90m  Press "Connect" to try again.\x1b[0m');
+      }, SSH_HANDSHAKE_TIMEOUT_MS);
+
       const stream = liveSrv.getStream<DataFrame>(address);
       subscriptionRef.current = stream.subscribe({
         next: (event: LiveChannelEvent<DataFrame>) => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:stream.next',message:'Event received',data:{eventType:event.type,isMessageEvent:isLiveChannelMessageEvent(event),isStatusEvent:isLiveChannelStatusEvent(event)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
-          // Handle message events (data from backend)
           if (isLiveChannelMessageEvent(event)) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0beec42b-59e6-44c2-822f-27c155a5c0e5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useTerminalLive.hook.ts:stream.next',message:'Message event confirmed',data:{messageType:typeof event.message,messageKeys:event.message ? Object.keys(event.message) : []},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
             const msg = parseTerminalOutput(event.message);
             if (msg) {
               switch (msg.type) {
@@ -373,27 +371,40 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                   break;
 
                 case 'error':
+                  if (handshakeTimeoutRef.current) {
+                    clearTimeout(handshakeTimeoutRef.current);
+                    handshakeTimeoutRef.current = null;
+                  }
                   terminal.writeln('\r\n');
                   terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
                   setError(msg.error || 'Unknown error');
                   break;
 
                 case 'connected':
+                  if (handshakeTimeoutRef.current) {
+                    clearTimeout(handshakeTimeoutRef.current);
+                    handshakeTimeoutRef.current = null;
+                  }
                   setStatus('connected');
-                  // Clear provisioning messages and show SSH-style welcome
                   terminal.writeln('');
                   terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
                   terminal.writeln('');
                   terminal.writeln('\x1b[36m┌──────────────────────────────────────────────────────────────┐\x1b[0m');
-                  terminal.writeln('\x1b[36m│\x1b[0m  \x1b[1;33mGrafana Pathfinder Sandbox\x1b[0m                                 \x1b[36m│\x1b[0m');
-                  terminal.writeln('\x1b[36m│\x1b[0m                                                              \x1b[36m│\x1b[0m');
-                  terminal.writeln('\x1b[36m│\x1b[0m  \x1b[90mThis is a temporary sandbox VM for learning Grafana.\x1b[0m       \x1b[36m│\x1b[0m');
-                  terminal.writeln('\x1b[36m│\x1b[0m  \x1b[90mVM will auto-terminate after inactivity.\x1b[0m                   \x1b[36m│\x1b[0m');
+                  terminal.writeln(
+                    '\x1b[36m│\x1b[0m  \x1b[1;33mGrafana Pathfinder Sandbox\x1b[0m                                 \x1b[36m│\x1b[0m'
+                  );
+                  terminal.writeln(
+                    '\x1b[36m│\x1b[0m                                                              \x1b[36m│\x1b[0m'
+                  );
+                  terminal.writeln(
+                    '\x1b[36m│\x1b[0m  \x1b[90mThis is a temporary sandbox VM for learning Grafana.\x1b[0m       \x1b[36m│\x1b[0m'
+                  );
+                  terminal.writeln(
+                    '\x1b[36m│\x1b[0m  \x1b[90mVM will auto-terminate after inactivity.\x1b[0m                   \x1b[36m│\x1b[0m'
+                  );
                   terminal.writeln('\x1b[36m└──────────────────────────────────────────────────────────────┘\x1b[0m');
                   terminal.writeln('');
 
-                  // NOW set up the terminal input handler - only after SSH is connected
-                  // This prevents "No active session" errors from race conditions
                   if (inputDisposerRef.current) {
                     inputDisposerRef.current.dispose();
                   }
@@ -403,12 +414,16 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                     }
                   });
 
-                  // Send initial resize so the shell prompt appears correctly
                   sendResize(id, terminal.rows, terminal.cols);
                   break;
 
                 case 'disconnected':
+                  if (handshakeTimeoutRef.current) {
+                    clearTimeout(handshakeTimeoutRef.current);
+                    handshakeTimeoutRef.current = null;
+                  }
                   setStatus('disconnected');
+                  setVmId(null);
                   terminal.writeln('\r\n');
                   terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
                   terminal.writeln('\x1b[33m  Session ended - VM disconnected\x1b[0m');
@@ -418,36 +433,46 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
             }
           }
 
-          // Handle status events (connection state changes)
           if (isLiveChannelStatusEvent(event)) {
             if (event.state === LiveChannelConnectionState.Connected) {
               terminal.writeln('\x1b[90m       Waiting for SSH handshake...\x1b[0m');
             } else if (event.state === LiveChannelConnectionState.Disconnected) {
-              if (status === 'connected') {
-                setStatus('disconnected');
-                terminal.writeln('\r\n\x1b[33m⚠ Connection lost\x1b[0m');
-              }
+              setStatus((prev) => {
+                if (prev === 'connected') {
+                  terminal.writeln('\r\n\x1b[33m⚠ Connection lost\x1b[0m');
+                  return 'disconnected';
+                }
+                return prev;
+              });
             }
           }
         },
         error: (err) => {
+          if (handshakeTimeoutRef.current) {
+            clearTimeout(handshakeTimeoutRef.current);
+            handshakeTimeoutRef.current = null;
+          }
           console.error('Live stream error:', err);
           setError('Stream connection failed');
           setStatus('error');
           terminal.writeln(`\r\n\x1b[31mStream error: ${err?.message || 'Unknown error'}\x1b[0m`);
         },
         complete: () => {
-          if (status === 'connected') {
-            setStatus('disconnected');
-            terminal.writeln('\r\n\x1b[33mStream ended\x1b[0m');
+          if (handshakeTimeoutRef.current) {
+            clearTimeout(handshakeTimeoutRef.current);
+            handshakeTimeoutRef.current = null;
           }
+          setStatus((prev) => {
+            if (prev === 'connected') {
+              terminal.writeln('\r\n\x1b[33mStream ended\x1b[0m');
+              return 'disconnected';
+            }
+            return prev;
+          });
         },
       });
-
-      // Note: Input handler is set up when 'connected' message is received
-      // This avoids race conditions where input is sent before SSH session is ready
     },
-    [status, parseTerminalOutput, sendInput, sendResize]
+    [cleanup, parseTerminalOutput, sendInput, sendResize]
   );
 
   /**
@@ -482,13 +507,16 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
           const existingVm = await getVM(currentVmId);
           if (existingVm.state === 'active') {
             terminal.writeln('\x1b[90m   ├─ VM still active\x1b[0m');
+          } else if (existingVm.state === 'destroying' || existingVm.state === 'destroyed') {
+            terminal.writeln('\x1b[90m   ├─ VM expired, provisioning new one...\x1b[0m');
+            currentVmId = null;
+            setVmId(null);
           } else if (existingVm.state === 'error') {
-            terminal.writeln(`\x1b[90m   ├─ VM in error state, provisioning new one...\x1b[0m`);
+            terminal.writeln('\x1b[90m   ├─ VM in error state, provisioning new one...\x1b[0m');
             currentVmId = null;
             setVmId(null);
           } else {
-            // VM exists but not active yet - wait for it to become active
-            terminal.writeln(`\x1b[90m   ├─ VM state: ${existingVm.state}, waiting for VM to become active...\x1b[0m`);
+            terminal.writeln(`\x1b[90m   ├─ VM state: ${existingVm.state}, waiting...\x1b[0m`);
             await waitForVM(currentVmId, terminal);
           }
         } catch {

@@ -27,6 +27,7 @@ import {
   type JsonQuizBlock,
   type JsonAssistantBlock,
   type JsonInputBlock,
+  type JsonTerminalBlock,
   type JsonStep,
   type AssistantProps,
 } from '../types/json-guide.types';
@@ -239,6 +240,8 @@ function convertBlockByType(
       return convertQuizBlock(block, path);
     case 'input':
       return convertInputBlock(block, path);
+    case 'terminal':
+      return convertTerminalBlock(block, path);
     case 'assistant':
       // Legacy wrapper format - pass surrounding context for better AI understanding
       return convertAssistantBlock(block, path, baseUrl, surroundingContext);
@@ -748,6 +751,27 @@ function convertInputBlock(block: JsonInputBlock, path: string): ConversionResul
   };
 }
 
+function convertTerminalBlock(block: JsonTerminalBlock, _path: string): ConversionResult {
+  const children = parseMarkdownToElements(block.content);
+  const requirements = block.requirements?.join(',') || undefined;
+  const objectives = block.objectives?.join(',') || undefined;
+
+  return {
+    element: {
+      type: 'terminal-step',
+      props: {
+        command: block.command,
+        requirements,
+        objectives,
+        skippable: block.skippable ?? false,
+        hints: block.hint,
+      },
+      children,
+    },
+    hasInteractive: true,
+  };
+}
+
 /**
  * Extract the customizable default value from a block based on its type.
  * This value is what gets stored in localStorage and customized by the assistant.
@@ -783,6 +807,8 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
       return block.question;
     case 'input':
       return block.prompt;
+    case 'terminal':
+      return block.command;
     case 'section':
       // Sections contain nested blocks - extract from title if available
       return block.title || '';

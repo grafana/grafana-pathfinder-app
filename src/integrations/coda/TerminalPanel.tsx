@@ -16,6 +16,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
 import { useTerminalLive, ConnectionStatus } from './useTerminalLive.hook';
+import { useTerminalContext } from './TerminalContext';
 import { getTerminalPanelStyles } from './terminal-panel.styles';
 import { setTerminalOpen, getTerminalHeight, setTerminalHeight, MIN_HEIGHT, MAX_HEIGHT } from './terminal-storage';
 
@@ -38,9 +39,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [isResizing, setIsResizing] = useState(false);
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, error } = useTerminalLive({
+  const { status, connect, disconnect, resize, error, vmId } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
+
+  // Register with shared context so TerminalStep components can send commands
+  const terminalCtx = useTerminalContext();
+  useEffect(() => {
+    terminalCtx?._register({ status, connect, disconnect, vmId });
+  }, [terminalCtx, status, connect, disconnect, vmId]);
 
   // Initialize terminal once on mount - keep alive across collapse/expand
   useEffect(() => {
@@ -325,7 +332,13 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             />
 
             {onClose && (
-              <IconButton name="times" size="sm" aria-label="Close terminal" tooltip="Close terminal" onClick={onClose} />
+              <IconButton
+                name="times"
+                size="sm"
+                aria-label="Close terminal"
+                tooltip="Close terminal"
+                onClick={onClose}
+              />
             )}
           </div>
         </div>

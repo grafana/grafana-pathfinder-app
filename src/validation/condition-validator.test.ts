@@ -396,6 +396,7 @@ describe('Condition Types Coverage', () => {
     FixedRequirementType.IS_EDITOR,
     FixedRequirementType.DASHBOARD_EXISTS,
     FixedRequirementType.FORM_VALID,
+    FixedRequirementType.IS_TERMINAL_ACTIVE,
   ]);
 
   // All parameterized prefixes that should be tested

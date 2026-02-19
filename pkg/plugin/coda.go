@@ -302,6 +302,8 @@ func (c *CodaClient) WaitForVM(ctx context.Context, vmID string, timeout time.Du
 					errMsg = *vm.ErrorMessage
 				}
 				return nil, fmt.Errorf("VM provisioning failed: %s", errMsg)
+			case "destroying":
+				return nil, fmt.Errorf("VM is being destroyed")
 			case "destroyed":
 				return nil, fmt.Errorf("VM was destroyed")
 			}

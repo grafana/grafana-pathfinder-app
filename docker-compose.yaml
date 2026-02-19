@@ -6,7 +6,7 @@ services:
     environment:
       GF_FEATURE_TOGGLES_ENABLE: appSidecar,extensionSidebar,localizationForPlugins,userStorageAPI,live
       # Enable Grafana Live for terminal streaming
-      GF_LIVE_ALLOWED_ORIGINS: "*"
+      GF_LIVE_ALLOWED_ORIGINS: '*'
 
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.5.0}

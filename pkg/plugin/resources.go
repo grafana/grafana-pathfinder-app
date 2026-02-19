@@ -99,9 +99,8 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the active session using the stream sessions map
 	streamSessionsMu.Lock()
-	sess, exists := streamSessions["terminal/"+vmID]
+	sess, exists := streamSessions[vmID]
 	streamSessionsMu.Unlock()
 
 	if !exists || sess == nil || sess.session == nil {
