@@ -155,8 +155,11 @@ Load these files **only when working in the relevant domain**. Do not preload al
 | `testingStrategy.mdc`         | Writing or reviewing tests               | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
 | `pr-review.md`                | PR review orchestration (`/review`)      | --                                                       |
 | `E2E_TESTING_CONTRACT.md`     | E2E testing, `data-test-*` attributes    | --                                                       |
+| `RELEASE_PROCESS.md`          | Releasing, deploying, versioning         | --                                                       |
+| `FEATURE_FLAGS.md`            | Feature flags, A/B experiments           | `openfeature.ts`                                         |
+| `CLI_TOOLS.md`                | CLI validation, guide authoring tooling  | `src/cli/*`                                              |
 
-All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md` is at `docs/developer/E2E_TESTING_CONTRACT.md`.
+All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, and `CLI_TOOLS.md` are at `docs/developer/`.
 
 ## PR reviews
 
