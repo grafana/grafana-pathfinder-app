@@ -8,8 +8,6 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 - **2026-02-20**: `src/learning-paths/` new subsystem needs documentation — New directory (12 files, created Feb 16-18) covering learning paths, badges, streak tracking, and guide fetching. No dedicated doc exists. Recommend creating `docs/developer/learning-paths/README.md` in a feature branch.
 
-- **2026-02-20**: Remaining orphaned component READMEs — `docs/developer/components/` subdirectory READMEs (App, AppConfig, block-editor, docs-panel, SelectorDebugPanel, PrTester, LearningPaths, LiveSession, FeedbackButton, parent README) and `docs/developer/pages/README.md`, `docs/developer/styles/README.md`, `docs/developer/src/README.md` have no path from AGENTS.md. These are lower value but could be indexed as a group.
-
 - **2026-02-20**: Intent gaps in non-engine docs — `ASSISTANT_INTEGRATION.md`, `LIVE_SESSIONS.md`, and `integrations/workshop.md` have no `<!-- intent -->` marker and no existing rationale headings. Lower priority than engine docs.
 
 ## Validated docs
@@ -32,3 +30,16 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 - `docs/sources/administrators-reference/_index.md` — Same as above.
 - `docs/sources/architecture/_index.md` — Same as above.
 - `docs/sources/upgrade-notes/_index.md` — Same as above.
+- `docs/developer/src/README.md` — Broad source-tree overview that duplicates AGENTS.md code organization section. Too granular to stay accurate; no agent-specific constraints.
+- `docs/developer/components/README.md` — Components directory overview. Agents get this context from AGENTS.md code organization and on-demand docs already.
+- `docs/developer/components/App/README.md` — Local component README for App root. Context for developers working on App component only.
+- `docs/developer/components/AppConfig/README.md` — Local component README for plugin configuration UI.
+- `docs/developer/components/block-editor/README.md` — Local component README for visual JSON guide editor.
+- `docs/developer/components/docs-panel/README.md` — Local component README for core documentation panel.
+- `docs/developer/components/SelectorDebugPanel/README.md` — Local component README for developer tools panel.
+- `docs/developer/components/PrTester/README.md` — Local component README for PR testing tool.
+- `docs/developer/components/LearningPaths/README.md` — Local component README for learning path UI. When `docs/developer/learning-paths/README.md` is created (see work item), it should reference this.
+- `docs/developer/components/LiveSession/README.md` — Local component README. Redundant with already-indexed `LIVE_SESSIONS.md`.
+- `docs/developer/components/FeedbackButton/README.md` — Local component README for feedback button.
+- `docs/developer/pages/README.md` — Pages directory README. Very narrow scope (single page definition).
+- `docs/developer/styles/README.md` — Styles directory README. Useful for style work but no agent-level constraints.
