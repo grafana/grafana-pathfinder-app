@@ -143,23 +143,25 @@ src/
 
 Load these files **only when working in the relevant domain**. Do not preload all of them.
 
-| File                          | When to load                             | Auto-triggered by globs                                  |
-| ----------------------------- | ---------------------------------------- | -------------------------------------------------------- |
-| `projectbrief.mdc`            | Understanding project scope and goals    | --                                                       |
-| `techContext.mdc`             | Tech stack, dependencies, build system   | --                                                       |
-| `systemPatterns.mdc`          | Architecture, component relationships    | --                                                       |
-| `interactiveRequirements.mdc` | Interactive tutorial system work         | --                                                       |
-| `frontend-security.mdc`       | Frontend security (from security team)   | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
-| `react-antipatterns.mdc`      | PR reviews (on hit), hooks/effects/state | --                                                       |
-| `schema-coupling.mdc`         | JSON guide types or schemas              | `json-guide.types.ts`, `json-guide.schema.ts`            |
-| `testingStrategy.mdc`         | Writing or reviewing tests               | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
-| `pr-review.md`                | PR review orchestration (`/review`)      | --                                                       |
-| `E2E_TESTING_CONTRACT.md`     | E2E testing, `data-test-*` attributes    | --                                                       |
-| `RELEASE_PROCESS.md`          | Releasing, deploying, versioning         | --                                                       |
-| `FEATURE_FLAGS.md`            | Feature flags, A/B experiments           | `openfeature.ts`                                         |
-| `CLI_TOOLS.md`                | CLI validation, guide authoring tooling  | `src/cli/*`                                              |
+| File                          | When to load                                                    | Auto-triggered by globs                                                          |
+| ----------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `projectbrief.mdc`            | Understanding project scope and goals                           | --                                                                               |
+| `techContext.mdc`             | Tech stack, dependencies, build system                          | --                                                                               |
+| `systemPatterns.mdc`          | Architecture, component relationships                           | --                                                                               |
+| `interactiveRequirements.mdc` | Interactive tutorial system work                                | --                                                                               |
+| `frontend-security.mdc`       | Frontend security (from security team)                          | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                                                 |
+| `react-antipatterns.mdc`      | PR reviews (on hit), hooks/effects/state                        | --                                                                               |
+| `schema-coupling.mdc`         | JSON guide types or schemas                                     | `json-guide.types.ts`, `json-guide.schema.ts`                                    |
+| `testingStrategy.mdc`         | Writing or reviewing tests                                      | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*`                         |
+| `pr-review.md`                | PR review orchestration (`/review`)                             | --                                                                               |
+| `E2E_TESTING_CONTRACT.md`     | E2E testing, `data-test-*` attributes                           | --                                                                               |
+| `RELEASE_PROCESS.md`          | Releasing, deploying, versioning                                | --                                                                               |
+| `FEATURE_FLAGS.md`            | Feature flags, A/B experiments                                  | `openfeature.ts`                                                                 |
+| `CLI_TOOLS.md`                | CLI validation, guide authoring tooling                         | `src/cli/*`                                                                      |
+| `interactive-examples/*.md`   | Authoring interactive guides (format, types, selectors)         | --                                                                               |
+| `engines/*.md`                | Engine subsystem internals (context, interactive, requirements) | `src/context-engine/*`, `src/interactive-engine/*`, `src/requirements-manager/*` |
 
-All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, and `CLI_TOOLS.md` are at `docs/developer/`.
+All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, and `CLI_TOOLS.md` are at `docs/developer/`. The `interactive-examples/` and `engines/` directories are also under `docs/developer/`.
 
 ## PR reviews
 

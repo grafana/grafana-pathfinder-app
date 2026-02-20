@@ -1,5 +1,7 @@
 # Requirements Manager
 
+For prescriptive agent constraints on the requirements/objectives system, see `.cursor/rules/interactiveRequirements.mdc`. For the requirements authoring reference, see `docs/developer/interactive-examples/requirements-reference.md`.
+
 The Requirements Manager (`src/requirements-manager/`) validates requirements and objectives for interactive guide steps, providing a comprehensive system for controlling step execution eligibility and automatic completion.
 
 ## Overview

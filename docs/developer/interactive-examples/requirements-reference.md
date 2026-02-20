@@ -1,5 +1,7 @@
 # Requirements reference
 
+For prescriptive agent constraints on the requirements system, see `.cursor/rules/interactiveRequirements.mdc`.
+
 Requirements control when interactive elements become enabled. They are specified as a `requirements` array on any interactive, section, guided, multistep, conditional, or quiz block. All requirements in the array must pass for the block to be enabled.
 
 ## Core concepts
