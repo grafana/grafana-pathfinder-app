@@ -66,7 +66,7 @@ Located in `src/interactive-engine/action-handlers/`, these specialized classes 
 - **`focus-handler.ts`** - Highlights and optionally clicks elements by CSS selector (supports complex selectors, pseudo-selectors)
 - **`button-handler.ts`** - Finds and clicks buttons using intelligent CSS selector or text matching fallback
 - **`form-fill-handler.ts`** - Fills form inputs, textareas, selects, Monaco editors, and contenteditable elements; supports CLEAR command, combobox pattern detection (ARIA `role="combobox"` with `aria-autocomplete` and Grafana custom patterns), staged tokenization for combobox values, and 1000-char truncation safety
-- **`navigate-handler.ts`** - Navigates to internal Grafana routes or external URLs using locationService
+- **`navigate-handler.ts`** - Navigates to internal Grafana routes or external URLs using locationService; validates external URLs via `parseUrlSafely` to block `javascript:` and `data:` scheme injection
 - **`hover-handler.ts`** - Simulates hover states by dispatching mouse events and applying programmatic hover classes (specifically handles Tailwind `group-hover` patterns)
 - **`guided-handler.ts`** - Coordinates guided interactions where users manually perform actions while the system highlights targets and waits for completion
 
@@ -370,7 +370,7 @@ See: [`docs/developer/E2E_TESTING_CONTRACT.md`](../E2E_TESTING_CONTRACT.md) for 
 
 - **Requirements Manager** (`src/requirements-manager/`) - Pre/post-condition validation
 - **DOM Utilities** (`src/lib/dom/`) - Enhanced selector engine, element visibility checking, button finding
-- **Security** (`src/security/`) - HTML sanitization for comment content
+- **Security** (`src/security/`) - HTML sanitization for comment content and URL validation for navigate handler
 - **Interactive Styles** (`src/styles/interactive.styles.ts`) - Global CSS for highlights and overlays
 - **Interactive Config** (`src/constants/interactive-config.ts`) - Timing delays, retry counts, modal detection settings
 - **Interactive Z-Index** (`src/constants/interactive-z-index.ts`) - Z-index constants for overlay layering

@@ -1036,3 +1036,11 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from '../types/json-guide.schema';
 ```
+
+## See also
+
+- [Authoring interactive guides](./authoring-interactive-journeys.md) — starting point, external repo link, and full reference index
+- [Interactive types](./interactive-types.md) — action type details, Show vs Do behavior
+- [Selectors reference](./selectors-reference.md) — targeting DOM elements with the enhanced selector engine
+- [Requirements reference](./requirements-reference.md) — pre-condition and post-condition system
+- [Guided interactions](./guided-interactions.md) — user-performed action mode
