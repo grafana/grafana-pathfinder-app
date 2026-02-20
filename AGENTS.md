@@ -164,8 +164,11 @@ Load these files **only when working in the relevant domain**. Do not preload al
 | `E2E_TESTING.md`              | E2E guide test runner, Playwright-based guide verification      | --                                                                               |
 | `DEV_MODE.md`                 | Dev mode configuration and debugging tools                      | `src/utils/dev-mode.ts`                                                          |
 | `LOCAL_DEV.md`                | Local development setup, prerequisites, Docker workflow         | --                                                                               |
+| `LIVE_SESSIONS.md`            | Live sessions feature (WebRTC, PeerJS)                          | `src/components/LiveSession/*`                                                   |
+| `KNOWN_ISSUES.md`             | Known bugs and workarounds                                      | --                                                                               |
+| `integrations/workshop.md`    | Workshop mode, action capture and replay                        | `src/integrations/workshop/*`                                                    |
 
-All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, `CLI_TOOLS.md`, `ASSISTANT_INTEGRATION.md`, `E2E_TESTING.md`, `DEV_MODE.md`, and `LOCAL_DEV.md` are at `docs/developer/`. The `interactive-examples/` and `engines/` directories are also under `docs/developer/`.
+All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, `CLI_TOOLS.md`, `ASSISTANT_INTEGRATION.md`, `E2E_TESTING.md`, `DEV_MODE.md`, `LOCAL_DEV.md`, `LIVE_SESSIONS.md`, `KNOWN_ISSUES.md`, and `integrations/workshop.md` are at `docs/developer/`. The `interactive-examples/` and `engines/` directories are also under `docs/developer/`.
 
 ## PR reviews
 
