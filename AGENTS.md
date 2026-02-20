@@ -130,13 +130,27 @@ The development server runs Grafana OSS in Docker with the plugin mounted. After
 
 ```
 src/
-├── components/         # React components
-│   ├── interactive/   # Interactive tutorial components
-│   └── docs/          # Documentation rendering components
-├── utils/             # Business logic hooks and utilities
-├── styles/            # Theme-aware styling functions
-├── constants/         # Configuration and selectors
-└── types/             # TypeScript type definitions
+├── bundled-interactives/  # Bundled JSON guide files (fallback content)
+├── cli/                   # CLI tools for guide validation and authoring
+├── components/            # React and Scenes UI components
+├── constants/             # Configuration, selectors, z-index management
+├── context-engine/        # Detects user context and recommends content
+├── docs-retrieval/        # Content fetching and rendering pipeline
+├── global-state/          # App-wide state (sidebar, link interception)
+├── img/                   # Static image assets
+├── integrations/          # Assistant integration, workshop mode
+├── interactive-engine/    # Executes interactive tutorial actions
+├── learning-paths/        # Learning paths, badges, streak tracking
+├── lib/                   # Shared utilities (analytics, async, DOM helpers)
+├── locales/               # Internationalization translations
+├── pages/                 # Grafana Scenes page definitions and routing
+├── requirements-manager/  # Checks prerequisites for interactive steps
+├── security/              # HTML/log sanitization and security utilities
+├── styles/                # Theme-aware CSS-in-JS styling
+├── test-utils/            # Shared test helpers and fixtures
+├── types/                 # TypeScript type definitions
+├── utils/                 # Business logic hooks and utility functions
+└── validation/            # Guide and condition validation logic
 ```
 
 ## On-demand context
