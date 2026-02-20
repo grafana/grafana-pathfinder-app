@@ -4,6 +4,16 @@ This document captures the architectural viewpoint and design rationale behind t
 
 PRs which this skill has created [can be viewed here](https://github.com/grafana/grafana-pathfinder-app/pulls?q=is%3Apr+is%3Aclosed+maintain-docs+label%3Adocumentation)
 
+## Why automated documentation maintenance
+
+The git repository is not just source code with some documentation alongside it. It is a **context database** — a structured store of knowledge that agents draw from every time they work on this codebase. The code, the rules in `.cursor/rules/`, the docs in `docs/developer/`, the skills, `AGENTS.md` itself — all of it shapes the quality of what an agent produces. An agent with rich, accurate context makes changes that cohere with the existing system. An agent without it guesses, and guesses break things.
+
+`AGENTS.md` is the **thin shim and task router** over this context database. It doesn't contain the knowledge itself — it tells agents _where to look_ for what they need. It maps task domains to the files that explain those domains: "working on the interactive engine? Read these files. Doing a PR review? Load these rules." This indexing layer is what makes the context database navigable rather than a pile of files an agent has to explore from scratch.
+
+The maintain-docs skill exists to serve a **bootstrapping loop**. Each time the skill runs, it finds docs that have drifted from the code and corrects them. It finds files that exist but aren't reachable from `AGENTS.md` and indexes them. It finds references to files that no longer exist and cleans them up. Each of these small corrections means the _next_ agent that works on this codebase starts with slightly better context than the last one. Over time, the system accumulates more lightweight, topic-indexed context — and every agent invocation benefits from the accumulated work of all previous runs.
+
+The purpose of this context is not to make agents more creative. It is to **constrain** them. More context means a narrower decision space. Narrower decisions mean implementations that fit the existing architecture, respect non-obvious constraints, and succeed on the first attempt rather than requiring rounds of correction. The skill is an investment in first-pass success rate across every future agent interaction with this codebase.
+
 ## Core concept: documentation as materialized view
 
 Documentation about a codebase is conceptually a **materialized view** of the source code — a precomputed projection that trades freshness for accessibility. Like a materialized view in a database, it provides faster access to information that could theoretically be derived from the source of truth (the code), but at the cost of potential drift when the underlying data changes.
