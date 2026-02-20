@@ -18,7 +18,7 @@ import {
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
-  resetInteractiveCounters,
+  resetStepRegistry,
   registerSectionSteps,
   getDocumentStepPosition,
   VideoRenderer,
@@ -517,7 +517,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
   // This must run BEFORE parsing to ensure clean state for section registration
   useMemo(
     () => {
-      resetInteractiveCounters();
+      resetStepRegistry();
       return null;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
