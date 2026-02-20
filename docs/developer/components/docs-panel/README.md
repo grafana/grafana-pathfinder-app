@@ -1,6 +1,6 @@
 # Docs Panel Components
 
-The core documentation functionality of the plugin, including context-aware recommendations, interactive learning journeys, live session integration, and comprehensive content rendering.
+The core documentation functionality of the plugin, including context-aware recommendations, interactive learning paths, live session integration, and comprehensive content rendering.
 
 ## Location
 
@@ -13,7 +13,7 @@ The core documentation functionality of the plugin, including context-aware reco
 The docs-panel exists to:
 
 - Provide AI-powered context-aware documentation recommendations
-- Render interactive learning journeys with milestone navigation
+- Render interactive learning paths with milestone navigation
 - Enable live collaborative learning sessions
 - Track learning progress and achievements
 - Offer tabbed interface for multiple content streams
@@ -29,7 +29,7 @@ The docs-panel exists to:
 **Role**:
 
 - Manages multiple content tabs (recommendations, my learning, content tabs)
-- Handles navigation between milestones within learning journeys
+- Handles navigation between milestones within learning paths
 - Integrates live session features for collaborative learning
 - Provides unified interface for different content types
 - Coordinates with interactive engine for step execution
@@ -39,7 +39,7 @@ The docs-panel exists to:
 
 - **Multi-tab Interface**: Fixed tabs (Recommendations, My Learning) + dynamic content tabs
 - **Content Type Support**: Learning journeys, documentation pages, interactive guides
-- **Milestone Navigation**: Previous/Next navigation within learning journeys
+- **Milestone Navigation**: Previous/Next navigation within learning paths
 - **Live Sessions**: Real-time collaborative learning with presenter/attendee modes
 - **Session Integration**: Action capture and replay for synchronized experiences
 - **Real-time Loading**: Lazy loading of content when tabs are activated
@@ -261,7 +261,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 - Created when user opens content
 - Persisted across sessions
 - Closeable by user
-- Support for learning journeys and docs
+- Support for learning paths and docs
 - Milestone navigation (journeys)
 
 **Tab State:**
@@ -321,7 +321,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 
 ## Usage Patterns
 
-### Opening Learning Journeys
+### Opening Learning Paths
 
 ```typescript
 // From context panel recommendations

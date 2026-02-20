@@ -11,9 +11,9 @@ Get help exactly when and where you need it. Interactive learning brings context
 Interactive learning is your in-app learning companion. It provides:
 
 - **Smart recommendations** – Get relevant docs and guides based on what you're working on
-- **Interactive guides** – Follow step-by-step guided learning journeys with "Show Me" and "Do It" features
+- **Interactive guides** – Follow step-by-step guided learning paths with "Show Me" and "Do It" features
 - **Tab-based navigation** – Open multiple docs and guides in tabs, just like a browser
-- **Milestone tracking** – See your progress through learning journeys with clear milestones
+- **Milestone tracking** – See your progress through learning paths with clear milestones
 - **Always available** – Access help without switching windows or searching documentation sites
 
 ## How to access Interactive learning
@@ -29,7 +29,7 @@ Once you open Interactive learning:
 
 1. **Review recommendations** – See docs and guides tailored to what you're doing in Grafana
 2. **Open content in tabs** – Click "View" or "Start" to open content in a new tab
-3. **Navigate guides** – Use the milestone navigation at the bottom to move through learning journeys
+3. **Navigate guides** – Use the milestone navigation at the bottom to move through learning paths
 4. **Try interactive features** – Click "Show Me" to see where things are, or "Do It" to have Interactive learning guide you through actions
 5. **Manage your tabs** – Close tabs you're done with, or keep them open for reference
 
@@ -53,7 +53,7 @@ Admins can configure Interactive learning from the plugin's configuration page i
 
 #### 1. Configuration (basic settings)
 
-- **Auto-launch guide URL** – Set a specific learning journey or documentation page to automatically open when Grafana starts (useful for demos and onboarding)
+- **Auto-launch guide URL** – Set a specific learning path or documentation page to automatically open when Grafana starts (useful for demos and onboarding)
 - **Global link interception** – (Experimental) When enabled, clicking documentation links anywhere in Grafana will open them in Interactive learning instead of a new tab
 
 #### 2. Recommendations

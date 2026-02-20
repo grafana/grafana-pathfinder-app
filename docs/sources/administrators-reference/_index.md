@@ -48,7 +48,7 @@ This feature is useful for demo scenarios or onboarding new users.
 **To configure auto-launch:**
 
 1. Navigate to the **Plugin Configuration** section.
-2. Enter the full URL of a learning journey or documentation page in the **Auto-launch guide URL** field.
+2. Enter the full URL of a learning path or documentation page in the **Auto-launch guide URL** field.
 3. Click **Save configuration**.
 
 Example URL:

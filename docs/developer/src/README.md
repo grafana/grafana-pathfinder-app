@@ -4,7 +4,7 @@ Remove any remaining comments before publishing as these may be displayed on Gra
 
 # Grafana Pathfinder - Source Code
 
-This directory contains the complete source code for Grafana Pathfinder, which provides contextual documentation recommendations and interactive learning journeys within Grafana.
+This directory contains the complete source code for Grafana Pathfinder, which provides contextual documentation recommendations and interactive learning paths within Grafana.
 
 ## Architecture Overview
 
@@ -24,7 +24,7 @@ Contains all React and Grafana Scenes components:
 
 - `App/` - Main application component and scene initialization
 - `AppConfig/` - Plugin configuration interface for admin settings
-- `docs-panel/` - Core documentation panel components (recommendations and learning journeys)
+- `docs-panel/` - Core documentation panel components (recommendations and learning paths)
 
 ### `/constants` - Configuration & Constants
 

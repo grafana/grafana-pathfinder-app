@@ -106,7 +106,7 @@ addGlobalInteractiveStyles();
 
 #### Milestone Styles (`getMilestoneStyles`)
 
-- Progress indicators for learning journeys
+- Progress indicators for learning paths
 - Navigation button styling
 - Progress bar animations
 - Milestone counter display
@@ -142,7 +142,7 @@ export const getStyles = (theme: GrafanaTheme2) => ({
 **Purpose**: Specialized styling for rendered HTML content from documentation sources
 **Role**:
 
-- Styles for learning journey and docs content
+- Styles for learning path and docs content
 - HTML element styling (headings, paragraphs, lists, etc.)
 - Interactive element styling (code blocks, images, etc.)
 - Responsive and accessible design patterns
@@ -151,7 +151,7 @@ export const getStyles = (theme: GrafanaTheme2) => ({
 
 #### `journeyContentHtml(theme: GrafanaTheme2)`
 
-- Comprehensive styling for learning journey content
+- Comprehensive styling for learning path content
 - Code block styling with copy buttons
 - Image styling with lightbox cursors
 - Interactive element styling
