@@ -99,11 +99,18 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Find session by VM ID (sessions are keyed by path like "terminal/{vmId}/{nonce}")
 	streamSessionsMu.Lock()
-	sess, exists := streamSessions[vmID]
+	var sess *streamSession
+	for _, s := range streamSessions {
+		if s != nil && s.vmID == vmID {
+			sess = s
+			break
+		}
+	}
 	streamSessionsMu.Unlock()
 
-	if !exists || sess == nil || sess.session == nil {
+	if sess == nil || sess.session == nil {
 		a.writeError(w, "No active session for VM", http.StatusNotFound)
 		return
 	}

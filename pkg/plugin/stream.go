@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -53,24 +54,11 @@ type streamSession struct {
 	cancel  context.CancelFunc
 }
 
-// streamSessions holds active streaming sessions keyed by vmID.
+// streamSessions holds active streaming sessions (path -> session)
 var (
 	streamSessions   = make(map[string]*streamSession)
 	streamSessionsMu sync.Mutex
 )
-
-// parseTerminalPath extracts the vmID from a stream channel path.
-// Accepts "terminal/{vmId}" or "terminal/{vmId}/{nonce}".
-func parseTerminalPath(path string) (vmID string, ok bool) {
-	parts := strings.Split(path, "/")
-	if len(parts) < 2 || len(parts) > 3 || parts[0] != "terminal" {
-		return "", false
-	}
-	if parts[1] == "" {
-		return "", false
-	}
-	return parts[1], true
-}
 
 // TerminalStreamInput represents input messages from the frontend
 type TerminalStreamInput struct {
@@ -89,11 +77,20 @@ type TerminalStreamOutput struct {
 
 // SubscribeStream is called when a client wants to subscribe to a stream.
 // Channel path format: terminal/{vmId} or terminal/{vmId}/{nonce}
+// The optional nonce allows frontend to force new streams on reconnect.
 func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
 	a.logger.Info("SubscribeStream called", "path", req.Path)
 
-	vmID, ok := parseTerminalPath(req.Path)
-	if !ok {
+	// Parse channel path: terminal/{vmId} or terminal/{vmId}/{nonce}
+	parts := strings.Split(req.Path, "/")
+	if len(parts) < 2 || parts[0] != "terminal" {
+		return &backend.SubscribeStreamResponse{
+			Status: backend.SubscribeStreamStatusNotFound,
+		}, nil
+	}
+
+	vmID := parts[1]
+	if vmID == "" {
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusNotFound,
 		}, nil
@@ -101,7 +98,7 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 
 	// Check if Coda is configured (has JWT token)
 	if a.coda == nil {
-		a.logger.Error("coda not registered for stream subscription")
+		a.logger.Error("Coda not registered for stream subscription")
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusNotFound,
 		}, nil
@@ -136,16 +133,20 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamRequest) (*backend.PublishStreamResponse, error) {
 	a.logger.Debug("PublishStream called", "path", req.Path, "dataLen", len(req.Data))
 
-	vmID, ok := parseTerminalPath(req.Path)
-	if !ok {
+	// Parse channel path: terminal/{vmId} or terminal/{vmId}/{nonce}
+	parts := strings.Split(req.Path, "/")
+	if len(parts) < 2 || parts[0] != "terminal" {
 		a.logger.Warn("PublishStream: invalid path", "path", req.Path)
 		return &backend.PublishStreamResponse{
 			Status: backend.PublishStreamStatusNotFound,
 		}, nil
 	}
 
+	vmID := parts[1]
+
+	// Get the active session
 	streamSessionsMu.Lock()
-	sess, exists := streamSessions[vmID]
+	sess, exists := streamSessions[req.Path]
 	streamSessionsMu.Unlock()
 
 	if !exists || sess == nil || sess.session == nil {
@@ -206,13 +207,17 @@ func sendStreamError(sender *backend.StreamSender, errMsg string) {
 func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
 	a.logger.Info("RunStream started", "path", req.Path)
 
-	vmID, ok := parseTerminalPath(req.Path)
-	if !ok {
+	// Parse channel path: terminal/{vmId} or terminal/{vmId}/{nonce}
+	parts := strings.Split(req.Path, "/")
+	if len(parts) < 2 || parts[0] != "terminal" {
 		errMsg := fmt.Sprintf("invalid path: %s", req.Path)
 		sendStreamError(sender, errMsg)
-		return fmt.Errorf("invalid path: %s", req.Path)
+		return errors.New(errMsg)
 	}
 
+	vmID := parts[1]
+
+	// Get VM credentials
 	if a.coda == nil {
 		errMsg := "coda not registered - configure enrollment key and register first"
 		sendStreamError(sender, errMsg)
@@ -229,12 +234,14 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	if vm.State != "active" || vm.Credentials == nil {
 		errMsg := fmt.Sprintf("VM not ready: state=%s", vm.State)
 		sendStreamError(sender, errMsg)
-		return fmt.Errorf("VM not ready: state=%s", vm.State)
+		return errors.New(errMsg)
 	}
 
+	// Create context that cancels when stream ends
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Output callback - sends data to frontend via Grafana Live
 	onOutput := func(outputBytes []byte) {
 		output := TerminalStreamOutput{
 			Type: "output",
@@ -250,6 +257,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		}
 	}
 
+	// Error callback
 	onError := func(err error) {
 		output := TerminalStreamOutput{
 			Type:  "error",
@@ -262,6 +270,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		_ = sender.SendFrame(frame, data.IncludeAll)
 	}
 
+	// Log credentials info (without sensitive data)
 	a.logger.Info("Creating SSH session",
 		"vmID", vmID,
 		"host", vm.Credentials.PublicIP,
@@ -269,58 +278,105 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		"user", vm.Credentials.SSHUser,
 		"hasPrivateKey", vm.Credentials.SSHPrivateKey != "",
 		"keyLength", len(vm.Credentials.SSHPrivateKey),
+		"relayURL", a.settings.CodaRelayURL,
 	)
 
-	session, err := NewTerminalSession(vmID, vm.Credentials, onOutput, onError)
-	if err != nil {
-		a.logger.Error("Failed to create terminal session",
-			"vmID", vmID,
-			"error", err,
-			"host", vm.Credentials.PublicIP,
-			"port", vm.Credentials.SSHPort,
-		)
-		errMsg := fmt.Sprintf("SSH connection failed: %v", err)
-		sendStreamError(sender, errMsg)
-		return fmt.Errorf("failed to create terminal session: %w", err)
+	// Create SSH session - use relay if configured, otherwise direct SSH
+	var session *TerminalSession
+	if a.settings.CodaRelayURL != "" {
+		a.logger.Info("Connecting via WebSocket relay", "relayURL", a.settings.CodaRelayURL)
+		sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, a.settings.JwtToken)
+		if err != nil {
+			a.logger.Error("Failed to connect SSH via relay",
+				"vmID", vmID,
+				"error", err,
+				"relayURL", a.settings.CodaRelayURL,
+			)
+			errMsg := fmt.Sprintf("SSH connection via relay failed: %v", err)
+			sendStreamError(sender, errMsg)
+			return fmt.Errorf("failed to connect SSH via relay: %w", err)
+		}
+		session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
+		if err != nil {
+			_ = sshClient.Close()
+			a.logger.Error("Failed to create terminal session with relay client",
+				"vmID", vmID,
+				"error", err,
+			)
+			errMsg := fmt.Sprintf("Terminal session creation failed: %v", err)
+			sendStreamError(sender, errMsg)
+			return fmt.Errorf("failed to create terminal session: %w", err)
+		}
+	} else {
+		var err error
+		session, err = NewTerminalSession(vmID, vm.Credentials, onOutput, onError)
+		if err != nil {
+			a.logger.Error("Failed to create terminal session",
+				"vmID", vmID,
+				"error", err,
+				"host", vm.Credentials.PublicIP,
+				"port", vm.Credentials.SSHPort,
+			)
+			errMsg := fmt.Sprintf("SSH connection failed: %v", err)
+			sendStreamError(sender, errMsg)
+			return fmt.Errorf("failed to create terminal session: %w", err)
+		}
 	}
 	defer func() { _ = session.Close() }()
 
-	// Close any previous session for this VM (e.g. stale reconnect) before
-	// registering the new one, so we don't leak SSH connections.
+	// Store session for PublishStream to use
 	streamSessionsMu.Lock()
-	if prev, exists := streamSessions[vmID]; exists && prev.cancel != nil {
-		prev.cancel()
-	}
-	thisSession := &streamSession{
+	streamSessions[req.Path] = &streamSession{
 		vmID:    vmID,
 		session: session,
 		sender:  sender,
 		cancel:  cancel,
 	}
-	streamSessions[vmID] = thisSession
 	streamSessionsMu.Unlock()
 
 	defer func() {
 		streamSessionsMu.Lock()
-		if cur, exists := streamSessions[vmID]; exists && cur == thisSession {
-			delete(streamSessions, vmID)
-		}
+		delete(streamSessions, req.Path)
 		streamSessionsMu.Unlock()
 	}()
 
+	// Send connected message to frontend
 	connectedOutput := TerminalStreamOutput{Type: "connected"}
 	jsonBytes, _ := json.Marshal(connectedOutput)
 	frame := data.NewFrame("terminal")
 	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
 
+	// #region agent log
+	debugLog := fmt.Sprintf(`{"location":"stream.go:SendConnected","message":"Sending connected frame","data":{"vmID":"%s","jsonBytes":"%s","fieldCount":%d},"timestamp":%d,"sessionId":"debug-session","hypothesisId":"A"}`, vmID, string(jsonBytes), len(frame.Fields), time.Now().UnixMilli())
+	if f, err := os.OpenFile("/Users/jayclifford/Repos/grafana-pathfinder-app/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		_, _ = f.WriteString(debugLog + "\n")
+		_ = f.Close()
+	}
+	// #endregion
+
 	if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
 		a.logger.Error("Failed to send connected message", "vmID", vmID, "error", err)
+		// #region agent log
+		debugLog := fmt.Sprintf(`{"location":"stream.go:SendConnected","message":"SendFrame failed","data":{"vmID":"%s","error":"%s"},"timestamp":%d,"sessionId":"debug-session","hypothesisId":"A"}`, vmID, err.Error(), time.Now().UnixMilli())
+		if f, err := os.OpenFile("/Users/jayclifford/Repos/grafana-pathfinder-app/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			_, _ = f.WriteString(debugLog + "\n")
+			_ = f.Close()
+		}
+		// #endregion
 	} else {
 		a.logger.Info("Sent connected message to frontend", "vmID", vmID)
+		// #region agent log
+		debugLog := fmt.Sprintf(`{"location":"stream.go:SendConnected","message":"SendFrame succeeded","data":{"vmID":"%s"},"timestamp":%d,"sessionId":"debug-session","hypothesisId":"A"}`, vmID, time.Now().UnixMilli())
+		if f, err := os.OpenFile("/Users/jayclifford/Repos/grafana-pathfinder-app/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			_, _ = f.WriteString(debugLog + "\n")
+			_ = f.Close()
+		}
+		// #endregion
 	}
 
 	a.logger.Info("Terminal session started", "vmID", vmID)
 
+	// Poll VM state to detect expiry/destruction and disconnect gracefully
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
@@ -348,8 +404,10 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		}
 	}()
 
+	// Wait for context cancellation (stream disconnect or VM expiry)
 	<-streamCtx.Done()
 
+	// Send disconnected message
 	disconnectedOutput := TerminalStreamOutput{Type: "disconnected"}
 	jsonBytes, _ = json.Marshal(disconnectedOutput)
 	frame = data.NewFrame("terminal")

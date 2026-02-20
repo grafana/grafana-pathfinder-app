@@ -3,10 +3,12 @@ package plugin
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"golang.org/x/crypto/ssh"
 )
@@ -112,6 +114,76 @@ func ConnectSSH(creds *Credentials) (*ssh.Client, error) {
 	return client, nil
 }
 
+// ConnectSSHViaRelay establishes an SSH connection through a WebSocket relay.
+// This is used when direct TCP access to the VM is not available (e.g., Grafana Cloud).
+func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token string) (*ssh.Client, error) {
+	logger := log.DefaultLogger
+
+	if creds == nil {
+		return nil, fmt.Errorf("credentials are nil")
+	}
+
+	wsURL := fmt.Sprintf("%s/relay/%s", relayURL, vmID)
+	logger.Debug("SSH via relay connection attempt",
+		"relayURL", wsURL,
+		"user", creds.SSHUser,
+	)
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 30 * time.Second,
+	}
+
+	header := http.Header{}
+	header.Set("Authorization", "Bearer "+token)
+
+	wsConn, resp, err := dialer.Dial(wsURL, header)
+	if err != nil {
+		if resp != nil {
+			logger.Error("WebSocket dial failed",
+				"url", wsURL,
+				"status", resp.StatusCode,
+				"error", err,
+			)
+		} else {
+			logger.Error("WebSocket dial failed", "url", wsURL, "error", err)
+		}
+		return nil, fmt.Errorf("failed to connect to relay: %w", err)
+	}
+
+	logger.Debug("WebSocket connection established to relay")
+
+	conn := NewWSConn(wsConn)
+
+	normalizedKey := normalizePrivateKey(creds.SSHPrivateKey)
+	signer, err := ssh.ParsePrivateKey([]byte(normalizedKey))
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	config := &ssh.ClientConfig{
+		User: creds.SSHUser,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         30 * time.Second,
+	}
+
+	addr := fmt.Sprintf("%s:%d", creds.PublicIP, creds.SSHPort)
+
+	c, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	if err != nil {
+		_ = conn.Close()
+		logger.Error("SSH handshake via relay failed", "error", err)
+		return nil, fmt.Errorf("SSH handshake via relay failed: %w", err)
+	}
+
+	client := ssh.NewClient(c, chans, reqs)
+	logger.Info("SSH connection established via relay", "vmID", vmID)
+	return client, nil
+}
+
 // min returns the smaller of two integers
 func min(a, b int) int {
 	if a < b {
@@ -120,13 +192,18 @@ func min(a, b int) int {
 	return b
 }
 
-// NewTerminalSession creates a new terminal session for a VM.
+// NewTerminalSession creates a new terminal session for a VM using direct SSH.
 func NewTerminalSession(vmID string, creds *Credentials, onOutput func([]byte), onError func(error)) (*TerminalSession, error) {
 	client, err := ConnectSSH(creds)
 	if err != nil {
 		return nil, err
 	}
+	return NewTerminalSessionWithClient(vmID, client, onOutput, onError)
+}
 
+// NewTerminalSessionWithClient creates a terminal session using an existing SSH client.
+// This is useful when the SSH connection was established via a relay.
+func NewTerminalSessionWithClient(vmID string, client *ssh.Client, onOutput func([]byte), onError func(error)) (*TerminalSession, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		_ = client.Close()

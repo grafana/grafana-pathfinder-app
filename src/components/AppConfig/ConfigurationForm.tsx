@@ -14,6 +14,7 @@ import {
   DEFAULT_PEERJS_PORT,
   DEFAULT_PEERJS_KEY,
   DEFAULT_ENABLE_CODA_TERMINAL,
+  DEFAULT_CODA_RELAY_URL,
   CODA_API_URL,
   PLUGIN_BACKEND_URL,
 } from '../../constants';
@@ -41,6 +42,8 @@ type State = {
   enableCodaTerminal: boolean;
   // Coda enrollment key (for JWT registration)
   codaEnrollmentKey: string;
+  // Coda relay URL (for Grafana Cloud deployments)
+  codaRelayUrl: string;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -64,6 +67,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
     enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
     codaEnrollmentKey: '', // Enrollment key is stored in secureJsonData, never loaded into state
+    codaRelayUrl: jsonData?.codaRelayUrl || DEFAULT_CODA_RELAY_URL,
   }));
   const [isSaving, setIsSaving] = useState(false);
 
@@ -205,6 +209,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setRegistrationError(null);
   };
 
+  const onChangeCodaRelayUrl = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      codaRelayUrl: event.target.value.trim(),
+    });
+  };
+
   // Handle Coda registration - extracted as callback for reuse in auto-registration
   const performCodaRegistration = useCallback(
     async (enrollmentKeyOverride?: string) => {
@@ -334,6 +345,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsPort: state.peerjsPort,
         peerjsKey: state.peerjsKey,
         enableCodaTerminal: state.enableCodaTerminal,
+        codaRelayUrl: state.codaRelayUrl,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -668,6 +680,41 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                         This instance is registered with the Coda backend. VM provisioning is enabled.
                       </Text>
                     </Alert>
+                  )}
+
+                  {/* Relay URL configuration - shown when registered */}
+                  {codaRegistered && (
+                    <div className={s.marginTop}>
+                      <Text variant="h6">SSH Relay Configuration (Grafana Cloud)</Text>
+                      <div style={{ marginTop: '8px', marginBottom: '16px' }}>
+                        <Text variant="body" color="secondary">
+                          For Grafana Cloud deployments where direct SSH is blocked, configure the WebSocket relay URL.
+                          Leave empty for self-hosted instances with direct network access to VMs.
+                        </Text>
+                      </div>
+
+                      <Field
+                        label="Relay URL"
+                        description="WebSocket relay URL for SSH connections (e.g., wss://relay.lg.grafana-dev.com)"
+                      >
+                        <Input
+                          width={60}
+                          value={state.codaRelayUrl}
+                          onChange={onChangeCodaRelayUrl}
+                          placeholder="wss://relay.lg.grafana-dev.com"
+                        />
+                      </Field>
+
+                      {state.codaRelayUrl && (
+                        <Alert severity="info" title="Relay mode enabled" className={s.marginTop}>
+                          <Text variant="body">
+                            SSH connections will be tunneled through the WebSocket relay at{' '}
+                            <code>{state.codaRelayUrl}</code>. This is required for Grafana Cloud where outbound TCP
+                            port 22 is blocked.
+                          </Text>
+                        </Alert>
+                      )}
+                    </div>
                   )}
 
                   {!codaRegistered && hasProvisionedKey && (

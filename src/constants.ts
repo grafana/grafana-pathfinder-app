@@ -36,6 +36,10 @@ export const DEFAULT_ENABLE_CODA_TERMINAL = false; // Experimental - disabled by
 // The Coda backend uses JWT authentication via enrollment keys
 export const CODA_API_URL = 'https://coda.lg.grafana-dev.com';
 
+// Coda Relay URL (for Grafana Cloud deployments where direct SSH is not possible)
+// When set, the plugin connects to VMs via WebSocket relay instead of direct SSH
+export const DEFAULT_CODA_RELAY_URL = 'wss://relay.lg.grafana-dev.com'; // Default to relay for Cloud compatibility
+
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
 export const DEFAULT_PEERJS_PORT = 9000;
@@ -96,6 +100,9 @@ export interface DocsPluginConfig {
   // Coda registration status (JWT auth)
   // Note: codaEnrollmentKey and codaJwtToken are stored in secureJsonData, not here
   codaRegistered?: boolean; // Whether this instance has successfully registered with Coda
+  // Coda Relay URL for Grafana Cloud (WebSocket SSH relay)
+  // When set, the plugin uses WebSocket relay instead of direct SSH to VMs
+  codaRelayUrl?: string;
 }
 
 // Helper functions to get configuration values with defaults
@@ -129,6 +136,8 @@ export const getConfigWithDefaults = (
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
   // Coda registration
   codaRegistered: config.codaRegistered ?? false,
+  // Coda Relay URL
+  codaRelayUrl: config.codaRelayUrl ?? DEFAULT_CODA_RELAY_URL,
 });
 
 /**
