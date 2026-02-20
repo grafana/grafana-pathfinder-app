@@ -2,6 +2,33 @@
 
 The Context Engine (`src/context-engine/`) analyzes the user's current Grafana state and provides context-aware documentation recommendations. It combines URL path analysis, EchoSrv event monitoring, and Grafana API data to generate personalized recommendations. Learning paths were previously called "learning journeys" — the internal type value `'learning-journey'` is preserved for backward compatibility, but user-facing references use "learning path".
 
+## Design intent
+
+<!-- intent -->
+
+**Purpose**: The Context Engine exists to fulfill the project's core goal of personalized, in-product documentation — "Grafana should sense what you need and give you that, not everything" (from `projectbrief.mdc`). It bridges user activity signals (URL navigation, EchoSrv analytics events, API data) to a recommendation system that surfaces relevant learning content without requiring users to search externally.
+
+**Constraints**:
+
+- Debouncing is handled at the hook level (`useContextPanel`), not the service level, to provide a single unified control point for all refresh triggers (from code comment in `context.service.ts`: "Debouncing removed from service level — now handled at hook level for unified control")
+- State that must persist across React component lifecycles (event buffer, EchoSrv initialization flag, detected types) uses static class properties on `ContextService` (from `context.service.ts` implementation)
+- External recommender communication requires HTTPS and domain allowlist validation; dev mode is the only exception (from Security Measures section below)
+- User identifiers are always hashed (SHA-256 for Cloud, generic placeholders for OSS) — no PII leaves the plugin (from Privacy Protection section below)
+
+**Non-goals**:
+
+- Not a replacement for reference documentation — targets beginners and intermediate users, not deep experts (from `projectbrief.mdc`)
+- Does not create, modify, or cache content — only discovers and routes to existing content
+- Does not implement its own debounce/timer primitives — delegates to the shared `TimeoutManager` utility
+
+**Key tradeoffs**:
+
+- Three-tier fallback (external → bundled → static): Availability over precision — bundled content uses fixed accuracy scores (0.8 / 0.7) rather than ML-based semantic matching, ensuring the plugin works in air-gapped and offline environments (from Recommendation Flow section below)
+- Event buffer size (10 events, 5-minute TTL): Memory efficiency over completeness — only recent context signals are preserved across plugin close/reopen cycles (from Event Buffering section below)
+- Confidence threshold (0.5): Relevance over recall — low-confidence recommendations are filtered out to avoid noise, at the cost of potentially missing edge-case matches (from Recommendation Scoring section below)
+
+**Stability**: stable
+
 ## Overview
 
 The Context Engine monitors user activity in Grafana by tracking location changes, listening to analytics events, and fetching datasource and dashboard information. It generates context tags from this data and sends them to an external recommendation service to retrieve relevant documentation, learning paths, and interactive guides. When the external service is unavailable or disabled, it falls back to bundled interactives and static link recommendations.

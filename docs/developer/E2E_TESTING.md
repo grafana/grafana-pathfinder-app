@@ -209,15 +209,19 @@ npx pathfinder-cli e2e bundled:e2e-framework-test
 
 ## Timing and timeouts
 
-| Constant           | Value          | Purpose                                      |
-| ------------------ | -------------- | -------------------------------------------- |
-| Base step timeout  | 30s            | Maximum time for a single step               |
-| Multistep bonus    | +5s per action | Added for each internal action in multisteps |
-| Button enable wait | 10s            | Wait for sequential dependencies             |
-| Fix button timeout | 10s            | Per fix operation                            |
-| Max fix attempts   | 3              | Retry limit before giving up                 |
+| Constant             | Value            | Purpose                                      |
+| -------------------- | ---------------- | -------------------------------------------- |
+| Base step timeout    | 30s              | Maximum time for a single step               |
+| Multistep bonus      | +5s per action   | Added for each internal action in multisteps |
+| Guided substep bonus | +30s per substep | Added for each substep in guided blocks      |
+| Button enable wait   | 10s              | Wait for sequential dependencies             |
+| Fix button timeout   | 10s              | Per fix operation                            |
+| Max fix attempts     | 3                | Retry limit before giving up                 |
 
-Example: A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
+Examples:
+
+- A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
+- A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
 
 ## Troubleshooting
 
