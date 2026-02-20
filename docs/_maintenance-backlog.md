@@ -1,22 +1,34 @@
 # Documentation maintenance backlog
 
-Persistent tracker for structural issues identified by the maintain-docs skill.
-Items here require dedicated effort beyond incremental edits.
+Persistent tracker for the maintain-docs skill's persistent state across runs.
 
-<!-- Each entry: date, description, rationale. Remove when resolved. -->
+## Work items
 
-## MEDIUM priority
+<!-- Structural issues requiring dedicated effort. Format: date, description, rationale. Remove when resolved. -->
 
-- **2026-02-20**: `CLI_TOOLS.md` staleness — Doc last updated Feb 5, `src/cli/` had E2E CLI improvements (#538) on Feb 9. CLI options or behavior may have drifted.
-
-- **2026-02-20**: `LIVE_SESSIONS.md` staleness — Doc last updated Feb 10, `src/components/LiveSession/` changed Feb 17 (#586, "learning journey" → "learning path" rename). May contain stale terminology.
+- **2026-02-20**: `src/learning-paths/` new subsystem needs documentation — New directory (12 files, created Feb 16-18) covering learning paths, badges, streak tracking, and guide fetching. No dedicated doc exists. Recommend creating `docs/developer/learning-paths/README.md` in a feature branch.
 
 - **2026-02-20**: Remaining orphaned component READMEs — `docs/developer/components/` subdirectory READMEs (App, AppConfig, block-editor, docs-panel, SelectorDebugPanel, PrTester, LearningPaths, LiveSession, FeedbackButton, parent README) and `docs/developer/pages/README.md`, `docs/developer/styles/README.md`, `docs/developer/src/README.md` have no path from AGENTS.md. These are lower value but could be indexed as a group.
 
-- **2026-02-20**: `docs/sources/` directory — Contains published Grafana documentation sources (`_index.md` files). Needs a decision: should these be indexed in AGENTS.md for agents, or are they out of scope? Currently orphaned.
-
 - **2026-02-20**: Intent gaps in non-engine docs — `ASSISTANT_INTEGRATION.md`, `LIVE_SESSIONS.md`, and `integrations/workshop.md` have no `<!-- intent -->` marker and no existing rationale headings. Lower priority than engine docs.
 
-## LOW priority
+## Validated docs
 
-- **2026-02-20**: Skills SKILL.md files not indexed — `.cursor/skills/` SKILL.md files (maintain-docs, design-review, e2e-guide-analysis, tidy-up) are not referenced in AGENTS.md. These are discovered automatically by `.cursor/skills/` glob patterns in the IDE, so indexing may be unnecessary. Confirm and close if not needed.
+<!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
+
+- **2026-02-20**: `docs/developer/utils/README.md` — Validated against `src/utils/` and `src/utils/devtools/`. Fixed stale file listings (3 deleted devtools files removed, 3 new utility files and 2 devtools structural files added), corrected export names in `openfeature.ts` and `utils.plugin.ts` sections.
+
+## Exclusions
+
+<!-- Files confirmed as not needing an AGENTS.md entry. Format: path, reason. -->
+
+- `docs/developer/provisioning/README.md` — 4-line stub with only external links to Grafana provisioning docs. No agent-relevant content.
+- `.cursor/skills/maintain-docs/SKILL.md` — Discovered automatically by IDE via `.cursor/skills/` glob pattern. No AGENTS.md entry needed.
+- `.cursor/skills/design-review/SKILL.md` — Same as above.
+- `.cursor/skills/e2e-guide-analysis/SKILL.md` — Same as above.
+- `.cursor/skills/tidy-up/SKILL.md` — Same as above.
+- `docs/sources/_index.md` — End-user documentation published to Grafana.com. Not agent-relevant for implementation tasks.
+- `docs/sources/getting-started/_index.md` — Same as above.
+- `docs/sources/administrators-reference/_index.md` — Same as above.
+- `docs/sources/architecture/_index.md` — Same as above.
+- `docs/sources/upgrade-notes/_index.md` — Same as above.
