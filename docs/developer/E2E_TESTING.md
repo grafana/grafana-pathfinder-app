@@ -2,6 +2,8 @@
 
 The Pathfinder CLI includes an end-to-end test runner for interactive JSON guides. It verifies that guide steps function correctly in a live Grafana instance by automating interactions through a real browser.
 
+For prescriptive agent constraints on testing (unit, integration, and E2E), see `.cursor/rules/testingStrategy.mdc`.
+
 ## Key concepts
 
 - **DOM-based step discovery**: Tests interact with the rendered UI, not raw JSON. The plugin handles conditional logic; the runner iterates whatever steps are visible.

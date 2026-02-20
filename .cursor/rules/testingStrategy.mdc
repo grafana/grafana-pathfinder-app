@@ -21,9 +21,11 @@ This document outlines our testing strategy for the Grafana Interactive Leraning
 - **File Convention**: `.test.ts` or `.test.tsx` extensions
 - **Performance**: Uses SWC for faster compilation
 
-# E2E Testing
+# E2E testing
 
-We will use playwright tested against common versions of Grafana in the build chain. 
+We will use Playwright tested against common versions of Grafana in the build chain.
+
+For full reference on the E2E guide test runner, see `docs/developer/E2E_TESTING.md`. For the `data-test-*` attribute contract, see `docs/developer/E2E_TESTING_CONTRACT.md`.
 
 # Unit Testing
 
