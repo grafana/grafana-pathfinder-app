@@ -84,6 +84,31 @@ The CLI accepts three input formats:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Runner module structure
+
+The Playwright test runner lives in `tests/e2e-runner/` with a modular structure:
+
+```
+tests/e2e-runner/
+├── guide-runner.spec.ts       # Main Playwright test spec
+├── playwright.config.ts       # Dedicated Playwright config
+├── auth/                      # Grafana authentication setup
+│   ├── index.ts
+│   └── grafana-auth.ts
+└── utils/
+    ├── console-reporter.ts    # Real-time console output
+    ├── preflight.ts           # In-browser pre-flight checks
+    └── guide-runner/          # Core runner logic
+        ├── index.ts           # Public API
+        ├── types.ts           # TestableStep, StepTestResult, etc.
+        ├── constants.ts       # Timing, selectors, error patterns
+        ├── discovery.ts       # DOM-based step discovery
+        ├── execution.ts       # Step execution loop
+        ├── requirements.ts    # Requirement detection and fix logic
+        ├── classification.ts  # Error classification (infrastructure vs unknown)
+        └── artifacts.ts       # Screenshot and DOM snapshot capture
+```
+
 ### Test execution flow
 
 1. **Pre-flight checks**
@@ -134,6 +159,19 @@ Requirements met? → Execute step
 ```
 
 **Skippable steps** (those with a Skip button) allow the test to continue when requirements cannot be met. **Mandatory steps** cause the test to abort on failure, marking remaining steps as `not_reached`.
+
+## Error classification
+
+When a step fails, the runner classifies the error to aid triage:
+
+| Classification       | Meaning                                    | Auto-detected? |
+| -------------------- | ------------------------------------------ | -------------- |
+| `infrastructure`     | Timeout, network, or auth issues           | Yes            |
+| `content-drift`      | Selector or requirement mismatch           | No (human)     |
+| `product-regression` | Action failure due to product code changes | No (human)     |
+| `unknown`            | Cannot be reliably classified (default)    | --             |
+
+Only `infrastructure` errors are auto-classified using pattern matching (timeouts, network errors, auth failures). All other failures default to `unknown` and require human triage. Classification is included in the `StepTestResult` for each failed step.
 
 ## Artifacts and reporting
 
@@ -209,15 +247,17 @@ npx pathfinder-cli e2e bundled:e2e-framework-test
 
 ## Timing and timeouts
 
-| Constant           | Value          | Purpose                                      |
-| ------------------ | -------------- | -------------------------------------------- |
-| Base step timeout  | 30s            | Maximum time for a single step               |
-| Multistep bonus    | +5s per action | Added for each internal action in multisteps |
-| Button enable wait | 10s            | Wait for sequential dependencies             |
-| Fix button timeout | 10s            | Per fix operation                            |
-| Max fix attempts   | 3              | Retry limit before giving up                 |
+| Constant               | Value            | Purpose                                              |
+| ---------------------- | ---------------- | ---------------------------------------------------- |
+| Base step timeout      | 30s              | Maximum time for a single step                       |
+| Multistep bonus        | +5s per action   | Added for each internal action in multisteps         |
+| Guided substep timeout | +30s per substep | Added for each substep in guided blocks              |
+| Button enable wait     | 10s              | Wait for sequential dependencies (button enabled)    |
+| Button appear wait     | 15s              | Wait for button to appear (previous step completion) |
+| Fix button timeout     | 10s              | Per fix operation                                    |
+| Max fix attempts       | 3                | Retry limit before giving up                         |
 
-Example: A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
+Example: A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s). A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
 
 ## Troubleshooting
 

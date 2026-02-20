@@ -22,15 +22,16 @@ Every structural change to a type MUST have a corresponding schema change, and v
 If you add, remove, or change a field in `json-guide.types.ts`:
 
 1. **Update the corresponding Zod schema** in `json-guide.schema.ts`
-2. **Run `npm run typecheck`** - the `satisfies z.ZodType<T>` pattern will catch mismatches
-3. **Run `npm run validate`** - verify bundled guides still pass
-4. **Update the `KNOWN_FIELDS` export** if adding new fields (for unknown field detection)
+2. **Run `npm run typecheck`** to catch compile-time errors
+3. **Run `npm run test:ci`** — the tests in `src/validation/type-coupling.test.ts` verify that TypeScript types and Zod-inferred types stay compatible
+4. **Run `npm run validate`** - verify bundled guides still pass
+5. **Update the `KNOWN_FIELDS` export** if adding new fields (for unknown field detection)
 
 The file `json-guide.schema.ts` exposes a global schema version. When making changes to schema, 
 always consider advising the user to update the schema version following schema best practices, 
 and providing them guidance on forwards and backwards compatibility issues as appropriate.
 
-### Example: Adding a New Field
+### Example: Adding a new field
 
 ```typescript
 // 1. Add to type
@@ -39,15 +40,15 @@ export interface JsonGuide {
   newField?: string; // NEW
 }
 
-// 2. Add to schema
-export const JsonGuideSchema = z.object({
+// 2. Add to schema (JsonGuideSchemaStrict is the base; JsonGuideSchema = ...Strict.loose())
+export const JsonGuideSchemaStrict = z.object({
   // ... existing fields
   newField: z.string().optional(), // NEW - matches type
-}).passthrough() satisfies z.ZodType<JsonGuide>;
+});
 
-// 3. Add to KNOWN_FIELDS
-export const KNOWN_FIELDS = {
-  _guide: ['id', 'title', 'blocks', 'match', 'schemaVersion', 'newField'], // ADD HERE
+// 3. Add to KNOWN_FIELDS (uses ReadonlySet<string>)
+export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
+  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'newField']), // ADD HERE
   // ...
 };
 ```
@@ -58,7 +59,7 @@ If you change validation rules in `json-guide.schema.ts`:
 
 1. **Consider if the type needs updating** - e.g., making a field required
 2. **Update error messages** to be user-friendly
-3. **Run tests** - `npm run test:ci -- --testPathPatterns=validation`
+3. **Run tests** - `npm run test:ci -- --testPathPattern=validation`
 4. **Run `npm run validate:strict`** - ensure bundled guides comply
 
 ## Coupling Markers
@@ -79,22 +80,27 @@ export const JsonGuideSchema = z.object({ ... });
 
 When you see a `@coupling` tag, **always check the linked file** before making changes.
 
-## Forward Compatibility
+## Forward compatibility
 
-All schemas use `.passthrough()` to allow unknown fields. This means:
+The root schema uses `.loose()` to allow unknown fields at the guide level:
 
-- Newer guides with new fields will still parse successfully
+- `JsonGuideSchemaStrict` — strict mode, no extra fields
+- `JsonGuideSchema = JsonGuideSchemaStrict.loose()` — permissive mode for forward compatibility
+- Newer guides with new fields will still parse successfully via `JsonGuideSchema`
 - Unknown fields generate warnings, not errors (unless `--strict` mode)
-- The `KNOWN_FIELDS` object determines what triggers warnings
+- The `KNOWN_FIELDS` object (a `Record<string, ReadonlySet<string>>`) determines what triggers warnings
 
-## Validation Module Structure
+## Validation module structure
 
 ```
 src/validation/
-├── index.ts          # Public exports
-├── validate-guide.ts # Main validateGuide() function
-├── unknown-fields.ts # Forward compatibility warnings
-└── errors.ts         # Error formatting utilities
+├── index.ts               # Public exports
+├── validate-guide.ts      # Main validateGuide() function
+├── unknown-fields.ts      # Forward compatibility warnings
+├── errors.ts              # Error formatting utilities
+├── error-map.ts           # Custom Zod error map for better messages
+├── condition-validator.ts # Validates requirement/objective mini-grammar
+└── type-coupling.test.ts  # Verifies TypeScript ↔ Zod type compatibility
 
 src/types/
 ├── json-guide.types.ts  # TypeScript interfaces (source of truth)
@@ -107,10 +113,12 @@ src/types/
 npm run typecheck       # Catch type/schema drift at compile time
 npm run validate        # Validate bundled guides (warnings allowed)
 npm run validate:strict # Validate bundled guides (warnings = errors)
-npm run test:ci -- --testPathPatterns=validation  # Run validation tests
+npm run test:ci -- --testPathPattern=validation  # Run validation tests
 ```
 
-## Agent Checklist
+For full reference on the JSON guide format (block types, fields, interactive features), see `docs/developer/interactive-examples/json-guide-format.md`.
+
+## Agent checklist
 
 When modifying JSON guide types or schemas:
 

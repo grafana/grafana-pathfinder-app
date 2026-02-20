@@ -164,8 +164,9 @@ Load these files **only when working in the relevant domain**. Do not preload al
 | `E2E_TESTING.md`              | E2E guide test runner, Playwright-based guide verification      | --                                                                               |
 | `DEV_MODE.md`                 | Dev mode configuration and debugging tools                      | `src/utils/dev-mode.ts`                                                          |
 | `LOCAL_DEV.md`                | Local development setup, prerequisites, Docker workflow         | --                                                                               |
+| `components/README.md`        | Component architecture overview and per-component docs          | --                                                                               |
 
-All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, `CLI_TOOLS.md`, `ASSISTANT_INTEGRATION.md`, `E2E_TESTING.md`, `DEV_MODE.md`, and `LOCAL_DEV.md` are at `docs/developer/`. The `interactive-examples/` and `engines/` directories are also under `docs/developer/`.
+All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, `CLI_TOOLS.md`, `ASSISTANT_INTEGRATION.md`, `E2E_TESTING.md`, `DEV_MODE.md`, and `LOCAL_DEV.md` are at `docs/developer/`. The `interactive-examples/`, `engines/`, and `components/` directories are also under `docs/developer/`. The `components/` directory contains a parent `README.md` with the overall architecture, plus per-component READMEs in subdirectories (e.g., `docs/developer/components/App/README.md`).
 
 ## PR reviews
 
