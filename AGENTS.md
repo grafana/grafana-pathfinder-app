@@ -167,8 +167,11 @@ Load these files **only when working in the relevant domain**. Do not preload al
 | `LIVE_SESSIONS.md`            | Live sessions feature (WebRTC, PeerJS)                          | `src/components/LiveSession/*`                                                   |
 | `KNOWN_ISSUES.md`             | Known bugs and workarounds                                      | --                                                                               |
 | `integrations/workshop.md`    | Workshop mode, action capture and replay                        | `src/integrations/workshop/*`                                                    |
+| `SCALE_TESTING.md`            | Live session scale testing procedures                           | --                                                                               |
+| `utils/README.md`             | Utility directory layout, remaining hooks, timeout manager      | `src/utils/*`                                                                    |
+| `constants/README.md`         | Selector constants, interactive config, z-index management      | `src/constants/*`                                                                |
 
-All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, `CLI_TOOLS.md`, `ASSISTANT_INTEGRATION.md`, `E2E_TESTING.md`, `DEV_MODE.md`, `LOCAL_DEV.md`, `LIVE_SESSIONS.md`, `KNOWN_ISSUES.md`, and `integrations/workshop.md` are at `docs/developer/`. The `interactive-examples/` and `engines/` directories are also under `docs/developer/`.
+All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, `CLI_TOOLS.md`, `ASSISTANT_INTEGRATION.md`, `E2E_TESTING.md`, `DEV_MODE.md`, `LOCAL_DEV.md`, `LIVE_SESSIONS.md`, `KNOWN_ISSUES.md`, `SCALE_TESTING.md`, `integrations/workshop.md`, `utils/README.md`, and `constants/README.md` are at `docs/developer/`. The `interactive-examples/` and `engines/` directories are also under `docs/developer/`.
 
 ## PR reviews
 
