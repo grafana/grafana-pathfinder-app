@@ -1,6 +1,8 @@
-# E2E Testing Contract: data-test-\* Attributes
+# E2E testing contract: data-test-\* attributes
 
 The Pathfinder interactive system exposes a stable testing contract via `data-test-*` attributes on step elements and comment boxes. This contract enables reliable E2E testing without depending on implementation details like CSS classes, text content, or DOM structure.
+
+For prescriptive agent constraints on testing strategy, see `.cursor/rules/testingStrategy.mdc`.
 
 ## Overview
 
