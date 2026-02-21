@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { safeEventHandler } from './safe-event-handler.util';
-import type { LearningJourneyTab } from '../types/content-panel.types';
+import { safeEventHandler } from '../../utils/safe-event-handler.util';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 interface UseKeyboardShortcutsProps {
   tabs: LearningJourneyTab[];

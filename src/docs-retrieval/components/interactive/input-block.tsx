@@ -10,7 +10,7 @@ import { css } from '@emotion/css';
 import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Combobox, type ComboboxOption } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getDataSourceSrv } from '@grafana/runtime';
-import { useGuideResponsesOptional } from '../../../lib/GuideResponseContext';
+import { useGuideResponsesOptional } from '../../GuideResponseContext';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 
 /** Props for the InputBlock component */

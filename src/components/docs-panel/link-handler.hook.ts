@@ -1,23 +1,23 @@
 import { useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
-import { safeEventHandler } from './safe-event-handler.util';
+import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
   reportAppInteraction,
   UserInteraction,
   enrichWithJourneyContext,
   enrichWithStepContext,
   getContentTypeForAnalytics,
-} from '../lib/analytics';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../docs-retrieval/learning-journey-helpers';
+} from '../../lib/analytics';
+import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval/learning-journey-helpers';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
   isLocalhostUrl,
   isInteractiveLearningUrl,
   isGitHubRawUrl,
-} from '../security';
-import { isDevModeEnabledGlobal } from './dev-mode';
-import { LearningJourneyTab } from '../types/content-panel.types';
+} from '../../security';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { LearningJourneyTab } from '../../types/content-panel.types';
 
 interface UseLinkClickHandlerProps {
   contentRef: React.RefObject<HTMLDivElement>;

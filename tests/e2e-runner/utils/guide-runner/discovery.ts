@@ -10,7 +10,7 @@
 
 import { Page, Locator } from '@playwright/test';
 
-import { testIds } from '../../../../src/components/testIds';
+import { testIds } from '../../../../src/constants/testIds';
 import { STEP_SELECTOR, STEP_TESTID_PREFIX } from './constants';
 import { calculateStepTimeout } from './execution';
 import type { TestableStep, StepDiscoveryResult } from './types';

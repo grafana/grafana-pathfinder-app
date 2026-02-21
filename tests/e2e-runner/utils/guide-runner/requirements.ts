@@ -9,7 +9,7 @@
 
 import { Page } from '@playwright/test';
 
-import { testIds } from '../../../../src/components/testIds';
+import { testIds } from '../../../../src/constants/testIds';
 import { isSessionValid } from '../../auth/grafana-auth';
 import {
   REQUIREMENTS_CHECK_TIMEOUT_MS,

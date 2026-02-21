@@ -26,7 +26,7 @@ import Link from '@tiptap/extension-link';
 import { Markdown } from '@tiptap/markdown';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonMarkdownBlock } from '../../../types/json-guide.types';
 

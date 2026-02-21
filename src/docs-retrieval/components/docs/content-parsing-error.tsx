@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Button, Alert, IconButton } from '@grafana/ui';
 
-import { ParseError } from '../../content.types';
+import { ParseError } from '../../../types/content.types';
 
 export interface ContentParsingErrorProps {
   errors: ParseError[];

@@ -7,7 +7,7 @@
 
 import type { Page } from '@playwright/test';
 import { expect } from '../fixtures';
-import { testIds } from '../../src/components/testIds';
+import { testIds } from '../../src/constants/testIds';
 import { TIMEOUTS, STORAGE_KEYS } from '../constants';
 
 /**

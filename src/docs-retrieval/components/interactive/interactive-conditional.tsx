@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useInteractiveElements } from '../../../interactive-engine';
 import type { ParsedElement } from '../../html-parser';
-import { testIds } from '../../../components/testIds';
+import { testIds } from '../../../constants/testIds';
 import type { ConditionalDisplayMode, ConditionalSectionConfig } from '../../../types/json-guide.types';
 import { InteractiveSection } from './interactive-section';
 

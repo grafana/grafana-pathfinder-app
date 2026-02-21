@@ -1,8 +1,8 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 
+import { waitForReactUpdates } from '../../../lib/async-utils';
 import {
-  waitForReactUpdates,
   useStepChecker,
   getPostVerifyExplanation,
   checkPostconditions,
@@ -17,7 +17,7 @@ import {
   useFormElementValidation,
   resolveTargetElement,
 } from '../../../interactive-engine';
-import { testIds } from '../../../components/testIds';
+import { testIds } from '../../../constants/testIds';
 import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../integrations/assistant-integration';
 import { CodeBlock } from '../docs/code-block';
 import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../../lib/dom';

@@ -9,7 +9,7 @@ import {
   SideJourneys,
   RelatedJourneys,
   ConclusionImage,
-} from './content.types';
+} from '../types/content.types';
 import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 

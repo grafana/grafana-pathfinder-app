@@ -22,7 +22,7 @@ import {
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../../types/component-props.types';
-import { testIds } from '../../../components/testIds';
+import { testIds } from '../../../constants/testIds';
 import { getContentKey } from './get-content-key';
 
 // Simple counter for sequential section IDs

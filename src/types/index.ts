@@ -33,4 +33,4 @@ export * from './json-guide.types';
 export * from './learning-paths.types';
 
 // Re-export content types from docs-retrieval for convenience
-export * from '../docs-retrieval/content.types';
+export * from './content.types';

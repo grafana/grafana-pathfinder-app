@@ -3,7 +3,7 @@
 // Implements fail-fast principle with proper error propagation
 // SECURITY: All HTML is sanitized with DOMPurify before parsing
 
-import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResult } from './content.types';
+import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResult } from '../types/content.types';
 import { sanitizeDocumentationHTML } from '../security';
 
 // Re-export for convenience

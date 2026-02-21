@@ -5,7 +5,7 @@
 import { RefObject } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { LearningJourneyTab } from '../../types/content-panel.types';
-import { RawContent } from '../../docs-retrieval/content.types';
+import { RawContent } from '../../types/content.types';
 
 /**
  * Operations interface for docs-panel model

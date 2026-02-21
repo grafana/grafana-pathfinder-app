@@ -12,7 +12,7 @@ import { t } from '@grafana/i18n';
 
 import { useNextLearningAction } from '../../learning-paths';
 import { getUserProfileBarStyles } from './UserProfileBar.styles';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 interface UserProfileBarProps {
   onOpenGuide: (url: string, title: string) => void;

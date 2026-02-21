@@ -11,7 +11,7 @@
  * @module action-monitor
  */
 
-import { detectActionType, shouldCaptureElement } from './action-detector';
+import { detectActionType, shouldCaptureElement } from '../../lib/dom/action-detector';
 import type { DetectedActionEvent } from './action-matcher';
 
 /**

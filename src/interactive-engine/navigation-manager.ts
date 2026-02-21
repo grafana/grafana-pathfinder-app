@@ -1,4 +1,4 @@
-import { waitForReactUpdates } from '../requirements-manager';
+import { waitForReactUpdates } from '../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';

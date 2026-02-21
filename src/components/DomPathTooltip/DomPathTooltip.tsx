@@ -6,7 +6,7 @@
 import React from 'react';
 import { useStyles2 } from '@grafana/ui';
 import { getDomPathTooltipStyles } from './dom-path-tooltip.styles';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 export interface DomPathTooltipProps {
   /** The DOM path to display */

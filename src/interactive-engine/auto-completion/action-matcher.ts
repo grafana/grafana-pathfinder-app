@@ -7,7 +7,7 @@
  * @module action-matcher
  */
 
-import type { DetectedAction } from './action-detector';
+import type { DetectedAction } from '../../lib/dom/action-detector';
 import { findButtonByText } from '../../lib/dom';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 

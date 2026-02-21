@@ -14,7 +14,7 @@ import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProper
 import { type DatasourceMetadataArtifact } from './tools';
 import { AssistantBlockValueProvider } from './AssistantBlockValueContext';
 import { parseMarkdownToElements } from '../../docs-retrieval/json-parser';
-import type { ParsedElement } from '../../docs-retrieval/content.types';
+import type { ParsedElement } from '../../types/content.types';
 import { CodeBlock } from '../../docs-retrieval/components/docs';
 import {
   useAssistantGeneration,

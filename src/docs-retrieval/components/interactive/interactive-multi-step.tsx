@@ -11,7 +11,7 @@ import { useStepChecker, validateInteractiveRequirements } from '../../../requir
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import { INTERACTIVE_CONFIG } from '../../../constants/interactive-config';
 import { InternalAction } from '../../../types/interactive-actions.types';
-import { testIds } from '../../../components/testIds';
+import { testIds } from '../../../constants/testIds';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 

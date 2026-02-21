@@ -27,7 +27,7 @@ import { render, screen } from '@testing-library/react';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
-import { testIds } from '../../../components/testIds';
+import { testIds } from '../../../constants/testIds';
 import type { InternalAction, GuidedAction } from '../../../types';
 import { STEP_STATES, REQUIREMENTS_STATES, FIX_TYPES, FORM_STATES } from './step-states';
 

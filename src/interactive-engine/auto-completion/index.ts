@@ -12,8 +12,8 @@ export {
   findInteractiveParent,
   canHaveFocus,
   canBeTabbed,
-} from './action-detector';
-export type { DetectedAction } from './action-detector';
+} from '../../lib/dom/action-detector';
+export type { DetectedAction } from '../../lib/dom/action-detector';
 
 // Action Matcher - Matches detected actions against step configurations
 export {

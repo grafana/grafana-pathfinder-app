@@ -1,23 +1,6 @@
 import { TimeoutManager } from '../utils/timeout-manager';
 
 /**
- * Wait for React state updates to complete before proceeding
- * This ensures DOM changes from React state updates have been applied
- * before checking requirements or other DOM-dependent operations
- */
-export function waitForReactUpdates(): Promise<void> {
-  return new Promise((resolve) => {
-    // Use requestAnimationFrame to wait for React to flush updates
-    // Double RAF ensures we're past React's update cycle
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        resolve();
-      });
-    });
-  });
-}
-
-/**
  * React-based requirements checking system
  * Provides event-driven requirements validation for interactive guide steps
  *

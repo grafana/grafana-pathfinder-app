@@ -10,7 +10,7 @@ import { Icon, Portal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER } from './constants';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 import type { BlockType, OnBlockTypeSelect } from './types';
 
 // Styles for the palette modal

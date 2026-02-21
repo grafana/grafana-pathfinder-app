@@ -6,7 +6,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { LoadingIndicator } from './LoadingIndicator';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 
 // Mock the SkeletonLoader to avoid complex styling dependencies
 jest.mock('../../SkeletonLoader', () => ({

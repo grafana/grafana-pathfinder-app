@@ -6,7 +6,7 @@
  */
 
 import { generateBestSelector, getSelectorInfo, validateAndCleanSelector } from '../../lib/dom';
-import { detectActionType, type DetectedAction } from '../../interactive-engine/auto-completion/action-detector';
+import { detectActionType, type DetectedAction } from '../../lib/dom/action-detector';
 import type { SelectorInfo } from './dev-tools.types';
 
 export interface SelectorGenerationResult {

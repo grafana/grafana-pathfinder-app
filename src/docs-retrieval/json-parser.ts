@@ -5,7 +5,7 @@
  * the existing content pipeline. Produces identical output to the HTML parser.
  */
 
-import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from './content.types';
+import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from '../types/content.types';
 import { parseHTMLToComponents } from './html-parser';
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
