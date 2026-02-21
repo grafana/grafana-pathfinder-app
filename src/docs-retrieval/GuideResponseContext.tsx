@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
-import { guideResponseStorage, GuideResponseValue } from './user-storage';
+import { guideResponseStorage, GuideResponseValue } from '../lib/user-storage';
 
 /** Context value shape */
 interface GuideResponseContextValue {

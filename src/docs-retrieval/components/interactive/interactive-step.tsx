@@ -1,8 +1,8 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 
+import { waitForReactUpdates } from '../../../lib/async-utils';
 import {
-  waitForReactUpdates,
   useStepChecker,
   getPostVerifyExplanation,
   checkPostconditions,

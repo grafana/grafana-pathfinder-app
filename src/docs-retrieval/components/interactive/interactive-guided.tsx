@@ -10,7 +10,8 @@ import {
   matchesStepAction,
   type DetectedActionEvent,
 } from '../../../interactive-engine';
-import { waitForReactUpdates, useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
+import { waitForReactUpdates } from '../../../lib/async-utils';
+import { useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';

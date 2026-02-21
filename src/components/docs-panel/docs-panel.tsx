@@ -25,7 +25,7 @@ import { t } from '@grafana/i18n';
 import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
-import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
+import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
 import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { parseUrlSafely } from '../../security';

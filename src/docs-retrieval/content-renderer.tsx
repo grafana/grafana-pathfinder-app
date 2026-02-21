@@ -33,7 +33,7 @@ import {
   AssistantBlockWrapper,
   TextSelectionState,
 } from '../integrations/assistant-integration';
-import { GuideResponseProvider, useGuideResponses } from '../lib/GuideResponseContext';
+import { GuideResponseProvider, useGuideResponses } from './GuideResponseContext';
 import { substituteVariables } from '../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from './components/interactive/use-standalone-persistence';
 
