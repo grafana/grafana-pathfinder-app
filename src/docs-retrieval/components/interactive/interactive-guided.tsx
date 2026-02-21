@@ -15,7 +15,7 @@ import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 import { GuidedAction } from '../../../types/interactive-actions.types';
-import { testIds } from '../../../components/testIds';
+import { testIds } from '../../../constants/testIds';
 import { sanitizeDocumentationHTML } from '../../../security';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';

@@ -9,7 +9,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Button, Field, Input, Badge, useStyles2, Alert } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonSectionBlock } from '../../../types/json-guide.types';
 

@@ -26,7 +26,7 @@ import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL } from '../../
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
-import { useLinkClickHandler } from '../../utils/link-handler.hook';
+import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { parseUrlSafely } from '../../security';
 
@@ -70,7 +70,7 @@ import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, H
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 // Import extracted components
 import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';

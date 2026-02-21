@@ -3,7 +3,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
-import { RawContent, ContentParseResult } from './content.types';
+import { RawContent, ContentParseResult } from '../types/content.types';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
 import { parseJsonGuide, isJsonGuideContent } from './json-parser';
 import {

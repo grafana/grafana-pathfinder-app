@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { SkeletonLoader } from '../../SkeletonLoader';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 
 export interface LoadingIndicatorProps {
   /** The type of content being loaded - affects skeleton layout */

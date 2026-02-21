@@ -13,7 +13,7 @@ import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
 import { SortableBlock, DragData, DroppableInsertZone, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 export interface SectionNestedBlocksProps {
   block: EditorBlock;

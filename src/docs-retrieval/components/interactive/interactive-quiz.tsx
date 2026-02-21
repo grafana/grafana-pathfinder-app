@@ -5,7 +5,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
-import { testIds } from '../../../components/testIds';
+import { testIds } from '../../../constants/testIds';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
 // ============ Types ============

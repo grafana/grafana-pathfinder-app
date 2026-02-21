@@ -2,7 +2,7 @@
 // This replaces the separate docs-fetcher.ts and single-docs-fetcher.ts files
 
 // Core content fetching
-export * from './content.types';
+export * from '../types/content.types';
 export * from './content-fetcher';
 
 // Learning journey helpers

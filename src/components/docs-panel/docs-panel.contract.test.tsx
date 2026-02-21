@@ -27,7 +27,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 // Test ID constants contract: values must match what e2e and docs-panel use
 describe('E2E Contract: Docs panel test IDs', () => {

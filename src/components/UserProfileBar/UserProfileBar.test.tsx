@@ -10,7 +10,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 import { UserProfileBar } from './UserProfileBar';
 import { useNextLearningAction, type LearningProfileSummary } from '../../learning-paths';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 // ============================================================================
 // MOCKS

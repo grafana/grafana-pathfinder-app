@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { testIds } from '../src/components/testIds';
+import { testIds } from '../src/constants/testIds';
 
 /**
  * Helper function to handle "Fix this" buttons that may appear multiple times
