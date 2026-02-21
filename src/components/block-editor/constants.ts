@@ -88,6 +88,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Input',
     description: 'Collect user responses for use as variables',
   },
+  terminal: {
+    type: 'terminal',
+    icon: '💻',
+    grafanaIcon: 'brackets-curly',
+    name: 'Terminal',
+    description: 'Shell command with copy and execute buttons',
+  },
 };
 
 /**
@@ -103,6 +110,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'interactive',
   'multistep',
   'guided',
+  'terminal',
   'quiz',
   'input',
 ];

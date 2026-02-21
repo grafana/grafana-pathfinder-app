@@ -52,6 +52,13 @@
       "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
       "filename": "first-dashboard-cloud.json",
       "url": ["/a/grafana-setupguide-app/home"]
+    },
+    {
+      "id": "terminal-demo",
+      "title": "Terminal commands demo",
+      "summary": "Demonstrates the terminal block type with copy and execute buttons for shell commands.",
+      "filename": "terminal-demo.json",
+      "url": ["/", "/a/grafana-setupguide-app/home"]
     }
   ]
 }

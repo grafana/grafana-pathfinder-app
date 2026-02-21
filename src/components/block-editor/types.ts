@@ -26,7 +26,8 @@ export type BlockType =
   | 'multistep'
   | 'guided'
   | 'quiz'
-  | 'input';
+  | 'input'
+  | 'terminal';
 
 /**
  * Block metadata for the palette

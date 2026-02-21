@@ -3,6 +3,10 @@ import { config } from '@grafana/runtime';
 
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
+// Backend API URL for plugin resource endpoints
+// Grafana routes backend resource calls through /api/plugins/{pluginId}/resources/
+export const PLUGIN_BACKEND_URL = `/api/plugins/${pluginJson.id}/resources`;
+
 // Default configuration values
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana.com';
@@ -27,6 +31,14 @@ export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled 
 
 // Coda Terminal defaults (experimental dev feature)
 export const DEFAULT_ENABLE_CODA_TERMINAL = false; // Experimental - disabled by default
+
+// Coda API configuration (hardcoded URL - no longer configurable)
+// The Coda backend uses JWT authentication via enrollment keys
+export const CODA_API_URL = 'https://coda.lg.grafana-dev.com';
+
+// Coda Relay URL (for Grafana Cloud deployments where direct SSH is not possible)
+// When set, the plugin connects to VMs via WebSocket relay instead of direct SSH
+export const DEFAULT_CODA_RELAY_URL = 'wss://relay.lg.grafana-dev.com'; // Default to relay for Cloud compatibility
 
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
@@ -85,6 +97,12 @@ export interface DocsPluginConfig {
   peerjsKey?: string;
   // Coda Terminal (Experimental dev feature for interactive sandbox)
   enableCodaTerminal?: boolean;
+  // Coda registration status (JWT auth)
+  // Note: codaEnrollmentKey and codaJwtToken are stored in secureJsonData, not here
+  codaRegistered?: boolean; // Whether this instance has successfully registered with Coda
+  // Coda Relay URL for Grafana Cloud (WebSocket SSH relay)
+  // When set, the plugin uses WebSocket relay instead of direct SSH to VMs
+  codaRelayUrl?: string;
 }
 
 // Helper functions to get configuration values with defaults
@@ -116,6 +134,10 @@ export const getConfigWithDefaults = (
   peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
   // Coda Terminal
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+  // Coda registration
+  codaRegistered: config.codaRegistered ?? false,
+  // Coda Relay URL
+  codaRelayUrl: config.codaRelayUrl ?? DEFAULT_CODA_RELAY_URL,
 });
 
 /**

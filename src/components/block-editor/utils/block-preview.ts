@@ -17,6 +17,7 @@ import {
   isConditionalBlock,
   isQuizBlock,
   isInputBlock,
+  isTerminalBlock,
   type JsonBlock,
 } from '../../../types/json-guide.types';
 
@@ -104,6 +105,10 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
     // Replace newlines with spaces for cleaner display
     const prompt = block.prompt.replace(/\n/g, ' ').trim();
     return truncate(prompt, maxLength);
+  }
+
+  if (isTerminalBlock(block)) {
+    return truncate(`$ ${block.command}`, maxLength);
   }
 
   // Fallback for unknown block types with content
