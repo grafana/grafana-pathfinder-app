@@ -44,7 +44,7 @@ export const EXCLUDED_TOP_LEVEL = new Set(['test-utils', 'cli', 'bundled-interac
 export const ROOT_LEVEL_ALLOWED_FILES = new Set(['constants.ts', 'module.tsx']);
 
 export function toPosixPath(filePath: string): string {
-  return filePath.replaceAll('\\', '/');
+  return filePath.replace(/\\/g, '/');
 }
 
 export function isTestFile(filePath: string): boolean {
