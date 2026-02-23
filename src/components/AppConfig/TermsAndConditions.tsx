@@ -81,6 +81,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         <div
           data-testid={testIds.termsAndConditions.termsContent}
           className={styles.termsContent}
+          // eslint-disable-next-line no-restricted-syntax -- Static dev-controlled content, sanitized with DOMPurify as defense-in-depth
           dangerouslySetInnerHTML={{ __html: sanitizeDocumentationHTML(TERMS_AND_CONDITIONS_CONTENT) }}
         />
 
