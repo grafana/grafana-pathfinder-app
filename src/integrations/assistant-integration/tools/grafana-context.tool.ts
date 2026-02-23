@@ -9,7 +9,7 @@ import { createTool, type InlineToolRunnable, type ToolInvokeOptions, type ToolO
 import { config, locationService, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
 
 import type { GrafanaContextArtifact, DatasourceInfo } from './types';
-import { ContextService } from '../../../context-engine/context.service';
+import { ContextService } from '../../../context-engine';
 
 /**
  * Tool input schema - no input required

@@ -237,7 +237,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   const navigationManagerRef = useRef<any>(null);
   if (!navigationManagerRef.current) {
     // Lazy import to avoid circular dependencies
-    import('../interactive-engine/navigation-manager').then(({ NavigationManager }) => {
+    import('../interactive-engine').then(({ NavigationManager }) => {
       navigationManagerRef.current = new NavigationManager();
     });
   }

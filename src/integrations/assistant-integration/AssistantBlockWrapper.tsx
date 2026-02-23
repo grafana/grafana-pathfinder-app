@@ -13,9 +13,8 @@ import { useStyles2, Button } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
 import { type DatasourceMetadataArtifact } from './tools';
 import { AssistantBlockValueProvider } from './AssistantBlockValueContext';
-import { parseMarkdownToElements } from '../../docs-retrieval/json-parser';
+import { parseMarkdownToElements, CodeBlock } from '../../docs-retrieval';
 import type { ParsedElement } from '../../types/content.types';
-import { CodeBlock } from '../../docs-retrieval/components/docs';
 import {
   useAssistantGeneration,
   cleanAssistantResponse,

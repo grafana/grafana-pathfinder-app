@@ -146,29 +146,11 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
  *
  * External consumers should import from the engine barrel (index.ts),
  * not from internal files. This list should only shrink.
+ *
+ * Phase 4a cleared all 15 original entries by re-exporting from barrels
+ * and updating consumer import paths.
  */
-const ALLOWED_BARREL_VIOLATIONS = new Set([
-  // Assistant integration reaches into engine internals for context and parsing
-  'integrations/assistant-integration/tools/grafana-context.tool.ts -> context-engine/context.service',
-  'integrations/assistant-integration/AssistantBlockWrapper.tsx -> docs-retrieval/json-parser',
-  'integrations/assistant-integration/AssistantBlockWrapper.tsx -> docs-retrieval/components/docs',
-  // Docs panel needs journey helpers not yet re-exported from barrel
-  'components/docs-panel/link-handler.hook.ts -> docs-retrieval/learning-journey-helpers',
-  'components/docs-panel/docs-panel.tsx -> docs-retrieval/learning-journey-helpers',
-  // Block editor needs direct access to parser, renderer, and navigation
-  'components/block-editor/BlockPreview.tsx -> docs-retrieval/json-parser',
-  'components/block-editor/BlockPreview.tsx -> docs-retrieval/content-renderer',
-  'components/block-editor/BlockEditorTour.tsx -> interactive-engine/navigation-manager',
-  // LearningPaths components consume paths-data directly
-  'components/LearningPaths/badge-utils.ts -> learning-paths/paths-data',
-  'components/LearningPaths/MyLearningTab.tsx -> learning-paths/paths-data',
-  // Pre-existing barrel bypasses uncovered by AST import extraction
-  'docs-retrieval/learning-journey-helpers.ts -> learning-paths/paths-data',
-  'lib/user-storage.ts -> learning-paths/badges',
-  'lib/user-storage.ts -> learning-paths/paths-data',
-  'lib/user-storage.ts -> learning-paths/streak-tracker',
-  'requirements-manager/step-checker.hook.ts -> interactive-engine/navigation-manager',
-]);
+const ALLOWED_BARREL_VIOLATIONS = new Set<string>([]);
 
 // Violation key formatters — kept adjacent to allowlists so format changes
 // are visible in the same diff as allowlist updates.

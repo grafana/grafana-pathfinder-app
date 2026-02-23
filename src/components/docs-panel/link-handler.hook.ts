@@ -8,7 +8,7 @@ import {
   enrichWithStepContext,
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval/learning-journey-helpers';
+import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,

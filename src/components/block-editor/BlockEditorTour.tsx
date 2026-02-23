@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { NavigationManager } from '../../interactive-engine/navigation-manager';
+import { NavigationManager } from '../../interactive-engine';
 
 /**
  * Tour step definition
