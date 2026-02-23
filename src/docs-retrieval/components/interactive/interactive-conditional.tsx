@@ -212,6 +212,7 @@ export function InteractiveConditional({
           requirements={sectionRequirements}
           objectives={sectionObjectives}
           className="conditional-section"
+          autoCollapse={sectionConfig?.autoCollapse}
         >
           {childrenToRender.map((child, index) =>
             renderElement(child, `${keyPrefix}-${conditionsPassed ? 'true' : 'false'}-${index}`)

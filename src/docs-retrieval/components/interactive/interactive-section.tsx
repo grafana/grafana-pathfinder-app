@@ -122,6 +122,7 @@ export function InteractiveSection({
   disabled = false,
   className,
   id, // HTML id attribute from parsed content
+  autoCollapse,
 }: InteractiveSectionProps) {
   // Use provided HTML id or generate sequential fallback
   const sectionId = useMemo(() => {
@@ -523,21 +524,35 @@ export function InteractiveSection({
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
   // Auto-collapse section when it becomes complete (but only once, don't override manual expansion)
-  // Skip auto-collapse in preview mode - guide authors want to control collapse manually
+  // Respects author preference: autoCollapse=false disables this entirely.
+  // autoCollapse=undefined falls back to default behavior (auto-collapse on completion).
+  //
+  // Preview mode behavior:
+  //   - When autoCollapse is undefined (author didn't set it), skip auto-collapse
+  //     so authors can control collapse manually in the editor preview.
+  //   - When autoCollapse is explicitly set (true or false), honor it so authors
+  //     can test their setting directly in the block editor preview.
   useEffect(() => {
-    if (isPreviewMode) {
-      return; // Don't auto-collapse in preview mode
+    if (isPreviewMode && autoCollapse === undefined) {
+      return; // Default preview behavior: no auto-collapse unless author opted in
+    }
+    // Author explicitly disabled auto-collapse for this section
+    if (autoCollapse === false) {
+      return;
     }
     if (isCompleted && !hasAutoCollapsedRef.current) {
       hasAutoCollapsedRef.current = true;
       setIsCollapsed(true);
-      const contentKey = getContentKey();
-      sectionCollapseStorage.set(contentKey, sectionId, true);
+      // Skip persistence in preview mode to avoid polluting localStorage
+      if (!isPreviewMode) {
+        const contentKey = getContentKey();
+        sectionCollapseStorage.set(contentKey, sectionId, true);
+      }
     } else if (!isCompleted) {
       // Reset the flag when section becomes incomplete (e.g., after reset)
       hasAutoCollapsedRef.current = false;
     }
-  }, [isCompleted, sectionId, isPreviewMode]);
+  }, [isCompleted, sectionId, isPreviewMode, autoCollapse]);
 
   // Get plugin configuration to determine if auto-detection is enabled
   const pluginContext = usePluginContext();

@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Field, Input, Badge, useStyles2, Alert } from '@grafana/ui';
+import { Button, Field, Input, Badge, Checkbox, useStyles2, Alert } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { testIds } from '../../../constants/testIds';
@@ -59,6 +59,7 @@ export function SectionBlockForm({
   const [title, setTitle] = useState(initial?.title ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
+  const [autoCollapse, setAutoCollapse] = useState(initial?.autoCollapse ?? true);
 
   // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
@@ -82,8 +83,10 @@ export function SectionBlockForm({
       ...(title.trim() && { title: title.trim() }),
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(objArray.length > 0 && { objectives: objArray }),
+      // Only include when explicitly false (true is default, omit to keep JSON clean)
+      ...(!autoCollapse && { autoCollapse: false }),
     };
-  }, [sectionId, title, requirements, objectives]);
+  }, [sectionId, title, requirements, objectives, autoCollapse]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -192,6 +195,14 @@ export function SectionBlockForm({
           placeholder="e.g., completed-setup, configured-datasource"
         />
       </Field>
+
+      {/* Auto-collapse on completion */}
+      <Checkbox
+        className={styles.checkbox}
+        label="Auto-collapse on completion (collapse this section when all steps are completed)"
+        checked={autoCollapse}
+        onChange={(e) => setAutoCollapse(e.currentTarget.checked)}
+      />
 
       <div className={styles.footer}>
         <Button variant="secondary" onClick={onCancel} type="button">

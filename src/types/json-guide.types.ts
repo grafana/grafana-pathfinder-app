@@ -149,6 +149,8 @@ export interface JsonSectionBlock {
   requirements?: string[];
   /** Objectives tracked for completion of this section */
   objectives?: string[];
+  /** Whether to auto-collapse this section on completion. Author preference (overrides user). Defaults to true when omitted. */
+  autoCollapse?: boolean;
 }
 
 // ============ CONDITIONAL BLOCK ============
@@ -171,6 +173,8 @@ export interface ConditionalSectionConfig {
   requirements?: string[];
   /** Objectives tracked for completion of this section */
   objectives?: string[];
+  /** Whether to auto-collapse this section on completion. Author preference (overrides user). Defaults to true when omitted. */
+  autoCollapse?: boolean;
 }
 
 /**

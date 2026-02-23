@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, TextArea, Badge, useStyles2, RadioButtonGroup } from '@grafana/ui';
+import { Button, Field, Input, TextArea, Badge, Checkbox, useStyles2, RadioButtonGroup } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
@@ -122,6 +122,13 @@ export function ConditionalBlockForm({
     initial?.whenFalseSectionConfig?.objectives?.join(', ') ?? ''
   );
 
+  const [whenTrueAutoCollapse, setWhenTrueAutoCollapse] = useState(
+    initial?.whenTrueSectionConfig?.autoCollapse ?? true
+  );
+  const [whenFalseAutoCollapse, setWhenFalseAutoCollapse] = useState(
+    initial?.whenFalseSectionConfig?.autoCollapse ?? true
+  );
+
   // Collapse state for branch sections
   const [passExpanded, setPassExpanded] = useState(true);
   const [failExpanded, setFailExpanded] = useState(true);
@@ -143,7 +150,8 @@ export function ConditionalBlockForm({
     const buildSectionConfig = (
       title: string,
       requirements: string,
-      objectives: string
+      objectives: string,
+      autoCollapseValue: boolean
     ): ConditionalSectionConfig | undefined => {
       const config: ConditionalSectionConfig = {};
       if (title.trim()) {
@@ -156,6 +164,10 @@ export function ConditionalBlockForm({
       const objArray = parseArray(objectives);
       if (objArray.length > 0) {
         config.objectives = objArray;
+      }
+      // Only include when explicitly false (true is default, omit to keep JSON clean)
+      if (!autoCollapseValue) {
+        config.autoCollapse = false;
       }
       // Only return config if it has any properties
       return Object.keys(config).length > 0 ? config : undefined;
@@ -181,11 +193,21 @@ export function ConditionalBlockForm({
       block.reftarget = reftarget.trim();
     }
     if (displayMode === 'section') {
-      const trueSectionConfig = buildSectionConfig(whenTrueTitle, whenTrueRequirements, whenTrueObjectives);
+      const trueSectionConfig = buildSectionConfig(
+        whenTrueTitle,
+        whenTrueRequirements,
+        whenTrueObjectives,
+        whenTrueAutoCollapse
+      );
       if (trueSectionConfig) {
         block.whenTrueSectionConfig = trueSectionConfig;
       }
-      const falseSectionConfig = buildSectionConfig(whenFalseTitle, whenFalseRequirements, whenFalseObjectives);
+      const falseSectionConfig = buildSectionConfig(
+        whenFalseTitle,
+        whenFalseRequirements,
+        whenFalseObjectives,
+        whenFalseAutoCollapse
+      );
       if (falseSectionConfig) {
         block.whenFalseSectionConfig = falseSectionConfig;
       }
@@ -202,9 +224,11 @@ export function ConditionalBlockForm({
     whenTrueTitle,
     whenTrueRequirements,
     whenTrueObjectives,
+    whenTrueAutoCollapse,
     whenFalseTitle,
     whenFalseRequirements,
     whenFalseObjectives,
+    whenFalseAutoCollapse,
   ]);
 
   const handleSubmit = useCallback(
@@ -360,6 +384,11 @@ export function ConditionalBlockForm({
                     rows={2}
                   />
                 </Field>
+                <Checkbox
+                  label="Auto-collapse on completion"
+                  checked={whenTrueAutoCollapse}
+                  onChange={(e) => setWhenTrueAutoCollapse(e.currentTarget.checked)}
+                />
               </div>
             )}
           </div>
@@ -403,6 +432,11 @@ export function ConditionalBlockForm({
                     rows={2}
                   />
                 </Field>
+                <Checkbox
+                  label="Auto-collapse on completion"
+                  checked={whenFalseAutoCollapse}
+                  onChange={(e) => setWhenFalseAutoCollapse(e.currentTarget.checked)}
+                />
               </div>
             )}
           </div>

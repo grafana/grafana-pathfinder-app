@@ -294,6 +294,7 @@ const SectionProps = {
   title: z.string().optional(),
   requirements: z.array(z.string()).optional(),
   objectives: z.array(z.string()).optional(),
+  autoCollapse: z.boolean().optional(),
 };
 
 const AssistantProps = {
@@ -311,6 +312,7 @@ const ConditionalSectionConfigSchema = z.object({
   title: z.string().optional(),
   requirements: z.array(z.string()).optional(),
   objectives: z.array(z.string()).optional(),
+  autoCollapse: z.boolean().optional(),
 });
 
 const ConditionalProps = {
@@ -485,7 +487,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'completeEarly',
   ]),
-  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives']),
+  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse']),
   conditional: new Set([
     'type',
     'conditions',
@@ -497,7 +499,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'whenTrueSectionConfig',
     'whenFalseSectionConfig',
   ]),
-  _conditionalSectionConfig: new Set(['title', 'requirements', 'objectives']),
+  _conditionalSectionConfig: new Set(['title', 'requirements', 'objectives', 'autoCollapse']),
   quiz: new Set([
     'type',
     'question',
