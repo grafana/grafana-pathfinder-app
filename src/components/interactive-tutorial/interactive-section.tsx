@@ -2,27 +2,18 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements, ActionMonitor } from '../../../interactive-engine';
-import { useStepChecker } from '../../../requirements-manager';
+import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
+import { useStepChecker } from '../../requirements-manager';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
 import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
-import {
-  reportAppInteraction,
-  UserInteraction,
-  getSourceDocument,
-  calculateStepCompletion,
-} from '../../../lib/analytics';
-import {
-  interactiveStepStorage,
-  sectionCollapseStorage,
-  interactiveCompletionStorage,
-} from '../../../lib/user-storage';
-import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../../constants';
-import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../../types/component-props.types';
-import { testIds } from '../../../constants/testIds';
+import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
+import { interactiveStepStorage, sectionCollapseStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
+import { getConfigWithDefaults } from '../../constants';
+import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
+import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 
 // Simple counter for sequential section IDs
@@ -598,7 +589,7 @@ export function InteractiveSection({
 
       // Trigger global reactive check to enable next eligible steps
       // Also trigger watchNextStep to help the next step unlock if it has requirements
-      import('../../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+      import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
         SequentialRequirementsManager.getInstance().triggerReactiveCheck();
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
@@ -809,7 +800,7 @@ export function InteractiveSection({
     actionMonitor.forceDisable();
 
     // Clear any existing highlights before starting section execution
-    const { NavigationManager } = await import('../../../interactive-engine');
+    const { NavigationManager } = await import('../../interactive-engine');
     const navigationManager = new NavigationManager();
     navigationManager.clearAllHighlights();
 
@@ -845,7 +836,7 @@ export function InteractiveSection({
 
             try {
               // Try to fix the section requirement automatically
-              const { NavigationManager } = await import('../../../interactive-engine');
+              const { NavigationManager } = await import('../../interactive-engine');
               const navigationManager = new NavigationManager();
 
               if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
@@ -953,7 +944,7 @@ export function InteractiveSection({
 
                 try {
                   // Try to fix the requirement automatically
-                  const { NavigationManager } = await import('../../../interactive-engine');
+                  const { NavigationManager } = await import('../../interactive-engine');
                   const navigationManager = new NavigationManager();
 
                   if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
@@ -1099,7 +1090,7 @@ export function InteractiveSection({
           // Wait for state to settle, then trigger reactive check
           // This ensures remaining steps update their eligibility based on completed steps
           setTimeout(() => {
-            import('../../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+            import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
               const manager = SequentialRequirementsManager.getInstance();
               manager.triggerReactiveCheck();
             });
@@ -1221,7 +1212,7 @@ export function InteractiveSection({
     sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
 
     // Reset all step states in the global manager
-    import('../../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+    import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
       const manager = SequentialRequirementsManager.getInstance();
 
       // Temporarily stop DOM monitoring during reset

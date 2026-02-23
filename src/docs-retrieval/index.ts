@@ -33,3 +33,6 @@ export { parseJsonGuide, parseMarkdownToElements, isJsonGuideContent } from './j
 // Docs components
 export { CodeBlock } from './components/docs';
 export type { CodeBlockProps } from './components/docs';
+
+// Guide response context (consumed by components/interactive-tutorial/)
+export { useGuideResponsesOptional } from './GuideResponseContext';

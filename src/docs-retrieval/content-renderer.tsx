@@ -14,16 +14,18 @@ import {
   InteractiveQuiz,
   InteractiveConditional,
   InputBlock,
+  resetInteractiveCounters,
+  registerSectionSteps,
+  getDocumentStepPosition,
+} from '../components/interactive-tutorial';
+import {
   CodeBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
-  resetInteractiveCounters,
-  registerSectionSteps,
-  getDocumentStepPosition,
   VideoRenderer,
   YouTubeVideoRenderer,
-} from './components/interactive-components';
+} from './components/docs';
 import { SequentialRequirementsManager } from '../requirements-manager';
 import {
   useTextSelection,
@@ -35,7 +37,7 @@ import {
 } from '../integrations/assistant-integration';
 import { GuideResponseProvider, useGuideResponses } from './GuideResponseContext';
 import { substituteVariables } from '../utils/variable-substitution';
-import { STANDALONE_SECTION_ID } from './components/interactive/use-standalone-persistence';
+import { STANDALONE_SECTION_ID } from '../components/interactive-tutorial/use-standalone-persistence';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
