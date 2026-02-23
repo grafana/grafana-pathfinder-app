@@ -8,6 +8,7 @@
 import * as path from 'path';
 
 import {
+  ROOT_LEVEL_ALLOWED_FILES,
   SRC_DIR,
   TIER_MAP,
   TIER_2_ENGINES,
@@ -18,6 +19,11 @@ import {
   resolveImportToRelative,
   getTargetTopLevel,
   collectSourceFiles,
+  getRootLevelSourceFiles,
+  toPosixPath,
+  getNewViolations,
+  getStaleEntries,
+  assertRatchet,
 } from './import-graph';
 
 // ---------------------------------------------------------------------------
@@ -81,9 +87,19 @@ describe('extractRelativeImports', () => {
     expect(result).toContain('./double');
   });
 
-  it('does not extract dynamic import() — known limitation', () => {
+  it('extracts dynamic import() specifiers', () => {
     const content = `const mod = await import('./dynamic');`;
-    expect(extractRelativeImports(content)).toEqual([]);
+    expect(extractRelativeImports(content)).toEqual(['./dynamic']);
+  });
+
+  it('ignores import-like strings in comments and string literals', () => {
+    const content = [
+      `// from './comment-only'`,
+      `const str = "from './inside-string'";`,
+      `/* require('./also-comment') */`,
+      `import { real } from './actual';`,
+    ].join('\n');
+    expect(extractRelativeImports(content)).toEqual(['./actual']);
   });
 });
 
@@ -167,6 +183,12 @@ describe('resolveImportToRelative', () => {
     const result = resolveImportToRelative(fileDir, '../../outside');
     expect(result).toBeNull();
   });
+
+  it('normalizes resolved paths to posix separators', () => {
+    const fileDir = path.join(SRC_DIR, 'utils');
+    const result = resolveImportToRelative(fileDir, './helpers');
+    expect(result).toBe('utils/helpers');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -198,6 +220,12 @@ describe('architecture constants', () => {
   it('TIER_MAP and EXCLUDED_TOP_LEVEL do not overlap', () => {
     const overlap = Object.keys(TIER_MAP).filter((dir) => EXCLUDED_TOP_LEVEL.has(dir));
     expect(overlap).toEqual([]);
+  });
+
+  it('ROOT_LEVEL_ALLOWED_FILES contains only source files that exist in src root', () => {
+    const rootLevelSourceFiles = getRootLevelSourceFiles();
+    const invalidEntries = [...ROOT_LEVEL_ALLOWED_FILES].filter((file) => !rootLevelSourceFiles.includes(file));
+    expect(invalidEntries).toEqual([]);
   });
 });
 
@@ -232,5 +260,108 @@ describe('collectSourceFiles', () => {
 
   it('returns a non-empty list', () => {
     expect(collectSourceFiles().length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// path normalization helpers
+// ---------------------------------------------------------------------------
+
+describe('toPosixPath', () => {
+  it('normalizes windows-style separators', () => {
+    expect(toPosixPath('foo\\bar\\baz.ts')).toBe('foo/bar/baz.ts');
+  });
+
+  it('leaves posix paths unchanged', () => {
+    expect(toPosixPath('foo/bar/baz.ts')).toBe('foo/bar/baz.ts');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getNewViolations / getStaleEntries
+// ---------------------------------------------------------------------------
+
+describe('getNewViolations', () => {
+  it('returns violations not present in the allowlist', () => {
+    const violations = new Set(['a -> b', 'c -> d']);
+    const allowlist = new Set(['a -> b']);
+    expect(getNewViolations(violations, allowlist)).toEqual(['c -> d']);
+  });
+
+  it('returns empty when all violations are allowed', () => {
+    const both = new Set(['a -> b']);
+    expect(getNewViolations(both, both)).toEqual([]);
+  });
+
+  it('returns empty for empty violations', () => {
+    expect(getNewViolations(new Set(), new Set(['stale']))).toEqual([]);
+  });
+});
+
+describe('getStaleEntries', () => {
+  it('returns allowlist entries not present in violations', () => {
+    const violations = new Set(['a -> b']);
+    const allowlist = new Set(['a -> b', 'old -> gone']);
+    expect(getStaleEntries(violations, allowlist)).toEqual(['old -> gone']);
+  });
+
+  it('returns empty when allowlist matches violations', () => {
+    const both = new Set(['a -> b']);
+    expect(getStaleEntries(both, both)).toEqual([]);
+  });
+
+  it('returns all entries when violations are empty', () => {
+    const allowlist = new Set(['x', 'y']);
+    expect(getStaleEntries(new Set(), allowlist)).toEqual(['x', 'y']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assertRatchet
+// ---------------------------------------------------------------------------
+
+describe('assertRatchet', () => {
+  const advice = 'Fix it by restructuring the import.';
+
+  it('passes when both sets are empty', () => {
+    expect(() => assertRatchet(new Set(), new Set(), 'test', 'TEST_CONST', advice)).not.toThrow();
+  });
+
+  it('passes when violations exactly match the allowlist', () => {
+    const set = new Set(['a -> b', 'c -> d']);
+    expect(() => assertRatchet(set, new Set(set), 'test', 'TEST_CONST', advice)).not.toThrow();
+  });
+
+  it('throws on new violations with the violation key in the message', () => {
+    const violations = new Set(['a -> b', 'new -> violation']);
+    const allowlist = new Set(['a -> b']);
+    expect(() => assertRatchet(violations, allowlist, 'tier violations', 'ALLOWED', advice)).toThrow(
+      /new -> violation/
+    );
+  });
+
+  it('throws on new violations with the advice text', () => {
+    const violations = new Set(['new -> one']);
+    expect(() => assertRatchet(violations, new Set(), 'test', 'CONST', advice)).toThrow(/Fix it by restructuring/);
+  });
+
+  it('throws on stale entries with the allowlist constant name', () => {
+    const violations = new Set<string>();
+    const allowlist = new Set(['stale -> entry']);
+    expect(() => assertRatchet(violations, allowlist, 'tier violations', 'MY_ALLOWLIST', advice)).toThrow(
+      /MY_ALLOWLIST/
+    );
+  });
+
+  it('throws on stale entries with the entry in the message', () => {
+    const violations = new Set(['a -> b']);
+    const allowlist = new Set(['a -> b', 'gone -> removed']);
+    expect(() => assertRatchet(violations, allowlist, 'test', 'CONST', advice)).toThrow(/gone -> removed/);
+  });
+
+  it('prioritizes new violations over stale entries when both exist', () => {
+    const violations = new Set(['new -> one']);
+    const allowlist = new Set(['stale -> old']);
+    expect(() => assertRatchet(violations, allowlist, 'test', 'CONST', advice)).toThrow(/New test detected/);
   });
 });

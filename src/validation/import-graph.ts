@@ -8,6 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 
 export const SRC_DIR = path.resolve(__dirname, '..');
 
@@ -40,6 +41,11 @@ export const TIER_2_ENGINES = Object.entries(TIER_MAP)
   .map(([dir]) => dir);
 
 export const EXCLUDED_TOP_LEVEL = new Set(['test-utils', 'cli', 'bundled-interactives', 'img', 'locales']);
+export const ROOT_LEVEL_ALLOWED_FILES = new Set(['constants.ts', 'module.tsx']);
+
+export function toPosixPath(filePath: string): string {
+  return filePath.replaceAll('\\', '/');
+}
 
 export function isTestFile(filePath: string): boolean {
   const relative = path.relative(SRC_DIR, filePath);
@@ -71,6 +77,13 @@ export function collectSourceFiles(): string[] {
   return files;
 }
 
+export function getRootLevelSourceFiles(): string[] {
+  return fs
+    .readdirSync(SRC_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts'))
+    .map((entry) => entry.name);
+}
+
 export interface FileImports {
   file: string;
   relPath: string;
@@ -84,7 +97,7 @@ export interface FileImports {
  * and are intentionally excluded from tier enforcement.
  */
 export function getTopLevelDir(relPath: string): string | null {
-  const segments = relPath.split(path.sep);
+  const segments = toPosixPath(relPath).split('/');
   if (segments.length <= 1) {
     return null;
   }
@@ -94,28 +107,48 @@ export function getTopLevelDir(relPath: string): string | null {
 
 export function extractRelativeImports(content: string): string[] {
   const specifiers = new Set<string>();
+  const sourceFile = ts.createSourceFile(
+    'import-graph-input.tsx',
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
 
-  const fromRegex = /from\s+['"](\.[^'"]+)['"]/g;
-  let match;
-  while ((match = fromRegex.exec(content)) !== null) {
-    if (match[1]) {
-      specifiers.add(match[1]);
+  const isRelativeSpecifier = (value: string): boolean => value.startsWith('./') || value.startsWith('../');
+  const addIfRelative = (value: string): void => {
+    if (isRelativeSpecifier(value)) {
+      specifiers.add(value);
     }
-  }
+  };
 
-  const sideEffectRegex = /^\s*import\s+['"](\.[^'"]+)['"]/gm;
-  while ((match = sideEffectRegex.exec(content)) !== null) {
-    if (match[1]) {
-      specifiers.add(match[1]);
+  const visit = (node: ts.Node): void => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteralLike(node.moduleSpecifier)
+    ) {
+      addIfRelative(node.moduleSpecifier.text);
     }
-  }
 
-  const requireRegex = /require\(\s*['"](\.[^'"]+)['"]\s*\)/g;
-  while ((match = requireRegex.exec(content)) !== null) {
-    if (match[1]) {
-      specifiers.add(match[1]);
+    if (ts.isCallExpression(node)) {
+      const [firstArg] = node.arguments;
+      if (!firstArg || !ts.isStringLiteralLike(firstArg)) {
+        ts.forEachChild(node, visit);
+        return;
+      }
+
+      if (ts.isIdentifier(node.expression) && node.expression.text === 'require') {
+        addIfRelative(firstArg.text);
+      } else if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        addIfRelative(firstArg.text);
+      }
     }
-  }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
 
   return [...specifiers];
 }
@@ -123,14 +156,14 @@ export function extractRelativeImports(content: string): string[] {
 export function resolveImportToRelative(fileDir: string, importPath: string): string | null {
   const resolved = path.resolve(fileDir, importPath);
   const relative = path.relative(SRC_DIR, resolved);
-  if (relative.startsWith('..')) {
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     return null;
   }
-  return relative;
+  return toPosixPath(relative);
 }
 
 export function getTargetTopLevel(resolvedRelative: string): string | null {
-  const segments = resolvedRelative.split(path.sep);
+  const segments = toPosixPath(resolvedRelative).split('/');
   // ?? null satisfies noUncheckedIndexedAccess; split() always returns at least one element
   return segments[0] ?? null;
 }
@@ -143,7 +176,7 @@ export function getAllFileImports(): FileImports[] {
   }
   const files = collectSourceFiles();
   cachedFileImports = files.map((file) => {
-    const relPath = path.relative(SRC_DIR, file);
+    const relPath = toPosixPath(path.relative(SRC_DIR, file));
     const topLevelDir = getTopLevelDir(relPath);
     const content = fs.readFileSync(file, 'utf-8');
     const imports = extractRelativeImports(content);
@@ -155,4 +188,45 @@ export function getAllFileImports(): FileImports[] {
 /** Reset the cached file imports. Useful for testing. */
 export function resetCache(): void {
   cachedFileImports = undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Ratchet mechanism
+// ---------------------------------------------------------------------------
+
+export function getNewViolations(violations: Set<string>, allowlist: Set<string>): string[] {
+  return [...violations].filter((violation) => !allowlist.has(violation));
+}
+
+export function getStaleEntries(violations: Set<string>, allowlist: Set<string>): string[] {
+  return [...allowlist].filter((entry) => !violations.has(entry));
+}
+
+/**
+ * Asserts that the detected violations exactly match the allowlist.
+ * Throws with an agent-oriented error message if:
+ * - New violations are found that aren't in the allowlist
+ * - Stale entries exist in the allowlist that no longer correspond to violations
+ */
+export function assertRatchet(
+  violations: Set<string>,
+  allowlist: Set<string>,
+  label: string,
+  allowlistConstant: string,
+  newViolationAdvice: string
+): void {
+  const newViolations = getNewViolations(violations, allowlist);
+  if (newViolations.length > 0) {
+    throw new Error(
+      `New ${label} detected:\n${newViolations.map((v) => `  - ${v}`).join('\n')}\n\n${newViolationAdvice}`
+    );
+  }
+
+  const staleEntries = getStaleEntries(violations, allowlist);
+  if (staleEntries.length > 0) {
+    throw new Error(
+      `Stale entries in ${allowlistConstant} (${label} allowlist — violation was fixed, remove the entry):\n` +
+        staleEntries.map((e) => `  - ${e}`).join('\n')
+    );
+  }
 }
