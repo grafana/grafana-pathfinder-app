@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { RequirementsState, useRequirementsManager } from '../requirements-manager';
 
 /**

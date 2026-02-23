@@ -6,6 +6,7 @@ import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 import { RawContent, ContentParseResult } from '../types/content.types';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
 import { parseJsonGuide, isJsonGuideContent } from './json-parser';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
 import {
   InteractiveSection,
   InteractiveStep,
@@ -26,7 +27,9 @@ import {
   VideoRenderer,
   YouTubeVideoRenderer,
 } from './components/docs';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: docs-retrieval -> requirements-manager
 import { SequentialRequirementsManager } from '../requirements-manager';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> integrations
 import {
   useTextSelection,
   AssistantSelectionPopover,
@@ -37,6 +40,7 @@ import {
 } from '../integrations/assistant-integration';
 import { GuideResponseProvider, useGuideResponses } from './GuideResponseContext';
 import { substituteVariables } from '../utils/variable-substitution';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
 import { STANDALONE_SECTION_ID } from '../components/interactive-tutorial/use-standalone-persistence';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
