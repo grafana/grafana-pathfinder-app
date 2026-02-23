@@ -5,7 +5,6 @@ import { t } from '@grafana/i18n';
 import { getStyles } from '../../styles/context-panel.styles';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { StorageKeys } from '../../lib/storage-keys';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
 
 interface CustomGuidesSectionProps {
@@ -30,18 +29,7 @@ export function CustomGuidesSection({
   }, [guides]);
 
   const openCustomGuide = (guide: PublishedGuide) => {
-    const hasInlinePayload = Array.isArray(guide.spec.blocks);
-    const guideUrl = hasInlinePayload ? 'bundled:e2e-test' : `backend-guide:${guide.metadata.name}`;
-
-    if (hasInlinePayload) {
-      const inlineGuide = {
-        id: guide.spec.id || guide.metadata.name,
-        title: guide.spec.title,
-        schemaVersion: guide.spec.schemaVersion || '1.0',
-        blocks: guide.spec.blocks || [],
-      };
-      localStorage.setItem(StorageKeys.E2E_TEST_GUIDE, JSON.stringify(inlineGuide));
-    }
+    const guideUrl = `backend-guide:${guide.metadata.name}`;
 
     reportAppInteraction(UserInteraction.OpenResourceClick, {
       content_title: guide.spec.title,

@@ -9,7 +9,7 @@ import { Modal, Button, Icon, useStyles2, Spinner, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { JsonGuide } from './types';
-import { ConfirmModal } from './NotificationModals';
+import { ConfirmModal, AlertModal } from './NotificationModals';
 
 interface BackendGuide {
   metadata: {
@@ -121,6 +121,7 @@ export function GuideLibraryModal({
 }: GuideLibraryModalProps) {
   const styles = useStyles2(getStyles);
   const [deletingGuide, setDeletingGuide] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
     guideName: string;
@@ -160,7 +161,7 @@ export function GuideLibraryModal({
     try {
       await onDeleteGuide(resourceName);
     } catch (error) {
-      alert(`Failed to delete guide: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setDeleteError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setDeletingGuide(null);
     }
@@ -270,6 +271,15 @@ export function GuideLibraryModal({
         confirmText="Delete"
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
+      />
+
+      {/* Delete Error Modal */}
+      <AlertModal
+        isOpen={deleteError !== null}
+        title="Failed to delete guide"
+        message={deleteError ?? ''}
+        severity="error"
+        onClose={() => setDeleteError(null)}
       />
     </Modal>
   );

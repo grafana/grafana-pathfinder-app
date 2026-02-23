@@ -6,21 +6,15 @@ import { ContextService } from './context.service';
  * Fetch interactive guides from Pathfinder backend
  */
 export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
-  console.log('[Pathfinder] fetchInteractiveGuidesFromBackend() called - about to make API call');
-
   const namespace = config.namespace;
-  console.log('[Pathfinder] config.namespace value:', namespace);
-  console.log('[Pathfinder] Full config object:', config);
 
   if (!namespace) {
-    console.warn('[Pathfinder] No namespace available, cannot fetch interactive guides');
     return;
   }
 
   try {
     const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
-    console.log('[Pathfinder] Fetching from URL:', url);
-    const response = await lastValueFrom(
+    await lastValueFrom(
       getBackendSrv().fetch({
         url,
         method: 'GET',
@@ -28,7 +22,6 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
         showErrorAlert: false,
       })
     );
-    console.log('[Pathfinder] Interactive guides response:', response);
   } catch (error) {
     const status =
       (error as { status?: number; statusCode?: number; data?: { statusCode?: number } })?.status ??
@@ -37,7 +30,6 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
     const unavailableStatuses = new Set([400, 403, 404, 405, 501, 503]);
 
     if (status && unavailableStatuses.has(status)) {
-      console.log('[Pathfinder] Interactive guides API unavailable in this environment; skipping');
       return;
     }
 
@@ -66,8 +58,6 @@ export function initializeContextServices(): void {
  * SECURITY: Dev mode is now lazily initialized when user visits config with ?dev=true
  */
 export function onPluginStart(): void {
-  console.log('[Pathfinder] onPluginStart() called - initializing plugin');
-
   // Initialize context services only
   // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();

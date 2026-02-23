@@ -96,6 +96,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     message: string | React.ReactNode;
     variant?: 'primary' | 'destructive';
     onConfirm: () => void;
+    onCancel?: () => void;
   }>({
     isOpen: false,
     title: '',
@@ -281,7 +282,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     setCurrentGuideResourceName(null);
     setCurrentGuideMetadata(null);
     setLastPublishedJson(null);
-    console.log('[BlockEditor] Cleared backend tracking state for new guide');
   }, []);
 
   // Guide operations - extracted hook for copy/download/new/import/template
@@ -358,9 +358,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       if (publishedGuide) {
         setCurrentGuideResourceName(publishedGuide.metadata.name);
         setCurrentGuideMetadata(publishedGuide.metadata);
-        console.log('[BlockEditor] Stored metadata for future updates:', publishedGuide.metadata);
-      } else {
-        console.warn('[BlockEditor] Could not find published guide in refreshed list');
       }
 
       // Show success modal
@@ -417,12 +414,12 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
                 // User confirmed overwrite - load the existing guide's metadata so we can update it
                 setCurrentGuideResourceName(existingGuide.metadata.name);
                 setCurrentGuideMetadata(existingGuide.metadata);
-                console.log('[BlockEditor] User confirmed overwrite of existing guide:', resourceName);
 
                 // Continue with publish
                 await performPublish(guide, existingGuide.metadata.name, existingGuide.metadata, true);
                 resolve();
               },
+              onCancel: resolve,
             });
           });
         }
@@ -480,7 +477,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Close modals
   const closeConfirmModal = useCallback(() => {
-    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+    setConfirmModal((prev) => {
+      prev.onCancel?.();
+      return { ...prev, isOpen: false };
+    });
   }, []);
 
   const closeAlertModal = useCallback(() => {

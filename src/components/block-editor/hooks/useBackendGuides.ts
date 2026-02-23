@@ -64,7 +64,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
 
     try {
       const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
-      console.log('[useBackendGuides] Fetching guides from:', url);
 
       const response = await lastValueFrom(
         getBackendSrv().fetch<BackendGuidesList>({
@@ -74,7 +73,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           showErrorAlert: false,
         })
       );
-      console.log('[useBackendGuides] Fetched guides:', response);
 
       const fetchedGuides = response.data?.items || [];
       setGuides(fetchedGuides);
@@ -125,7 +123,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         // For updates, include resourceVersion from existing metadata
         if (existingResourceName && existingMetadata) {
           metadata.resourceVersion = existingMetadata.resourceVersion;
-          console.log('[useBackendGuides] Including resourceVersion for update:', metadata.resourceVersion);
         }
 
         // Wrap guide in Kubernetes resource format
@@ -146,7 +143,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         if (existingResourceName) {
           // Update existing guide (PUT)
           const url = `${baseUrl}/${existingResourceName}`;
-          console.log('[useBackendGuides] Updating guide:', url, k8sResource);
           await lastValueFrom(
             getBackendSrv().fetch({
               url,
@@ -157,7 +153,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           );
         } else {
           // Create new guide (POST)
-          console.log('[useBackendGuides] Creating guide:', baseUrl, k8sResource);
           await lastValueFrom(
             getBackendSrv().fetch({
               url: baseUrl,
@@ -167,8 +162,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
             })
           );
         }
-
-        console.log('[useBackendGuides] Successfully saved guide');
 
         // Refresh the list after saving
         await refreshGuides();
@@ -190,7 +183,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
 
       try {
         const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-        console.log('[useBackendGuides] Deleting guide:', url);
 
         await lastValueFrom(
           getBackendSrv().fetch({
@@ -199,7 +191,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
             showErrorAlert: false,
           })
         );
-        console.log('[useBackendGuides] Successfully deleted guide');
 
         // Refresh the list after deleting
         await refreshGuides();

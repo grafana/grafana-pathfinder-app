@@ -151,8 +151,6 @@ const plugin = new AppPlugin<{}>()
 
 // Override init() to handle auto-open when plugin loads
 plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
-  console.log('[Pathfinder] plugin.init() called - plugin is loading');
-
   const jsonData = meta?.jsonData || {};
   const config = getConfigWithDefaults(jsonData);
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
