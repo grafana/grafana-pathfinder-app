@@ -293,10 +293,19 @@ describe('Barrel export discipline', () => {
       ALLOWED_BARREL_VIOLATIONS,
       'barrel bypass violations',
       'ALLOWED_BARREL_VIOLATIONS',
-      `External consumers should import from the engine's barrel export (index.ts), ` +
-        `not from internal files. If the symbol is not yet exported from the barrel, ` +
-        `add it to the engine's index.ts. If the barrel bypass is architecturally justified, ` +
-        `add it to ALLOWED_BARREL_VIOLATIONS with a comment explaining why.`
+      `External consumers must import from the engine's barrel (index.ts), not internal files.\n` +
+        `Each violation above has the format "consumer/path.ts -> engine/internal/path".\n\n` +
+        `To fix:\n` +
+        `  1. Parse the engine name (first segment after "->") and internal path (remainder)\n` +
+        `  2. Open src/<engine>/index.ts and add a re-export for the needed symbol:\n` +
+        `       export { YourSymbol } from './<internal/path>';\n` +
+        `  3. Update the consumer's import to use the barrel:\n` +
+        `       import { YourSymbol } from '<relative-path>/<engine>';\n\n` +
+        `Example: for "components/Foo.tsx -> docs-retrieval/json-parser", add\n` +
+        `  export { parseJsonGuide } from './json-parser';  to src/docs-retrieval/index.ts\n` +
+        `then change the consumer to: import { parseJsonGuide } from '../../docs-retrieval';\n\n` +
+        `If the barrel bypass is architecturally justified, add it to ALLOWED_BARREL_VIOLATIONS ` +
+        `with a comment explaining why.`
     );
   });
 });
