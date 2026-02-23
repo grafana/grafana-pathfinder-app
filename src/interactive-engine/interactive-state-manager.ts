@@ -1,4 +1,4 @@
-import { waitForReactUpdates } from '../requirements-manager';
+import { waitForReactUpdates } from '../lib/async-utils';
 import { InteractiveElementData } from '../types/interactive.types';
 import GlobalInteractionBlocker from './global-interaction-blocker';
 

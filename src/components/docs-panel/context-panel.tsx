@@ -1,6 +1,6 @@
 import React, { memo, useEffect } from 'react';
 
-import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
+import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Alert, Button } from '@grafana/ui';
 import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
@@ -16,7 +16,7 @@ import { useContextPanel, Recommendation } from '../../context-engine';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 /** Get icon name based on recommendation type */
 const getRecommendationIcon = (type?: string): IconName => {
@@ -79,11 +79,7 @@ const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page
 /** Check if recommendation should use openDocsPage (docs-like content: docs-page or interactive) */
 const shouldUseDocsPageOpener = (type?: string): boolean => type === 'docs-page' || type === 'interactive';
 
-interface ContextPanelState extends SceneObjectState {
-  onOpenLearningJourney?: (url: string, title: string) => void;
-  onOpenDocsPage?: (url: string, title: string) => void;
-  onOpenDevTools?: () => void;
-}
+import { ContextPanelState } from '../../types/content-panel.types';
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public static Component = ContextPanelRenderer;

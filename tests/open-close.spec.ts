@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { testIds } from '../src/components/testIds';
+import { testIds } from '../src/constants/testIds';
 
 test('should open and close docs panel', async ({ page }) => {
   // Navigate to Grafana home page

@@ -3,8 +3,11 @@
  * Centralized exports for requirements checking system
  */
 
+// Re-export from canonical location for backward compatibility
+export { waitForReactUpdates } from '../lib/async-utils';
+
 // Core requirements checking manager
-export { waitForReactUpdates, SequentialRequirementsManager } from './requirements-checker.hook';
+export { SequentialRequirementsManager } from './requirements-checker.hook';
 
 export type { RequirementsState } from './requirements-checker.hook';
 

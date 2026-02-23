@@ -10,7 +10,7 @@
 
 import { Page, expect } from '@playwright/test';
 
-import { testIds } from '../../../../src/components/testIds';
+import { testIds } from '../../../../src/constants/testIds';
 import {
   DEFAULT_STEP_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,

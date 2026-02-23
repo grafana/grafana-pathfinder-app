@@ -15,7 +15,7 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import type { JsonGuide } from './types';
-import type { RawContent } from '../../docs-retrieval/content.types';
+import type { RawContent } from '../../types/content.types';
 
 export interface BlockPreviewProps {
   /** The guide to preview */

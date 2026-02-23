@@ -6,7 +6,7 @@
 import React from 'react';
 import { Alert, Button } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 
 export interface ErrorDisplayProps {
   /** The error message to display */

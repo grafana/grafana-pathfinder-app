@@ -10,7 +10,7 @@ import {
   LearningJourneyMetadata,
   SingleDocMetadata,
   Milestone,
-} from './content.types';
+} from '../types/content.types';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
 import {
   parseUrlSafely,
