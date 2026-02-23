@@ -27,4 +27,9 @@ export {
 
 export { ContentRenderer, useContentRenderer } from './content-renderer';
 
-// Compatibility layer removed - migration complete!
+// JSON guide parser
+export { parseJsonGuide, parseMarkdownToElements, isJsonGuideContent } from './json-parser';
+
+// Docs components
+export { CodeBlock } from './components/docs';
+export type { CodeBlockProps } from './components/docs';

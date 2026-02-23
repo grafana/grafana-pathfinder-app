@@ -146,29 +146,11 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
  *
  * External consumers should import from the engine barrel (index.ts),
  * not from internal files. This list should only shrink.
+ *
+ * Phase 4a cleared all 15 original entries by re-exporting from barrels
+ * and updating consumer import paths.
  */
-const ALLOWED_BARREL_VIOLATIONS = new Set([
-  // Assistant integration reaches into engine internals for context and parsing
-  'integrations/assistant-integration/tools/grafana-context.tool.ts -> context-engine/context.service',
-  'integrations/assistant-integration/AssistantBlockWrapper.tsx -> docs-retrieval/json-parser',
-  'integrations/assistant-integration/AssistantBlockWrapper.tsx -> docs-retrieval/components/docs',
-  // Docs panel needs journey helpers not yet re-exported from barrel
-  'components/docs-panel/link-handler.hook.ts -> docs-retrieval/learning-journey-helpers',
-  'components/docs-panel/docs-panel.tsx -> docs-retrieval/learning-journey-helpers',
-  // Block editor needs direct access to parser, renderer, and navigation
-  'components/block-editor/BlockPreview.tsx -> docs-retrieval/json-parser',
-  'components/block-editor/BlockPreview.tsx -> docs-retrieval/content-renderer',
-  'components/block-editor/BlockEditorTour.tsx -> interactive-engine/navigation-manager',
-  // LearningPaths components consume paths-data directly
-  'components/LearningPaths/badge-utils.ts -> learning-paths/paths-data',
-  'components/LearningPaths/MyLearningTab.tsx -> learning-paths/paths-data',
-  // Pre-existing barrel bypasses uncovered by AST import extraction
-  'docs-retrieval/learning-journey-helpers.ts -> learning-paths/paths-data',
-  'lib/user-storage.ts -> learning-paths/badges',
-  'lib/user-storage.ts -> learning-paths/paths-data',
-  'lib/user-storage.ts -> learning-paths/streak-tracker',
-  'requirements-manager/step-checker.hook.ts -> interactive-engine/navigation-manager',
-]);
+const ALLOWED_BARREL_VIOLATIONS = new Set<string>([]);
 
 // Violation key formatters — kept adjacent to allowlists so format changes
 // are visible in the same diff as allowlist updates.
@@ -311,10 +293,19 @@ describe('Barrel export discipline', () => {
       ALLOWED_BARREL_VIOLATIONS,
       'barrel bypass violations',
       'ALLOWED_BARREL_VIOLATIONS',
-      `External consumers should import from the engine's barrel export (index.ts), ` +
-        `not from internal files. If the symbol is not yet exported from the barrel, ` +
-        `add it to the engine's index.ts. If the barrel bypass is architecturally justified, ` +
-        `add it to ALLOWED_BARREL_VIOLATIONS with a comment explaining why.`
+      `External consumers must import from the engine's barrel (index.ts), not internal files.\n` +
+        `Each violation above has the format "consumer/path.ts -> engine/internal/path".\n\n` +
+        `To fix:\n` +
+        `  1. Parse the engine name (first segment after "->") and internal path (remainder)\n` +
+        `  2. Open src/<engine>/index.ts and add a re-export for the needed symbol:\n` +
+        `       export { YourSymbol } from './<internal/path>';\n` +
+        `  3. Update the consumer's import to use the barrel:\n` +
+        `       import { YourSymbol } from '<relative-path>/<engine>';\n\n` +
+        `Example: for "components/Foo.tsx -> docs-retrieval/json-parser", add\n` +
+        `  export { parseJsonGuide } from './json-parser';  to src/docs-retrieval/index.ts\n` +
+        `then change the consumer to: import { parseJsonGuide } from '../../docs-retrieval';\n\n` +
+        `If the barrel bypass is architecturally justified, add it to ALLOWED_BARREL_VIOLATIONS ` +
+        `with a comment explaining why.`
     );
   });
 });

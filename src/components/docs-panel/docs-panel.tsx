@@ -40,22 +40,17 @@ import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/us
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
-// Import new unified content system
 import {
   fetchContent,
   ContentRenderer,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
-} from '../../docs-retrieval';
-
-// Import learning journey helpers
-import {
   getJourneyProgress,
   setJourneyCompletionPercentage,
   getMilestoneSlug,
   markMilestoneDone,
   isLastMilestone,
-} from '../../docs-retrieval/learning-journey-helpers';
+} from '../../docs-retrieval';
 
 import { ContextPanel } from './context-panel';
 import { BadgeUnlockedToast } from '../LearningPaths';

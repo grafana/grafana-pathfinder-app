@@ -8,8 +8,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useStyles2, Alert, Badge, Icon } from '@grafana/ui';
 import { getBlockPreviewStyles } from './block-editor.styles';
-import { parseJsonGuide } from '../../docs-retrieval/json-parser';
-import { ContentRenderer } from '../../docs-retrieval/content-renderer';
+import { parseJsonGuide, ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
