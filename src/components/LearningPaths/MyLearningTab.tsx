@@ -9,7 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
-import { useLearningPaths, BADGES } from '../../learning-paths';
+import { useLearningPaths, BADGES, getPathsData } from '../../learning-paths';
 import { LearningPathCard } from './LearningPathCard';
 import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -22,9 +22,6 @@ import {
   interactiveCompletionStorage,
 } from '../../lib/user-storage';
 import type { EarnedBadge } from '../../types';
-
-// Import paths data for guide metadata (runtime platform selection)
-import { getPathsData } from '../../learning-paths/paths-data';
 
 // Badge utilities extracted for testability
 import { getBadgeProgress, getBadgeRequirementText, type BadgeProgressInfo } from './badge-utils';

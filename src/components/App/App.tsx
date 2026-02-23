@@ -22,6 +22,7 @@ interface ErrorBoundaryState {
   errorInfo: React.ErrorInfo | null;
 }
 
+// eslint-disable-next-line no-restricted-syntax -- Error boundaries require componentDidCatch (no hook equivalent)
 class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,

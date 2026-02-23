@@ -544,7 +544,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
               <div
                 key={file.directoryName}
                 className={`${styles.fileItem} ${draggedIndex === index ? styles.fileItemDragging : ''}`}
-                draggable
+                draggable // eslint-disable-line no-restricted-syntax -- Dev-only PR tester, native DnD acceptable here
                 onDragStart={() => handleDragStart(index)}
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragEnd={handleDragEnd}

@@ -2,22 +2,22 @@ import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffec
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import {
   GuidedHandler,
   InteractiveStateManager,
   NavigationManager,
   matchesStepAction,
   type DetectedActionEvent,
-} from '../../../interactive-engine';
-import { waitForReactUpdates } from '../../../lib/async-utils';
-import { useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
-import { getInteractiveConfig } from '../../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../../constants';
-import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
-import { GuidedAction } from '../../../types/interactive-actions.types';
-import { testIds } from '../../../constants/testIds';
-import { sanitizeDocumentationHTML } from '../../../security';
+} from '../../interactive-engine';
+import { waitForReactUpdates } from '../../lib/async-utils';
+import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
+import { getInteractiveConfig } from '../../constants/interactive-config';
+import { getConfigWithDefaults } from '../../constants';
+import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
+import { GuidedAction } from '../../types/interactive-actions.types';
+import { testIds } from '../../constants/testIds';
+import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
@@ -286,7 +286,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
 
-      const { NavigationManager } = await import('../../../interactive-engine');
+      const { NavigationManager } = await import('../../interactive-engine');
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
 
@@ -570,7 +570,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       guidedHandler.cancel();
 
       // Clear highlights
-      const { NavigationManager } = await import('../../../interactive-engine');
+      const { NavigationManager } = await import('../../interactive-engine');
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
 

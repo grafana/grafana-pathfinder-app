@@ -8,7 +8,7 @@ import {
   enrichWithStepContext,
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval/learning-journey-helpers';
+import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -602,7 +602,7 @@ function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaT
   closeButton.className = 'journey-image-modal-close';
   closeButton.setAttribute('aria-label', 'Close image');
 
-  // SVG close icon (safe - no user input)
+  // eslint-disable-next-line no-restricted-syntax -- Static SVG literal, no user input
   closeButton.innerHTML = `
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <line x1="18" y1="6" x2="6" y2="18"></line>
