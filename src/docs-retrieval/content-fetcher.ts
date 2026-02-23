@@ -11,6 +11,8 @@ import {
   SingleDocMetadata,
   Milestone,
 } from '../types/content.types';
+import { config, getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
 import {
   parseUrlSafely,
@@ -112,6 +114,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Handle bundled interactive content
     if (url.startsWith('bundled:')) {
       return await fetchBundledInteractive(url);
+    }
+    // Handle custom guides stored in backend CRDs
+    if (url.startsWith('backend-guide:')) {
+      return await fetchBackendInteractive(url);
     }
 
     // SECURITY: Validate URL is from a trusted source before fetching
@@ -271,6 +277,88 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       content: null,
       error: error instanceof Error ? error.message : 'Unknown error',
       errorType: 'other',
+    };
+  }
+}
+
+interface BackendGuideResource {
+  metadata?: {
+    name?: string;
+  };
+  spec?: {
+    id?: string;
+    title?: string;
+    schemaVersion?: string;
+    blocks?: unknown[];
+  };
+}
+
+async function fetchBackendInteractive(url: string): Promise<ContentFetchResult> {
+  const resourceName = url.replace('backend-guide:', '').trim();
+  const namespace = config.namespace;
+
+  if (!resourceName) {
+    return { content: null, error: 'Invalid backend guide resource name', errorType: 'other' };
+  }
+
+  if (!namespace) {
+    return { content: null, error: 'No namespace available to load custom guide', errorType: 'other' };
+  }
+
+  try {
+    const endpoint = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
+    const response = await lastValueFrom(
+      getBackendSrv().fetch<BackendGuideResource>({
+        url: endpoint,
+        method: 'GET',
+        // Optional rollout endpoint: don't show a global toast when unavailable.
+        showErrorAlert: false,
+      })
+    );
+    const guideResource = response.data;
+
+    if (!guideResource?.spec?.blocks || !guideResource.spec.title) {
+      return {
+        content: null,
+        error: `Custom guide is missing required fields: ${resourceName}`,
+        errorType: 'other',
+      };
+    }
+
+    const guide = {
+      id: guideResource.spec.id || guideResource.metadata?.name || resourceName,
+      title: guideResource.spec.title,
+      schemaVersion: guideResource.spec.schemaVersion || '1.0',
+      blocks: guideResource.spec.blocks,
+    };
+
+    const validationResult = validateGuide(guide);
+    if (!validationResult.isValid) {
+      const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
+      return {
+        content: null,
+        error: `Invalid custom guide: ${errorMessage}`,
+        errorType: 'other',
+      };
+    }
+
+    return {
+      content: {
+        content: JSON.stringify(guide),
+        metadata: {
+          title: guide.title,
+        },
+        type: 'interactive',
+        url,
+        lastFetched: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    return {
+      content: null,
+      error: `Failed to load custom guide: ${resourceName}`,
+      errorType: 'other',
+      statusCode: (error as { status?: number })?.status,
     };
   }
 }

@@ -64,6 +64,8 @@ export interface UseGuideOperationsOptions {
   onCopy?: (json: string) => void;
   /** Optional custom download handler */
   onDownload?: (guide: JsonGuide) => void;
+  /** Called when creating a new guide to clear backend tracking */
+  onNewGuide?: () => void;
 }
 
 /**
@@ -87,8 +89,17 @@ export interface UseGuideOperationsReturn {
  * Encapsulates all guide operations extracted from BlockEditor.
  */
 export function useGuideOperations(options: UseGuideOperationsOptions): UseGuideOperationsReturn {
-  const { editor, persistence, recordingPersistence, actionRecorder, recordingState, modals, onCopy, onDownload } =
-    options;
+  const {
+    editor,
+    persistence,
+    recordingPersistence,
+    actionRecorder,
+    recordingState,
+    modals,
+    onCopy,
+    onDownload,
+    onNewGuide,
+  } = options;
 
   // Copy guide JSON to clipboard
   const handleCopy = useCallback(() => {
@@ -138,8 +149,9 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
     actionRecorder.clearRecording(); // Stop any active recording
     recordingState.reset(); // Clear recording state
     editor.resetGuide(); // Reset editor state
+    onNewGuide?.(); // Clear backend tracking state
     modals.close('newGuideConfirm');
-  }, [editor, persistence, recordingPersistence, actionRecorder, recordingState, modals]);
+  }, [editor, persistence, recordingPersistence, actionRecorder, recordingState, modals, onNewGuide]);
 
   // Import a guide from JSON
   const handleImportGuide = useCallback(

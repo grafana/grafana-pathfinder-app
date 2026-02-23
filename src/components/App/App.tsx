@@ -134,6 +134,8 @@ function getSceneApp() {
 }
 
 function App(props: AppRootProps) {
+  console.log('[Pathfinder] App component rendering');
+
   const scene = useMemo(() => getSceneApp(), []);
 
   // Get configuration
@@ -141,11 +143,13 @@ function App(props: AppRootProps) {
 
   // Set global config early for module-level utilities
   useEffect(() => {
+    console.log('[Pathfinder] Setting global config');
     (window as any).__pathfinderPluginConfig = config;
   }, [config]);
 
   // SECURITY: Initialize plugin on mount (includes dev mode from server)
   useEffect(() => {
+    console.log('[Pathfinder] App useEffect calling onPluginStart()');
     onPluginStart();
   }, []);
 

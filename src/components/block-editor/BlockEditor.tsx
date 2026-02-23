@@ -19,9 +19,11 @@ import { useRecordingActions } from './hooks/useRecordingActions';
 import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
 import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
 import { useGuideOperations } from './hooks/useGuideOperations';
+import { useBackendGuides } from './hooks/useBackendGuides';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
+import { GuideLibraryModal } from './GuideLibraryModal';
 import { useActionRecorder } from '../../utils/devtools';
 import type { JsonGuide, JsonBlock, BlockOperations } from './types';
 import { BlockEditorFooter } from './BlockEditorFooter';
@@ -29,6 +31,7 @@ import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
 import { BlockEditorModals } from './BlockEditorModals';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
+import { ConfirmModal, AlertModal } from './NotificationModals';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -78,6 +81,38 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Block selection mode state (for merging blocks)
   const selection = useBlockSelection();
+
+  // Backend guides management
+  const backendGuides = useBackendGuides();
+  const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(null);
+  const [currentGuideMetadata, setCurrentGuideMetadata] = useState<any>(null);
+  const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
+  const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(null);
+
+  // Notification modals state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string | React.ReactNode;
+    variant?: 'primary' | 'destructive';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string | React.ReactNode;
+    severity?: 'info' | 'success' | 'warning' | 'error';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
   const excludeSelectors = useMemo(
@@ -241,6 +276,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     }
   }, [initialGuide, persistence, editor]);
 
+  // Clear backend tracking when starting a new guide
+  const handleClearBackendTracking = useCallback(() => {
+    setCurrentGuideResourceName(null);
+    setCurrentGuideMetadata(null);
+    setLastPublishedJson(null);
+    console.log('[BlockEditor] Cleared backend tracking state for new guide');
+  }, []);
+
   // Guide operations - extracted hook for copy/download/new/import/template
   const guideOps = useGuideOperations({
     editor,
@@ -251,6 +294,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     modals,
     onCopy,
     onDownload,
+    onNewGuide: handleClearBackendTracking,
   });
 
   // Handle block type selection from palette
@@ -288,6 +332,160 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     editor.mergeBlocksToGuided(Array.from(selection.selectedBlockIds));
     selection.clearSelection();
   }, [selection, editor]);
+
+  // Extracted publish logic to be reusable
+  const performPublish = useCallback(
+    async (guide: JsonGuide, resourceName: string | undefined, metadata: any, isUpdate: boolean) => {
+      await backendGuides.saveGuide(guide, resourceName, metadata);
+
+      // Store the published JSON to track unpublished changes
+      const publishedJson = JSON.stringify(guide);
+      setLastPublishedJson(publishedJson);
+
+      // Refresh to get the latest metadata (including updated resourceVersion)
+      const updatedGuides = await backendGuides.refreshGuides();
+
+      // After publish, fetch and store the metadata for this guide
+      const generatedResourceName =
+        resourceName ||
+        (guide.id || guide.title)
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+
+      const publishedGuide = updatedGuides.find((g) => g.metadata.name === generatedResourceName);
+      if (publishedGuide) {
+        setCurrentGuideResourceName(publishedGuide.metadata.name);
+        setCurrentGuideMetadata(publishedGuide.metadata);
+        console.log('[BlockEditor] Stored metadata for future updates:', publishedGuide.metadata);
+      } else {
+        console.warn('[BlockEditor] Could not find published guide in refreshed list');
+      }
+
+      // Show success modal
+      setAlertModal({
+        isOpen: true,
+        title: 'Success',
+        message: isUpdate ? 'Guide updated successfully!' : 'Guide published successfully!',
+        severity: 'success',
+      });
+    },
+    [backendGuides]
+  );
+
+  // POST/PUT guide to backend handler
+  const handlePostToBackend = useCallback(async () => {
+    try {
+      const guide = editor.getGuide();
+      const isUpdate = !!currentGuideResourceName;
+
+      // Generate resource name
+      const resourceName =
+        currentGuideResourceName ||
+        (guide.id || guide.title)
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+
+      // If this is a new guide (not an update), check if a guide with this name already exists
+      if (!isUpdate) {
+        const existingGuide = backendGuides.guides.find((g) => g.metadata.name === resourceName);
+        if (existingGuide) {
+          // Show confirmation modal instead of system confirm
+          return new Promise<void>((resolve) => {
+            setConfirmModal({
+              isOpen: true,
+              title: 'Overwrite existing guide?',
+              message: (
+                <>
+                  <p>
+                    A guide named <strong>&quot;{existingGuide.spec.title}&quot;</strong> ({resourceName}) already
+                    exists.
+                  </p>
+                  <p>Do you want to overwrite it?</p>
+                  <p style={{ marginTop: '16px', fontSize: '0.9em', color: '#888' }}>
+                    Click Cancel to change your guide&apos;s title or ID to create a new guide instead.
+                  </p>
+                </>
+              ),
+              variant: 'destructive',
+              onConfirm: async () => {
+                setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+
+                // User confirmed overwrite - load the existing guide's metadata so we can update it
+                setCurrentGuideResourceName(existingGuide.metadata.name);
+                setCurrentGuideMetadata(existingGuide.metadata);
+                console.log('[BlockEditor] User confirmed overwrite of existing guide:', resourceName);
+
+                // Continue with publish
+                await performPublish(guide, existingGuide.metadata.name, existingGuide.metadata, true);
+                resolve();
+              },
+            });
+          });
+        }
+      }
+
+      // No conflict or this is an update
+      await performPublish(guide, currentGuideResourceName || undefined, currentGuideMetadata || undefined, isUpdate);
+    } catch (error) {
+      console.error('[BlockEditor] Failed to save guide to backend:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Publish failed',
+        message: `Failed to publish guide: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error',
+      });
+    }
+  }, [editor, backendGuides, currentGuideResourceName, currentGuideMetadata, performPublish]);
+
+  // Load guide from backend
+  const handleLoadGuideFromBackend = useCallback(
+    (guide: JsonGuide, resourceName: string, metadata: any) => {
+      editor.loadGuide(guide);
+      setCurrentGuideResourceName(resourceName);
+      setCurrentGuideMetadata(metadata);
+      setLastPublishedJson(JSON.stringify(guide)); // Mark as published
+      editor.markSaved();
+    },
+    [editor]
+  );
+
+  // Open guide library
+  const handleOpenGuideLibrary = useCallback(() => {
+    setIsGuideLibraryOpen(true);
+    backendGuides.refreshGuides();
+  }, [backendGuides]);
+
+  // Handle new guide with smart warning logic
+  const handleNewGuideClick = useCallback(() => {
+    const currentGuide = editor.getGuide();
+    const currentBlocks = currentGuide.blocks && currentGuide.blocks.length > 0;
+    const currentJson = JSON.stringify(currentGuide);
+    const hasChanges =
+      currentBlocks && // Has content
+      (!currentGuideResourceName || // Either not published
+        (lastPublishedJson !== null && currentJson !== lastPublishedJson)); // Or has unpublished changes
+
+    if (hasChanges) {
+      // Show warning modal
+      modals.open('newGuideConfirm');
+    } else {
+      // No changes to lose, just create new guide
+      guideOps.handleNewGuide();
+    }
+  }, [editor, currentGuideResourceName, lastPublishedJson, modals, guideOps]);
+
+  // Close modals
+  const closeConfirmModal = useCallback(() => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  const closeAlertModal = useCallback(() => {
+    setAlertModal((prev) => ({ ...prev, isOpen: false }));
+  }, []);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
@@ -336,28 +534,35 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const { state } = editor;
   const hasBlocks = state.blocks.length > 0;
 
+  // Calculate if guide is published and if there are unpublished changes
+  const isPublished = !!currentGuideResourceName;
+  const currentJson = JSON.stringify(editor.getGuide());
+  const hasUnpublishedChanges = isPublished && lastPublishedJson !== null && currentJson !== lastPublishedJson;
+
   return (
     <div className={styles.container} data-testid="block-editor">
       {/* Header */}
       <BlockEditorHeader
         guideTitle={state.guide.title}
+        guideId={state.guide.id}
         isDirty={state.isDirty}
+        isPublished={isPublished}
+        hasUnpublishedChanges={hasUnpublishedChanges}
         viewMode={state.viewMode}
         onSetViewMode={jsonMode.handleViewModeChange}
         onOpenMetadata={() => modals.open('metadata')}
         onOpenTour={() => modals.open('tour')}
+        onOpenGuideLibrary={handleOpenGuideLibrary}
         onOpenImport={() => modals.open('import')}
         onCopy={guideOps.handleCopy}
         onDownload={guideOps.handleDownload}
         onOpenGitHubPR={() => modals.open('githubPr')}
-        onNewGuide={() => modals.open('newGuideConfirm')}
-        styles={{
-          header: styles.header,
-          headerLeft: styles.headerLeft,
-          headerRight: styles.headerRight,
-          guideTitle: styles.guideTitle,
-          viewModeToggle: styles.viewModeToggle,
-        }}
+        onPostToBackend={handlePostToBackend}
+        isPostingToBackend={backendGuides.isSaving}
+        onNewGuide={handleNewGuideClick}
+        hasBlocks={hasBlocks}
+        isSelectionMode={selection.isSelectionMode}
+        onToggleSelectionMode={selection.toggleSelectionMode}
       />
 
       {/* Content */}
@@ -403,6 +608,18 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onUpdateGuideMetadata={editor.updateGuideMetadata}
         onNewGuideConfirm={guideOps.handleNewGuide}
         onImportGuide={guideOps.handleImportGuide}
+      />
+
+      {/* Guide Library Modal */}
+      <GuideLibraryModal
+        isOpen={isGuideLibraryOpen}
+        onClose={() => setIsGuideLibraryOpen(false)}
+        guides={backendGuides.guides}
+        isLoading={backendGuides.isLoading}
+        error={backendGuides.error}
+        onLoadGuide={handleLoadGuideFromBackend}
+        onDeleteGuide={backendGuides.deleteGuide}
+        onRefresh={backendGuides.refreshGuides}
       />
 
       {/* Block form modal - kept separate due to complex editing state dependencies */}
@@ -455,6 +672,24 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           onToggleMultiStepGrouping={() => setIsSectionMultiStepGroupingEnabled((prev) => !prev)}
         />
       )}
+
+      {/* Notification Modals */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirmModal}
+      />
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        title={alertModal.title}
+        message={alertModal.message}
+        severity={alertModal.severity}
+        onClose={closeAlertModal}
+      />
     </div>
   );
 }

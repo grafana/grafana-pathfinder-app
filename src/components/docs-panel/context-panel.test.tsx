@@ -35,6 +35,10 @@ describe('RecommendationsSection', () => {
       <RecommendationsSection
         recommendations={[]}
         featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
         isLoadingRecommendations={false}
         isLoadingContext={false}
         recommendationsError={null}
@@ -42,6 +46,8 @@ describe('RecommendationsSection', () => {
         showEnableRecommenderBanner={false}
         openLearningJourney={jest.fn()}
         openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
         toggleSummaryExpansion={jest.fn()}
         toggleOtherDocsExpansion={jest.fn()}
       />

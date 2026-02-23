@@ -1,8 +1,8 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
-import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
+import AppComponent from './components/App/App';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // import { initializeFaroMetrics } from './lib/faro';
@@ -30,6 +30,7 @@ import {
   syncExperimentStateFromUserStorage,
   resetExperimentState,
 } from './utils/experiment-debug';
+import MemoizedContextPanel from './components/App/ContextPanel';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -124,17 +125,11 @@ try {
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
 
-const LazyApp = lazy(() => import('./components/App/App'));
-const LazyMemoizedContextPanel = lazy(() => import('./components/App/ContextPanel'));
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
 const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/InteractiveFeatures'));
 
-const App = (props: AppRootProps) => (
-  <Suspense fallback={<LoadingPlaceholder text="" />}>
-    <LazyApp {...props} />
-  </Suspense>
-);
+const App = (props: AppRootProps) => <AppComponent {...props} />;
 
 const plugin = new AppPlugin<{}>()
   .setRootPage(App)
@@ -156,6 +151,8 @@ const plugin = new AppPlugin<{}>()
 
 // Override init() to handle auto-open when plugin loads
 plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
+  console.log('[Pathfinder] plugin.init() called - plugin is loading');
+
   const jsonData = meta?.jsonData || {};
   const config = getConfigWithDefaults(jsonData);
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
@@ -449,9 +446,7 @@ if (experimentVariant !== 'control') {
 
       return (
         <PathfinderFeatureProvider>
-          <Suspense fallback={<LoadingPlaceholder text="" />}>
-            <LazyMemoizedContextPanel />
-          </Suspense>
+          <MemoizedContextPanel />
         </PathfinderFeatureProvider>
       );
     },

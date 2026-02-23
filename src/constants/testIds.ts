@@ -57,6 +57,10 @@ export const testIds = {
     recommendationMilestones: (index: number) => `context-panel-recommendation-milestones-${index}`,
     recommendationMilestoneItem: (index: number, milestoneIndex: number) =>
       `context-panel-recommendation-milestone-${index}-${milestoneIndex}`,
+    customGuidesSection: 'context-panel-custom-guides-section',
+    customGuidesToggle: 'context-panel-custom-guides-toggle',
+    customGuidesList: 'context-panel-custom-guides-list',
+    customGuideItem: (index: number) => `context-panel-custom-guide-item-${index}`,
     otherDocsSection: 'context-panel-other-docs-section',
     otherDocsToggle: 'context-panel-other-docs-toggle',
     otherDocsList: 'context-panel-other-docs-list',
