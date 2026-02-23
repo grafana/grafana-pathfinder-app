@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
+import { interactiveStepStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { getContentKey } from './get-content-key';
 import { getTotalDocumentSteps } from './interactive-section';
 

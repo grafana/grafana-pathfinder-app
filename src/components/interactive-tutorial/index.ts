@@ -19,4 +19,4 @@ export type {
   InteractiveStepProps,
   InteractiveSectionProps,
   StepInfo,
-} from '../../../types/component-props.types';
+} from '../../types/component-props.types';

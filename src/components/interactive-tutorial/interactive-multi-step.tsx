@@ -6,12 +6,12 @@ import {
   useAutoDetection,
   type DetectedActionEvent,
   type MatchResult,
-} from '../../../interactive-engine';
-import { useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
-import { INTERACTIVE_CONFIG } from '../../../constants/interactive-config';
-import { InternalAction } from '../../../types/interactive-actions.types';
-import { testIds } from '../../../constants/testIds';
+} from '../../interactive-engine';
+import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
+import { InternalAction } from '../../types/interactive-actions.types';
+import { testIds } from '../../constants/testIds';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
@@ -286,7 +286,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isCancelledRef.current = false; // Reset ref as well
 
       // Clear any existing highlights before starting multi-step execution
-      const { NavigationManager } = await import('../../../interactive-engine');
+      const { NavigationManager } = await import('../../interactive-engine');
       const navigationManager = new NavigationManager();
       navigationManager.clearAllHighlights();
 
