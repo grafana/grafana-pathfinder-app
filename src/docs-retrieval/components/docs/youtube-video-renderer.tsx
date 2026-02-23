@@ -53,7 +53,7 @@ export function YouTubeVideoRenderer({
     // Removed .* pattern in favor of more constrained alternatives
     const regex = /(?:youtube\.com\/(?:embed\/|watch\?.*v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(regex);
-    return match ? match[1] : null;
+    return match ? (match[1] ?? null) : null;
   }, []);
 
   // Get document info for analytics

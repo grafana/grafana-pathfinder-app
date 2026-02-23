@@ -199,7 +199,7 @@ export function cleanAssistantResponse(text: string): string {
 export function extractQueryFromResponse(text: string): string {
   const queryMatch = text.match(/QUERY:\s*(.+?)$/ms);
   if (queryMatch) {
-    let query = queryMatch[1].trim();
+    let query = queryMatch[1]!.trim();
     // Strip any surrounding backticks
     query = query.replace(/^`+|`+$/g, '');
     return query;

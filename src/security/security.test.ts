@@ -455,7 +455,7 @@ describe('Security: Image Lightbox XSS Prevention', () => {
     expect(safeTitle.textContent).toBe(maliciousAlt); // Original text preserved
     expect(safeTitle.querySelector('img')).toBeNull(); // NO img element created
     expect(safeTitle.childNodes.length).toBe(1); // Only a text node, no element nodes
-    expect(safeTitle.childNodes[0].nodeType).toBe(Node.TEXT_NODE); // Text node, not element
+    expect(safeTitle.childNodes[0]!.nodeType).toBe(Node.TEXT_NODE); // Text node, not element
 
     // SAFE approach (using setAttribute):
     const safeImg = document.createElement('img');

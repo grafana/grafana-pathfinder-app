@@ -80,8 +80,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         ) {
           // Fallback: use the first milestone from content metadata
           const firstMilestone = activeTab.content.metadata.learningJourney.milestones[0];
-          if (firstMilestone.url) {
-            // Track analytics for fallback case
+          if (firstMilestone?.url) {
             reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
               content_title: activeTab.title,
               content_url: activeTab.baseUrl,

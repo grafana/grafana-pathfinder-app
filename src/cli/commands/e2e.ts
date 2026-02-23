@@ -658,7 +658,7 @@ export const e2eCommand = new Command('e2e')
         } else {
           // Single guide: write detailed report
           try {
-            const report = generateReport(resultsWithData[0]);
+            const report = generateReport(resultsWithData[0]!);
             writeReport(report, options.output);
             console.log(`\n📄 JSON report written to: ${options.output}`);
           } catch (err) {

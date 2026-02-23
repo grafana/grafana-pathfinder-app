@@ -705,7 +705,7 @@ export function InteractiveSection({
 
         // Remove the target step and all steps after it
         for (let i = resetIndex; i < stepComponents.length; i++) {
-          const stepToRemove = stepComponents[i].stepId;
+          const stepToRemove = stepComponents[i]!.stepId;
           newSet.delete(stepToRemove);
         }
 
@@ -912,7 +912,7 @@ export function InteractiveSection({
           break;
         }
 
-        const stepInfo = stepComponents[i];
+        const stepInfo = stepComponents[i]!;
 
         // PAUSE: If this is a guided step, stop automated execution
         // User must manually click the guided step's "Do it" button

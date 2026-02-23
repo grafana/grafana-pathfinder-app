@@ -39,7 +39,7 @@ export function useKeyboardShortcuts({
         const nextIndex = event.shiftKey
           ? (currentIndex - 1 + tabs.length) % tabs.length
           : (currentIndex + 1) % tabs.length;
-        model.setActiveTab(tabs[nextIndex].id);
+        model.setActiveTab(tabs[nextIndex]!.id);
       }
 
       // Arrow keys for milestone navigation (only for learning journey tabs)

@@ -58,7 +58,7 @@ export function computeTabVisibility(
   const activeGuideTabIndex = guideTabs.findIndex((t) => t.id === activeTabId);
 
   if (activeGuideTabIndex >= maxVisibleGuideTabs) {
-    const visibleGuideTabsArray = [...guideTabs.slice(0, maxVisibleGuideTabs - 1), guideTabs[activeGuideTabIndex]];
+    const visibleGuideTabsArray = [...guideTabs.slice(0, maxVisibleGuideTabs - 1), guideTabs[activeGuideTabIndex]!];
     const overflowGuideTabsArray = [
       ...guideTabs.slice(maxVisibleGuideTabs - 1, activeGuideTabIndex),
       ...guideTabs.slice(activeGuideTabIndex + 1),

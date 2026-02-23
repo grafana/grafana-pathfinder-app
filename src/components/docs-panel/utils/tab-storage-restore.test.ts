@@ -59,7 +59,7 @@ describe('tab-storage-restore', () => {
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
       expect(tabs).toHaveLength(1);
-      expect(tabs[0].id).toBe('recommendations');
+      expect(tabs[0]!.id).toBe('recommendations');
     });
 
     it('should return recommendations tab when storage returns empty array', async () => {
@@ -67,7 +67,7 @@ describe('tab-storage-restore', () => {
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
       expect(tabs).toHaveLength(1);
-      expect(tabs[0].id).toBe('recommendations');
+      expect(tabs[0]!.id).toBe('recommendations');
     });
 
     it('should restore valid learning journey tabs', async () => {
@@ -85,12 +85,12 @@ describe('tab-storage-restore', () => {
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
       expect(tabs).toHaveLength(2); // recommendations + restored tab
-      expect(tabs[0].id).toBe('recommendations');
-      expect(tabs[1].id).toBe('tab-1');
-      expect(tabs[1].title).toBe('Test Journey');
-      expect(tabs[1].baseUrl).toBe('https://grafana.com/docs/grafana/latest/test/');
-      expect(tabs[1].currentUrl).toBe('https://grafana.com/docs/grafana/latest/test/page1/');
-      expect(tabs[1].type).toBe('learning-journey');
+      expect(tabs[0]!.id).toBe('recommendations');
+      expect(tabs[1]!.id).toBe('tab-1');
+      expect(tabs[1]!.title).toBe('Test Journey');
+      expect(tabs[1]!.baseUrl).toBe('https://grafana.com/docs/grafana/latest/test/');
+      expect(tabs[1]!.currentUrl).toBe('https://grafana.com/docs/grafana/latest/test/page1/');
+      expect(tabs[1]!.type).toBe('learning-journey');
     });
 
     it('should restore devtools tab without URL validation', async () => {
@@ -108,8 +108,8 @@ describe('tab-storage-restore', () => {
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
       expect(tabs).toHaveLength(2); // recommendations + devtools
-      expect(tabs[1].id).toBe('devtools');
-      expect(tabs[1].type).toBe('devtools');
+      expect(tabs[1]!.id).toBe('devtools');
+      expect(tabs[1]!.type).toBe('devtools');
     });
 
     it('should reject tabs with invalid base URL', async () => {
@@ -128,7 +128,7 @@ describe('tab-storage-restore', () => {
 
       // Should only have recommendations tab (malicious tab rejected)
       expect(tabs).toHaveLength(1);
-      expect(tabs[0].id).toBe('recommendations');
+      expect(tabs[0]!.id).toBe('recommendations');
     });
 
     it('should reject tabs with invalid current URL', async () => {
@@ -147,7 +147,7 @@ describe('tab-storage-restore', () => {
 
       // Should only have recommendations tab (malicious current URL rejected)
       expect(tabs).toHaveLength(1);
-      expect(tabs[0].id).toBe('recommendations');
+      expect(tabs[0]!.id).toBe('recommendations');
     });
 
     it('should allow localhost URLs in dev mode', async () => {
@@ -165,7 +165,7 @@ describe('tab-storage-restore', () => {
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: true });
 
       expect(tabs).toHaveLength(2); // recommendations + localhost tab
-      expect(tabs[1].baseUrl).toBe('http://localhost:3000/test');
+      expect(tabs[1]!.baseUrl).toBe('http://localhost:3000/test');
     });
 
     it('should reject localhost URLs when dev mode is disabled', async () => {
@@ -184,7 +184,7 @@ describe('tab-storage-restore', () => {
 
       // Should only have recommendations tab (localhost rejected)
       expect(tabs).toHaveLength(1);
-      expect(tabs[0].id).toBe('recommendations');
+      expect(tabs[0]!.id).toBe('recommendations');
     });
 
     it('should restore multiple valid tabs', async () => {
@@ -231,7 +231,7 @@ describe('tab-storage-restore', () => {
 
       // Should return default recommendations tab on error
       expect(tabs).toHaveLength(1);
-      expect(tabs[0].id).toBe('recommendations');
+      expect(tabs[0]!.id).toBe('recommendations');
     });
 
     it('should use baseUrl as currentUrl when currentUrl is missing', async () => {
@@ -248,7 +248,7 @@ describe('tab-storage-restore', () => {
       const storage = createMockTabStorage(persistedTabs);
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
-      expect(tabs[1].currentUrl).toBe('https://grafana.com/docs/grafana/latest/test/');
+      expect(tabs[1]!.currentUrl).toBe('https://grafana.com/docs/grafana/latest/test/');
     });
 
     it('should default to learning-journey type when type is missing', async () => {
@@ -265,7 +265,7 @@ describe('tab-storage-restore', () => {
       const storage = createMockTabStorage(persistedTabs);
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
-      expect(tabs[1].type).toBe('learning-journey');
+      expect(tabs[1]!.type).toBe('learning-journey');
     });
   });
 

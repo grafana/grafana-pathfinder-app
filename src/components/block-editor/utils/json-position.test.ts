@@ -134,8 +134,8 @@ describe('addPositionsToErrors', () => {
     const errors = [{ message: 'Invalid type', path: ['blocks', 0, 'type'] }];
     const result = addPositionsToErrors(errors, json);
     expect(result).toHaveLength(1);
-    expect(result[0].line).toBe(3);
-    expect(result[0].message).toBe('Invalid type');
+    expect(result[0]!.line).toBe(3);
+    expect(result[0]!.message).toBe('Invalid type');
   });
 
   it('returns parse error when JSON is invalid', () => {
@@ -144,8 +144,8 @@ describe('addPositionsToErrors', () => {
     const result = addPositionsToErrors(errors, json);
     // Should return the parse error, not the validation error
     expect(result).toHaveLength(1);
-    expect(result[0].line).toBe(1);
-    expect(result[0].path).toEqual([]);
+    expect(result[0]!.line).toBe(1);
+    expect(result[0]!.path).toEqual([]);
   });
 
   it('handles errors with paths that do not exist in JSON', () => {
@@ -153,8 +153,8 @@ describe('addPositionsToErrors', () => {
     const errors = [{ message: 'Missing field', path: ['blocks', 0, 'type'] }];
     const result = addPositionsToErrors(errors, json);
     expect(result).toHaveLength(1);
-    expect(result[0].line).toBeUndefined();
-    expect(result[0].message).toBe('Missing field');
+    expect(result[0]!.line).toBeUndefined();
+    expect(result[0]!.message).toBe('Missing field');
   });
 
   it('enriches multiple errors with positions', () => {
@@ -170,9 +170,9 @@ describe('addPositionsToErrors', () => {
     ];
     const result = addPositionsToErrors(errors, json);
     expect(result).toHaveLength(3);
-    expect(result[0].line).toBe(2);
-    expect(result[1].line).toBe(3);
-    expect(result[2].line).toBe(4);
+    expect(result[0]!.line).toBe(2);
+    expect(result[1]!.line).toBe(3);
+    expect(result[2]!.line).toBe(4);
   });
 });
 

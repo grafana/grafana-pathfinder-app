@@ -121,7 +121,7 @@ describe('SequenceManager', () => {
       // Mock requirements to fail first, then pass
       mockCheckRequirementsFromData.mockResolvedValueOnce({ pass: false }).mockResolvedValueOnce({ pass: true });
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(2);
       expect(mockDispatchInteractiveAction).toHaveBeenCalledTimes(1);
@@ -130,7 +130,7 @@ describe('SequenceManager', () => {
     it('should stop retrying after max retries', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(INTERACTIVE_CONFIG.maxRetries);
       expect(mockDispatchInteractiveAction).not.toHaveBeenCalled();
@@ -139,7 +139,7 @@ describe('SequenceManager', () => {
     it('should handle errors gracefully', async () => {
       mockDispatchInteractiveAction.mockRejectedValueOnce(new Error('Test error'));
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(mockStateManager.logError).toHaveBeenCalledWith(
         'Error processing interactive element',
@@ -152,7 +152,7 @@ describe('SequenceManager', () => {
       // Mock action to fail first, then succeed
       mockDispatchInteractiveAction.mockRejectedValueOnce(new Error('Test error')).mockResolvedValueOnce(undefined);
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(mockDispatchInteractiveAction).toHaveBeenCalledTimes(2);
       expect(mockStateManager.logError).toHaveBeenCalledTimes(1);
@@ -161,7 +161,7 @@ describe('SequenceManager', () => {
     it('should use correct retry delay', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), INTERACTIVE_CONFIG.delays.perceptual.retry);
     });
@@ -187,7 +187,7 @@ describe('SequenceManager', () => {
     });
 
     it('should show then do for each element', async () => {
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockDispatchInteractiveAction).toHaveBeenCalledTimes(2);
       expect(mockDispatchInteractiveAction).toHaveBeenNthCalledWith(1, expect.any(Object), false); // show
@@ -195,7 +195,7 @@ describe('SequenceManager', () => {
     });
 
     it('should check requirements before and after show', async () => {
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(2);
     });
@@ -206,7 +206,7 @@ describe('SequenceManager', () => {
         .mockResolvedValueOnce({ pass: true })
         .mockResolvedValueOnce({ pass: true });
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(3);
       expect(mockDispatchInteractiveAction).toHaveBeenCalledTimes(2);
@@ -218,7 +218,7 @@ describe('SequenceManager', () => {
         .mockResolvedValueOnce({ pass: false })
         .mockResolvedValueOnce({ pass: true });
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(4); // Initial + after show + retry + final
       expect(mockDispatchInteractiveAction).toHaveBeenCalledTimes(3); // show + do + retry do
@@ -227,7 +227,7 @@ describe('SequenceManager', () => {
     it('should stop retrying after max retries', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(INTERACTIVE_CONFIG.maxRetries);
       expect(mockDispatchInteractiveAction).not.toHaveBeenCalled();
@@ -236,7 +236,7 @@ describe('SequenceManager', () => {
     it('should handle errors gracefully', async () => {
       mockDispatchInteractiveAction.mockRejectedValueOnce(new Error('Test error'));
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockStateManager.logError).toHaveBeenCalledWith(
         'Error in interactive step',
@@ -252,14 +252,14 @@ describe('SequenceManager', () => {
         .mockResolvedValueOnce(undefined)
         .mockResolvedValueOnce(undefined);
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockDispatchInteractiveAction).toHaveBeenCalledTimes(3);
       expect(mockStateManager.logError).toHaveBeenCalledTimes(1);
     });
 
     it('should not wait for React updates after last element', async () => {
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       // Should call waitForReactUpdates for show and do, but not after the last do
       expect(mockWaitForReactUpdates).toHaveBeenCalledTimes(1); // Only one for show, not after do for single element
@@ -275,7 +275,7 @@ describe('SequenceManager', () => {
     it('should use correct retry delay', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), INTERACTIVE_CONFIG.delays.perceptual.retry);
     });
@@ -301,7 +301,7 @@ describe('SequenceManager', () => {
       const testError = new Error('Test error');
       mockDispatchInteractiveAction.mockRejectedValue(testError);
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(mockStateManager.logError).toHaveBeenCalledWith(
         'Error processing interactive element',
@@ -314,7 +314,7 @@ describe('SequenceManager', () => {
       const testError = new Error('Test error');
       mockDispatchInteractiveAction.mockRejectedValue(testError);
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]]);
+      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(mockStateManager.logError).toHaveBeenCalledWith(
         'Error in interactive step',
@@ -328,7 +328,7 @@ describe('SequenceManager', () => {
     it('should use INTERACTIVE_CONFIG.maxRetries', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(INTERACTIVE_CONFIG.maxRetries);
     });
@@ -336,7 +336,7 @@ describe('SequenceManager', () => {
     it('should use INTERACTIVE_CONFIG.delays.perceptual.retry', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]], false);
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), INTERACTIVE_CONFIG.delays.perceptual.retry);
     });

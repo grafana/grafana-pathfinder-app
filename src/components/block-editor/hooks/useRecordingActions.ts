@@ -110,7 +110,7 @@ export function useRecordingActions(deps: RecordingActionsDependencies): UseReco
       const processed = groupRecordedStepsByGroupId(steps);
       processed.forEach((item) => {
         if (item.type === 'single') {
-          const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]);
+          const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]!);
           editor.addBlockToSection(interactiveBlock, sectionId);
         } else {
           const multistepBlock = convertStepsToMultistepBlock(item.steps);
@@ -128,7 +128,7 @@ export function useRecordingActions(deps: RecordingActionsDependencies): UseReco
       const processed = groupRecordedStepsByGroupId(steps);
       processed.forEach((item) => {
         if (item.type === 'single') {
-          const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]);
+          const interactiveBlock = convertStepToInteractiveBlock(item.steps[0]!);
           editor.addBlockToConditionalBranch(conditionalId, branch, interactiveBlock);
         } else {
           const multistepBlock = convertStepsToMultistepBlock(item.steps);

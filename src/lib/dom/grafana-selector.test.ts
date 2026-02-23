@@ -42,7 +42,7 @@ describe('grafana-selector', () => {
 
       const elements = findByGrafanaSelector('components.RefreshPicker.runButtonV2');
       expect(elements.length).toBe(1);
-      expect(elements[0].tagName).toBe('BUTTON');
+      expect(elements[0]!.tagName).toBe('BUTTON');
     });
 
     it('should find elements by aria-label', () => {
@@ -52,7 +52,7 @@ describe('grafana-selector', () => {
 
       const elements = findByGrafanaSelector('components.RefreshPicker.runButtonV2');
       expect(elements.length).toBe(1);
-      expect(elements[0].tagName).toBe('BUTTON');
+      expect(elements[0]!.tagName).toBe('BUTTON');
     });
 
     it('should return empty array if no elements found', () => {

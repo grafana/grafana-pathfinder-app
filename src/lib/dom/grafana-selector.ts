@@ -97,7 +97,7 @@ export function findByGrafanaSelector(selectorPath: string, selectorId?: string)
  */
 export function findOneByGrafanaSelector(selectorPath: string, selectorId?: string): HTMLElement | null {
   const elements = findByGrafanaSelector(selectorPath, selectorId);
-  return elements.length > 0 ? elements[0] : null;
+  return elements.length > 0 ? elements[0]! : null;
 }
 
 /**
