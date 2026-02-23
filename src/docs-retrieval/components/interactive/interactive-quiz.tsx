@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -108,6 +108,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     explanation,
     canSkip,
     markSkipped,
+    resetStep,
   } = useStepChecker({
     requirements,
     stepId,
@@ -115,7 +116,21 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     skippable,
   });
 
-  // Compute effective completion state
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      setSelectedIds(new Set());
+      setAttempts(0);
+      setIsLocallyCompleted(false);
+      setLastResult('none');
+      setShowHint(null);
+      setIsRevealed(false);
+      setShakeKey(0);
+      if (resetStep) {
+        resetStep();
+      }
+    }
+  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isCompleted = parentCompleted || stepCompleted || isLocallyCompleted;
 
   // Get correct answer IDs
