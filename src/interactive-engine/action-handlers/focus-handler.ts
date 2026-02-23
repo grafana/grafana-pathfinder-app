@@ -25,7 +25,7 @@ export class FocusHandler {
       if (shouldSelectSingle) {
         // Use enhanced selector for single element with complex selector support
         const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-        targetElements = enhancedResult.elements.length > 0 ? [enhancedResult.elements[0]] : [];
+        targetElements = enhancedResult.elements.length > 0 ? [enhancedResult.elements[0]!] : [];
       } else {
         // Use enhanced selector for multiple elements with complex selector support
         const enhancedResult = querySelectorAllEnhanced(resolvedSelector);

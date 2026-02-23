@@ -1457,7 +1457,7 @@ export const learningProgressStorage = {
 
         // Calculate and update streak before changing lastActivityDate
         const { calculateUpdatedStreak } = await import('../learning-paths/streak-tracker');
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date().toISOString().split('T')[0]!;
         progress.streakDays = calculateUpdatedStreak(progress.streakDays, progress.lastActivityDate);
         progress.lastActivityDate = today;
 

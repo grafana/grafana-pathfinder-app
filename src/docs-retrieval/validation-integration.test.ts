@@ -54,7 +54,7 @@ describe('Validation Integration Phase 1', () => {
       const result = parseJsonGuide(JSON.stringify(invalidGuide));
       expect(result.isValid).toBe(false);
       expect(result.errors.some((e) => e.message.includes('title'))).toBe(true);
-      expect(result.errors[0].type).toBe('schema_validation');
+      expect(result.errors[0]!.type).toBe('schema_validation');
     });
 
     it('should fail validation for guide with invalid blocks', () => {

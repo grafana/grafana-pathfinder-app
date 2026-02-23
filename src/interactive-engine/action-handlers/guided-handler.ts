@@ -381,7 +381,7 @@ export class GuidedHandler {
             if (targetElements.length > 1) {
               console.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
             }
-            return targetElements[0];
+            return targetElements[0]!;
           }
         } catch (error) {
           console.warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, error);
@@ -395,7 +395,7 @@ export class GuidedHandler {
           if (targetElements.length > 1) {
             console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
           }
-          return targetElements[0];
+          return targetElements[0]!;
         }
       } catch (error) {
         // Fall through to enhanced selector as last resort
@@ -415,7 +415,7 @@ export class GuidedHandler {
         if (formElements.length > 1) {
           console.warn(`Multiple form elements found matching selector: ${resolvedSelector}, using first element`);
         }
-        return formElements[0];
+        return formElements[0]!;
       }
 
       // Try to find form element inside the matched element
@@ -440,7 +440,7 @@ export class GuidedHandler {
       console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
-    return targetElements[0];
+    return targetElements[0]!;
   }
 
   /**

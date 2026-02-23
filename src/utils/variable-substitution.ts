@@ -89,7 +89,7 @@ export function extractVariables(content: string): string[] {
 
   const pattern = createVariablePattern();
   while ((match = pattern.exec(content)) !== null) {
-    variables.add(match[1]);
+    variables.add(match[1]!);
   }
 
   return Array.from(variables);

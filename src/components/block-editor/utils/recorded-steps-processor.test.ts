@@ -27,8 +27,8 @@ describe('groupRecordedStepsByGroupId', () => {
     const result = groupRecordedStepsByGroupId(steps);
 
     expect(result).toHaveLength(2);
-    expect(result[0].type).toBe('single');
-    expect(result[1].type).toBe('single');
+    expect(result[0]!.type).toBe('single');
+    expect(result[1]!.type).toBe('single');
   });
 
   it('groups consecutive steps with same groupId', () => {
@@ -40,8 +40,8 @@ describe('groupRecordedStepsByGroupId', () => {
     const result = groupRecordedStepsByGroupId(steps);
 
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe('group');
-    expect(result[0].steps).toHaveLength(3);
+    expect(result[0]!.type).toBe('group');
+    expect(result[0]!.steps).toHaveLength(3);
   });
 
   it('separates different groupIds into different groups', () => {
@@ -54,10 +54,10 @@ describe('groupRecordedStepsByGroupId', () => {
     const result = groupRecordedStepsByGroupId(steps);
 
     expect(result).toHaveLength(2);
-    expect(result[0].type).toBe('group');
-    expect(result[0].steps).toHaveLength(2);
-    expect(result[1].type).toBe('group');
-    expect(result[1].steps).toHaveLength(2);
+    expect(result[0]!.type).toBe('group');
+    expect(result[0]!.steps).toHaveLength(2);
+    expect(result[1]!.type).toBe('group');
+    expect(result[1]!.steps).toHaveLength(2);
   });
 
   it('handles alternating grouped and ungrouped steps', () => {
@@ -71,12 +71,12 @@ describe('groupRecordedStepsByGroupId', () => {
     const result = groupRecordedStepsByGroupId(steps);
 
     expect(result).toHaveLength(4);
-    expect(result[0].type).toBe('single');
-    expect(result[1].type).toBe('group');
-    expect(result[1].steps).toHaveLength(2);
-    expect(result[2].type).toBe('single');
-    expect(result[3].type).toBe('group');
-    expect(result[3].steps).toHaveLength(1);
+    expect(result[0]!.type).toBe('single');
+    expect(result[1]!.type).toBe('group');
+    expect(result[1]!.steps).toHaveLength(2);
+    expect(result[2]!.type).toBe('single');
+    expect(result[3]!.type).toBe('group');
+    expect(result[3]!.steps).toHaveLength(1);
   });
 
   it('handles single step in a group', () => {
@@ -84,8 +84,8 @@ describe('groupRecordedStepsByGroupId', () => {
     const result = groupRecordedStepsByGroupId(steps);
 
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe('group');
-    expect(result[0].steps).toHaveLength(1);
+    expect(result[0]!.type).toBe('group');
+    expect(result[0]!.steps).toHaveLength(1);
   });
 
   it('handles group at end of sequence', () => {
@@ -93,9 +93,9 @@ describe('groupRecordedStepsByGroupId', () => {
     const result = groupRecordedStepsByGroupId(steps);
 
     expect(result).toHaveLength(2);
-    expect(result[0].type).toBe('single');
-    expect(result[1].type).toBe('group');
-    expect(result[1].steps).toHaveLength(2);
+    expect(result[0]!.type).toBe('single');
+    expect(result[1]!.type).toBe('group');
+    expect(result[1]!.steps).toHaveLength(2);
   });
 });
 
@@ -160,10 +160,10 @@ describe('convertStepsToMultistepBlock', () => {
     ];
     const block = convertStepsToMultistepBlock(steps);
 
-    expect(block.steps[0].action).toBe('fill');
-    expect(block.steps[0].reftarget).toBe('[data-testid="input"]');
-    expect(block.steps[0].targetvalue).toBe('hello');
-    expect(block.steps[0].tooltip).toBe('Fill input');
+    expect(block.steps[0]!.action).toBe('fill');
+    expect(block.steps[0]!.reftarget).toBe('[data-testid="input"]');
+    expect(block.steps[0]!.targetvalue).toBe('hello');
+    expect(block.steps[0]!.tooltip).toBe('Fill input');
   });
 
   it('uses fallback description for content when first step has no description', () => {
@@ -177,7 +177,7 @@ describe('convertStepsToMultistepBlock', () => {
     const steps = [makeStep({ description: undefined, action: 'hover' })];
     const block = convertStepsToMultistepBlock(steps);
 
-    expect(block.steps[0].tooltip).toBe('hover on element');
+    expect(block.steps[0]!.tooltip).toBe('hover on element');
   });
 });
 
@@ -187,7 +187,7 @@ describe('convertProcessedStepsToBlocks', () => {
     const blocks = convertProcessedStepsToBlocks(processed);
 
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe('interactive');
+    expect(blocks[0]!.type).toBe('interactive');
   });
 
   it('converts groups to multistep blocks', () => {
@@ -195,7 +195,7 @@ describe('convertProcessedStepsToBlocks', () => {
     const blocks = convertProcessedStepsToBlocks(processed);
 
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe('multistep');
+    expect(blocks[0]!.type).toBe('multistep');
   });
 
   it('handles mixed singles and groups', () => {
@@ -207,9 +207,9 @@ describe('convertProcessedStepsToBlocks', () => {
     const blocks = convertProcessedStepsToBlocks(processed);
 
     expect(blocks).toHaveLength(3);
-    expect(blocks[0].type).toBe('interactive');
-    expect(blocks[1].type).toBe('multistep');
-    expect(blocks[2].type).toBe('interactive');
+    expect(blocks[0]!.type).toBe('interactive');
+    expect(blocks[1]!.type).toBe('multistep');
+    expect(blocks[2]!.type).toBe('interactive');
   });
 
   it('returns empty array for empty input', () => {

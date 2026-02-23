@@ -25,7 +25,7 @@ function offsetToPosition(text: string, offset: number): { line: number; column:
   const lines = beforeOffset.split('\n');
   return {
     line: lines.length,
-    column: lines[lines.length - 1].length + 1,
+    column: (lines[lines.length - 1] ?? '').length + 1,
   };
 }
 
@@ -72,7 +72,7 @@ export function parseWithPositions(jsonString: string): ParseWithPositionsResult
 
   // If there are parse errors, return the first one with position
   if (parseErrors.length > 0) {
-    const error = parseErrors[0];
+    const error = parseErrors[0]!;
     const position = offsetToPosition(jsonString, error.offset);
     return {
       parseError: {

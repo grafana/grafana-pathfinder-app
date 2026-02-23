@@ -45,7 +45,7 @@ function parseDomPath(path: string): Array<{ text: string; isTestId: boolean }> 
         }
 
         // Add the testid attribute in orange
-        segments.push({ text: testidAttr, isTestId: true });
+        segments.push({ text: testidAttr!, isTestId: true });
 
         // Add the part after testid (if any)
         if (after) {

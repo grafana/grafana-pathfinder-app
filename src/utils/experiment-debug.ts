@@ -52,13 +52,13 @@ export function getParentPath(pattern: string): string {
   // Stop at /, *, or ? (query string)
   if (pattern.startsWith('/a/')) {
     const match = pattern.match(/^(\/a\/[^/*?]+)/);
-    return match ? match[1] : pattern;
+    return match ? match[1]! : pattern;
   }
 
   // For non-app paths, extract first segment (e.g., /dashboard)
   // Stop at /, *, or ? (query string)
   const match = pattern.match(/^(\/[^/*?]+)/);
-  return match ? match[1] : pattern;
+  return match ? match[1]! : pattern;
 }
 
 /**

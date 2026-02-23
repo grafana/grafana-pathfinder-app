@@ -48,7 +48,7 @@ export function NestedBlockItem({
   // Get preview content - same logic as BlockItem
   const getPreview = (): string => {
     if ('content' in block && typeof block.content === 'string') {
-      const firstLine = block.content.split('\n')[0];
+      const firstLine = block.content.split('\n')[0] ?? '';
       return firstLine.slice(0, 60) + (firstLine.length > 60 ? '...' : '');
     }
     if ('reftarget' in block && typeof block.reftarget === 'string') {
@@ -145,7 +145,7 @@ export function NestedBlockItem({
             className={styles.deleteButton}
             tooltip="Delete block"
             ariaLabel="Delete"
-            blockType={meta.name.toLowerCase()}
+            blockType={meta?.name.toLowerCase() ?? block.type}
           />
         </div>
       </div>

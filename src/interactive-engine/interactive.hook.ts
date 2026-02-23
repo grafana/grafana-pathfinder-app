@@ -291,7 +291,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
         // Find all interactive elements within the sequence container
         const interactiveElements = Array.from(
-          targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])')
+          targetElements[0]!.querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])')
         );
 
         if (interactiveElements.length === 0) {

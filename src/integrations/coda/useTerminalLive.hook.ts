@@ -145,7 +145,7 @@ export function useTerminalLive({ sessionId, terminalRef }: UseTerminalLiveOptio
   const executeCommand = useCallback(
     (terminal: Terminal, input: string): boolean => {
       const parts = input.split(/\s+/);
-      const cmd = parts[0].toLowerCase();
+      const cmd = parts[0]!.toLowerCase();
       const args = parts.slice(1).join(' ');
 
       // Handle special commands

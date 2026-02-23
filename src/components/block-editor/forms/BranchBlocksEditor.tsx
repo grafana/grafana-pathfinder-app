@@ -478,7 +478,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       }
       const newBlocks = [...blocks];
       const [movedBlock] = newBlocks.splice(oldIndex, 1);
-      newBlocks.splice(newIndex, 0, movedBlock);
+      newBlocks.splice(newIndex, 0, movedBlock!);
       onChange(newBlocks);
     },
     [blocks, onChange]
@@ -497,6 +497,9 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
   const handleStartEdit = useCallback(
     (index: number) => {
       const block = blocks[index];
+      if (!block) {
+        return;
+      }
       setEditingIndex(index);
       setNewBlockType(block.type as BlockType);
       populateFormFromBlock(block);
@@ -509,7 +512,11 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
     if (editingIndex === null) {
       return;
     }
-    const blockType = blocks[editingIndex].type as BlockType;
+    const editingBlock = blocks[editingIndex];
+    if (!editingBlock) {
+      return;
+    }
+    const blockType = editingBlock.type as BlockType;
 
     // Safety check: prevent data loss for types without inline editing support
     // These types should use handleCancelEdit instead (UI shows Close button, not Save)

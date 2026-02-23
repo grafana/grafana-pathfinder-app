@@ -288,7 +288,7 @@ describe('convertBlockType', () => {
       const multistepResult = result as { steps: Array<{ action: string }> };
       expect(multistepResult.steps).toBeDefined();
       expect(multistepResult.steps.length).toBeGreaterThan(0);
-      expect(multistepResult.steps[0].action).toBe('noop');
+      expect(multistepResult.steps[0]!.action).toBe('noop');
     });
 
     it('should apply default steps when converting to guided', () => {
@@ -297,7 +297,7 @@ describe('convertBlockType', () => {
       const guidedResult = result as { steps: Array<{ action: string }> };
       expect(guidedResult.steps).toBeDefined();
       expect(guidedResult.steps.length).toBeGreaterThan(0);
-      expect(guidedResult.steps[0].action).toBe('noop');
+      expect(guidedResult.steps[0]!.action).toBe('noop');
     });
   });
 

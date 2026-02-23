@@ -347,7 +347,7 @@ export function StepEditor({
       if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
         const newSteps = [...steps];
         const [removed] = newSteps.splice(activeIndex, 1);
-        newSteps.splice(overIndex, 0, removed);
+        newSteps.splice(overIndex, 0, removed!);
         onChange(newSteps);
       }
     },
@@ -382,6 +382,9 @@ export function StepEditor({
   const handleStartEdit = useCallback(
     (index: number) => {
       const step = steps[index];
+      if (!step) {
+        return;
+      }
       setEditingStepIndex(index);
       setEditAction(step.action);
       setEditReftarget(step.reftarget ?? '');
@@ -853,7 +856,7 @@ export function StepEditor({
                     </div>
                   ) : (
                     /* Display view for this step - sortable via @dnd-kit */
-                    <SortableStepItem id={stepIds[index]} index={index} disabled={editingStepIndex !== null}>
+                    <SortableStepItem id={stepIds[index]!} index={index} disabled={editingStepIndex !== null}>
                       {/* Drag handle */}
                       <div className={styles.dragHandle} title="Drag to reorder">
                         <span style={{ fontSize: '12px' }}>⋮⋮</span>

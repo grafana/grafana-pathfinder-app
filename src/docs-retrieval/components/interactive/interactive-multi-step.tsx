@@ -191,8 +191,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
-    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0].refTarget : undefined;
-    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0].targetAction : undefined;
+    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0]!.refTarget : undefined;
+    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0]!.targetAction : undefined;
 
     // Get the interactive functions from the hook
     const {
@@ -312,7 +312,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       try {
         // Execute each internal action in sequence
         for (let i = 0; i < internalActions.length; i++) {
-          const action = internalActions[i];
+          const action = internalActions[i]!;
 
           // Check for cancellation before each action
           if (isCancelledRef.current) {

@@ -168,7 +168,7 @@ const formatContextForDisplay = (context: GrafanaContextArtifact): string => {
       if (!byType[ds.type]) {
         byType[ds.type] = [];
       }
-      byType[ds.type].push(ds.name);
+      byType[ds.type]!.push(ds.name);
     }
 
     for (const [type, names] of Object.entries(byType)) {

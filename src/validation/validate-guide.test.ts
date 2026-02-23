@@ -218,7 +218,7 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
       // Error message should mention the invalid 'action' field and list valid options
-      const errorMessage = result.errors[0].message.toLowerCase();
+      const errorMessage = result.errors[0]!.message.toLowerCase();
       expect(errorMessage).toContain('action');
       expect(errorMessage).toContain('expected one of');
       expect(errorMessage).toMatch(/highlight|button|formfill/);

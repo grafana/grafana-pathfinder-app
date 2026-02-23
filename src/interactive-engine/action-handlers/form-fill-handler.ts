@@ -46,7 +46,7 @@ export class FormFillHandler {
       console.warn(`Multiple elements found matching selector: ${resolvedSelector}`);
     }
 
-    const targetElement = targetElements[0];
+    const targetElement = targetElements[0]!;
     return targetElement;
   }
 
@@ -284,9 +284,9 @@ export class FormFillHandler {
       // SECURITY: Safe regex - [^!=~]* prevents backtracking (no nested quantifiers)
       const opMatch = fullValue.match(/^([^!=~]*)(!=|=~|!~|=)(.*)$/);
       if (opMatch) {
-        const key = opMatch[1].trim();
-        const op = opMatch[2].trim();
-        const val = stripQuotes(opMatch[3].trim());
+        const key = opMatch[1]!.trim();
+        const op = opMatch[2]!.trim();
+        const val = stripQuotes(opMatch[3]!.trim());
         tokens = [key, op, val].filter(Boolean);
       } else {
         tokens = [stripQuotes(fullValue.trim())];

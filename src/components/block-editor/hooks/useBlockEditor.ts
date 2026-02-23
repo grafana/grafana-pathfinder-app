@@ -322,7 +322,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
         const newBlocks = [...prev.blocks];
         const [removed] = newBlocks.splice(fromIndex, 1);
-        newBlocks.splice(toIndex, 0, removed);
+        newBlocks.splice(toIndex, 0, removed!);
 
         const newState = {
           ...prev,
@@ -382,17 +382,15 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         const block = prev.blocks[blockIndex];
         const sectionBlock = prev.blocks[sectionIndex];
 
-        // Can't nest sections or nest into non-sections
-        if (block.block.type === 'section' || !isSectionBlock(sectionBlock.block)) {
+        if (!block || !sectionBlock || block.block.type === 'section' || !isSectionBlock(sectionBlock.block)) {
           return prev;
         }
 
         // Remove block from root level
         const newBlocks = prev.blocks.filter((b) => b.id !== blockId);
 
-        // Add block to section's blocks array
         const section = newBlocks[sectionIndex > blockIndex ? sectionIndex - 1 : sectionIndex];
-        if (isSectionBlock(section.block)) {
+        if (section && isSectionBlock(section.block)) {
           const sectionBlocksCopy = [...section.block.blocks];
           const idx = insertIndex ?? sectionBlocksCopy.length;
           sectionBlocksCopy.splice(idx, 0, block.block);
@@ -425,19 +423,17 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const sectionEditorBlock = prev.blocks[sectionIndex];
-        if (!isSectionBlock(sectionEditorBlock.block)) {
+        if (!sectionEditorBlock || !isSectionBlock(sectionEditorBlock.block)) {
           return prev;
         }
 
-        // blockId format is `${sectionId}-${index}` - extract the index
         const nestedIndex = parseInt(blockId.split('-').pop() ?? '-1', 10);
         if (nestedIndex < 0 || nestedIndex >= sectionEditorBlock.block.blocks.length) {
           return prev;
         }
 
-        const blockToMove = sectionEditorBlock.block.blocks[nestedIndex];
+        const blockToMove = sectionEditorBlock.block.blocks[nestedIndex]!;
 
-        // Remove block from section
         const newSectionBlocks = sectionEditorBlock.block.blocks.filter((_, i) => i !== nestedIndex);
 
         const newBlocks = [...prev.blocks];
@@ -449,7 +445,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           },
         };
 
-        // Create new EditorBlock and insert at specified index (or after section if not specified)
         const newEditorBlock: EditorBlock = {
           id: generateBlockId(),
           block: blockToMove,
@@ -482,7 +477,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const sectionEditorBlock = prev.blocks[sectionIndex];
-        if (!isSectionBlock(sectionEditorBlock.block)) {
+        if (!sectionEditorBlock || !isSectionBlock(sectionEditorBlock.block)) {
           return prev;
         }
 
@@ -523,7 +518,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const sectionEditorBlock = prev.blocks[sectionIndex];
-        if (!isSectionBlock(sectionEditorBlock.block)) {
+        if (!sectionEditorBlock || !isSectionBlock(sectionEditorBlock.block)) {
           return prev;
         }
 
@@ -565,7 +560,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const sectionEditorBlock = prev.blocks[sectionIndex];
-        if (!isSectionBlock(sectionEditorBlock.block)) {
+        if (!sectionEditorBlock || !isSectionBlock(sectionEditorBlock.block)) {
           return prev;
         }
 
@@ -602,7 +597,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const sectionEditorBlock = prev.blocks[sectionIndex];
-        if (!isSectionBlock(sectionEditorBlock.block)) {
+        if (!sectionEditorBlock || !isSectionBlock(sectionEditorBlock.block)) {
           return prev;
         }
 
@@ -611,7 +606,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        const blockToDuplicate = sectionBlocksCopy[nestedIndex];
+        const blockToDuplicate = sectionBlocksCopy[nestedIndex]!;
         const duplicatedBlock = JSON.parse(JSON.stringify(blockToDuplicate));
         sectionBlocksCopy.splice(nestedIndex + 1, 0, duplicatedBlock);
 
@@ -646,7 +641,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const sectionEditorBlock = prev.blocks[sectionIndex];
-        if (!isSectionBlock(sectionEditorBlock.block)) {
+        if (!sectionEditorBlock || !isSectionBlock(sectionEditorBlock.block)) {
           return prev;
         }
 
@@ -662,7 +657,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const [removed] = sectionBlocksCopy.splice(fromIndex, 1);
-        sectionBlocksCopy.splice(toIndex, 0, removed);
+        sectionBlocksCopy.splice(toIndex, 0, removed!);
 
         const newBlocks = [...prev.blocks];
         newBlocks[sectionIndex] = {
@@ -699,7 +694,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
@@ -740,7 +735,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
@@ -782,7 +777,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
@@ -819,7 +814,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
@@ -828,7 +823,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        const blockToDuplicate = branchBlocks[nestedIndex];
+        const blockToDuplicate = branchBlocks[nestedIndex]!;
         const duplicatedBlock = JSON.parse(JSON.stringify(blockToDuplicate));
         branchBlocks.splice(nestedIndex + 1, 0, duplicatedBlock);
 
@@ -863,7 +858,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
@@ -872,14 +867,14 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           fromIndex < 0 ||
           fromIndex >= branchBlocks.length ||
           toIndex < 0 ||
-          toIndex > branchBlocks.length || // Allow toIndex === length for moving to end
+          toIndex > branchBlocks.length ||
           fromIndex === toIndex
         ) {
           return prev;
         }
 
         const [removed] = branchBlocks.splice(fromIndex, 1);
-        branchBlocks.splice(toIndex, 0, removed);
+        branchBlocks.splice(toIndex, 0, removed!);
 
         const newBlocks = [...prev.blocks];
         newBlocks[conditionalIndex] = {
@@ -913,37 +908,34 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const blockToNest = prev.blocks[blockIndex];
-
-        // Don't allow nesting sections or conditionals
-        if (blockToNest.block.type === 'section' || blockToNest.block.type === 'conditional') {
+        if (!blockToNest || blockToNest.block.type === 'section' || blockToNest.block.type === 'conditional') {
           return prev;
         }
 
-        // Find the conditional
         const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
         if (conditionalIndex === -1) {
           return prev;
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
-        // Remove from root
         const newBlocks = prev.blocks.filter((_, i) => i !== blockIndex);
-
-        // Adjust conditional index if needed
         const adjustedConditionalIndex = blockIndex < conditionalIndex ? conditionalIndex - 1 : conditionalIndex;
 
-        // Add to conditional branch
-        const conditionalBlock = newBlocks[adjustedConditionalIndex].block as JsonConditionalBlock;
+        const adjustedBlock = newBlocks[adjustedConditionalIndex];
+        if (!adjustedBlock) {
+          return prev;
+        }
+        const conditionalBlock = adjustedBlock.block as JsonConditionalBlock;
         const branchBlocks = [...conditionalBlock[branch]];
         const idx = insertIndex ?? branchBlocks.length;
         branchBlocks.splice(idx, 0, blockToNest.block);
 
         newBlocks[adjustedConditionalIndex] = {
-          ...newBlocks[adjustedConditionalIndex],
+          ...adjustedBlock,
           block: {
             ...conditionalBlock,
             [branch]: branchBlocks,
@@ -973,7 +965,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
@@ -982,8 +974,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        // Get the block to unnest
-        const blockToUnnest = branchBlocks[nestedIndex];
+        const blockToUnnest = branchBlocks[nestedIndex]!;
 
         // Remove from branch
         const newBranchBlocks = branchBlocks.filter((_, i) => i !== nestedIndex);
@@ -1038,7 +1029,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         }
 
         const conditionalEditorBlock = prev.blocks[conditionalIndex];
-        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+        if (!conditionalEditorBlock || !isConditionalBlock(conditionalEditorBlock.block)) {
           return prev;
         }
 
@@ -1047,8 +1038,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        // Get the block to move
-        const blockToMove = fromBranchBlocks[fromIndex];
+        const blockToMove = fromBranchBlocks[fromIndex]!;
 
         // Remove from source branch
         const newFromBranchBlocks = fromBranchBlocks.filter((_, i) => i !== fromIndex);
@@ -1100,7 +1090,12 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         const fromSectionEditorBlock = prev.blocks[fromSectionIndex];
         const toSectionEditorBlock = prev.blocks[toSectionIndex];
 
-        if (!isSectionBlock(fromSectionEditorBlock.block) || !isSectionBlock(toSectionEditorBlock.block)) {
+        if (
+          !fromSectionEditorBlock ||
+          !toSectionEditorBlock ||
+          !isSectionBlock(fromSectionEditorBlock.block) ||
+          !isSectionBlock(toSectionEditorBlock.block)
+        ) {
           return prev;
         }
 
@@ -1109,8 +1104,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        // Get the block to move
-        const blockToMove = fromBlocks[fromIndex];
+        const blockToMove = fromBlocks[fromIndex]!;
 
         // Remove from source section
         const newFromBlocks = fromBlocks.filter((_, i) => i !== fromIndex);
@@ -1173,7 +1167,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     // If blockIds are provided (from persistence), use them to preserve IDs across refreshes
     // Otherwise generate new IDs (for new/imported guides)
     const newBlocks: EditorBlock[] = guide.blocks.map((block, index) => ({
-      id: blockIds && blockIds[index] ? blockIds[index] : generateBlockId(),
+      id: blockIds?.[index] ?? generateBlockId(),
       block,
     }));
 
@@ -1251,7 +1245,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     // It's a root-level block
     const rootIndex = blocks.findIndex((b) => b.id === id);
     if (rootIndex >= 0) {
-      return { isNested: false, block: blocks[rootIndex].block, rootIndex };
+      return { isNested: false, block: blocks[rootIndex]!.block, rootIndex };
     }
     return { isNested: false };
   };
@@ -1310,14 +1304,11 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           steps,
         };
 
-        // Determine where to insert based on first selected block
-        const firstParsed = parsedBlocks[0];
+        const firstParsed = parsedBlocks[0]!;
         const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
 
-        // Remove root-level blocks that were merged
         const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
 
-        // Group nested blocks by section for removal
         const nestedToRemove = new Map<string, number[]>();
         parsedBlocks
           .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
@@ -1327,11 +1318,9 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
             nestedToRemove.set(p.sectionId!, existing);
           });
 
-        // Build new blocks array
         let newBlocks = prev.blocks
           .filter((b) => !rootIdsToRemove.has(b.id))
           .map((b) => {
-            // If this is a section with nested blocks to remove/insert, update it
             if (
               isSectionBlock(b.block) &&
               (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
@@ -1339,10 +1328,8 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
               const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
               let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
 
-              // If inserting into this section, add at the position of the first removed block
               if (insertIntoSection && b.id === firstParsed.sectionId) {
                 const insertIdx = firstParsed.nestedIndex!;
-                // Count how many blocks before insertIdx were removed
                 const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
                 const adjustedIdx = insertIdx - removedBefore;
                 newSectionBlocks.splice(adjustedIdx, 0, multistepBlock);
@@ -1356,16 +1343,13 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
             return b;
           });
 
-        // If not inserting into a section, insert at root level
         if (!insertIntoSection) {
           const newEditorBlock: EditorBlock = {
             id: generateBlockId(),
             block: multistepBlock,
           };
 
-          // Find where to insert at root level
           let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
-          // Adjust for removed blocks before this index
           const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
           insertIndex -= removedBeforeInsert;
 
@@ -1436,14 +1420,11 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           steps,
         };
 
-        // Determine where to insert based on first selected block
-        const firstParsed = parsedBlocks[0];
+        const firstParsed = parsedBlocks[0]!;
         const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
 
-        // Remove root-level blocks that were merged
         const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
 
-        // Group nested blocks by section for removal
         const nestedToRemove = new Map<string, number[]>();
         parsedBlocks
           .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
@@ -1453,11 +1434,9 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
             nestedToRemove.set(p.sectionId!, existing);
           });
 
-        // Build new blocks array
         let newBlocks = prev.blocks
           .filter((b) => !rootIdsToRemove.has(b.id))
           .map((b) => {
-            // If this is a section with nested blocks to remove/insert, update it
             if (
               isSectionBlock(b.block) &&
               (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
@@ -1465,10 +1444,8 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
               const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
               let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
 
-              // If inserting into this section, add at the position of the first removed block
               if (insertIntoSection && b.id === firstParsed.sectionId) {
                 const insertIdx = firstParsed.nestedIndex!;
-                // Count how many blocks before insertIdx were removed
                 const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
                 const adjustedIdx = insertIdx - removedBefore;
                 newSectionBlocks.splice(adjustedIdx, 0, guidedBlock);
@@ -1482,16 +1459,13 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
             return b;
           });
 
-        // If not inserting into a section, insert at root level
         if (!insertIntoSection) {
           const newEditorBlock: EditorBlock = {
             id: generateBlockId(),
             block: guidedBlock,
           };
 
-          // Find where to insert at root level
           let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
-          // Adjust for removed blocks before this index
           const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
           insertIndex -= removedBeforeInsert;
 

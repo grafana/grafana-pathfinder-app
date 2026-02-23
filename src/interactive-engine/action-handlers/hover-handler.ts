@@ -50,7 +50,7 @@ export class HoverHandler {
       console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
-    return targetElements[0];
+    return targetElements[0]!;
   }
 
   private async prepareElement(targetElement: HTMLElement): Promise<void> {

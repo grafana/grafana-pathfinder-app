@@ -227,7 +227,7 @@ export function validateConditions(
   const allIssues: ConditionIssue[] = [];
 
   for (let i = 0; i < conditions.length; i++) {
-    const issues = validateConditionString(conditions[i], [...basePath, i]);
+    const issues = validateConditionString(conditions[i]!, [...basePath, i]);
     allIssues.push(...issues);
   }
 

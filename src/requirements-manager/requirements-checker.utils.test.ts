@@ -128,7 +128,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('Missing permission');
+      expect(result.error[0]!.error).toContain('Missing permission');
     });
   });
 
@@ -227,7 +227,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(result.error[0].pass).toBe(true);
+      expect(result.error[0]!.pass).toBe(true);
       expect(mockBackend.post).toHaveBeenCalledWith('/api/datasources/uid/prom-uid/test');
     });
 
@@ -245,8 +245,8 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].pass).toBe(false);
-      expect(result.error[0].error).toContain('test failed');
+      expect(result.error[0]!.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('test failed');
     });
 
     it('should fail when data source not found', async () => {
@@ -260,8 +260,8 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].pass).toBe(false);
-      expect(result.error[0].error).toContain('not found');
+      expect(result.error[0]!.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('not found');
     });
   });
 
@@ -291,7 +291,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(result.error[0].pass).toBe(true);
+      expect(result.error[0]!.pass).toBe(true);
     });
 
     it('should fail when plugin exists but is not enabled', async () => {
@@ -306,8 +306,8 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].pass).toBe(false);
-      expect(result.error[0].error).toContain('is installed but not enabled');
+      expect(result.error[0]!.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('is installed but not enabled');
     });
 
     it('should fail when plugin does not exist', async () => {
@@ -321,8 +321,8 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].pass).toBe(false);
-      expect(result.error[0].error).toContain('not found');
+      expect(result.error[0]!.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('not found');
     });
   });
 
@@ -397,7 +397,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('does not meet minimum requirement');
+      expect(result.error[0]!.error).toContain('does not meet minimum requirement');
     });
   });
 
@@ -441,7 +441,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('not logged in');
+      expect(result.error[0]!.error).toContain('not logged in');
     });
 
     it('should fail when no user data available', async () => {
@@ -507,7 +507,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('does not have editor permissions');
+      expect(result.error[0]!.error).toContain('does not have editor permissions');
     });
   });
 
@@ -548,7 +548,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('No dashboards found');
+      expect(result.error[0]!.error).toContain('No dashboards found');
     });
   });
 
@@ -582,7 +582,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('No forms found');
+      expect(result.error[0]!.error).toContain('No forms found');
     });
 
     it('should fail when forms have validation errors', async () => {
@@ -600,7 +600,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('Form validation failed');
+      expect(result.error[0]!.error).toContain('Form validation failed');
     });
   });
 
@@ -625,7 +625,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toBe('No data sources found');
+      expect(result.error[0]!.error).toBe('No data sources found');
     });
   });
 
@@ -665,7 +665,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('must be completed first');
+      expect(result.error[0]!.error).toContain('must be completed first');
     });
 
     it('should fail when section does not exist', async () => {
@@ -675,7 +675,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].error).toContain('must be completed first');
+      expect(result.error[0]!.error).toContain('must be completed first');
     });
   });
 
@@ -687,9 +687,9 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(result.error[0].pass).toBe(true);
-      expect(result.error[0].context?.renderer).toBe('pathfinder');
-      expect(result.error[0].context?.context).toBe('app');
+      expect(result.error[0]!.pass).toBe(true);
+      expect(result.error[0]!.context?.renderer).toBe('pathfinder');
+      expect(result.error[0]!.context?.context).toBe('app');
     });
 
     it('should fail for renderer:website (always false in app)', async () => {
@@ -699,10 +699,10 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].pass).toBe(false);
-      expect(result.error[0].error).toContain('website context is not available in app');
-      expect(result.error[0].context?.renderer).toBe('website');
-      expect(result.error[0].context?.context).toBe('app');
+      expect(result.error[0]!.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('website context is not available in app');
+      expect(result.error[0]!.context?.renderer).toBe('website');
+      expect(result.error[0]!.context?.context).toBe('app');
     });
 
     it('should fail for unknown renderer values', async () => {
@@ -712,10 +712,10 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].pass).toBe(false);
-      expect(result.error[0].error).toContain("Unknown renderer value: 'unknown'");
-      expect(result.error[0].context?.renderer).toBe('unknown');
-      expect(result.error[0].context?.supported).toEqual(['pathfinder', 'website']);
+      expect(result.error[0]!.pass).toBe(false);
+      expect(result.error[0]!.error).toContain("Unknown renderer value: 'unknown'");
+      expect(result.error[0]!.context?.renderer).toBe('unknown');
+      expect(result.error[0]!.context?.supported).toEqual(['pathfinder', 'website']);
     });
 
     it('should handle case-insensitive renderer values', async () => {
@@ -725,7 +725,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(result.error[0].pass).toBe(true);
+      expect(result.error[0]!.pass).toBe(true);
     });
   });
 
@@ -741,9 +741,9 @@ describe('requirements-checker.utils', () => {
 
       expect(result.pass).toBe(true);
       expect(result.error).toHaveLength(1);
-      expect(result.error[0].requirement).toBe('unknown-requirement-type');
-      expect(result.error[0].pass).toBe(true);
-      expect(result.error[0].error).toContain('Warning: Unknown requirement type');
+      expect(result.error[0]!.requirement).toBe('unknown-requirement-type');
+      expect(result.error[0]!.pass).toBe(true);
+      expect(result.error[0]!.error).toContain('Warning: Unknown requirement type');
 
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("Unknown requirement type: 'unknown-requirement-type'")
@@ -825,7 +825,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkPostconditions(options);
       expect(result.pass).toBe(false);
-      expect(result.error[0].pass).toBe(false);
+      expect(result.error[0]!.pass).toBe(false);
     });
 
     it('should handle multiple postconditions with one failing', async () => {

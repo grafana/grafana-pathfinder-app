@@ -213,8 +213,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
-    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0].refTarget : undefined;
-    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0].targetAction : undefined;
+    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0]!.refTarget : undefined;
+    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0]!.targetAction : undefined;
 
     // Runtime validation: check for impossible requirement configurations
     useEffect(() => {
@@ -300,7 +300,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           setCurrentStepStatus('waiting');
 
           // Execute guided step and wait for user completion
-          const result = await guidedHandler.executeGuidedStep(action, i, internalActions.length, stepTimeout);
+          const result = await guidedHandler.executeGuidedStep(action!, i, internalActions.length, stepTimeout);
 
           if (result === 'completed' || result === 'skipped') {
             setCurrentStepStatus('completed');

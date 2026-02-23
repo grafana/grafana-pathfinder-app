@@ -77,20 +77,20 @@ describe('Condition Validator', () => {
       it('rejects unknown condition type', () => {
         const issues = validateConditionString('foobar', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('unknown_type');
-        expect(issues[0].condition).toBe('foobar');
+        expect(issues[0]!.code).toBe('unknown_type');
+        expect(issues[0]!.condition).toBe('foobar');
       });
 
       it('rejects typos as unknown types', () => {
         const issues = validateConditionString('esists-reftarget', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('unknown_type');
+        expect(issues[0]!.code).toBe('unknown_type');
       });
 
       it('rejects parameterized prefix without colon as unknown type', () => {
         const issues = validateConditionString('has-datasource', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('unknown_type');
+        expect(issues[0]!.code).toBe('unknown_type');
       });
     });
 
@@ -98,20 +98,20 @@ describe('Condition Validator', () => {
       it('rejects fixed type with argument', () => {
         const issues = validateConditionString('is-admin:true', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('unexpected_argument');
-        expect(issues[0].condition).toBe('is-admin:true');
+        expect(issues[0]!.code).toBe('unexpected_argument');
+        expect(issues[0]!.condition).toBe('is-admin:true');
       });
 
       it('rejects exists-reftarget with argument', () => {
         const issues = validateConditionString('exists-reftarget:selector', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('unexpected_argument');
+        expect(issues[0]!.code).toBe('unexpected_argument');
       });
 
       it('rejects navmenu-open with argument', () => {
         const issues = validateConditionString('navmenu-open:docked', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('unexpected_argument');
+        expect(issues[0]!.code).toBe('unexpected_argument');
       });
     });
 
@@ -119,26 +119,26 @@ describe('Condition Validator', () => {
       it('rejects has-datasource: without argument', () => {
         const issues = validateConditionString('has-datasource:', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('missing_argument');
-        expect(issues[0].condition).toBe('has-datasource:');
+        expect(issues[0]!.code).toBe('missing_argument');
+        expect(issues[0]!.condition).toBe('has-datasource:');
       });
 
       it('rejects on-page: without argument', () => {
         const issues = validateConditionString('on-page:', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('missing_argument');
+        expect(issues[0]!.code).toBe('missing_argument');
       });
 
       it('rejects min-version: without argument', () => {
         const issues = validateConditionString('min-version:', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('missing_argument');
+        expect(issues[0]!.code).toBe('missing_argument');
       });
 
       it('rejects has-plugin: without argument', () => {
         const issues = validateConditionString('has-plugin:', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('missing_argument');
+        expect(issues[0]!.code).toBe('missing_argument');
       });
     });
 
@@ -146,36 +146,36 @@ describe('Condition Validator', () => {
       it('rejects on-page without leading slash', () => {
         const issues = validateConditionString('on-page:dashboards', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('invalid_format');
-        expect(issues[0].condition).toBe('on-page:dashboards');
+        expect(issues[0]!.code).toBe('invalid_format');
+        expect(issues[0]!.condition).toBe('on-page:dashboards');
       });
 
       it('rejects min-version with non-semver', () => {
         const issues = validateConditionString('min-version:latest', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('invalid_format');
+        expect(issues[0]!.code).toBe('invalid_format');
       });
 
       it('rejects min-version with partial version', () => {
         const issues = validateConditionString('min-version:11.0', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('invalid_format');
+        expect(issues[0]!.code).toBe('invalid_format');
       });
 
       it('rejects has-role with uppercase', () => {
         const issues = validateConditionString('has-role:ADMIN', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('invalid_format');
-        expect(issues[0].condition).toBe('has-role:ADMIN');
+        expect(issues[0]!.code).toBe('invalid_format');
+        expect(issues[0]!.condition).toBe('has-role:ADMIN');
       });
 
       it('rejects renderer with invalid value', () => {
         const issues = validateConditionString('renderer:invalid', ['test']);
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe('invalid_format');
-        expect(issues[0].condition).toBe('renderer:invalid');
-        expect(issues[0].message).toContain('pathfinder');
-        expect(issues[0].message).toContain('website');
+        expect(issues[0]!.code).toBe('invalid_format');
+        expect(issues[0]!.condition).toBe('renderer:invalid');
+        expect(issues[0]!.message).toContain('pathfinder');
+        expect(issues[0]!.message).toContain('website');
       });
     });
 
@@ -229,7 +229,7 @@ describe('Condition Validator', () => {
 
     it('includes correct path in errors', () => {
       const issues = validateConditions(['foobar'], ['blocks', 2, 'requirements']);
-      expect(issues[0].path).toEqual(['blocks', 2, 'requirements', 0]);
+      expect(issues[0]!.path).toEqual(['blocks', 2, 'requirements', 0]);
     });
   });
 
@@ -250,7 +250,7 @@ describe('Condition Validator', () => {
       };
       const issues = validateBlockConditions(guide);
       expect(issues).toHaveLength(1);
-      expect(issues[0].path).toEqual(['blocks', 0, 'requirements', 0]);
+      expect(issues[0]!.path).toEqual(['blocks', 0, 'requirements', 0]);
     });
 
     it('validates objectives in interactive blocks', () => {
@@ -269,7 +269,7 @@ describe('Condition Validator', () => {
       };
       const issues = validateBlockConditions(guide);
       expect(issues).toHaveLength(1);
-      expect(issues[0].code).toBe('missing_argument');
+      expect(issues[0]!.code).toBe('missing_argument');
     });
 
     it('validates verify field in interactive blocks', () => {
@@ -288,7 +288,7 @@ describe('Condition Validator', () => {
       };
       const issues = validateBlockConditions(guide);
       expect(issues).toHaveLength(1);
-      expect(issues[0].code).toBe('invalid_format');
+      expect(issues[0]!.code).toBe('invalid_format');
     });
 
     it('validates requirements in steps (multistep)', () => {
@@ -311,7 +311,7 @@ describe('Condition Validator', () => {
       };
       const issues = validateBlockConditions(guide);
       expect(issues).toHaveLength(1);
-      expect(issues[0].path).toEqual(['blocks', 0, 'steps', 0, 'requirements', 0]);
+      expect(issues[0]!.path).toEqual(['blocks', 0, 'steps', 0, 'requirements', 0]);
     });
 
     it('validates conditions in nested sections', () => {
@@ -336,7 +336,7 @@ describe('Condition Validator', () => {
       };
       const issues = validateBlockConditions(guide);
       expect(issues).toHaveLength(1);
-      expect(issues[0].path).toEqual(['blocks', 0, 'blocks', 0, 'requirements', 0]);
+      expect(issues[0]!.path).toEqual(['blocks', 0, 'blocks', 0, 'requirements', 0]);
     });
 
     it('validates requirements and objectives on sections', () => {

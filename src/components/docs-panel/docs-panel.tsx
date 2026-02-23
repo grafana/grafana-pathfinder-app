@@ -333,10 +333,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (this.state.activeTabId === tabId) {
       if (tabIndex > 0 && tabIndex < currentTabs.length - 1) {
         // Choose the next tab if available
-        newActiveTabId = currentTabs[tabIndex + 1].id;
+        newActiveTabId = currentTabs[tabIndex + 1]!.id;
       } else if (tabIndex > 0) {
         // Choose the previous tab if at the end
-        newActiveTabId = currentTabs[tabIndex - 1].id;
+        newActiveTabId = currentTabs[tabIndex - 1]!.id;
       } else {
         // Default to recommendations if only tab
         newActiveTabId = 'recommendations';
@@ -716,7 +716,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   React.useEffect(() => {
     // Only restore if we haven't loaded tabs yet
     // Check if tabs only contain the default system tab (recommendations)
-    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0].id === 'recommendations';
+    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
 
     if (hasOnlyDefaultTabs) {
       model.restoreTabsAsync();

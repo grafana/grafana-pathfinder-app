@@ -747,7 +747,7 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
 
   React.useEffect(() => {
     if (tabsData.length > 0 && !activeTab) {
-      setActiveTab(tabsData[0].key);
+      setActiveTab(tabsData[0]!.key);
     }
   }, [tabsData, activeTab]);
 

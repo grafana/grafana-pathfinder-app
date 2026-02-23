@@ -207,7 +207,7 @@ describe('fetchPrContentFiles', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.files[0].directoryName).toBe('category/subcategory/guide');
+      expect(result.files[0]!.directoryName).toBe('category/subcategory/guide');
     }
   });
 
@@ -625,8 +625,8 @@ describe('fetchPrContentFiles', () => {
     if (result.success) {
       // Only valid content.json files should be included
       expect(result.files).toHaveLength(2);
-      expect(result.files[0].directoryName).toBe('valid');
-      expect(result.files[1].directoryName).toBe('another');
+      expect(result.files[0]!.directoryName).toBe('valid');
+      expect(result.files[1]!.directoryName).toBe('another');
     }
   });
 
@@ -691,7 +691,7 @@ describe('fetchPrContentFiles', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].directoryName).toBe('safe-guide');
+      expect(result.files[0]!.directoryName).toBe('safe-guide');
     }
   });
 
@@ -721,7 +721,7 @@ describe('fetchPrContentFiles', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].directoryName).toBe('safe');
+      expect(result.files[0]!.directoryName).toBe('safe');
     }
   });
 });

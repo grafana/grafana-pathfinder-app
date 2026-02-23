@@ -68,9 +68,9 @@ describe('ButtonHandler', () => {
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
       expect(mockFindButtonByText).toHaveBeenCalledWith('test-button');
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]);
-      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]);
-      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockButtons[0], undefined);
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
+      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockButtons[0]!, undefined);
       expect(mockWaitForReactUpdates).not.toHaveBeenCalled(); // No completion in show mode
     });
 
@@ -79,9 +79,9 @@ describe('ButtonHandler', () => {
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
       expect(mockFindButtonByText).toHaveBeenCalledWith('test-button');
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]);
-      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]);
-      expect(mockButtons[0].click).toHaveBeenCalled();
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
+      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
+      expect(mockButtons[0]!.click).toHaveBeenCalled();
       expect(mockWaitForReactUpdates).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
@@ -102,7 +102,7 @@ describe('ButtonHandler', () => {
 
       await buttonHandler.execute(mockData, false);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]!);
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalled();
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
     });
@@ -112,8 +112,8 @@ describe('ButtonHandler', () => {
 
       await buttonHandler.execute(mockData, true);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]);
-      expect(mockButtons[0].click).toHaveBeenCalled();
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]!);
+      expect(mockButtons[0]!.click).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
   });

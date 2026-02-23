@@ -562,7 +562,7 @@ describe('Security: Recommender Service URL Validation', () => {
 
       // Recommendations may be filtered or empty due to processing logic
       if (result.recommendations.length > 0) {
-        const rec = result.recommendations[0];
+        const rec = result.recommendations[0]!;
         expect(rec.summary).not.toContain('onerror');
         expect(rec.summary).not.toContain('<img');
       }
@@ -615,8 +615,8 @@ describe('Security: Recommender Service URL Validation', () => {
       expect(result).toBeDefined();
       // If recommendations exist, they should have sanitized fields
       if (result.recommendations.length > 0) {
-        expect(result.recommendations[0].title).toBeDefined();
-        expect(result.recommendations[0].summary).toBeDefined();
+        expect(result.recommendations[0]!.title).toBeDefined();
+        expect(result.recommendations[0]!.summary).toBeDefined();
       }
     });
   });

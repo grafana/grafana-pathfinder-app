@@ -562,7 +562,7 @@ interface FetchRawResult {
  */
 function isJsonContentUrl(url: string): boolean {
   // Check the URL path, ignoring query params and fragments
-  const urlPath = url.split('?')[0].split('#')[0];
+  const urlPath = url.split('?')[0]!.split('#')[0]!;
   return urlPath.endsWith('.json') || urlPath.endsWith('/content.json');
 }
 
@@ -902,7 +902,7 @@ function generateInteractiveLearningVariations(url: string): string[] {
   }
 
   // Clean the URL path (remove trailing slash)
-  const baseUrl = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+  const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
 
   // If URL already points to content.json or unstyled.html, return as-is
   if (baseUrl.endsWith('/content.json') || baseUrl.endsWith('/unstyled.html')) {
@@ -921,7 +921,7 @@ function generateInteractiveLearningVariations(url: string): string[] {
  * Returns URLs to try in order of preference: JSON first, then HTML
  */
 function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string } {
-  const baseUrl = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+  const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
 
   // If URL already points to a specific file, return it as-is for JSON detection
   if (url.includes('/content.json')) {
@@ -1060,17 +1060,17 @@ function getLearningJourneyBaseUrl(url: string): string {
 
   const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
   if (learningJourneyMatch) {
-    return learningJourneyMatch[1];
+    return learningJourneyMatch[1]!;
   }
 
   const learningPathMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-paths\/[^\/]+)/);
   if (learningPathMatch) {
-    return learningPathMatch[1];
+    return learningPathMatch[1]!;
   }
 
   const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);
   if (tutorialMatch) {
-    return tutorialMatch[1];
+    return tutorialMatch[1]!;
   }
 
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
@@ -1154,7 +1154,7 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
   // Legacy pattern matching for milestone URLs
   const milestoneMatch = cleanUrl.match(/\/milestone-(\d+)/);
   if (milestoneMatch) {
-    const milestoneNum = parseInt(milestoneMatch[1], 10);
+    const milestoneNum = parseInt(milestoneMatch[1]!, 10);
     return milestoneNum;
   }
 

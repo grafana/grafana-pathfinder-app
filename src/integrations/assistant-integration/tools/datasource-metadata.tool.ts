@@ -98,7 +98,7 @@ const findDatasource = (
   }
 
   // Return first supported datasource
-  return supported[0];
+  return supported[0] ?? null;
 };
 
 /**

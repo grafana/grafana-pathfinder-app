@@ -925,7 +925,7 @@ export class ContextService {
       a: 'app',
     };
 
-    return entityMap[pathSegments[0]] || null;
+    return entityMap[pathSegments[0]!] ?? null;
   }
 
   /**

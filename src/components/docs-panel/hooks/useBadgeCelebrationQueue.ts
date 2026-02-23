@@ -26,7 +26,7 @@ export function useBadgeCelebrationQueue(): UseBadgeCelebrationQueueResult {
         () => {
           const [nextBadge, ...remaining] = badgeCelebrationQueue;
           setBadgeCelebrationQueue(remaining);
-          setCurrentCelebrationBadge(nextBadge);
+          setCurrentCelebrationBadge(nextBadge ?? null);
           isProcessingQueueRef.current = false;
         },
         currentCelebrationBadge === null ? 0 : 500

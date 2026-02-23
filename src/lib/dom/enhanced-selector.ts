@@ -17,7 +17,7 @@ export interface SelectorResult {
  */
 export function querySelectorEnhanced(selector: string): HTMLElement | null {
   const result = querySelectorAllEnhanced(selector);
-  return result.elements.length > 0 ? result.elements[0] : null;
+  return result.elements.length > 0 ? result.elements[0]! : null;
 }
 
 /**
@@ -162,7 +162,8 @@ function handleContainsSelector(selector: string): SelectorResult {
     };
   }
 
-  const [, baseSelector, , searchText] = containsMatch;
+  const baseSelector = containsMatch[1]!;
+  const searchText = containsMatch[3]!;
 
   try {
     // Get all elements matching the base selector
@@ -212,7 +213,7 @@ function parseHasSelector(selector: string): { baseSelector: string; hasSelector
 
   // Find the matching closing parenthesis
   while (i < selector.length) {
-    const char = selector[i];
+    const char = selector[i]!;
     if (char === '(') {
       parenCount++;
     } else if (char === ')') {
@@ -295,7 +296,8 @@ function handleHasSelector(selector: string): SelectorResult {
         // Parse the inner :contains() manually for :has() context
         const innerContainsMatch = hasSelector.match(/^(.+?):contains\((['\"]?)([^'\"]*)\2\)(.*)$/);
         if (innerContainsMatch) {
-          const [, innerBaseSelector, , innerSearchText] = innerContainsMatch;
+          const innerBaseSelector = innerContainsMatch[1]!;
+          const innerSearchText = innerContainsMatch[3]!;
           try {
             // Find descendants matching the base selector
             const descendants = element.querySelectorAll(innerBaseSelector);
@@ -448,10 +450,11 @@ function handleTextSelector(selector: string): SelectorResult {
     };
   }
 
-  const [, baseSelector, , searchText] = textMatch;
+  const textBaseSelector = textMatch[1]!;
+  const textSearchText = textMatch[3]!;
 
   try {
-    const candidateElements = document.querySelectorAll(baseSelector);
+    const candidateElements = document.querySelectorAll(textBaseSelector);
     const matchingElements: HTMLElement[] = [];
 
     for (const element of candidateElements) {
@@ -462,7 +465,7 @@ function handleTextSelector(selector: string): SelectorResult {
         .join('')
         .trim();
 
-      if (directText.toLowerCase().includes(searchText.toLowerCase())) {
+      if (directText.toLowerCase().includes(textSearchText.toLowerCase())) {
         matchingElements.push(element as HTMLElement);
       }
     }
@@ -471,7 +474,7 @@ function handleTextSelector(selector: string): SelectorResult {
       elements: matchingElements,
       usedFallback: true,
       originalSelector: selector,
-      effectiveSelector: `${baseSelector} (direct text contains "${searchText}")`,
+      effectiveSelector: `${textBaseSelector} (direct text contains "${textSearchText}")`,
     };
   } catch (error) {
     console.warn(`Error processing :text() selector "${selector}":`, error);
@@ -614,7 +617,9 @@ function handleNthMatchSelector(selector: string): SelectorResult {
     };
   }
 
-  const [, baseSelector, indexStr, afterMatch] = match;
+  const nthBaseSelector = match[1]!;
+  const indexStr = match[2]!;
+  const afterMatch = match[3] ?? '';
   const index = parseInt(indexStr, 10);
 
   if (isNaN(index) || index < 1) {
@@ -630,23 +635,20 @@ function handleNthMatchSelector(selector: string): SelectorResult {
   try {
     // Find all elements matching the base selector
     // Use enhanced selector recursively to support complex selectors like :has() and :contains()
-    const baseSelectorResult = querySelectorAllEnhanced(baseSelector);
+    const baseSelectorResult = querySelectorAllEnhanced(nthBaseSelector);
     const allElements = baseSelectorResult.elements;
 
     if (allElements.length < index) {
-      // Not enough elements found
       return {
         elements: [],
         usedFallback: true,
         originalSelector: selector,
-        effectiveSelector: `${baseSelector} (wanted ${index}, found ${allElements.length})`,
+        effectiveSelector: `${nthBaseSelector} (wanted ${index}, found ${allElements.length})`,
       };
     }
 
-    // Get the nth element (1-indexed)
-    const targetElement = allElements[index - 1];
+    const targetElement = allElements[index - 1]!;
 
-    // If there's a selector after :nth-match(), find elements within the target
     if (afterMatch && afterMatch.trim()) {
       try {
         const nestedElements = targetElement.querySelectorAll(afterMatch.trim());
@@ -654,7 +656,7 @@ function handleNthMatchSelector(selector: string): SelectorResult {
           elements: Array.from(nestedElements) as HTMLElement[],
           usedFallback: true,
           originalSelector: selector,
-          effectiveSelector: `${baseSelector} (${index}th match) ${afterMatch}`,
+          effectiveSelector: `${nthBaseSelector} (${index}th match) ${afterMatch}`,
         };
       } catch (nestedError) {
         console.warn(`Error applying nested selector "${afterMatch}":`, nestedError);
@@ -662,7 +664,7 @@ function handleNthMatchSelector(selector: string): SelectorResult {
           elements: [targetElement],
           usedFallback: true,
           originalSelector: selector,
-          effectiveSelector: `${baseSelector} (${index}th match)`,
+          effectiveSelector: `${nthBaseSelector} (${index}th match)`,
         };
       }
     }
@@ -671,7 +673,7 @@ function handleNthMatchSelector(selector: string): SelectorResult {
       elements: [targetElement],
       usedFallback: true,
       originalSelector: selector,
-      effectiveSelector: `${baseSelector} (${index}th match)`,
+      effectiveSelector: `${nthBaseSelector} (${index}th match)`,
     };
   } catch (error) {
     console.warn(`Error processing :nth-match() selector "${selector}":`, error);

@@ -86,13 +86,13 @@ export function parsePrUrl(url: string): ParsedPrUrl | null {
   }
 
   const [, owner, repo, prNumberStr] = match;
-  const prNumber = parseInt(prNumberStr, 10);
+  const prNumber = parseInt(prNumberStr!, 10);
 
   if (isNaN(prNumber) || prNumber <= 0) {
     return null;
   }
 
-  return { owner, repo, prNumber };
+  return { owner: owner!, repo: repo!, prNumber };
 }
 
 /**

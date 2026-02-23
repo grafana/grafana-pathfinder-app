@@ -151,7 +151,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       if (selectedIds.size !== 1) {
         return false;
       }
-      return correctIds.has(Array.from(selectedIds)[0]);
+      return correctIds.has(Array.from(selectedIds)[0]!);
     }
   }, [selectedIds, correctIds, multiSelect]);
 
