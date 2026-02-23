@@ -1442,6 +1442,7 @@ export function InteractiveSection({
           isEligibleForChecking,
           isCompleted,
           onStepComplete: handleStepComplete,
+          onStepReset: handleStepReset,
           stepIndex: documentStepIndex,
           totalSteps: documentTotalSteps,
           sectionId: sectionId,
