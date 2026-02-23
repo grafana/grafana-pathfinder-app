@@ -49,6 +49,12 @@ interface ResolvedImportContext {
  *
  * Root-level files (e.g. module.tsx) are included but have
  * topLevelDir=null, so callbacks must handle that case.
+ *
+ * Known limitation: root-level files' imports are invisible to tier
+ * enforcement because all three constraint callbacks return null when
+ * topLevelDir is null. Today only module.tsx and constants.ts live at
+ * root, so the practical risk is low. If root-level files proliferate,
+ * consider assigning them explicit tiers via a parallel map.
  */
 function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => string | null): Set<string> {
   const allFiles = getAllFileImports();
@@ -292,8 +298,8 @@ describe('Barrel export discipline', () => {
       }
 
       const segments = toPosixPath(resolved).split('/');
-      const lastSegment = segments[segments.length - 1];
-      if (segments.length <= 1 || lastSegment === 'index') {
+      const isBarrelImport = segments.length <= 1 || (segments.length === 2 && segments[1] === 'index');
+      if (isBarrelImport) {
         return null;
       }
 
