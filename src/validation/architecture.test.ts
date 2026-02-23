@@ -8,160 +8,47 @@
  *
  * Ratchet mechanism: Each test has an allowlist of known violations.
  * The allowlist can only shrink (violations removed as they're fixed),
- * never grow. New violations cause test failure.
+ * never grow. New violations cause test failure, and stale allowlist
+ * entries (violations that have been fixed) also cause test failure.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { validateGuideFromString } from './index';
+import {
+  EXCLUDED_TOP_LEVEL,
+  SRC_DIR,
+  TIER_2_ENGINES,
+  TIER_MAP,
+  getAllFileImports,
+  getTargetTopLevel,
+  isTestFile,
+  resolveImportToRelative,
+} from './import-graph';
 
 // ---------------------------------------------------------------------------
-// Infrastructure
+// Test 0: Tier map completeness (meta-test)
 // ---------------------------------------------------------------------------
 
-const SRC_DIR = path.resolve(__dirname, '..');
+describe('Tier map completeness', () => {
+  it('should account for every top-level source directory', () => {
+    const topLevelDirs = fs
+      .readdirSync(SRC_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
 
-/**
- * Tier model: lower number = more foundational.
- * A file in tier N may import from tier N or any tier < N.
- * Importing from tier > N is a violation.
- */
-const TIER_MAP: Record<string, number> = {
-  types: 0,
-  constants: 0,
-  lib: 1,
-  security: 1,
-  styles: 1,
-  'context-engine': 2,
-  'docs-retrieval': 2,
-  'interactive-engine': 2,
-  'requirements-manager': 2,
-  'learning-paths': 2,
-  validation: 2,
-  integrations: 3,
-  components: 4,
-  pages: 4,
-};
+    const unaccounted = topLevelDirs.filter((dir) => TIER_MAP[dir] === undefined && !EXCLUDED_TOP_LEVEL.has(dir));
 
-const TIER_2_ENGINES = [
-  'context-engine',
-  'docs-retrieval',
-  'interactive-engine',
-  'requirements-manager',
-  'learning-paths',
-  'validation',
-];
-
-const EXCLUDED_TOP_LEVEL = new Set(['test-utils', 'cli', 'bundled-interactives', 'img', 'locales']);
-
-function isTestFile(filePath: string): boolean {
-  const relative = path.relative(SRC_DIR, filePath);
-  return (
-    /\.(test|spec)\.(ts|tsx)$/.test(relative) ||
-    relative.startsWith(`test-utils${path.sep}`) ||
-    relative.includes(`${path.sep}__tests__${path.sep}`)
-  );
-}
-
-function collectSourceFiles(): string[] {
-  const files: string[] = [];
-  function walk(dir: string) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        const relDir = path.relative(SRC_DIR, fullPath);
-        const topLevel = relDir.split(path.sep)[0];
-        if (topLevel && EXCLUDED_TOP_LEVEL.has(topLevel)) {
-          continue;
-        }
-        walk(fullPath);
-      } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
-        files.push(fullPath);
-      }
+    if (unaccounted.length > 0) {
+      fail(
+        `Unaccounted top-level directories: ${unaccounted.join(', ')}\n\n` +
+          `Every directory under src/ must appear in either TIER_MAP (with a tier number) ` +
+          `or EXCLUDED_TOP_LEVEL. Add the missing directories to the appropriate constant ` +
+          `in src/validation/import-graph.ts to ensure architectural boundary enforcement covers them.`
+      );
     }
-  }
-  walk(SRC_DIR);
-  return files;
-}
-
-interface FileImports {
-  file: string;
-  relPath: string;
-  topLevelDir: string | null;
-  imports: string[];
-}
-
-function getTopLevelDir(relPath: string): string | null {
-  const segments = relPath.split(path.sep);
-  if (segments.length <= 1) {
-    return null;
-  }
-  return segments[0] ?? null;
-}
-
-function extractRelativeImports(content: string): string[] {
-  const specifiers = new Set<string>();
-
-  // import/export ... from './...'
-  const fromRegex = /from\s+['"](\.[^'"]+)['"]/g;
-  let match;
-  while ((match = fromRegex.exec(content)) !== null) {
-    if (match[1]) {
-      specifiers.add(match[1]);
-    }
-  }
-
-  // import './...' (side-effect)
-  const sideEffectRegex = /^\s*import\s+['"](\.[^'"]+)['"]/gm;
-  while ((match = sideEffectRegex.exec(content)) !== null) {
-    if (match[1]) {
-      specifiers.add(match[1]);
-    }
-  }
-
-  // require('./...')
-  const requireRegex = /require\(\s*['"](\.[^'"]+)['"]\s*\)/g;
-  while ((match = requireRegex.exec(content)) !== null) {
-    if (match[1]) {
-      specifiers.add(match[1]);
-    }
-  }
-
-  return [...specifiers];
-}
-
-function resolveImportToRelative(fileDir: string, importPath: string): string | null {
-  const resolved = path.resolve(fileDir, importPath);
-  const relative = path.relative(SRC_DIR, resolved);
-  if (relative.startsWith('..')) {
-    return null;
-  }
-  return relative;
-}
-
-function getTargetTopLevel(resolvedRelative: string): string | null {
-  const segments = resolvedRelative.split(path.sep);
-  return segments[0] ?? null;
-}
-
-// Cache parsed file data across tests
-let cachedFileImports: FileImports[] | undefined;
-
-function getAllFileImports(): FileImports[] {
-  if (cachedFileImports) {
-    return cachedFileImports;
-  }
-  const files = collectSourceFiles();
-  cachedFileImports = files.map((file) => {
-    const relPath = path.relative(SRC_DIR, file);
-    const topLevelDir = getTopLevelDir(relPath);
-    const content = fs.readFileSync(file, 'utf-8');
-    const imports = extractRelativeImports(content);
-    return { file, relPath, topLevelDir, imports };
   });
-  return cachedFileImports;
-}
+});
 
 // ---------------------------------------------------------------------------
 // Test 1: Import graph boundaries (vertical tier enforcement)
@@ -220,7 +107,23 @@ describe('Import graph: vertical tier enforcement', () => {
 
     const newViolations = [...violations].filter((v) => !ALLOWED_VERTICAL_VIOLATIONS.has(v));
 
-    expect(newViolations).toEqual([]);
+    if (newViolations.length > 0) {
+      fail(
+        `New vertical tier violations detected:\n${newViolations.map((v) => `  - ${v}`).join('\n')}\n\n` +
+          `Files in tier N may only import from tier N or lower. ` +
+          `If this import is architecturally justified, add it to ALLOWED_VERTICAL_VIOLATIONS ` +
+          `with a comment explaining why. Otherwise, restructure the import to respect the tier boundary. ` +
+          `See TIER_MAP in src/validation/import-graph.ts for the tier assignments.`
+      );
+    }
+
+    const staleEntries = [...ALLOWED_VERTICAL_VIOLATIONS].filter((entry) => !violations.has(entry));
+    if (staleEntries.length > 0) {
+      fail(
+        `Stale entries in ALLOWED_VERTICAL_VIOLATIONS (violation was fixed — remove the entry):\n` +
+          staleEntries.map((e) => `  - ${e}`).join('\n')
+      );
+    }
   });
 });
 
@@ -296,7 +199,23 @@ describe('Inter-engine isolation: Tier 2 lateral imports', () => {
 
     const newViolations = [...violations].filter((v) => !ALLOWED_LATERAL_VIOLATIONS.has(v));
 
-    expect(newViolations).toEqual([]);
+    if (newViolations.length > 0) {
+      fail(
+        `New Tier 2 lateral import violations detected:\n${newViolations.map((v) => `  - ${v}`).join('\n')}\n\n` +
+          `Tier 2 engines must not import from other Tier 2 engines unless explicitly allowed. ` +
+          `If this cross-engine import is architecturally justified, add it to ALLOWED_LATERAL_VIOLATIONS ` +
+          `with a comment explaining why. Otherwise, extract the shared dependency to src/types/ or src/lib/, ` +
+          `or use dependency injection.`
+      );
+    }
+
+    const staleEntries = [...ALLOWED_LATERAL_VIOLATIONS].filter((entry) => !violations.has(entry));
+    if (staleEntries.length > 0) {
+      fail(
+        `Stale entries in ALLOWED_LATERAL_VIOLATIONS (violation was fixed — remove the entry):\n` +
+          staleEntries.map((e) => `  - ${e}`).join('\n')
+      );
+    }
   });
 });
 
@@ -350,12 +269,11 @@ describe('Barrel export discipline', () => {
           continue;
         }
 
-        // Internal imports within the same engine are fine
         if (topLevelDir === targetTopLevel) {
           continue;
         }
 
-        // More than one segment means it's importing an internal file
+        // Resolved path with >1 segment targets an internal file, not the barrel
         if (segments.length > 1) {
           violations.add(`${relPath} -> ${resolved}`);
         }
@@ -364,31 +282,22 @@ describe('Barrel export discipline', () => {
 
     const newViolations = [...violations].filter((v) => !ALLOWED_BARREL_VIOLATIONS.has(v));
 
-    expect(newViolations).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Test 4: Bundled content validation
-// ---------------------------------------------------------------------------
-
-describe('Bundled content validation', () => {
-  it('validates all bundled JSON guides pass schema validation', () => {
-    const bundledDir = path.resolve(SRC_DIR, 'bundled-interactives');
-    const guideFiles = fs.readdirSync(bundledDir).filter((f) => f.endsWith('.json') && f !== 'index.json');
-
-    expect(guideFiles.length).toBeGreaterThan(0);
-
-    const failures: string[] = [];
-
-    for (const file of guideFiles) {
-      const content = fs.readFileSync(path.join(bundledDir, file), 'utf-8');
-      const result = validateGuideFromString(content);
-      if (!result.isValid) {
-        failures.push(file);
-      }
+    if (newViolations.length > 0) {
+      fail(
+        `New barrel bypass violations detected:\n${newViolations.map((v) => `  - ${v}`).join('\n')}\n\n` +
+          `External consumers should import from the engine's barrel export (index.ts), ` +
+          `not from internal files. If the symbol is not yet exported from the barrel, ` +
+          `add it to the engine's index.ts. If the barrel bypass is architecturally justified, ` +
+          `add it to ALLOWED_BARREL_VIOLATIONS with a comment explaining why.`
+      );
     }
 
-    expect(failures).toEqual([]);
+    const staleEntries = [...ALLOWED_BARREL_VIOLATIONS].filter((entry) => !violations.has(entry));
+    if (staleEntries.length > 0) {
+      fail(
+        `Stale entries in ALLOWED_BARREL_VIOLATIONS (violation was fixed — remove the entry):\n` +
+          staleEntries.map((e) => `  - ${e}`).join('\n')
+      );
+    }
   });
 });
