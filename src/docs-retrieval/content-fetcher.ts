@@ -306,7 +306,8 @@ async function fetchBackendInteractive(url: string): Promise<ContentFetchResult>
   }
 
   try {
-    const endpoint = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
+    // SECURITY: Encode resourceName to prevent path traversal (F3)
+    const endpoint = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${encodeURIComponent(resourceName)}`;
     const response = await lastValueFrom(
       getBackendSrv().fetch<BackendGuideResource>({
         url: endpoint,
