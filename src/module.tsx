@@ -1,6 +1,6 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
 import { getAppEvents, locationService } from '@grafana/runtime';
-import React, { Suspense, lazy, useEffect, useMemo } from 'react';
+import React, { lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import AppComponent from './components/App/App';
 
