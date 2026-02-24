@@ -149,15 +149,13 @@ function detectCycles(nodeIds: Set<string>, edges: GraphEdge[], edgeTypes: Set<G
 
   const cycles: string[][] = [];
   const visited = new Set<string>();
-  const inStack = new Set<string>();
+  const stackPosition = new Map<string, number>();
   const stack: string[] = [];
 
   function dfs(node: string): void {
-    if (inStack.has(node)) {
-      const cycleStart = stack.indexOf(node);
-      if (cycleStart !== -1) {
-        cycles.push([...stack.slice(cycleStart), node]);
-      }
+    if (stackPosition.has(node)) {
+      const cycleStart = stackPosition.get(node)!;
+      cycles.push([...stack.slice(cycleStart), node]);
       return;
     }
     if (visited.has(node)) {
@@ -165,7 +163,7 @@ function detectCycles(nodeIds: Set<string>, edges: GraphEdge[], edgeTypes: Set<G
     }
 
     visited.add(node);
-    inStack.add(node);
+    stackPosition.set(node, stack.length);
     stack.push(node);
 
     const neighbors = adjacency.get(node) ?? [];
@@ -174,7 +172,7 @@ function detectCycles(nodeIds: Set<string>, edges: GraphEdge[], edgeTypes: Set<G
     }
 
     stack.pop();
-    inStack.delete(node);
+    stackPosition.delete(node);
   }
 
   for (const id of nodeIds) {
@@ -187,6 +185,86 @@ function detectCycles(nodeIds: Set<string>, edges: GraphEdge[], edgeTypes: Set<G
 }
 
 /**
+ * Run lint checks on a built graph: broken references, cycles, orphans, and quality.
+ */
+export function lintGraph(
+  allPackages: Map<string, { entry: RepositoryEntry; repository: string }>,
+  realNodeIds: Set<string>,
+  allNodeIds: Set<string>,
+  edges: GraphEdge[],
+  providesMap: Map<string, Set<string>>
+): GraphLintMessage[] {
+  const messages: GraphLintMessage[] = [];
+
+  for (const [pkgId, { entry }] of allPackages) {
+    const depFields: Array<{ field: string; deps: DependencyList | undefined }> = [
+      { field: 'depends', deps: entry.depends },
+      { field: 'recommends', deps: entry.recommends },
+      { field: 'suggests', deps: entry.suggests },
+    ];
+
+    for (const { field, deps } of depFields) {
+      for (const targetId of extractDependencyIds(deps)) {
+        if (!realNodeIds.has(targetId) && !providesMap.has(targetId)) {
+          messages.push({
+            severity: 'warn',
+            message: `${pkgId}: ${field} target "${targetId}" does not exist as a real package or virtual capability`,
+          });
+        }
+      }
+    }
+
+    if (entry.steps) {
+      for (const stepId of entry.steps) {
+        if (!realNodeIds.has(stepId)) {
+          messages.push({
+            severity: 'warn',
+            message: `${pkgId}: steps entry "${stepId}" does not resolve to an existing package`,
+          });
+        }
+      }
+    }
+  }
+
+  const dependsCycles = detectCycles(allNodeIds, edges, new Set(['depends']));
+  for (const cycle of dependsCycles) {
+    messages.push({ severity: 'error', message: `Cycle in depends chain: ${cycle.join(' → ')}` });
+  }
+
+  const recommendsCycles = detectCycles(allNodeIds, edges, new Set(['recommends']));
+  for (const cycle of recommendsCycles) {
+    messages.push({ severity: 'warn', message: `Cycle in recommends chain: ${cycle.join(' → ')}` });
+  }
+
+  const stepsCycles = detectCycles(allNodeIds, edges, new Set(['steps']));
+  for (const cycle of stepsCycles) {
+    messages.push({ severity: 'error', message: `Cycle in steps chain: ${cycle.join(' → ')}` });
+  }
+
+  const connectedNodes = new Set<string>();
+  for (const edge of edges) {
+    connectedNodes.add(edge.source);
+    connectedNodes.add(edge.target);
+  }
+  for (const pkgId of realNodeIds) {
+    if (!connectedNodes.has(pkgId)) {
+      messages.push({ severity: 'warn', message: `${pkgId}: orphaned package (no incoming or outgoing edges)` });
+    }
+  }
+
+  for (const [pkgId, { entry }] of allPackages) {
+    if (!entry.description) {
+      messages.push({ severity: 'warn', message: `${pkgId}: missing description` });
+    }
+    if (!entry.category) {
+      messages.push({ severity: 'warn', message: `${pkgId}: missing category` });
+    }
+  }
+
+  return messages;
+}
+
+/**
  * Build a dependency graph from repository.json files.
  */
 export function buildGraph(repositoryPaths: Array<{ name: string; path: string }>): {
@@ -195,17 +273,16 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
   errors: string[];
 } {
   const errors: string[] = [];
-  const lintMessages: GraphLintMessage[] = [];
+  const duplicateMessages: GraphLintMessage[] = [];
   const allPackages = new Map<string, { entry: RepositoryEntry; repository: string }>();
 
-  // Load all repositories
   for (const { name, path: repoPath } of repositoryPaths) {
     const { repo, errors: loadErrors } = loadRepository(repoPath, name);
     errors.push(...loadErrors);
 
     for (const [pkgId, entry] of Object.entries(repo)) {
       if (allPackages.has(pkgId)) {
-        lintMessages.push({
+        duplicateMessages.push({
           severity: 'warn',
           message: `Duplicate package ID "${pkgId}" across repositories`,
         });
@@ -214,10 +291,8 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
     }
   }
 
-  // Build provides map
   const providesMap = buildProvidesMap(allPackages);
 
-  // Build nodes
   const nodes: GraphNode[] = [];
   const realNodeIds = new Set<string>();
 
@@ -241,7 +316,6 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
     });
   }
 
-  // Add virtual capability nodes
   const allNodeIds = new Set(realNodeIds);
   for (const [capability] of providesMap) {
     if (!realNodeIds.has(capability)) {
@@ -255,7 +329,6 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
     }
   }
 
-  // Build edges
   const edges: GraphEdge[] = [];
 
   for (const [pkgId, { entry }] of allPackages) {
@@ -288,95 +361,7 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
     }
   }
 
-  // --- Lint checks (all WARN severity during migration phase) ---
-
-  // Broken dependency references
-  for (const [pkgId, { entry }] of allPackages) {
-    const depFields: Array<{ field: string; deps: DependencyList | undefined }> = [
-      { field: 'depends', deps: entry.depends },
-      { field: 'recommends', deps: entry.recommends },
-      { field: 'suggests', deps: entry.suggests },
-    ];
-
-    for (const { field, deps } of depFields) {
-      for (const targetId of extractDependencyIds(deps)) {
-        if (!realNodeIds.has(targetId) && !providesMap.has(targetId)) {
-          lintMessages.push({
-            severity: 'warn',
-            message: `${pkgId}: ${field} target "${targetId}" does not exist as a real package or virtual capability`,
-          });
-        }
-      }
-    }
-
-    // Broken step references
-    if (entry.steps) {
-      for (const stepId of entry.steps) {
-        if (!realNodeIds.has(stepId)) {
-          lintMessages.push({
-            severity: 'warn',
-            message: `${pkgId}: steps entry "${stepId}" does not resolve to an existing package`,
-          });
-        }
-      }
-    }
-  }
-
-  // Cycle detection
-  const dependsCycles = detectCycles(allNodeIds, edges, new Set(['depends']));
-  for (const cycle of dependsCycles) {
-    lintMessages.push({
-      severity: 'error',
-      message: `Cycle in depends chain: ${cycle.join(' → ')}`,
-    });
-  }
-
-  const recommendsCycles = detectCycles(allNodeIds, edges, new Set(['recommends']));
-  for (const cycle of recommendsCycles) {
-    lintMessages.push({
-      severity: 'warn',
-      message: `Cycle in recommends chain: ${cycle.join(' → ')}`,
-    });
-  }
-
-  const stepsCycles = detectCycles(allNodeIds, edges, new Set(['steps']));
-  for (const cycle of stepsCycles) {
-    lintMessages.push({
-      severity: 'error',
-      message: `Cycle in steps chain: ${cycle.join(' → ')}`,
-    });
-  }
-
-  // Orphaned packages (no incoming or outgoing edges)
-  const connectedNodes = new Set<string>();
-  for (const edge of edges) {
-    connectedNodes.add(edge.source);
-    connectedNodes.add(edge.target);
-  }
-  for (const pkgId of realNodeIds) {
-    if (!connectedNodes.has(pkgId)) {
-      lintMessages.push({
-        severity: 'warn',
-        message: `${pkgId}: orphaned package (no incoming or outgoing edges)`,
-      });
-    }
-  }
-
-  // Quality: missing description or category
-  for (const [pkgId, { entry }] of allPackages) {
-    if (!entry.description) {
-      lintMessages.push({
-        severity: 'warn',
-        message: `${pkgId}: missing description`,
-      });
-    }
-    if (!entry.category) {
-      lintMessages.push({
-        severity: 'warn',
-        message: `${pkgId}: missing category`,
-      });
-    }
-  }
+  const lintMessages = [...duplicateMessages, ...lintGraph(allPackages, realNodeIds, allNodeIds, edges, providesMap)];
 
   const graph: DependencyGraph = {
     nodes,

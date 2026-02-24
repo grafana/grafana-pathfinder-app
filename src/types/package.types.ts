@@ -85,6 +85,28 @@ export interface TestEnvironment {
 /** Valid package type values */
 export type PackageType = 'guide' | 'path' | 'journey';
 
+// ============ SHARED METADATA ============
+
+/**
+ * Shared package metadata fields present in RepositoryEntry, GraphNode,
+ * and (partially) ManifestJson. Extracted to keep these in sync.
+ * @coupling Zod schema: packageMetadataSchemaFields in package.schema.ts
+ */
+export interface PackageMetadataFields {
+  type: PackageType;
+  title?: string;
+  description?: string;
+  category?: string;
+  startingLocation?: string;
+  steps?: string[];
+  depends?: DependencyList;
+  recommends?: DependencyList;
+  suggests?: DependencyList;
+  provides?: string[];
+  conflicts?: string[];
+  replaces?: string[];
+}
+
 // ============ MANIFEST (manifest.json) ============
 
 /**
@@ -124,20 +146,8 @@ export interface ManifestJson {
  * Denormalized manifest metadata for dependency graph building
  * without re-reading every manifest.json.
  */
-export interface RepositoryEntry {
+export interface RepositoryEntry extends PackageMetadataFields {
   path: string;
-  title?: string;
-  description?: string;
-  category?: string;
-  type: PackageType;
-  startingLocation?: string;
-  steps?: string[];
-  depends?: DependencyList;
-  recommends?: DependencyList;
-  suggests?: DependencyList;
-  provides?: string[];
-  conflicts?: string[];
-  replaces?: string[];
 }
 
 /**
@@ -155,21 +165,9 @@ export interface RepositoryJson {
  * A node in the dependency graph.
  * Contains full manifest metadata from the denormalized repository.json.
  */
-export interface GraphNode {
+export interface GraphNode extends PackageMetadataFields {
   id: string;
   repository: string;
-  title?: string;
-  description?: string;
-  category?: string;
-  type: PackageType;
-  startingLocation?: string;
-  steps?: string[];
-  depends?: DependencyList;
-  recommends?: DependencyList;
-  suggests?: DependencyList;
-  provides?: string[];
-  conflicts?: string[];
-  replaces?: string[];
   /** True for virtual capability nodes (not real packages) */
   virtual?: boolean;
 }

@@ -12,6 +12,7 @@ import * as path from 'path';
 import { ContentJsonSchema, ManifestJsonSchema } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
 import type { ValidationError, ValidationWarning } from './errors';
+import { readJsonFile } from './package-io';
 import { validateGuide, type ValidationResult } from './validate-guide';
 
 export type MessageSeverity = 'error' | 'warn' | 'info';
@@ -52,55 +53,36 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
   // --- Validate content.json ---
 
-  if (!fs.existsSync(contentPath)) {
-    errors.push({
-      message: 'content.json not found in package directory',
-      path: ['content.json'],
-      code: 'missing_content',
-    });
-    return { isValid: false, packageId, errors, warnings, messages, contentResult };
-  }
-
-  let contentRaw: string;
-  try {
-    contentRaw = fs.readFileSync(contentPath, 'utf-8');
-  } catch {
-    errors.push({
-      message: 'Cannot read content.json',
-      path: ['content.json'],
-      code: 'read_error',
-    });
-    return { isValid: false, packageId, errors, warnings, messages, contentResult };
-  }
-
-  let contentParsed: unknown;
-  try {
-    contentParsed = JSON.parse(contentRaw);
-  } catch {
-    errors.push({
-      message: 'content.json is not valid JSON',
-      path: ['content.json'],
-      code: 'invalid_json',
-    });
-    return { isValid: false, packageId, errors, warnings, messages, contentResult };
-  }
-
-  const contentSchemaResult = ContentJsonSchema.safeParse(contentParsed);
-  if (!contentSchemaResult.success) {
-    for (const issue of contentSchemaResult.error.issues) {
+  const contentRead = readJsonFile(contentPath, ContentJsonSchema);
+  if (!contentRead.ok) {
+    if (contentRead.code === 'schema_validation' && contentRead.issues) {
+      for (const issue of contentRead.issues) {
+        errors.push({
+          message: `content.json: ${issue.message}`,
+          path: ['content.json', ...issue.path.map(String)],
+          code: 'schema_validation',
+        });
+      }
+    } else {
+      const messageMap: Record<string, string> = {
+        not_found: 'content.json not found in package directory',
+        read_error: 'Cannot read content.json',
+        invalid_json: 'content.json is not valid JSON',
+      };
       errors.push({
-        message: `content.json: ${issue.message}`,
-        path: ['content.json', ...issue.path.map(String)],
-        code: 'schema_validation',
+        message: messageMap[contentRead.code] ?? contentRead.message,
+        path: ['content.json'],
+        code: contentRead.code === 'not_found' ? 'missing_content' : contentRead.code,
       });
     }
     return { isValid: false, packageId, errors, warnings, messages, contentResult };
   }
 
-  const content = contentSchemaResult.data;
+  const content = contentRead.data;
+  const contentRaw = contentRead.raw;
   packageId = content.id;
 
-  contentResult = validateGuide(contentParsed, {
+  contentResult = validateGuide(contentRead.parsed, {
     strict: options.strict,
     skipUnknownFieldCheck: false,
   });
@@ -117,43 +99,31 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
   // --- Validate manifest.json (optional) ---
 
   if (fs.existsSync(manifestPath)) {
-    let manifestRaw: string;
-    try {
-      manifestRaw = fs.readFileSync(manifestPath, 'utf-8');
-    } catch {
-      errors.push({
-        message: 'Cannot read manifest.json',
-        path: ['manifest.json'],
-        code: 'read_error',
-      });
-      return { isValid: false, packageId, errors, warnings, messages, contentResult };
-    }
-
-    let manifestParsed: unknown;
-    try {
-      manifestParsed = JSON.parse(manifestRaw);
-    } catch {
-      errors.push({
-        message: 'manifest.json is not valid JSON',
-        path: ['manifest.json'],
-        code: 'invalid_json',
-      });
-      return { isValid: false, packageId, errors, warnings, messages, contentResult };
-    }
-
-    const manifestResult = ManifestJsonSchema.safeParse(manifestParsed);
-    if (!manifestResult.success) {
-      for (const issue of manifestResult.error.issues) {
+    const manifestRead = readJsonFile(manifestPath, ManifestJsonSchema);
+    if (!manifestRead.ok) {
+      if (manifestRead.code === 'schema_validation' && manifestRead.issues) {
+        for (const issue of manifestRead.issues) {
+          errors.push({
+            message: `manifest.json: ${issue.message}`,
+            path: ['manifest.json', ...issue.path.map(String)],
+            code: 'schema_validation',
+          });
+        }
+      } else {
+        const messageMap: Record<string, string> = {
+          read_error: 'Cannot read manifest.json',
+          invalid_json: 'manifest.json is not valid JSON',
+        };
         errors.push({
-          message: `manifest.json: ${issue.message}`,
-          path: ['manifest.json', ...issue.path.map(String)],
-          code: 'schema_validation',
+          message: messageMap[manifestRead.code] ?? manifestRead.message,
+          path: ['manifest.json'],
+          code: manifestRead.code,
         });
+        return { isValid: false, packageId, errors, warnings, messages, contentResult };
       }
     } else {
-      const manifest = manifestResult.data;
+      const manifest = manifestRead.data;
 
-      // Cross-file ID consistency
       if (manifest.id !== content.id) {
         errors.push({
           message: `ID mismatch: content.json has "${content.id}", manifest.json has "${manifest.id}"`,
@@ -162,10 +132,8 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
         });
       }
 
-      // Emit severity-based messages for manifest field defaults
-      emitManifestMessages(manifestParsed as Record<string, unknown>, manifest, messages);
+      emitManifestMessages(manifestRead.parsed as Record<string, unknown>, manifest, messages);
 
-      // testEnvironment validation
       if (manifest.testEnvironment) {
         validateTestEnvironment(manifest.testEnvironment, messages);
       }
@@ -179,7 +147,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
   // --- Asset reference validation ---
 
-  validateAssetReferences(contentRaw, assetsDir, packageDir, warnings);
+  validateAssetReferences(contentRaw, assetsDir, warnings);
 
   const isValid = errors.length === 0 && (contentResult?.isValid ?? true);
 
@@ -206,6 +174,10 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
 /**
  * Validate a tree of package directories.
+ *
+ * Returns a Map keyed by **filesystem directory name** (not package ID).
+ * The directory name may differ from the `packageId` in content.json —
+ * use `result.packageId` when you need the canonical ID.
  */
 export function validatePackageTree(
   rootDir: string,
@@ -328,12 +300,7 @@ function validateTestEnvironment(
   }
 }
 
-function validateAssetReferences(
-  contentRaw: string,
-  assetsDir: string,
-  packageDir: string,
-  warnings: ValidationWarning[]
-): void {
+function validateAssetReferences(contentRaw: string, assetsDir: string, warnings: ValidationWarning[]): void {
   const assetRefPattern = /\.\/assets\/([^"'\s)]+)/g;
   let match: RegExpExecArray | null;
 

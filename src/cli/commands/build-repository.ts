@@ -10,7 +10,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import type { RepositoryEntry, RepositoryJson } from '../../types/package.types';
+// ManifestJsonObjectSchema (pre-refinement) is intentional: build-repository
+// applies graceful degradation — a path/journey manifest missing `steps` produces
+// a repository entry rather than failing. The `validate` command enforces the
+// refinement (ManifestJsonSchema) for strict correctness checking.
 import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryJsonSchema } from '../../types/package.schema';
+import { readJsonFile } from '../../validation/package-io';
 
 interface BuildRepositoryOptions {
   output?: string;
@@ -58,34 +63,22 @@ function readPackage(packageDir: string): PackageReadResult {
   const dirName = path.basename(packageDir);
   const warnings: string[] = [];
   const errors: string[] = [];
+  const fallbackEntry: RepositoryEntry = { path: `${dirName}/`, type: 'guide' };
 
   const contentPath = path.join(packageDir, 'content.json');
   const manifestPath = path.join(packageDir, 'manifest.json');
 
-  let contentRaw: string;
-  try {
-    contentRaw = fs.readFileSync(contentPath, 'utf-8');
-  } catch {
-    errors.push(`Cannot read ${contentPath}`);
-    return { id: dirName, dirName, entry: { path: `${dirName}/`, type: 'guide' }, warnings, errors };
+  const contentRead = readJsonFile(contentPath, ContentJsonSchema);
+  if (!contentRead.ok) {
+    const msg =
+      contentRead.code === 'schema_validation'
+        ? `content.json validation failed: ${contentRead.issues?.map((i) => i.message).join('; ')}`
+        : contentRead.message;
+    errors.push(msg);
+    return { id: dirName, dirName, entry: fallbackEntry, warnings, errors };
   }
 
-  let contentParsed: unknown;
-  try {
-    contentParsed = JSON.parse(contentRaw);
-  } catch {
-    errors.push(`Invalid JSON in ${contentPath}`);
-    return { id: dirName, dirName, entry: { path: `${dirName}/`, type: 'guide' }, warnings, errors };
-  }
-
-  const contentResult = ContentJsonSchema.safeParse(contentParsed);
-  if (!contentResult.success) {
-    const messages = contentResult.error.issues.map((i) => i.message).join('; ');
-    errors.push(`content.json validation failed: ${messages}`);
-    return { id: dirName, dirName, entry: { path: `${dirName}/`, type: 'guide' }, warnings, errors };
-  }
-
-  const content = contentResult.data;
+  const content = contentRead.data;
   const id = content.id;
 
   const entry: RepositoryEntry = {
@@ -95,30 +88,17 @@ function readPackage(packageDir: string): PackageReadResult {
   };
 
   if (fs.existsSync(manifestPath)) {
-    let manifestRaw: string;
-    try {
-      manifestRaw = fs.readFileSync(manifestPath, 'utf-8');
-    } catch {
-      warnings.push(`Cannot read ${manifestPath}, using content.json only`);
+    const manifestRead = readJsonFile(manifestPath, ManifestJsonObjectSchema);
+    if (!manifestRead.ok) {
+      const msg =
+        manifestRead.code === 'schema_validation'
+          ? `manifest.json validation failed: ${manifestRead.issues?.map((i) => i.message).join('; ')}`
+          : `${manifestRead.message}, using content.json only`;
+      warnings.push(msg);
       return { id, dirName, entry, warnings, errors };
     }
 
-    let manifestParsed: unknown;
-    try {
-      manifestParsed = JSON.parse(manifestRaw);
-    } catch {
-      warnings.push(`Invalid JSON in ${manifestPath}, using content.json only`);
-      return { id, dirName, entry, warnings, errors };
-    }
-
-    const manifestResult = ManifestJsonObjectSchema.safeParse(manifestParsed);
-    if (!manifestResult.success) {
-      const messages = manifestResult.error.issues.map((i) => i.message).join('; ');
-      warnings.push(`manifest.json validation failed: ${messages}`);
-      return { id, dirName, entry, warnings, errors };
-    }
-
-    const manifest = manifestResult.data;
+    const manifest = manifestRead.data;
 
     if (manifest.id !== id) {
       errors.push(`ID mismatch: content.json has "${id}", manifest.json has "${manifest.id}"`);

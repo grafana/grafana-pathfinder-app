@@ -133,18 +133,17 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.refine(
   { message: "'steps' is required when type is 'path' or 'journey'" }
 );
 
-// ============ REPOSITORY INDEX SCHEMA ============
+// ============ SHARED METADATA SCHEMA FIELDS ============
 
 /**
- * Schema for a single repository.json entry.
- * @coupling Type: RepositoryEntry
+ * Shared fields for RepositoryEntrySchema and GraphNodeSchema.
+ * @coupling Type: PackageMetadataFields
  */
-export const RepositoryEntrySchema = z.object({
-  path: z.string().min(1),
+const packageMetadataSchemaFields = {
+  type: PackageTypeSchema,
   title: z.string().optional(),
   description: z.string().optional(),
   category: z.string().optional(),
-  type: PackageTypeSchema,
   startingLocation: z.string().optional(),
   steps: z.array(z.string()).optional(),
   depends: DependencyListSchema.optional(),
@@ -153,6 +152,17 @@ export const RepositoryEntrySchema = z.object({
   provides: z.array(z.string()).optional(),
   conflicts: z.array(z.string()).optional(),
   replaces: z.array(z.string()).optional(),
+};
+
+// ============ REPOSITORY INDEX SCHEMA ============
+
+/**
+ * Schema for a single repository.json entry.
+ * @coupling Type: RepositoryEntry
+ */
+export const RepositoryEntrySchema = z.object({
+  path: z.string().min(1),
+  ...packageMetadataSchemaFields,
 });
 
 /**
@@ -179,18 +189,7 @@ export const GraphEdgeTypeSchema = z.enum([
 export const GraphNodeSchema = z.object({
   id: z.string().min(1),
   repository: z.string(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  category: z.string().optional(),
-  type: PackageTypeSchema,
-  startingLocation: z.string().optional(),
-  steps: z.array(z.string()).optional(),
-  depends: DependencyListSchema.optional(),
-  recommends: DependencyListSchema.optional(),
-  suggests: DependencyListSchema.optional(),
-  provides: z.array(z.string()).optional(),
-  conflicts: z.array(z.string()).optional(),
-  replaces: z.array(z.string()).optional(),
+  ...packageMetadataSchemaFields,
   virtual: z.boolean().optional(),
 });
 

@@ -48,3 +48,5 @@ export {
   type PackageValidationOptions,
   type MessageSeverity,
 } from './validate-package';
+
+export { readJsonFile, type JsonReadResult, type JsonReadSuccess, type JsonReadFailure } from './package-io';
