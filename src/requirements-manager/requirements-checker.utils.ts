@@ -7,6 +7,7 @@
  */
 
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> context-engine
 import { ContextService } from '../context-engine';
 import { reftargetExistsCheck, navmenuOpenCheck, sectionCompletedCheck, formValidCheck } from '../lib/dom';
 import { isValidRequirement } from '../types/requirements.types';
