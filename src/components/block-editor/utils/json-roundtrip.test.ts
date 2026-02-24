@@ -349,8 +349,8 @@ describe('JSON Round-trip Conversion', () => {
       expect(multistep.type).toBe('multistep');
       expect(multistep.content).toBe('Follow these steps to configure the dashboard');
       expect(multistep.steps).toHaveLength(3);
-      expect(multistep.steps[0].action).toBe('button');
-      expect(multistep.steps[1].targetvalue).toBe('My Panel');
+      expect(multistep.steps[0]!.action).toBe('button');
+      expect(multistep.steps[1]!.targetvalue).toBe('My Panel');
       expect(multistep.requirements).toEqual(['on-page:/dashboard']);
     });
 
@@ -382,7 +382,7 @@ describe('JSON Round-trip Conversion', () => {
       const { result } = roundTrip(guide);
       expect(result.isValid).toBe(true);
       const multistep = result.guide?.blocks[0] as JsonMultistepBlock;
-      const step = multistep.steps[0];
+      const step = multistep.steps[0]!;
       expect(step.requirements).toEqual(['element-visible:input']);
       expect(step.tooltip).toBe('Enter search term');
       expect(step.description).toBe('Search for something');
@@ -447,7 +447,7 @@ describe('JSON Round-trip Conversion', () => {
       expect(quiz.type).toBe('quiz');
       expect(quiz.question).toBe('What is the capital of France?');
       expect(quiz.choices).toHaveLength(3);
-      expect(quiz.choices[1].correct).toBe(true);
+      expect(quiz.choices[1]!.correct).toBe(true);
       expect(quiz.completionMode).toBe('max-attempts');
       expect(quiz.maxAttempts).toBe(3);
     });

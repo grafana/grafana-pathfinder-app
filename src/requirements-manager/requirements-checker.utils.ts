@@ -7,6 +7,7 @@
  */
 
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> context-engine
 import { ContextService } from '../context-engine';
 import { reftargetExistsCheck, navmenuOpenCheck, sectionCompletedCheck, formValidCheck } from '../lib/dom';
 import { isValidRequirement } from '../types/requirements.types';
@@ -830,7 +831,10 @@ async function minVersionCheck(check: string): Promise<CheckResultError> {
     const requiredVersion = check.replace('min-version:', '');
     const currentVersion = config.buildInfo?.version || '0.0.0';
 
-    const parseVersion = (v: string) => v.split('.').map((n) => parseInt(n, 10));
+    const parseVersion = (v: string): [number, number, number] => {
+      const parts = v.split('.').map((n) => parseInt(n, 10));
+      return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+    };
     const [reqMajor, reqMinor, reqPatch] = parseVersion(requiredVersion);
     const [curMajor, curMinor, curPatch] = parseVersion(currentVersion);
 
@@ -1344,7 +1348,8 @@ async function guideVariableCheck(check: string): Promise<CheckResultError> {
       };
     }
 
-    const [, variableName, expectedValue] = match;
+    const variableName = match[1]!;
+    const expectedValue = match[2]!;
 
     // Get current guide ID from URL or use default
     // TODO: In a full implementation, pass guideId through context

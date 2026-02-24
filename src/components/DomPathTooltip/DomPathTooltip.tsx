@@ -6,7 +6,7 @@
 import React from 'react';
 import { useStyles2 } from '@grafana/ui';
 import { getDomPathTooltipStyles } from './dom-path-tooltip.styles';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 export interface DomPathTooltipProps {
   /** The DOM path to display */
@@ -45,7 +45,7 @@ function parseDomPath(path: string): Array<{ text: string; isTestId: boolean }> 
         }
 
         // Add the testid attribute in orange
-        segments.push({ text: testidAttr, isTestId: true });
+        segments.push({ text: testidAttr!, isTestId: true });
 
         // Add the part after testid (if any)
         if (after) {

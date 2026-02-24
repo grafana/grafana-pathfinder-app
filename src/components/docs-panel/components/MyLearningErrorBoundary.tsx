@@ -19,6 +19,7 @@ interface MyLearningErrorBoundaryProps {
  * Error boundary component that catches errors in MyLearningTab
  * and displays a fallback UI instead of crashing the entire panel.
  */
+// eslint-disable-next-line no-restricted-syntax -- Error boundaries require componentDidCatch (no hook equivalent)
 export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryProps, MyLearningErrorBoundaryState> {
   state: MyLearningErrorBoundaryState = { hasError: false, error: null };
 

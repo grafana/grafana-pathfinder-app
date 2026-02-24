@@ -2,7 +2,7 @@ import React, { useState, ChangeEvent } from 'react';
 import { Button, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/data';
 import { css } from '@emotion/css';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 import { DocsPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 import { updatePluginSettings } from '../../utils/utils.plugin';
@@ -81,6 +81,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         <div
           data-testid={testIds.termsAndConditions.termsContent}
           className={styles.termsContent}
+          // eslint-disable-next-line no-restricted-syntax -- Static dev-controlled content, sanitized with DOMPurify as defense-in-depth
           dangerouslySetInnerHTML={{ __html: sanitizeDocumentationHTML(TERMS_AND_CONDITIONS_CONTENT) }}
         />
 

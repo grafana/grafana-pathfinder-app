@@ -91,9 +91,9 @@ describe('fetchPathGuides', () => {
 
     expect(result).not.toBeNull();
     // "select-platform" has both menutitle and title — should use menutitle
-    expect(result!.guideMetadata['select-platform'].title).toBe('Select distribution');
+    expect(result!.guideMetadata['select-platform']!.title).toBe('Select distribution');
     // "configure-alloy" has only title, no menutitle
-    expect(result!.guideMetadata['configure-alloy'].title).toBe(
+    expect(result!.guideMetadata['configure-alloy']!.title).toBe(
       'Configure Grafana Alloy to use the Linux server integration'
     );
   });

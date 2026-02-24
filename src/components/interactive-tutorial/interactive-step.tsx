@@ -1,27 +1,27 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 
+import { waitForReactUpdates } from '../../lib/async-utils';
 import {
-  waitForReactUpdates,
   useStepChecker,
   getPostVerifyExplanation,
   checkPostconditions,
   validateInteractiveRequirements,
-} from '../../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
-import type { InteractiveStepProps } from '../../../types/component-props.types';
+} from '../../requirements-manager';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import type { InteractiveStepProps } from '../../types/component-props.types';
 import {
   type DetectedActionEvent,
   useInteractiveElements,
   useSingleActionDetection,
   useFormElementValidation,
   resolveTargetElement,
-} from '../../../interactive-engine';
-import { testIds } from '../../../components/testIds';
-import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../integrations/assistant-integration';
-import { CodeBlock } from '../docs/code-block';
-import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../../lib/dom';
-import { isCssSelector } from '../../../lib/dom/selector-detector';
+} from '../../interactive-engine';
+import { testIds } from '../../constants/testIds';
+import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../integrations/assistant-integration';
+import { CodeBlock } from '../../docs-retrieval';
+import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../lib/dom';
+import { isCssSelector } from '../../lib/dom/selector-detector';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 

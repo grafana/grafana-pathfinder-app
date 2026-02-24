@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, ChangeEvent } from 're
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Spinner } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 import {
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_SERVICE_URL,

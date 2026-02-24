@@ -54,7 +54,7 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
   const { maxLength, noTargetText } = { ...DEFAULT_OPTIONS, ...options };
 
   if (isMarkdownBlock(block)) {
-    const firstLine = block.content.split('\n')[0];
+    const firstLine = block.content.split('\n')[0] ?? '';
     return truncate(firstLine, maxLength);
   }
 

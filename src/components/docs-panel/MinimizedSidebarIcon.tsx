@@ -11,7 +11,7 @@ import { Portal, Badge, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import logoSvg from '../../img/logo.svg';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 const pulseAnimation = keyframes`
   0%, 100% {

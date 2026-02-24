@@ -1447,8 +1447,8 @@ export const learningProgressStorage = {
   async markGuideCompleted(guideId: string): Promise<void> {
     try {
       // Import badge checking utilities dynamically to avoid circular deps
-      const { getBadgesToAward, getBadgeById } = await import('../learning-paths/badges');
-      const { getPathsData } = await import('../learning-paths/paths-data');
+      const { getBadgesToAward, getBadgeById } = await import('../learning-paths');
+      const { getPathsData } = await import('../learning-paths');
       const paths = getPathsData().paths;
 
       const progress = await learningProgressStorage.get();
@@ -1456,8 +1456,8 @@ export const learningProgressStorage = {
         progress.completedGuides.push(guideId);
 
         // Calculate and update streak before changing lastActivityDate
-        const { calculateUpdatedStreak } = await import('../learning-paths/streak-tracker');
-        const today = new Date().toISOString().split('T')[0];
+        const { calculateUpdatedStreak } = await import('../learning-paths');
+        const today = new Date().toISOString().split('T')[0]!;
         progress.streakDays = calculateUpdatedStreak(progress.streakDays, progress.lastActivityDate);
         progress.lastActivityDate = today;
 

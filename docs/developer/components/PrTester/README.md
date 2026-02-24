@@ -53,7 +53,7 @@ PR Tester exists to:
 - Create ordered sequence of guides
 - Drag-and-drop reordering
 - Test guides in logical sequence
-- Opens as connected learning journey
+- Opens as connected learning path
 - Ideal for multi-guide PRs
 
 ### Content File Detection

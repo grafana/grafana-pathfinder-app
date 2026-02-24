@@ -2,7 +2,7 @@
 // This replaces the separate docs-fetcher.ts and single-docs-fetcher.ts files
 
 // Core content fetching
-export * from './content.types';
+export * from '../types/content.types';
 export * from './content-fetcher';
 
 // Learning journey helpers
@@ -27,4 +27,12 @@ export {
 
 export { ContentRenderer, useContentRenderer } from './content-renderer';
 
-// Compatibility layer removed - migration complete!
+// JSON guide parser
+export { parseJsonGuide, parseMarkdownToElements, isJsonGuideContent } from './json-parser';
+
+// Docs components
+export { CodeBlock } from './components/docs';
+export type { CodeBlockProps } from './components/docs';
+
+// Guide response context (consumed by components/interactive-tutorial/)
+export { useGuideResponsesOptional } from './GuideResponseContext';

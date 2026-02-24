@@ -1,23 +1,23 @@
 import { useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
-import { safeEventHandler } from './safe-event-handler.util';
+import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
   reportAppInteraction,
   UserInteraction,
   enrichWithJourneyContext,
   enrichWithStepContext,
   getContentTypeForAnalytics,
-} from '../lib/analytics';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../docs-retrieval/learning-journey-helpers';
+} from '../../lib/analytics';
+import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
   isLocalhostUrl,
   isInteractiveLearningUrl,
   isGitHubRawUrl,
-} from '../security';
-import { isDevModeEnabledGlobal } from './dev-mode';
-import { LearningJourneyTab } from '../types/content-panel.types';
+} from '../../security';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { LearningJourneyTab } from '../../types/content-panel.types';
 
 interface UseLinkClickHandlerProps {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -80,8 +80,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         ) {
           // Fallback: use the first milestone from content metadata
           const firstMilestone = activeTab.content.metadata.learningJourney.milestones[0];
-          if (firstMilestone.url) {
-            // Track analytics for fallback case
+          if (firstMilestone?.url) {
             reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
               content_title: activeTab.title,
               content_url: activeTab.baseUrl,
@@ -603,7 +602,7 @@ function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaT
   closeButton.className = 'journey-image-modal-close';
   closeButton.setAttribute('aria-label', 'Close image');
 
-  // SVG close icon (safe - no user input)
+  // eslint-disable-next-line no-restricted-syntax -- Static SVG literal, no user input
   closeButton.innerHTML = `
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <line x1="18" y1="6" x2="6" y2="18"></line>

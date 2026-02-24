@@ -20,6 +20,7 @@ import {
 } from './check-phases';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useRequirementsManager } from './requirements-context';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> interactive-engine
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { useTimeoutManager } from '../utils/timeout-manager';
@@ -237,7 +238,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   const navigationManagerRef = useRef<any>(null);
   if (!navigationManagerRef.current) {
     // Lazy import to avoid circular dependencies
-    import('../interactive-engine/navigation-manager').then(({ NavigationManager }) => {
+    import('../interactive-engine').then(({ NavigationManager }) => {
       navigationManagerRef.current = new NavigationManager();
     });
   }

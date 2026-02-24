@@ -6,6 +6,7 @@ import {
   DEFAULT_RECOMMENDER_TIMEOUT,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
 import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
@@ -925,7 +926,7 @@ export class ContextService {
       a: 'app',
     };
 
-    return entityMap[pathSegments[0]] || null;
+    return entityMap[pathSegments[0]!] ?? null;
   }
 
   /**

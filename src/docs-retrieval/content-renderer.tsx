@@ -3,9 +3,10 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
-import { RawContent, ContentParseResult } from './content.types';
+import { RawContent, ContentParseResult } from '../types/content.types';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
 import { parseJsonGuide, isJsonGuideContent } from './json-parser';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
 import {
   InteractiveSection,
   InteractiveStep,
@@ -15,17 +16,21 @@ import {
   InteractiveConditional,
   InputBlock,
   TerminalStep,
+  resetInteractiveCounters,
+  registerSectionSteps,
+  getDocumentStepPosition,
+} from '../components/interactive-tutorial';
+import {
   CodeBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
-  resetInteractiveCounters,
-  registerSectionSteps,
-  getDocumentStepPosition,
   VideoRenderer,
   YouTubeVideoRenderer,
-} from './components/interactive-components';
+} from './components/docs';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: docs-retrieval -> requirements-manager
 import { SequentialRequirementsManager } from '../requirements-manager';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> integrations
 import {
   useTextSelection,
   AssistantSelectionPopover,
@@ -34,9 +39,10 @@ import {
   AssistantBlockWrapper,
   TextSelectionState,
 } from '../integrations/assistant-integration';
-import { GuideResponseProvider, useGuideResponses } from '../lib/GuideResponseContext';
+import { GuideResponseProvider, useGuideResponses } from './GuideResponseContext';
 import { substituteVariables } from '../utils/variable-substitution';
-import { STANDALONE_SECTION_ID } from './components/interactive/use-standalone-persistence';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
+import { STANDALONE_SECTION_ID } from '../components/interactive-tutorial/use-standalone-persistence';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
@@ -748,7 +754,7 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
 
   React.useEffect(() => {
     if (tabsData.length > 0 && !activeTab) {
-      setActiveTab(tabsData[0].key);
+      setActiveTab(tabsData[0]!.key);
     }
   }, [tabsData, activeTab]);
 

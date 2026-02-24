@@ -66,7 +66,7 @@ Located in `src/interactive-engine/action-handlers/`, these specialized classes 
 - **`focus-handler.ts`** - Highlights and optionally clicks elements by CSS selector (supports complex selectors, pseudo-selectors)
 - **`button-handler.ts`** - Finds and clicks buttons using intelligent CSS selector or text matching fallback
 - **`form-fill-handler.ts`** - Fills form inputs, textareas, selects, Monaco editors, and contenteditable elements; supports CLEAR command, combobox pattern detection (ARIA `role="combobox"` with `aria-autocomplete` and Grafana custom patterns), staged tokenization for combobox values, and 1000-char truncation safety
-- **`navigate-handler.ts`** - Navigates to internal Grafana routes or external URLs using locationService
+- **`navigate-handler.ts`** - Navigates to internal Grafana routes or external URLs using locationService; validates external URLs via `parseUrlSafely` to block `javascript:` and `data:` scheme injection
 - **`hover-handler.ts`** - Simulates hover states by dispatching mouse events and applying programmatic hover classes (specifically handles Tailwind `group-hover` patterns)
 - **`guided-handler.ts`** - Coordinates guided interactions where users manually perform actions while the system highlights targets and waits for completion
 
@@ -370,7 +370,7 @@ See: [`docs/developer/E2E_TESTING_CONTRACT.md`](../E2E_TESTING_CONTRACT.md) for 
 
 - **Requirements Manager** (`src/requirements-manager/`) - Pre/post-condition validation
 - **DOM Utilities** (`src/lib/dom/`) - Enhanced selector engine, element visibility checking, button finding
-- **Security** (`src/security/`) - HTML sanitization for comment content
+- **Security** (`src/security/`) - HTML sanitization for comment content and URL validation for navigate handler
 - **Interactive Styles** (`src/styles/interactive.styles.ts`) - Global CSS for highlights and overlays
 - **Interactive Config** (`src/constants/interactive-config.ts`) - Timing delays, retry counts, modal detection settings
 - **Interactive Z-Index** (`src/constants/interactive-z-index.ts`) - Z-index constants for overlay layering
@@ -389,6 +389,33 @@ Located in `src/constants/interactive-config.ts`:
 - **Retries**: Maximum retry attempts for sequence steps (default: 3)
 - **Modal Detection**: Polling interval and debounce settings for modal state detection
 - **Position Tracking**: Drift detection threshold and check interval for guided mode highlights
+
+## Design intent
+
+<!-- intent -->
+
+**Purpose**: The Interactive Engine bridges static documentation and hands-on learning by providing the automation and interaction capabilities for "Show me" and "Do it" buttons in interactive guides — programmatically demonstrating actions or executing them within Grafana's live UI. (from [Overview](#overview) above and [Why This Engine Exists](#why-this-engine-exists) below)
+
+**Constraints**:
+
+- Auto-completion must be disabled by default and opt-in via Plugin Configuration — it is an experimental feature that intercepts user events globally (from [Auto-Completion System](#auto-completion-system) above; `NOTE` in `action-monitor.ts`)
+- Auto-completion must be force-disabled during automated section execution to prevent interference between the automation and the detection system (from [Auto-Completion System](#auto-completion-system) above)
+- Hover state is intentionally persisted until explicit cleanup — subsequent actions may need to interact with hover-revealed elements (from code comment in `hover-handler.ts`)
+- An emergency unblock method must always be available — if the interaction blocker enters an invalid state, users must have an escape hatch (from [Interactive State Manager](#interactive-state-manager) and [Global Interaction Blocker](#global-interaction-blocker) above)
+- External URLs in the navigate handler must be validated via `parseUrlSafely` to block `javascript:` and `data:` scheme injection (from [Handler Types](#handler-types) above)
+
+**Non-goals**:
+
+- Not a general-purpose browser automation framework — the engine is purpose-built for Grafana's interactive guide system and relies on Grafana-specific APIs and DOM structure
+- Not responsible for deciding _when_ a step should run — that is the Requirements Manager's role; this engine only handles _how_ to execute actions (from [Integration Points](#integration-points) above)
+
+**Key tradeoffs**:
+
+- Three separate overlay types (content, header, full-screen) over a single full-screen overlay, because Grafana's layout has distinct regions requiring targeted blocking while keeping modal detection responsive (from [Global Interaction Blocker](#global-interaction-blocker) above)
+- Custom DOM events (`interactive-action-completed`, `user-action-detected`) over React state propagation, because completion events need to cross component boundaries without prop drilling (from [Data Collected and Events](#data-collected-and-events) above)
+- CSS selector matching over text matching as the primary element targeting strategy, because selectors are more stable across UI changes — text matching is used as a fallback for buttons (from [Handler Types](#handler-types) above)
+
+**Stability**: evolving
 
 ## Why This Engine Exists
 

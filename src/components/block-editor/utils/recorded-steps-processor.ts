@@ -86,7 +86,7 @@ export function convertStepsToMultistepBlock(steps: RecordedStep[]): JsonMultist
 
   return {
     type: 'multistep',
-    content: steps[0].description || 'Complete the following steps',
+    content: steps[0]?.description || 'Complete the following steps',
     steps: multistepSteps,
   };
 }
@@ -99,7 +99,7 @@ export function convertProcessedStepsToBlocks(
 ): Array<JsonInteractiveBlock | JsonMultistepBlock> {
   return processedSteps.map((item) => {
     if (item.type === 'single') {
-      return convertStepToInteractiveBlock(item.steps[0]);
+      return convertStepToInteractiveBlock(item.steps[0]!);
     } else {
       return convertStepsToMultistepBlock(item.steps);
     }

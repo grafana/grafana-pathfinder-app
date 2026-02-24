@@ -1,9 +1,9 @@
 import { renderHook, fireEvent } from '@testing-library/react';
 import { useLinkClickHandler } from './link-handler.hook';
-import { UserInteraction } from '../lib/analytics';
+import { UserInteraction } from '../../lib/analytics';
 
 // Mock analytics reporting
-jest.mock('../lib/analytics', () => ({
+jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   enrichWithJourneyContext: jest.fn((props, _content) => props), // Pass through
   enrichWithStepContext: jest.fn((props) => props), // Pass through
@@ -424,7 +424,7 @@ describe('useLinkClickHandler', () => {
 
   describe('Analytics Reporting', () => {
     it('should report journey start interactions', () => {
-      const { reportAppInteraction } = require('../lib/analytics');
+      const { reportAppInteraction } = require('../../lib/analytics');
 
       renderHook(() =>
         useLinkClickHandler({

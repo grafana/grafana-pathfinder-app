@@ -1,5 +1,7 @@
 # Requirements Manager
 
+For prescriptive agent constraints on the requirements/objectives system, see `.cursor/rules/interactiveRequirements.mdc`. For the requirements authoring reference, see `docs/developer/interactive-examples/requirements-reference.md`.
+
 The Requirements Manager (`src/requirements-manager/`) validates requirements and objectives for interactive guide steps, providing a comprehensive system for controlling step execution eligibility and automatic completion.
 
 ## Overview
@@ -391,6 +393,32 @@ The requirements manager behavior is controlled through `INTERACTIVE_CONFIG.dela
 - `stateSettling` - Delay for DOM to settle after state changes (default: **100ms**)
 - `reactiveCheck` - Delay for reactive checks after step completions (default: **50ms**)
 - `requirementsRetry` - Auto-retry delay for failed requirements (default: **10000ms**)
+
+## Design intent
+
+<!-- intent -->
+
+**Purpose**: The Requirements Manager gates interactive tutorial step execution on prerequisite conditions and auto-completes steps when their objectives are already satisfied, enabling safe, user-friendly guided workflows within Grafana's dynamic UI. (from [Purpose](#purpose) and [Objectives vs Requirements](#objectives-vs-requirements) above)
+
+**Constraints**:
+
+- Objectives always take priority over requirements — if a step's objective is already met, it auto-completes without checking requirements (from [Objectives vs Requirements](#objectives-vs-requirements) above)
+- Unknown requirement types must pass with a warning, never block — fail-open prevents typos or future requirements from breaking existing guides (from [Key Design Decisions](#key-design-decisions) below)
+- All async operations must check component mounted state before updating to prevent memory leaks (from [Performance Considerations](#performance-considerations) below)
+- State transitions must go through an explicit reducer — no direct boolean flag manipulation (from [Step State Machine](#step-state-machine) above)
+
+**Non-goals**:
+
+- Not a general-purpose state machine framework — the step state machine is purpose-built for the requirements checking lifecycle (from [Step State Machine](#step-state-machine) above)
+- Not responsible for executing actions — only validates whether a step is eligible to run; actual execution is handled by the interactive engine (from [Integration Points](#integration-points) above)
+
+**Key tradeoffs**:
+
+- Event-driven checking over continuous polling, because performance matters more than guaranteed instant detection — optional heartbeat covers fragile requirements only (from [Key Design Decisions](#key-design-decisions) below)
+- Fail-open over fail-closed for unknown requirements, because user progress matters more than strict enforcement — typos and future requirement types degrade gracefully (from [Key Design Decisions](#key-design-decisions) below)
+- Context provider with singleton fallback over pure DI, because backward compatibility during migration allows gradual adoption without breaking existing code (from [React Context Provider](#react-context-provider) above)
+
+**Stability**: evolving
 
 ## Key Design Decisions
 

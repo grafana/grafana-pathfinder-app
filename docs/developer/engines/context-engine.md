@@ -1,10 +1,37 @@
 # Context Engine
 
-The Context Engine (`src/context-engine/`) analyzes the user's current Grafana state and provides context-aware documentation recommendations. It combines URL path analysis, EchoSrv event monitoring, and Grafana API data to generate personalized recommendations.
+The Context Engine (`src/context-engine/`) analyzes the user's current Grafana state and provides context-aware documentation recommendations. It combines URL path analysis, EchoSrv event monitoring, and Grafana API data to generate personalized recommendations. Learning paths were previously called "learning journeys" — the internal type value `'learning-journey'` is preserved for backward compatibility, but user-facing references use "learning path".
+
+## Design intent
+
+<!-- intent -->
+
+**Purpose**: The Context Engine exists to fulfill the project's core goal of personalized, in-product documentation — "Grafana should sense what you need and give you that, not everything" (from `projectbrief.mdc`). It bridges user activity signals (URL navigation, EchoSrv analytics events, API data) to a recommendation system that surfaces relevant learning content without requiring users to search externally.
+
+**Constraints**:
+
+- Debouncing is handled at the hook level (`useContextPanel`), not the service level, to provide a single unified control point for all refresh triggers (from code comment in `context.service.ts`: "Debouncing removed from service level — now handled at hook level for unified control")
+- State that must persist across React component lifecycles (event buffer, EchoSrv initialization flag, detected types) uses static class properties on `ContextService` (from `context.service.ts` implementation)
+- External recommender communication requires HTTPS and domain allowlist validation; dev mode is the only exception (from Security Measures section below)
+- User identifiers are always hashed (SHA-256 for Cloud, generic placeholders for OSS) — no PII leaves the plugin (from Privacy Protection section below)
+
+**Non-goals**:
+
+- Not a replacement for reference documentation — targets beginners and intermediate users, not deep experts (from `projectbrief.mdc`)
+- Does not create, modify, or cache content — only discovers and routes to existing content
+- Does not implement its own debounce/timer primitives — delegates to the shared `TimeoutManager` utility
+
+**Key tradeoffs**:
+
+- Three-tier fallback (external → bundled → static): Availability over precision — bundled content uses fixed accuracy scores (0.8 / 0.7) rather than ML-based semantic matching, ensuring the plugin works in air-gapped and offline environments (from Recommendation Flow section below)
+- Event buffer size (10 events, 5-minute TTL): Memory efficiency over completeness — only recent context signals are preserved across plugin close/reopen cycles (from Event Buffering section below)
+- Confidence threshold (0.5): Relevance over recall — low-confidence recommendations are filtered out to avoid noise, at the cost of potentially missing edge-case matches (from Recommendation Scoring section below)
+
+**Stability**: stable
 
 ## Overview
 
-The Context Engine monitors user activity in Grafana by tracking location changes, listening to analytics events, and fetching datasource and dashboard information. It generates context tags from this data and sends them to an external recommendation service to retrieve relevant documentation, learning journeys, and interactive guides. When the external service is unavailable or disabled, it falls back to bundled interactives and static link recommendations.
+The Context Engine monitors user activity in Grafana by tracking location changes, listening to analytics events, and fetching datasource and dashboard information. It generates context tags from this data and sends them to an external recommendation service to retrieve relevant documentation, learning paths, and interactive guides. When the external service is unavailable or disabled, it falls back to bundled interactives and static link recommendations.
 
 ## Architecture
 
@@ -15,6 +42,7 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - **`context.init.ts`** - Plugin lifecycle initialization for EchoSrv event logging
 - **`index.ts`** - Public API exports for the context engine
 - **`context-security.test.ts`** - Security test suite (URL validation, sanitization, fallback behavior)
+- **`context.service.completion.test.ts`** - Completion percentage storage selection tests (verifies learning paths use journeyCompletionStorage, interactives use interactiveCompletionStorage)
 
 ## Main Service
 
@@ -30,6 +58,7 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - Generates semantic tags for recommendation matching
 - Fetches recommendations from external recommendation service with security validation
 - Provides three-tier fallback system: external service, bundled interactives, and static links
+- Uses type-specific completion storage: `journeyCompletionStorage` for learning paths, `interactiveCompletionStorage` for interactive guides
 - Handles error states with user-friendly messages and automatic fallback
 - Manages event buffering to preserve context when plugin is closed and reopened
 - Implements security measures including HTTPS validation, domain allowlisting, and XSS protection
@@ -74,7 +103,7 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - Centralizes debouncing using TimeoutManager to prevent competing refresh mechanisms
 - Separates context data loading from recommendation fetching for better performance
 - Manages recommendation expansion state and error handling
-- Provides action handlers for opening learning journeys and docs pages
+- Provides action handlers for opening learning paths and docs pages
 - Refreshes recommendations when interactive progress is cleared
 
 **Return Shape**:
@@ -84,7 +113,7 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - `otherDocsExpanded` - Whether the "other docs" section is expanded
 - `refreshContext()` - Manually trigger a context refresh
 - `refreshRecommendations()` - Manually trigger a recommendations refresh
-- `openLearningJourney(url, title)` - Open a learning journey in the panel
+- `openLearningJourney(url, title)` - Open a learning path in the panel
 - `openDocsPage(url, title)` - Open a docs page in the panel
 - `toggleSummaryExpansion(url)` - Toggle recommendation summary expansion
 - `navigateToPath(path)` - Navigate to a Grafana path
@@ -142,17 +171,17 @@ The recommendation system follows a three-tier approach with automatic fallback:
 4. **User Privacy** - Hash user identifiers and email for Cloud users (OSS users use generic identifiers)
 5. **API Request** - POST context payload to external recommender service with 5-second timeout
 6. **XSS Protection** - Sanitize recommendations using explicit allowlist to prevent prototype pollution
-7. **Learning Journey Processing** - Fetch metadata and completion percentages for learning journeys
+7. **Completion Processing** - Fetch metadata and completion percentages for learning paths and interactive guides. Uses type-specific storage: learning paths read from `journeyCompletionStorage` (via `getJourneyCompletionPercentageAsync`), interactives read from `interactiveCompletionStorage`. Bundled interactives (URLs starting with `bundled:`) are skipped here and handled by `buildBundledInteractiveRecommendations` instead.
 8. **Filtering** - Remove low-confidence recommendations (below 0.5 threshold)
 9. **Sorting** - Prioritize by type (interactive > learning-journey > docs-page), then by accuracy
 
-### Tier 2: Bundled Interactives (on External Service Failure)
+### Tier 2: Bundled Interactives (on external service failure)
 
 1. **Load Index** - Read `bundled-interactives/index.json` for available guides
 2. **URL Matching** - Filter interactives by current URL path and platform (Cloud/OSS)
 3. **Completion Tracking** - Include user progress from local storage
 
-### Tier 3: Static Links (fallback when recommender disabled)
+### Tier 3: Static Links (fallback when recommender is disabled)
 
 1. **Load Rules** - Dynamically require all JSON files from `bundled-interactives/static-links/`
 2. **URL Prefix Matching** - Match current path against rule URL prefixes
@@ -205,10 +234,10 @@ The Context Engine integrates with multiple systems:
 
 **Internal Dependencies**:
 
-- **Content Fetcher** (`docs-retrieval/content-fetcher.ts`) - Fetches learning journey metadata and content
+- **Content Fetcher** (`docs-retrieval/content-fetcher.ts`) - Fetches learning path metadata and content
 - **Context Panel** (`components/docs-panel/context-panel.tsx`) - Primary UI consumer using `useContextPanel()` hook
 - **Timeout Manager** (`utils/timeout-manager.ts`) - Centralized debouncing and timeout management
-- **User Storage** (`lib/user-storage.ts`) - Stores interactive completion percentages
+- **User Storage** (`lib/user-storage.ts`) - Stores interactive and learning path completion percentages
 - **Hash Utility** (`lib/hash.util.ts`) - Hashes user identifiers for privacy
 - **Security Utilities** (`security/`) - Text sanitization and URL parsing
 
@@ -217,6 +246,7 @@ The Context Engine integrates with multiple systems:
 - **Grafana Runtime** - LocationService for navigation, BackendSrv for API calls, EchoSrv for events, config for system info
 - **Grafana Data** - Plugin context for configuration
 - **External Recommendation Service** - Remote API at `recommender.grafana.com` for ML-powered recommendations
+- **docs-retrieval** - `getJourneyCompletionPercentageAsync` for learning path completion, `fetchContent` for content metadata
 
 **Initialization**:
 
@@ -318,7 +348,7 @@ Recommendations are filtered and sorted based on accuracy and content type:
 **Content Type Priority** (lower number = higher priority):
 
 1. Interactive guides (0) - Hands-on, step-by-step tutorials
-2. Learning journeys (1) - Multi-step educational paths
+2. Learning paths (1) - Multi-step educational paths (type value: `'learning-journey'`)
 3. Docs pages (2) - Static documentation
 
 **Sorting Algorithm**:
@@ -329,7 +359,7 @@ Recommendations are filtered and sorted based on accuracy and content type:
 
 **Filtering Rules**:
 
-- Remove generic learning journey index pages
+- Remove generic learning path index pages (both `/docs/learning-journeys` and `/docs/learning-paths` URL variants)
 - Drop recommendations with accuracy ≤ 0.5
 - Featured recommendations skip confidence filtering (trusted server curation)
 
@@ -362,6 +392,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 - `src/context-engine/context.hook.ts` - React hook for UI integration
 - `src/context-engine/context.init.ts` - Plugin lifecycle initialization
 - `src/context-engine/context-security.test.ts` - Security test suite
+- `src/context-engine/context.service.completion.test.ts` - Completion storage selection tests
 - `src/types/context.types.ts` - TypeScript type definitions
 
 **Bundled Content**:
@@ -373,7 +404,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 **Related Systems**:
 
 - `src/utils/timeout-manager.ts` - Centralized debouncing and timeout management
-- `src/docs-retrieval/content-fetcher.ts` - Content fetching for learning journeys
+- `src/docs-retrieval/content-fetcher.ts` - Content fetching for learning paths
 - `src/components/docs-panel/context-panel.tsx` - Primary UI consumer
 - `src/constants.ts` - Configuration constants and security allowlists
 

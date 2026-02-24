@@ -15,7 +15,7 @@ import type { StreakInfo } from '../types/learning-paths.types';
  * Gets today's date in YYYY-MM-DD format
  */
 export function getTodayDateString(): string {
-  return new Date().toISOString().split('T')[0];
+  return new Date().toISOString().split('T')[0]!;
 }
 
 /**
@@ -24,7 +24,7 @@ export function getTodayDateString(): string {
 export function getYesterdayDateString(): string {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  return yesterday.toISOString().split('T')[0];
+  return yesterday.toISOString().split('T')[0]!;
 }
 
 /**
@@ -32,7 +32,7 @@ export function getYesterdayDateString(): string {
  */
 function parseDate(dateString: string): Date {
   const [year, month, day] = dateString.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day));
+  return new Date(Date.UTC(year!, month! - 1, day!));
 }
 
 /**
@@ -202,7 +202,7 @@ export function getMilestoneProgress(currentStreak: number): number {
 
   // Find the previous milestone
   const milestoneIndex = STREAK_MILESTONES.indexOf(nextMilestone as (typeof STREAK_MILESTONES)[number]);
-  const previousMilestone = milestoneIndex > 0 ? STREAK_MILESTONES[milestoneIndex - 1] : 0;
+  const previousMilestone = milestoneIndex > 0 ? STREAK_MILESTONES[milestoneIndex - 1]! : 0;
 
   const progress = currentStreak - previousMilestone;
   const total = nextMilestone - previousMilestone;

@@ -115,14 +115,10 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
 
   // Selection controls - shown above blocks in edit mode
   selectionControls: css({
-    display: 'inline-flex',
+    display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
-    padding: theme.spacing(0.75),
-    marginBottom: theme.spacing(1.5),
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
+    marginBottom: theme.spacing(2),
   }),
 
   selectionCount: css({

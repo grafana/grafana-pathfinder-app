@@ -10,7 +10,9 @@ import {
   LearningJourneyMetadata,
   SingleDocMetadata,
   Milestone,
-} from './content.types';
+} from '../types/content.types';
+import { config, getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
 import {
   parseUrlSafely,
@@ -23,6 +25,7 @@ import {
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: docs-retrieval -> validation
 import { validateGuide } from '../validation';
 
 // Internal error structure for detailed error handling
@@ -112,6 +115,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Handle bundled interactive content
     if (url.startsWith('bundled:')) {
       return await fetchBundledInteractive(url);
+    }
+    // Handle custom guides stored in backend CRDs
+    if (url.startsWith('backend-guide:')) {
+      return await fetchBackendInteractive(url);
     }
 
     // SECURITY: Validate URL is from a trusted source before fetching
@@ -271,6 +278,89 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       content: null,
       error: error instanceof Error ? error.message : 'Unknown error',
       errorType: 'other',
+    };
+  }
+}
+
+interface BackendGuideResource {
+  metadata?: {
+    name?: string;
+  };
+  spec?: {
+    id?: string;
+    title?: string;
+    schemaVersion?: string;
+    blocks?: unknown[];
+  };
+}
+
+async function fetchBackendInteractive(url: string): Promise<ContentFetchResult> {
+  const resourceName = url.replace('backend-guide:', '').trim();
+  const namespace = config.namespace;
+
+  if (!resourceName) {
+    return { content: null, error: 'Invalid backend guide resource name', errorType: 'other' };
+  }
+
+  if (!namespace) {
+    return { content: null, error: 'No namespace available to load custom guide', errorType: 'other' };
+  }
+
+  try {
+    // SECURITY: Encode resourceName to prevent path traversal (F3)
+    const endpoint = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${encodeURIComponent(resourceName)}`;
+    const response = await lastValueFrom(
+      getBackendSrv().fetch<BackendGuideResource>({
+        url: endpoint,
+        method: 'GET',
+        // Optional rollout endpoint: don't show a global toast when unavailable.
+        showErrorAlert: false,
+      })
+    );
+    const guideResource = response.data;
+
+    if (!guideResource?.spec?.blocks || !guideResource.spec.title) {
+      return {
+        content: null,
+        error: `Custom guide is missing required fields: ${resourceName}`,
+        errorType: 'other',
+      };
+    }
+
+    const guide = {
+      id: guideResource.spec.id || guideResource.metadata?.name || resourceName,
+      title: guideResource.spec.title,
+      schemaVersion: guideResource.spec.schemaVersion || '1.0',
+      blocks: guideResource.spec.blocks,
+    };
+
+    const validationResult = validateGuide(guide);
+    if (!validationResult.isValid) {
+      const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
+      return {
+        content: null,
+        error: `Invalid custom guide: ${errorMessage}`,
+        errorType: 'other',
+      };
+    }
+
+    return {
+      content: {
+        content: JSON.stringify(guide),
+        metadata: {
+          title: guide.title,
+        },
+        type: 'interactive',
+        url,
+        lastFetched: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    return {
+      content: null,
+      error: `Failed to load custom guide: ${resourceName}`,
+      errorType: 'other',
+      statusCode: (error as { status?: number })?.status,
     };
   }
 }
@@ -562,7 +652,7 @@ interface FetchRawResult {
  */
 function isJsonContentUrl(url: string): boolean {
   // Check the URL path, ignoring query params and fragments
-  const urlPath = url.split('?')[0].split('#')[0];
+  const urlPath = url.split('?')[0]!.split('#')[0]!;
   return urlPath.endsWith('.json') || urlPath.endsWith('/content.json');
 }
 
@@ -902,7 +992,7 @@ function generateInteractiveLearningVariations(url: string): string[] {
   }
 
   // Clean the URL path (remove trailing slash)
-  const baseUrl = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+  const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
 
   // If URL already points to content.json or unstyled.html, return as-is
   if (baseUrl.endsWith('/content.json') || baseUrl.endsWith('/unstyled.html')) {
@@ -921,7 +1011,7 @@ function generateInteractiveLearningVariations(url: string): string[] {
  * Returns URLs to try in order of preference: JSON first, then HTML
  */
 function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string } {
-  const baseUrl = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+  const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
 
   // If URL already points to a specific file, return it as-is for JSON detection
   if (url.includes('/content.json')) {
@@ -1060,17 +1150,17 @@ function getLearningJourneyBaseUrl(url: string): string {
 
   const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
   if (learningJourneyMatch) {
-    return learningJourneyMatch[1];
+    return learningJourneyMatch[1]!;
   }
 
   const learningPathMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-paths\/[^\/]+)/);
   if (learningPathMatch) {
-    return learningPathMatch[1];
+    return learningPathMatch[1]!;
   }
 
   const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);
   if (tutorialMatch) {
-    return tutorialMatch[1];
+    return tutorialMatch[1]!;
   }
 
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
@@ -1154,7 +1244,7 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
   // Legacy pattern matching for milestone URLs
   const milestoneMatch = cleanUrl.match(/\/milestone-(\d+)/);
   if (milestoneMatch) {
-    const milestoneNum = parseInt(milestoneMatch[1], 10);
+    const milestoneNum = parseInt(milestoneMatch[1]!, 10);
     return milestoneNum;
   }
 

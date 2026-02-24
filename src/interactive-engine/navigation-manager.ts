@@ -1,4 +1,4 @@
-import { waitForReactUpdates } from '../requirements-manager';
+import { waitForReactUpdates } from '../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
@@ -78,6 +78,7 @@ export class NavigationManager {
     // Text content - sanitize the HTML
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
+    // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML
     textContainer.innerHTML = sanitizeDocumentationHTML(comment);
 
     // Content wrapper
@@ -854,7 +855,7 @@ export class NavigationManager {
     // Close button (absolute positioned for simple tooltips)
     const closeButton = document.createElement('button');
     closeButton.className = 'interactive-comment-close';
-    closeButton.innerHTML = '×';
+    closeButton.innerHTML = '×'; // eslint-disable-line no-restricted-syntax -- Static HTML entity
     closeButton.setAttribute('aria-label', 'Close');
     closeButton.setAttribute('title', 'Exit (Esc)');
 
@@ -911,7 +912,7 @@ export class NavigationManager {
     // Description/comment
     const descriptionElement = document.createElement('p');
     descriptionElement.className = 'interactive-comment-description';
-    // SECURITY: Sanitize comment HTML before insertion to prevent XSS
+    // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML
     descriptionElement.innerHTML = sanitizeDocumentationHTML(comment || '');
     contentSection.appendChild(descriptionElement);
 
@@ -951,7 +952,7 @@ export class NavigationManager {
         // Previous button
         const prevButton = document.createElement('button');
         prevButton.className = 'interactive-comment-nav-btn';
-        prevButton.innerHTML = '← Back';
+        prevButton.innerHTML = '← Back'; // eslint-disable-line no-restricted-syntax -- Static HTML literal
         prevButton.setAttribute('aria-label', 'Previous step');
         prevButton.disabled = !onPreviousCallback;
 
@@ -973,7 +974,7 @@ export class NavigationManager {
         const nextButton = document.createElement('button');
         const isLastStep = stepInfo && stepInfo.current === stepInfo.total - 1;
         nextButton.className = 'interactive-comment-nav-btn interactive-comment-nav-btn--primary';
-        nextButton.innerHTML = isLastStep ? 'Start creating' : 'Next →';
+        nextButton.innerHTML = isLastStep ? 'Start creating' : 'Next →'; // eslint-disable-line no-restricted-syntax -- Static HTML literal
         nextButton.setAttribute('aria-label', isLastStep ? 'Start creating' : 'Next step');
 
         if (onNextCallback) {
@@ -1031,6 +1032,7 @@ export class NavigationManager {
     if (options?.showKeyboardHint) {
       const keyboardHint = document.createElement('div');
       keyboardHint.className = 'interactive-comment-keyboard-hint';
+      // eslint-disable-next-line no-restricted-syntax -- Static HTML keyboard hint UI
       keyboardHint.innerHTML = `
         <span class="interactive-comment-kbd">←</span>
         <span class="interactive-comment-kbd">→</span>

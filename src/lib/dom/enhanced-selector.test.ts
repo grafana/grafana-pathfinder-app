@@ -26,7 +26,7 @@ describe('Enhanced Selector', () => {
       const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-child(3)');
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toContain('Third child - second uplot');
+      expect(result.elements[0]!.textContent).toContain('Third child - second uplot');
     });
 
     it('should handle :nth-of-type() correctly', () => {
@@ -43,7 +43,7 @@ describe('Enhanced Selector', () => {
       const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-of-type(3)');
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toContain('Third div - third uplot');
+      expect(result.elements[0]!.textContent).toContain('Third div - third uplot');
     });
 
     it('should demonstrate the limitation of :nth-child with multiple parents', () => {
@@ -65,7 +65,7 @@ describe('Enhanced Selector', () => {
       const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-child(3)');
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toContain('Parent3 - uplot2');
+      expect(result.elements[0]!.textContent).toContain('Parent3 - uplot2');
     });
   });
 
@@ -98,7 +98,7 @@ describe('Enhanced Selector', () => {
       const result = querySelectorAllEnhanced('div.card:has(p)');
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toContain('Has paragraph');
+      expect(result.elements[0]!.textContent).toContain('Has paragraph');
     });
 
     it('should handle :nth-match() selector to get nth occurrence globally', () => {
@@ -119,7 +119,7 @@ describe('Enhanced Selector', () => {
       const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-match(3)');
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toContain('Third uplot');
+      expect(result.elements[0]!.textContent).toContain('Third uplot');
       expect(result.usedFallback).toBe(true);
     });
 
@@ -149,7 +149,7 @@ describe('Enhanced Selector', () => {
       const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-match(1)');
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toContain('First');
+      expect(result.elements[0]!.textContent).toContain('First');
     });
 
     it('should handle :nth-match with nested complex selectors like :has() and :contains()', () => {
@@ -177,7 +177,7 @@ describe('Enhanced Selector', () => {
       );
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].querySelector('p')?.textContent).toBe('adaptive-logs-api');
+      expect(result.elements[0]!.querySelector('p')?.textContent).toBe('adaptive-logs-api');
       expect(result.usedFallback).toBe(true);
 
       // Test finding a button within the matched container
@@ -186,7 +186,7 @@ describe('Enhanced Selector', () => {
       );
 
       expect(buttonResult.elements.length).toBe(1);
-      expect(buttonResult.elements[0].textContent).toBe('Button 4');
+      expect(buttonResult.elements[0]!.textContent).toBe('Button 4');
     });
 
     it('should handle chained :has() selectors with :contains() and :nth-match()', () => {
@@ -213,7 +213,7 @@ describe('Enhanced Selector', () => {
       );
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toBe('Expand Dashboards');
+      expect(result.elements[0]!.textContent).toBe('Expand Dashboards');
       expect(result.usedFallback).toBe(true);
     });
 
@@ -252,7 +252,7 @@ describe('Enhanced Selector', () => {
       );
 
       expect(result.elements.length).toBe(1);
-      expect(result.elements[0].textContent).toBe('Dashboard');
+      expect(result.elements[0]!.textContent).toBe('Dashboard');
       expect(result.usedFallback).toBe(true);
 
       // Verify it finds the right container first
@@ -260,7 +260,7 @@ describe('Enhanced Selector', () => {
         'div[data-cy="wb-list-item"]:has(p:contains("adaptive-logs-api")):nth-match(1)'
       );
       expect(containerResult.elements.length).toBe(1);
-      expect(containerResult.elements[0].querySelector('p')?.textContent).toBe('adaptive-logs-api');
+      expect(containerResult.elements[0]!.querySelector('p')?.textContent).toBe('adaptive-logs-api');
     });
   });
 

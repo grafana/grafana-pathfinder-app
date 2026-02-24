@@ -190,7 +190,7 @@ export class ActionReplaySystem {
       }
 
       // Use first matching element
-      const element = elements[0];
+      const element = elements[0]!;
 
       // Show highlight with comment
       // Pass false for enableAutoCleanup to keep highlight persistent until next action

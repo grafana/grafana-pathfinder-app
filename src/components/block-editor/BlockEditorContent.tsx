@@ -85,30 +85,31 @@ export function BlockEditorContent({
       {/* Selection controls - shown in edit mode, above blocks */}
       {viewMode === 'edit' && hasBlocks && (
         <div className={styles.selectionControls}>
-          {isSelectionMode && selectedCount >= 2 ? (
-            <>
-              <span className={styles.selectionCount}>{selectedCount} blocks selected</span>
-              <Button variant="primary" size="sm" onClick={onMergeToMultistep}>
-                Create multistep
-              </Button>
-              <Button variant="primary" size="sm" onClick={onMergeToGuided}>
-                Create guided
-              </Button>
-              <Button variant="secondary" size="sm" onClick={onClearSelection}>
-                Cancel
-              </Button>
-            </>
+          {isSelectionMode ? (
+            selectedCount >= 2 ? (
+              <>
+                <span className={styles.selectionCount}>{selectedCount} blocks selected</span>
+                <Button variant="primary" size="sm" onClick={onMergeToMultistep}>
+                  Create multistep
+                </Button>
+                <Button variant="primary" size="sm" onClick={onMergeToGuided}>
+                  Create guided
+                </Button>
+                <Button variant="secondary" size="sm" onClick={onClearSelection}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: '13px', color: '#888' }}>Click blocks to select them for merging</span>
+                <Button variant="secondary" size="sm" onClick={onClearSelection}>
+                  Cancel
+                </Button>
+              </>
+            )
           ) : (
-            <Button
-              variant={isSelectionMode ? 'primary' : 'secondary'}
-              size="sm"
-              icon="check-square"
-              onClick={onToggleSelectionMode}
-              tooltip={
-                isSelectionMode ? 'Click to exit selection mode' : 'Select blocks to merge into multistep/guided'
-              }
-            >
-              {isSelectionMode ? 'Done selecting' : 'Select blocks'}
+            <Button variant="secondary" size="sm" icon="check-square" onClick={onToggleSelectionMode}>
+              Select blocks
             </Button>
           )}
         </div>

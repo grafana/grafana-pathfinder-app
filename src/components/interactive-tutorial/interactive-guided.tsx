@@ -2,21 +2,22 @@ import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffec
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import {
   GuidedHandler,
   InteractiveStateManager,
   NavigationManager,
   matchesStepAction,
   type DetectedActionEvent,
-} from '../../../interactive-engine';
-import { waitForReactUpdates, useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
-import { getInteractiveConfig } from '../../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../../constants';
-import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
-import { GuidedAction } from '../../../types/interactive-actions.types';
-import { testIds } from '../../../components/testIds';
-import { sanitizeDocumentationHTML } from '../../../security';
+} from '../../interactive-engine';
+import { waitForReactUpdates } from '../../lib/async-utils';
+import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
+import { getInteractiveConfig } from '../../constants/interactive-config';
+import { getConfigWithDefaults } from '../../constants';
+import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
+import { GuidedAction } from '../../types/interactive-actions.types';
+import { testIds } from '../../constants/testIds';
+import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
@@ -212,8 +213,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
-    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0].refTarget : undefined;
-    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0].targetAction : undefined;
+    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0]!.refTarget : undefined;
+    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0]!.targetAction : undefined;
 
     // Runtime validation: check for impossible requirement configurations
     useEffect(() => {
@@ -285,7 +286,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
 
-      const { NavigationManager } = await import('../../../interactive-engine');
+      const { NavigationManager } = await import('../../interactive-engine');
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
 
@@ -299,7 +300,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           setCurrentStepStatus('waiting');
 
           // Execute guided step and wait for user completion
-          const result = await guidedHandler.executeGuidedStep(action, i, internalActions.length, stepTimeout);
+          const result = await guidedHandler.executeGuidedStep(action!, i, internalActions.length, stepTimeout);
 
           if (result === 'completed' || result === 'skipped') {
             setCurrentStepStatus('completed');
@@ -569,7 +570,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       guidedHandler.cancel();
 
       // Clear highlights
-      const { NavigationManager } = await import('../../../interactive-engine');
+      const { NavigationManager } = await import('../../interactive-engine');
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
 

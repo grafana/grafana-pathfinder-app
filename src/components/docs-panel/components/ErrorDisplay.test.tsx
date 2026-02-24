@@ -6,7 +6,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ErrorDisplay } from './ErrorDisplay';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 
 // Mock @grafana/i18n
 jest.mock('@grafana/i18n', () => ({

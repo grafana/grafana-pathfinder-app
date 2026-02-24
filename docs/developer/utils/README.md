@@ -26,18 +26,21 @@ Only the following hooks remain in `src/utils/`:
 - `timeout-manager.ts` - Centralized timeout/debounce management
 - `dev-mode.ts` - Development mode utilities
 - `openfeature.ts` - Feature toggle utilities
+- `openfeature-tracking.ts` - OpenFeature hook for tracking flag evaluations to analytics
+- `experiment-debug.ts` - Debug utilities for the experiment system (`window.__pathfinderExperiment`)
+- `variable-substitution.ts` - Template variable (`{{variableName}}`) substitution for dynamic content
 
 ### 🔧 **Development Tools** (`devtools/`)
 
+- `index.ts` - Barrel export for all devtools utilities
+- `dev-tools.types.ts` - Shared types (`StepDefinition`, `SelectorInfo`, `ExtractedSelector`)
 - `action-recorder.hook.ts` - Record user actions for guide creation
+- `action-recorder.util.ts` - Action recording utilities (selector extraction, step filtering)
 - `element-inspector.hook.ts` - DOM element inspection
-- `selector-capture.hook.ts` - CSS selector generation
-- `selector-generator.util.ts` - Automated selector generation
-- `selector-tester.hook.ts` - Test CSS selectors
-- `step-executor.hook.ts` - Test step execution
+- `hover-highlight.util.ts` - Visual element highlighting during inspection
+- `selector-generator.util.ts` - Automated CSS selector generation
 - `step-parser.util.ts` - Parse step definitions
-- `tutorial-exporter.ts` - Export tutorials
-- `action-recorder.util.ts` - Action recording utilities
+- `tutorial-exporter.ts` - Export tutorials in various formats
 
 ### 🔒 **Security & Safety**
 
@@ -120,9 +123,8 @@ Only the following hooks remain in `src/utils/`:
 
 **Key Exports**:
 
-- `PluginPropsContext` - React context provider
-- `usePluginProps()` - Hook for accessing plugin props
-- `usePluginMeta()` - Hook for accessing plugin metadata
+- `PluginPropsContext` - React context for sharing `AppRootProps`
+- `updatePluginSettings()` - Function to update plugin settings via API
 
 **Used By**:
 
@@ -193,12 +195,17 @@ function prefixRoute(route: string): string {
 
 **Key Exports**:
 
-- `FeatureFlags` - Feature flag constants
-- `getFeatureToggle()` - Function to check feature toggle state
+- `pathfinderFeatureFlags` - Feature flag definitions (names, default values, tracking keys)
+- `evaluateFeatureFlag()` - Async function to evaluate a flag's value
+- `getFeatureFlagValue()` - Synchronous boolean flag check
+- `getStringFlagValue()` - Synchronous string flag check
+- `initializeOpenFeature()` - Initialize the OpenFeature SDK
+- `ExperimentConfig` / `getExperimentConfig()` - Experiment configuration types and accessor
 
 **Used By**:
 
-- `src/components/AppConfig/ConfigurationForm.tsx` - Feature configuration
+- `src/utils/experiment-debug.ts` - Experiment debugging console tools
+- `src/utils/openfeature-tracking.ts` - Flag evaluation analytics tracking
 - Components requiring feature flag checks
 
 ---
@@ -241,32 +248,31 @@ function prefixRoute(route: string): string {
 
 ## Development Tools (`devtools/`)
 
-The `devtools/` subdirectory contains development-only utilities for creating and testing interactive guides:
+The `devtools/` subdirectory contains development-only utilities for creating and testing interactive guides. All public exports are consolidated through `index.ts`.
+
+### Structure
+
+- **`index.ts`** - Barrel export for all devtools utilities
+- **`dev-tools.types.ts`** - Shared types (`StepDefinition`, `SelectorInfo`, `ExtractedSelector`)
 
 ### Action Recording
 
 - **`action-recorder.hook.ts`** - React hook for recording user actions
-- **`action-recorder.util.ts`** - Action recording utilities
+- **`action-recorder.util.ts`** - Selector extraction and step filtering utilities
 
 ### Element Inspection
 
 - **`element-inspector.hook.ts`** - DOM element inspection hook
 - **`hover-highlight.util.ts`** - Visual element highlighting
 
-### Selector Tools
+### Selector Generation
 
-- **`selector-capture.hook.ts`** - Capture CSS selectors from user interactions
-- **`selector-generator.util.ts`** - Generate CSS selectors automatically
-- **`selector-tester.hook.ts`** - Test CSS selectors against DOM
+- **`selector-generator.util.ts`** - Generate CSS selectors from DOM events
 
-### Step Execution
+### Step Parsing & Export
 
-- **`step-executor.hook.ts`** - Execute test steps programmatically
-- **`step-parser.util.ts`** - Parse step definitions
-
-### Export
-
-- **`tutorial-exporter.ts`** - Export tutorials in various formats
+- **`step-parser.util.ts`** - Parse step definitions from strings
+- **`tutorial-exporter.ts`** - Export tutorials in various formats (HTML, guided, multistep)
 
 ---
 

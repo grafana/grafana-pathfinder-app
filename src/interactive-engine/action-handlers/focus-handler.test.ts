@@ -81,9 +81,9 @@ describe('FocusHandler', () => {
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
       expect(mockQuerySelectorAll).toHaveBeenCalledWith('test-selector');
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[0]);
-      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockElements[0]);
-      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockElements[0], undefined);
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[0]!);
+      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockElements[0]!);
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockElements[0]!, undefined);
       expect(mockWaitForReactUpdates).not.toHaveBeenCalled(); // No completion in show mode
     });
 
@@ -92,9 +92,9 @@ describe('FocusHandler', () => {
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
       expect(mockQuerySelectorAll).toHaveBeenCalledWith('test-selector');
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[0]);
-      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockElements[0]);
-      expect(mockElements[0].click).toHaveBeenCalled();
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[0]!);
+      expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockElements[0]!);
+      expect(mockElements[0]!.click).toHaveBeenCalled();
       expect(mockWaitForReactUpdates).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
@@ -103,10 +103,10 @@ describe('FocusHandler', () => {
       await focusHandler.execute(mockData, true);
 
       // Should process all elements
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[0]);
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[1]);
-      expect(mockElements[0].click).toHaveBeenCalled();
-      expect(mockElements[1].click).toHaveBeenCalled();
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[0]!);
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[1]!);
+      expect(mockElements[0]!.click).toHaveBeenCalled();
+      expect(mockElements[1]!.click).toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {
@@ -150,7 +150,7 @@ describe('FocusHandler', () => {
 
       await focusHandler.execute(mockData, false);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]!);
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalled();
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
     });
@@ -160,8 +160,8 @@ describe('FocusHandler', () => {
 
       await focusHandler.execute(mockData, true);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]);
-      expect(mockElements[0].click).toHaveBeenCalled();
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]!);
+      expect(mockElements[0]!.click).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
   });

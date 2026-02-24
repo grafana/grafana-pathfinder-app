@@ -7,8 +7,7 @@
 
 import type { Badge } from '../../types';
 
-// Import paths data for guide metadata (used in getBadgeRequirementText)
-import { getPathsData } from '../../learning-paths/paths-data';
+import { getPathsData } from '../../learning-paths';
 
 /**
  * Information about a badge's progress toward completion

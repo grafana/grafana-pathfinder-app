@@ -274,7 +274,7 @@ export class GuidedHandler {
 
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
-    // SECURITY: sanitize HTML before injection (F5)
+    // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML (F5)
     textContainer.innerHTML = sanitizeDocumentationHTML(comment);
 
     const contentWrapper = document.createElement('div');
@@ -381,7 +381,7 @@ export class GuidedHandler {
             if (targetElements.length > 1) {
               console.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
             }
-            return targetElements[0];
+            return targetElements[0]!;
           }
         } catch (error) {
           console.warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, error);
@@ -395,7 +395,7 @@ export class GuidedHandler {
           if (targetElements.length > 1) {
             console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
           }
-          return targetElements[0];
+          return targetElements[0]!;
         }
       } catch (error) {
         // Fall through to enhanced selector as last resort
@@ -415,7 +415,7 @@ export class GuidedHandler {
         if (formElements.length > 1) {
           console.warn(`Multiple form elements found matching selector: ${resolvedSelector}, using first element`);
         }
-        return formElements[0];
+        return formElements[0]!;
       }
 
       // Try to find form element inside the matched element
@@ -440,7 +440,7 @@ export class GuidedHandler {
       console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
-    return targetElements[0];
+    return targetElements[0]!;
   }
 
   /**
@@ -1076,6 +1076,7 @@ export class GuidedHandler {
     }
 
     // Update status based on state
+    /* eslint-disable no-restricted-syntax -- Static status icons + sanitized hint via sanitizeDocumentationHTML */
     if (state === 'checking') {
       statusElement.className = 'interactive-form-validation-status form-checking';
       statusElement.innerHTML = '<span class="interactive-form-spinner">⟳</span> Checking...';
@@ -1084,9 +1085,9 @@ export class GuidedHandler {
       statusElement.innerHTML = '<span class="interactive-form-success-icon">✓</span> Looks good!';
     } else if (state === 'invalid' && hint) {
       statusElement.className = 'interactive-form-validation-status form-hint-warning';
-      // SECURITY: sanitize hint before display (F4)
       statusElement.innerHTML = `<span class="interactive-form-warning-icon">⚠</span> ${sanitizeDocumentationHTML(hint)}`;
     }
+    /* eslint-enable no-restricted-syntax */
   }
 
   /**

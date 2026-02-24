@@ -7,6 +7,8 @@ description: This document describes the requirements and design constraints of 
 
 This document describes the requirements and objectives system for interactive elements in the Grafana Documentation Plugin.
 
+For full reference on interactive guide authoring (JSON format, action types, selectors, guided interactions), see `docs/developer/interactive-examples/`.
+
 ## Overview
 
 Interactive elements in documentation content have a system of requirements that must be satisfied before they can be executed, and a potential system of objectives or goals, that the

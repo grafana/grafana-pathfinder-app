@@ -10,7 +10,7 @@ The components are organized into logical groups with clear responsibilities:
 
 - **App/**: Root application component with error boundary and routing logic
 - **AppConfig/**: Plugin configuration interface for admin settings and feature flags
-- **docs-panel/**: Core documentation features (recommendations, learning journeys, content rendering)
+- **docs-panel/**: Core documentation features (recommendations, learning paths, content rendering)
 
 ### Content Authoring and Development Tools
 
@@ -89,7 +89,7 @@ Contains the admin configuration components for:
 Contains the main documentation functionality including:
 
 - Context-aware recommendations engine
-- Interactive learning journeys with milestone navigation
+- Interactive learning paths with milestone navigation
 - Document viewer with tabbed interface
 - Live session integration for collaborative learning
 - Learning progress tracking

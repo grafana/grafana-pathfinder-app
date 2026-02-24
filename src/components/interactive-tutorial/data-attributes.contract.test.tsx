@@ -27,8 +27,8 @@ import { render, screen } from '@testing-library/react';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
-import { testIds } from '../../../components/testIds';
-import type { InternalAction, GuidedAction } from '../../../types';
+import { testIds } from '../../constants/testIds';
+import type { InternalAction, GuidedAction } from '../../types';
 import { STEP_STATES, REQUIREMENTS_STATES, FIX_TYPES, FORM_STATES } from './step-states';
 
 // ============================================================================
@@ -640,9 +640,9 @@ describe('E2E Contract: data-internal-actions', () => {
       expect(action).toHaveProperty('targetComment');
 
       // Verify against original data
-      expect(action.targetAction).toBe(mockInternalActions[index].targetAction);
-      expect(action.refTarget).toBe(mockInternalActions[index].refTarget);
-      expect(action.targetComment).toBe(mockInternalActions[index].targetComment);
+      expect(action.targetAction).toBe(mockInternalActions[index]!.targetAction);
+      expect(action.refTarget).toBe(mockInternalActions[index]!.refTarget);
+      expect(action.targetComment).toBe(mockInternalActions[index]!.targetComment);
     });
   });
 

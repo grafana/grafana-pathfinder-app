@@ -30,8 +30,8 @@ import { t } from '@grafana/i18n';
 import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
-import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
-import { useLinkClickHandler } from '../../utils/link-handler.hook';
+import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
+import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { parseUrlSafely } from '../../security';
 
@@ -45,22 +45,17 @@ import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/us
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
-// Import new unified content system
 import {
   fetchContent,
   ContentRenderer,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
-} from '../../docs-retrieval';
-
-// Import learning journey helpers
-import {
   getJourneyProgress,
   setJourneyCompletionPercentage,
   getMilestoneSlug,
   markMilestoneDone,
   isLastMilestone,
-} from '../../docs-retrieval/learning-journey-helpers';
+} from '../../docs-retrieval';
 
 import { ContextPanel } from './context-panel';
 import { BadgeUnlockedToast } from '../LearningPaths';
@@ -75,7 +70,7 @@ import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, H
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
-import { testIds } from '../testIds';
+import { testIds } from '../../constants/testIds';
 
 // Import extracted components
 import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
@@ -338,10 +333,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (this.state.activeTabId === tabId) {
       if (tabIndex > 0 && tabIndex < currentTabs.length - 1) {
         // Choose the next tab if available
-        newActiveTabId = currentTabs[tabIndex + 1].id;
+        newActiveTabId = currentTabs[tabIndex + 1]!.id;
       } else if (tabIndex > 0) {
         // Choose the previous tab if at the end
-        newActiveTabId = currentTabs[tabIndex - 1].id;
+        newActiveTabId = currentTabs[tabIndex - 1]!.id;
       } else {
         // Default to recommendations if only tab
         newActiveTabId = 'recommendations';
@@ -721,7 +716,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   React.useEffect(() => {
     // Only restore if we haven't loaded tabs yet
     // Check if tabs only contain the default system tab (recommendations)
-    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0].id === 'recommendations';
+    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
 
     if (hasOnlyDefaultTabs) {
       model.restoreTabsAsync();

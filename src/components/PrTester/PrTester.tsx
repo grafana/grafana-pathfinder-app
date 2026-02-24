@@ -234,7 +234,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
       return userSelectedFile;
     }
     // Default to first file
-    return files[0].directoryName;
+    return files[0]!.directoryName;
   }, [files, userSelectedFile]);
 
   // Build select options from files
@@ -440,7 +440,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
       }
 
       const newOrderedFiles = [...orderedFiles];
-      const draggedFile = newOrderedFiles[draggedIndex];
+      const draggedFile = newOrderedFiles[draggedIndex]!;
       newOrderedFiles.splice(draggedIndex, 1);
       newOrderedFiles.splice(index, 0, draggedFile);
 
@@ -544,7 +544,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
               <div
                 key={file.directoryName}
                 className={`${styles.fileItem} ${draggedIndex === index ? styles.fileItemDragging : ''}`}
-                draggable
+                draggable // eslint-disable-line no-restricted-syntax -- Dev-only PR tester, native DnD acceptable here
                 onDragStart={() => handleDragStart(index)}
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragEnd={handleDragEnd}

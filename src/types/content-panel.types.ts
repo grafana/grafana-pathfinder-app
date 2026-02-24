@@ -3,10 +3,9 @@
  * Centralized types for tab management and panel state
  */
 
-import { SceneObjectState } from '@grafana/scenes';
-import { RawContent } from '../docs-retrieval/content.types';
+import { SceneObject, SceneObjectState } from '@grafana/scenes';
+import { RawContent } from './content.types';
 import { DocsPluginConfig } from '../constants';
-import { ContextPanel } from '../components/docs-panel/context-panel';
 
 /**
  * Learning Path or Documentation Tab
@@ -35,12 +34,18 @@ export interface PersistedTabData {
   type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
 }
 
+export interface ContextPanelState extends SceneObjectState {
+  onOpenLearningJourney?: (url: string, title: string) => void;
+  onOpenDocsPage?: (url: string, title: string) => void;
+  onOpenDevTools?: () => void;
+}
+
 /**
  * Combined panel state for the docs panel scene object
  */
 export interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
-  contextPanel: ContextPanel;
+  contextPanel: SceneObject<ContextPanelState>;
   pluginConfig: DocsPluginConfig;
 }

@@ -284,6 +284,7 @@ class GlobalInteractionBlocker {
       z-index: 10001;
     `;
 
+    // eslint-disable-next-line no-restricted-syntax -- Static HTML template for blocker UI, no user input
     this.statusIndicator.innerHTML = `
       <div style="
         width: 16px;

@@ -1,11 +1,8 @@
 import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
-import {
-  waitForReactUpdates,
-  checkRequirements,
-  checkPostconditions,
-  RequirementsCheckOptions,
-} from '../requirements-manager';
+import { waitForReactUpdates } from '../lib/async-utils';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
+import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
@@ -295,7 +292,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
         // Find all interactive elements within the sequence container
         const interactiveElements = Array.from(
-          targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])')
+          targetElements[0]!.querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])')
         );
 
         if (interactiveElements.length === 0) {

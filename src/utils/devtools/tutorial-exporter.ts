@@ -126,7 +126,7 @@ export function combineStepsIntoMultistep(
 
   // Create the multistep structure
   const multistepHtml = formatMultistepAsHTML(
-    sortedIndices.map((i) => allSteps[i]),
+    sortedIndices.map((i) => allSteps[i]!),
     description
   );
 
@@ -144,7 +144,7 @@ export function combineStepsIntoMultistep(
       });
     } else if (!sortedIndices.includes(i)) {
       // Include non-selected steps
-      newSteps.push(allSteps[i]);
+      newSteps.push(allSteps[i]!);
     }
   }
 
@@ -192,7 +192,7 @@ export function combineStepsIntoGuided(
 
   // Create the guided structure
   const guidedHtml = formatGuidedAsHTML(
-    sortedIndices.map((i) => allSteps[i]),
+    sortedIndices.map((i) => allSteps[i]!),
     description
   );
 
@@ -210,7 +210,7 @@ export function combineStepsIntoGuided(
       });
     } else if (!sortedIndices.includes(i)) {
       // Include non-selected steps
-      newSteps.push(allSteps[i]);
+      newSteps.push(allSteps[i]!);
     }
   }
 
@@ -261,7 +261,7 @@ function escapeHtml(text: string): string {
     '<': '&lt;',
     '>': '&gt;',
   };
-  return text.replace(/[&<>]/g, (m) => map[m]);
+  return text.replace(/[&<>]/g, (m) => map[m]!);
 }
 
 /**
@@ -275,7 +275,7 @@ function escapeAttribute(text: string): string {
     '>': '&gt;',
     "'": '&#039;',
   };
-  return text.replace(/[&<>']/g, (m) => map[m]);
+  return text.replace(/[&<>']/g, (m) => map[m]!);
 }
 
 /**

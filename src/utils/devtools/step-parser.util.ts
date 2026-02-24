@@ -28,8 +28,8 @@ export function parseStepString(input: string): StepDefinition[] {
     const parts = line.split('|').map((p) => p.trim());
     if (parts.length >= 2) {
       steps.push({
-        action: parts[0],
-        selector: parts[1],
+        action: parts[0]!,
+        selector: parts[1]!,
         value: parts[2] || undefined,
       });
     }

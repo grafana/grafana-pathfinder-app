@@ -6,7 +6,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TabBarActions } from './TabBarActions';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility

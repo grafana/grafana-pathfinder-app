@@ -5,8 +5,9 @@
  * the existing content pipeline. Produces identical output to the HTML parser.
  */
 
-import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from './content.types';
+import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from '../types/content.types';
 import { parseHTMLToComponents } from './html-parser';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: docs-retrieval -> validation
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import { renderMarkdown } from '@grafana/data';
@@ -127,7 +128,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   let hasAssistantElements = false;
 
   for (let i = 0; i < guide.blocks.length; i++) {
-    const block = guide.blocks[i];
+    const block = guide.blocks[i]!;
     try {
       // For assistant blocks, extract context from adjacent sibling blocks
       // This helps the AI understand the educational purpose of the content
@@ -364,7 +365,7 @@ function convertMarkdownBlock(block: JsonMarkdownBlock, path: string): Conversio
 
   // If only one element, return it directly
   if (elements.length === 1) {
-    return { element: elements[0] };
+    return { element: elements[0]! };
   }
 
   // Wrap multiple elements in a div
@@ -404,7 +405,7 @@ function convertHtmlBlock(block: JsonHtmlBlock, path: string, baseUrl?: string):
     // If only one element, return it directly
     if (elements.length === 1) {
       return {
-        element: elements[0],
+        element: elements[0]!,
         // Only show migration warning if no interactive elements detected
         warning: 'HTML blocks should be migrated to markdown/JSON blocks for better maintainability',
         hasInteractive: false,
@@ -436,7 +437,7 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
   const children: ParsedElement[] = [];
 
   for (let i = 0; i < block.blocks.length; i++) {
-    const childBlock = block.blocks[i];
+    const childBlock = block.blocks[i]!;
     const result = convertBlockToParsedElement(childBlock, `${path}.blocks[${i}]`, baseUrl);
     if (result.element) {
       children.push(result.element);
@@ -471,7 +472,7 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
   // Convert whenTrue branch blocks
   const whenTrueChildren: ParsedElement[] = [];
   for (let i = 0; i < block.whenTrue.length; i++) {
-    const childBlock = block.whenTrue[i];
+    const childBlock = block.whenTrue[i]!;
     const result = convertBlockToParsedElement(childBlock, `${path}.whenTrue[${i}]`, baseUrl);
     if (result.element) {
       whenTrueChildren.push(result.element);
@@ -481,7 +482,7 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
   // Convert whenFalse branch blocks
   const whenFalseChildren: ParsedElement[] = [];
   for (let i = 0; i < block.whenFalse.length; i++) {
-    const childBlock = block.whenFalse[i];
+    const childBlock = block.whenFalse[i]!;
     const result = convertBlockToParsedElement(childBlock, `${path}.whenFalse[${i}]`, baseUrl);
     if (result.element) {
       whenFalseChildren.push(result.element);
@@ -876,7 +877,7 @@ function convertAssistantBlock(
   let hasVideo = false;
 
   for (let i = 0; i < block.blocks.length; i++) {
-    const childBlock = block.blocks[i];
+    const childBlock = block.blocks[i]!;
     const childPath = `${path}.blocks[${i}]`;
 
     // Convert child block normally

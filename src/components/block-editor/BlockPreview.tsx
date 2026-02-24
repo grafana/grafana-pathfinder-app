@@ -8,14 +8,13 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useStyles2, Alert, Badge, Icon } from '@grafana/ui';
 import { getBlockPreviewStyles } from './block-editor.styles';
-import { parseJsonGuide } from '../../docs-retrieval/json-parser';
-import { ContentRenderer } from '../../docs-retrieval/content-renderer';
+import { parseJsonGuide, ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import type { JsonGuide } from './types';
-import type { RawContent } from '../../docs-retrieval/content.types';
+import type { RawContent } from '../../types/content.types';
 
 export interface BlockPreviewProps {
   /** The guide to preview */

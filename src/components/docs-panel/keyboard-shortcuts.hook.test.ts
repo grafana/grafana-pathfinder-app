@@ -1,6 +1,6 @@
 import { renderHook, cleanup, fireEvent } from '@testing-library/react';
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
-import type { LearningJourneyTab } from '../types/content-panel.types';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 describe('useKeyboardShortcuts', () => {
   const mockModel = {
@@ -31,7 +31,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         tabs: mockTabs,
         activeTabId: 'tab1',
-        activeTab: mockTabs[0],
+        activeTab: mockTabs[0]!,
         isRecommendationsTab: false,
         model: mockModel,
       })
@@ -48,7 +48,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         tabs: mockTabs,
         activeTabId: 'recommendations',
-        activeTab: mockTabs[2],
+        activeTab: mockTabs[2]!,
         isRecommendationsTab: true,
         model: mockModel,
       })
@@ -64,7 +64,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         tabs: mockTabs,
         activeTabId: 'tab1',
-        activeTab: mockTabs[0],
+        activeTab: mockTabs[0]!,
         isRecommendationsTab: false,
         model: mockModel,
       })
@@ -85,7 +85,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         tabs: mockTabs,
         activeTabId: 'tab1',
-        activeTab: mockTabs[0],
+        activeTab: mockTabs[0]!,
         isRecommendationsTab: false,
         model: mockModel,
       })
@@ -105,7 +105,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         tabs: mockTabs,
         activeTabId: 'recommendations',
-        activeTab: mockTabs[2],
+        activeTab: mockTabs[2]!,
         isRecommendationsTab: true,
         model: mockModel,
       })

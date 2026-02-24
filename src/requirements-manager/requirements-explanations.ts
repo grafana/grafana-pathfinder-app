@@ -93,7 +93,7 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
   for (const mapping of enhancedMappings) {
     const match = requirement.match(mapping.pattern);
     if (match) {
-      return mapping.message(match[1]);
+      return mapping.message(match[1]!);
     }
   }
 

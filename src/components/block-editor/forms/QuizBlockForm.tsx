@@ -245,7 +245,7 @@ export function QuizBlockForm({
       if (!checked) {
         const correctChoices = choices.filter((c) => c.correct);
         if (correctChoices.length > 1) {
-          const firstCorrectId = correctChoices[0].id;
+          const firstCorrectId = correctChoices[0]!.id;
           setChoices((prev) =>
             prev.map((c) => ({
               ...c,

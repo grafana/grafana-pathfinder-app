@@ -10,7 +10,7 @@ import { t } from '@grafana/i18n';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
-import { testIds } from '../../testIds';
+import { testIds } from '../../../constants/testIds';
 
 export interface TabBarActionsProps {
   /** CSS class name for the container */

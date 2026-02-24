@@ -68,6 +68,21 @@ export async function withTimeout<T>(
  *   (error) => error.message !== 'Auth failed' // Don't retry auth failures
  * );
  */
+/**
+ * Wait for React state updates to complete before proceeding.
+ * Uses a double requestAnimationFrame to ensure we're past React's update cycle,
+ * so DOM changes from React state updates have been applied.
+ */
+export function waitForReactUpdates(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resolve();
+      });
+    });
+  });
+}
+
 export async function retry<T>(
   operation: () => Promise<T>,
   maxRetries: number,
