@@ -39,3 +39,12 @@ export {
   validateBlockConditions,
   type ConditionIssue,
 } from './condition-validator';
+
+export {
+  validatePackage,
+  validatePackageTree,
+  type PackageValidationResult,
+  type PackageValidationMessage,
+  type PackageValidationOptions,
+  type MessageSeverity,
+} from './validate-package';

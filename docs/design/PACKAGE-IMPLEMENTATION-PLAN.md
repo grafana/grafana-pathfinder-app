@@ -8,7 +8,14 @@ This is the phased implementation plan for the [Pathfinder package design](./PAT
 
 This plan is executed phase-by-phase. Each phase is assigned to an agent, and early-phase execution will tend to surface decisions that affect later phases. The plan is a living document: agents completing a phase should update it with findings, key decisions made, and any refinements to later phases that follow from those decisions.
 
-**Agent execution protocol:** Before implementing an assigned phase, always stop and review all completed phases, including any decisions recorded in them. If a prior-phase decision renders a later-phase specification ambiguous or contradictory, ask questions to drive out ambiguity before proceeding with implementation. Do not assume that the original specification for your phase is still correct — validate it against the current state of the codebase and all decisions made in prior phases. When you are finished executing a phase **update this document** with your key decisions, and remove implementation detail, to leave behind a document maximally useful to the next agent.
+**Agent execution protocol:** Before implementing an assigned phase:
+
+1. stop and review all completed phases, including any decisions recorded in them.
+2. If a prior-phase decision renders a later-phase specification ambiguous or contradictory, ask questions to drive out ambiguity before proceeding with implementation.
+3. Do not assume that the original specification for your phase is still correct — validate it against the current state of the codebase and all decisions made in prior phases.
+4. All phases are executed on isolated branches; and a phase cannot be complete until you've
+   run the tidyup skill, committed, pushed branch to remote, and opened a PR with that PR linked back to this epic: https://github.com/grafana/grafana-pathfinder-app/issues/622
+5. When you are finished executing a phase **update this document** with your key decisions, and remove implementation detail, to leave behind a document maximally useful to the next agent.
 
 ---
 
@@ -77,116 +84,46 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 ## Phases
 
-### Phase 0: Schema foundation and Layer 1 extension
+### Phase 0: Schema foundation and Layer 1 extension ✅
 
-**Goal:** Define the two-file schema model (`ContentJsonSchema` + `ManifestJsonSchema`) and the repository index (`repository.json`) that resolves package ids to filesystem paths. Zero runtime changes. Full backwards compatibility.
+**Status:** Complete
 
-**Testing layers:** Layer 1
+**Key decisions and artifacts:**
 
-**Deliverables:**
+- `validation` moved to Tier 1 in both `TIER_MAP` and `eslint.config.mjs`; lateral ratchet dropped from 11 → 9
+- Types in `src/types/package.types.ts`: `ContentJson`, `ManifestJson`, `RepositoryJson`, `RepositoryEntry`, `GraphNode`, `GraphEdge`, `DependencyGraph`, `PackageResolution`, and all dependency/author/targeting types
+- Zod schemas in `src/types/package.schema.ts`: `ContentJsonSchema`, `ManifestJsonSchema`, `ManifestJsonObjectSchema`, `RepositoryJsonSchema`, `RepositoryEntrySchema`, `DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`, `TestEnvironmentSchema`, `PackageTypeSchema`, `GraphNodeSchema`, `GraphEdgeSchema`, `DependencyGraphSchema`
+- `ManifestJsonSchema` uses `.refine()` for the conditional `steps` requirement; `ManifestJsonObjectSchema` is the base shape before refinement for composition use
+- `CURRENT_SCHEMA_VERSION` bumped to `"1.1.0"`; `KNOWN_FIELDS._manifest` added with 18 field names
+- `JsonGuideSchemaStrict` retained unchanged for backwards compatibility
+- `build-repository` CLI command implemented in `src/cli/commands/build-repository.ts`
+- 66 Layer 1 tests in `src/validation/package-schema.test.ts` and `src/validation/build-repository.test.ts`
+- Schema-coupling docs updated (`.cursor/rules/schema-coupling.mdc`) with two-file model coverage
+- CI verification for bundled `repository.json` deferred to Phase 2 (when bundled content is migrated to package directories)
+- `testEnvironment` default is `{ tier: 'cloud' }` (indicating Grafana Cloud required)
+- `GuideTargetingSchema.match` is `z.record(z.string(), z.unknown()).optional()` — loosely typed since the recommender owns match semantics
 
-- [ ] **Prerequisite tier changes:**
-  - [ ] Move `validation` from Tier 2 to Tier 1 in `TIER_MAP` (`src/validation/import-graph.ts`) and `TIER_2_ENGINES` / tier constants (`eslint.config.mjs`)
-  - [ ] Remove the 2 `eslint-disable-next-line` comments in `docs-retrieval/content-fetcher.ts` and `docs-retrieval/json-parser.ts` (lateral violations disappear when `validation` becomes Tier 1)
-  - [ ] Remove the corresponding 2 entries from `ALLOWED_LATERAL_VIOLATIONS` in `architecture.test.ts` (`docs-retrieval/json-parser.ts -> validation`, `docs-retrieval/content-fetcher.ts -> validation`)
-  - [ ] Verify `npm run test:ci` and `npm run lint` pass after tier change
-- [ ] **Schema definitions** (all in `src/types/`, Tier 0 — importable by CLI, runtime engines, validation, and UI):
-  - [ ] Define `ContentJsonSchema` for `content.json` (`schemaVersion`, `id`, `title`, `blocks`)
-  - [ ] Define `ManifestJsonSchema` for `manifest.json` (flat metadata fields, flat dependency fields, `targeting`)
-  - [ ] Define `RepositoryJsonSchema` for `repository.json` (bare package id → `{ path, ...metadata }` mapping)
-- [ ] **Package identity model:**
-  - [ ] Package IDs are bare strings, globally unique (e.g., `"welcome-to-grafana"`)
-  - [ ] No repository prefix in IDs (not `"repo/id"`, just `"id"`)
-  - [ ] `repository` field in manifest is provenance metadata, not part of identity or resolution
-  - [ ] Dependencies reference bare IDs: `depends: ["foo"]` not `depends: ["repo/foo"]`
-  - [ ] Allows packages to move between repositories without ID changes
-  - [ ] Resolution handled by PackageResolver (Phase 3), not by parsing ID syntax
-- [ ] **Manifest field requirements and defaults:**
-  - [ ] **Hard requirements (ERROR if missing):** `id`, `type` (valid values: `"guide"`, `"path"`, `"journey"` — no default)
-  - [ ] **Defaults with INFO validation message:**
-    - `repository` → `"interactive-tutorials"`
-    - `language` → `"en"`
-    - `schemaVersion` → `CURRENT_SCHEMA_VERSION` (currently `"1.1.0"`)
-    - `depends` → `[]`
-    - `recommends` → `[]`
-    - `suggests` → `[]`
-    - `provides` → `[]`
-    - `conflicts` → `[]`
-    - `replaces` → `[]`
-  - [ ] **Defaults with WARN validation message:**
-    - `description` → `undefined`
-    - `category` → `undefined`
-    - `targeting` → `undefined`
-    - `startingLocation` → `"/"` (URL path where guide expects to execute before step 1)
-  - [ ] **Defaults with INFO validation message:**
-    - `author` → `undefined`
-    - `testEnvironment` → default structure indicating Grafana Cloud is required
-  - [ ] **Conditional ERROR:** `steps` is required when `type: "path"` or `type: "journey"`
-  - [ ] Schema uses Zod `.default()` chaining to apply defaults during parsing
-  - [ ] CLI validation emits ERROR/WARN/INFO messages based on missing field severity
-- [ ] Include `testEnvironment` field in `ManifestJsonSchema` from day one with default structure
-- [ ] Define shared sub-schemas (`DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`)
-- [ ] Retain merged `JsonGuideSchemaStrict` for backwards compatibility with single-file guides
-- [ ] Add `KNOWN_FIELDS._manifest` for `manifest.json` fields
-- [ ] Bump `CURRENT_SCHEMA_VERSION` to `"1.1.0"`
-- [ ] Define `repository.json` specification (bare package id → `{ path, ...metadata }` mapping, compiled build artifact)
-- [ ] Denormalize manifest metadata into `repository.json` entries: each entry uses bare package ID as key and includes `{ path, title, description, category, type, startingLocation, steps, depends, recommends, suggests, provides, conflicts, replaces }` — enables dependency graph building without re-reading every `manifest.json`
-- [ ] Example structure: `{ "welcome-to-grafana": { "path": "welcome-to-grafana/", "title": "...", "type": "guide", ... } }`
-- [ ] **Forward compatibility:** repository.json format serves both static catalog aggregation (Phase 4) and future repository registry ingestion (Phase 7). Design for dual use: build-time aggregation and runtime discovery.
-- [ ] Implement `pathfinder-cli build-repository` command (scans package tree, reads both `content.json` and `manifest.json` for each package, emits denormalized `repository.json` with bare IDs)
-- [ ] CI verification for plugin repo: rebuild bundled `repository.json` from scratch, diff against committed version, fail on divergence (committed lockfile approach — appropriate for low-velocity bundled content)
-- [ ] Note: `interactive-tutorials` uses CI-generated `repository.json` published to CDN rather than committed lockfile — see Phase 4 for that repository's publication strategy
-- [ ] Add Layer 1 unit tests for content schema, package schema, cross-file ID consistency, and repository index generation — test suites live in `src/validation/` (test files are excluded from tier enforcement), schema definitions live in `src/types/` (Tier 0)
-- [ ] Run `validate:strict` to confirm all existing guides still pass
-- [ ] Update schema-coupling documentation to cover the new two-file model
+### Phase 1: CLI package validation (Layer 1 completion) ✅
 
-**Why first:** Everything downstream depends on the schema accepting these fields, the two-file model being defined, and the identity model being established. Without `repository.json`, package IDs cannot be resolved to filesystem paths — especially for path and journey step packages.
+**Status:** Complete
 
-### Phase 1: CLI package validation (Layer 1 completion)
+**Key decisions and artifacts:**
 
-**Goal:** The CLI can validate a directory as a package (both `content.json` and `manifest.json`) and validate cross-package dependencies. Completes Layer 1 coverage for the package model.
-
-**Testing layers:** Layer 1
-
-**Deliverables:**
-
-- [ ] `--package` flag: validate a directory (expects `content.json`, optionally `manifest.json`)
-- [ ] Cross-file consistency: `id` match between `content.json` and `manifest.json`
-- [ ] `--packages` flag: validate a tree of package directories
-- [ ] Asset reference validation: warn if `content.json` references assets not in `assets/`
-- [ ] **Dependency graph builder:**
-  - [ ] **Type definitions** (in `src/types/`, Tier 0): `GraphNode` and `GraphEdge` types live alongside other package types so they are importable by CLI, visualization components, the recommender, and any future runtime consumers
-  - [ ] **Graph builder logic** (in `src/cli/`, excluded from tier enforcement): the `build-graph` command constructs the graph; it can import freely from Tier 0 types and Tier 1 validation
-  - [ ] `build-graph` command: iterate over a repository list (e.g., `["bundled-interactives", "interactive-tutorials"]`), read each `repository.json` denormalized index, construct in-memory graph from metadata
-  - [ ] Graph representation: nodes (full manifest metadata from denormalized `repository.json`) + edges (typed relationships)
-  - [ ] Edge types: `depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `steps`
-  - [ ] Output format: D3 JSON with structure `{ nodes: GraphNode[], edges: GraphEdge[], metadata: {...} }`
-  - [ ] `GraphNode` schema: `{ id, repository, title?, description?, category?, type, startingLocation, ...fullManifest }` (includes all manifest fields with defaults applied)
-    - `id`: bare package ID (globally unique, e.g., `"welcome-to-grafana"`)
-    - `repository`: provenance metadata (where package originated, e.g., `"interactive-tutorials"`)
-  - [ ] `GraphEdge` schema: `{ source, target, type }` where `source` and `target` are bare package IDs
-  - [ ] Handles packages with defaulted fields: missing dependency arrays treated as empty (no edges created), undefined metadata fields included in node as `undefined`
-  - [ ] CNF dependency clauses: simplified implementation creates edges to all mentioned packages regardless of AND/OR semantics (note as limitation for future work — OR clauses are imprecise in this representation)
-  - [ ] Virtual capability handling in graph output:
-    - Graph command output (D3 JSON): virtual capabilities appear as virtual nodes (distinguished by a `virtual: true` flag on the node) with `provides` edges from real packages. This preserves the abstraction in visualization.
-    - Runtime structural resolution (Phase 3): virtual nodes are resolved to their providing packages directly (no virtual node in the resolution path). The package engine answers "which packages provide this?" — satisfaction checking ("is any provider completed?") is a consumer concern at Tier 3+.
-  - [ ] **Virtual capability resolution:**
-    - [ ] Build a provides map: scan all packages' `provides` arrays to create a mapping from virtual capability name → set of providing package IDs
-    - [ ] Dependency targets are satisfied if they match a real package ID **or** if any package in the catalog declares `provides: ["that-target"]`
-    - [ ] Virtual capability names declared in `provides` do NOT need to exist as real packages — this follows the Debian virtual package model (e.g., `"datasource-configured"` is a virtual capability provided by multiple real packages)
-  - [ ] Graph lint checks against global catalog (all WARN severity during migration phase, no ERROR):
-    - Dependency target doesn't exist as a real package ID AND is not provided by any package in the catalog (broken reference)
-    - `steps` entries that don't resolve to existing packages in the catalog (broken step reference)
-    - Cycle detection in `depends` chains (error-level semantic issue)
-    - Cycle detection in `recommends` chains (warning-level semantic issue)
-    - Cycle detection in `steps` chains (error-level — a step cannot transitively contain its parent)
-    - Orphaned packages (no incoming or outgoing edges)
-    - Packages with undefined `description` or `category` (quality issue)
-  - [ ] `graph` command: wrapper that invokes `build-graph` and outputs D3 JSON to stdout or file
-- [ ] `testEnvironment` field validation (present in schema since Phase 0)
-- [ ] Integration tests with sample package trees (valid and invalid, with and without `manifest.json`)
-
-**Why second:** Enables CI validation of packages in `interactive-tutorials` before guides are converted. Tooling is ready before content migrates.
+- `validatePackage()` and `validatePackageTree()` in `src/validation/validate-package.ts` (Tier 1, exported from barrel)
+- `--package <dir>` flag on validate command: validates a single package directory
+- `--packages <dir>` flag on validate command: validates a tree of package directories
+- Cross-file ID consistency enforced: content.json `id` must match manifest.json `id` (error code: `id_mismatch`)
+- Asset reference validation: regex scans content.json for `./assets/*` references, warns if file missing
+- Severity-based validation messages: ERROR for required fields, WARN for recommended fields, INFO for defaulted fields
+- `testEnvironment` validation: warns on unrecognized tier values and invalid semver in minVersion
+- `build-graph` CLI command in `src/cli/commands/build-graph.ts`: reads `name:path` repository entries, outputs D3 JSON
+- Graph lint checks implemented: broken refs, broken steps, cycles (DFS-based), orphans, missing description/category
+- Cycle detection uses DFS with separate checks for depends (error), recommends (warn), steps (error)
+- CNF dependency clauses flattened: all mentioned package IDs get edges regardless of AND/OR semantics (noted as limitation)
+- Virtual capability nodes created for provides targets that don't match real packages (`virtual: true` flag)
+- `ValidationWarning.type` extended with `'missing-asset'` variant
+- 38 Layer 1 tests in `src/validation/validate-package.test.ts` and `src/validation/build-graph.test.ts`
+- All 90 test suites pass (1872 tests, 0 failures)
 
 ### Phase 2: Bundled repository migration
 
