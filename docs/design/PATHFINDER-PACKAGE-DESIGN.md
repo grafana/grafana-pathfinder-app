@@ -43,7 +43,8 @@ A SCORM course decomposition produces multiple interrelated guides with rich met
 
 ### Learning journey composition
 
-Docs partners already express inter-guide dependencies in YAML (see [alignment with external formats](#alignment-with-external-formats)). The website team is planning to display guides on the web. Both need guides to be self-describing — carrying their own relationship metadata rather than relying on external manifests. The [learning journeys](#learning-journeys) section defines the metapackage model that formalizes multi-guide composition.
+Docs partners already express inter-guide dependencies in YAML (see [alignment with external formats](#alignment-with-external-formats)). The website team is planning to display guides on the web. Both need guides to be self-describing — carrying their own relationship metadata rather than relying on external manifests.
+As JSON is the lingua franca within Grafana itself, the YAML needs to migrate to JSONi, or we need to have tooling which makes the different all but invisible to authors and operators alike.
 
 ### E2E Layer 4 routing
 
@@ -52,24 +53,46 @@ The [testing strategy](./TESTING_STRATEGY.md) requires guide-level metadata (tie
 ### Content-as-Code lifecycle
 
 As the content corpus grows from ~45 guides toward 100-200+, decentralized ownership becomes essential. Each guide package should carry enough metadata to be self-describing for CI, recommendation, testing, and rendering — without depending on centralized manifests.
+At the same time, for the convenience of operators and software engineers, all data and metadata needs to be mergeable into one large datastructure. This maximizes optionality for 
 
 ---
 
 ## Design principles
 
-1. **Backwards compatible.** All new fields are optional. Existing guides with only `{ schemaVersion, id, title, blocks }` continue to pass validation without changes.
+0. **We steal from the best**: We will lean heavily on standards and Best Current Practices which have stood the test of time.
 
-2. **Self-describing.** A package carries enough metadata to be understood in isolation — its identity, its dependencies, its recommended targeting, and its authorship.
+1. **Clean versioning**: SemVer is the least bad option we have, with one extra allowance for private/security releases. APIs, schemas, guides, and all other components follow SemVer, but allow one more layer of version with x.y.z[.A]. Otherwise, SemVer is followed for everything.
 
-3. **Debian-inspired dependencies.** We adopt the proven dependency vocabulary from the [Debian package system](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends), which has refined these semantics over decades.
+2. **AS/400-inspired forward and backward compatiblity.** The change or introduction of mandatory data is a breaking change and requires a new major version. Code can always import and handle **at least** the last two major versions, and whatever major versions were valid in the most current release of the previous major version Grafana release. Upon the release of a new major version of Grafana, we will backport the tooling to upgrade packages. Where it makes sense, we will create tooling to downgrade guides etc to the latest version understood by the most current x-1.y.z Grafana release. If feasible, we steal from git-annex and retain the upgrade/downgrade functionality ~forever.
 
-4. **Grafana-first, extensible later.** The format serves Grafana interactive guides today. It is designed with open extensibility for non-Grafana content (SCORM import, compliance training, etc.) but does not gold-plate for those use cases now.
+3. **Debian-inspired naming and dependencies.** We adopt the proven dependency semantics and vocabulary from the [Debian package system](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html#depends), which has refined these semantics over decades.
 
-5. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced.
+4. **Packages are atomic.** A package carries all metadata to be understood in isolation — its identity, its dependencies, its recommended targeting, and its authorship.
+   One important property resulting from this is that **repositories do not give identity**.
 
-6. **Vet field names against standards.** Before finalizing metadata field names, cross-reference Dublin Core, IEEE LOM, and SCORM to avoid backward-incompatible renames later.
+TODO: do they also contain all **data**? my gut is yes. Debian's package format is a weak part hidden by tooling. archives of archives, etc. Also, binaries are large, guides are not. i can see the argument of adding e.g. a large video in a distinct file. so maybe the reasonable cut-off for using different files is not "metadata vs data" but "text vs blobs"
+adding to this: the other approach is to zip everything up. all the office formats etc do it -- but in a cloud native world, that seems very very cumbersome
 
-7. **Separate content from metadata.** Content (`content.json`) and package metadata (`manifest.json`) live in separate files within the package directory. Different consumers read only the file they need; different roles author only the file they own. This follows the Debian model where `control` metadata is physically separate from package data.
+5. **Packages are mergeable**: Following the Prometheus model, we group by what makes sense, even if it is not useful in all cases. As a specific example, an arbitrary amount of guides can be merged. Their dependencies will merge cleanly. Their content will merge cleanly. The result will still have "all dependencies" and "all content" separated cleanly in the data structure.
+
+6. **files don't matter**: It does not matter in how many files, buckets, web endpoints, Git branches, or whatever else the packages exist; the way to merge into one big JSON is always obvious. This means carrying single-entry root level entries in many files. We accept this.
+  NB: For human convenience and for tool speed-up, we will split up content and metadata for now.
+
+6. **Most specific wins**: In case there are two packages with the same name. In order of decreasing priority
+  * Manually set priority on a repository [0-1000], default 500. lower is stronger
+  * Higher package version
+  * Newest entry read from the repository list (if i have "default" and then "my custom repo" for packages, i want my custom package)
+  Crucially, we do not allow package-level priorities. This prevents global overrides of the locally-relevant world view
+
+TODO: debian has "highest priority wins" which i always found confusing is not aligned with modern best current practices.
+TODO: what if foo depends on bar 2.0, but bar 3.0 is newest and thus won the merge? there are several approaches, but which is good?
+
+7. **We do not touch packages by hand, and tooling is behind APIs**: For all operations that make sense, we have robust tooling in place. This tooling must be behind properly version APIs to avoid the slippery slope of having UI/front-end only code. The tooling can be compiled into Grafana and into a CLI tool at least. The tooling will always include good linters -- legible to both humans and e.g. Claude -- to speed up third party integrations and development.
+
+8. **Opinionated and Big Tent** We are developing for Grafana, but we maximize optionality and interoperability with best reasonable effort. We will strive to be able to cleanly import from at least SCORM, IEEE LOM, Dublin Core. We will strive to copy the naming conventions. Where we can not copy the names, we will have documentation of what translates to what, and we will surface this documentation as part of the UI/UX of both Grafana and the CLI tool. We will opportunistically support export into those formats.
+
+9. **Advisory targeting.** Packages suggest how they should be recommended. The recommender retains authority to override or change how a package is surfaced. The recommender will honor hard requirements of e.g. onboarding, compliance, or certification training.
+
 
 ---
 
@@ -77,30 +100,28 @@ As the content corpus grows from ~45 guides toward 100-200+, decentralized owner
 
 A package is a **directory** containing at minimum `content.json`. A `manifest.json` file carries metadata, dependencies, and targeting. An optional `assets/` directory holds non-JSON resources (images, diagrams, supplementary files). The directory name matches the guide `id`:
 
+TODO: fundamental question: do we even want two files if everything is just JSON fragments anyway
+
 ```
 interactive-tutorials/
 ├── welcome-to-grafana/
 │   ├── content.json          ← content blocks (block editor's domain)
-│   └── manifest.json          ← metadata, dependencies, targeting
-├── prometheus-grafana-101/
+│   └── metadata.json         ← metadata, dependencies, targeting
+├── ten-guides-in-one/
 │   ├── content.json
-│   ├── manifest.json
-│   └── assets/               ← optional non-JSON assets
-│       └── architecture.png
-├── first-dashboard/
-│   └── content.json          ← manifest.json optional; standalone guide
-└── advanced-alerting/
-    ├── content.json
-    └── manifest.json
+│   └── metadata.json
+├── onboarding-eomployees/
+│   └── metadata.json         ← metapacakage
+└── kinda_wrong_but_allowed
+    └── YOLO.json             ← should this be allowed to work?
 ```
 
 ### Files in a package
 
 | File            | Required | Owner                                  | Contains                                           |
 | --------------- | -------- | -------------------------------------- | -------------------------------------------------- |
-| `content.json`  | Yes      | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`           |
-| `manifest.json` | No       | Product, enablement, recommender teams | Flat metadata, dependency fields, `targeting`      |
-| `assets/`       | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources |
+| `metadata.json` | Yes      | Product, enablement, recommender teams | Flat metadata, dependency fields, `targeting`      |
+| `content.json`  | No       | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`           |
 
 For backwards compatibility, bare files (`welcome-to-grafana.json`) continue to work. The directory convention is adopted for new guides and migrated incrementally.
 
@@ -297,9 +318,10 @@ A package with both files:
 
 ```json
 {
-  "schemaVersion": "1.1.0",
-  "id": "prometheus-grafana-101",
+  "schemaVersion": "0.1.0",
+  "name": "prometheus-grafana-101",
   "title": "Prometheus & Grafana 101",
+  "languages": [{ "en:
   "blocks": [{ "type": "markdown", "content": "# Prometheus & Grafana 101\n\nIn this guide..." }]
 }
 ```
@@ -308,15 +330,15 @@ A package with both files:
 
 ```json
 {
-  "schemaVersion": "1.1.0",
-  "id": "prometheus-grafana-101",
-  "repository": "interactive-tutorials",
+  "schemaVersion": "0.1.0",
+  "name": "prometheus-grafana-101",
+  "version": "1.2.3",
   "description": "Learn to use Prometheus and Grafana to monitor your infrastructure.",
   "language": "en",
   "category": "data-availability",
   "author": {
     "name": "Enablement Team",
-    "team": "interactive-learning"
+    "email": "interactive-learning"
   },
   "startingLocation": "/connections",
   "depends": ["welcome-to-grafana"],
