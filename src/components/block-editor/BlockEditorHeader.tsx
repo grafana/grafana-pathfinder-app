@@ -64,6 +64,7 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     justifyContent: 'space-between',
     padding: `${theme.spacing(1.5)} ${theme.spacing(2)} ${theme.spacing(1)}`,
     gap: theme.spacing(2),
+    flexWrap: 'wrap',
   }),
   guideInfo: css({
     display: 'flex',
@@ -105,13 +106,9 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     justifyContent: 'space-between',
     padding: `${theme.spacing(1)} ${theme.spacing(2)} ${theme.spacing(1.5)}`,
     gap: theme.spacing(2),
+    flexWrap: 'wrap',
   }),
   leftSection: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  }),
-  centerSection: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
@@ -235,9 +232,6 @@ export function BlockEditorHeader({
             Import
           </Button>
         </div>
-
-        {/* Center: Empty for now */}
-        <div className={styles.centerSection}></div>
 
         {/* Right: View mode, publish, and more */}
         <div className={styles.rightSection}>
