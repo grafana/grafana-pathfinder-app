@@ -330,8 +330,8 @@ const getEditorStyles = (theme: GrafanaTheme2) => ({
   }),
   rawTextarea: css({
     width: '100%',
-    minHeight: '250px',
-    maxHeight: '400px',
+    minHeight: '200px',
+    maxHeight: '300px',
     padding: theme.spacing(1.5),
     border: 'none',
     outline: 'none',
@@ -348,15 +348,15 @@ const getEditorStyles = (theme: GrafanaTheme2) => ({
     },
   }),
   editorContent: css({
-    minHeight: '250px',
-    maxHeight: '400px',
+    minHeight: '200px',
+    maxHeight: '300px',
     overflowY: 'auto',
     padding: theme.spacing(1.5),
 
     // TipTap/ProseMirror styling
     '& .ProseMirror': {
       outline: 'none',
-      minHeight: '220px',
+      minHeight: '170px',
 
       '& > * + *': {
         marginTop: theme.spacing(1),
