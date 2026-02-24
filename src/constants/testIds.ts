@@ -61,6 +61,7 @@ export const testIds = {
     customGuidesToggle: 'context-panel-custom-guides-toggle',
     customGuidesList: 'context-panel-custom-guides-list',
     customGuideItem: (index: number) => `context-panel-custom-guide-item-${index}`,
+    suggestedGuidesToggle: 'context-panel-suggested-guides-toggle',
     otherDocsSection: 'context-panel-other-docs-section',
     otherDocsToggle: 'context-panel-other-docs-toggle',
     otherDocsList: 'context-panel-other-docs-list',

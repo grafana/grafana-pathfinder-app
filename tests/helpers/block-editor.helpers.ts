@@ -124,7 +124,10 @@ export async function createSectionBlock(
  * Falls back to localStorage if clipboard API fails (CI reliability).
  */
 export async function copyGuideJson(page: Page): Promise<Record<string, unknown>> {
-  await page.getByTestId('copy-json-button').click();
+  // Open the "More actions" dropdown menu first
+  await page.getByTestId('more-actions-button').click();
+  // Then click the "Copy JSON" menu item by its label text (Menu.Item doesn't forward data-testid)
+  await page.getByRole('menuitem', { name: 'Copy JSON' }).click();
 
   try {
     const text = await page.evaluate(() => navigator.clipboard.readText());

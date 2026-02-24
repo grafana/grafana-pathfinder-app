@@ -259,7 +259,12 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
         {suggestedGuidesCount > 0 && (
           <div className={styles.suggestedGuidesHeader}>
-            <button className={styles.suggestedGuidesToggle} onClick={toggleSuggestedGuidesExpansion}>
+            <button
+              className={styles.suggestedGuidesToggle}
+              onClick={toggleSuggestedGuidesExpansion}
+              data-testid={testIds.contextPanel.suggestedGuidesToggle}
+              aria-expanded={suggestedGuidesExpanded}
+            >
               <Icon name="rocket" size="sm" />
               <span>{t('contextPanel.suggestedGuides', 'Suggested guides')}</span>
               <span className={styles.suggestedGuidesCount}>

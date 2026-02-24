@@ -85,7 +85,7 @@ test.describe.serial('Block Editor', () => {
     const viewModeToggle = page.getByTestId('view-mode-toggle');
     await expect(viewModeToggle).toBeVisible();
 
-    // Click preview mode button (eye icon)
+    // Click preview mode button (eye icon) - Grafana Button uses tooltip which becomes aria-label
     const previewButton = viewModeToggle.locator('button[aria-label="Preview"]');
     await previewButton.click();
 
@@ -93,8 +93,8 @@ test.describe.serial('Block Editor', () => {
     const blockPalette = page.getByTestId('block-palette');
     await expect(blockPalette).not.toBeVisible();
 
-    // Click edit mode button (pen icon) to go back
-    const editButton = viewModeToggle.locator('button[aria-label="Edit blocks"]');
+    // Click edit mode button (pen icon) to go back - tooltip is "Edit" not "Edit blocks"
+    const editButton = viewModeToggle.locator('button[aria-label="Edit"]');
     await editButton.click();
 
     // Block palette should be visible again

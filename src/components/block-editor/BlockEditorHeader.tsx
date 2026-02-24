@@ -162,7 +162,7 @@ export function BlockEditorHeader({
   // More menu for less-used actions
   const moreMenu = (
     <Menu>
-      <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} />
+      <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid="copy-json-button" />
       <Menu.Item label="Download JSON" icon="download-alt" onClick={onDownload} />
       <Menu.Item label="Create GitHub PR" icon="github" onClick={onOpenGitHubPR} />
       <Menu.Divider />
@@ -281,7 +281,13 @@ export function BlockEditorHeader({
 
           <div className={styles.moreButton}>
             <Dropdown overlay={moreMenu} placement="bottom-end">
-              <Button variant="secondary" size="sm" icon="ellipsis-v" tooltip="More actions" />
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="ellipsis-v"
+                tooltip="More actions"
+                data-testid="more-actions-button"
+              />
             </Dropdown>
           </div>
         </div>
