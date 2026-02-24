@@ -179,6 +179,7 @@ export function BlockItem({
       {/* Content */}
       <div className={styles.content}>
         <div className={styles.header}>
+          <span className={styles.blockIndex}>{index + 1}</span>
           <span className={styles.typeIcon}>{meta.icon}</span>
           <Badge text={meta.name} color="blue" />
           {isInteractiveBlock(block.block) && (

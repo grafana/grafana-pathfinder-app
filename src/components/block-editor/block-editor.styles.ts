@@ -476,6 +476,23 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
       transform: 'rotate(-90deg)',
     },
   }),
+
+  // Displays sequential numbering for root-level blocks
+  blockIndex: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '20px',
+    height: '20px',
+    padding: '0 6px',
+    borderRadius: theme.shape.radius.default,
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    flexShrink: 0,
+  }),
 });
 
 /**
