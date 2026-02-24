@@ -336,6 +336,20 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Extracted publish logic to be reusable
   const performPublish = useCallback(
     async (guide: JsonGuide, resourceName: string | undefined, metadata: any, isUpdate: boolean) => {
+      // Generate resource name if not provided
+      const generatedResourceName =
+        resourceName ||
+        (guide.id || guide.title)
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+
+      // Validate resource name is not empty
+      if (!generatedResourceName || generatedResourceName.length === 0) {
+        throw new Error('Guide title or ID must contain at least one alphanumeric character');
+      }
+
       await backendGuides.saveGuide(guide, resourceName, metadata);
 
       // Store the published JSON to track unpublished changes
@@ -346,18 +360,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       const updatedGuides = await backendGuides.refreshGuides();
 
       // After publish, fetch and store the metadata for this guide
-      const generatedResourceName =
-        resourceName ||
-        (guide.id || guide.title)
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-
       const publishedGuide = updatedGuides.find((g) => g.metadata.name === generatedResourceName);
       if (publishedGuide) {
         setCurrentGuideResourceName(publishedGuide.metadata.name);
         setCurrentGuideMetadata(publishedGuide.metadata);
+      } else {
+        // Set metadata even if not found to maintain consistency
+        setCurrentGuideResourceName(generatedResourceName);
+        setCurrentGuideMetadata(metadata);
       }
 
       // Show success modal
@@ -385,6 +395,17 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           .replace(/[^a-z0-9-]/g, '-')
           .replace(/-+/g, '-')
           .replace(/^-|-$/g, '');
+
+      // Validate resource name is not empty
+      if (!resourceName || resourceName.length === 0) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Invalid guide name',
+          message: 'Guide title or ID must contain at least one alphanumeric character',
+          severity: 'error',
+        });
+        return;
+      }
 
       // If this is a new guide (not an update), check if a guide with this name already exists
       if (!isUpdate) {
@@ -478,7 +499,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Close modals
   const closeConfirmModal = useCallback(() => {
     setConfirmModal((prev) => {
-      prev.onCancel?.();
+      const callback = prev.onCancel;
+      setTimeout(() => callback?.(), 0);
       return { ...prev, isOpen: false };
     });
   }, []);

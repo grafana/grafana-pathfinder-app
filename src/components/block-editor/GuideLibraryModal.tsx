@@ -135,6 +135,20 @@ export function GuideLibraryModal({
   });
 
   const handleLoadGuide = (backendGuide: BackendGuide) => {
+    // Validate guide has required fields
+    if (
+      !backendGuide.spec.blocks ||
+      !Array.isArray(backendGuide.spec.blocks) ||
+      backendGuide.spec.blocks.length === 0
+    ) {
+      setDeleteError('Cannot load guide: missing or empty blocks array');
+      return;
+    }
+    if (!backendGuide.spec.title) {
+      setDeleteError('Cannot load guide: missing title');
+      return;
+    }
+
     const guide: JsonGuide = {
       id: backendGuide.spec.id,
       title: backendGuide.spec.title,
