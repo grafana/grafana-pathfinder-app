@@ -157,15 +157,17 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
   const handleImportGuide = useCallback(
     (guide: JsonGuide) => {
       editor.loadGuide(guide);
+      onNewGuide?.();
       modals.close('import');
     },
-    [editor, modals]
+    [editor, modals, onNewGuide]
   );
 
   // Load the example template guide
   const handleLoadTemplate = useCallback(() => {
     editor.loadGuide(blockEditorTutorial as JsonGuide);
-  }, [editor]);
+    onNewGuide?.();
+  }, [editor, onNewGuide]);
 
   return {
     handleCopy,

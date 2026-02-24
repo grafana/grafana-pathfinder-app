@@ -49,12 +49,6 @@ export interface BlockEditorHeaderProps {
   isPostingToBackend?: boolean;
   /** Callback to start new guide */
   onNewGuide: () => void;
-  /** Whether there are blocks to select */
-  hasBlocks?: boolean;
-  /** Whether selection mode is active */
-  isSelectionMode?: boolean;
-  /** Callback to toggle selection mode */
-  onToggleSelectionMode?: () => void;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -162,9 +156,6 @@ export function BlockEditorHeader({
   onPostToBackend,
   isPostingToBackend = false,
   onNewGuide,
-  hasBlocks = false,
-  isSelectionMode = false,
-  onToggleSelectionMode,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 

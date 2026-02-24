@@ -122,6 +122,7 @@ export function GuideLibraryModal({
   const styles = useStyles2(getStyles);
   const [deletingGuide, setDeletingGuide] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
     guideName: string;
@@ -141,11 +142,11 @@ export function GuideLibraryModal({
       !Array.isArray(backendGuide.spec.blocks) ||
       backendGuide.spec.blocks.length === 0
     ) {
-      setDeleteError('Cannot load guide: missing or empty blocks array');
+      setLoadError('Cannot load guide: missing or empty blocks array');
       return;
     }
     if (!backendGuide.spec.title) {
-      setDeleteError('Cannot load guide: missing title');
+      setLoadError('Cannot load guide: missing title');
       return;
     }
 
@@ -294,6 +295,15 @@ export function GuideLibraryModal({
         message={deleteError ?? ''}
         severity="error"
         onClose={() => setDeleteError(null)}
+      />
+
+      {/* Load Error Modal */}
+      <AlertModal
+        isOpen={loadError !== null}
+        title="Failed to load guide"
+        message={loadError ?? ''}
+        severity="error"
+        onClose={() => setLoadError(null)}
       />
     </Modal>
   );

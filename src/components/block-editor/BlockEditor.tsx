@@ -582,9 +582,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onPostToBackend={handlePostToBackend}
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
-        hasBlocks={hasBlocks}
-        isSelectionMode={selection.isSelectionMode}
-        onToggleSelectionMode={selection.toggleSelectionMode}
       />
 
       {/* Content */}
