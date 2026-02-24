@@ -522,7 +522,12 @@ export const getBlockFormStyles = (theme: GrafanaTheme2) => ({
     justifyContent: 'flex-end',
     gap: theme.spacing(1),
     paddingTop: theme.spacing(2),
+    paddingBottom: theme.spacing(0.5),
     borderTop: `1px solid ${theme.colors.border.weak}`,
+    position: 'sticky',
+    bottom: 0,
+    backgroundColor: theme.colors.background.primary,
+    zIndex: 1,
   }),
 
   footerLeft: css({

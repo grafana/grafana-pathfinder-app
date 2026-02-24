@@ -117,4 +117,40 @@ describe('useKeyboardShortcuts', () => {
     fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
     expect(mockModel.navigateToPreviousMilestone).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { element: 'input', factory: () => document.createElement('input') },
+    { element: 'textarea', factory: () => document.createElement('textarea') },
+    {
+      element: 'contentEditable div',
+      factory: () => {
+        const div = document.createElement('div');
+        div.contentEditable = 'true';
+        return div;
+      },
+    },
+  ])('should not intercept Alt+Arrow when focus is in a $element', ({ factory }) => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'tab1',
+        activeTab: mockTabs[0]!,
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
+
+    const target = factory();
+    document.body.appendChild(target);
+
+    fireEvent.keyDown(target, { key: 'ArrowRight', altKey: true });
+    fireEvent.keyDown(target, { key: 'ArrowLeft', altKey: true });
+    fireEvent.keyDown(target, { key: 'ArrowRight', altKey: true, shiftKey: true });
+    fireEvent.keyDown(target, { key: 'ArrowLeft', altKey: true, shiftKey: true });
+
+    expect(mockModel.navigateToNextMilestone).not.toHaveBeenCalled();
+    expect(mockModel.navigateToPreviousMilestone).not.toHaveBeenCalled();
+
+    document.body.removeChild(target);
+  });
 });

@@ -42,16 +42,27 @@ export function useKeyboardShortcuts({
         model.setActiveTab(tabs[nextIndex]!.id);
       }
 
-      // Arrow keys for milestone navigation (only for learning journey tabs)
-      if (!isRecommendationsTab) {
-        if (event.altKey && event.key === 'ArrowRight') {
-          safeEventHandler(event, { preventDefault: true });
-          model.navigateToNextMilestone();
-        }
+      // Alt+Arrow keys for milestone navigation.
+      // Skip when focus is in a text-editable element so native word-jump
+      // (Option+Arrow) and word-select (Option+Shift+Arrow) shortcuts work.
+      if (!isRecommendationsTab && event.altKey) {
+        const target = event.target as HTMLElement;
+        const isTextEditable =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.contentEditable === 'true';
 
-        if (event.altKey && event.key === 'ArrowLeft') {
-          safeEventHandler(event, { preventDefault: true });
-          model.navigateToPreviousMilestone();
+        if (!isTextEditable) {
+          if (event.key === 'ArrowRight') {
+            safeEventHandler(event, { preventDefault: true });
+            model.navigateToNextMilestone();
+          }
+
+          if (event.key === 'ArrowLeft') {
+            safeEventHandler(event, { preventDefault: true });
+            model.navigateToPreviousMilestone();
+          }
         }
       }
 
