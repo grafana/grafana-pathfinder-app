@@ -24,6 +24,7 @@ import type {
   RepositoryJson,
 } from '../../types/package.types';
 import { RepositoryJsonSchema } from '../../types/package.schema';
+import { readJsonFile } from '../../validation/package-io';
 
 interface BuildGraphOptions {
   output?: string;
@@ -39,37 +40,15 @@ export interface GraphLintMessage {
  * Load and parse a repository.json file.
  */
 function loadRepository(filePath: string, repoName: string): { repo: RepositoryJson; errors: string[] } {
-  const errors: string[] = [];
-
-  if (!fs.existsSync(filePath)) {
-    errors.push(`Repository file not found: ${filePath}`);
-    return { repo: {}, errors };
+  const result = readJsonFile(filePath, RepositoryJsonSchema);
+  if (!result.ok) {
+    const msg =
+      result.code === 'schema_validation'
+        ? `Repository validation failed for ${repoName}: ${result.issues?.map((i) => i.message).join('; ')}`
+        : result.message;
+    return { repo: {}, errors: [msg] };
   }
-
-  let raw: string;
-  try {
-    raw = fs.readFileSync(filePath, 'utf-8');
-  } catch {
-    errors.push(`Cannot read repository file: ${filePath}`);
-    return { repo: {}, errors };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    errors.push(`Invalid JSON in repository file: ${filePath}`);
-    return { repo: {}, errors };
-  }
-
-  const result = RepositoryJsonSchema.safeParse(parsed);
-  if (!result.success) {
-    const messages = result.error.issues.map((i) => i.message).join('; ');
-    errors.push(`Repository validation failed for ${repoName}: ${messages}`);
-    return { repo: {}, errors };
-  }
-
-  return { repo: result.data, errors };
+  return { repo: result.data, errors: [] };
 }
 
 /**

@@ -198,39 +198,3 @@ export interface DependencyGraph {
     edgeCount: number;
   };
 }
-
-// ============ PACKAGE RESOLUTION (Phase 3 forward) ============
-
-/**
- * Resolution error codes.
- */
-export interface ResolutionError {
-  code: 'not-found' | 'network-error' | 'parse-error' | 'validation-error';
-  message: string;
-}
-
-export interface PackageResolutionSuccess {
-  ok: true;
-  id: string;
-  contentUrl: string;
-  manifestUrl: string;
-  repository: string;
-  manifest?: ManifestJson;
-  content?: ContentJson;
-}
-
-export interface PackageResolutionFailure {
-  ok: false;
-  id: string;
-  error: ResolutionError;
-}
-
-export type PackageResolution = PackageResolutionSuccess | PackageResolutionFailure;
-
-export interface ResolveOptions {
-  loadContent?: boolean;
-}
-
-export interface PackageResolver {
-  resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution>;
-}

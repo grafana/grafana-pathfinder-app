@@ -10,6 +10,20 @@
 import { z } from 'zod';
 
 import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
+import type {
+  Author,
+  DependencyClause,
+  DependencyGraph,
+  DependencyList,
+  GraphEdge,
+  GraphEdgeType,
+  GraphNode,
+  GuideTargeting,
+  PackageType,
+  RepositoryEntry,
+  RepositoryJson,
+  TestEnvironment,
+} from './package.types';
 
 // ============ CONTENT SCHEMA (content.json) ============
 
@@ -31,13 +45,16 @@ export const ContentJsonSchema = z.object({
  * A single dependency clause: bare package ID or OR-group of alternatives.
  * @coupling Type: DependencyClause
  */
-export const DependencyClauseSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
+export const DependencyClauseSchema = z.union([
+  z.string().min(1),
+  z.array(z.string().min(1)).min(1),
+]) satisfies z.ZodType<DependencyClause>;
 
 /**
  * A list of dependency clauses combined with AND (CNF).
  * @coupling Type: DependencyList
  */
-export const DependencyListSchema = z.array(DependencyClauseSchema);
+export const DependencyListSchema = z.array(DependencyClauseSchema) satisfies z.ZodType<DependencyList>;
 
 // ============ AUTHOR SCHEMA ============
 
@@ -47,7 +64,7 @@ export const DependencyListSchema = z.array(DependencyClauseSchema);
 export const AuthorSchema = z.object({
   name: z.string().optional(),
   team: z.string().optional(),
-});
+}) satisfies z.ZodType<Author>;
 
 // ============ TARGETING SCHEMA ============
 
@@ -58,7 +75,7 @@ export const AuthorSchema = z.object({
  */
 export const GuideTargetingSchema = z.object({
   match: z.record(z.string(), z.unknown()).optional(),
-});
+}) satisfies z.ZodType<GuideTargeting>;
 
 // ============ TEST ENVIRONMENT SCHEMA ============
 
@@ -72,13 +89,13 @@ export const TestEnvironmentSchema = z.object({
   datasets: z.array(z.string()).optional(),
   datasources: z.array(z.string()).optional(),
   plugins: z.array(z.string()).optional(),
-});
+}) satisfies z.ZodType<TestEnvironment>;
 
 const DEFAULT_TEST_ENVIRONMENT = { tier: 'cloud' } as const;
 
 // ============ PACKAGE TYPE ============
 
-export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']);
+export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies z.ZodType<PackageType>;
 
 // ============ MANIFEST SCHEMA (manifest.json) ============
 
@@ -163,13 +180,13 @@ const packageMetadataSchemaFields = {
 export const RepositoryEntrySchema = z.object({
   path: z.string().min(1),
   ...packageMetadataSchemaFields,
-});
+}) satisfies z.ZodType<RepositoryEntry>;
 
 /**
  * Schema for repository.json — maps bare package IDs to entry metadata.
  * @coupling Type: RepositoryJson
  */
-export const RepositoryJsonSchema = z.record(z.string(), RepositoryEntrySchema);
+export const RepositoryJsonSchema = z.record(z.string(), RepositoryEntrySchema) satisfies z.ZodType<RepositoryJson>;
 
 // ============ GRAPH SCHEMAS ============
 
@@ -181,7 +198,7 @@ export const GraphEdgeTypeSchema = z.enum([
   'conflicts',
   'replaces',
   'steps',
-]);
+]) satisfies z.ZodType<GraphEdgeType>;
 
 /**
  * @coupling Type: GraphNode
@@ -191,7 +208,7 @@ export const GraphNodeSchema = z.object({
   repository: z.string(),
   ...packageMetadataSchemaFields,
   virtual: z.boolean().optional(),
-});
+}) satisfies z.ZodType<GraphNode>;
 
 /**
  * @coupling Type: GraphEdge
@@ -200,7 +217,7 @@ export const GraphEdgeSchema = z.object({
   source: z.string().min(1),
   target: z.string().min(1),
   type: GraphEdgeTypeSchema,
-});
+}) satisfies z.ZodType<GraphEdge>;
 
 /**
  * @coupling Type: DependencyGraph
@@ -214,13 +231,4 @@ export const DependencyGraphSchema = z.object({
     nodeCount: z.number(),
     edgeCount: z.number(),
   }),
-});
-
-// ============ TYPE INFERENCE ============
-
-export type InferredContentJson = z.infer<typeof ContentJsonSchema>;
-export type InferredManifestJson = z.infer<typeof ManifestJsonSchema>;
-export type InferredRepositoryEntry = z.infer<typeof RepositoryEntrySchema>;
-export type InferredRepositoryJson = z.infer<typeof RepositoryJsonSchema>;
-export type InferredGraphNode = z.infer<typeof GraphNodeSchema>;
-export type InferredGraphEdge = z.infer<typeof GraphEdgeSchema>;
+}) satisfies z.ZodType<DependencyGraph>;
