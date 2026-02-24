@@ -39,14 +39,3 @@ export {
   validateBlockConditions,
   type ConditionIssue,
 } from './condition-validator';
-
-export {
-  validatePackage,
-  validatePackageTree,
-  type PackageValidationResult,
-  type PackageValidationMessage,
-  type PackageValidationOptions,
-  type MessageSeverity,
-} from './validate-package';
-
-export { readJsonFile, type JsonReadResult, type JsonReadSuccess, type JsonReadFailure } from './package-io';

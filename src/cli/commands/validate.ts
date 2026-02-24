@@ -7,13 +7,8 @@
 import { Command } from 'commander';
 import * as path from 'path';
 
-import {
-  validateGuideFromString,
-  toLegacyResult,
-  validatePackage,
-  validatePackageTree,
-  type PackageValidationResult,
-} from '../../validation';
+import { validateGuideFromString, toLegacyResult } from '../../validation';
+import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
 
 interface ValidateOptions {
