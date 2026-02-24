@@ -198,3 +198,40 @@ Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. I
 - **Tier 1 (glob-triggered on `*.ts`/`*.tsx`/`*.js`/`*.jsx`)**: `frontend-security.mdc` -- security rules F1-F6
 - **Tier 1 (on `/review`)**: `pr-review.md` -- compact orchestrator with unified detection table
 - **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` -- detailed Do/Don't for R1-R21 (includes hooks, state, performance, and SRE reliability patterns; also used by `/attack`)
+
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | How to run | Port | Notes |
+|---------|-----------|------|-------|
+| Grafana (with plugin) | `docker compose up --build -d` | 3000 | Requires `npm run build` first so `dist/` exists |
+| Webpack dev (watch) | `npm run dev` | — | Rebuilds plugin on file changes; Grafana container picks up new `dist/` |
+
+### Docker in Cloud Agent VMs
+
+Docker is not pre-installed. Before running `docker compose up`, install Docker + fuse-overlayfs and switch iptables to legacy mode (see the environment setup hints in system instructions). After installation, start the daemon with `sudo dockerd &>/tmp/dockerd.log &` and grant socket access with `sudo chmod 666 /var/run/docker.sock`.
+
+### Running Grafana locally
+
+1. Build the plugin: `npm run build` (or start `npm run dev` in the background for watch mode).
+2. Start all services: `docker compose up --build -d` from the repo root.
+3. Grafana is available at http://localhost:3000 with anonymous admin access (no login required in the default dev config).
+4. The Pathfinder plugin is at http://localhost:3000/a/grafana-pathfinder-app.
+
+### Key commands reference
+
+See `AGENTS.md` **Local development commands** section above and `docs/developer/LOCAL_DEV.md` for full details. Quick reference:
+
+- **Lint**: `npm run lint` (auto-fix: `npm run lint:fix`)
+- **Typecheck**: `npm run typecheck`
+- **Unit tests**: `npm run test:ci` (86 suites, ~1768 tests)
+- **Build**: `npm run build`
+- **Dev watch**: `npm run dev`
+
+### Gotchas
+
+- The Grafana Docker image is `grafana-enterprise:12.3.0` (not OSS). It requires feature toggles `appSidecar,extensionSidebar,localizationForPlugins,userStorageAPI` which are already configured in `docker-compose.yaml`.
+- The plugin must be built (`dist/` directory must exist) before starting Docker, since the container volume-mounts `dist/` as the plugin directory.
+- When running `npm run dev` (webpack watch), changes are written to `dist/` and the running Grafana container picks them up. A full page reload in the browser is needed to see changes (livereload is injected but requires the webpack livereload plugin to be active).
+- Jest tests use `--maxWorkers 4` in CI mode. Console warnings about "Failed to detect platform" in tests are expected and benign (the Grafana runtime context isn't available in jsdom).
