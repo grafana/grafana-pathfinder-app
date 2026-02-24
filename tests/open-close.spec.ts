@@ -27,6 +27,16 @@ test('should open and close docs panel', async ({ page }) => {
   const recommendationsContainer = page.getByTestId(testIds.contextPanel.recommendationsContainer);
   await expect(recommendationsContainer).toBeVisible();
 
+  // Expand suggested guides section if collapsed
+  const suggestedGuidesToggle = page.getByTestId(testIds.contextPanel.suggestedGuidesToggle);
+  if ((await suggestedGuidesToggle.count()) > 0) {
+    const isExpanded = await suggestedGuidesToggle.getAttribute('aria-expanded');
+    if (isExpanded !== 'true') {
+      await suggestedGuidesToggle.click();
+      await page.waitForTimeout(300);
+    }
+  }
+
   // Click the Help button again to close the panel (toggle behavior)
   await helpButton.click();
 

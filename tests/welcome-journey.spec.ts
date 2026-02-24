@@ -148,6 +148,16 @@ test('should complete first two steps of Welcome to Grafana journey', async ({ p
   const recommendationsContainer = page.getByTestId(testIds.contextPanel.recommendationsContainer);
   await expect(recommendationsContainer).toBeVisible({ timeout: 10000 });
 
+  // Expand suggested guides section if collapsed
+  const suggestedGuidesToggle = page.getByTestId(testIds.contextPanel.suggestedGuidesToggle);
+  if ((await suggestedGuidesToggle.count()) > 0) {
+    const isExpanded = await suggestedGuidesToggle.getAttribute('aria-expanded');
+    if (isExpanded !== 'true') {
+      await suggestedGuidesToggle.click();
+      await page.waitForTimeout(300);
+    }
+  }
+
   // Find the recommendations grid
   const recommendationsGrid = page.getByTestId(testIds.contextPanel.recommendationsGrid);
   await expect(recommendationsGrid).toBeVisible();

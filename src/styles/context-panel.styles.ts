@@ -612,6 +612,126 @@ export const getFeaturedStyles = (theme: GrafanaTheme2) => {
   };
 };
 
+// Custom guides section styles
+export const getCustomGuidesStyles = (theme: GrafanaTheme2) => ({
+  customGuidesSection: css({
+    backgroundColor: 'transparent',
+  }),
+  customGuidesHeader: css({
+    padding: theme.spacing(0.5, 0),
+  }),
+  customGuidesToggle: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    width: '100%',
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    color: theme.colors.text.primary,
+    cursor: 'pointer',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  customGuidesCount: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.25),
+    marginLeft: 'auto',
+    marginRight: theme.spacing(1),
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightRegular,
+    color: theme.colors.text.secondary,
+    backgroundColor: theme.colors.background.secondary,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: '12px',
+    border: 'none',
+    opacity: 0.8,
+  }),
+  customGuidesExpansion: css({
+    padding: theme.spacing(0),
+  }),
+  customGuidesLoading: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
+  customGuidesList: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.75),
+  }),
+  customGuideItem: css({
+    // Kept for compatibility; custom guides now reuse recommendation card styles.
+  }),
+  customGuideCard: css({
+    borderColor: theme.isDark ? 'rgba(120, 189, 255, 0.35)' : 'rgba(31, 98, 192, 0.28)',
+    boxShadow: theme.isDark ? 'inset 0 0 0 1px rgba(120, 189, 255, 0.08)' : 'inset 0 0 0 1px rgba(31, 98, 192, 0.06)',
+  }),
+  customGuideTag: css({
+    display: 'inline-block',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightMedium,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.pill,
+    width: 'fit-content',
+    lineHeight: 1.4,
+    backgroundColor: theme.isDark ? 'rgba(120, 189, 255, 0.16)' : 'rgba(31, 98, 192, 0.12)',
+    border: `1px solid ${theme.isDark ? 'rgba(120, 189, 255, 0.3)' : 'rgba(31, 98, 192, 0.24)'}`,
+    color: theme.isDark ? '#9cccff' : '#1f62c0',
+  }),
+  suggestedGuidesHeader: css({
+    padding: theme.spacing(0.5, 0),
+  }),
+  suggestedGuidesHeaderInner: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    width: '100%',
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+    backgroundColor: 'transparent',
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+  suggestedGuidesToggle: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    width: '100%',
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    color: theme.colors.text.primary,
+    cursor: 'pointer',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  suggestedGuidesCount: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.25),
+    marginLeft: 'auto',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightRegular,
+    color: theme.colors.text.secondary,
+    backgroundColor: theme.colors.background.secondary,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: '12px',
+    border: 'none',
+    opacity: 0.8,
+  }),
+});
+
 // Other docs section styles
 export const getOtherDocsStyles = (theme: GrafanaTheme2) => ({
   otherDocsSection: css({
@@ -736,6 +856,7 @@ export const getStyles = (theme: GrafanaTheme2) => ({
   ...getMilestoneStyles(theme),
   ...getStepsStyles(theme),
   ...getFeaturedStyles(theme),
+  ...getCustomGuidesStyles(theme),
   ...getOtherDocsStyles(theme),
   ...getDebugStyles(theme),
 });

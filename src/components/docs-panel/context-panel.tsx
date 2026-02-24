@@ -1,4 +1,4 @@
-import React, { memo, useEffect } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Alert, Button } from '@grafana/ui';
@@ -17,6 +17,8 @@ import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } fro
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
+import { CustomGuidesSection } from './CustomGuidesSection';
+import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuides';
 
 /** Get icon name based on recommendation type */
 const getRecommendationIcon = (type?: string): IconName => {
@@ -129,6 +131,10 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 interface RecommendationsSectionProps {
   recommendations: Recommendation[];
   featuredRecommendations: Recommendation[];
+  customGuides: PublishedGuide[];
+  isLoadingCustomGuides: boolean;
+  customGuidesExpanded: boolean;
+  suggestedGuidesExpanded: boolean;
   isLoadingRecommendations: boolean;
   isLoadingContext: boolean;
   recommendationsError: string | null;
@@ -136,6 +142,8 @@ interface RecommendationsSectionProps {
   showEnableRecommenderBanner: boolean;
   openLearningJourney: (url: string, title: string) => void;
   openDocsPage: (url: string, title: string) => void;
+  toggleCustomGuidesExpansion: () => void;
+  toggleSuggestedGuidesExpansion: () => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   toggleOtherDocsExpansion: () => void;
 }
@@ -143,6 +151,10 @@ interface RecommendationsSectionProps {
 export const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
   featuredRecommendations,
+  customGuides,
+  isLoadingCustomGuides,
+  customGuidesExpanded,
+  suggestedGuidesExpanded,
   isLoadingRecommendations,
   isLoadingContext,
   recommendationsError,
@@ -150,10 +162,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   showEnableRecommenderBanner,
   openLearningJourney,
   openDocsPage,
+  toggleCustomGuidesExpansion,
+  toggleSuggestedGuidesExpansion,
   toggleSummaryExpansion,
   toggleOtherDocsExpansion,
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
+  const hasCustomGuidesContent = isLoadingCustomGuides || customGuides.length > 0;
+  const suggestedGuidesCount = recommendations.length + featuredRecommendations.length;
 
   // All recommendations are now >= 0.5 confidence and pre-sorted by service
   // Primary recommendations: maximum of 4 items with highest confidence
@@ -172,7 +188,12 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   }
 
   // If there's an error but no recommendations (regular or featured), show only the error
-  if (recommendationsError && recommendations.length === 0 && featuredRecommendations.length === 0) {
+  if (
+    recommendationsError &&
+    recommendations.length === 0 &&
+    featuredRecommendations.length === 0 &&
+    !hasCustomGuidesContent
+  ) {
     return (
       <Alert
         severity="warning"
@@ -185,7 +206,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   }
 
   // If there are no recommendations (regular or featured) and no error, show empty state
-  if (recommendations.length === 0 && featuredRecommendations.length === 0) {
+  if (recommendations.length === 0 && featuredRecommendations.length === 0 && !hasCustomGuidesContent) {
     return (
       <>
         <div className={styles.emptyContainer} data-testid={testIds.contextPanel.emptyState}>
@@ -226,8 +247,37 @@ export const RecommendationsSection = memo(function RecommendationsSection({
       )}
 
       <div className={styles.recommendationsContainer} data-testid={testIds.contextPanel.recommendationsContainer}>
+        {hasCustomGuidesContent && (
+          <CustomGuidesSection
+            guides={customGuides}
+            isLoading={isLoadingCustomGuides}
+            expanded={customGuidesExpanded}
+            onToggleExpanded={toggleCustomGuidesExpansion}
+            openDocsPage={openDocsPage}
+          />
+        )}
+
+        {suggestedGuidesCount > 0 && (
+          <div className={styles.suggestedGuidesHeader}>
+            <button
+              className={styles.suggestedGuidesToggle}
+              onClick={toggleSuggestedGuidesExpansion}
+              data-testid={testIds.contextPanel.suggestedGuidesToggle}
+              aria-expanded={suggestedGuidesExpanded}
+            >
+              <Icon name="rocket" size="sm" />
+              <span>{t('contextPanel.suggestedGuides', 'Suggested guides')}</span>
+              <span className={styles.suggestedGuidesCount}>
+                <Icon name="list-ul" size="xs" />
+                {t('contextPanel.items', '{{count}} item', { count: suggestedGuidesCount })}
+              </span>
+              <Icon name={suggestedGuidesExpanded ? 'angle-up' : 'angle-down'} size="sm" />
+            </button>
+          </div>
+        )}
+
         {/* Featured Recommendations Section - Time-based featured content */}
-        {featuredRecommendations.length > 0 && (
+        {suggestedGuidesExpanded && featuredRecommendations.length > 0 && (
           <div className={styles.featuredSection} data-testid="featured-section">
             <div className={styles.featuredHeader}>
               <Icon name="star" className={styles.featuredIcon} />
@@ -435,7 +485,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         )}
 
         {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
-        {finalPrimaryRecommendations.length > 0 && (
+        {suggestedGuidesExpanded && finalPrimaryRecommendations.length > 0 && (
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
             {finalPrimaryRecommendations.map((recommendation, index) => (
               <Card
@@ -654,7 +704,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         )}
 
         {/* Other Documentation Section - all items beyond top 4, including learning paths */}
-        {secondaryDocs.length > 0 && (
+        {suggestedGuidesExpanded && secondaryDocs.length > 0 && (
           <div className={styles.otherDocsSection} data-testid={testIds.contextPanel.otherDocsSection}>
             <div className={styles.otherDocsHeader}>
               <button
@@ -761,6 +811,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     onOpenLearningJourney: model.state.onOpenLearningJourney,
     onOpenDocsPage: model.state.onOpenDocsPage,
   });
+  const { guides: customGuides, isLoading: isLoadingCustomGuides } = usePublishedGuides();
+  const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
+  const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
 
   // Note: Auto-open event listener moved to CombinedPanelRenderer to avoid remounting issues
   // ContextPanelRenderer remounts when tabs change, causing listener cleanup
@@ -788,6 +841,10 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           <RecommendationsSection
             recommendations={recommendations}
             featuredRecommendations={contextData.featuredRecommendations}
+            customGuides={customGuides}
+            isLoadingCustomGuides={isLoadingCustomGuides}
+            customGuidesExpanded={customGuidesExpanded}
+            suggestedGuidesExpanded={suggestedGuidesExpanded}
             isLoadingRecommendations={isLoadingRecommendations}
             isLoadingContext={contextData.isLoading}
             recommendationsError={recommendationsError}
@@ -795,6 +852,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             showEnableRecommenderBanner={showEnableRecommenderBanner}
             openLearningJourney={openLearningJourney}
             openDocsPage={openDocsPage}
+            toggleCustomGuidesExpansion={() => setCustomGuidesExpanded((prev) => !prev)}
+            toggleSuggestedGuidesExpansion={() => setSuggestedGuidesExpanded((prev) => !prev)}
             toggleSummaryExpansion={toggleSummaryExpansion}
             toggleOtherDocsExpansion={toggleOtherDocsExpansion}
           />
