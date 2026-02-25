@@ -54,6 +54,8 @@ export interface ConditionalBranchesProps {
   ) => void;
   /** ID of the block that was just dropped (for highlight animation) */
   justDroppedId?: string | null;
+  /** ID of the last modified block (for persistent highlight) */
+  lastModifiedId?: string | null;
 }
 
 export function ConditionalBranches({
@@ -75,6 +77,7 @@ export function ConditionalBranches({
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
   justDroppedId,
+  lastModifiedId,
 }: ConditionalBranchesProps) {
   const conditionalBlock = block.block as JsonConditionalBlock;
 
@@ -107,6 +110,7 @@ export function ConditionalBranches({
         onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
         onInsertBlockInConditional={onInsertBlockInConditional}
         justDroppedId={justDroppedId}
+        lastModifiedId={lastModifiedId}
       />
 
       {/* False branch */}
@@ -130,6 +134,7 @@ export function ConditionalBranches({
         onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
         onInsertBlockInConditional={onInsertBlockInConditional}
         justDroppedId={justDroppedId}
+        lastModifiedId={lastModifiedId}
       />
     </div>
   );
@@ -174,6 +179,8 @@ interface ConditionalBranchProps {
   ) => void;
   /** ID of the block that was just dropped (for highlight animation) */
   justDroppedId?: string | null;
+  /** ID of the last modified block (for persistent highlight) */
+  lastModifiedId?: string | null;
 }
 
 function ConditionalBranch({
@@ -196,6 +203,7 @@ function ConditionalBranch({
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
   justDroppedId,
+  lastModifiedId,
 }: ConditionalBranchProps) {
   const isTrue = branch === 'whenTrue';
   const branchKey = isTrue ? 'true' : 'false';
@@ -277,6 +285,7 @@ function ConditionalBranch({
                   <div style={{ marginBottom: '8px' }}>
                     <NestedBlockItem
                       block={nestedBlock}
+                      index={nestedIndex}
                       onEdit={() => onConditionalBranchBlockEdit?.(block.id, branch, nestedIndex, nestedBlock)}
                       onDelete={() => onConditionalBranchBlockDelete?.(block.id, branch, nestedIndex)}
                       onDuplicate={() => onConditionalBranchBlockDuplicate?.(block.id, branch, nestedIndex)}
@@ -288,6 +297,7 @@ function ConditionalBranch({
                           : undefined
                       }
                       isJustDropped={justDroppedId === `${block.id}-${branchKey}-${nestedIndex}`}
+                      isLastModified={lastModifiedId === `${block.id}-${branchKey}-${nestedIndex}`}
                     />
                   </div>
                 </SortableBlock>

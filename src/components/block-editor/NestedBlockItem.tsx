@@ -14,6 +14,8 @@ import type { BlockType, JsonBlock } from './types';
 
 export interface NestedBlockItemProps {
   block: JsonBlock;
+  /** Position index within the container (0-based) */
+  index?: number;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
@@ -22,6 +24,8 @@ export interface NestedBlockItemProps {
   onToggleSelect?: () => void;
   /** Whether this block was just dropped (triggers highlight animation) */
   isJustDropped?: boolean;
+  /** Whether this block was the last one modified (persistent highlight) */
+  isLastModified?: boolean;
 }
 
 /**
@@ -30,6 +34,7 @@ export interface NestedBlockItemProps {
  */
 export function NestedBlockItem({
   block,
+  index,
   onEdit,
   onDelete,
   onDuplicate,
@@ -37,6 +42,7 @@ export function NestedBlockItem({
   isSelected = false,
   onToggleSelect,
   isJustDropped = false,
+  isLastModified = false,
 }: NestedBlockItemProps) {
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
@@ -74,6 +80,7 @@ export function NestedBlockItem({
     styles.container,
     isSelected && styles.selectedContainer,
     isJustDropped && styles.justDroppedContainer,
+    isLastModified && !isJustDropped && styles.lastModifiedContainer,
   ]
     .filter(Boolean)
     .join(' ');
@@ -107,6 +114,7 @@ export function NestedBlockItem({
       {/* Content - matches BlockItem layout */}
       <div className={styles.content}>
         <div className={styles.header}>
+          {index !== undefined && <span className={styles.blockNumber}>{index + 1}</span>}
           <span className={styles.icon}>{meta?.icon}</span>
           <Badge text={meta?.name ?? block.type} color="blue" />
           {'action' in block && (
