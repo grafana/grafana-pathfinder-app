@@ -39,6 +39,7 @@ The codebase enforces a layered tier model via ratchet tests (`src/validation/ar
 - **Package engine at Tier 2.** The `PackageResolver`, package loader, dependency resolver, and static catalog fetcher live together in `src/package-engine/` as a new Tier 2 engine with its own barrel export (`index.ts`). Lateral isolation means it cannot import from `docs-retrieval`, `learning-paths`, `context-engine`, or other Tier 2 engines.
 - **Graph types at Tier 0, graph builder in CLI.** `GraphNode` and `GraphEdge` type definitions live in `src/types/` for broad importability. The graph construction logic (`build-graph` command) lives in `src/cli/` (excluded from tier enforcement).
 - **Completion state is a consumer concern.** The package engine provides structural dependency resolution ("which packages provide capability X?") but does not check completion state. Determining whether dependencies are satisfied requires completion data from `learning-paths` — callers at Tier 3+ combine both. This avoids a lateral coupling between `package-engine` and `learning-paths`.
+- **Open-world directory semantics.** Package discovery uses the `content.json`-presence heuristic: a subdirectory is a package if and only if it contains `content.json`. Unknown files and subdirectories in or alongside package directories are silently ignored — not warned, not errored. This is the directory-level analog of `.passthrough()` in the JSON schemas. See [extension metadata](./PATHFINDER-PACKAGE-DESIGN.md#extension-metadata).
 
 ### Dual registration
 
@@ -199,7 +200,7 @@ This plan is designed to support and further the [content testing strategy](./TE
     ```
   - [ ] Repositories are internal to the resolver — URLs pointing to indexes, not first-class objects
 - [ ] **Package loader** (in `src/package-engine/`):
-  - [ ] Load directory packages (`content.json` + `manifest.json`) from resolved locations
+  - [ ] Load directory packages (`content.json` + `manifest.json`) from resolved locations. Package directories may contain additional files and subdirectories placed by extension tools (see [extension metadata](./PATHFINDER-PACKAGE-DESIGN.md#extension-metadata)); the loader reads only the known core files and does not warn about unknown directory contents.
   - [ ] Fallback to single-file guides for backwards compatibility — the loader recognizes old-format single-file JSON and parses it using schemas from `src/types/` (Tier 0) and validation from `src/validation/` (Tier 1). This is self-contained within the package engine; no import from `docs-retrieval` is needed.
   - [ ] Handle local (bundled) content sources
   - [ ] **Transitional duplication note:** During the migration period, content loading logic will exist in both `docs-retrieval` (existing paths) and `package-engine` (new package loading + legacy fallback). The duplication is intentional — it avoids a lateral coupling between the two Tier 2 engines. Full resolution depends on work in the external `grafana-recommender` microservice (outside this plan's scope) to adopt package resolution; until then, both code paths must remain.
