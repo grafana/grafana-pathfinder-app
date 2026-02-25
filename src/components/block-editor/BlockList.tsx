@@ -89,6 +89,7 @@ export function BlockList({ blocks, operations }: BlockListProps) {
   const [activeDragData, setActiveDragData] = useState<DragData | null>(null);
   const [hoveredInsertIndex, setHoveredInsertIndex] = useState<number | null>(null);
   const [justDroppedId, setJustDroppedId] = useState<string | null>(null);
+  const [lastModifiedId, setLastModifiedId] = useState<string | null>(null);
   const autoExpandTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dropHighlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -631,9 +632,17 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     block={block}
                     index={index}
                     totalBlocks={blocks.length}
-                    onEdit={() => onBlockEdit(block)}
+                    onEdit={() => {
+                      setLastModifiedId(block.id);
+                      onBlockEdit(block);
+                    }}
                     onDelete={() => onBlockDelete(block.id)}
-                    onDuplicate={() => onBlockDuplicate(block.id)}
+                    onDuplicate={() => {
+                      const newId = onBlockDuplicate(block.id);
+                      if (newId) {
+                        setLastModifiedId(newId);
+                      }
+                    }}
                     onRecord={isSection && onSectionRecord ? () => onSectionRecord(block.id) : undefined}
                     isRecording={isSection && recordingIntoSection === block.id}
                     isSelectionMode={isSelectionMode}
@@ -644,6 +653,7 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     onToggleCollapse={() => toggleCollapse(block.id)}
                     childCount={isSection ? sectionBlocks.length : conditionalChildCount}
                     isJustDropped={justDroppedId === block.id}
+                    isLastModified={lastModifiedId === block.id}
                   />
                 </SortableBlock>
 
@@ -662,11 +672,18 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     onToggleBlockSelection={onToggleBlockSelection}
                     onConditionalBranchRecord={onConditionalBranchRecord}
                     recordingIntoConditionalBranch={recordingIntoConditionalBranch}
-                    onConditionalBranchBlockEdit={onConditionalBranchBlockEdit}
+                    onConditionalBranchBlockEdit={onConditionalBranchBlockEdit
+                      ? (conditionalId, branch, nestedIndex, block) => {
+                          const branchKey = branch === 'whenTrue' ? 'true' : 'false';
+                          setLastModifiedId(`${conditionalId}-${branchKey}-${nestedIndex}`);
+                          onConditionalBranchBlockEdit(conditionalId, branch, nestedIndex, block);
+                        }
+                      : undefined}
                     onConditionalBranchBlockDelete={onConditionalBranchBlockDelete}
                     onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
                     onInsertBlockInConditional={onInsertBlockInConditional}
                     justDroppedId={justDroppedId}
+                    lastModifiedId={lastModifiedId}
                   />
                 )}
 
@@ -683,11 +700,17 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     isSelectionMode={isSelectionMode}
                     selectedBlockIds={selectedBlockIds}
                     onToggleBlockSelection={onToggleBlockSelection}
-                    onNestedBlockEdit={onNestedBlockEdit}
+                    onNestedBlockEdit={onNestedBlockEdit
+                      ? (sectionId, nestedIndex, block) => {
+                          setLastModifiedId(`${sectionId}-nested-${nestedIndex}`);
+                          onNestedBlockEdit(sectionId, nestedIndex, block);
+                        }
+                      : undefined}
                     onNestedBlockDelete={onNestedBlockDelete}
                     onNestedBlockDuplicate={onNestedBlockDuplicate}
                     onInsertBlockInSection={onInsertBlockInSection}
                     justDroppedId={justDroppedId}
+                    lastModifiedId={lastModifiedId}
                   />
                 )}
 
