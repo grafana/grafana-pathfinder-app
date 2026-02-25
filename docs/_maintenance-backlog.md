@@ -6,14 +6,16 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Structural issues requiring dedicated effort. Format: date, description, rationale. Remove when resolved. -->
 
+- **2026-02-25**: `docs/developer/constants/README.md` staleness check — 1 new file added (`src/constants/testIds.ts`) since last validation. Deferred due to budget constraints.
+
 ## Validated docs
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
-- **2026-02-20**: `docs/developer/utils/README.md` — Validated against `src/utils/` and `src/utils/devtools/`. Fixed stale file listings (3 deleted devtools files removed, 3 new utility files and 2 devtools structural files added), corrected export names in `openfeature.ts` and `utils.plugin.ts` sections.
+- **2026-02-25**: `docs/developer/utils/README.md` — Re-validated against `src/utils/`. Removed deleted files (keyboard-shortcuts.hook.ts, link-handler.hook.ts), added new files (fetchBackendGuides.ts, usePublishedGuides.ts).
 - **2026-02-20**: `docs/developer/learning-paths/README.md` — Created and validated against `src/learning-paths/`. Covers path types, platform selection, badge system, streak tracking, progress management, hooks, and integration points.
 - **2026-02-20**: `docs/developer/engines/context-engine.md` — Updated earlier today; no structural source changes since update.
-- **2026-02-20**: `docs/developer/engines/interactive-engine.md` — Updated earlier today; no structural source changes since update.
+- **2026-02-25**: `docs/developer/engines/interactive-engine.md` — Re-validated. Updated action-detector.ts location from src/interactive-engine/auto-completion/ to src/lib/dom/.
 - **2026-02-20**: `docs/developer/engines/requirements-manager.md` — Updated earlier today; no structural source changes since update.
 - **2026-02-20**: `docs/developer/E2E_TESTING.md` — Updated earlier today; no structural source changes since update. Cross-reference to `testingStrategy.mdc` added.
 - **2026-02-20**: `docs/developer/E2E_TESTING_CONTRACT.md` — No structural source changes. Cross-reference to `testingStrategy.mdc` added.
