@@ -294,8 +294,17 @@ describe('TestEnvironmentSchema', () => {
       datasets: ['prometheus-sample-metrics'],
       datasources: ['prometheus'],
       plugins: ['grafana-oncall-app'],
+      instance: 'play.grafana.org',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('should accept instance as a hostname', () => {
+    const result = TestEnvironmentSchema.safeParse({ instance: 'myslug.grafana.net' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.instance).toBe('myslug.grafana.net');
+    }
   });
 });
 

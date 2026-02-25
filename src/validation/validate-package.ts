@@ -277,7 +277,14 @@ function emitManifestMessages(
 }
 
 function validateTestEnvironment(
-  testEnv: { tier?: string; minVersion?: string; datasets?: string[]; datasources?: string[]; plugins?: string[] },
+  testEnv: {
+    tier?: string;
+    minVersion?: string;
+    datasets?: string[];
+    datasources?: string[];
+    plugins?: string[];
+    instance?: string;
+  },
   messages: PackageValidationMessage[]
 ): void {
   if (testEnv.tier && !['local', 'cloud', 'managed'].includes(testEnv.tier)) {
@@ -295,6 +302,22 @@ function validateTestEnvironment(
         severity: 'warn',
         message: `manifest.json: testEnvironment.minVersion "${testEnv.minVersion}" is not valid semver`,
         path: ['manifest.json', 'testEnvironment', 'minVersion'],
+      });
+    }
+  }
+
+  if (testEnv.instance) {
+    if (/^[a-z]+:\/\//i.test(testEnv.instance)) {
+      messages.push({
+        severity: 'warn',
+        message: `manifest.json: testEnvironment.instance "${testEnv.instance}" should be a hostname only (no protocol)`,
+        path: ['manifest.json', 'testEnvironment', 'instance'],
+      });
+    } else if (testEnv.instance.includes('/')) {
+      messages.push({
+        severity: 'warn',
+        message: `manifest.json: testEnvironment.instance "${testEnv.instance}" should be a hostname only (no path)`,
+        path: ['manifest.json', 'testEnvironment', 'instance'],
       });
     }
   }

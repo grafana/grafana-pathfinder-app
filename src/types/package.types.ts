@@ -78,6 +78,13 @@ export interface TestEnvironment {
   datasets?: string[];
   datasources?: string[];
   plugins?: string[];
+  /**
+   * Host-only name of a specific Grafana instance where this guide should be
+   * tested (e.g. `play.grafana.org` or `myslug.grafana.net`).
+   * Must not include a protocol or path — just the hostname.
+   * When omitted, any instance that conforms to the declared tier may be used.
+   */
+  instance?: string;
 }
 
 // ============ PACKAGE TYPE ============

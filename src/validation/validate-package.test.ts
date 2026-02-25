@@ -221,6 +221,58 @@ describe('validatePackage', () => {
     expect(result.messages.some((m) => m.message.includes('not valid semver'))).toBe(true);
   });
 
+  it('should accept a valid testEnvironment instance hostname', () => {
+    const pkgDir = path.join(tmpDir, 'valid-instance');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'test',
+      title: 'Test',
+      blocks: [],
+    });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'test',
+      type: 'guide',
+      testEnvironment: { instance: 'play.grafana.org' },
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(true);
+    expect(result.messages.filter((m) => m.message.includes('hostname only'))).toHaveLength(0);
+  });
+
+  it('should warn when testEnvironment instance includes a protocol', () => {
+    const pkgDir = path.join(tmpDir, 'protocol-instance');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'test',
+      title: 'Test',
+      blocks: [],
+    });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'test',
+      type: 'guide',
+      testEnvironment: { instance: 'https://play.grafana.org' },
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.messages.some((m) => m.message.includes('hostname only (no protocol)'))).toBe(true);
+  });
+
+  it('should warn when testEnvironment instance includes a path', () => {
+    const pkgDir = path.join(tmpDir, 'path-instance');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'test',
+      title: 'Test',
+      blocks: [],
+    });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'test',
+      type: 'guide',
+      testEnvironment: { instance: 'play.grafana.org/dashboards' },
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.messages.some((m) => m.message.includes('hostname only (no path)'))).toBe(true);
+  });
+
   it('should handle strict mode (warnings become errors)', () => {
     const pkgDir = path.join(tmpDir, 'strict-test');
     writeJson(path.join(pkgDir, 'content.json'), {

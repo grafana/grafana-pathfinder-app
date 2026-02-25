@@ -81,6 +81,11 @@ export const GuideTargetingSchema = z.object({
 
 /**
  * Test environment metadata for Layer 4 E2E routing.
+ *
+ * `instance` names the host-part only of a Grafana instance where the guide
+ * should be tested (e.g. `play.grafana.org`). When omitted, any instance
+ * conforming to the declared tier may be used.
+ *
  * @coupling Type: TestEnvironment
  */
 export const TestEnvironmentSchema = z.object({
@@ -89,6 +94,7 @@ export const TestEnvironmentSchema = z.object({
   datasets: z.array(z.string()).optional(),
   datasources: z.array(z.string()).optional(),
   plugins: z.array(z.string()).optional(),
+  instance: z.string().optional(),
 }) satisfies z.ZodType<TestEnvironment>;
 
 const DEFAULT_TEST_ENVIRONMENT = { tier: 'cloud' } as const;
