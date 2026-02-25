@@ -10,16 +10,17 @@ Utility functions and helper modules. **Note**: Most business logic hooks have b
 - **Context hooks** → `src/context-engine/` (see `context-engine/context.hook.ts`)
 - **Requirements hooks** → `src/requirements-manager/` (see `requirements-manager/step-checker.hook.ts`)
 
-Only the following hooks remain in `src/utils/`:
+Only the following hook remains in `src/utils/`:
 
 ## File Organization
 
 ### 🎣 **React Hooks** (Remaining in utils/)
 
-- `keyboard-shortcuts.hook.ts` - Keyboard navigation shortcuts
-- `link-handler.hook.ts` - Link click handling and lightbox
+- `usePublishedGuides.ts` - Fetches published guides from the backend API
 
 ### 🛠️ **Utilities & Configuration**
+
+- `fetchBackendGuides.ts` - Shared utility for fetching backend guides from the API
 
 - `utils.plugin.ts` - Plugin props context management
 - `utils.routing.ts` - Route prefixing utilities
@@ -50,65 +51,54 @@ Only the following hooks remain in `src/utils/`:
 
 ## React Hooks (In utils/)
 
-### `keyboard-shortcuts.hook.ts` ⭐ **Navigation Shortcuts**
+### `usePublishedGuides.ts` ⭐ **Published Guides from Backend**
 
-**Purpose**: Provides keyboard shortcuts for efficient navigation
-**Location**: `src/utils/keyboard-shortcuts.hook.ts`
-
-**Role**:
-
-- Tab switching with Ctrl/Cmd+Tab
-- Tab closing with Ctrl/Cmd+W
-- Milestone navigation with Alt+Arrow keys
-
-**Shortcuts**:
-
-- `Ctrl/Cmd + W` - Close current tab
-- `Ctrl/Cmd + Tab` - Switch between tabs
-- `Alt + →` - Next milestone
-- `Alt + ←` - Previous milestone
-
-**Used By**:
-
-- `src/components/docs-panel/docs-panel.tsx` - Keyboard navigation
-
----
-
-### `link-handler.hook.ts` ⭐ **Link & Interaction Handler**
-
-**Purpose**: Handles clicks on various interactive elements in content
-**Location**: `src/utils/link-handler.hook.ts`
+**Purpose**: Fetches published interactive guides from the backend API
+**Location**: `src/utils/usePublishedGuides.ts`
 
 **Role**:
 
-- Journey start button handling
-- Image lightbox creation and management
-- Side journey and related journey link handling
-- Bottom navigation (Previous/Next) button handling
+- Loads guides from the backend on mount
+- Exposes loading and error state
+- Provides `refreshGuides()` for manual refresh
 
-**Key Features**:
+**Key Exports**:
 
-- **Journey Start**: Navigates to first milestone
-- **Image Lightbox**: Creates responsive modal with theme support
-- **External Links**: Opens side journeys in new tabs
-- **Internal Navigation**: Opens related journeys in new app tabs
-- **Bottom Navigation**: Milestone Previous/Next handling
-
-**Link Types Handled**:
-
-- `[data-journey-start="true"]` - Journey start buttons
-- `img` elements - Image lightbox
-- `[data-side-journey-link]` - External side journey links
-- `[data-related-journey-link]` - Internal related journey links
-- `.journey-bottom-nav-button` - Navigation buttons
+- `usePublishedGuides()` - Hook returning `{ guides, isLoading, error, refreshGuides }`
+- `PublishedGuide` - Type for guide metadata and spec
 
 **Used By**:
 
-- `src/components/docs-panel/docs-panel.tsx` - Content interaction handling
+- `src/components/docs-panel/context-panel.tsx` - Context panel custom guides
+- `src/components/docs-panel/CustomGuidesSection.tsx` - Custom guides section (type import)
 
 ---
 
 ## Utility Files
+
+### `fetchBackendGuides.ts` ⭐ **Backend Guides Fetcher**
+
+**Purpose**: Shared utility for fetching guides from the backend API
+**Location**: `src/utils/fetchBackendGuides.ts`
+
+**Role**:
+
+- Calls the pathfinder backend API for interactive guides in a namespace
+- Returns empty array when endpoint is unavailable (400, 403, 404, 405, 501, 503)
+- Re-throws other errors for caller handling
+
+**Key Function**:
+
+```typescript
+async function fetchBackendGuides(namespace: string): Promise<any[]>;
+```
+
+**Used By**:
+
+- `src/utils/usePublishedGuides.ts` - Published guides hook
+- `src/components/block-editor/hooks/useBackendGuides.ts` - Block editor backend guides
+
+---
 
 ### `utils.plugin.ts` ⭐ **Plugin Props Management**
 
