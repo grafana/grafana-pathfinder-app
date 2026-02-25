@@ -92,6 +92,18 @@ export function BlockList({ blocks, operations }: BlockListProps) {
   const [lastModifiedId, setLastModifiedId] = useState<string | null>(null);
   const autoExpandTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dropHighlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastModifiedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerLastModified = useCallback((id: string) => {
+    if (lastModifiedTimeoutRef.current) {
+      clearTimeout(lastModifiedTimeoutRef.current);
+    }
+    setLastModifiedId(id);
+    lastModifiedTimeoutRef.current = setTimeout(() => {
+      setLastModifiedId(null);
+      lastModifiedTimeoutRef.current = null;
+    }, 3000);
+  }, []);
 
   const toggleCollapse = useCallback((blockId: string) => {
     setCollapsedSections((prev) => {
@@ -558,6 +570,9 @@ export function BlockList({ blocks, operations }: BlockListProps) {
       if (dropHighlightTimeoutRef.current) {
         clearTimeout(dropHighlightTimeoutRef.current);
       }
+      if (lastModifiedTimeoutRef.current) {
+        clearTimeout(lastModifiedTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -633,14 +648,14 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     index={index}
                     totalBlocks={blocks.length}
                     onEdit={() => {
-                      setLastModifiedId(block.id);
+                      triggerLastModified(block.id);
                       onBlockEdit(block);
                     }}
                     onDelete={() => onBlockDelete(block.id)}
                     onDuplicate={() => {
                       const newId = onBlockDuplicate(block.id);
                       if (newId) {
-                        setLastModifiedId(newId);
+                        triggerLastModified(newId);
                       }
                     }}
                     onRecord={isSection && onSectionRecord ? () => onSectionRecord(block.id) : undefined}
@@ -675,7 +690,7 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     onConditionalBranchBlockEdit={onConditionalBranchBlockEdit
                       ? (conditionalId, branch, nestedIndex, block) => {
                           const branchKey = branch === 'whenTrue' ? 'true' : 'false';
-                          setLastModifiedId(`${conditionalId}-${branchKey}-${nestedIndex}`);
+                          triggerLastModified(`${conditionalId}-${branchKey}-${nestedIndex}`);
                           onConditionalBranchBlockEdit(conditionalId, branch, nestedIndex, block);
                         }
                       : undefined}
@@ -702,7 +717,7 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     onToggleBlockSelection={onToggleBlockSelection}
                     onNestedBlockEdit={onNestedBlockEdit
                       ? (sectionId, nestedIndex, block) => {
-                          setLastModifiedId(`${sectionId}-nested-${nestedIndex}`);
+                          triggerLastModified(`${sectionId}-nested-${nestedIndex}`);
                           onNestedBlockEdit(sectionId, nestedIndex, block);
                         }
                       : undefined}
