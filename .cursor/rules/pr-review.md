@@ -58,7 +58,11 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 - **R1-R21 hit**: load `@react-antipatterns.mdc` for the canonical Do/Don't example and fix pattern.
 - **F1-F6 hit**: `frontend-security.mdc` is already loaded (always-apply). Reference it directly.
 
-## 3. Report
+## 3. Visual demo (when applicable)
+
+If the diff modifies UI-affecting files (`.tsx`, `.jsx`, `.css`, `.scss`) and the change has a visible impact, recommend recording a demo using the `pr-review-demo` skill. This is also triggered directly by the "record demo" command.
+
+## 4. Report
 
 **Clean PR** — one line:
 
