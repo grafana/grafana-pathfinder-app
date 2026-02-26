@@ -11,8 +11,8 @@ import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
-import { useTerminalContext } from '../../../integrations/coda/TerminalContext';
+import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
+import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 

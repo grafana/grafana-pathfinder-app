@@ -19,8 +19,9 @@ type Settings struct {
 	// EnrollmentKey is the key used to register with the Coda API (from secureJsonData)
 	EnrollmentKey string `json:"-"`
 
-	// JwtToken is the JWT token received after registration (from secureJsonData)
-	JwtToken string `json:"-"`
+	// RefreshToken is the long-lived refresh token used to obtain short-lived access tokens.
+	// Stored in secureJsonData. Never expires but can be revoked server-side.
+	RefreshToken string `json:"-"`
 }
 
 // ParseSettings parses the plugin settings from Grafana's AppInstanceSettings.
@@ -34,12 +35,12 @@ func ParseSettings(appSettings backend.AppInstanceSettings) (*Settings, error) {
 		}
 	}
 
-	// Get secure settings (enrollment key, JWT token)
+	// Get secure settings (enrollment key, refresh token)
 	if enrollmentKey, ok := appSettings.DecryptedSecureJSONData["codaEnrollmentKey"]; ok {
 		settings.EnrollmentKey = enrollmentKey
 	}
-	if jwtToken, ok := appSettings.DecryptedSecureJSONData["codaJwtToken"]; ok {
-		settings.JwtToken = jwtToken
+	if refreshToken, ok := appSettings.DecryptedSecureJSONData["codaRefreshToken"]; ok {
+		settings.RefreshToken = refreshToken
 	}
 
 	return settings, nil

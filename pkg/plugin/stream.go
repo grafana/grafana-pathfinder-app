@@ -202,6 +202,32 @@ func sendStreamError(sender *backend.StreamSender, errMsg string) {
 	_ = sender.SendFrame(frame, data.IncludeAll)
 }
 
+// formatRelayErrorForUser converts technical relay errors into user-friendly messages
+func formatRelayErrorForUser(err error) string {
+	errStr := strings.ToLower(err.Error())
+
+	switch {
+	case strings.Contains(errStr, "blocked_forbidden") || strings.Contains(errStr, "blocked_unauthorized"):
+		return "Connection blocked: Authentication failed. Please check your enrollment key and try again."
+	case strings.Contains(errStr, "relay_unavailable"):
+		return "Relay server is temporarily unavailable. Please try again in a moment."
+	case strings.Contains(errStr, "connection_refused"):
+		return "Connection refused: The relay server is not accepting connections."
+	case strings.Contains(errStr, "timeout"):
+		return "Connection timed out: Unable to reach the relay server. Check your network connection."
+	case strings.Contains(errStr, "dns_error"):
+		return "DNS error: Could not resolve relay server address."
+	case strings.Contains(errStr, "tls_error"):
+		return "TLS/SSL error: Secure connection could not be established."
+	case strings.Contains(errStr, "network_unreachable"):
+		return "Network unreachable: Check your internet connection."
+	case strings.Contains(errStr, "ssh handshake"):
+		return "SSH authentication failed: Could not authenticate with the VM."
+	default:
+		return fmt.Sprintf("Connection failed: %v", err)
+	}
+}
+
 // RunStream is called once for each active stream subscription.
 // It runs for the lifetime of the stream, sending data to the client.
 func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
@@ -284,18 +310,35 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	// Create SSH session - use relay if configured, otherwise direct SSH
 	var session *TerminalSession
 	if a.settings.CodaRelayURL != "" {
-		a.logger.Info("Connecting via WebSocket relay", "relayURL", a.settings.CodaRelayURL)
-		sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, a.settings.JwtToken)
+		a.logger.Info("Initiating relay connection",
+			"relayURL", a.settings.CodaRelayURL,
+			"vmID", vmID,
+			"host", vm.Credentials.PublicIP,
+		)
+		// Get a fresh access token for the relay connection
+		if a.coda == nil {
+			errMsg := "Coda client not initialized - cannot connect to relay"
+			sendStreamError(sender, errMsg)
+			return fmt.Errorf("coda client not initialized")
+		}
+		accessToken, err := a.coda.GetAccessToken(ctx)
 		if err != nil {
-			a.logger.Error("Failed to connect SSH via relay",
+			a.logger.Error("Failed to get access token for relay", "error", err)
+			sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
+			return fmt.Errorf("failed to get access token: %w", err)
+		}
+		sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
+		if err != nil {
+			a.logger.Error("Relay connection failed - see detailed logs above",
 				"vmID", vmID,
 				"error", err,
-				"relayURL", a.settings.CodaRelayURL,
 			)
-			errMsg := fmt.Sprintf("SSH connection via relay failed: %v", err)
+			// Provide user-friendly error message based on error content
+			errMsg := formatRelayErrorForUser(err)
 			sendStreamError(sender, errMsg)
 			return fmt.Errorf("failed to connect SSH via relay: %w", err)
 		}
+		a.logger.Info("Relay connection established, creating terminal session", "vmID", vmID)
 		session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
 		if err != nil {
 			_ = sshClient.Close()

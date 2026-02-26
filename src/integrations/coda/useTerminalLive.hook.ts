@@ -22,6 +22,79 @@ import {
 import { lastValueFrom, Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
 
+/**
+ * Connection logging utility for diagnosing frontend-backend connection issues.
+ * Logs are prefixed with [Terminal] and include timing information.
+ */
+const connectionLog = {
+  connectionStartTime: 0,
+
+  startConnection: () => {
+    connectionLog.connectionStartTime = performance.now();
+    console.log('[Terminal] Connection sequence started', {
+      timestamp: new Date().toISOString(),
+    });
+  },
+
+  elapsed: () => Math.round(performance.now() - connectionLog.connectionStartTime),
+
+  info: (message: string, data?: Record<string, unknown>) => {
+    console.log(`[Terminal] ${message}`, {
+      elapsedMs: connectionLog.elapsed(),
+      ...data,
+    });
+  },
+
+  warn: (message: string, data?: Record<string, unknown>) => {
+    console.warn(`[Terminal] ${message}`, {
+      elapsedMs: connectionLog.elapsed(),
+      ...data,
+    });
+  },
+
+  error: (message: string, error?: unknown, data?: Record<string, unknown>) => {
+    const errorDetails = error instanceof Error
+      ? { errorName: error.name, errorMessage: error.message, errorStack: error.stack }
+      : { rawError: error };
+    console.error(`[Terminal] ${message}`, {
+      elapsedMs: connectionLog.elapsed(),
+      ...errorDetails,
+      ...data,
+    });
+  },
+
+  httpRequest: (method: string, url: string, startTime: number) => ({
+    success: (status: number, data?: Record<string, unknown>) => {
+      const duration = Math.round(performance.now() - startTime);
+      console.log(`[Terminal] HTTP ${method} ${url} - SUCCESS`, {
+        status,
+        durationMs: duration,
+        elapsedMs: connectionLog.elapsed(),
+        ...data,
+      });
+    },
+    failure: (error: unknown, status?: number) => {
+      const duration = Math.round(performance.now() - startTime);
+      const errorDetails = error instanceof Error
+        ? { errorName: error.name, errorMessage: error.message }
+        : { rawError: error };
+      console.error(`[Terminal] HTTP ${method} ${url} - FAILED`, {
+        status,
+        durationMs: duration,
+        elapsedMs: connectionLog.elapsed(),
+        ...errorDetails,
+      });
+    },
+  }),
+
+  liveStream: (event: string, data?: Record<string, unknown>) => {
+    console.log(`[Terminal] LiveStream: ${event}`, {
+      elapsedMs: connectionLog.elapsed(),
+      ...data,
+    });
+  },
+};
+
 // Note on Grafana Live bidirectional limitations:
 // While the SDK's PublishStream handler supports receiving messages from clients,
 // Grafana's /api/live/publish HTTP endpoint restricts frontend publishing to
@@ -90,6 +163,9 @@ interface VMResponse {
  * 2. Establishes SSH connection to the VM
  * 3. Streams terminal I/O via Grafana Live
  */
+/** Maximum number of consecutive SSH auth failures before giving up */
+const MAX_SSH_AUTH_RETRIES = 3;
+
 export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +177,9 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
   const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Track consecutive SSH auth failures to prevent infinite retry loops
+  const sshAuthFailureCountRef = useRef<number>(0);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -131,20 +210,34 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
    * Create a new VM via the plugin backend
    */
   const createVM = useCallback(async (): Promise<VMResponse> => {
+    const url = `/api/plugins/${PLUGIN_ID}/resources/vms`;
+    const startTime = performance.now();
+    const httpLog = connectionLog.httpRequest('POST', url, startTime);
+
+    connectionLog.info('Creating VM', { template: 'vm-aws' });
+
     try {
       const response = await lastValueFrom(
         getBackendSrv().fetch<VMResponse>({
-          url: `/api/plugins/${PLUGIN_ID}/resources/vms`,
+          url,
           method: 'POST',
           data: { template: 'vm-aws' },
         })
       );
+      httpLog.success(response.status, { vmId: response.data.id, vmState: response.data.state });
       return response.data;
     } catch (err: unknown) {
       // Check for 401/authentication errors - require re-registration
       const error = err as { status?: number; data?: { error?: string } };
+      httpLog.failure(err, error.status);
+
       if (error.status === 401 || error.status === 503) {
         const message = error.data?.error || 'Authentication failed';
+        connectionLog.error('Authentication error during VM creation', err, {
+          status: error.status,
+          serverMessage: message,
+          category: 'auth_failure',
+        });
         if (message.includes('not registered') || message.includes('authentication failed')) {
           throw new AuthenticationError(
             'Coda registration expired or invalid. Please re-register in Plugin Configuration.'
@@ -159,19 +252,32 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
    * Get VM status from the plugin backend
    */
   const getVM = useCallback(async (id: string): Promise<VMResponse> => {
+    const url = `/api/plugins/${PLUGIN_ID}/resources/vms/${id}`;
+    const startTime = performance.now();
+    const httpLog = connectionLog.httpRequest('GET', url, startTime);
+
     try {
       const response = await lastValueFrom(
         getBackendSrv().fetch<VMResponse>({
-          url: `/api/plugins/${PLUGIN_ID}/resources/vms/${id}`,
+          url,
           method: 'GET',
         })
       );
+      httpLog.success(response.status, { vmId: id, vmState: response.data.state });
       return response.data;
     } catch (err: unknown) {
       // Check for 401/authentication errors - require re-registration
       const error = err as { status?: number; data?: { error?: string } };
+      httpLog.failure(err, error.status);
+
       if (error.status === 401 || error.status === 503) {
         const message = error.data?.error || 'Authentication failed';
+        connectionLog.error('Authentication error fetching VM', err, {
+          vmId: id,
+          status: error.status,
+          serverMessage: message,
+          category: 'auth_failure',
+        });
         if (message.includes('not registered') || message.includes('authentication failed')) {
           throw new AuthenticationError(
             'Coda registration expired or invalid. Please re-register in Plugin Configuration.'
@@ -264,14 +370,25 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
    * - Input: HTTP POST /api/plugins/{id}/resources/terminal/{vmId} (frontend → backend)
    */
   const sendInput = useCallback(async (id: string, inputData: string) => {
+    const url = `/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`;
+    const startTime = performance.now();
+
     try {
-      await getBackendSrv().post(`/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`, {
+      await getBackendSrv().post(url, {
         type: 'input',
         data: inputData,
       });
+      // Only log slow input requests (> 500ms) to avoid noise
+      const duration = performance.now() - startTime;
+      if (duration > 500) {
+        connectionLog.warn('Slow input request', { vmId: id, durationMs: Math.round(duration) });
+      }
     } catch (err) {
-      // Log but don't interrupt - input errors are usually transient
-      console.error('[Terminal] Failed to send input:', err);
+      connectionLog.error('Failed to send input', err, {
+        vmId: id,
+        inputLength: inputData.length,
+        category: 'input_failure',
+      });
     }
   }, []);
 
@@ -279,14 +396,25 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
    * Send resize event to the terminal via HTTP POST
    */
   const sendResize = useCallback(async (id: string, rows: number, cols: number) => {
+    const url = `/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`;
+    const startTime = performance.now();
+    const httpLog = connectionLog.httpRequest('POST', `${url} (resize)`, startTime);
+
     try {
-      await getBackendSrv().post(`/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`, {
+      await getBackendSrv().post(url, {
         type: 'resize',
         rows,
         cols,
       });
+      httpLog.success(200, { vmId: id, rows, cols });
     } catch (err) {
-      console.error('[Terminal] Failed to send resize:', err);
+      httpLog.failure(err);
+      connectionLog.error('Failed to send resize', err, {
+        vmId: id,
+        rows,
+        cols,
+        category: 'resize_failure',
+      });
     }
   }, []);
 
@@ -304,13 +432,11 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
         frame = message as DataFrame;
       }
 
-      if (frame.fields && frame.fields.length > 0) {
-        const dataField = frame.fields[0];
-        if (dataField.values && dataField.values.length > 0) {
-          const jsonStr = dataField.values[0];
-          if (typeof jsonStr === 'string') {
-            return JSON.parse(jsonStr) as TerminalStreamOutput;
-          }
+      const dataField = frame.fields?.[0];
+      if (dataField?.values && dataField.values.length > 0) {
+        const jsonStr = dataField.values[0];
+        if (typeof jsonStr === 'string') {
+          return JSON.parse(jsonStr) as TerminalStreamOutput;
         }
       }
     } catch {
@@ -326,6 +452,10 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
     (id: string, terminal: Terminal) => {
       const liveSrv = getGrafanaLiveSrv();
       if (!liveSrv) {
+        connectionLog.error('Grafana Live service not available', null, {
+          vmId: id,
+          category: 'live_service_unavailable',
+        });
         setError('Grafana Live service not available');
         setStatus('error');
         return;
@@ -342,6 +472,13 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
         path: `terminal/${id}/${nonce}`,
       };
 
+      const channelPath = `${address.scope}/${address.namespace}/${address.path}`;
+      connectionLog.info('Subscribing to LiveStream', {
+        vmId: id,
+        channel: channelPath,
+        nonce,
+      });
+
       currentVmIdRef.current = id;
 
       // Safety-net timeout: if the backend never sends "connected" (e.g. SSH
@@ -350,6 +487,11 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
       const SSH_HANDSHAKE_TIMEOUT_MS = 35_000;
       handshakeTimeoutRef.current = setTimeout(() => {
         handshakeTimeoutRef.current = null;
+        connectionLog.error('SSH handshake timeout', null, {
+          vmId: id,
+          timeoutMs: SSH_HANDSHAKE_TIMEOUT_MS,
+          category: 'ssh_handshake_timeout',
+        });
         cleanup();
         setError('SSH handshake timed out');
         setStatus('error');
@@ -375,8 +517,65 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                     clearTimeout(handshakeTimeoutRef.current);
                     handshakeTimeoutRef.current = null;
                   }
-                  terminal.writeln('\r\n');
-                  terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
+                  connectionLog.error('Backend error received', null, {
+                    vmId: id,
+                    backendError: msg.error,
+                    category: 'backend_error',
+                  });
+
+                  // If SSH authentication failed, the VM is likely stale or being recycled.
+                  // Track failures to prevent infinite retry loops.
+                  const isSSHAuthError =
+                    msg.error?.includes('SSH authentication failed') ||
+                    msg.error?.includes('auth_failed') ||
+                    msg.error?.includes('Could not authenticate');
+                  
+                  if (isSSHAuthError) {
+                    sshAuthFailureCountRef.current += 1;
+                    const failureCount = sshAuthFailureCountRef.current;
+                    
+                    connectionLog.warn('SSH auth failed - clearing stale VM ID to provision fresh VM on retry', {
+                      vmId: id,
+                      category: 'stale_vm_cleared',
+                      failureCount,
+                      maxRetries: MAX_SSH_AUTH_RETRIES,
+                    });
+                    
+                    // Clear the cached vmId so next connection provisions a fresh VM
+                    setVmId(null);
+                    
+                    // If we've exceeded max retries, stop the stream and show permanent error
+                    if (failureCount >= MAX_SSH_AUTH_RETRIES) {
+                      connectionLog.error('Max SSH auth retries exceeded - stopping reconnection attempts', null, {
+                        vmId: id,
+                        failureCount,
+                        category: 'max_retries_exceeded',
+                      });
+                      
+                      // Unsubscribe to stop Grafana Live from retrying
+                      cleanup();
+                      
+                      terminal.writeln('\r\n');
+                      terminal.writeln('\x1b[31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+                      terminal.writeln(`\x1b[31m  ✖ SSH authentication failed after ${failureCount} attempts\x1b[0m`);
+                      terminal.writeln('\x1b[31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+                      terminal.writeln('');
+                      terminal.writeln('\x1b[33m  The VM pool may be temporarily unavailable.\x1b[0m');
+                      terminal.writeln('\x1b[90m  Please wait a moment and press "Connect" to try again.\x1b[0m');
+                      
+                      setError('SSH authentication failed after multiple attempts');
+                      setStatus('error');
+                      return;
+                    }
+                    
+                    terminal.writeln('\r\n');
+                    terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
+                    terminal.writeln(`\x1b[90m  The VM may have been recycled. Retrying... (${failureCount}/${MAX_SSH_AUTH_RETRIES})\x1b[0m`);
+                  } else {
+                    terminal.writeln('\r\n');
+                    terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
+                  }
+                  
                   setError(msg.error || 'Unknown error');
                   break;
 
@@ -385,6 +584,13 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                     clearTimeout(handshakeTimeoutRef.current);
                     handshakeTimeoutRef.current = null;
                   }
+                  // Reset failure counter on successful connection
+                  sshAuthFailureCountRef.current = 0;
+                  
+                  connectionLog.info('SSH connection SUCCESSFUL', {
+                    vmId: id,
+                    category: 'connected',
+                  });
                   setStatus('connected');
                   terminal.writeln('');
                   terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
@@ -422,6 +628,10 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                     clearTimeout(handshakeTimeoutRef.current);
                     handshakeTimeoutRef.current = null;
                   }
+                  connectionLog.info('VM disconnected', {
+                    vmId: id,
+                    category: 'disconnected',
+                  });
                   setStatus('disconnected');
                   setVmId(null);
                   terminal.writeln('\r\n');
@@ -434,9 +644,28 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
           }
 
           if (isLiveChannelStatusEvent(event)) {
+            const stateNames: Record<LiveChannelConnectionState, string> = {
+              [LiveChannelConnectionState.Pending]: 'Pending',
+              [LiveChannelConnectionState.Connected]: 'Connected',
+              [LiveChannelConnectionState.Connecting]: 'Connecting',
+              [LiveChannelConnectionState.Disconnected]: 'Disconnected',
+              [LiveChannelConnectionState.Shutdown]: 'Shutdown',
+              [LiveChannelConnectionState.Invalid]: 'Invalid',
+            };
+            connectionLog.liveStream('Status change', {
+              vmId: id,
+              state: stateNames[event.state] ?? `Unknown(${event.state})`,
+              stateCode: event.state,
+            });
+
             if (event.state === LiveChannelConnectionState.Connected) {
+              connectionLog.info('LiveStream connected, awaiting SSH handshake', { vmId: id });
               terminal.writeln('\x1b[90m       Waiting for SSH handshake...\x1b[0m');
             } else if (event.state === LiveChannelConnectionState.Disconnected) {
+              connectionLog.warn('LiveStream disconnected', {
+                vmId: id,
+                category: 'live_channel_disconnected',
+              });
               setStatus((prev) => {
                 if (prev === 'connected') {
                   terminal.writeln('\r\n\x1b[33m⚠ Connection lost\x1b[0m');
@@ -452,7 +681,10 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
             clearTimeout(handshakeTimeoutRef.current);
             handshakeTimeoutRef.current = null;
           }
-          console.error('Live stream error:', err);
+          connectionLog.error('LiveStream subscription error', err, {
+            vmId: id,
+            category: 'live_stream_error',
+          });
           setError('Stream connection failed');
           setStatus('error');
           terminal.writeln(`\r\n\x1b[31mStream error: ${err?.message || 'Unknown error'}\x1b[0m`);
@@ -462,6 +694,10 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
             clearTimeout(handshakeTimeoutRef.current);
             handshakeTimeoutRef.current = null;
           }
+          connectionLog.info('LiveStream completed', {
+            vmId: id,
+            category: 'stream_complete',
+          });
           setStatus((prev) => {
             if (prev === 'connected') {
               terminal.writeln('\r\n\x1b[33mStream ended\x1b[0m');
@@ -481,13 +717,22 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
   const connect = useCallback(async () => {
     const terminal = terminalRef.current;
     if (!terminal) {
+      connectionLog.error('Terminal instance not available', null, {
+        category: 'terminal_not_ready',
+      });
       setError('Terminal instance not available');
       return;
     }
 
+    connectionLog.startConnection();
+    connectionLog.info('Starting connection sequence', { existingVmId: vmId });
+
     setStatus('connecting');
     setError(null);
     cleanup();
+    
+    // Reset SSH auth failure counter for fresh connection attempt
+    sshAuthFailureCountRef.current = 0;
 
     // Clear terminal and show connection header
     terminal.clear();
@@ -501,26 +746,61 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
 
       // If we have an existing VM, check if it's still active
       if (currentVmId) {
+        connectionLog.info('Checking existing VM', { vmId: currentVmId });
         terminal.writeln('\x1b[33m⏳ Reconnecting to existing VM...\x1b[0m');
         terminal.writeln(`\x1b[90m   ├─ Checking VM status: \x1b[37m${currentVmId}\x1b[0m`);
         try {
           const existingVm = await getVM(currentVmId);
-          if (existingVm.state === 'active') {
+          const hasCredentials = !!existingVm.credentials;
+
+          connectionLog.info('Existing VM status', {
+            vmId: currentVmId,
+            state: existingVm.state,
+            hasCredentials,
+            publicIp: existingVm.credentials?.publicIp,
+          });
+
+          if (existingVm.state === 'active' && hasCredentials) {
+            connectionLog.info('VM still active with valid credentials', { vmId: currentVmId });
             terminal.writeln('\x1b[90m   ├─ VM still active\x1b[0m');
+          } else if (existingVm.state === 'active' && !hasCredentials) {
+            // VM is active but credentials are missing - this is a stale/invalid VM
+            connectionLog.warn('VM active but credentials missing, provisioning new one', {
+              vmId: currentVmId,
+              state: existingVm.state,
+              category: 'stale_vm_no_credentials',
+            });
+            terminal.writeln('\x1b[90m   ├─ VM credentials expired, provisioning new one...\x1b[0m');
+            currentVmId = null;
+            setVmId(null);
           } else if (existingVm.state === 'destroying' || existingVm.state === 'destroyed') {
+            connectionLog.info('VM expired, will provision new one', {
+              vmId: currentVmId,
+              state: existingVm.state,
+            });
             terminal.writeln('\x1b[90m   ├─ VM expired, provisioning new one...\x1b[0m');
             currentVmId = null;
             setVmId(null);
           } else if (existingVm.state === 'error') {
+            connectionLog.warn('VM in error state, will provision new one', {
+              vmId: currentVmId,
+              state: existingVm.state,
+              errorMessage: existingVm.errorMessage,
+            });
             terminal.writeln('\x1b[90m   ├─ VM in error state, provisioning new one...\x1b[0m');
             currentVmId = null;
             setVmId(null);
           } else {
+            connectionLog.info('VM not ready, waiting', { vmId: currentVmId, state: existingVm.state });
             terminal.writeln(`\x1b[90m   ├─ VM state: ${existingVm.state}, waiting...\x1b[0m`);
             await waitForVM(currentVmId, terminal);
           }
-        } catch {
+        } catch (vmErr) {
           // VM doesn't exist anymore, provision a new one
+          connectionLog.warn('Failed to fetch existing VM, will provision new one', {
+            vmId: currentVmId,
+            error: vmErr instanceof Error ? vmErr.message : String(vmErr),
+          });
           terminal.writeln('\x1b[90m   ├─ VM no longer exists, provisioning new one...\x1b[0m');
           currentVmId = null;
           setVmId(null);
@@ -529,18 +809,22 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
 
       // Create VM if we don't have one
       if (!currentVmId) {
+        connectionLog.info('Provisioning new VM');
         terminal.writeln('\x1b[33m⏳ Provisioning sandbox VM...\x1b[0m');
         terminal.writeln('\x1b[90m   ├─ Requesting VM from pool...\x1b[0m');
         const vm = await createVM();
         currentVmId = vm.id;
         setVmId(currentVmId);
+        connectionLog.info('VM allocated', { vmId: currentVmId, state: vm.state });
         terminal.writeln(`\x1b[90m   ├─ VM allocated: \x1b[37m${vm.id}\x1b[0m`);
 
         // Wait for VM to be active (only for new VMs)
+        connectionLog.info('Waiting for VM to boot', { vmId: currentVmId });
         terminal.writeln('\x1b[90m   ├─ Waiting for VM to boot...\x1b[0m');
         await waitForVM(currentVmId, terminal);
       }
 
+      connectionLog.info('VM ready, establishing SSH connection', { vmId: currentVmId });
       terminal.writeln('\x1b[90m   ├─ VM ready\x1b[0m');
 
       // Connect to Grafana Live stream
@@ -549,6 +833,12 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
     } catch (err) {
       const isAuthError = err instanceof AuthenticationError;
       const errorMessage = err instanceof Error ? err.message : 'Connection failed';
+
+      connectionLog.error('Connection sequence failed', err, {
+        isAuthError,
+        category: isAuthError ? 'auth_failure' : 'connection_failure',
+      });
+
       terminal.writeln('');
       terminal.writeln('\x1b[31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
       terminal.writeln(`\x1b[31m  ✖ Connection failed: ${errorMessage}\x1b[0m`);

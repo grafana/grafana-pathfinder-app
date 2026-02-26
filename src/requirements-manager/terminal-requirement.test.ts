@@ -58,8 +58,8 @@ describe('is-terminal-active requirement', () => {
 
     expect(result.pass).toBe(false);
     expect(result.error).toHaveLength(1);
-    expect(result.error[0].requirement).toBe('is-terminal-active');
-    expect(result.error[0].pass).toBe(false);
+    expect(result.error?.[0]?.requirement).toBe('is-terminal-active');
+    expect(result.error?.[0]?.pass).toBe(false);
   });
 
   it('passes when terminal is connected', async () => {

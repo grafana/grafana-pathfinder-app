@@ -51,12 +51,12 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 		logger:   logger,
 	}
 
-	// Initialize Coda client if JWT token is available
-	if settings.JwtToken != "" {
-		app.coda = NewCodaClient(settings.JwtToken)
-		logger.Info("Coda client initialized with JWT token", "url", CodaAPIURL)
+	// Initialize Coda client if refresh token is available
+	if settings.RefreshToken != "" {
+		app.coda = NewCodaClient(settings.RefreshToken)
+		logger.Info("Coda client initialized with refresh token", "url", CodaAPIURL)
 	} else {
-		logger.Warn("Coda JWT token not configured, VM features disabled until registration")
+		logger.Warn("Coda refresh token not configured, VM features disabled until registration")
 	}
 
 	// Set up HTTP routes using httpadapter

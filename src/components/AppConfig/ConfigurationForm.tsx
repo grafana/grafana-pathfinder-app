@@ -243,10 +243,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           instanceUrl,
         });
 
-        // Save the JWT token to secureJsonData and update registration status
+        // Save the refresh token to secureJsonData and update registration status
         // Only update enrollment key if user provided a new one (don't overwrite provisioned key with empty)
         const secureJsonDataUpdate: Record<string, string> = {
-          codaJwtToken: response.token,
+          codaRefreshToken: response.refreshToken,
         };
         if (keyToUse) {
           secureJsonDataUpdate.codaEnrollmentKey = keyToUse;

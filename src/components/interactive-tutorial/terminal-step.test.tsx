@@ -30,7 +30,7 @@ jest.mock('@grafana/ui', () => ({
 }));
 
 // Mock useStepChecker
-jest.mock('../../../requirements-manager', () => ({
+jest.mock('../../requirements-manager', () => ({
   useStepChecker: () => ({
     isEnabled: true,
     isChecking: false,
@@ -49,7 +49,7 @@ const mockSendCommand = jest.fn().mockResolvedValue(undefined);
 const mockOpenTerminal = jest.fn();
 let mockTerminalStatus = 'connected';
 
-jest.mock('../../../integrations/coda/TerminalContext', () => ({
+jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: () => ({
     status: mockTerminalStatus,
     sendCommand: mockSendCommand,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -48,36 +49,123 @@ type RegisterRequest struct {
 }
 
 // RegisterResponse represents the response from the registration endpoint.
+// Returns both a refresh token (for storage) and an access token (for immediate use).
 type RegisterResponse struct {
-	Token        string `json:"token"`
-	JTI          string `json:"jti"`
-	Sub          string `json:"sub"`
-	Scope        string `json:"scope"`
-	InstanceName string `json:"instanceName"`
-	ExpiresAt    string `json:"expiresAt"`
+	RefreshToken          string `json:"refreshToken"`
+	AccessToken           string `json:"accessToken"`
+	AccessTokenExpiresIn  int    `json:"accessTokenExpiresIn"`
+	JTI                   string `json:"jti"`
+	Sub                   string `json:"sub"`
+	Scope                 string `json:"scope"`
+	InstanceName          string `json:"instanceName"`
+}
+
+// RefreshResponse represents the response from the token refresh endpoint.
+type RefreshResponse struct {
+	AccessToken string `json:"accessToken"`
+	ExpiresIn   int    `json:"expiresIn"`
 }
 
 // CodaClient handles communication with the Coda VM provisioning backend.
+// Uses a dual-token system: refresh token (stored) + access token (cached in memory).
 type CodaClient struct {
-	jwtToken string
-	client   *http.Client
+	refreshToken string
+	accessToken  string
+	tokenExpiry  time.Time
+	mutex        sync.RWMutex
+	client       *http.Client
 }
 
-// NewCodaClient creates a new Coda API client with JWT authentication.
-func NewCodaClient(jwtToken string) *CodaClient {
+// NewCodaClient creates a new Coda API client with refresh token authentication.
+func NewCodaClient(refreshToken string) *CodaClient {
 	return &CodaClient{
-		jwtToken: jwtToken,
+		refreshToken: refreshToken,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
-// setAuthHeader sets the Authorization header with the JWT Bearer token.
-func (c *CodaClient) setAuthHeader(req *http.Request) {
-	if c.jwtToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.jwtToken)
+// getAccessToken returns a valid access token, refreshing if necessary.
+// Thread-safe with read-write mutex for concurrent access.
+func (c *CodaClient) getAccessToken(ctx context.Context) (string, error) {
+	// Fast path: check if we have a valid cached token
+	c.mutex.RLock()
+	if c.accessToken != "" && time.Now().Before(c.tokenExpiry.Add(-1*time.Minute)) {
+		token := c.accessToken
+		c.mutex.RUnlock()
+		return token, nil
 	}
+	c.mutex.RUnlock()
+
+	// Slow path: need to refresh
+	return c.refreshAccessToken(ctx)
+}
+
+// refreshAccessToken obtains a new access token using the refresh token.
+func (c *CodaClient) refreshAccessToken(ctx context.Context) (string, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// Double-check after acquiring write lock (another goroutine may have refreshed)
+	if c.accessToken != "" && time.Now().Before(c.tokenExpiry.Add(-1*time.Minute)) {
+		return c.accessToken, nil
+	}
+
+	// Call the refresh endpoint
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, CodaAPIURL+"/api/v1/auth/refresh", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create refresh request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.refreshToken)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send refresh request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", fmt.Errorf("refresh token invalid or revoked, please re-register")
+	}
+
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return "", fmt.Errorf("service temporarily unavailable, please try again later")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var refreshResp RefreshResponse
+	if err := json.NewDecoder(resp.Body).Decode(&refreshResp); err != nil {
+		return "", fmt.Errorf("failed to decode refresh response: %w", err)
+	}
+
+	// Update cached token
+	c.accessToken = refreshResp.AccessToken
+	c.tokenExpiry = time.Now().Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+
+	return c.accessToken, nil
+}
+
+// setAuthHeader sets the Authorization header with an access token.
+// Gets a fresh access token if the current one is expired or about to expire.
+func (c *CodaClient) setAuthHeader(ctx context.Context, req *http.Request) error {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
+}
+
+// GetAccessToken returns a valid access token for use with external services (like the relay).
+// Thread-safe and handles automatic refresh.
+func (c *CodaClient) GetAccessToken(ctx context.Context) (string, error) {
+	return c.getAccessToken(ctx)
 }
 
 // Register registers this Grafana instance with the Coda API using an enrollment key.
@@ -154,7 +242,9 @@ func (c *CodaClient) CreateVM(ctx context.Context, template, owner string) (*VM,
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	c.setAuthHeader(req)
+	if err := c.setAuthHeader(ctx, req); err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
@@ -187,7 +277,9 @@ func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	c.setAuthHeader(req)
+	if err := c.setAuthHeader(ctx, req); err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -223,7 +315,9 @@ func (c *CodaClient) DeleteVM(ctx context.Context, vmID string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	c.setAuthHeader(req)
+	if err := c.setAuthHeader(ctx, req); err != nil {
+		return fmt.Errorf("authentication failed: %w", err)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -250,7 +344,9 @@ func (c *CodaClient) ListVMs(ctx context.Context) ([]VM, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	c.setAuthHeader(req)
+	if err := c.setAuthHeader(ctx, req); err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {

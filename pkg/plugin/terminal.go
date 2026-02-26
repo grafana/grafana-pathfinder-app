@@ -61,12 +61,14 @@ func ConnectSSH(creds *Credentials) (*ssh.Client, error) {
 		return nil, fmt.Errorf("credentials are nil")
 	}
 
-	logger.Debug("SSH connection attempt",
-		"host", creds.PublicIP,
-		"port", creds.SSHPort,
+	addr := fmt.Sprintf("%s:%d", creds.PublicIP, creds.SSHPort)
+	logger.Info("Attempting direct SSH connection",
+		"addr", addr,
 		"user", creds.SSHUser,
 		"keyLength", len(creds.SSHPrivateKey),
 	)
+
+	startTime := time.Now()
 
 	// Normalize the private key format
 	normalizedKey := normalizePrivateKey(creds.SSHPrivateKey)
@@ -82,14 +84,15 @@ func ConnectSSH(creds *Credentials) (*ssh.Client, error) {
 
 	signer, err := ssh.ParsePrivateKey([]byte(normalizedKey))
 	if err != nil {
-		logger.Error("Failed to parse private key",
+		logger.Error("SSH key parsing FAILED",
+			"addr", addr,
 			"error", err,
 			"keyPreview", normalizedKey[:min(50, len(normalizedKey))],
 		)
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
-	logger.Debug("Private key parsed successfully")
+	logger.Debug("SSH key parsed successfully", "addr", addr)
 
 	config := &ssh.ClientConfig{
 		User: creds.SSHUser,
@@ -101,17 +104,52 @@ func ConnectSSH(creds *Credentials) (*ssh.Client, error) {
 		Timeout:         30 * time.Second, // Increased from 10s - first connection can be slow
 	}
 
-	addr := fmt.Sprintf("%s:%d", creds.PublicIP, creds.SSHPort)
 	logger.Info("Dialing SSH", "addr", addr, "user", creds.SSHUser)
 
 	client, err := ssh.Dial("tcp", addr, config)
+	dialDuration := time.Since(startTime)
+
 	if err != nil {
-		logger.Error("SSH dial failed", "addr", addr, "error", err)
-		return nil, fmt.Errorf("failed to dial SSH to %s: %w", addr, err)
+		errorCategory := categorizeDirectSSHError(err)
+		logger.Error("Direct SSH connection FAILED",
+			"addr", addr,
+			"user", creds.SSHUser,
+			"error", err.Error(),
+			"errorCategory", errorCategory,
+			"dialDurationMs", dialDuration.Milliseconds(),
+		)
+		return nil, fmt.Errorf("failed to dial SSH to %s (%s): %w", addr, errorCategory, err)
 	}
 
-	logger.Info("SSH connection established", "addr", addr)
+	logger.Info("Direct SSH connection SUCCESSFUL",
+		"addr", addr,
+		"user", creds.SSHUser,
+		"dialDurationMs", dialDuration.Milliseconds(),
+	)
 	return client, nil
+}
+
+// categorizeDirectSSHError returns a human-readable category for direct SSH connection errors
+func categorizeDirectSSHError(err error) string {
+	errStr := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errStr, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded"):
+		return "timeout"
+	case strings.Contains(errStr, "no such host") || strings.Contains(errStr, "dns"):
+		return "dns_error"
+	case strings.Contains(errStr, "connection reset"):
+		return "connection_reset"
+	case strings.Contains(errStr, "network is unreachable"):
+		return "network_unreachable"
+	case strings.Contains(errStr, "unable to authenticate") || strings.Contains(errStr, "ssh: handshake failed"):
+		return "auth_failed"
+	case strings.Contains(errStr, "host key"):
+		return "host_key_error"
+	default:
+		return "unknown"
+	}
 }
 
 // ConnectSSHViaRelay establishes an SSH connection through a WebSocket relay.
@@ -124,10 +162,14 @@ func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token 
 	}
 
 	wsURL := fmt.Sprintf("%s/relay/%s", relayURL, vmID)
-	logger.Debug("SSH via relay connection attempt",
+	logger.Info("Attempting WebSocket relay connection",
 		"relayURL", wsURL,
+		"vmID", vmID,
 		"user", creds.SSHUser,
+		"hasToken", token != "",
 	)
+
+	startTime := time.Now()
 
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 30 * time.Second,
@@ -137,20 +179,42 @@ func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token 
 	header.Set("Authorization", "Bearer "+token)
 
 	wsConn, resp, err := dialer.Dial(wsURL, header)
+	dialDuration := time.Since(startTime)
+
 	if err != nil {
-		if resp != nil {
-			logger.Error("WebSocket dial failed",
-				"url", wsURL,
-				"status", resp.StatusCode,
-				"error", err,
-			)
-		} else {
-			logger.Error("WebSocket dial failed", "url", wsURL, "error", err)
+		errorCategory := categorizeConnectionError(err, resp)
+		logFields := []interface{}{
+			"url", wsURL,
+			"vmID", vmID,
+			"error", err.Error(),
+			"errorCategory", errorCategory,
+			"dialDurationMs", dialDuration.Milliseconds(),
 		}
-		return nil, fmt.Errorf("failed to connect to relay: %w", err)
+
+		if resp != nil {
+			logFields = append(logFields,
+				"statusCode", resp.StatusCode,
+				"status", resp.Status,
+			)
+			if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+				logger.Error("WebSocket relay connection BLOCKED - authentication/authorization failure", logFields...)
+			} else if resp.StatusCode >= 500 {
+				logger.Error("WebSocket relay connection FAILED - server error", logFields...)
+			} else {
+				logger.Error("WebSocket relay connection FAILED - HTTP error", logFields...)
+			}
+		} else {
+			logger.Error("WebSocket relay connection FAILED - network/connection error", logFields...)
+		}
+
+		return nil, fmt.Errorf("failed to connect to relay (%s): %w", errorCategory, err)
 	}
 
-	logger.Debug("WebSocket connection established to relay")
+	logger.Info("WebSocket relay connection SUCCESSFUL",
+		"url", wsURL,
+		"vmID", vmID,
+		"dialDurationMs", dialDuration.Milliseconds(),
+	)
 
 	conn := NewWSConn(wsConn)
 
@@ -158,8 +222,17 @@ func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token 
 	signer, err := ssh.ParsePrivateKey([]byte(normalizedKey))
 	if err != nil {
 		_ = conn.Close()
+		logger.Error("SSH key parsing failed after relay connection",
+			"vmID", vmID,
+			"error", err,
+		)
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
+
+	logger.Debug("SSH key parsed successfully, initiating SSH handshake via relay",
+		"vmID", vmID,
+		"user", creds.SSHUser,
+	)
 
 	config := &ssh.ClientConfig{
 		User: creds.SSHUser,
@@ -171,17 +244,75 @@ func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token 
 	}
 
 	addr := fmt.Sprintf("%s:%d", creds.PublicIP, creds.SSHPort)
+	sshStartTime := time.Now()
 
 	c, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	sshDuration := time.Since(sshStartTime)
+
 	if err != nil {
 		_ = conn.Close()
-		logger.Error("SSH handshake via relay failed", "error", err)
+		logger.Error("SSH handshake via relay FAILED",
+			"vmID", vmID,
+			"addr", addr,
+			"error", err.Error(),
+			"sshHandshakeDurationMs", sshDuration.Milliseconds(),
+			"totalDurationMs", time.Since(startTime).Milliseconds(),
+		)
 		return nil, fmt.Errorf("SSH handshake via relay failed: %w", err)
 	}
 
 	client := ssh.NewClient(c, chans, reqs)
-	logger.Info("SSH connection established via relay", "vmID", vmID)
+	totalDuration := time.Since(startTime)
+
+	logger.Info("SSH connection via relay SUCCESSFUL",
+		"vmID", vmID,
+		"addr", addr,
+		"user", creds.SSHUser,
+		"wsDialDurationMs", dialDuration.Milliseconds(),
+		"sshHandshakeDurationMs", sshDuration.Milliseconds(),
+		"totalDurationMs", totalDuration.Milliseconds(),
+	)
+
 	return client, nil
+}
+
+// categorizeConnectionError returns a human-readable category for connection errors
+func categorizeConnectionError(err error, resp *http.Response) string {
+	if resp != nil {
+		switch resp.StatusCode {
+		case http.StatusForbidden:
+			return "blocked_forbidden"
+		case http.StatusUnauthorized:
+			return "blocked_unauthorized"
+		case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return "relay_unavailable"
+		default:
+			if resp.StatusCode >= 500 {
+				return "server_error"
+			}
+			return fmt.Sprintf("http_error_%d", resp.StatusCode)
+		}
+	}
+
+	errStr := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errStr, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded"):
+		return "timeout"
+	case strings.Contains(errStr, "no such host") || strings.Contains(errStr, "dns"):
+		return "dns_error"
+	case strings.Contains(errStr, "connection reset"):
+		return "connection_reset"
+	case strings.Contains(errStr, "tls") || strings.Contains(errStr, "certificate"):
+		return "tls_error"
+	case strings.Contains(errStr, "network is unreachable"):
+		return "network_unreachable"
+	case strings.Contains(errStr, "eof"):
+		return "connection_closed"
+	default:
+		return "unknown"
+	}
 }
 
 // min returns the smaller of two integers
