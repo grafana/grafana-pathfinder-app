@@ -51,43 +51,62 @@ function loadGuideFile(filePath: string): LoadedGuide | null {
   }
 }
 
+export interface DiscoveredGuide {
+  /** Absolute path to the guide JSON file */
+  filePath: string;
+  /** Display name (e.g., "welcome-to-grafana/content.json" or "legacy.json") */
+  displayName: string;
+}
+
+const NON_GUIDE_FILES = new Set(['index.json', 'repository.json']);
+
 /**
- * Load all bundled guides from src/bundled-interactives/
+ * Discover guide files under a bundled-interactives directory.
  *
- * Discovers guides in two formats:
+ * Finds guides in two formats:
  * 1. Package directories containing content.json (preferred)
  * 2. Flat JSON files at root level (legacy, excludes index.json and repository.json)
  *
  * The static-links/ subdirectory is skipped as those are recommendation
  * rule files, not interactive guides.
  */
-export function loadBundledGuides(): LoadedGuide[] {
-  const guides: LoadedGuide[] = [];
-  const bundledDir = path.resolve(process.cwd(), 'src/bundled-interactives');
+export function discoverBundledGuideFiles(bundledDir: string): DiscoveredGuide[] {
+  const guides: DiscoveredGuide[] = [];
 
   if (!fs.existsSync(bundledDir)) {
     return guides;
   }
 
-  const NON_GUIDE_FILES = new Set(['index.json', 'repository.json']);
   const entries = fs.readdirSync(bundledDir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (entry.isDirectory() && entry.name !== 'static-links') {
       const contentPath = path.join(bundledDir, entry.name, 'content.json');
       if (fs.existsSync(contentPath)) {
-        const guide = loadGuideFile(contentPath);
-        if (guide) {
-          guides.push(guide);
-        }
+        guides.push({ filePath: contentPath, displayName: `${entry.name}/content.json` });
       }
     }
 
     if (entry.isFile() && entry.name.endsWith('.json') && !NON_GUIDE_FILES.has(entry.name)) {
-      const guide = loadGuideFile(path.join(bundledDir, entry.name));
-      if (guide) {
-        guides.push(guide);
-      }
+      guides.push({ filePath: path.join(bundledDir, entry.name), displayName: entry.name });
+    }
+  }
+
+  return guides;
+}
+
+/**
+ * Load all bundled guides from src/bundled-interactives/
+ */
+export function loadBundledGuides(): LoadedGuide[] {
+  const bundledDir = path.resolve(process.cwd(), 'src/bundled-interactives');
+  const discovered = discoverBundledGuideFiles(bundledDir);
+  const guides: LoadedGuide[] = [];
+
+  for (const { filePath } of discovered) {
+    const guide = loadGuideFile(filePath);
+    if (guide) {
+      guides.push(guide);
     }
   }
 

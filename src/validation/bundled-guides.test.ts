@@ -8,41 +8,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { discoverBundledGuideFiles } from '../cli/utils/file-loader';
+
 import { validateGuideFromString, toLegacyResult } from './index';
 
-/**
- * Collect all guide files from the bundled-interactives directory.
- * Guides live in package directories as content.json files.
- * Falls back to flat JSON files for any not yet migrated.
- */
 function collectGuideFiles(): Array<{ filePath: string; fileName: string }> {
   const bundledDir = path.resolve(__dirname, '../bundled-interactives');
-  const files: Array<{ filePath: string; fileName: string }> = [];
-
-  if (!fs.existsSync(bundledDir)) {
-    return files;
-  }
-
-  const entries = fs.readdirSync(bundledDir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.isDirectory() && entry.name !== 'static-links') {
-      const contentPath = path.join(bundledDir, entry.name, 'content.json');
-      if (fs.existsSync(contentPath)) {
-        files.push({ filePath: contentPath, fileName: `${entry.name}/content.json` });
-      }
-    }
-
-    if (
-      entry.isFile() &&
-      entry.name.endsWith('.json') &&
-      entry.name !== 'index.json' &&
-      entry.name !== 'repository.json'
-    ) {
-      files.push({ filePath: path.join(bundledDir, entry.name), fileName: entry.name });
-    }
-  }
-
-  return files;
+  return discoverBundledGuideFiles(bundledDir).map((g) => ({
+    filePath: g.filePath,
+    fileName: g.displayName,
+  }));
 }
 
 const guideFiles = collectGuideFiles();

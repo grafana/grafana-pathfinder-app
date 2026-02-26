@@ -10,8 +10,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { buildRepository } from '../cli/commands/build-repository';
+import { discoverBundledGuideFiles } from '../cli/utils/file-loader';
 import { RepositoryJsonSchema, ManifestJsonSchema, ContentJsonSchema } from '../types/package.schema';
-import type { RepositoryJson } from '../types/package.types';
+import type { DependencyList, RepositoryJson } from '../types/package.types';
 import { validatePackageTree } from './validate-package';
 
 const BUNDLED_DIR = path.resolve(__dirname, '../bundled-interactives');
@@ -98,36 +99,30 @@ describe('Bundled repository', () => {
     });
 
     it('should each have both content.json and manifest.json', () => {
-      const entries = fs.readdirSync(BUNDLED_DIR, { withFileTypes: true });
-      const packageDirs = entries.filter(
-        (e) =>
-          e.isDirectory() && e.name !== 'static-links' && fs.existsSync(path.join(BUNDLED_DIR, e.name, 'content.json'))
-      );
+      const packageDirs = discoverBundledGuideFiles(BUNDLED_DIR)
+        .filter((g) => g.displayName.endsWith('/content.json'))
+        .map((g) => path.dirname(g.filePath));
 
       expect(packageDirs.length).toBeGreaterThan(0);
 
       for (const dir of packageDirs) {
-        const manifestPath = path.join(BUNDLED_DIR, dir.name, 'manifest.json');
+        const manifestPath = path.join(dir, 'manifest.json');
         expect(fs.existsSync(manifestPath)).toBe(true);
       }
     });
 
     it('should have consistent IDs between content.json and manifest.json', () => {
-      const entries = fs.readdirSync(BUNDLED_DIR, { withFileTypes: true });
+      const packageDirs = discoverBundledGuideFiles(BUNDLED_DIR)
+        .filter((g) => g.displayName.endsWith('/content.json'))
+        .map((g) => path.dirname(g.filePath));
 
-      for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name === 'static-links') {
+      for (const dir of packageDirs) {
+        const manifestPath = path.join(dir, 'manifest.json');
+        if (!fs.existsSync(manifestPath)) {
           continue;
         }
 
-        const contentPath = path.join(BUNDLED_DIR, entry.name, 'content.json');
-        const manifestPath = path.join(BUNDLED_DIR, entry.name, 'manifest.json');
-
-        if (!fs.existsSync(contentPath) || !fs.existsSync(manifestPath)) {
-          continue;
-        }
-
-        const content = ContentJsonSchema.parse(JSON.parse(fs.readFileSync(contentPath, 'utf-8')));
+        const content = ContentJsonSchema.parse(JSON.parse(fs.readFileSync(path.join(dir, 'content.json'), 'utf-8')));
         const manifest = ManifestJsonSchema.parse(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')));
 
         expect(manifest.id).toBe(content.id);
@@ -154,7 +149,7 @@ describe('Bundled repository', () => {
 
       const broken: string[] = [];
       for (const [id, entry] of Object.entries(repositoryJson)) {
-        const checkDeps = (deps: unknown[] | undefined, field: string) => {
+        const checkDeps = (deps: DependencyList | undefined, field: string) => {
           if (!deps) {
             return;
           }
