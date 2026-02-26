@@ -4,8 +4,13 @@
   "repository": "bundled",
   "description": "Demonstrates all available block types in the JSON guide format.",
   "category": "reference",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
   "startingLocation": "/",
   "testEnvironment": {
-    "tier": "local"
+    "tier": "local",
+    "minVersion": "12.2.0"
   }
 }

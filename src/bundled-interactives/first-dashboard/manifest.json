@@ -4,8 +4,12 @@
   "repository": "bundled",
   "description": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more.",
   "category": "dashboards",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
   "startingLocation": "/",
-  "recommends": ["welcome-to-grafana"],
+  "recommends": ["welcome-to-grafana", "prometheus-grafana-101"],
   "provides": ["first-dashboard-created"],
   "targeting": {
     "match": {
@@ -13,6 +17,7 @@
     }
   },
   "testEnvironment": {
-    "tier": "local"
+    "tier": "local",
+    "minVersion": "12.2.0"
   }
 }

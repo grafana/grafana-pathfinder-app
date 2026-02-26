@@ -5,7 +5,15 @@
     "type": "guide",
     "description": "Learn how to use the guide editor to create and edit interactive guides.",
     "category": "authoring",
-    "startingLocation": "/"
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
+    "startingLocation": "/",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "e2e-framework-test": {
     "path": "e2e-framework-test/",
@@ -13,7 +21,15 @@
     "type": "guide",
     "description": "Test fixture for the E2E framework. Not intended for end users.",
     "category": "testing",
-    "startingLocation": "/"
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
+    "startingLocation": "/",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "first-dashboard": {
     "path": "first-dashboard/",
@@ -21,13 +37,27 @@
     "type": "guide",
     "description": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more.",
     "category": "dashboards",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
     "startingLocation": "/",
     "recommends": [
-      "welcome-to-grafana"
+      "welcome-to-grafana",
+      "prometheus-grafana-101"
     ],
     "provides": [
       "first-dashboard-created"
-    ]
+    ],
+    "targeting": {
+      "match": {
+        "urlPrefix": "/"
+      }
+    },
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "first-dashboard-cloud": {
     "path": "first-dashboard-cloud/",
@@ -35,13 +65,33 @@
     "type": "guide",
     "description": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more.",
     "category": "dashboards",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
     "startingLocation": "/a/grafana-setupguide-app/home",
     "recommends": [
       "welcome-to-grafana-cloud"
     ],
     "provides": [
       "first-dashboard-created-cloud"
-    ]
+    ],
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-setupguide-app/home"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    }
   },
   "json-guide-demo": {
     "path": "json-guide-demo/",
@@ -49,7 +99,15 @@
     "type": "guide",
     "description": "Demonstrates all available block types in the JSON guide format.",
     "category": "reference",
-    "startingLocation": "/"
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
+    "startingLocation": "/",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "loki-grafana-101": {
     "path": "loki-grafana-101/",
@@ -57,13 +115,33 @@
     "type": "guide",
     "description": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
     "category": "data-sources",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
     "startingLocation": "/connections",
     "depends": [
       "prometheus-grafana-101"
     ],
     "provides": [
       "loki-configured"
-    ]
+    ],
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/connections"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "prometheus-advanced-queries": {
     "path": "prometheus-advanced-queries/",
@@ -71,10 +149,24 @@
     "type": "guide",
     "description": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
     "category": "querying",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
     "startingLocation": "/explore",
     "recommends": [
-      "prometheus-grafana-101"
-    ]
+      "prometheus-grafana-101",
+      "loki-grafana-101"
+    ],
+    "targeting": {
+      "match": {
+        "urlPrefix": "/explore"
+      }
+    },
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "prometheus-grafana-101": {
     "path": "prometheus-grafana-101/",
@@ -82,13 +174,33 @@
     "type": "guide",
     "description": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
     "category": "data-sources",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
     "startingLocation": "/connections",
     "recommends": [
       "welcome-to-grafana"
     ],
     "provides": [
       "prometheus-configured"
-    ]
+    ],
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/connections"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "welcome-to-grafana": {
     "path": "welcome-to-grafana/",
@@ -96,10 +208,30 @@
     "type": "guide",
     "description": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
     "category": "getting-started",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
     "startingLocation": "/",
     "provides": [
       "grafana-tour-oss"
-    ]
+    ],
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
   },
   "welcome-to-grafana-cloud": {
     "path": "welcome-to-grafana-cloud/",
@@ -107,9 +239,29 @@
     "type": "guide",
     "description": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
     "category": "getting-started",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
     "startingLocation": "/a/grafana-setupguide-app/home",
     "provides": [
       "grafana-tour-cloud"
-    ]
+    ],
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-setupguide-app/home"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    }
   }
 }

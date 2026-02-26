@@ -4,6 +4,10 @@
   "repository": "bundled",
   "description": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
   "category": "data-sources",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
   "startingLocation": "/connections",
   "depends": ["prometheus-grafana-101"],
   "provides": ["loki-configured"],
@@ -13,6 +17,7 @@
     }
   },
   "testEnvironment": {
-    "tier": "local"
+    "tier": "local",
+    "minVersion": "12.2.0"
   }
 }
