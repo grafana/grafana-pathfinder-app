@@ -1,0 +1,93 @@
+{
+  "block-editor-tutorial": {
+    "path": "block-editor-tutorial/",
+    "title": "Guide editor tutorial",
+    "type": "guide",
+    "description": "Learn how to use the guide editor to create and edit interactive guides.",
+    "category": "authoring",
+    "startingLocation": "/"
+  },
+  "e2e-framework-test": {
+    "path": "e2e-framework-test/",
+    "title": "E2E framework test",
+    "type": "guide",
+    "description": "Test fixture for the E2E framework. Not intended for end users.",
+    "category": "testing",
+    "startingLocation": "/"
+  },
+  "first-dashboard": {
+    "path": "first-dashboard/",
+    "title": "Create your first dashboard",
+    "type": "guide",
+    "description": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more.",
+    "category": "dashboards",
+    "startingLocation": "/",
+    "recommends": ["welcome-to-grafana"],
+    "provides": ["first-dashboard-created"]
+  },
+  "first-dashboard-cloud": {
+    "path": "first-dashboard-cloud/",
+    "title": "Create your first dashboard in Grafana Cloud",
+    "type": "guide",
+    "description": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more.",
+    "category": "dashboards",
+    "startingLocation": "/a/grafana-setupguide-app/home",
+    "recommends": ["welcome-to-grafana-cloud"],
+    "provides": ["first-dashboard-created-cloud"]
+  },
+  "json-guide-demo": {
+    "path": "json-guide-demo/",
+    "title": "JSON Guide Demo - All Block Types",
+    "type": "guide",
+    "description": "Demonstrates all available block types in the JSON guide format.",
+    "category": "reference",
+    "startingLocation": "/"
+  },
+  "loki-grafana-101": {
+    "path": "loki-grafana-101/",
+    "title": "Loki & Grafana 101",
+    "type": "guide",
+    "description": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
+    "category": "data-sources",
+    "startingLocation": "/connections",
+    "depends": ["prometheus-grafana-101"],
+    "provides": ["loki-configured"]
+  },
+  "prometheus-advanced-queries": {
+    "path": "prometheus-advanced-queries/",
+    "title": "Advanced Prometheus Queries",
+    "type": "guide",
+    "description": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
+    "category": "querying",
+    "startingLocation": "/explore",
+    "recommends": ["prometheus-grafana-101"]
+  },
+  "prometheus-grafana-101": {
+    "path": "prometheus-grafana-101/",
+    "title": "Prometheus & Grafana 101",
+    "type": "guide",
+    "description": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
+    "category": "data-sources",
+    "startingLocation": "/connections",
+    "recommends": ["welcome-to-grafana"],
+    "provides": ["prometheus-configured"]
+  },
+  "welcome-to-grafana": {
+    "path": "welcome-to-grafana/",
+    "title": "Welcome to Grafana",
+    "type": "guide",
+    "description": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
+    "category": "getting-started",
+    "startingLocation": "/",
+    "provides": ["grafana-tour-oss"]
+  },
+  "welcome-to-grafana-cloud": {
+    "path": "welcome-to-grafana-cloud/",
+    "title": "Welcome to Grafana Cloud",
+    "type": "guide",
+    "description": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
+    "category": "getting-started",
+    "startingLocation": "/a/grafana-setupguide-app/home",
+    "provides": ["grafana-tour-cloud"]
+  }
+}

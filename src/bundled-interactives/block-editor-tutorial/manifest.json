@@ -1,0 +1,11 @@
+{
+  "id": "block-editor-tutorial",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Learn how to use the guide editor to create and edit interactive guides.",
+  "category": "authoring",
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local"
+  }
+}

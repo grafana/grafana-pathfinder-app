@@ -1,0 +1,11 @@
+{
+  "id": "json-guide-demo",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Demonstrates all available block types in the JSON guide format.",
+  "category": "reference",
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local"
+  }
+}

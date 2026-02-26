@@ -1,0 +1,17 @@
+{
+  "id": "welcome-to-grafana-cloud",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
+  "category": "getting-started",
+  "startingLocation": "/a/grafana-setupguide-app/home",
+  "provides": ["grafana-tour-cloud"],
+  "targeting": {
+    "match": {
+      "and": [{ "urlPrefix": "/a/grafana-setupguide-app/home" }, { "targetPlatform": "cloud" }]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  }
+}

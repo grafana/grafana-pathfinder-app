@@ -14,7 +14,7 @@
 import { useCallback } from 'react';
 import type { JsonGuide } from '../types';
 import type { ModalName } from './useModalManager';
-import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial.json';
+import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial/content.json';
 
 /**
  * Minimal interface for editor functionality needed by this hook.

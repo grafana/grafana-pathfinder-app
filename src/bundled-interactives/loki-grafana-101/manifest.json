@@ -1,0 +1,18 @@
+{
+  "id": "loki-grafana-101",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
+  "category": "data-sources",
+  "startingLocation": "/connections",
+  "depends": ["prometheus-grafana-101"],
+  "provides": ["loki-configured"],
+  "targeting": {
+    "match": {
+      "and": [{ "urlPrefix": "/connections" }, { "targetPlatform": "oss" }]
+    }
+  },
+  "testEnvironment": {
+    "tier": "local"
+  }
+}

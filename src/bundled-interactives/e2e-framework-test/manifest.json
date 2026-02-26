@@ -1,0 +1,11 @@
+{
+  "id": "e2e-framework-test",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Test fixture for the E2E framework. Not intended for end users.",
+  "category": "testing",
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local"
+  }
+}

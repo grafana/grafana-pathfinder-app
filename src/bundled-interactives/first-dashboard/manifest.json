@@ -1,0 +1,18 @@
+{
+  "id": "first-dashboard",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more.",
+  "category": "dashboards",
+  "startingLocation": "/",
+  "recommends": ["welcome-to-grafana"],
+  "provides": ["first-dashboard-created"],
+  "targeting": {
+    "match": {
+      "urlPrefix": "/"
+    }
+  },
+  "testEnvironment": {
+    "tier": "local"
+  }
+}

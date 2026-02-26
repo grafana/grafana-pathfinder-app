@@ -2,6 +2,7 @@
  * Bundled Guides Validation Tests
  *
  * Ensures all bundled JSON guides pass validation.
+ * Guides are stored as package directories (e.g., welcome-to-grafana/content.json).
  */
 
 import * as fs from 'fs';
@@ -11,7 +12,8 @@ import { validateGuideFromString, toLegacyResult } from './index';
 
 /**
  * Collect all guide files from the bundled-interactives directory.
- * Excludes index.json and static-links subdirectory.
+ * Guides live in package directories as content.json files.
+ * Falls back to flat JSON files for any not yet migrated.
  */
 function collectGuideFiles(): Array<{ filePath: string; fileName: string }> {
   const bundledDir = path.resolve(__dirname, '../bundled-interactives');
@@ -21,18 +23,22 @@ function collectGuideFiles(): Array<{ filePath: string; fileName: string }> {
     return files;
   }
 
-  const entries = fs.readdirSync(bundledDir);
+  const entries = fs.readdirSync(bundledDir, { withFileTypes: true });
   for (const entry of entries) {
-    // Skip index.json and directories (like static-links)
-    if (entry === 'index.json') {
-      continue;
+    if (entry.isDirectory() && entry.name !== 'static-links') {
+      const contentPath = path.join(bundledDir, entry.name, 'content.json');
+      if (fs.existsSync(contentPath)) {
+        files.push({ filePath: contentPath, fileName: `${entry.name}/content.json` });
+      }
     }
 
-    const fullPath = path.join(bundledDir, entry);
-    const stat = fs.statSync(fullPath);
-
-    if (stat.isFile() && entry.endsWith('.json')) {
-      files.push({ filePath: fullPath, fileName: entry });
+    if (
+      entry.isFile() &&
+      entry.name.endsWith('.json') &&
+      entry.name !== 'index.json' &&
+      entry.name !== 'repository.json'
+    ) {
+      files.push({ filePath: path.join(bundledDir, entry.name), fileName: entry.name });
     }
   }
 
@@ -46,7 +52,6 @@ describe('Bundled Guides', () => {
     expect(guideFiles.length).toBeGreaterThan(0);
   });
 
-  // Only run the parameterized tests if we have guide files
   if (guideFiles.length > 0) {
     describe.each(guideFiles)('$fileName', ({ filePath, fileName }) => {
       let content: string;
@@ -63,7 +68,7 @@ describe('Bundled Guides', () => {
         const result = validateGuideFromString(content);
         if (!result.isValid) {
           const legacy = toLegacyResult(result);
-          fail(`Validation failed for ${fileName}:\n${legacy.errors.join('\n')}`);
+          throw new Error(`Validation failed for ${fileName}:\n${legacy.errors.join('\n')}`);
         }
         expect(result.isValid).toBe(true);
       });
@@ -72,7 +77,7 @@ describe('Bundled Guides', () => {
         const result = validateGuideFromString(content, { strict: true });
         if (!result.isValid) {
           const legacy = toLegacyResult(result);
-          fail(`Strict mode failed for ${fileName}:\n${legacy.errors.join('\n')}`);
+          throw new Error(`Strict mode failed for ${fileName}:\n${legacy.errors.join('\n')}`);
         }
         expect(result.isValid).toBe(true);
       });

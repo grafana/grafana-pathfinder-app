@@ -126,30 +126,25 @@ This plan is designed to support and further the [content testing strategy](./TE
 - 38 Layer 1 tests in `src/validation/validate-package.test.ts` and `src/validation/build-graph.test.ts`
 - All 90 test suites pass (1872 tests, 0 failures)
 
-### Phase 2: Bundled repository migration
+### Phase 2: Bundled repository migration ✅
 
-**Goal:** Migrate bundled content (`src/bundled-interactives/`) into the package directory structure, write manifests for each guide, and generate `repository.json` and dependency graph via CLI. Prove the end-to-end pipeline on a small, controlled corpus before migrating external content.
+**Status:** Complete
 
-**Testing layers:** Layer 1 + Layer 2
+**Key decisions and artifacts:**
 
-**Deliverables:**
-
-- [ ] Restructure `src/bundled-interactives/` into package directories:
-  - [ ] Each guide becomes a directory (e.g., `welcome-to-grafana/content.json` instead of `welcome-to-grafana.json`)
-  - [ ] Static link files in `static-links/` migrated to package directories
-  - [ ] Existing `index.json` retained during transition for backwards compatibility
-- [ ] Write `manifest.json` for each bundled guide:
-  - [ ] Seed metadata from current `index.json` entries (`summary` → `description`, `url` → `startingLocation`, `targetPlatform` → `targeting.match`)
-  - [ ] Add dependency fields to express relationships between bundled guides
-  - [ ] Add `targeting` with recommender match expressions
-  - [ ] Set `repository` provenance metadata for the bundled repository
-- [ ] Generate `repository.json` for the bundled repository using `pathfinder-cli build-repository` from Phase 1
-- [ ] Generate dependency graph using `pathfinder-cli build-graph` from Phase 1 (for lint validation — not for plugin runtime consumption)
-- [ ] Validate all bundled packages pass `validate --packages` in CI
-- [ ] Add pre-commit hook for bundled repository that regenerates `repository.json` on commit
-- [ ] CI verification: rebuild `repository.json`, diff against committed version, fail on divergence
-
-**Why third:** Proves the full end-to-end pipeline (schema → CLI → repository index → graph) on a small, controlled corpus that lives inside the plugin repository. By the time external content migrates (Phase 4), the migration pattern is already validated and the tooling is battle-tested.
+- 10 guides migrated to package directories (`<guide-name>/content.json` + `manifest.json`)
+- `repository.json` generated with 10 packages, committed as lockfile (CI verifies freshness via rebuild + diff)
+- Dependency graph validated: 0 errors, 3 warnings (orphaned test/demo/reference packages — expected)
+- `static-links/` retained as-is — these are recommendation rules consumed by the context engine, not content packages. They use a different schema (`rules` array with `match` expressions) and don't conform to `content.json`/`manifest.json`. Migration deferred: when the recommender adopts package `targeting.match` metadata, static-links become redundant and can be removed.
+- `index.json` retained for backwards compatibility — `filename` fields updated to point to directory paths (e.g., `welcome-to-grafana/content.json`). The content-fetcher and context engine continue to use it unchanged.
+- `repository` field set to `"bundled"` to distinguish from the external `interactive-tutorials` repo (which uses the schema default `"interactive-tutorials"`)
+- `testEnvironment.tier` set per guide: `"local"` for OSS guides, `"cloud"` for cloud-only guides
+- Dependency relationships expressed: `loki-grafana-101` depends on `prometheus-grafana-101`; dashboard and query guides recommend their respective welcome tours; `provides` capabilities declared for downstream resolution
+- `targeting.match` uses the recommender's match expression grammar (`urlPrefix`, `targetPlatform`, `and`/`or` combinators)
+- Pre-commit hook **not implemented** — the project has no pre-commit infrastructure (no `.husky/`, no `.lintstagedrc`). CI freshness check (`repository:check` script) is the enforcement mechanism instead.
+- CI: new `validate-packages` job in `.github/workflows/ci.yml` builds CLI, validates packages, and checks `repository.json` freshness. Added to CI gate.
+- npm scripts added: `validate:packages`, `repository:build`, `repository:check`
+- Layer 1 + Layer 2 tests: 43 tests in `bundled-guides.test.ts` (guide content validation) and `bundled-repository.test.ts` (repository schema, freshness, ID consistency, dependency integrity, cycle detection)
 
 ### Phase 3: Plugin runtime resolution
 
