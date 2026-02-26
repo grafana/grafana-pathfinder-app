@@ -5,6 +5,7 @@
 - [Motivation](#motivation)
 - [Design principles](#design-principles)
 - [Package structure](#package-structure)
+  - [Extension metadata](#extension-metadata)
 - [Separation of content and metadata](#separation-of-content-and-metadata)
 - [Identity model](#identity-model)
 - [Repository index](#repository-index)
@@ -158,6 +159,59 @@ Packages may include an optional `assets/` directory for non-JSON resources: ima
 - **Aligned with SCORM** — SCORM packages include static assets alongside SCO content
 
 The `assets/` convention is adopted now but asset resolution and rendering are deferred to a future phase.
+
+### Extension metadata
+
+A package directory may contain **arbitrary additional files and subdirectories** beyond the core reserved set. These files are opaque to Pathfinder — the CLI does not parse, validate, or warn about them. This enables third-party tools, content pipelines, and future extensions to store whatever metadata they need alongside the guide, without requiring changes to the package schema or coordination with the Pathfinder project.
+
+A package is valid if and only if its core files are valid. The presence or absence of extension files has no effect on package validation.
+
+#### Reserved names
+
+The following names are reserved for Pathfinder core use. Extension files must not use these names:
+
+| Name            | Purpose                                   |
+| --------------- | ----------------------------------------- |
+| `content.json`  | Guide content blocks                      |
+| `manifest.json` | Package metadata, dependencies, targeting |
+| `assets/`       | Content resources referenced by blocks    |
+
+Future Pathfinder versions may add new reserved names. Additions will be announced via schema version bumps, giving extension authors a clear compatibility contract.
+
+#### Collision avoidance
+
+Because extension metadata is outside the scope of this design, the package format does not specify or enforce conventions for extension files. However, the recommended convention is for each tool to use its **own subdirectory**, where content format, validation, and usage are specific to that subdirectory:
+
+```
+prometheus-grafana-101/
+├── content.json
+├── manifest.json
+├── assets/
+│   └── architecture.png
+├── testdata/                  ← extension: staged sample data
+│   ├── datasource-config.json
+│   └── metrics.csv
+└── grafana-docs/              ← extension: original markdown source
+    └── prometheus-101.md
+```
+
+This convention is not enforced. Tools are free to organize their extension files however they choose.
+
+#### Open-world validation
+
+The CLI follows **open-world semantics** at the directory level: validate what is known, ignore what is not. Unknown files and subdirectories in a package directory do not produce warnings or errors. This is the directory-level analog of the `.passthrough()` strategy used in the JSON schemas — the package format is open to extension by default.
+
+#### Processing semantics are undefined
+
+The package format defines what may exist in the directory. It does not define what any tool does with extension files. How tools discover, parse, validate, or act on extension metadata is entirely the tool's concern. Extensions have full autonomy over their own subdirectories.
+
+#### Examples
+
+**Staged sample data.** A guide ships with sample data that an extension can use to provision a datasource, allowing the guide to reference data the user doesn't have. The sample data lives in a tool-specific subdirectory (e.g., `testdata/`) and is invisible to Pathfinder.
+
+**Ported markdown front-matter.** An existing Grafana docs markdown file with structured YAML front-matter is copied into the package directory (e.g., `grafana-docs/prometheus-101.md`). Markdown-specific processing tools can access the original format without migrating metadata into the Pathfinder manifest — the package directory simply holds both representations.
+
+**Leftover ported matter** E.g. if porting a SCORM or other guide to Pathfinder format, the author might leave behind a copy of what was originally ported, in part or whole.
 
 ---
 

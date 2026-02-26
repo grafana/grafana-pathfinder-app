@@ -12,8 +12,8 @@
  * @coupling Zod schema: JsonGuideSchema in json-guide.schema.ts
  */
 export interface JsonGuide {
-  /** Schema version for forward compatibility (e.g., "1.0.0") */
-  schemaVersion?: '1.0.0' | string;
+  /** Schema version for forward compatibility (e.g., "1.0.0", "1.1.0") */
+  schemaVersion?: '1.0.0' | '1.1.0' | string;
   /** Unique identifier for the guide */
   id: string;
   /** Display title for the guide */
