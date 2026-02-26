@@ -54,7 +54,11 @@ function loadGuideFile(filePath: string): LoadedGuide | null {
 /**
  * Load all bundled guides from src/bundled-interactives/
  *
- * Note: static-links/ subdirectory is skipped as those are static link
+ * Discovers guides in two formats:
+ * 1. Package directories containing content.json (preferred)
+ * 2. Flat JSON files at root level (legacy, excludes index.json and repository.json)
+ *
+ * The static-links/ subdirectory is skipped as those are recommendation
  * rule files, not interactive guides.
  */
 export function loadBundledGuides(): LoadedGuide[] {
@@ -65,12 +69,22 @@ export function loadBundledGuides(): LoadedGuide[] {
     return guides;
   }
 
-  // Load JSON files from root directory only
-  // Skip index.json (manifest file) and static-links/ (different format)
-  const rootFiles = fs.readdirSync(bundledDir);
-  for (const file of rootFiles) {
-    if (file.endsWith('.json') && file !== 'index.json') {
-      const guide = loadGuideFile(path.join(bundledDir, file));
+  const NON_GUIDE_FILES = new Set(['index.json', 'repository.json']);
+  const entries = fs.readdirSync(bundledDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name !== 'static-links') {
+      const contentPath = path.join(bundledDir, entry.name, 'content.json');
+      if (fs.existsSync(contentPath)) {
+        const guide = loadGuideFile(contentPath);
+        if (guide) {
+          guides.push(guide);
+        }
+      }
+    }
+
+    if (entry.isFile() && entry.name.endsWith('.json') && !NON_GUIDE_FILES.has(entry.name)) {
+      const guide = loadGuideFile(path.join(bundledDir, entry.name));
       if (guide) {
         guides.push(guide);
       }
