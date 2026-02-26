@@ -104,6 +104,7 @@ export interface PackageMetadataFields {
   title?: string;
   description?: string;
   category?: string;
+  author?: Author;
   startingLocation?: string;
   steps?: string[];
   depends?: DependencyList;
@@ -155,6 +156,8 @@ export interface ManifestJson {
  */
 export interface RepositoryEntry extends PackageMetadataFields {
   path: string;
+  targeting?: GuideTargeting;
+  testEnvironment?: TestEnvironment;
 }
 
 /**

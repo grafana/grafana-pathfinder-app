@@ -63,13 +63,16 @@ Each repository root contains a `repository.json` file. It is a top-level JSON o
     "type": "guide",
     "description": "Get started with the Grafana UI.",
     "category": "query-visualize",
+    "author": { "name": "Interactive Learning", "team": "Grafana Developer Advocacy" },
     "startingLocation": "/",
     "depends": [],
     "recommends": ["first-dashboard"],
     "suggests": [],
     "provides": [],
     "conflicts": [],
-    "replaces": []
+    "replaces": [],
+    "targeting": { "match": { "urlPrefix": "/" } },
+    "testEnvironment": { "tier": "local", "minVersion": "12.2.0" }
   },
   "infrastructure-alerting": {
     "path": "infrastructure-alerting/",
@@ -103,7 +106,7 @@ Each repository root contains a `repository.json` file. It is a top-level JSON o
 
 Note that `infrastructure-alerting-find-data-to-alert` is a journey-specific step nested under its journey directory (`infrastructure-alerting/find-data-to-alert/`), while `install-alloy` is a shared step that lives as an independent top-level package (`install-alloy/`). Both are real packages resolved by bare ID through the repository index. Multiple journeys (e.g., `linux-server-integration`, `macos-integration`) can reference `install-alloy` in their `steps` arrays without physical duplication.
 
-The `path` is relative to the repository root directory. Denormalized metadata fields (`title`, `type`, `description`, `category`, `startingLocation`, and all dependency arrays) are included so that consumers can build dependency graphs, search catalogs, and compute learning paths from `repository.json` alone — without re-reading every individual `manifest.json`.
+The `path` is relative to the repository root directory. Denormalized metadata fields (`title`, `type`, `description`, `category`, `author`, `startingLocation`, all dependency arrays, `targeting`, and `testEnvironment`) are included so that consumers can build dependency graphs, search catalogs, compute learning paths, and derive recommender input from `repository.json` alone — without re-reading every individual `manifest.json`.
 
 **Denormalization decision:** The `repository.json` file includes metadata that has its source of truth in each package's `manifest.json`. This denormalization is safe because `repository.json` is always a compiled build artifact — regenerated from source on every commit and verified in CI. It cannot diverge from the source-of-truth files because it is never hand-edited. Packages without `manifest.json` have only `path` and `title` (read from `content.json`); other fields use schema defaults.
 

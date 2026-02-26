@@ -283,6 +283,7 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
       title: entry.title,
       description: entry.description,
       category: entry.category,
+      author: entry.author,
       type: entry.type,
       startingLocation: entry.startingLocation,
       steps: entry.steps,

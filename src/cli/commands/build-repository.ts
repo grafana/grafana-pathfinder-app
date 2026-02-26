@@ -107,6 +107,7 @@ function readPackage(packageDir: string): PackageReadResult {
     entry.type = manifest.type;
     entry.description = manifest.description;
     entry.category = manifest.category;
+    entry.author = manifest.author;
     entry.startingLocation = manifest.startingLocation;
     entry.steps = manifest.steps;
     entry.depends = manifest.depends?.length ? manifest.depends : undefined;
@@ -115,6 +116,8 @@ function readPackage(packageDir: string): PackageReadResult {
     entry.provides = manifest.provides?.length ? manifest.provides : undefined;
     entry.conflicts = manifest.conflicts?.length ? manifest.conflicts : undefined;
     entry.replaces = manifest.replaces?.length ? manifest.replaces : undefined;
+    entry.targeting = manifest.targeting;
+    entry.testEnvironment = manifest.testEnvironment;
   }
 
   return { id, dirName, entry, warnings, errors };

@@ -145,6 +145,11 @@ This plan is designed to support and further the [content testing strategy](./TE
 - CI: new `validate-packages` job in `.github/workflows/ci.yml` builds CLI, validates packages, and checks `repository.json` freshness. Added to CI gate.
 - npm scripts added: `validate:packages`, `repository:build`, `repository:check`
 - Layer 1 + Layer 2 tests: 43 tests in `bundled-guides.test.ts` (guide content validation) and `bundled-repository.test.ts` (repository schema, freshness, ID consistency, dependency integrity, cycle detection)
+- `RepositoryEntry` extended to denormalize `author`, `targeting`, and `testEnvironment` from manifests — closes the gap between the design spec's "denormalized manifest metadata" intent and the Phase 2 implementation. `author` added to `PackageMetadataFields` (shared with `GraphNode`); `targeting` and `testEnvironment` added to `RepositoryEntry` only (operational concerns, not graph visualization). `build-repository` and `build-graph` updated to propagate the new fields. Design spec field lists in `identity-and-resolution.md` and Phase 4 catalog format updated to match.
+- `testEnvironment.minVersion` set to `"12.2.0"` across all 10 bundled guides
+- `author` set to `{ name: "Interactive Learning", team: "Grafana Developer Advocacy" }` across all 10 bundled guides
+- `recommends` connections aligned with `paths.json`: `first-dashboard` now recommends `prometheus-grafana-101` (getting-started path); `prometheus-advanced-queries` now recommends `loki-grafana-101` (observability-basics path)
+- CI fix: removed invalid `persist-credentials` parameter from `actions/setup-node` steps in `ci.yml` (valid only on `actions/checkout`)
 
 ### Phase 3: Plugin runtime resolution
 
@@ -233,7 +238,7 @@ This plan is designed to support and further the [content testing strategy](./TE
   - [ ] Dependency graph JSON follows the same CI-generated + CDN-published pattern
 - [ ] **Static catalog resolution** (in `src/package-engine/` — extends the PackageResolver from Phase 3):
   - [ ] Build process: CLI aggregates all `repository.json` files (bundled committed lockfile + CDN-published remote indexes) into single `packages-catalog.json`, published to CDN
-  - [ ] Catalog format includes denormalized metadata: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository, title, type, description, category, startingLocation, depends, recommends, suggests, provides, conflicts, replaces } } }` — structurally equivalent to `repository.json` but with URLs instead of paths, enabling dependency resolution from the catalog alone without additional per-package manifest fetches
+  - [ ] Catalog format includes denormalized metadata: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository, title, type, description, category, author, startingLocation, depends, recommends, suggests, provides, conflicts, replaces, targeting, testEnvironment } } }` — structurally equivalent to `repository.json` but with URLs instead of paths, enabling dependency resolution and recommender input from the catalog alone without additional per-package manifest fetches
   - [ ] Plugin fetch strategy: on startup, fetch catalog from CDN; cache in memory for session; fall back to bundled repository if fetch fails (offline/OSS support)
   - [ ] Plugin resolution flow: check bundled repository first (baseline content), then static catalog (extended content)
   - [ ] Same `PackageResolver` interface and `PackageResolution` discriminated union — adds a second resolution tier
