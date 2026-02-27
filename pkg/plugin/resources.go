@@ -100,11 +100,18 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find session by VM ID (sessions are keyed by path like "terminal/{vmId}/{nonce}")
+	// Get user from Grafana context header for session lookup
+	userLogin := r.Header.Get("X-Grafana-User")
+	if userLogin == "" {
+		userLogin = "anonymous"
+	}
+
+	// Find session by vmID + userLogin to ensure deterministic lookup
+	// (avoids non-deterministic map iteration when multiple sessions exist for same VM)
 	streamSessionsMu.Lock()
 	var sess *streamSession
 	for _, s := range streamSessions {
-		if s != nil && s.vmID == vmID {
+		if s != nil && s.vmID == vmID && s.userLogin == userLogin {
 			sess = s
 			break
 		}

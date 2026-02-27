@@ -47,10 +47,11 @@ var _ backend.StreamHandler = (*App)(nil)
 
 // streamSession holds an active terminal streaming session
 type streamSession struct {
-	vmID    string
-	session *TerminalSession
-	sender  *backend.StreamSender
-	cancel  context.CancelFunc
+	vmID      string
+	userLogin string
+	session   *TerminalSession
+	sender    *backend.StreamSender
+	cancel    context.CancelFunc
 }
 
 // streamSessions holds active streaming sessions (path -> session)
@@ -619,13 +620,14 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	}
 	defer func() { _ = session.Close() }()
 
-	// Store session for PublishStream to use
+	// Store session for PublishStream and handleTerminalInput to use
 	streamSessionsMu.Lock()
 	streamSessions[req.Path] = &streamSession{
-		vmID:    vmID,
-		session: session,
-		sender:  sender,
-		cancel:  cancel,
+		vmID:      vmID,
+		userLogin: userLogin,
+		session:   session,
+		sender:    sender,
+		cancel:    cancel,
 	}
 	streamSessionsMu.Unlock()
 
