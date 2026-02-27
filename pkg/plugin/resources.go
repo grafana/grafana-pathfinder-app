@@ -141,11 +141,22 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// allowedCodaHosts lists the trusted Coda API hostnames to prevent
-// enrollment key exfiltration via user-supplied URLs.
-var allowedCodaHosts = []string{
-	"coda.lg.grafana-dev.com",
-	"coda.grafana.com",
+// allowedHostSuffixes lists the trusted domain suffixes to prevent
+// token exfiltration via user-supplied URLs. Any subdomain of these
+// domains is allowed (e.g., coda.lg.grafana-dev.com, relay.lg.grafana-dev.com).
+var allowedHostSuffixes = []string{
+	".lg.grafana-dev.com",
+	".grafana.com",
+}
+
+// isAllowedHost checks if a hostname ends with one of the allowed suffixes.
+func isAllowedHost(hostname string) bool {
+	for _, suffix := range allowedHostSuffixes {
+		if strings.HasSuffix(hostname, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // isAllowedCodaURL validates that a URL points to a trusted Coda API host.
@@ -157,12 +168,20 @@ func isAllowedCodaURL(rawURL string) bool {
 	if u.Scheme != "https" {
 		return false
 	}
-	for _, host := range allowedCodaHosts {
-		if u.Hostname() == host {
-			return true
-		}
+	return isAllowedHost(u.Hostname())
+}
+
+// IsAllowedRelayURL validates that a URL points to a trusted relay host.
+// Exported for use in stream.go where relay connections are established.
+func IsAllowedRelayURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
 	}
-	return false
+	if u.Scheme != "wss" {
+		return false
+	}
+	return isAllowedHost(u.Hostname())
 }
 
 // CodaRegisterRequest represents the request body for Coda registration.

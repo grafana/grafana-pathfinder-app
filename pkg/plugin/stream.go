@@ -488,6 +488,13 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 				return errors.New("relay URL not configured")
 			}
 
+			// Validate relay URL against allowlist to prevent token exfiltration
+			if !IsAllowedRelayURL(a.settings.CodaRelayURL) {
+				a.logger.Error("Relay URL not in allowlist", "relayURL", a.settings.CodaRelayURL)
+				sendStreamError(sender, "Relay URL is not a trusted host")
+				return errors.New("relay URL not in allowlist")
+			}
+
 			// Log credentials info (without sensitive data)
 			a.logger.Info("Creating SSH session via relay",
 				"vmID", vmID,
