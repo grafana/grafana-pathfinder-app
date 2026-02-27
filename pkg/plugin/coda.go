@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-// CodaAPIURL is the hardcoded URL for the Coda backend API.
-// This URL is constant and does not need to be configured.
-const CodaAPIURL = "https://coda.lg.grafana-dev.com"
-
 // VM represents a Coda VM instance.
 type VM struct {
 	ID           string       `json:"id"`
@@ -67,8 +63,8 @@ type RefreshResponse struct {
 }
 
 // CodaClient handles communication with the Coda VM provisioning backend.
-// Uses a dual-token system: refresh token (stored) + access token (cached in memory).
 type CodaClient struct {
+	apiURL       string
 	refreshToken string
 	accessToken  string
 	tokenExpiry  time.Time
@@ -76,9 +72,10 @@ type CodaClient struct {
 	client       *http.Client
 }
 
-// NewCodaClient creates a new Coda API client with refresh token authentication.
-func NewCodaClient(refreshToken string) *CodaClient {
+// NewCodaClient creates a new Coda API client.
+func NewCodaClient(apiURL, refreshToken string) *CodaClient {
 	return &CodaClient{
+		apiURL:       apiURL,
 		refreshToken: refreshToken,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -102,18 +99,15 @@ func (c *CodaClient) getAccessToken(ctx context.Context) (string, error) {
 	return c.refreshAccessToken(ctx)
 }
 
-// refreshAccessToken obtains a new access token using the refresh token.
 func (c *CodaClient) refreshAccessToken(ctx context.Context) (string, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	// Double-check after acquiring write lock (another goroutine may have refreshed)
 	if c.accessToken != "" && time.Now().Before(c.tokenExpiry.Add(-1*time.Minute)) {
 		return c.accessToken, nil
 	}
 
-	// Call the refresh endpoint
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, CodaAPIURL+"/api/v1/auth/refresh", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/api/v1/auth/refresh", nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create refresh request: %w", err)
 	}
@@ -169,8 +163,7 @@ func (c *CodaClient) GetAccessToken(ctx context.Context) (string, error) {
 }
 
 // Register registers this Grafana instance with the Coda API using an enrollment key.
-// Returns a JWT token that should be stored in secureJsonData for future API calls.
-func Register(ctx context.Context, enrollmentKey, instanceID, instanceURL string) (*RegisterResponse, error) {
+func Register(ctx context.Context, apiURL, enrollmentKey, instanceID, instanceURL string) (*RegisterResponse, error) {
 	payload := RegisterRequest{
 		EnrollmentKey: enrollmentKey,
 		InstanceID:    instanceID,
@@ -182,7 +175,7 @@ func Register(ctx context.Context, enrollmentKey, instanceID, instanceURL string
 		return nil, fmt.Errorf("failed to marshal registration request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, CodaAPIURL+"/api/v1/auth/register", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+"/api/v1/auth/register", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registration request: %w", err)
 	}
@@ -237,7 +230,7 @@ func (c *CodaClient) CreateVM(ctx context.Context, template, owner string) (*VM,
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, CodaAPIURL+"/api/v1/vms", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/api/v1/vms", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -272,7 +265,7 @@ func (c *CodaClient) CreateVM(ctx context.Context, template, owner string) (*VM,
 
 // GetVM fetches the status and credentials of a VM.
 func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CodaAPIURL+"/api/v1/vms/"+vmID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL+"/api/v1/vms/"+vmID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -310,7 +303,7 @@ func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
 
 // DeleteVM initiates the destruction of a VM.
 func (c *CodaClient) DeleteVM(ctx context.Context, vmID string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, CodaAPIURL+"/api/v1/vms/"+vmID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.apiURL+"/api/v1/vms/"+vmID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -339,7 +332,7 @@ func (c *CodaClient) DeleteVM(ctx context.Context, vmID string) error {
 
 // ListVMs returns all VMs.
 func (c *CodaClient) ListVMs(ctx context.Context) ([]VM, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CodaAPIURL+"/api/v1/vms", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL+"/api/v1/vms", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

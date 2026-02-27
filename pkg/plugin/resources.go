@@ -145,10 +145,9 @@ type CodaRegisterRequest struct {
 	EnrollmentKey string `json:"enrollmentKey"`
 	InstanceID    string `json:"instanceId"`
 	InstanceURL   string `json:"instanceUrl,omitempty"`
+	CodaAPIURL    string `json:"codaApiUrl"`
 }
 
-// handleCodaRegister registers this plugin instance with the Coda API.
-// Returns a JWT token that should be stored in secureJsonData.
 func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -161,7 +160,6 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use enrollment key from request or fall back to settings
 	enrollmentKey := req.EnrollmentKey
 	if enrollmentKey == "" {
 		enrollmentKey = a.settings.EnrollmentKey
@@ -172,15 +170,19 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.CodaAPIURL == "" {
+		a.writeError(w, "Coda API URL is required", http.StatusBadRequest)
+		return
+	}
+
 	if req.InstanceID == "" {
 		a.writeError(w, "Instance ID is required", http.StatusBadRequest)
 		return
 	}
 
-	a.logger.Info("Registering with Coda API", "instanceId", req.InstanceID)
+	a.logger.Info("Registering with Coda API", "instanceId", req.InstanceID, "apiUrl", req.CodaAPIURL)
 
-	// Call Coda registration endpoint
-	result, err := Register(r.Context(), enrollmentKey, req.InstanceID, req.InstanceURL)
+	result, err := Register(r.Context(), req.CodaAPIURL, enrollmentKey, req.InstanceID, req.InstanceURL)
 	if err != nil {
 		a.logger.Error("Failed to register with Coda", "error", err)
 		a.writeError(w, err.Error(), http.StatusUnauthorized)
@@ -189,7 +191,6 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 
 	a.logger.Info("Successfully registered with Coda", "instanceId", req.InstanceID, "jti", result.JTI)
 
-	// Return the token to the frontend so it can be saved to secureJsonData
 	a.writeJSON(w, result, http.StatusCreated)
 }
 

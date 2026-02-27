@@ -51,10 +51,11 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 		logger:   logger,
 	}
 
-	// Initialize Coda client if refresh token is available
-	if settings.RefreshToken != "" {
-		app.coda = NewCodaClient(settings.RefreshToken)
-		logger.Info("Coda client initialized with refresh token", "url", CodaAPIURL)
+	if settings.RefreshToken != "" && settings.CodaAPIURL != "" {
+		app.coda = NewCodaClient(settings.CodaAPIURL, settings.RefreshToken)
+		logger.Info("Coda client initialized", "url", settings.CodaAPIURL)
+	} else if settings.RefreshToken != "" {
+		logger.Warn("Coda API URL not configured, VM features disabled")
 	} else {
 		logger.Warn("Coda refresh token not configured, VM features disabled until registration")
 	}

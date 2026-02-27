@@ -30,15 +30,7 @@ export const DEFAULT_OPEN_PANEL_ON_LAUNCH = false; // Experimental opt-in featur
 export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled by default for stability
 
 // Coda Terminal defaults (experimental dev feature)
-export const DEFAULT_ENABLE_CODA_TERMINAL = false; // Experimental - disabled by default
-
-// Coda API configuration (hardcoded URL - no longer configurable)
-// The Coda backend uses JWT authentication via enrollment keys
-export const CODA_API_URL = 'https://coda.lg.grafana-dev.com';
-
-// Coda Relay URL (for Grafana Cloud deployments where direct SSH is not possible)
-// When set, the plugin connects to VMs via WebSocket relay instead of direct SSH
-export const DEFAULT_CODA_RELAY_URL = 'wss://relay.lg.grafana-dev.com'; // Default to relay for Cloud compatibility
+export const DEFAULT_ENABLE_CODA_TERMINAL = false;
 
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
@@ -97,11 +89,11 @@ export interface DocsPluginConfig {
   peerjsKey?: string;
   // Coda Terminal (Experimental dev feature for interactive sandbox)
   enableCodaTerminal?: boolean;
-  // Coda registration status (JWT auth)
-  // Note: codaEnrollmentKey and codaJwtToken are stored in secureJsonData, not here
-  codaRegistered?: boolean; // Whether this instance has successfully registered with Coda
-  // Coda Relay URL for Grafana Cloud (WebSocket SSH relay)
-  // When set, the plugin uses WebSocket relay instead of direct SSH to VMs
+  // Coda registration status
+  codaRegistered?: boolean;
+  // Coda API URL for VM provisioning
+  codaApiUrl?: string;
+  // Coda Relay URL for SSH connections
   codaRelayUrl?: string;
 }
 
@@ -136,8 +128,9 @@ export const getConfigWithDefaults = (
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
   // Coda registration
   codaRegistered: config.codaRegistered ?? false,
-  // Coda Relay URL
-  codaRelayUrl: config.codaRelayUrl ?? DEFAULT_CODA_RELAY_URL,
+  // Coda URLs (required for registration)
+  codaApiUrl: config.codaApiUrl ?? '',
+  codaRelayUrl: config.codaRelayUrl ?? '',
 });
 
 /**
