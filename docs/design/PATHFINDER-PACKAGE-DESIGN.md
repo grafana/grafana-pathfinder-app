@@ -5,13 +5,14 @@
 - [Motivation](#motivation)
 - [Design principles](#design-principles)
 - [Package structure](#package-structure)
+  - [Extension metadata](#extension-metadata)
 - [Separation of content and metadata](#separation-of-content-and-metadata)
 - [Identity model](#identity-model)
 - [Repository index](#repository-index)
 - [Phase 1 schema](#phase-1-schema)
 - [Metadata](#metadata)
 - [Dependencies](#dependencies)
-- [Learning journeys](#learning-journeys)
+- [Learning paths and journeys](#learning-paths-and-journeys)
 - [Targeting](#targeting)
 - [Backwards compatibility](#backwards-compatibility)
 - [CLI extensions](#cli-extensions)
@@ -41,9 +42,9 @@ Debian-style dependencies are needed (test environment routing, learning path or
 
 A SCORM course decomposition produces multiple interrelated guides with rich metadata (author, language, difficulty, rights, provenance). The current schema has no place for any of this. Without a package model, imported content would lose all of its metadata. See [SCORM analysis](./SCORM.md) for the full feasibility study.
 
-### Learning journey composition
+### Learning path and journey composition
 
-Docs partners already express inter-guide dependencies in YAML (see [alignment with external formats](#alignment-with-external-formats)). The website team is planning to display guides on the web. Both need guides to be self-describing — carrying their own relationship metadata rather than relying on external manifests. The [learning journeys](#learning-journeys) section defines the metapackage model that formalizes multi-guide composition.
+Docs partners already express inter-guide dependencies in YAML (see [alignment with external formats](#alignment-with-external-formats)). The website team is planning to display guides on the web. Both need guides to be self-describing — carrying their own relationship metadata rather than relying on external manifests. The [learning paths and journeys](#learning-paths-and-journeys) section defines the two-level metapackage model that formalizes multi-guide composition.
 
 ### E2E Layer 4 routing
 
@@ -159,11 +160,66 @@ Packages may include an optional `assets/` directory for non-JSON resources: ima
 
 The `assets/` convention is adopted now but asset resolution and rendering are deferred to a future phase.
 
+### Extension metadata
+
+A package directory may contain **arbitrary additional files and subdirectories** beyond the core reserved set. These files are opaque to Pathfinder — the CLI does not parse, validate, or warn about them. This enables third-party tools, content pipelines, and future extensions to store whatever metadata they need alongside the guide, without requiring changes to the package schema or coordination with the Pathfinder project.
+
+A package is valid if and only if its core files are valid. The presence or absence of extension files has no effect on package validation.
+
+#### Reserved names
+
+The following names are reserved for Pathfinder core use. Extension files must not use these names:
+
+| Name            | Purpose                                   |
+| --------------- | ----------------------------------------- |
+| `content.json`  | Guide content blocks                      |
+| `manifest.json` | Package metadata, dependencies, targeting |
+| `assets/`       | Content resources referenced by blocks    |
+
+Future Pathfinder versions may add new reserved names. Additions will be announced via schema version bumps, giving extension authors a clear compatibility contract.
+
+#### Collision avoidance
+
+Because extension metadata is outside the scope of this design, the package format does not specify or enforce conventions for extension files. However, the recommended convention is for each tool to use its **own subdirectory**, where content format, validation, and usage are specific to that subdirectory:
+
+```
+prometheus-grafana-101/
+├── content.json
+├── manifest.json
+├── assets/
+│   └── architecture.png
+├── testdata/                  ← extension: staged sample data
+│   ├── datasource-config.json
+│   └── metrics.csv
+└── grafana-docs/              ← extension: original markdown source
+    └── prometheus-101.md
+```
+
+This convention is not enforced. Tools are free to organize their extension files however they choose.
+
+#### Open-world validation
+
+The CLI follows **open-world semantics** at the directory level: validate what is known, ignore what is not. Unknown files and subdirectories in a package directory do not produce warnings or errors. This is the directory-level analog of the `.passthrough()` strategy used in the JSON schemas — the package format is open to extension by default.
+
+#### Processing semantics are undefined
+
+The package format defines what may exist in the directory. It does not define what any tool does with extension files. How tools discover, parse, validate, or act on extension metadata is entirely the tool's concern. Extensions have full autonomy over their own subdirectories.
+
+#### Examples
+
+**Staged sample data.** A guide ships with sample data that an extension can use to provision a datasource, allowing the guide to reference data the user doesn't have. The sample data lives in a tool-specific subdirectory (e.g., `testdata/`) and is invisible to Pathfinder.
+
+**Ported markdown front-matter.** An existing Grafana docs markdown file with structured YAML front-matter is copied into the package directory (e.g., `grafana-docs/prometheus-101.md`). Markdown-specific processing tools can access the original format without migrating metadata into the Pathfinder manifest — the package directory simply holds both representations.
+
+**Leftover ported matter** E.g. if porting a SCORM or other guide to Pathfinder format, the author might leave behind a copy of what was originally ported, in part or whole.
+
 ---
 
 ## Identity model
 
 Packages are identified by a **bare ID** — a globally unique string such as `"welcome-to-grafana"`. IDs contain no repository prefix and no path information. The `repository` field in `manifest.json` is provenance metadata (recording where a package originated), not part of the package's identity. When `repository` is absent, the default is `"interactive-tutorials"`. Resolution from bare ID to content location is handled by the [package resolver](./package/identity-and-resolution.md#package-resolution), not by the ID format.
+
+**Identity model evolution (Phase 7):** When the registry service introduces multiple independently managed repositories, the identity model evolves from globally unique bare IDs to registry-scoped uniqueness. The registry maintains a compound key (repository + package ID) internally, distinguishing the same bare ID published by different repositories. The `PackageResolver` resolves bare IDs using priority-based clobber semantics (first repository in priority order wins). Phases 0-6 assume global uniqueness; Phase 7 introduces the compound key.
 
 > **Full detail:** [package/identity-and-resolution.md — Identity model](./package/identity-and-resolution.md#identity-model)
 
@@ -195,8 +251,15 @@ interface ManifestJson {
   schemaVersion?: string;
   /** Bare package identifier — globally unique, must match content.json id */
   id: string;
+  /** Package type — required, no default */
+  type: 'guide' | 'path' | 'journey';
   /** Repository provenance — records which repository this package originated from (default: "interactive-tutorials") */
   repository?: string;
+
+  // --- Composition (metapackage model) ---
+
+  /** Ordered steps for paths and journeys (required when type is "path" or "journey") */
+  steps?: string[];
 
   // --- Metadata (flat, following Debian conventions) ---
 
@@ -248,11 +311,19 @@ interface JsonGuide {
   /** Bare package identifier — globally unique */
   id: string;
 
+  /** Package type — required, no default */
+  type: 'guide' | 'path' | 'journey';
+
   /** Display title */
   title: string;
 
   /** Content blocks */
   blocks: JsonBlock[];
+
+  // --- Composition (metapackage model) ---
+
+  /** Ordered steps for paths and journeys (required when type is "path" or "journey") */
+  steps?: string[];
 
   // --- Metadata (flat) ---
 
@@ -310,6 +381,7 @@ A package with both files:
 {
   "schemaVersion": "1.1.0",
   "id": "prometheus-grafana-101",
+  "type": "guide",
   "repository": "interactive-tutorials",
   "description": "Learn to use Prometheus and Grafana to monitor your infrastructure.",
   "language": "en",
@@ -393,9 +465,14 @@ Dependency fields (`depends`, `recommends`, `suggests`, `provides`, `conflicts`,
 
 ---
 
-## Learning journeys
+## Learning paths and journeys
 
-A learning journey is an ordered sequence of guides that build toward a larger outcome, following the Debian **metapackage** pattern. Journeys are first-class packages with a `type: "journey"` discriminator and a `steps` array declaring the recommended reading order. Steps are real packages — not fragments or sub-units — enabling step reuse across journeys, a single identity model, and uniform tooling. Completion is set-based (all steps done, regardless of order), and ordering is advisory.
+The package model supports two levels of metapackage composition following the Debian **metapackage** pattern:
+
+- A **path** (`type: "path"`) is an ordered sequence of guides that build toward a focused outcome (e.g., "Set up a Linux server integration"). Paths are the primary composition unit — they compose guides into coherent learning experiences.
+- A **journey** (`type: "journey"`) is an ordered sequence of paths (or any packages) that build toward a larger learning arc (e.g., "Infrastructure mastery" composing linux-server-integration, kubernetes-integration, and alerting paths).
+
+Both are first-class packages with a `steps` array declaring the recommended reading order. Steps are real packages — not fragments or sub-units — enabling step reuse, a single identity model, and uniform tooling. The `steps` field references bare package IDs; the CLI validates that each entry resolves to an existing package but does not enforce the type of the referenced package. The type hierarchy (guides in paths, paths in journeys) is convention, not a schema constraint. Completion is set-based (all steps done, regardless of order), and ordering is advisory.
 
 > **Full detail:** [package/learning-journeys.md](./package/learning-journeys.md)
 
@@ -474,7 +551,7 @@ Until `build-index` is implemented, `index.json` continues to be maintained sepa
 
 For `content.json`: the existing `KNOWN_FIELDS._guide` applies unchanged. If `content.json` contains metadata/dependency/targeting fields (e.g., from a legacy single-file guide), they are accepted via `.passthrough()` but the canonical location is `manifest.json`.
 
-For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'repository'`, `'description'`, `'language'`, `'category'`, `'author'`, `'startingLocation'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
+For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'type'`, `'repository'`, `'steps'`, `'description'`, `'language'`, `'category'`, `'author'`, `'startingLocation'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
 
 ### Schema version
 
@@ -526,7 +603,7 @@ The CLI gains separate Zod schemas for `content.json` and `manifest.json` with c
 
 ## Alignment with external formats
 
-The package model aligns with three external standards: the Grafana docs team's learning journey YAML (category taxonomy, `links.to` → `suggests`/`recommends`), Dublin Core / IEEE LOM metadata conventions (field names vetted for future compatibility), and SCORM's content packaging model (two-file separation, organization trees → journey metapackages).
+The package model aligns with three external standards: the Grafana docs team's learning path YAML (category taxonomy, `links.to` → `suggests`/`recommends`), Dublin Core / IEEE LOM metadata conventions (field names vetted for future compatibility), and SCORM's content packaging model (two-file separation, organization trees → path and journey metapackages).
 
 > **Full detail:** [package/standards-alignment.md — Alignment with external formats](./package/standards-alignment.md#alignment-with-external-formats)
 
@@ -534,7 +611,7 @@ The package model aligns with three external standards: the Grafana docs team's 
 
 ## Future-proofing
 
-The format is designed for backward-compatible evolution: an extensible flat namespace in `manifest.json`, a `source` provenance pattern for SCORM import, a `type` discriminator for courses and modules, `testEnvironment` metadata for E2E routing, a schema versioning strategy (`1.0.0` → `1.1.0` → `1.2.0`), and CRD serialization readiness for Kubernetes.
+The format is designed for backward-compatible evolution: an extensible flat namespace in `manifest.json`, a `source` provenance pattern for SCORM import, a `type` discriminator with `"guide"`, `"path"`, and `"journey"` values from Phase 0 (extensible to `"course"` and `"module"` for SCORM), `testEnvironment` metadata for E2E routing, a schema versioning strategy (`1.0.0` → `1.1.0` → `1.2.0`), and CRD serialization readiness for Kubernetes.
 
 > **Full detail:** [package/standards-alignment.md — Future-proofing](./package/standards-alignment.md#future-proofing)
 
@@ -583,7 +660,7 @@ The phased implementation plan for this design is maintained separately in
 
 ## Decision log
 
-35 design decisions with rationale are tracked in the decision log, covering identity model, dependency semantics, metadata conventions, journey composition, repository indexing, multi-repo resolution strategy, and implementation phasing.
+35 design decisions with rationale are tracked in the decision log, covering identity model, dependency semantics, metadata conventions, path and journey composition, repository indexing, multi-repo resolution strategy, and implementation phasing.
 
 > **Full decision log:** [package/decision-log.md](./package/decision-log.md)
 

@@ -411,7 +411,7 @@ export const JsonConditionalBlockSchema = z.object({
 /**
  * The current version of the schema.
  */
-export const CURRENT_SCHEMA_VERSION = '1.0.0';
+export const CURRENT_SCHEMA_VERSION = '1.1.0';
 
 /**
  * Root schema for JSON guide (strict - no extra fields allowed).
@@ -542,6 +542,26 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
   terminal: new Set(['type', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
+  _manifest: new Set([
+    'schemaVersion',
+    'id',
+    'type',
+    'repository',
+    'steps',
+    'description',
+    'language',
+    'category',
+    'author',
+    'startingLocation',
+    'depends',
+    'recommends',
+    'suggests',
+    'provides',
+    'conflicts',
+    'replaces',
+    'targeting',
+    'testEnvironment',
+  ]),
 };
 
 /**

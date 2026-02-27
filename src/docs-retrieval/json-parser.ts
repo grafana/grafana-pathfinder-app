@@ -7,7 +7,6 @@
 
 import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from '../types/content.types';
 import { parseHTMLToComponents } from './html-parser';
-// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: docs-retrieval -> validation
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import { renderMarkdown } from '@grafana/data';

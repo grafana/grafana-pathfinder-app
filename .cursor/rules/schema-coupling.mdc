@@ -4,6 +4,8 @@ description: Guidance for keeping TypeScript types and Zod schemas synchronized
 globs:
   - "src/types/json-guide.types.ts"
   - "src/types/json-guide.schema.ts"
+  - "src/types/package.types.ts"
+  - "src/types/package.schema.ts"
 alwaysApply: false
 ---
 
@@ -97,9 +99,21 @@ src/validation/
 └── errors.ts         # Error formatting utilities
 
 src/types/
-├── json-guide.types.ts  # TypeScript interfaces (source of truth)
-└── json-guide.schema.ts # Zod schemas (runtime validation)
+├── json-guide.types.ts  # TypeScript interfaces for single-file guides (source of truth)
+├── json-guide.schema.ts # Zod schemas for single-file guides (runtime validation)
+├── package.types.ts     # TypeScript interfaces for two-file package model
+└── package.schema.ts    # Zod schemas for packages (ContentJson, ManifestJson, RepositoryJson)
 ```
+
+## Two-file Package Model
+
+The package model separates content (`content.json`) from metadata (`manifest.json`):
+
+- **`package.types.ts`** defines `ContentJson`, `ManifestJson`, `RepositoryJson`, `RepositoryEntry`, `GraphNode`, `GraphEdge`, and resolution types
+- **`package.schema.ts`** defines corresponding Zod schemas with defaults and refinements
+- **`json-guide.schema.ts`** retains `JsonGuideSchemaStrict` for backwards-compatible single-file guides
+- `KNOWN_FIELDS._manifest` in `json-guide.schema.ts` lists valid manifest fields for unknown field detection
+- `CURRENT_SCHEMA_VERSION` (currently `"1.1.0"`) is the default for new packages
 
 ## Commands
 

@@ -7,6 +7,8 @@
 
 import { Command } from 'commander';
 
+import { buildGraphCommand } from './commands/build-graph';
+import { buildRepositoryCommand } from './commands/build-repository';
 import { e2eCommand } from './commands/e2e';
 import { validateCommand } from './commands/validate';
 
@@ -16,5 +18,7 @@ program.name('pathfinder-cli').description('CLI tools for Grafana Pathfinder plu
 
 program.addCommand(validateCommand);
 program.addCommand(e2eCommand);
+program.addCommand(buildRepositoryCommand);
+program.addCommand(buildGraphCommand);
 
 program.parse(process.argv);
