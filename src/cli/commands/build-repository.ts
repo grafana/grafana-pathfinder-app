@@ -1,8 +1,9 @@
 /**
  * Build Repository Command
  *
- * Scans a package tree, reads content.json and optional manifest.json
- * for each package, and emits a denormalized repository.json with bare IDs.
+ * Scans a package tree for manifest.json files, reads content.json and
+ * manifest.json for each discovered package directory, and emits a
+ * denormalized repository.json with bare IDs.
  */
 
 import { Command } from 'commander';
@@ -23,29 +24,39 @@ interface BuildRepositoryOptions {
 
 /**
  * Discover package directories under a root.
- * A package directory contains at minimum a content.json file.
- * Searches one level deep (immediate children of root).
+ * A package directory is any directory containing manifest.json.
+ * Recurses arbitrarily deep, excluding assets/ subtrees.
  */
 function discoverPackages(root: string): string[] {
   if (!fs.existsSync(root)) {
     return [];
   }
 
-  const entries = fs.readdirSync(root, { withFileTypes: true });
   const packages: string[] = [];
+  const stack = [root];
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
+  while (stack.length > 0) {
+    const currentDir = stack.pop();
+    if (!currentDir) {
       continue;
     }
 
-    const contentPath = path.join(root, entry.name, 'content.json');
-    if (fs.existsSync(contentPath)) {
-      packages.push(path.join(root, entry.name));
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    const hasManifest = entries.some((entry) => entry.isFile() && entry.name === 'manifest.json');
+
+    if (hasManifest) {
+      packages.push(currentDir);
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === 'assets') {
+        continue;
+      }
+      stack.push(path.join(currentDir, entry.name));
     }
   }
 
-  return packages;
+  return packages.sort();
 }
 
 interface PackageReadResult {
@@ -59,8 +70,9 @@ interface PackageReadResult {
 /**
  * Read a single package directory and produce a repository entry.
  */
-function readPackage(packageDir: string): PackageReadResult {
-  const dirName = path.basename(packageDir);
+function readPackage(root: string, packageDir: string): PackageReadResult {
+  const relativeDir = path.relative(root, packageDir).split(path.sep).join('/');
+  const dirName = relativeDir || path.basename(packageDir);
   const warnings: string[] = [];
   const errors: string[] = [];
   const fallbackEntry: RepositoryEntry = { path: `${dirName}/`, type: 'guide' };
@@ -138,12 +150,12 @@ export function buildRepository(root: string): {
   const packageDirs = discoverPackages(root);
 
   if (packageDirs.length === 0) {
-    warnings.push(`No package directories found under ${root}`);
+    warnings.push(`No package directories with manifest.json found under ${root}`);
     return { repository, warnings, errors };
   }
 
   for (const packageDir of packageDirs) {
-    const result = readPackage(packageDir);
+    const result = readPackage(root, packageDir);
 
     for (const w of result.warnings) {
       warnings.push(`${result.dirName}: ${w}`);

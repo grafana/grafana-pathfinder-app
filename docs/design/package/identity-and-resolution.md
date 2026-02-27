@@ -108,16 +108,16 @@ Note that `infrastructure-alerting-find-data-to-alert` is a journey-specific ste
 
 The `path` is relative to the repository root directory. Denormalized metadata fields (`title`, `type`, `description`, `category`, `author`, `startingLocation`, all dependency arrays, `targeting`, and `testEnvironment`) are included so that consumers can build dependency graphs, search catalogs, compute learning paths, and derive recommender input from `repository.json` alone — without re-reading every individual `manifest.json`.
 
-**Denormalization decision:** The `repository.json` file includes metadata that has its source of truth in each package's `manifest.json`. This denormalization is safe because `repository.json` is always a compiled build artifact — regenerated from source on every commit and verified in CI. It cannot diverge from the source-of-truth files because it is never hand-edited. Packages without `manifest.json` have only `path` and `title` (read from `content.json`); other fields use schema defaults.
+**Denormalization decision:** The `repository.json` file includes metadata that has its source of truth in each package's `manifest.json`. This denormalization is safe because `repository.json` is always a compiled build artifact — regenerated from source on every commit and verified in CI. It cannot diverge from the source-of-truth files because it is never hand-edited.
 
 ### Compilation, not authoring
 
 `repository.json` is a **compiled build artifact**, never hand-authored. A CLI command (`pathfinder-cli build-repository`) scans the repository tree:
 
-1. Walk the directory tree
-2. For each directory containing `content.json`, read `content.json` and optionally `manifest.json`
+1. Walk the directory tree recursively (excluding `assets/` subtrees)
+2. For each directory containing `manifest.json`, read both `manifest.json` and `content.json`
 3. Record the mapping: bare ID → `{ path, ...denormalized metadata }`
-4. Apply schema defaults for missing manifest fields
+4. Apply schema defaults for omitted manifest fields
 5. Write `repository.json`
 
 This file is committed to the repository. A **pre-commit hook** regenerates it on every commit, ensuring it stays in sync with the actual package tree. The CI build chain verifies consistency: compile the index from scratch, diff against the committed version, fail if they diverge. This follows the lockfile pattern — committed for fast reads, but always verifiably reproducible from source.
