@@ -155,6 +155,11 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
     return formValidCheck(check);
   }
 
+  // Terminal connection check
+  if (check === 'is-terminal-active') {
+    return terminalActiveCheck(check);
+  }
+
   // Guide response variable checks (e.g., var-policyAccepted:true)
   if (check.startsWith('var-')) {
     return guideVariableCheck(check);
@@ -1460,6 +1465,33 @@ async function rendererCheck(check: string): Promise<CheckResultError> {
       pass: false,
       error: `Renderer check failed: ${error}`,
       context: { error: String(error) },
+    };
+  }
+}
+
+/**
+ * Check whether the Coda terminal is connected.
+ * Reads from a module-level getter exposed by TerminalContext.
+ */
+async function terminalActiveCheck(check: string): Promise<CheckResultError> {
+  try {
+    // Dynamic import to avoid circular dependencies and keep terminal
+    // code tree-shakeable when the feature is disabled
+    const { getTerminalConnectionStatus } = await import('../integrations/coda/TerminalContext');
+    const status = getTerminalConnectionStatus();
+    const isConnected = status === 'connected';
+    return {
+      requirement: check,
+      pass: isConnected,
+      error: isConnected ? undefined : 'Terminal is not connected. Connect to a terminal session to continue.',
+      context: { terminalStatus: status },
+    };
+  } catch {
+    return {
+      requirement: check,
+      pass: false,
+      error: 'Terminal integration is not available.',
+      context: null,
     };
   }
 }

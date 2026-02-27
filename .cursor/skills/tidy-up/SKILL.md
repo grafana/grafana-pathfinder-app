@@ -1,6 +1,6 @@
 ---
 name: tidyup
-description: Run npm run typecheck, npm run lint:fix, npm run prettier, and npm run test:ci to tidy and test the code prior to committing and pushing.
+description: Run typecheck, lint, prettier, and tests for both frontend and Go backend to tidy and test the code prior to committing and pushing.
 ---
 
 # Tidy up
@@ -17,7 +17,7 @@ STOP and ask the user what to do, do not proceed.
 
 ### Step 1: Run `npm run typecheck`
 
-Fix all trivial syntax errors.
+Fix all trivial TypeScript syntax errors.
 
 ### Step 2: Run `npm run lint:fix`
 
@@ -27,11 +27,24 @@ Fix all trivial linting errors.
 
 Fix all trivial prettier issues; this will modify local files.
 
-### Step 4: Run unit tests: `npm run test:ci`
+### Step 4: Run frontend unit tests: `npm run test:ci`
 
 All should pass; if unit tests break and the cause is obvious (i.e. a missing import,
 or a slight syntax error) you can go ahead and fix them. If unit tests fail due to
 changed functionality, STOP and ask the user what to do.
+
+### Step 5: Run Go lint: `npm run lint:go`
+
+Fix all Go linting errors. If golangci-lint reports issues, address them.
+
+### Step 6: Run Go tests: `npm run test:go`
+
+All Go tests should pass. If tests fail and the cause is obvious, fix them.
+If tests fail due to changed functionality, STOP and ask the user what to do.
+
+### Step 7: Build Go backend: `go build ./...`
+
+Verify the Go backend compiles without errors.
 
 ## Summary
 
@@ -40,6 +53,9 @@ Provide very brief output that looks like this:
 Typecheck: <N> files modified
 Lint: <N> files modified
 Prettier: <N> files modified
-Unit tests: (PASS|FAIL)
+Frontend tests: (PASS|FAIL)
+Go lint: (PASS|FAIL)
+Go tests: (PASS|FAIL)
+Go build: (PASS|FAIL)
 
 If any step fails, provide details on why.

@@ -3,6 +3,10 @@ import { config } from '@grafana/runtime';
 
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
+// Backend API URL for plugin resource endpoints
+// Grafana routes backend resource calls through /api/plugins/{pluginId}/resources/
+export const PLUGIN_BACKEND_URL = `/api/plugins/${pluginJson.id}/resources`;
+
 // Default configuration values
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana.com';
@@ -26,7 +30,7 @@ export const DEFAULT_OPEN_PANEL_ON_LAUNCH = false; // Experimental opt-in featur
 export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled by default for stability
 
 // Coda Terminal defaults (experimental dev feature)
-export const DEFAULT_ENABLE_CODA_TERMINAL = false; // Experimental - disabled by default
+export const DEFAULT_ENABLE_CODA_TERMINAL = false;
 
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
@@ -85,6 +89,12 @@ export interface DocsPluginConfig {
   peerjsKey?: string;
   // Coda Terminal (Experimental dev feature for interactive sandbox)
   enableCodaTerminal?: boolean;
+  // Coda registration status
+  codaRegistered?: boolean;
+  // Coda API URL for VM provisioning
+  codaApiUrl?: string;
+  // Coda Relay URL for SSH connections
+  codaRelayUrl?: string;
 }
 
 // Helper functions to get configuration values with defaults
@@ -116,6 +126,11 @@ export const getConfigWithDefaults = (
   peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
   // Coda Terminal
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+  // Coda registration
+  codaRegistered: config.codaRegistered ?? false,
+  // Coda URLs (required for registration)
+  codaApiUrl: config.codaApiUrl ?? '',
+  codaRelayUrl: config.codaRelayUrl ?? '',
 });
 
 /**

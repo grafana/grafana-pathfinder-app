@@ -12,6 +12,7 @@ export { InteractiveGuided } from './interactive-guided';
 export { InteractiveQuiz } from './interactive-quiz';
 export { InteractiveConditional } from './interactive-conditional';
 export { InputBlock } from './input-block';
+export { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 
 // Shared types from centralized location
 export type {

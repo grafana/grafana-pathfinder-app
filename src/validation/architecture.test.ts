@@ -104,6 +104,9 @@ const ALLOWED_VERTICAL_VIOLATIONS = new Set([
   'docs-retrieval/content-renderer.tsx -> components',
   // Existing cross-domain persistence dependency (legacy coupling)
   'lib/user-storage.ts -> learning-paths',
+  // Terminal requirement check needs to query terminal connection status from the integrations layer.
+  // The dynamic import minimizes coupling and makes terminal code tree-shakeable when disabled.
+  'requirements-manager/requirements-checker.utils.ts -> integrations',
 ]);
 
 /**
