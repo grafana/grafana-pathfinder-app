@@ -516,7 +516,7 @@ async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
       context: {
         searched: dsRequirement,
         matchType: found ? matchType : null,
-        available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, id: ds.id })),
+        available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, uid: ds.uid })),
       },
     };
   } catch (error) {
