@@ -9,7 +9,6 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as prettier from 'prettier';
 
 import type { RepositoryEntry, RepositoryJson } from '../../types/package.types';
 // ManifestJsonObjectSchema (pre-refinement) is intentional: build-repository
@@ -24,6 +23,7 @@ interface BuildRepositoryOptions {
 }
 
 async function formatRepositoryJson(json: string): Promise<string> {
+  const prettier = await import('prettier');
   const config = await prettier.resolveConfig(process.cwd());
   const formatted = await prettier.format(json, {
     ...(config ?? {}),
