@@ -305,11 +305,11 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
       const nonce = Date.now();
       const address: LiveChannelAddress = {
         scope: LiveChannelScope.Plugin,
-        namespace: PLUGIN_ID,
+        stream: PLUGIN_ID,
         path: `terminal/${id}/${nonce}`,
       };
 
-      const channelPath = `${address.scope}/${address.namespace}/${address.path}`;
+      const channelPath = `${address.scope}/${address.stream}/${address.path}`;
       connectionLog.info('Subscribing to LiveStream', {
         vmId: id,
         channel: channelPath,

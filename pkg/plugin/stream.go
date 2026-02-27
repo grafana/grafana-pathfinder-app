@@ -511,8 +511,14 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			default:
 			}
 
+			// Relay URL is mandatory - fail if not configured
+			if a.settings.CodaRelayURL == "" {
+				sendStreamError(sender, "Relay URL not configured - SSH connections require the WebSocket relay")
+				return errors.New("relay URL not configured")
+			}
+
 			// Log credentials info (without sensitive data)
-			a.logger.Info("Creating SSH session",
+			a.logger.Info("Creating SSH session via relay",
 				"vmID", vmID,
 				"host", vm.Credentials.PublicIP,
 				"port", vm.Credentials.SSHPort,
@@ -524,105 +530,66 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 				"sshRetry", sshRetry,
 			)
 
-			// Create SSH session - use relay if configured, otherwise direct SSH
-			if a.settings.CodaRelayURL != "" {
-				a.logger.Info("Initiating relay connection",
-					"relayURL", a.settings.CodaRelayURL,
+			// Get a fresh access token for the relay connection
+			if a.coda == nil {
+				errMsg := "Coda client not initialized - cannot connect to relay"
+				sendStreamError(sender, errMsg)
+				return fmt.Errorf("coda client not initialized")
+			}
+			accessToken, err := a.coda.GetAccessToken(ctx)
+			if err != nil {
+				a.logger.Error("Failed to get access token for relay", "error", err)
+				sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
+				return fmt.Errorf("failed to get access token: %w", err)
+			}
+
+			sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
+			if err != nil {
+				lastErr = err
+				a.logger.Warn("Relay connection failed",
 					"vmID", vmID,
-					"host", vm.Credentials.PublicIP,
+					"error", err,
 					"vmAttempt", vmAttempt,
 					"sshRetry", sshRetry,
 				)
 
-				// Get a fresh access token for the relay connection
-				if a.coda == nil {
-					errMsg := "Coda client not initialized - cannot connect to relay"
-					sendStreamError(sender, errMsg)
-					return fmt.Errorf("coda client not initialized")
-				}
-				accessToken, err := a.coda.GetAccessToken(ctx)
-				if err != nil {
-					a.logger.Error("Failed to get access token for relay", "error", err)
-					sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
-					return fmt.Errorf("failed to get access token: %w", err)
+				// Check if error is retryable and we have same-VM retries left
+				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
+					a.logger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
+					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
+					time.Sleep(sshRetryDelay)
+					continue
 				}
 
-				sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
-				if err != nil {
-					lastErr = err
-					a.logger.Warn("Relay connection failed",
-						"vmID", vmID,
-						"error", err,
-						"vmAttempt", vmAttempt,
-						"sshRetry", sshRetry,
-					)
-
-					// Check if error is retryable and we have same-VM retries left
-					if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
-						a.logger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
-						sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
-						time.Sleep(sshRetryDelay)
-						continue
-					}
-
-					// All same-VM retries exhausted, break to try new VM
-					break
-				}
-
-				a.logger.Info("Relay connection established, creating terminal session", "vmID", vmID)
-				session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
-				if err != nil {
-					_ = sshClient.Close()
-					lastErr = err
-					a.logger.Warn("Failed to create terminal session with relay client",
-						"vmID", vmID,
-						"error", err,
-						"vmAttempt", vmAttempt,
-						"sshRetry", sshRetry,
-					)
-
-					// Check if error is retryable and we have same-VM retries left
-					if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
-						a.logger.Info("Session creation failed, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
-						sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
-						time.Sleep(sshRetryDelay)
-						continue
-					}
-
-					// All same-VM retries exhausted, break to try new VM
-					break
-				}
-				// Success!
-				break
-			} else {
-				// Direct SSH (no relay)
-				var err error
-				session, err = NewTerminalSession(vmID, vm.Credentials, onOutput, onError)
-				if err != nil {
-					lastErr = err
-					a.logger.Warn("Failed to create terminal session",
-						"vmID", vmID,
-						"error", err,
-						"host", vm.Credentials.PublicIP,
-						"port", vm.Credentials.SSHPort,
-						"vmAttempt", vmAttempt,
-						"sshRetry", sshRetry,
-					)
-
-					// Check if error is retryable and we have same-VM retries left
-					if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
-						a.logger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
-						sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
-						time.Sleep(sshRetryDelay)
-						continue
-					}
-
-					// All same-VM retries exhausted, break to try new VM
-					break
-				}
-				// Success!
+				// All same-VM retries exhausted, break to try new VM
 				break
 			}
+
+			a.logger.Info("Relay connection established, creating terminal session", "vmID", vmID)
+			session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
+			if err != nil {
+				_ = sshClient.Close()
+				lastErr = err
+				a.logger.Warn("Failed to create terminal session with relay client",
+					"vmID", vmID,
+					"error", err,
+					"vmAttempt", vmAttempt,
+					"sshRetry", sshRetry,
+				)
+
+				// Check if error is retryable and we have same-VM retries left
+				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
+					a.logger.Info("Session creation failed, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
+					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
+					time.Sleep(sshRetryDelay)
+					continue
+				}
+
+				// All same-VM retries exhausted, break to try new VM
+				break
+			}
+			// Success!
+			break
 		}
 
 		// If we got a session, we're done

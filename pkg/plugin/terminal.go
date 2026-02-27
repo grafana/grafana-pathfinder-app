@@ -53,105 +53,6 @@ func normalizePrivateKey(key string) string {
 	return key
 }
 
-// ConnectSSH establishes an SSH connection using VM credentials.
-func ConnectSSH(creds *Credentials) (*ssh.Client, error) {
-	logger := log.DefaultLogger
-
-	if creds == nil {
-		return nil, fmt.Errorf("credentials are nil")
-	}
-
-	addr := fmt.Sprintf("%s:%d", creds.PublicIP, creds.SSHPort)
-	logger.Info("Attempting direct SSH connection",
-		"addr", addr,
-		"user", creds.SSHUser,
-		"keyLength", len(creds.SSHPrivateKey),
-	)
-
-	startTime := time.Now()
-
-	// Normalize the private key format
-	normalizedKey := normalizePrivateKey(creds.SSHPrivateKey)
-
-	// Debug: Log key header to verify format (safe - doesn't expose the key itself)
-	keyLines := strings.Split(normalizedKey, "\n")
-	if len(keyLines) > 0 {
-		logger.Debug("SSH key format check",
-			"firstLine", keyLines[0],
-			"lineCount", len(keyLines),
-		)
-	}
-
-	signer, err := ssh.ParsePrivateKey([]byte(normalizedKey))
-	if err != nil {
-		logger.Error("SSH key parsing FAILED",
-			"addr", addr,
-			"error", err,
-			"keyPreview", normalizedKey[:min(50, len(normalizedKey))],
-		)
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	logger.Debug("SSH key parsed successfully", "addr", addr)
-
-	config := &ssh.ClientConfig{
-		User: creds.SSHUser,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		// TODO: Implement proper host key verification for production
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         30 * time.Second, // Increased from 10s - first connection can be slow
-	}
-
-	logger.Info("Dialing SSH", "addr", addr, "user", creds.SSHUser)
-
-	client, err := ssh.Dial("tcp", addr, config)
-	dialDuration := time.Since(startTime)
-
-	if err != nil {
-		errorCategory := categorizeDirectSSHError(err)
-		logger.Error("Direct SSH connection FAILED",
-			"addr", addr,
-			"user", creds.SSHUser,
-			"error", err.Error(),
-			"errorCategory", errorCategory,
-			"dialDurationMs", dialDuration.Milliseconds(),
-		)
-		return nil, fmt.Errorf("failed to dial SSH to %s (%s): %w", addr, errorCategory, err)
-	}
-
-	logger.Info("Direct SSH connection SUCCESSFUL",
-		"addr", addr,
-		"user", creds.SSHUser,
-		"dialDurationMs", dialDuration.Milliseconds(),
-	)
-	return client, nil
-}
-
-// categorizeDirectSSHError returns a human-readable category for direct SSH connection errors
-func categorizeDirectSSHError(err error) string {
-	errStr := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(errStr, "connection refused"):
-		return "connection_refused"
-	case strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded"):
-		return "timeout"
-	case strings.Contains(errStr, "no such host") || strings.Contains(errStr, "dns"):
-		return "dns_error"
-	case strings.Contains(errStr, "connection reset"):
-		return "connection_reset"
-	case strings.Contains(errStr, "network is unreachable"):
-		return "network_unreachable"
-	case strings.Contains(errStr, "unable to authenticate") || strings.Contains(errStr, "ssh: handshake failed"):
-		return "auth_failed"
-	case strings.Contains(errStr, "host key"):
-		return "host_key_error"
-	default:
-		return "unknown"
-	}
-}
-
 // ConnectSSHViaRelay establishes an SSH connection through a WebSocket relay.
 // This is used when direct TCP access to the VM is not available (e.g., Grafana Cloud).
 func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token string) (*ssh.Client, error) {
@@ -315,25 +216,7 @@ func categorizeConnectionError(err error, resp *http.Response) string {
 	}
 }
 
-// min returns the smaller of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// NewTerminalSession creates a new terminal session for a VM using direct SSH.
-func NewTerminalSession(vmID string, creds *Credentials, onOutput func([]byte), onError func(error)) (*TerminalSession, error) {
-	client, err := ConnectSSH(creds)
-	if err != nil {
-		return nil, err
-	}
-	return NewTerminalSessionWithClient(vmID, client, onOutput, onError)
-}
-
 // NewTerminalSessionWithClient creates a terminal session using an existing SSH client.
-// This is useful when the SSH connection was established via a relay.
 func NewTerminalSessionWithClient(vmID string, client *ssh.Client, onOutput func([]byte), onError func(error)) (*TerminalSession, error) {
 	session, err := client.NewSession()
 	if err != nil {

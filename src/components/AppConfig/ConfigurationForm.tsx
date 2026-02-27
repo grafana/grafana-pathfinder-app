@@ -99,8 +99,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
-  // Only require service URLs when in dev mode, otherwise these are hidden
-  const isSubmitDisabled = showAdvancedConfig ? Boolean(!state.recommenderServiceUrl) : false;
+  // Validation rules:
+  // - Require recommender service URL when in dev mode
+  // - Require relay URL when Coda terminal is enabled (relay is the only connection method)
+  const isRecommenderUrlMissing = showAdvancedConfig && !state.recommenderServiceUrl;
+  const isRelayUrlMissing = state.enableCodaTerminal && !state.codaRelayUrl;
+  const isSubmitDisabled = isRecommenderUrlMissing || isRelayUrlMissing;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
@@ -699,40 +703,40 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     </Alert>
                   )}
 
-                  {/* Relay URL configuration - shown when registered */}
-                  {codaRegistered && (
-                    <div className={s.marginTop}>
-                      <Text variant="h6">SSH Relay Configuration (Grafana Cloud)</Text>
-                      <div style={{ marginTop: '8px', marginBottom: '16px' }}>
-                        <Text variant="body" color="secondary">
-                          For Grafana Cloud deployments where direct SSH is blocked, configure the WebSocket relay URL.
-                          Leave empty for self-hosted instances with direct network access to VMs.
-                        </Text>
-                      </div>
-
-                      <Field
-                        label="Relay URL"
-                        description="WebSocket relay URL for SSH connections (e.g., wss://relay.lg.grafana-dev.com)"
-                      >
-                        <Input
-                          width={60}
-                          value={state.codaRelayUrl}
-                          onChange={onChangeCodaRelayUrl}
-                          placeholder="wss://relay.lg.grafana-dev.com"
-                        />
-                      </Field>
-
-                      {state.codaRelayUrl && (
-                        <Alert severity="info" title="Relay mode enabled" className={s.marginTop}>
-                          <Text variant="body">
-                            SSH connections will be tunneled through the WebSocket relay at{' '}
-                            <code>{state.codaRelayUrl}</code>. This is required for Grafana Cloud where outbound TCP
-                            port 22 is blocked.
-                          </Text>
-                        </Alert>
-                      )}
+                  {/* Relay URL configuration - required for SSH connections */}
+                  <div className={s.marginTop}>
+                    <Text variant="h6">SSH Relay Configuration</Text>
+                    <div style={{ marginTop: '8px', marginBottom: '16px' }}>
+                      <Text variant="body" color="secondary">
+                        All SSH connections to VMs are routed through the WebSocket relay. This ensures secure,
+                        authenticated access to sandbox environments.
+                      </Text>
                     </div>
-                  )}
+
+                    <Field
+                      label="Relay URL"
+                      description="WebSocket relay URL for SSH connections (required)"
+                      required
+                      invalid={!state.codaRelayUrl}
+                      error={!state.codaRelayUrl ? 'Relay URL is required for Coda terminal' : undefined}
+                    >
+                      <Input
+                        width={60}
+                        value={state.codaRelayUrl}
+                        onChange={onChangeCodaRelayUrl}
+                        placeholder="wss://relay.lg.grafana-dev.com"
+                      />
+                    </Field>
+
+                    {state.codaRelayUrl && (
+                      <Alert severity="info" title="Relay configured" className={s.marginTop}>
+                        <Text variant="body">
+                          SSH connections will be tunneled through the WebSocket relay at{' '}
+                          <code>{state.codaRelayUrl}</code>.
+                        </Text>
+                      </Alert>
+                    )}
+                  </div>
 
                   {/* Auto-registration with provisioned key */}
                   {!codaRegistered && hasProvisionedKey && isRegistering && (
