@@ -35,7 +35,8 @@
     "i18n-extract": "i18next --config src/locales/i18next-parser.config.js",
     "build:cli": "tsc -p tsconfig.cli.json",
     "validate": "node dist/cli/cli/index.js validate --bundled",
-    "validate:strict": "node dist/cli/cli/index.js validate --bundled --strict"
+    "validate:strict": "node dist/cli/cli/index.js validate --bundled --strict",
+    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run lint:go && npm run test:go && npm run test:ci"
   },
   "author": "Grafanalabs",
   "license": "AGPL-3.0",
