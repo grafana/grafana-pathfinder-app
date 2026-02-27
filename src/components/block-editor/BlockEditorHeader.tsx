@@ -49,6 +49,8 @@ export interface BlockEditorHeaderProps {
   isPostingToBackend?: boolean;
   /** Callback to start new guide */
   onNewGuide: () => void;
+  /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
+  isBackendAvailable: boolean;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -153,6 +155,7 @@ export function BlockEditorHeader({
   onPostToBackend,
   isPostingToBackend = false,
   onNewGuide,
+  isBackendAvailable,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -201,20 +204,21 @@ export function BlockEditorHeader({
             </Tooltip>
           )}
 
-          {/* Publish status */}
-          {!isPublished ? (
-            <Tooltip content="Not yet published to backend">
-              <Badge text="Draft" color="purple" icon="circle" />
-            </Tooltip>
-          ) : hasUnpublishedChanges ? (
-            <Tooltip content="You have unpublished changes">
-              <Badge text="Modified" color="orange" icon="exclamation-triangle" />
-            </Tooltip>
-          ) : (
-            <Tooltip content="Published and up to date">
-              <Badge text="Published" color="blue" icon="cloud-upload" />
-            </Tooltip>
-          )}
+          {/* Publish status — only meaningful when backend is available */}
+          {isBackendAvailable &&
+            (!isPublished ? (
+              <Tooltip content="Not yet published to backend">
+                <Badge text="Draft" color="purple" icon="circle" />
+              </Tooltip>
+            ) : hasUnpublishedChanges ? (
+              <Tooltip content="You have unpublished changes">
+                <Badge text="Modified" color="orange" icon="exclamation-triangle" />
+              </Tooltip>
+            ) : (
+              <Tooltip content="Published and up to date">
+                <Badge text="Published" color="blue" icon="cloud-upload" />
+              </Tooltip>
+            ))}
         </div>
       </div>
 
@@ -225,9 +229,11 @@ export function BlockEditorHeader({
           <Button variant="secondary" size="sm" icon="file-blank" onClick={onNewGuide}>
             New
           </Button>
-          <Button variant="secondary" size="sm" icon="book-open" onClick={onOpenGuideLibrary}>
-            Library
-          </Button>
+          {isBackendAvailable && (
+            <Button variant="secondary" size="sm" icon="book-open" onClick={onOpenGuideLibrary}>
+              Library
+            </Button>
+          )}
           <Button variant="secondary" size="sm" icon="upload" onClick={onOpenImport}>
             Import
           </Button>
@@ -259,19 +265,22 @@ export function BlockEditorHeader({
             />
           </ButtonGroup>
 
-          <div className={styles.divider} />
-
-          <Button
-            variant="primary"
-            size="sm"
-            icon="cloud-upload"
-            onClick={onPostToBackend}
-            disabled={isPostingToBackend}
-            tooltip={isPublished ? 'Update published guide' : 'Publish to backend'}
-            data-testid="post-to-backend-button"
-          >
-            {isPostingToBackend ? 'Publishing...' : isPublished ? 'Update' : 'Publish'}
-          </Button>
+          {isBackendAvailable && (
+            <>
+              <div className={styles.divider} />
+              <Button
+                variant="primary"
+                size="sm"
+                icon="cloud-upload"
+                onClick={onPostToBackend}
+                disabled={isPostingToBackend}
+                tooltip={isPublished ? 'Update published guide' : 'Publish to backend'}
+                data-testid="post-to-backend-button"
+              >
+                {isPostingToBackend ? 'Publishing...' : isPublished ? 'Update' : 'Publish'}
+              </Button>
+            </>
+          )}
 
           <div className={styles.moreButton}>
             <Dropdown overlay={moreMenu} placement="bottom-end">
