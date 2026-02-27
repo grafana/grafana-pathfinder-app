@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"net/http"
-	"sync"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -24,9 +23,6 @@ type App struct {
 
 	// Coda client for VM management (uses JWT Bearer token auth)
 	coda *CodaClient
-
-	// Active terminal sessions (vmID -> session)
-	sessions sync.Map
 
 	// Plugin settings
 	settings *Settings
@@ -72,13 +68,20 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 func (a *App) Dispose() {
 	a.logger.Info("Disposing plugin instance")
 
-	// Close all active terminal sessions
-	a.sessions.Range(func(key, value interface{}) bool {
-		if session, ok := value.(*TerminalSession); ok {
-			_ = session.Close()
+	// Close all active streaming sessions
+	streamSessionsMu.Lock()
+	for path, sess := range streamSessions {
+		if sess != nil {
+			if sess.session != nil {
+				_ = sess.session.Close()
+			}
+			if sess.cancel != nil {
+				sess.cancel()
+			}
+			delete(streamSessions, path)
 		}
-		return true
-	})
+	}
+	streamSessionsMu.Unlock()
 }
 
 // CheckHealth handles health check requests.

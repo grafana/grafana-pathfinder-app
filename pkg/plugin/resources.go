@@ -145,7 +145,6 @@ type CodaRegisterRequest struct {
 	EnrollmentKey string `json:"enrollmentKey"`
 	InstanceID    string `json:"instanceId"`
 	InstanceURL   string `json:"instanceUrl,omitempty"`
-	CodaAPIURL    string `json:"codaApiUrl"`
 }
 
 func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
@@ -170,8 +169,10 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CodaAPIURL == "" {
-		a.writeError(w, "Coda API URL is required", http.StatusBadRequest)
+	// Use only the admin-configured Coda API URL to prevent enrollment key exfiltration
+	codaAPIURL := a.settings.CodaAPIURL
+	if codaAPIURL == "" {
+		a.writeError(w, "Coda API URL is not configured", http.StatusBadRequest)
 		return
 	}
 
@@ -180,12 +181,16 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.logger.Info("Registering with Coda API", "instanceId", req.InstanceID, "apiUrl", req.CodaAPIURL)
+	a.logger.Info("Registering with Coda API", "instanceId", req.InstanceID, "apiUrl", codaAPIURL)
 
-	result, err := Register(r.Context(), req.CodaAPIURL, enrollmentKey, req.InstanceID, req.InstanceURL)
+	result, err := Register(r.Context(), codaAPIURL, enrollmentKey, req.InstanceID, req.InstanceURL)
 	if err != nil {
 		a.logger.Error("Failed to register with Coda", "error", err)
-		a.writeError(w, err.Error(), http.StatusUnauthorized)
+		if strings.Contains(err.Error(), "invalid enrollment key") {
+			a.writeError(w, err.Error(), http.StatusUnauthorized)
+		} else {
+			a.writeError(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

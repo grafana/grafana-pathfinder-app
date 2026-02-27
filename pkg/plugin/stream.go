@@ -59,14 +59,6 @@ var (
 	streamSessionsMu sync.Mutex
 )
 
-// TerminalStreamInput represents input messages from the frontend
-type TerminalStreamInput struct {
-	Type string `json:"type"` // "input", "resize"
-	Data string `json:"data,omitempty"`
-	Rows int    `json:"rows,omitempty"`
-	Cols int    `json:"cols,omitempty"`
-}
-
 // TerminalStreamOutput represents output messages to the frontend
 type TerminalStreamOutput struct {
 	Type    string `json:"type"` // "output", "error", "connected", "disconnected", "status"
@@ -170,7 +162,7 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 	}
 
 	// Parse the input message
-	var input TerminalStreamInput
+	var input TerminalInput
 	if err := json.Unmarshal(req.Data, &input); err != nil {
 		a.logger.Error("PublishStream: failed to parse input", "error", err, "data", string(req.Data))
 		return &backend.PublishStreamResponse{
@@ -405,51 +397,9 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	if vm.State != "active" || vm.Credentials == nil {
 		a.logger.Info("VM not ready, polling for status updates", "vmID", vmID, "state", vm.State)
 
-		// Poll every 3 seconds until VM is active
-		ticker := time.NewTicker(3 * time.Second)
-		defer ticker.Stop()
-
-		maxAttempts := 60 // 3 minutes max wait
-		attempts := 0
-
-		for vm.State != "active" || vm.Credentials == nil {
-			select {
-			case <-ctx.Done():
-				a.logger.Info("Stream context cancelled while waiting for VM", "vmID", vmID)
-				return ctx.Err()
-			case <-ticker.C:
-				attempts++
-				if attempts >= maxAttempts {
-					errMsg := "timeout waiting for VM to become active"
-					sendStreamError(sender, errMsg)
-					return errors.New(errMsg)
-				}
-
-				vm, err = a.coda.GetVM(ctx, vmID)
-				if err != nil {
-					a.logger.Warn("Failed to poll VM status", "vmID", vmID, "error", err)
-					continue
-				}
-
-				// Check for terminal states
-				if vm.State == "error" {
-					errMsg := "VM provisioning failed"
-					if vm.ErrorMessage != nil {
-						errMsg = fmt.Sprintf("VM provisioning failed: %s", *vm.ErrorMessage)
-					}
-					sendStreamError(sender, errMsg)
-					return errors.New(errMsg)
-				}
-				if vm.State == "destroyed" || vm.State == "destroying" {
-					errMsg := "VM was destroyed"
-					sendStreamError(sender, errMsg)
-					return errors.New(errMsg)
-				}
-
-				// Push status update with vmId
-				sendStreamStatusWithVmId(sender, vm.State, statusMessageForState(vm.State), vmID)
-				a.logger.Debug("Pushed VM status update", "vmID", vmID, "state", vm.State, "attempt", attempts)
-			}
+		vm, err = a.waitForVMActive(ctx, sender, vmID)
+		if err != nil {
+			return err
 		}
 
 		a.logger.Info("VM is now active", "vmID", vmID)

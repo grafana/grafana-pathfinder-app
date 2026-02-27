@@ -14,7 +14,8 @@ import (
 type WSConn struct {
 	ws     *websocket.Conn
 	reader io.Reader
-	mu     sync.Mutex
+	mu     sync.Mutex // protects reader and ws.NextReader/Read
+	wmu    sync.Mutex // protects ws.WriteMessage
 }
 
 // NewWSConn creates a new net.Conn wrapper around a WebSocket connection.
@@ -55,6 +56,9 @@ func (c *WSConn) Read(b []byte) (int, error) {
 
 // Write writes data to the WebSocket connection as a binary message.
 func (c *WSConn) Write(b []byte) (int, error) {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
 	err := c.ws.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return 0, err

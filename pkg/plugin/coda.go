@@ -364,39 +364,3 @@ func (c *CodaClient) ListVMs(ctx context.Context) ([]VM, error) {
 	return listResp.VMs, nil
 }
 
-// WaitForVM polls the VM status until it becomes active or errors.
-func (c *CodaClient) WaitForVM(ctx context.Context, vmID string, timeout time.Duration) (*VM, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("timeout waiting for VM to become active")
-		case <-ticker.C:
-			vm, err := c.GetVM(ctx, vmID)
-			if err != nil {
-				return nil, err
-			}
-
-			switch vm.State {
-			case "active":
-				return vm, nil
-			case "error":
-				errMsg := "unknown error"
-				if vm.ErrorMessage != nil {
-					errMsg = *vm.ErrorMessage
-				}
-				return nil, fmt.Errorf("VM provisioning failed: %s", errMsg)
-			case "destroying":
-				return nil, fmt.Errorf("VM is being destroyed")
-			case "destroyed":
-				return nil, fmt.Errorf("VM was destroyed")
-			}
-			// Continue polling for "pending" and "provisioning" states
-		}
-	}
-}
