@@ -9,6 +9,7 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as prettier from 'prettier';
 
 import type { RepositoryEntry, RepositoryJson } from '../../types/package.types';
 // ManifestJsonObjectSchema (pre-refinement) is intentional: build-repository
@@ -20,6 +21,16 @@ import { readJsonFile } from '../../validation/package-io';
 
 interface BuildRepositoryOptions {
   output?: string;
+}
+
+async function formatRepositoryJson(json: string): Promise<string> {
+  const config = await prettier.resolveConfig(process.cwd());
+  const formatted = await prettier.format(json, {
+    ...(config ?? {}),
+    parser: 'json',
+  });
+
+  return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
 }
 
 /**
@@ -186,7 +197,7 @@ export const buildRepositoryCommand = new Command('build-repository')
   .description('Build repository.json from a package tree')
   .argument('<root>', 'Root directory containing package directories')
   .option('-o, --output <file>', 'Output file path (default: stdout)')
-  .action((root: string, options: BuildRepositoryOptions) => {
+  .action(async (root: string, options: BuildRepositoryOptions) => {
     const absoluteRoot = path.isAbsolute(root) ? root : path.resolve(process.cwd(), root);
 
     if (!fs.existsSync(absoluteRoot)) {
@@ -204,14 +215,15 @@ export const buildRepositoryCommand = new Command('build-repository')
       console.error(`❌ ${error}`);
     }
 
-    const json = JSON.stringify(repository, null, 2);
+    const unformattedJson = JSON.stringify(repository, null, 2);
+    const json = await formatRepositoryJson(unformattedJson);
 
     if (options.output) {
       const outputPath = path.isAbsolute(options.output) ? options.output : path.resolve(process.cwd(), options.output);
-      fs.writeFileSync(outputPath, json + '\n', 'utf-8');
+      fs.writeFileSync(outputPath, json, 'utf-8');
       console.log(`✅ Wrote repository.json to ${outputPath} (${Object.keys(repository).length} packages)`);
     } else {
-      console.log(json);
+      process.stdout.write(json);
     }
 
     if (errors.length > 0) {
