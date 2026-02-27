@@ -42,13 +42,8 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "recommends": [
-      "welcome-to-grafana",
-      "prometheus-grafana-101"
-    ],
-    "provides": [
-      "first-dashboard-created"
-    ],
+    "recommends": ["welcome-to-grafana", "prometheus-grafana-101"],
+    "provides": ["first-dashboard-created"],
     "targeting": {
       "match": {
         "urlPrefix": "/"
@@ -70,12 +65,8 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/a/grafana-setupguide-app/home",
-    "recommends": [
-      "welcome-to-grafana-cloud"
-    ],
-    "provides": [
-      "first-dashboard-created-cloud"
-    ],
+    "recommends": ["welcome-to-grafana-cloud"],
+    "provides": ["first-dashboard-created-cloud"],
     "targeting": {
       "match": {
         "and": [
@@ -120,12 +111,8 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/connections",
-    "depends": [
-      "prometheus-grafana-101"
-    ],
-    "provides": [
-      "loki-configured"
-    ],
+    "depends": ["prometheus-grafana-101"],
+    "provides": ["loki-configured"],
     "targeting": {
       "match": {
         "and": [
@@ -154,10 +141,7 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/explore",
-    "recommends": [
-      "prometheus-grafana-101",
-      "loki-grafana-101"
-    ],
+    "recommends": ["prometheus-grafana-101", "loki-grafana-101"],
     "targeting": {
       "match": {
         "urlPrefix": "/explore"
@@ -179,12 +163,8 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/connections",
-    "recommends": [
-      "welcome-to-grafana"
-    ],
-    "provides": [
-      "prometheus-configured"
-    ],
+    "recommends": ["welcome-to-grafana"],
+    "provides": ["prometheus-configured"],
     "targeting": {
       "match": {
         "and": [
@@ -213,9 +193,7 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "provides": [
-      "grafana-tour-oss"
-    ],
+    "provides": ["grafana-tour-oss"],
     "targeting": {
       "match": {
         "and": [
@@ -244,9 +222,7 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/a/grafana-setupguide-app/home",
-    "provides": [
-      "grafana-tour-cloud"
-    ],
+    "provides": ["grafana-tour-cloud"],
     "targeting": {
       "match": {
         "and": [
