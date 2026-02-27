@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.0.0
+
+### Added
+
+- **Custom guides** (private preview, Grafana Cloud only): Users can create, publish, and manage their own guides with full backend support (#614)
+  - New "Custom guides" section in the context panel shows user-published guides
+  - Guide library modal for browsing and loading saved guides
+  - Publish workflow for sharing guides within an organization
+  - Backend API for guide storage and retrieval
+- **Go backend**: Added plugin backend using `grafana-plugin-sdk-go` for streaming, resource handling, and API endpoints (#591)
+- **Terminal block type** (experimental): New block type for embedding terminal sessions within guides, requires backend configuration (#591)
+- **Guide health telemetry design**: Added design document for guide health monitoring and telemetry (#628)
+- **Package model Phase 0-1**: Initial implementation of the guide packaging model (#623)
+- **Maintain-docs skill**: New AI skill for periodic documentation audits and maintenance (#602)
+
+### Changed
+
+- **Architectural tier model**: Major refactoring to enforce clear architectural boundaries (#607, #608, #609, #613)
+  - Added directory-scoped ESLint import boundary rules encoding the tier model
+  - Added architectural invariant ratchet tests to prevent regressions
+  - Eliminated all barrel bypass violations
+  - Moved components to correct architectural tiers
+- **Stricter TypeScript**: Enabled `noUncheckedIndexedAccess` for stricter null safety on indexed access (#606)
+- **ESLint security rules**: Added `no-restricted-syntax` ESLint rules for security and architecture enforcement (#611)
+- **Block editor UX improvements**: Fixed keyboard navigation, modal footer alignment, and responsive header behavior (#617)
+- **Block editor availability detection**: Library and Publish controls now hide when backend API is unavailable (#631)
+- **Documentation refresh**: Comprehensive documentation updates across all engine subsystems, indexed orphaned docs, and validated stale documentation (#592-#602, #625)
+
+### Fixed
+
+- Fixed deprecated API usage issues
+
+### Chore
+
+- Updated npm to v11.10.1 (#605)
+- Security audit (#590)
+
 ## 1.8.0
 
 ### Added

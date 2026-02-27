@@ -1,25 +1,32 @@
 ---
 alwaysApply: false
 description: Describes technologies, frameworks, and other tools used in this repository.
+globs:
+  - "pkg/**/*.go"
+  - "go.mod"
+  - "go.sum"
+  - "magefile.go"
 ---
 # Tech Context
 
 ## Technologies Used
 
-- **Frontend**: React 18.3.1 + TypeScript 5.9.3 + Grafana Scenes 6.45.0
+- **Frontend**: React 18.3.1 + TypeScript 5.9.3 + Grafana Scenes 7.0.3
+- **Backend**: Go 1.23+ with grafana-plugin-sdk-go v0.290.0
 - **Styling**: Emotion CSS-in-JS with Grafana UI theming system
 - **State Management**: Grafana Scenes for complex scene-based state
 - **Bundling**: Webpack 5.102.1 with custom configuration
-- **Testing**: Jest 30.2.0 + React Testing Library + Playwright 1.56.1 for E2E
+- **Testing**: Jest 30.2.0 + React Testing Library + Playwright 1.56.1 for E2E, Go testing for backend
 - **Runtime**: Node.js 22+ with npm 11.6.2 package management
 
 ## Development Setup
 
-- **Build System**: Webpack with TypeScript, SWC compilation, and hot reloading
+- **Build System**: Webpack with TypeScript, SWC compilation, and hot reloading (frontend); Mage for Go backend
 - **Dev Environment**: Docker Compose with Grafana OSS for local testing
 - **Scripts**: `npm run dev` (watch mode), `npm run build` (production), `npm run server` (Docker)
-- **Code Quality**: ESLint + Prettier with Grafana configs, TypeScript strict mode
-- **Testing**: `npm run test:ci` (Jest CI mode - for agents/automation), `npm test` (watch mode - for local dev), `npm run e2e` (Playwright), `npm run typecheck`
+- **Go Build**: `mage build:darwin` (macOS), `mage build:linux` (Linux), `npm run build:backend` (Linux via npm)
+- **Code Quality**: ESLint + Prettier with Grafana configs, TypeScript strict mode; `golangci-lint` for Go
+- **Testing**: `npm run test:ci` (Jest CI mode), `npm run test:go` (Go tests), `npm run e2e` (Playwright), `npm run typecheck`
 
 ## Technical Constraints
 
@@ -31,16 +38,22 @@ description: Describes technologies, frameworks, and other tools used in this re
 
 ## Dependencies
 
-**Core Runtime**:
-- `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/scenes` (12.2.1)
+**Frontend Runtime**:
+- `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/scenes` (12.4.0 / 7.0.3)
 - `react` + `react-dom` (18.3.1), `react-router-dom` (6.28.0)
 - `@emotion/css` (11.13.5) for styling
 - `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop
+
+**Backend Runtime** (Go):
+- `grafana-plugin-sdk-go` (v0.290.0) - Grafana plugin SDK
+- `gorilla/websocket` (v1.5.3) - WebSocket connections
+- `golang.org/x/crypto` - SSH/crypto utilities
 
 **Development**:
 - `typescript` (5.9.3), `webpack` (5.102.1) + loaders, `jest` (30.2.0) + testing utilities
 - `@grafana/eslint-config`, `@playwright/test` (1.56.1), `@swc/core` (1.15.1) for compilation
 - `sass` (1.94.0), `terser-webpack-plugin` (5.3.14) for asset processing
+- `mage` (v1.15.0) - Go build tool
 
 ## Project Version & Release Management
 

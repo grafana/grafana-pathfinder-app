@@ -26,6 +26,10 @@ const UNAVAILABLE_STATUSES = new Set([400, 403, 404, 405, 501, 503]);
  * Returns empty array if endpoint is unavailable or on error
  */
 export async function fetchBackendGuides(namespace: string): Promise<any[]> {
+  if (!isBackendApiAvailable()) {
+    return [];
+  }
+
   try {
     const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
 

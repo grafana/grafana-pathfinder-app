@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.8.0",
+  "version": "2.0.0",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -9,17 +9,26 @@
   ],
   "scripts": {
     "build": "webpack -c ./webpack.config.ts --env production",
+    "build:backend": "mage -v build:linux",
+    "build:backend:linux-arm64": "mage -v build:linuxARM64",
+    "build:backend:darwin": "mage -v build:darwin",
+    "build:backend:darwin-arm64": "mage -v build:darwinARM64",
+    "build:backend:windows": "mage -v build:windows",
+    "build:all": "npm run build && npm run build:backend && npm run build:backend:linux-arm64",
     "dev": "webpack -w -c ./webpack.config.ts --env development",
+    "dev:backend": "mage -v build:linux && npm run dev",
     "peerjs-server": "node scripts/peerjs-server.js",
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
     "test:coverage": "jest --coverage",
     "test:coverage:watch": "jest --coverage --watch",
+    "test:go": "mage -v test",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --cache .",
     "lint:fix": "npm run lint -- --fix && prettier --write --list-different .",
+    "lint:go": "mage -v lint",
     "e2e": "playwright test",
-    "server": "docker compose up --build",
+    "server": "npm run build:all && docker compose up --build",
     "sign": "npx --yes @grafana/sign-plugin@latest",
     "prettier": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}' --write",
     "prettier-test": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}'",
@@ -30,14 +39,15 @@
     "validate:packages": "node dist/cli/cli/index.js validate --packages src/bundled-interactives",
     "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
     "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
+    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run lint:go && npm run test:go && npm run test:ci",
     "prepare": "husky"
   },
   "author": "Grafanalabs",
   "license": "AGPL-3.0",
   "devDependencies": {
     "@grafana/eslint-config": "^9.0.0",
-    "@grafana/faro-webpack-plugin": "^0.9.0",
-    "@grafana/plugin-e2e": "^3.0.1",
+    "@grafana/faro-webpack-plugin": "^0.9.2",
+    "@grafana/plugin-e2e": "^3.4.0",
     "@grafana/tsconfig": "^2.0.1",
     "@jest/test-sequencer": "^30.2.0",
     "@playwright/test": "^1.56.1",
@@ -100,14 +110,14 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@emotion/css": "11.13.5",
-    "@grafana/assistant": "^0.1.8",
-    "@grafana/data": "^12.2.1",
+    "@grafana/assistant": "^0.1.19",
+    "@grafana/data": "^12.4.0",
     "@grafana/faro-react": "^2.0.2",
     "@grafana/faro-web-tracing": "^2.0.2",
-    "@grafana/i18n": "^12.2.1",
-    "@grafana/scenes": "^6.45.0",
-    "@grafana/schema": "^12.2.1",
-    "@grafana/ui": "^12.2.1",
+    "@grafana/i18n": "^12.4.0",
+    "@grafana/scenes": "^7.0.3",
+    "@grafana/schema": "^12.4.0",
+    "@grafana/ui": "^12.4.0",
     "@openfeature/ofrep-web-provider": "^0.3.5",
     "@openfeature/react-sdk": "^1.0.0",
     "@openfeature/web-sdk": "^1.7.2",
@@ -133,9 +143,6 @@
   },
   "lint-staged": {
     "*.{ts,tsx,js,json,yaml,md}": "prettier --config .prettierrc.js --write"
-  },
-  "overrides": {
-    "@grafana/runtime": "^12.3.0-18562067081"
   },
   "packageManager": "npm@11.10.1"
 }

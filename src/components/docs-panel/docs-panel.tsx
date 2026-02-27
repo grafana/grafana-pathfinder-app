@@ -20,6 +20,11 @@ const TerminalPanel = lazy(() =>
     default: module.TerminalPanel,
   }))
 );
+const TerminalProviderLazy = lazy(() =>
+  import('../../integrations/coda').then((module) => ({
+    default: module.TerminalProvider,
+  }))
+);
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
@@ -1897,11 +1902,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   );
 }
 
-// Wrap the renderer with SessionProvider so it has access to session context
+// Wrap the renderer with SessionProvider and TerminalProvider so it has access to session and terminal context
 function CombinedPanelRenderer(props: SceneComponentProps<CombinedLearningJourneyPanel>) {
   return (
     <SessionProvider>
-      <CombinedPanelRendererInner {...props} />
+      <Suspense fallback={null}>
+        <TerminalProviderLazy>
+          <CombinedPanelRendererInner {...props} />
+        </TerminalProviderLazy>
+      </Suspense>
     </SessionProvider>
   );
 }

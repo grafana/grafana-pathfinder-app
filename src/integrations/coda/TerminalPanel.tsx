@@ -16,6 +16,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
 import { useTerminalLive, ConnectionStatus } from './useTerminalLive.hook';
+import { useTerminalContext } from './TerminalContext';
 import { getTerminalPanelStyles } from './terminal-panel.styles';
 import { setTerminalOpen, getTerminalHeight, setTerminalHeight, MIN_HEIGHT, MAX_HEIGHT } from './terminal-storage';
 
@@ -37,19 +38,21 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [height, setHeight] = useState(() => getTerminalHeight());
   const [isResizing, setIsResizing] = useState(false);
 
-  // Session state (stubbed - no backend yet)
-  const [sessionId] = useState<string | null>(null);
-
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, error } = useTerminalLive({
-    sessionId,
+  const { status, connect, disconnect, resize, sendCommand, error } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
-  // Initialize terminal when expanded (terminal div must be mounted first)
+  // Register with shared context so TerminalStep components can send commands
+  const terminalCtx = useTerminalContext();
   useEffect(() => {
-    // Only initialize when expanded and DOM element exists
-    if (!isExpanded || !terminalRef.current || terminalInstanceRef.current) {
+    terminalCtx?._register({ status, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, connect, disconnect, sendCommand]);
+
+  // Initialize terminal once on mount - keep alive across collapse/expand
+  useEffect(() => {
+    // Only initialize once when DOM element exists
+    if (!terminalRef.current || terminalInstanceRef.current) {
       return;
     }
 
@@ -105,13 +108,13 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     terminal.writeln('\x1b[90mClick "Connect" to start your session...\x1b[0m');
     terminal.writeln('');
 
-    // REACT: cleanup terminal on unmount (R1)
+    // REACT: cleanup terminal on unmount only (R1)
     return () => {
       terminal.dispose();
       terminalInstanceRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [isExpanded]);
+  }, []);
 
   // Handle resize when expanded/height changes
   const handleFit = useCallback(() => {
@@ -177,22 +180,12 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     [height]
   );
 
-  // Toggle expand/collapse
+  // Toggle expand/collapse - keep connection alive when collapsed
   const handleToggleExpand = useCallback(() => {
     const newExpanded = !isExpanded;
-
-    // REACT: disconnect when collapsing to prevent stale onData handlers
-    // on disposed terminal instances (R1)
-    if (!newExpanded && (status === 'connected' || status === 'connecting')) {
-      if (terminalInstanceRef.current) {
-        terminalInstanceRef.current.writeln('\r\n\x1b[33mTerminal collapsed - session disconnected.\x1b[0m');
-      }
-      disconnect();
-    }
-
     setIsExpanded(newExpanded);
     setTerminalOpen(newExpanded);
-  }, [isExpanded, status, disconnect]);
+  }, [isExpanded]);
 
   // Connect handler
   const handleConnect = useCallback(() => {
@@ -241,24 +234,70 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const isConnecting = status === 'connecting';
   const canConnect = !isConnecting && status !== 'connected';
   const canDisconnect = status === 'connected';
+  const canCancel = isConnecting;
 
-  // Collapsed view
-  if (!isExpanded) {
-    return (
-      <div className={`${styles.container} ${styles.collapsed}`} ref={containerRef}>
+  // Always render terminal div to keep it alive across collapse/expand
+  // Use display:none to hide when collapsed instead of unmounting
+  return (
+    <>
+      {/* Collapsed view - clickable bar to expand */}
+      {!isExpanded && (
+        <div className={`${styles.container} ${styles.collapsed}`} ref={containerRef}>
+          <div
+            className={styles.collapsedBar}
+            onClick={handleToggleExpand}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                handleToggleExpand();
+              }
+            }}
+            aria-expanded={false}
+            aria-label="Expand terminal panel"
+          >
+            <div className={styles.headerLeft}>
+              <Icon name="code-branch" size="sm" />
+              <span className={styles.title}>Terminal</span>
+            </div>
+            <div className={styles.headerRight}>
+              <div className={styles.statusIndicator}>
+                {isConnecting ? (
+                  <Spinner size="xs" />
+                ) : (
+                  <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
+                )}
+                <span>{getStatusText(status)}</span>
+              </div>
+              <IconButton name="angle-up" size="sm" aria-label="Expand" tooltip="Expand terminal" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expanded view - full terminal panel */}
+      <div
+        className={`${styles.container} ${styles.expanded}`}
+        ref={containerRef}
+        style={{
+          height: `${height}px`,
+          // Hide when collapsed but keep in DOM to preserve terminal instance
+          display: isExpanded ? 'flex' : 'none',
+        }}
+        data-testid="coda-terminal-panel"
+      >
+        {/* Resize handle */}
         <div
-          className={styles.collapsedBar}
-          onClick={handleToggleExpand}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              handleToggleExpand();
-            }
-          }}
-          aria-expanded={false}
-          aria-label="Expand terminal panel"
-        >
+          className={styles.resizeHandle}
+          onMouseDown={handleResizeStart}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize terminal panel"
+          style={{ cursor: isResizing ? 'ns-resize' : undefined }}
+        />
+
+        {/* Header */}
+        <div className={styles.header}>
           <div className={styles.headerLeft}>
             <Icon name="code-branch" size="sm" />
             <span className={styles.title}>Terminal</span>
@@ -272,76 +311,49 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               )}
               <span>{getStatusText(status)}</span>
             </div>
-            <IconButton name="angle-up" size="sm" aria-label="Expand" tooltip="Expand terminal" />
-          </div>
-        </div>
-      </div>
-    );
-  }
 
-  // Expanded view
-  return (
-    <div
-      className={`${styles.container} ${styles.expanded}`}
-      ref={containerRef}
-      style={{ height: `${height}px` }}
-      data-testid="coda-terminal-panel"
-    >
-      {/* Resize handle */}
-      <div
-        className={styles.resizeHandle}
-        onMouseDown={handleResizeStart}
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize terminal panel"
-        style={{ cursor: isResizing ? 'ns-resize' : undefined }}
-      />
-
-      {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <Icon name="code-branch" size="sm" />
-          <span className={styles.title}>Terminal</span>
-        </div>
-        <div className={styles.headerRight}>
-          <div className={styles.statusIndicator}>
-            {isConnecting ? (
-              <Spinner size="xs" />
-            ) : (
-              <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
+            {canConnect && (
+              <Button size="sm" variant="primary" onClick={handleConnect} className={styles.headerButton}>
+                Connect
+              </Button>
             )}
-            <span>{getStatusText(status)}</span>
+
+            {canCancel && (
+              <Button size="sm" variant="secondary" onClick={handleDisconnect} className={styles.headerButton}>
+                Cancel
+              </Button>
+            )}
+
+            {canDisconnect && (
+              <Button size="sm" variant="destructive" onClick={handleDisconnect} className={styles.headerButton}>
+                Disconnect
+              </Button>
+            )}
+
+            <IconButton
+              name="angle-down"
+              size="sm"
+              aria-label="Collapse"
+              tooltip="Collapse terminal"
+              onClick={handleToggleExpand}
+            />
+
+            {onClose && (
+              <IconButton
+                name="times"
+                size="sm"
+                aria-label="Close terminal"
+                tooltip="Close terminal"
+                onClick={onClose}
+              />
+            )}
           </div>
-
-          {canConnect && (
-            <Button size="sm" variant="primary" onClick={handleConnect} className={styles.headerButton}>
-              Connect
-            </Button>
-          )}
-
-          {canDisconnect && (
-            <Button size="sm" variant="destructive" onClick={handleDisconnect} className={styles.headerButton}>
-              Disconnect
-            </Button>
-          )}
-
-          <IconButton
-            name="angle-down"
-            size="sm"
-            aria-label="Collapse"
-            tooltip="Collapse terminal"
-            onClick={handleToggleExpand}
-          />
-
-          {onClose && (
-            <IconButton name="times" size="sm" aria-label="Close terminal" tooltip="Close terminal" onClick={onClose} />
-          )}
         </div>
-      </div>
 
-      {/* Terminal */}
-      <div className={styles.terminalWrapper} ref={terminalRef} />
-    </div>
+        {/* Terminal - always mounted to preserve connection */}
+        <div className={styles.terminalWrapper} ref={terminalRef} />
+      </div>
+    </>
   );
 }
 

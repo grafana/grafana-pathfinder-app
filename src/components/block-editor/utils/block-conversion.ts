@@ -32,6 +32,7 @@ const CONVERTIBLE_TYPES: readonly BlockType[] = [
   'guided',
   'quiz',
   'input',
+  'terminal',
 ];
 
 /**
@@ -51,6 +52,7 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
   guided: 'content',
   quiz: 'question',
   input: 'prompt',
+  terminal: 'content',
 };
 
 /**
@@ -72,6 +74,7 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   interactive: { action: 'noop' },
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
   guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },
+  terminal: { command: 'echo "hello"' },
 };
 
 // ============ Public API ============
