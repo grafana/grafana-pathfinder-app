@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -140,11 +141,36 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// allowedCodaHosts lists the trusted Coda API hostnames to prevent
+// enrollment key exfiltration via user-supplied URLs.
+var allowedCodaHosts = []string{
+	"coda.lg.grafana-dev.com",
+	"coda.grafana.com",
+}
+
+// isAllowedCodaURL validates that a URL points to a trusted Coda API host.
+func isAllowedCodaURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "https" {
+		return false
+	}
+	for _, host := range allowedCodaHosts {
+		if u.Hostname() == host {
+			return true
+		}
+	}
+	return false
+}
+
 // CodaRegisterRequest represents the request body for Coda registration.
 type CodaRegisterRequest struct {
 	EnrollmentKey string `json:"enrollmentKey"`
 	InstanceID    string `json:"instanceId"`
 	InstanceURL   string `json:"instanceUrl,omitempty"`
+	CodaAPIURL    string `json:"codaApiUrl"`
 }
 
 func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
@@ -169,10 +195,18 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use only the admin-configured Coda API URL to prevent enrollment key exfiltration
+	// Determine the Coda API URL: prefer admin-configured, fall back to request body.
+	// Validate against allowlist to prevent enrollment key exfiltration via arbitrary URLs.
 	codaAPIURL := a.settings.CodaAPIURL
 	if codaAPIURL == "" {
-		a.writeError(w, "Coda API URL is not configured", http.StatusBadRequest)
+		codaAPIURL = req.CodaAPIURL
+	}
+	if codaAPIURL == "" {
+		a.writeError(w, "Coda API URL is required", http.StatusBadRequest)
+		return
+	}
+	if !isAllowedCodaURL(codaAPIURL) {
+		a.writeError(w, "Coda API URL is not a trusted host", http.StatusBadRequest)
 		return
 	}
 

@@ -59,6 +59,22 @@ var (
 	streamSessionsMu sync.Mutex
 )
 
+// userVMs tracks active VMs per user (userLogin -> vmID)
+// This allows the backend to reuse VMs for the same user across reconnections
+var (
+	userVMs   = make(map[string]string)
+	userVMsMu sync.RWMutex
+)
+
+// getUserLogin extracts the user login from a RunStreamRequest.
+// Falls back to "anonymous" if user info is not available.
+func getUserLogin(req *backend.RunStreamRequest) string {
+	if req.PluginContext.User != nil && req.PluginContext.User.Login != "" {
+		return req.PluginContext.User.Login
+	}
+	return "anonymous"
+}
+
 // TerminalStreamOutput represents output messages to the frontend
 type TerminalStreamOutput struct {
 	Type    string `json:"type"` // "output", "error", "connected", "disconnected", "status"
@@ -329,8 +345,6 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		return errors.New(errMsg)
 	}
 
-	vmID := parts[1]
-
 	// Get VM credentials
 	if a.coda == nil {
 		errMsg := "coda not registered - configure enrollment key and register first"
@@ -338,59 +352,66 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		return errors.New(errMsg)
 	}
 
+	// Extract user login for per-user VM tracking
+	userLogin := getUserLogin(req)
+	a.logger.Info("User identified for VM tracking", "userLogin", userLogin)
+
 	var vm *VM
 	var err error
+	var vmID string
 
-	// Handle "new" vmId - provision a fresh VM
-	if vmID == "new" || vmID == "" {
-		a.logger.Info("Provisioning new VM (no vmId provided)")
+	// Check if user already has an active VM
+	userVMsMu.RLock()
+	existingVmID, hasExisting := userVMs[userLogin]
+	userVMsMu.RUnlock()
+
+	if hasExisting {
+		// User has a tracked VM - try to reuse it
+		a.logger.Info("Found existing VM for user", "userLogin", userLogin, "vmID", existingVmID)
+		vm, err = a.coda.GetVM(ctx, existingVmID)
+
+		if err != nil {
+			// VM doesn't exist anymore - remove from tracking and provision new
+			a.logger.Info("Tracked VM not found, will provision new", "userLogin", userLogin, "vmID", existingVmID, "error", err)
+			userVMsMu.Lock()
+			delete(userVMs, userLogin)
+			userVMsMu.Unlock()
+			hasExisting = false
+		} else if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
+			// VM is in terminal state - remove from tracking and provision new
+			a.logger.Info("Tracked VM in terminal state, will provision new", "userLogin", userLogin, "vmID", existingVmID, "state", vm.State)
+			userVMsMu.Lock()
+			delete(userVMs, userLogin)
+			userVMsMu.Unlock()
+			hasExisting = false
+		} else {
+			// VM exists and is valid - reuse it
+			vmID = existingVmID
+			a.logger.Info("Reusing existing VM for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
+			sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", vmID)
+		}
+	}
+
+	// If no existing valid VM, provision a new one
+	if !hasExisting {
+		a.logger.Info("Provisioning new VM for user", "userLogin", userLogin)
 		sendStreamStatusWithVmId(sender, "provisioning", "Provisioning new VM...", "")
 
-		vm, err = a.coda.CreateVM(ctx, "vm-aws", "stream-session")
+		vm, err = a.coda.CreateVM(ctx, "vm-aws", userLogin)
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to create VM: %v", err)
 			sendStreamError(sender, errMsg)
 			return fmt.Errorf("failed to create VM: %w", err)
 		}
 		vmID = vm.ID
-		a.logger.Info("New VM created", "vmID", vmID, "state", vm.State)
+
+		// Store the user -> VM mapping
+		userVMsMu.Lock()
+		userVMs[userLogin] = vmID
+		userVMsMu.Unlock()
+
+		a.logger.Info("New VM created and tracked for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
 		sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
-	} else {
-		// Try to get existing VM
-		vm, err = a.coda.GetVM(ctx, vmID)
-		if err != nil {
-			// VM doesn't exist - provision a new one
-			a.logger.Info("VM not found, provisioning new one", "requestedVmID", vmID, "error", err)
-			sendStreamStatusWithVmId(sender, "provisioning", "Previous VM not found, provisioning new one...", "")
-
-			vm, err = a.coda.CreateVM(ctx, "vm-aws", "stream-session")
-			if err != nil {
-				errMsg := fmt.Sprintf("failed to create VM: %v", err)
-				sendStreamError(sender, errMsg)
-				return fmt.Errorf("failed to create VM: %w", err)
-			}
-			vmID = vm.ID
-			a.logger.Info("New VM created (replacing missing)", "vmID", vmID, "state", vm.State)
-			sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
-		} else if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
-			// VM is in terminal state - provision a new one
-			a.logger.Info("VM in terminal state, provisioning new one", "vmID", vmID, "state", vm.State)
-			sendStreamStatusWithVmId(sender, "provisioning", fmt.Sprintf("Previous VM %s, provisioning new one...", vm.State), "")
-
-			vm, err = a.coda.CreateVM(ctx, "vm-aws", "stream-session")
-			if err != nil {
-				errMsg := fmt.Sprintf("failed to create VM: %v", err)
-				sendStreamError(sender, errMsg)
-				return fmt.Errorf("failed to create VM: %w", err)
-			}
-			vmID = vm.ID
-			a.logger.Info("New VM created (replacing expired)", "vmID", vmID, "state", vm.State)
-			sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
-		} else {
-			// VM exists and is valid - send status with vmId
-			a.logger.Info("Reconnecting to existing VM", "vmID", vmID, "state", vm.State)
-			sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to existing VM...", vmID)
-		}
 	}
 
 	// If VM is not active, poll and push status updates until it's ready
@@ -554,18 +575,25 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 				"failedVmID", vmID,
 				"vmAttempt", vmAttempt,
 				"lastError", lastErr,
+				"userLogin", userLogin,
 			)
 			sendStreamStatusWithVmId(sender, "provisioning", fmt.Sprintf("VM %d failed, provisioning VM %d/%d...", vmAttempt, vmAttempt+1, maxVMAttempts), vmID)
 
-			// Provision a fresh VM
-			newVM, createErr := a.coda.CreateVM(ctx, "vm-aws", "stream-session")
+			// Provision a fresh VM for the user
+			newVM, createErr := a.coda.CreateVM(ctx, "vm-aws", userLogin)
 			if createErr != nil {
 				a.logger.Error("Failed to provision fresh VM for retry", "error", createErr)
 				sendStreamError(sender, fmt.Sprintf("Failed to provision replacement VM: %v", createErr))
 				return fmt.Errorf("failed to provision replacement VM: %w", createErr)
 			}
 			vmID = newVM.ID
-			a.logger.Info("Fresh VM provisioned for retry", "newVmID", vmID, "state", newVM.State, "vmAttempt", vmAttempt+1)
+
+			// Update user -> VM mapping with new VM
+			userVMsMu.Lock()
+			userVMs[userLogin] = vmID
+			userVMsMu.Unlock()
+
+			a.logger.Info("Fresh VM provisioned for retry", "newVmID", vmID, "state", newVM.State, "vmAttempt", vmAttempt+1, "userLogin", userLogin)
 			sendStreamStatusWithVmId(sender, newVM.State, fmt.Sprintf("VM %d allocated, waiting for boot...", vmAttempt+1), vmID)
 
 			// Wait for new VM to be active
@@ -615,6 +643,9 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	a.logger.Info("Terminal session started", "vmID", vmID)
 
 	// Poll VM state to detect expiry/destruction and disconnect gracefully
+	// Capture vmID and userLogin for the goroutine
+	pollVmID := vmID
+	pollUserLogin := userLogin
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
@@ -623,13 +654,22 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			case <-streamCtx.Done():
 				return
 			case <-ticker.C:
-				polledVM, err := a.coda.GetVM(streamCtx, vmID)
+				polledVM, err := a.coda.GetVM(streamCtx, pollVmID)
 				if err != nil {
-					a.logger.Warn("VM state poll failed", "vmID", vmID, "error", err)
+					a.logger.Warn("VM state poll failed", "vmID", pollVmID, "error", err)
 					continue
 				}
 				if polledVM.State == "destroying" || polledVM.State == "destroyed" || polledVM.State == "error" {
-					a.logger.Info("VM no longer active, ending stream", "vmID", vmID, "state", polledVM.State)
+					a.logger.Info("VM no longer active, ending stream", "vmID", pollVmID, "state", polledVM.State, "userLogin", pollUserLogin)
+
+					// Remove VM from user tracking since it's no longer valid
+					userVMsMu.Lock()
+					if userVMs[pollUserLogin] == pollVmID {
+						delete(userVMs, pollUserLogin)
+						a.logger.Info("Removed expired VM from user tracking", "userLogin", pollUserLogin, "vmID", pollVmID)
+					}
+					userVMsMu.Unlock()
+
 					msg := "VM lifetime expired"
 					if polledVM.State == "error" {
 						msg = "VM entered error state"

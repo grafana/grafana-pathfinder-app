@@ -39,15 +39,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [isResizing, setIsResizing] = useState(false);
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, error, vmId } = useTerminalLive({
+  const { status, connect, disconnect, resize, sendCommand, error } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
   useEffect(() => {
-    terminalCtx?._register({ status, connect, disconnect, vmId });
-  }, [terminalCtx, status, connect, disconnect, vmId]);
+    terminalCtx?._register({ status, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, connect, disconnect, sendCommand]);
 
   // Initialize terminal once on mount - keep alive across collapse/expand
   useEffect(() => {

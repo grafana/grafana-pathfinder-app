@@ -7,6 +7,10 @@ services:
       GF_FEATURE_TOGGLES_ENABLE: appSidecar,extensionSidebar,localizationForPlugins,userStorageAPI,live
       # Enable Grafana Live for terminal streaming
       GF_LIVE_ALLOWED_ORIGINS: '*'
+      # Login with admin/admin (required for dev mode)
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
 
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.5.0}

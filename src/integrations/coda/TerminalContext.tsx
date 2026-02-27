@@ -10,10 +10,7 @@
  */
 
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
-import { getBackendSrv } from '@grafana/runtime';
 import type { ConnectionStatus } from './useTerminalLive.hook';
-
-const PLUGIN_ID = 'grafana-pathfinder-app';
 
 // Module-level status for requirement checker access (outside React tree)
 let _moduleTerminalStatus: ConnectionStatus = 'disconnected';
@@ -27,7 +24,6 @@ export function getTerminalConnectionStatus(): ConnectionStatus {
 
 export interface TerminalContextValue {
   status: ConnectionStatus;
-  vmId: string | null;
   connect: () => void;
   disconnect: () => void;
   /** Send a command string to the terminal (appends newline to execute) */
@@ -43,7 +39,7 @@ export interface TerminalContextValue {
     status: ConnectionStatus;
     connect: () => void;
     disconnect: () => void;
-    vmId: string | null;
+    sendCommand: (command: string) => Promise<void>;
   }) => void;
 }
 
@@ -66,9 +62,9 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
-  const [registeredVmId, setRegisteredVmId] = useState<string | null>(null);
   const registeredConnectRef = useRef<(() => void) | null>(null);
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
+  const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
 
   // Sync module-level status whenever it changes
   useEffect(() => {
@@ -76,11 +72,16 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   }, [registeredStatus]);
 
   const register = useCallback(
-    (opts: { status: ConnectionStatus; connect: () => void; disconnect: () => void; vmId: string | null }) => {
+    (opts: {
+      status: ConnectionStatus;
+      connect: () => void;
+      disconnect: () => void;
+      sendCommand: (command: string) => Promise<void>;
+    }) => {
       setRegisteredStatus(opts.status);
-      setRegisteredVmId(opts.vmId);
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
+      registeredSendCommandRef.current = opts.sendCommand;
     },
     []
   );
@@ -93,26 +94,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     registeredDisconnectRef.current?.();
   }, []);
 
-  // REACT: ref tracks latest vmId so async sendCommand avoids stale closures (R2)
-  const vmIdRef = useRef(registeredVmId);
-  useEffect(() => {
-    vmIdRef.current = registeredVmId;
-  }, [registeredVmId]);
-
   const sendCommand = useCallback(async (command: string) => {
-    const vmId = vmIdRef.current;
-    if (!vmId) {
-      console.warn('[TerminalContext] Cannot send command: no active VM');
+    if (!registeredSendCommandRef.current) {
+      console.warn('[TerminalContext] Cannot send command: terminal not registered');
       return;
     }
-    try {
-      await getBackendSrv().post(`/api/plugins/${PLUGIN_ID}/resources/terminal/${vmId}`, {
-        type: 'input',
-        data: command + '\n',
-      });
-    } catch (err) {
-      console.error('[TerminalContext] Failed to send command:', err);
-    }
+    await registeredSendCommandRef.current(command);
   }, []);
 
   const openTerminal = useCallback(() => {
@@ -127,7 +114,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   const value: TerminalContextValue = {
     status: registeredStatus,
-    vmId: registeredVmId,
     connect,
     disconnect,
     sendCommand,

@@ -109,8 +109,6 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 const PLUGIN_ID = 'grafana-pathfinder-app';
 
 interface UseTerminalLiveOptions {
-  /** VM ID to connect to (if already provisioned) */
-  vmId?: string | null;
   /** Terminal instance ref - accessed in callbacks, not during render */
   terminalRef: RefObject<Terminal | null>;
 }
@@ -124,10 +122,10 @@ interface UseTerminalLiveReturn {
   disconnect: () => void;
   /** Send resize event to backend */
   resize: (rows: number, cols: number) => void;
+  /** Send a command string to the terminal (appends newline to execute) */
+  sendCommand: (command: string) => Promise<void>;
   /** Error message if status is 'error' */
   error: string | null;
-  /** Current VM ID */
-  vmId: string | null;
 }
 
 /** Terminal stream output message (sent from backend in DataFrame) */
@@ -144,22 +142,23 @@ interface TerminalStreamOutput {
  * Terminal connection hook using Grafana Live streaming
  *
  * This connects to the plugin backend which:
- * 1. Provisions a VM via Coda (or uses existing one)
+ * 1. Provisions a VM via Coda (or reuses existing one for this user)
  * 2. Establishes SSH connection to the VM
  * 3. Streams terminal I/O via Grafana Live
  *
  * The backend handles all VM lifecycle decisions:
- * - Auto-provisions if vmId is "new" or invalid
+ * - Tracks active VMs per user and reuses them
+ * - Auto-provisions if user has no active VM
  * - Retries SSH with fresh VM on auth failures
  * - Pushes status updates via the stream
  */
-export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
+export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
-  const [vmId, setVmId] = useState<string | null>(initialVmId ?? null);
 
   // REACT: refs for subscriptions and cleanup (R1)
   const subscriptionRef = useRef<Subscription | null>(null);
+  // currentVmIdRef tracks the VM ID for the current session (needed for input routing)
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
   const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -345,13 +344,12 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
               switch (msg.type) {
                 case 'status':
                   // VM provisioning status updates from backend
-                  // Cache vmId if backend sends it (may be different from requested if backend provisioned new one)
+                  // Update current VM ID ref if backend sends it (needed for input routing)
                   if (msg.vmId && msg.vmId !== currentVmIdRef.current) {
-                    connectionLog.info('Received new VM ID from backend', {
-                      newVmId: msg.vmId,
+                    connectionLog.info('Received VM ID from backend', {
+                      vmId: msg.vmId,
                       previousId: currentVmIdRef.current,
                     });
-                    setVmId(msg.vmId);
                     currentVmIdRef.current = msg.vmId;
                   }
 
@@ -406,10 +404,9 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                     handshakeTimeoutRef.current = null;
                   }
 
-                  // Cache the actual VM ID from backend (may differ from requested if backend provisioned new one)
+                  // Update current VM ID ref from backend (needed for input routing)
                   if (msg.vmId) {
-                    connectionLog.info('Caching VM ID from backend', { vmId: msg.vmId, previousId: id });
-                    setVmId(msg.vmId);
+                    connectionLog.info('VM ID from backend', { vmId: msg.vmId });
                     currentVmIdRef.current = msg.vmId;
                   }
 
@@ -463,7 +460,6 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
                     category: 'disconnected',
                   });
                   setStatus('disconnected');
-                  setVmId(null);
                   terminal.writeln('\r\n');
                   terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
                   terminal.writeln('\x1b[33m  Session ended - VM disconnected\x1b[0m');
@@ -545,8 +541,8 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
    * Connect to the terminal
    *
    * The backend handles all VM lifecycle decisions:
-   * - If vmId is provided, backend will validate/reuse or provision replacement
-   * - If vmId is null/"new", backend will provision a fresh VM
+   * - Backend tracks active VMs per user and reuses them automatically
+   * - If user has no active VM, backend provisions a fresh one
    * - Backend pushes status updates via the stream
    */
   const connect = useCallback(async () => {
@@ -560,7 +556,7 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
     }
 
     connectionLog.startConnection();
-    connectionLog.info('Starting connection sequence', { existingVmId: vmId });
+    connectionLog.info('Starting connection sequence');
 
     setStatus('connecting');
     setError(null);
@@ -573,24 +569,16 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
     terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
     terminal.writeln('');
 
-    // Use existing vmId or "new" for fresh provisioning
-    // Backend handles all VM validation, provisioning, and retry logic
-    const streamVmId = vmId || 'new';
+    // Always connect with 'new' - backend tracks VMs per user and reuses automatically
+    terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
+    terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
 
-    if (vmId) {
-      terminal.writeln('\x1b[33m⏳ Connecting to VM...\x1b[0m');
-      terminal.writeln(`\x1b[90m   ├─ VM ID: \x1b[37m${vmId}\x1b[0m`);
-    } else {
-      terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
-      terminal.writeln('\x1b[90m   ├─ Requesting fresh VM...\x1b[0m');
-    }
-
-    connectionLog.info('Connecting to Live stream', { vmId: streamVmId });
+    connectionLog.info('Connecting to Live stream with new');
     terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
 
-    // Connect to stream - backend handles everything from here
-    connectLiveStream(streamVmId, terminal);
-  }, [vmId, terminalRef, cleanup, connectLiveStream]);
+    // Connect to stream - backend handles VM assignment and reuse
+    connectLiveStream('new', terminal);
+  }, [terminalRef, cleanup, connectLiveStream]);
 
   /**
    * Disconnect from the terminal
@@ -623,12 +611,27 @@ export function useTerminalLive({ vmId: initialVmId, terminalRef }: UseTerminalL
     [sendResize]
   );
 
+  /**
+   * Send a command to the terminal (appends newline to execute)
+   */
+  const sendCommand = useCallback(
+    async (command: string) => {
+      const vmId = currentVmIdRef.current;
+      if (!vmId) {
+        connectionLog.warn('Cannot send command: no active VM');
+        return;
+      }
+      await sendInput(vmId, command + '\n');
+    },
+    [sendInput]
+  );
+
   return {
     status,
     connect,
     disconnect,
     resize,
+    sendCommand,
     error,
-    vmId,
   };
 }
