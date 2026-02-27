@@ -99,7 +99,7 @@
     "@grafana/faro-react": "^2.0.2",
     "@grafana/faro-web-tracing": "^2.0.2",
     "@grafana/i18n": "^12.2.1",
-    "@grafana/scenes": "^6.45.0",
+    "@grafana/scenes": "^7.0.0",
     "@grafana/schema": "^12.2.1",
     "@grafana/ui": "^12.2.1",
     "@openfeature/ofrep-web-provider": "^0.3.5",
