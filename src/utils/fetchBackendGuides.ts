@@ -2,11 +2,20 @@
  * Shared utility for fetching backend guides
  */
 
-import { getBackendSrv } from '@grafana/runtime';
+import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 interface BackendGuidesList {
   items?: any[];
+}
+
+/**
+ * Returns true when the Pathfinder backend API is available in this Grafana instance.
+ * Reads the boot-time feature toggle set by the aggregation layer.
+ */
+export function isBackendApiAvailable(): boolean {
+  const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
+  return featureToggles?.['aggregation.pathfinderbackend-ext-grafana-com.enabled'] === true;
 }
 
 /** HTTP status codes that indicate the optional backend API is not yet rolled out */
