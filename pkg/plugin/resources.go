@@ -75,6 +75,7 @@ type TerminalInput struct {
 	Data string `json:"data,omitempty"`
 	Rows int    `json:"rows,omitempty"`
 	Cols int    `json:"cols,omitempty"`
+	User string `json:"user,omitempty"`
 }
 
 // handleTerminalInput handles POST /terminal/{vmId} for sending input to the terminal
@@ -100,14 +101,17 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user from Grafana context header for session lookup
-	userLogin := r.Header.Get("X-Grafana-User")
+	// Get user from request body (frontend source of truth for multi-tenancy),
+	// falling back to X-Grafana-User header for backward compatibility
+	userLogin := input.User
+	if userLogin == "" {
+		userLogin = r.Header.Get("X-Grafana-User")
+	}
 	if userLogin == "" {
 		userLogin = "anonymous"
 	}
 
-	// Find session by vmID + userLogin to ensure deterministic lookup
-	// (avoids non-deterministic map iteration when multiple sessions exist for same VM)
+	// Find session by vmID + userLogin for deterministic multi-tenant lookup
 	streamSessionsMu.Lock()
 	var sess *streamSession
 	for _, s := range streamSessions {
@@ -119,6 +123,10 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	streamSessionsMu.Unlock()
 
 	if sess == nil || sess.session == nil {
+		a.logger.Warn("No active session found for terminal input",
+			"vmID", vmID,
+			"requestUser", userLogin,
+		)
 		a.writeError(w, "No active session for VM", http.StatusNotFound)
 		return
 	}

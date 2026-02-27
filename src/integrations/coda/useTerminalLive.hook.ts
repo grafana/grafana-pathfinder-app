@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
-import { getBackendSrv, getGrafanaLiveSrv } from '@grafana/runtime';
+import { config, getBackendSrv, getGrafanaLiveSrv } from '@grafana/runtime';
 import {
   LiveChannelScope,
   LiveChannelAddress,
@@ -203,11 +203,13 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
     const url = `/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`;
     const startTime = performance.now();
+    const userLogin = config.bootData?.user?.login || 'anonymous';
 
     try {
       await getBackendSrv().post(url, {
         type: 'input',
         data: inputData,
+        user: userLogin,
       });
       // Only log slow input requests (> 500ms) to avoid noise
       const duration = performance.now() - startTime;
@@ -235,12 +237,14 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     const url = `/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`;
     const startTime = performance.now();
     const httpLog = connectionLog.httpRequest('POST', `${url} (resize)`, startTime);
+    const userLogin = config.bootData?.user?.login || 'anonymous';
 
     try {
       await getBackendSrv().post(url, {
         type: 'resize',
         rows,
         cols,
+        user: userLogin,
       });
       httpLog.success(200, { vmId: id, rows, cols });
     } catch (err) {
