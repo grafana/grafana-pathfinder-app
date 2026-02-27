@@ -234,6 +234,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const isConnecting = status === 'connecting';
   const canConnect = !isConnecting && status !== 'connected';
   const canDisconnect = status === 'connected';
+  const canCancel = isConnecting;
 
   // Always render terminal div to keep it alive across collapse/expand
   // Use display:none to hide when collapsed instead of unmounting
@@ -314,6 +315,12 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             {canConnect && (
               <Button size="sm" variant="primary" onClick={handleConnect} className={styles.headerButton}>
                 Connect
+              </Button>
+            )}
+
+            {canCancel && (
+              <Button size="sm" variant="secondary" onClick={handleDisconnect} className={styles.headerButton}>
+                Cancel
               </Button>
             )}
 

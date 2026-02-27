@@ -297,15 +297,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     }
   }, [state.enableCodaTerminal, hasProvisionedKey, codaRegistered, isRegistering, performCodaRegistration]);
 
-  // Manual registration handler (for when no provisioned key exists)
-  const onRegisterWithCoda = () => {
-    if (!state.codaEnrollmentKey) {
-      setRegistrationError('Please enter an enrollment key');
-      return;
-    }
-    performCodaRegistration(state.codaEnrollmentKey);
-  };
-
   const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
@@ -332,8 +323,29 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
+    setRegistrationError(null);
 
     try {
+      let secureJsonDataUpdate: Record<string, string> = {};
+      let shouldMarkRegistered = codaRegistered;
+
+      // If Coda terminal is enabled, has enrollment key, and not yet registered - register now
+      if (state.enableCodaTerminal && state.codaEnrollmentKey && !codaRegistered) {
+        // Perform registration inline as part of the save
+        const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
+        const instanceUrl = window.location.origin;
+
+        const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
+          enrollmentKey: state.codaEnrollmentKey,
+          instanceId,
+          instanceUrl,
+        });
+
+        secureJsonDataUpdate.codaRefreshToken = response.refreshToken;
+        secureJsonDataUpdate.codaEnrollmentKey = state.codaEnrollmentKey;
+        shouldMarkRegistered = true;
+      }
+
       const newJsonData = {
         ...jsonData, // Preserve existing fields
         recommenderServiceUrl: state.recommenderServiceUrl,
@@ -346,12 +358,14 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsKey: state.peerjsKey,
         enableCodaTerminal: state.enableCodaTerminal,
         codaRelayUrl: state.codaRelayUrl,
+        codaRegistered: shouldMarkRegistered,
       };
 
       await updatePluginSettings(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: newJsonData,
+        ...(Object.keys(secureJsonDataUpdate).length > 0 && { secureJsonData: secureJsonDataUpdate }),
       });
 
       // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
@@ -364,9 +378,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       }, 100);
     } catch (error) {
       console.error('Error saving configuration:', error);
+      // Check if this was a registration error
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save configuration. Please try again.';
+      if (state.enableCodaTerminal && state.codaEnrollmentKey && !codaRegistered) {
+        setRegistrationError(errorMessage);
+      }
       setIsSaving(false);
-      // Re-throw to let user know something went wrong
-      throw error;
     }
   };
 
@@ -717,47 +734,24 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     </div>
                   )}
 
-                  {!codaRegistered && hasProvisionedKey && (
-                    <>
-                      {isRegistering && (
-                        <Alert severity="info" title="Auto-registering with Coda" className={s.marginTop}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Spinner inline={true} />
-                            <Text variant="body">
-                              Registering this instance with Coda using the provisioned enrollment key...
-                            </Text>
-                          </div>
-                        </Alert>
-                      )}
-
-                      {registrationError && (
-                        <Alert severity="error" title="Auto-registration failed" className={s.marginTop}>
-                          <Text variant="body">
-                            {registrationError}
-                            <br />
-                            <br />
-                            Please check the provisioned enrollment key in your plugin configuration or contact your
-                            administrator.
-                          </Text>
-                        </Alert>
-                      )}
-                    </>
+                  {/* Auto-registration with provisioned key */}
+                  {!codaRegistered && hasProvisionedKey && isRegistering && (
+                    <Alert severity="info" title="Auto-registering with Coda" className={s.marginTop}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Spinner inline={true} />
+                        <Text variant="body">
+                          Registering this instance with Coda using the provisioned enrollment key...
+                        </Text>
+                      </div>
+                    </Alert>
                   )}
 
-                  {/* Manual registration - always available as fallback */}
-                  <div className={s.marginTop}>
-                    <Text variant="h6">
-                      {codaRegistered ? 'Re-register with a different key' : 'Manual registration'}
-                    </Text>
-                    <div style={{ marginTop: '8px', marginBottom: '16px' }}>
-                      <Text variant="body" color="secondary">
-                        Enter an enrollment key to {codaRegistered ? 're-register' : 'register'} this instance manually.
-                      </Text>
-                    </div>
-
+                  {/* Enrollment key input - shown when not registered */}
+                  {!codaRegistered && (
                     <Field
                       label="Enrollment key"
-                      description="Enter the enrollment key provided by your Coda administrator"
+                      description="Enter the enrollment key provided by your Coda administrator, then click Save configuration"
+                      className={s.marginTop}
                     >
                       <Input
                         type="password"
@@ -765,34 +759,17 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                         value={state.codaEnrollmentKey}
                         onChange={onChangeCodaEnrollmentKey}
                         placeholder="Enter enrollment key"
-                        disabled={isRegistering}
+                        disabled={isSaving}
                       />
                     </Field>
+                  )}
 
-                    {registrationError && !hasProvisionedKey && (
-                      <Alert severity="error" title="Registration failed" className={s.marginTop}>
-                        <Text variant="body">{registrationError}</Text>
-                      </Alert>
-                    )}
-
-                    <div className={s.marginTopSmall}>
-                      <Button
-                        variant={codaRegistered ? 'secondary' : 'primary'}
-                        onClick={onRegisterWithCoda}
-                        disabled={isRegistering || !state.codaEnrollmentKey}
-                      >
-                        {isRegistering ? (
-                          <>
-                            <Spinner inline={true} /> Registering...
-                          </>
-                        ) : codaRegistered ? (
-                          'Re-register with Coda'
-                        ) : (
-                          'Register with Coda'
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+                  {/* Registration error display */}
+                  {registrationError && (
+                    <Alert severity="error" title="Registration failed" className={s.marginTop}>
+                      <Text variant="body">{registrationError}</Text>
+                    </Alert>
+                  )}
                 </div>
               </>
             )}

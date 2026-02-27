@@ -34,7 +34,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -70,14 +69,20 @@ type TerminalStreamInput struct {
 
 // TerminalStreamOutput represents output messages to the frontend
 type TerminalStreamOutput struct {
-	Type  string `json:"type"` // "output", "error", "connected", "disconnected"
-	Data  string `json:"data,omitempty"`
-	Error string `json:"error,omitempty"`
+	Type    string `json:"type"` // "output", "error", "connected", "disconnected", "status"
+	Data    string `json:"data,omitempty"`
+	Error   string `json:"error,omitempty"`
+	State   string `json:"state,omitempty"`   // VM state for "status" type: "pending", "provisioning", "active"
+	Message string `json:"message,omitempty"` // Human-readable status message
+	VmId    string `json:"vmId,omitempty"`    // Actual VM ID being used (sent with "connected" and "status")
 }
 
 // SubscribeStream is called when a client wants to subscribe to a stream.
 // Channel path format: terminal/{vmId} or terminal/{vmId}/{nonce}
 // The optional nonce allows frontend to force new streams on reconnect.
+// Special vmId values:
+//   - "new": Backend will provision a fresh VM in RunStream
+//   - Any other value: Treated as existing VM ID (will be validated/replaced in RunStream)
 func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
 	a.logger.Info("SubscribeStream called", "path", req.Path)
 
@@ -90,11 +95,6 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 	}
 
 	vmID := parts[1]
-	if vmID == "" {
-		return &backend.SubscribeStreamResponse{
-			Status: backend.SubscribeStreamStatusNotFound,
-		}, nil
-	}
 
 	// Check if Coda is configured (has JWT token)
 	if a.coda == nil {
@@ -104,23 +104,36 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 		}, nil
 	}
 
-	// Verify VM exists and is active
+	// Allow "new" vmId - RunStream will provision a fresh VM
+	if vmID == "new" || vmID == "" {
+		a.logger.Info("Stream subscription accepted for new VM provisioning")
+		return &backend.SubscribeStreamResponse{
+			Status: backend.SubscribeStreamStatusOK,
+		}, nil
+	}
+
+	// For existing vmId, verify VM exists (allow pending/provisioning VMs - RunStream will wait)
+	// If VM doesn't exist or is invalid, RunStream will handle provisioning a replacement
 	vm, err := a.coda.GetVM(ctx, vmID)
 	if err != nil {
-		a.logger.Error("Failed to get VM for subscription", "vmID", vmID, "error", err)
+		// VM not found - still accept, RunStream will provision a new one
+		a.logger.Info("VM not found, will provision in RunStream", "vmID", vmID)
 		return &backend.SubscribeStreamResponse{
-			Status: backend.SubscribeStreamStatusNotFound,
+			Status: backend.SubscribeStreamStatusOK,
 		}, nil
 	}
 
-	if vm.State != "active" || vm.Credentials == nil {
-		a.logger.Warn("VM not ready for terminal", "vmID", vmID, "state", vm.State)
+	// Only reject destroyed or error states at subscription time for better UX
+	// (avoids immediate subscription failure for expired VMs - RunStream handles replacement)
+	if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
+		a.logger.Info("VM in terminal state, will provision replacement in RunStream", "vmID", vmID, "state", vm.State)
+		// Still accept - RunStream will handle provisioning a replacement
 		return &backend.SubscribeStreamResponse{
-			Status: backend.SubscribeStreamStatusNotFound,
+			Status: backend.SubscribeStreamStatusOK,
 		}, nil
 	}
 
-	a.logger.Info("Stream subscription accepted", "vmID", vmID)
+	a.logger.Info("Stream subscription accepted", "vmID", vmID, "state", vm.State)
 
 	return &backend.SubscribeStreamResponse{
 		Status: backend.SubscribeStreamStatusOK,
@@ -202,30 +215,113 @@ func sendStreamError(sender *backend.StreamSender, errMsg string) {
 	_ = sender.SendFrame(frame, data.IncludeAll)
 }
 
-// formatRelayErrorForUser converts technical relay errors into user-friendly messages
-func formatRelayErrorForUser(err error) string {
-	errStr := strings.ToLower(err.Error())
-
-	switch {
-	case strings.Contains(errStr, "blocked_forbidden") || strings.Contains(errStr, "blocked_unauthorized"):
-		return "Connection blocked: Authentication failed. Please check your enrollment key and try again."
-	case strings.Contains(errStr, "relay_unavailable"):
-		return "Relay server is temporarily unavailable. Please try again in a moment."
-	case strings.Contains(errStr, "connection_refused"):
-		return "Connection refused: The relay server is not accepting connections."
-	case strings.Contains(errStr, "timeout"):
-		return "Connection timed out: Unable to reach the relay server. Check your network connection."
-	case strings.Contains(errStr, "dns_error"):
-		return "DNS error: Could not resolve relay server address."
-	case strings.Contains(errStr, "tls_error"):
-		return "TLS/SSL error: Secure connection could not be established."
-	case strings.Contains(errStr, "network_unreachable"):
-		return "Network unreachable: Check your internet connection."
-	case strings.Contains(errStr, "ssh handshake"):
-		return "SSH authentication failed: Could not authenticate with the VM."
-	default:
-		return fmt.Sprintf("Connection failed: %v", err)
+// sendStreamStatusWithVmId sends a VM provisioning status update with the VM ID
+func sendStreamStatusWithVmId(sender *backend.StreamSender, state string, message string, vmId string) {
+	output := TerminalStreamOutput{
+		Type:    "status",
+		State:   state,
+		Message: message,
+		VmId:    vmId,
 	}
+	jsonBytes, _ := json.Marshal(output)
+	frame := data.NewFrame("terminal")
+	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+	_ = sender.SendFrame(frame, data.IncludeAll)
+}
+
+// statusMessageForState returns a human-readable message for a VM state
+func statusMessageForState(state string) string {
+	switch state {
+	case "pending":
+		return "Waiting in queue..."
+	case "provisioning":
+		return "VM is booting..."
+	case "active":
+		return "VM is ready"
+	default:
+		return fmt.Sprintf("VM state: %s", state)
+	}
+}
+
+// isSSHAuthError checks if an error is an SSH authentication failure
+func isSSHAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "ssh authentication failed") ||
+		strings.Contains(errStr, "auth_failed") ||
+		strings.Contains(errStr, "could not authenticate") ||
+		strings.Contains(errStr, "ssh handshake") ||
+		strings.Contains(errStr, "unable to authenticate") ||
+		strings.Contains(errStr, "permission denied")
+}
+
+// isSSHRetryableError checks if an error is retryable (timeouts, connection issues, auth failures)
+func isSSHRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "no route to host") ||
+		strings.Contains(errStr, "i/o timeout") ||
+		strings.Contains(errStr, "eof") ||
+		strings.Contains(errStr, "broken pipe") ||
+		isSSHAuthError(err)
+}
+
+// SSH retry constants
+const (
+	maxVMAttempts      = 3                    // Maximum new VMs to provision per connection attempt
+	maxSSHRetriesPerVM = 3                    // SSH connection retries per VM
+	sshRetryDelay      = 5 * time.Second      // Delay between same-VM retries
+)
+
+// waitForVMActive polls until VM is active and returns it, sending status updates
+func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender, vmID string) (*VM, error) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	maxAttempts := 60 // 3 minutes max wait
+	for attempts := 0; attempts < maxAttempts; attempts++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			vm, err := a.coda.GetVM(ctx, vmID)
+			if err != nil {
+				a.logger.Warn("Failed to poll VM status", "vmID", vmID, "error", err)
+				continue
+			}
+
+			if vm.State == "error" {
+				errMsg := "VM provisioning failed"
+				if vm.ErrorMessage != nil {
+					errMsg = fmt.Sprintf("VM provisioning failed: %s", *vm.ErrorMessage)
+				}
+				sendStreamError(sender, errMsg)
+				return nil, errors.New(errMsg)
+			}
+			if vm.State == "destroyed" || vm.State == "destroying" {
+				errMsg := "VM was destroyed"
+				sendStreamError(sender, errMsg)
+				return nil, errors.New(errMsg)
+			}
+
+			sendStreamStatusWithVmId(sender, vm.State, statusMessageForState(vm.State), vmID)
+
+			if vm.State == "active" && vm.Credentials != nil {
+				return vm, nil
+			}
+		}
+	}
+
+	errMsg := "timeout waiting for VM to become active"
+	sendStreamError(sender, errMsg)
+	return nil, errors.New(errMsg)
 }
 
 // RunStream is called once for each active stream subscription.
@@ -250,17 +346,113 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		return errors.New(errMsg)
 	}
 
-	vm, err := a.coda.GetVM(ctx, vmID)
-	if err != nil {
-		errMsg := fmt.Sprintf("failed to get VM: %v", err)
-		sendStreamError(sender, errMsg)
-		return fmt.Errorf("failed to get VM: %w", err)
+	var vm *VM
+	var err error
+
+	// Handle "new" vmId - provision a fresh VM
+	if vmID == "new" || vmID == "" {
+		a.logger.Info("Provisioning new VM (no vmId provided)")
+		sendStreamStatusWithVmId(sender, "provisioning", "Provisioning new VM...", "")
+
+		vm, err = a.coda.CreateVM(ctx, "vm-aws", "stream-session")
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to create VM: %v", err)
+			sendStreamError(sender, errMsg)
+			return fmt.Errorf("failed to create VM: %w", err)
+		}
+		vmID = vm.ID
+		a.logger.Info("New VM created", "vmID", vmID, "state", vm.State)
+		sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
+	} else {
+		// Try to get existing VM
+		vm, err = a.coda.GetVM(ctx, vmID)
+		if err != nil {
+			// VM doesn't exist - provision a new one
+			a.logger.Info("VM not found, provisioning new one", "requestedVmID", vmID, "error", err)
+			sendStreamStatusWithVmId(sender, "provisioning", "Previous VM not found, provisioning new one...", "")
+
+			vm, err = a.coda.CreateVM(ctx, "vm-aws", "stream-session")
+			if err != nil {
+				errMsg := fmt.Sprintf("failed to create VM: %v", err)
+				sendStreamError(sender, errMsg)
+				return fmt.Errorf("failed to create VM: %w", err)
+			}
+			vmID = vm.ID
+			a.logger.Info("New VM created (replacing missing)", "vmID", vmID, "state", vm.State)
+			sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
+		} else if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
+			// VM is in terminal state - provision a new one
+			a.logger.Info("VM in terminal state, provisioning new one", "vmID", vmID, "state", vm.State)
+			sendStreamStatusWithVmId(sender, "provisioning", fmt.Sprintf("Previous VM %s, provisioning new one...", vm.State), "")
+
+			vm, err = a.coda.CreateVM(ctx, "vm-aws", "stream-session")
+			if err != nil {
+				errMsg := fmt.Sprintf("failed to create VM: %v", err)
+				sendStreamError(sender, errMsg)
+				return fmt.Errorf("failed to create VM: %w", err)
+			}
+			vmID = vm.ID
+			a.logger.Info("New VM created (replacing expired)", "vmID", vmID, "state", vm.State)
+			sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
+		} else {
+			// VM exists and is valid - send status with vmId
+			a.logger.Info("Reconnecting to existing VM", "vmID", vmID, "state", vm.State)
+			sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to existing VM...", vmID)
+		}
 	}
 
+	// If VM is not active, poll and push status updates until it's ready
 	if vm.State != "active" || vm.Credentials == nil {
-		errMsg := fmt.Sprintf("VM not ready: state=%s", vm.State)
-		sendStreamError(sender, errMsg)
-		return errors.New(errMsg)
+		a.logger.Info("VM not ready, polling for status updates", "vmID", vmID, "state", vm.State)
+
+		// Poll every 3 seconds until VM is active
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		maxAttempts := 60 // 3 minutes max wait
+		attempts := 0
+
+		for vm.State != "active" || vm.Credentials == nil {
+			select {
+			case <-ctx.Done():
+				a.logger.Info("Stream context cancelled while waiting for VM", "vmID", vmID)
+				return ctx.Err()
+			case <-ticker.C:
+				attempts++
+				if attempts >= maxAttempts {
+					errMsg := "timeout waiting for VM to become active"
+					sendStreamError(sender, errMsg)
+					return errors.New(errMsg)
+				}
+
+				vm, err = a.coda.GetVM(ctx, vmID)
+				if err != nil {
+					a.logger.Warn("Failed to poll VM status", "vmID", vmID, "error", err)
+					continue
+				}
+
+				// Check for terminal states
+				if vm.State == "error" {
+					errMsg := "VM provisioning failed"
+					if vm.ErrorMessage != nil {
+						errMsg = fmt.Sprintf("VM provisioning failed: %s", *vm.ErrorMessage)
+					}
+					sendStreamError(sender, errMsg)
+					return errors.New(errMsg)
+				}
+				if vm.State == "destroyed" || vm.State == "destroying" {
+					errMsg := "VM was destroyed"
+					sendStreamError(sender, errMsg)
+					return errors.New(errMsg)
+				}
+
+				// Push status update with vmId
+				sendStreamStatusWithVmId(sender, vm.State, statusMessageForState(vm.State), vmID)
+				a.logger.Debug("Pushed VM status update", "vmID", vmID, "state", vm.State, "attempt", attempts)
+			}
+		}
+
+		a.logger.Info("VM is now active", "vmID", vmID)
 	}
 
 	// Create context that cancels when stream ends
@@ -296,74 +488,182 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		_ = sender.SendFrame(frame, data.IncludeAll)
 	}
 
-	// Log credentials info (without sensitive data)
-	a.logger.Info("Creating SSH session",
-		"vmID", vmID,
-		"host", vm.Credentials.PublicIP,
-		"port", vm.Credentials.SSHPort,
-		"user", vm.Credentials.SSHUser,
-		"hasPrivateKey", vm.Credentials.SSHPrivateKey != "",
-		"keyLength", len(vm.Credentials.SSHPrivateKey),
-		"relayURL", a.settings.CodaRelayURL,
-	)
-
-	// Create SSH session - use relay if configured, otherwise direct SSH
+	// Two-level SSH retry logic:
+	// - Outer loop: VM attempts (max 3 VMs to prevent resource waste)
+	// - Inner loop: SSH retries per VM (max 3 retries with delay for slow SSH startup)
 	var session *TerminalSession
-	if a.settings.CodaRelayURL != "" {
-		a.logger.Info("Initiating relay connection",
-			"relayURL", a.settings.CodaRelayURL,
+	var lastErr error
+
+	for vmAttempt := 1; vmAttempt <= maxVMAttempts; vmAttempt++ {
+		a.logger.Info("Starting SSH connection attempts for VM",
 			"vmID", vmID,
-			"host", vm.Credentials.PublicIP,
+			"vmAttempt", vmAttempt,
+			"maxVMAttempts", maxVMAttempts,
 		)
-		// Get a fresh access token for the relay connection
-		if a.coda == nil {
-			errMsg := "Coda client not initialized - cannot connect to relay"
-			sendStreamError(sender, errMsg)
-			return fmt.Errorf("coda client not initialized")
-		}
-		accessToken, err := a.coda.GetAccessToken(ctx)
-		if err != nil {
-			a.logger.Error("Failed to get access token for relay", "error", err)
-			sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
-			return fmt.Errorf("failed to get access token: %w", err)
-		}
-		sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
-		if err != nil {
-			a.logger.Error("Relay connection failed - see detailed logs above",
+
+		// Inner loop: retry same VM multiple times (handles slow SSH daemon startup)
+		for sshRetry := 1; sshRetry <= maxSSHRetriesPerVM; sshRetry++ {
+			// Check context cancellation
+			select {
+			case <-ctx.Done():
+				a.logger.Info("Connection cancelled by user", "vmID", vmID)
+				return ctx.Err()
+			default:
+			}
+
+			// Log credentials info (without sensitive data)
+			a.logger.Info("Creating SSH session",
 				"vmID", vmID,
-				"error", err,
-			)
-			// Provide user-friendly error message based on error content
-			errMsg := formatRelayErrorForUser(err)
-			sendStreamError(sender, errMsg)
-			return fmt.Errorf("failed to connect SSH via relay: %w", err)
-		}
-		a.logger.Info("Relay connection established, creating terminal session", "vmID", vmID)
-		session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
-		if err != nil {
-			_ = sshClient.Close()
-			a.logger.Error("Failed to create terminal session with relay client",
-				"vmID", vmID,
-				"error", err,
-			)
-			errMsg := fmt.Sprintf("Terminal session creation failed: %v", err)
-			sendStreamError(sender, errMsg)
-			return fmt.Errorf("failed to create terminal session: %w", err)
-		}
-	} else {
-		var err error
-		session, err = NewTerminalSession(vmID, vm.Credentials, onOutput, onError)
-		if err != nil {
-			a.logger.Error("Failed to create terminal session",
-				"vmID", vmID,
-				"error", err,
 				"host", vm.Credentials.PublicIP,
 				"port", vm.Credentials.SSHPort,
+				"user", vm.Credentials.SSHUser,
+				"hasPrivateKey", vm.Credentials.SSHPrivateKey != "",
+				"keyLength", len(vm.Credentials.SSHPrivateKey),
+				"relayURL", a.settings.CodaRelayURL,
+				"vmAttempt", vmAttempt,
+				"sshRetry", sshRetry,
 			)
-			errMsg := fmt.Sprintf("SSH connection failed: %v", err)
-			sendStreamError(sender, errMsg)
-			return fmt.Errorf("failed to create terminal session: %w", err)
+
+			// Create SSH session - use relay if configured, otherwise direct SSH
+			if a.settings.CodaRelayURL != "" {
+				a.logger.Info("Initiating relay connection",
+					"relayURL", a.settings.CodaRelayURL,
+					"vmID", vmID,
+					"host", vm.Credentials.PublicIP,
+					"vmAttempt", vmAttempt,
+					"sshRetry", sshRetry,
+				)
+
+				// Get a fresh access token for the relay connection
+				if a.coda == nil {
+					errMsg := "Coda client not initialized - cannot connect to relay"
+					sendStreamError(sender, errMsg)
+					return fmt.Errorf("coda client not initialized")
+				}
+				accessToken, err := a.coda.GetAccessToken(ctx)
+				if err != nil {
+					a.logger.Error("Failed to get access token for relay", "error", err)
+					sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
+					return fmt.Errorf("failed to get access token: %w", err)
+				}
+
+				sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
+				if err != nil {
+					lastErr = err
+					a.logger.Warn("Relay connection failed",
+						"vmID", vmID,
+						"error", err,
+						"vmAttempt", vmAttempt,
+						"sshRetry", sshRetry,
+					)
+
+					// Check if error is retryable and we have same-VM retries left
+					if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
+						a.logger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
+						sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
+						time.Sleep(sshRetryDelay)
+						continue
+					}
+
+					// All same-VM retries exhausted, break to try new VM
+					break
+				}
+
+				a.logger.Info("Relay connection established, creating terminal session", "vmID", vmID)
+				session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
+				if err != nil {
+					_ = sshClient.Close()
+					lastErr = err
+					a.logger.Warn("Failed to create terminal session with relay client",
+						"vmID", vmID,
+						"error", err,
+						"vmAttempt", vmAttempt,
+						"sshRetry", sshRetry,
+					)
+
+					// Check if error is retryable and we have same-VM retries left
+					if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
+						a.logger.Info("Session creation failed, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
+						sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
+						time.Sleep(sshRetryDelay)
+						continue
+					}
+
+					// All same-VM retries exhausted, break to try new VM
+					break
+				}
+				// Success!
+				break
+			} else {
+				// Direct SSH (no relay)
+				var err error
+				session, err = NewTerminalSession(vmID, vm.Credentials, onOutput, onError)
+				if err != nil {
+					lastErr = err
+					a.logger.Warn("Failed to create terminal session",
+						"vmID", vmID,
+						"error", err,
+						"host", vm.Credentials.PublicIP,
+						"port", vm.Credentials.SSHPort,
+						"vmAttempt", vmAttempt,
+						"sshRetry", sshRetry,
+					)
+
+					// Check if error is retryable and we have same-VM retries left
+					if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
+						a.logger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
+						sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
+						time.Sleep(sshRetryDelay)
+						continue
+					}
+
+					// All same-VM retries exhausted, break to try new VM
+					break
+				}
+				// Success!
+				break
+			}
 		}
+
+		// If we got a session, we're done
+		if session != nil {
+			a.logger.Info("SSH connection successful", "vmID", vmID, "vmAttempt", vmAttempt)
+			break
+		}
+
+		// All same-VM retries failed - provision new VM if under limit
+		if vmAttempt < maxVMAttempts {
+			a.logger.Info("All SSH retries failed for VM, provisioning new one",
+				"failedVmID", vmID,
+				"vmAttempt", vmAttempt,
+				"lastError", lastErr,
+			)
+			sendStreamStatusWithVmId(sender, "provisioning", fmt.Sprintf("VM %d failed, provisioning VM %d/%d...", vmAttempt, vmAttempt+1, maxVMAttempts), vmID)
+
+			// Provision a fresh VM
+			newVM, createErr := a.coda.CreateVM(ctx, "vm-aws", "stream-session")
+			if createErr != nil {
+				a.logger.Error("Failed to provision fresh VM for retry", "error", createErr)
+				sendStreamError(sender, fmt.Sprintf("Failed to provision replacement VM: %v", createErr))
+				return fmt.Errorf("failed to provision replacement VM: %w", createErr)
+			}
+			vmID = newVM.ID
+			a.logger.Info("Fresh VM provisioned for retry", "newVmID", vmID, "state", newVM.State, "vmAttempt", vmAttempt+1)
+			sendStreamStatusWithVmId(sender, newVM.State, fmt.Sprintf("VM %d allocated, waiting for boot...", vmAttempt+1), vmID)
+
+			// Wait for new VM to be active
+			vm, err = a.waitForVMActive(ctx, sender, vmID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if session == nil {
+		errMsg := fmt.Sprintf("SSH connection failed after %d VMs (last error: %v)", maxVMAttempts, lastErr)
+		a.logger.Error("All VM attempts exhausted", "lastError", lastErr)
+		sendStreamError(sender, errMsg)
+		return errors.New(errMsg)
 	}
 	defer func() { _ = session.Close() }()
 
@@ -383,38 +683,16 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		streamSessionsMu.Unlock()
 	}()
 
-	// Send connected message to frontend
-	connectedOutput := TerminalStreamOutput{Type: "connected"}
+	// Send connected message to frontend with vmId so it can cache it
+	connectedOutput := TerminalStreamOutput{Type: "connected", VmId: vmID}
 	jsonBytes, _ := json.Marshal(connectedOutput)
 	frame := data.NewFrame("terminal")
 	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
 
-	// #region agent log
-	debugLog := fmt.Sprintf(`{"location":"stream.go:SendConnected","message":"Sending connected frame","data":{"vmID":"%s","jsonBytes":"%s","fieldCount":%d},"timestamp":%d,"sessionId":"debug-session","hypothesisId":"A"}`, vmID, string(jsonBytes), len(frame.Fields), time.Now().UnixMilli())
-	if f, err := os.OpenFile("/Users/jayclifford/Repos/grafana-pathfinder-app/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		_, _ = f.WriteString(debugLog + "\n")
-		_ = f.Close()
-	}
-	// #endregion
-
 	if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
 		a.logger.Error("Failed to send connected message", "vmID", vmID, "error", err)
-		// #region agent log
-		debugLog := fmt.Sprintf(`{"location":"stream.go:SendConnected","message":"SendFrame failed","data":{"vmID":"%s","error":"%s"},"timestamp":%d,"sessionId":"debug-session","hypothesisId":"A"}`, vmID, err.Error(), time.Now().UnixMilli())
-		if f, err := os.OpenFile("/Users/jayclifford/Repos/grafana-pathfinder-app/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-			_, _ = f.WriteString(debugLog + "\n")
-			_ = f.Close()
-		}
-		// #endregion
 	} else {
 		a.logger.Info("Sent connected message to frontend", "vmID", vmID)
-		// #region agent log
-		debugLog := fmt.Sprintf(`{"location":"stream.go:SendConnected","message":"SendFrame succeeded","data":{"vmID":"%s"},"timestamp":%d,"sessionId":"debug-session","hypothesisId":"A"}`, vmID, time.Now().UnixMilli())
-		if f, err := os.OpenFile("/Users/jayclifford/Repos/grafana-pathfinder-app/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-			_, _ = f.WriteString(debugLog + "\n")
-			_ = f.Close()
-		}
-		// #endregion
 	}
 
 	a.logger.Info("Terminal session started", "vmID", vmID)
