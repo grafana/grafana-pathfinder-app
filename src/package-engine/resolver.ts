@@ -43,11 +43,11 @@ export class BundledPackageResolver implements PackageResolver {
   }
 
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
-    const entry = this.repository[packageId];
-
-    if (!entry) {
+    if (!Object.hasOwn(this.repository, packageId)) {
       return notFound(packageId, `Package "${packageId}" not found in bundled repository`);
     }
+
+    const entry = this.repository[packageId]!;
 
     const basePath = entry.path;
     const contentUrl = `bundled:${basePath}content.json`;
@@ -102,7 +102,7 @@ export class BundledPackageResolver implements PackageResolver {
 
   /** Check whether a package ID exists in the bundled repository. */
   has(packageId: string): boolean {
-    return packageId in this.repository;
+    return Object.hasOwn(this.repository, packageId);
   }
 
   /** Direct access to the underlying repository data. */

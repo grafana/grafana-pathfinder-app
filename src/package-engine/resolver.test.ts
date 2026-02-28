@@ -84,6 +84,19 @@ describe('BundledPackageResolver', () => {
       expect(result.error.message).toContain('nonexistent');
     });
 
+    it.each(['toString', 'constructor', '__proto__', 'hasOwnProperty', 'valueOf'])(
+      'should return not-found for prototype-chain key "%s"',
+      async (key) => {
+        const result = await resolver.resolve(key);
+
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+          return;
+        }
+        expect(result.error.code).toBe('not-found');
+      }
+    );
+
     it('should not call loader when loadContent is not set', async () => {
       await resolver.resolve('test-guide');
 
@@ -176,6 +189,10 @@ describe('BundledPackageResolver', () => {
 
     it('should return false for nonexistent packages', () => {
       expect(resolver.has('nonexistent')).toBe(false);
+    });
+
+    it.each(['toString', 'constructor', '__proto__'])('should return false for prototype key "%s"', (key) => {
+      expect(resolver.has(key)).toBe(false);
     });
   });
 

@@ -14,6 +14,11 @@
 
 import type { DependencyClause, DependencyList, RepositoryEntry, RepositoryJson } from '../types/package.types';
 
+/** Own-key lookup that ignores prototype-chain properties like toString/constructor. */
+function ownEntry(repository: RepositoryJson, id: string): RepositoryEntry | undefined {
+  return Object.hasOwn(repository, id) ? repository[id] : undefined;
+}
+
 // ============ DEPENDENCY FLATTENING ============
 
 /**
@@ -99,7 +104,7 @@ export interface PackageDependencies {
  * Returns all referenced package IDs flattened from the CNF dependency lists.
  */
 export function getPackageDependencies(repository: RepositoryJson, packageId: string): PackageDependencies | undefined {
-  const entry = repository[packageId];
+  const entry = ownEntry(repository, packageId);
   if (!entry) {
     return undefined;
   }
@@ -129,7 +134,7 @@ export function getTransitiveDependencies(repository: RepositoryJson, packageId:
     }
     visited.add(id);
 
-    const entry = repository[id];
+    const entry = ownEntry(repository, id);
     if (!entry?.depends) {
       return;
     }
@@ -200,5 +205,5 @@ export function listPackageIds(repository: RepositoryJson): string[] {
  * Returns undefined if not found (noUncheckedIndexedAccess compatible).
  */
 export function getRepositoryEntry(repository: RepositoryJson, packageId: string): RepositoryEntry | undefined {
-  return repository[packageId];
+  return ownEntry(repository, packageId);
 }

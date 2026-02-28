@@ -164,6 +164,10 @@ describe('getPackageDependencies', () => {
   it('should return undefined for nonexistent package', () => {
     expect(getPackageDependencies(FIXTURE_REPO, 'nonexistent')).toBeUndefined();
   });
+
+  it.each(['toString', 'constructor', '__proto__'])('should return undefined for prototype key "%s"', (key) => {
+    expect(getPackageDependencies(FIXTURE_REPO, key)).toBeUndefined();
+  });
 });
 
 // ============ getTransitiveDependencies ============
@@ -297,4 +301,11 @@ describe('getRepositoryEntry', () => {
   it('should return undefined for an unknown package', () => {
     expect(getRepositoryEntry(FIXTURE_REPO, 'nonexistent')).toBeUndefined();
   });
+
+  it.each(['toString', 'constructor', '__proto__', 'hasOwnProperty'])(
+    'should return undefined for prototype key "%s"',
+    (key) => {
+      expect(getRepositoryEntry(FIXTURE_REPO, key)).toBeUndefined();
+    }
+  );
 });
