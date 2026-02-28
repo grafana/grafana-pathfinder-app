@@ -88,6 +88,10 @@ export class BundledPackageResolver implements PackageResolver {
 
     const manifestResult = loadBundledManifest(basePath);
 
+    if (!manifestResult.ok && manifestResult.error.code !== 'not-found') {
+      return { ok: false, id: packageId, error: manifestResult.error };
+    }
+
     return {
       ok: true,
       content: contentResult.data,

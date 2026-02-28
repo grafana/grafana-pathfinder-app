@@ -154,7 +154,7 @@ describe('BundledPackageResolver', () => {
       expect(result.error.code).toBe('not-found');
     });
 
-    it('should succeed with undefined manifest when manifest loading fails', async () => {
+    it('should succeed with undefined manifest when manifest is not found', async () => {
       mockLoadContent.mockReturnValue({ ok: true, data: FIXTURE_CONTENT });
       mockLoadManifest.mockReturnValue({
         ok: false,
@@ -169,6 +169,38 @@ describe('BundledPackageResolver', () => {
       }
       expect(result.content).toEqual(FIXTURE_CONTENT);
       expect(result.manifest).toBeUndefined();
+    });
+
+    it('should return failure when manifest has a validation error', async () => {
+      mockLoadContent.mockReturnValue({ ok: true, data: FIXTURE_CONTENT });
+      mockLoadManifest.mockReturnValue({
+        ok: false,
+        error: { code: 'validation-error', message: 'Manifest validation failed: invalid type field' },
+      });
+
+      const result = await resolver.resolve('test-guide', { loadContent: true });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        return;
+      }
+      expect(result.error.code).toBe('validation-error');
+    });
+
+    it('should return failure when manifest has a parse error', async () => {
+      mockLoadContent.mockReturnValue({ ok: true, data: FIXTURE_CONTENT });
+      mockLoadManifest.mockReturnValue({
+        ok: false,
+        error: { code: 'parse-error', message: 'Failed to parse manifest: Unexpected token' },
+      });
+
+      const result = await resolver.resolve('test-guide', { loadContent: true });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        return;
+      }
+      expect(result.error.code).toBe('parse-error');
     });
 
     it('should not load content for nonexistent packages', async () => {
