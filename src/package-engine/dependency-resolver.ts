@@ -119,18 +119,26 @@ export function getPackageDependencies(repository: RepositoryJson, packageId: st
 // ============ TRANSITIVE RESOLUTION ============
 
 /**
- * Collect all transitive hard dependencies for a package using
- * depth-first traversal. Handles cycles by tracking visited nodes.
+ * Collect all package IDs transitively reachable via `depends` edges
+ * using depth-first traversal. Handles cycles by tracking visited nodes.
  *
  * Returns package IDs in topological order (dependencies before dependents).
  *
- * Dangling IDs (declared in `depends` but absent from the repository) are
- * intentionally preserved in the result. This function reports the structural
- * dependency tree as declared, not as resolved. Consumers at Tier 3+ combine
- * this output with resolver existence checks and learning-paths completion
- * data to determine actual satisfaction — filtering here would hide missing
- * dependencies from that logic and break cross-repository resolution when
- * additional tiers are added (Phase 4+).
+ * **OR-clause flattening:** dependency clauses using OR-groups (e.g.,
+ * `[["A", "B"]]` meaning "A or B") are flattened — both alternatives
+ * appear in the result. This is an intentional over-approximation suitable
+ * for graph traversal, existence checks, and cycle detection. It is NOT
+ * suitable for gating logic that needs to respect AND/OR semantics;
+ * consumers requiring clause-preserving resolution should operate on the
+ * raw `DependencyList` from the repository entry directly.
+ *
+ * **Dangling IDs** (declared in `depends` but absent from the repository)
+ * are intentionally preserved. This function reports the structural
+ * dependency tree as declared, not as resolved. Consumers at Tier 3+
+ * combine this output with resolver existence checks and learning-paths
+ * completion data to determine actual satisfaction — filtering here would
+ * hide missing dependencies from that logic and break cross-repository
+ * resolution when additional tiers are added (Phase 4+).
  */
 export function getTransitiveDependencies(repository: RepositoryJson, packageId: string): string[] {
   const visited = new Set<string>();

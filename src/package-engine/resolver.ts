@@ -110,7 +110,7 @@ export class BundledPackageResolver implements PackageResolver {
   }
 
   /** Direct access to the underlying repository data. */
-  getRepository(): RepositoryJson {
+  getRepository(): Readonly<RepositoryJson> {
     return this.repository;
   }
 }
