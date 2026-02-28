@@ -167,6 +167,7 @@ const packageMetadataSchemaFields = {
   title: z.string().optional(),
   description: z.string().optional(),
   category: z.string().optional(),
+  author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),
   steps: z.array(z.string()).optional(),
   depends: DependencyListSchema.optional(),
@@ -186,6 +187,8 @@ const packageMetadataSchemaFields = {
 export const RepositoryEntrySchema = z.object({
   path: z.string().min(1),
   ...packageMetadataSchemaFields,
+  targeting: GuideTargetingSchema.optional(),
+  testEnvironment: TestEnvironmentSchema.optional(),
 }) satisfies z.ZodType<RepositoryEntry>;
 
 /**

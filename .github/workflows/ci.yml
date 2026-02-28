@@ -32,7 +32,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
-          persist-credentials: false
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm' # Cross-run npm cache (speeds up npm ci)
       - run: npm ci
@@ -55,7 +54,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
-          persist-credentials: false
           node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
@@ -77,7 +75,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
-          persist-credentials: false
           node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
@@ -99,7 +96,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
-          persist-credentials: false
           node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
@@ -121,7 +117,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
-          persist-credentials: false
           node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
@@ -135,6 +130,32 @@ jobs:
           name: coverage-report # Must match existing artifact name
           path: coverage/
           retention-days: 14
+
+  validate-packages:
+    name: Validate packages
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: node_modules
+          key: node-modules-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Build CLI
+        run: npm run build:cli
+      - name: Validate bundled packages
+        run: npm run validate:packages
+      - name: Check repository.json freshness
+        run: npm run repository:check
 
   # Build job runs in parallel with quality checks
   build:
@@ -156,7 +177,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
         with:
-          persist-credentials: false
           node-version: ${{ env.NODE_VERSION }}
       - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
@@ -236,7 +256,7 @@ jobs:
   # CI gate job for branch protection - aggregates all required checks
   ci-gate:
     name: CI Gate
-    needs: [lint, typecheck, prettier, test, build]
+    needs: [lint, typecheck, prettier, test, validate-packages, build]
     if: always()
     runs-on: ubuntu-latest
     permissions: {} # No permissions needed - only checks job results
@@ -247,12 +267,14 @@ jobs:
           echo "Typecheck: ${{ needs.typecheck.result }}"
           echo "Prettier: ${{ needs.prettier.result }}"
           echo "Test: ${{ needs.test.result }}"
+          echo "Validate packages: ${{ needs.validate-packages.result }}"
           echo "Build: ${{ needs.build.result }}"
 
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.prettier.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.validate-packages.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1

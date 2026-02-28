@@ -1,6 +1,6 @@
 ---
 name: tidyup
-description: Run typecheck, lint, prettier, and tests for both frontend and Go backend to tidy and test the code prior to committing and pushing.
+description: Run typecheck, lint, and tests for both frontend and Go backend to tidy and test the code prior to committing and pushing.
 ---
 
 # Tidy up
@@ -23,26 +23,24 @@ Fix all trivial TypeScript syntax errors.
 
 Fix all trivial linting errors.
 
-### Step 3: Run `npm run prettier`
+Note: Prettier formatting is handled automatically by Husky's pre-commit hook via lint-staged, so it doesn't need to be run manually here.
 
-Fix all trivial prettier issues; this will modify local files.
-
-### Step 4: Run frontend unit tests: `npm run test:ci`
+### Step 3: Run frontend unit tests: `npm run test:ci`
 
 All should pass; if unit tests break and the cause is obvious (i.e. a missing import,
 or a slight syntax error) you can go ahead and fix them. If unit tests fail due to
 changed functionality, STOP and ask the user what to do.
 
-### Step 5: Run Go lint: `npm run lint:go`
+### Step 4: Run Go lint: `npm run lint:go`
 
 Fix all Go linting errors. If golangci-lint reports issues, address them.
 
-### Step 6: Run Go tests: `npm run test:go`
+### Step 5: Run Go tests: `npm run test:go`
 
 All Go tests should pass. If tests fail and the cause is obvious, fix them.
 If tests fail due to changed functionality, STOP and ask the user what to do.
 
-### Step 7: Build Go backend: `go build ./...`
+### Step 6: Build Go backend: `go build ./...`
 
 Verify the Go backend compiles without errors.
 
@@ -52,7 +50,6 @@ Provide very brief output that looks like this:
 
 Typecheck: <N> files modified
 Lint: <N> files modified
-Prettier: <N> files modified
 Frontend tests: (PASS|FAIL)
 Go lint: (PASS|FAIL)
 Go tests: (PASS|FAIL)

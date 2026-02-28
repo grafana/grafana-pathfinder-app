@@ -36,6 +36,9 @@
     "build:cli": "tsc -p tsconfig.cli.json",
     "validate": "node dist/cli/cli/index.js validate --bundled",
     "validate:strict": "node dist/cli/cli/index.js validate --bundled --strict",
+    "validate:packages": "node dist/cli/cli/index.js validate --packages src/bundled-interactives",
+    "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
+    "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
     "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run lint:go && npm run test:go && npm run test:ci",
     "prepare": "husky"
   },

@@ -1,0 +1,16 @@
+{
+  "id": "e2e-framework-test",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Test fixture for the E2E framework. Not intended for end users.",
+  "category": "testing",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

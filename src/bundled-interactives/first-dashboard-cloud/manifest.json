@@ -1,0 +1,23 @@
+{
+  "id": "first-dashboard-cloud",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more.",
+  "category": "dashboards",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/a/grafana-setupguide-app/home",
+  "recommends": ["welcome-to-grafana-cloud"],
+  "provides": ["first-dashboard-created-cloud"],
+  "targeting": {
+    "match": {
+      "and": [{ "urlPrefix": "/a/grafana-setupguide-app/home" }, { "targetPlatform": "cloud" }]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud",
+    "minVersion": "12.2.0"
+  }
+}

@@ -37,7 +37,7 @@ describe('buildRepository', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('should build repository from content-only packages', () => {
+  it('should skip content-only directories without manifest.json', () => {
     writeJson(path.join(tmpDir, 'welcome-to-grafana', 'content.json'), {
       id: 'welcome-to-grafana',
       title: 'Welcome to Grafana',
@@ -50,20 +50,11 @@ describe('buildRepository', () => {
       blocks: [],
     });
 
-    const { repository, errors } = buildRepository(tmpDir);
+    const { repository, warnings, errors } = buildRepository(tmpDir);
 
     expect(errors).toHaveLength(0);
-    expect(Object.keys(repository)).toHaveLength(2);
-
-    const welcome = repository['welcome-to-grafana'];
-    expect(welcome).toBeDefined();
-    expect(welcome!.path).toBe('welcome-to-grafana/');
-    expect(welcome!.title).toBe('Welcome to Grafana');
-    expect(welcome!.type).toBe('guide');
-
-    const dashboard = repository['first-dashboard'];
-    expect(dashboard).toBeDefined();
-    expect(dashboard!.title).toBe('Create your first dashboard');
+    expect(Object.keys(repository)).toHaveLength(0);
+    expect(warnings.length).toBeGreaterThan(0);
   });
 
   it('should build repository from packages with manifest.json', () => {
@@ -156,11 +147,19 @@ describe('buildRepository', () => {
       title: 'Package A',
       blocks: [],
     });
+    writeJson(path.join(tmpDir, 'pkg-a', 'manifest.json'), {
+      id: 'duplicate-id',
+      type: 'guide',
+    });
 
     writeJson(path.join(tmpDir, 'pkg-b', 'content.json'), {
       id: 'duplicate-id',
       title: 'Package B',
       blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'pkg-b', 'manifest.json'), {
+      id: 'duplicate-id',
+      type: 'guide',
     });
 
     const { errors } = buildRepository(tmpDir);
@@ -190,6 +189,10 @@ describe('buildRepository', () => {
       title: 'Guide A',
       blocks: [],
     });
+    writeJson(path.join(tmpDir, 'guide-a', 'manifest.json'), {
+      id: 'guide-a',
+      type: 'guide',
+    });
 
     fs.writeFileSync(path.join(tmpDir, 'stray-file.json'), '{}', 'utf-8');
 
@@ -199,17 +202,77 @@ describe('buildRepository', () => {
     expect(repository['guide-a']).toBeDefined();
   });
 
-  it('should skip directories without content.json', () => {
+  it('should skip directories without manifest.json', () => {
     fs.mkdirSync(path.join(tmpDir, 'empty-dir'));
     writeJson(path.join(tmpDir, 'valid-guide', 'content.json'), {
       id: 'valid-guide',
       title: 'Valid guide',
       blocks: [],
     });
+    writeJson(path.join(tmpDir, 'valid-guide', 'manifest.json'), {
+      id: 'valid-guide',
+      type: 'guide',
+    });
+    writeJson(path.join(tmpDir, 'content-only', 'content.json'), {
+      id: 'content-only',
+      title: 'Content only',
+      blocks: [],
+    });
 
     const { repository, errors } = buildRepository(tmpDir);
     expect(errors).toHaveLength(0);
     expect(Object.keys(repository)).toHaveLength(1);
+  });
+
+  it('should discover package directories recursively and emit nested relative paths', () => {
+    writeJson(path.join(tmpDir, 'journeys', 'infra-alerting', 'content.json'), {
+      id: 'infra-alerting',
+      title: 'Infrastructure alerting',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'journeys', 'infra-alerting', 'manifest.json'), {
+      id: 'infra-alerting',
+      type: 'journey',
+      steps: ['infra-alerting-find-data'],
+    });
+
+    writeJson(path.join(tmpDir, 'journeys', 'infra-alerting', 'steps', 'find-data', 'content.json'), {
+      id: 'infra-alerting-find-data',
+      title: 'Find data',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'journeys', 'infra-alerting', 'steps', 'find-data', 'manifest.json'), {
+      id: 'infra-alerting-find-data',
+      type: 'guide',
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['infra-alerting']?.path).toBe('journeys/infra-alerting/');
+    expect(repository['infra-alerting-find-data']?.path).toBe('journeys/infra-alerting/steps/find-data/');
+  });
+
+  it('should not recurse into assets subdirectories when discovering manifests', () => {
+    writeJson(path.join(tmpDir, 'guide-a', 'content.json'), {
+      id: 'guide-a',
+      title: 'Guide A',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-a', 'manifest.json'), {
+      id: 'guide-a',
+      type: 'guide',
+    });
+
+    // If assets/ were traversed, this would be picked up and cause a missing content.json error.
+    writeJson(path.join(tmpDir, 'guide-a', 'assets', 'shadow', 'manifest.json'), {
+      id: 'shadow',
+      type: 'guide',
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-a']).toBeDefined();
+    expect(repository['shadow']).toBeUndefined();
   });
 
   it('should handle path-type packages with steps', () => {

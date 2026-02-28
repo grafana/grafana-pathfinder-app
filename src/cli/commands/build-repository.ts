@@ -1,8 +1,9 @@
 /**
  * Build Repository Command
  *
- * Scans a package tree, reads content.json and optional manifest.json
- * for each package, and emits a denormalized repository.json with bare IDs.
+ * Scans a package tree for manifest.json files, reads content.json and
+ * manifest.json for each discovered package directory, and emits a
+ * denormalized repository.json with bare IDs.
  */
 
 import { Command } from 'commander';
@@ -21,31 +22,52 @@ interface BuildRepositoryOptions {
   output?: string;
 }
 
+async function formatRepositoryJson(json: string): Promise<string> {
+  const prettier = await import('prettier');
+  const config = await prettier.resolveConfig(process.cwd());
+  const formatted = await prettier.format(json, {
+    ...(config ?? {}),
+    parser: 'json',
+  });
+
+  return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
+}
+
 /**
  * Discover package directories under a root.
- * A package directory contains at minimum a content.json file.
- * Searches one level deep (immediate children of root).
+ * A package directory is any directory containing manifest.json.
+ * Recurses arbitrarily deep, excluding assets/ subtrees.
  */
 function discoverPackages(root: string): string[] {
   if (!fs.existsSync(root)) {
     return [];
   }
 
-  const entries = fs.readdirSync(root, { withFileTypes: true });
   const packages: string[] = [];
+  const stack = [root];
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
+  while (stack.length > 0) {
+    const currentDir = stack.pop();
+    if (!currentDir) {
       continue;
     }
 
-    const contentPath = path.join(root, entry.name, 'content.json');
-    if (fs.existsSync(contentPath)) {
-      packages.push(path.join(root, entry.name));
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    const hasManifest = entries.some((entry) => entry.isFile() && entry.name === 'manifest.json');
+
+    if (hasManifest) {
+      packages.push(currentDir);
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === 'assets') {
+        continue;
+      }
+      stack.push(path.join(currentDir, entry.name));
     }
   }
 
-  return packages;
+  return packages.sort();
 }
 
 interface PackageReadResult {
@@ -59,8 +81,9 @@ interface PackageReadResult {
 /**
  * Read a single package directory and produce a repository entry.
  */
-function readPackage(packageDir: string): PackageReadResult {
-  const dirName = path.basename(packageDir);
+function readPackage(root: string, packageDir: string): PackageReadResult {
+  const relativeDir = path.relative(root, packageDir).split(path.sep).join('/');
+  const dirName = relativeDir || path.basename(packageDir);
   const warnings: string[] = [];
   const errors: string[] = [];
   const fallbackEntry: RepositoryEntry = { path: `${dirName}/`, type: 'guide' };
@@ -107,6 +130,7 @@ function readPackage(packageDir: string): PackageReadResult {
     entry.type = manifest.type;
     entry.description = manifest.description;
     entry.category = manifest.category;
+    entry.author = manifest.author;
     entry.startingLocation = manifest.startingLocation;
     entry.steps = manifest.steps;
     entry.depends = manifest.depends?.length ? manifest.depends : undefined;
@@ -115,6 +139,8 @@ function readPackage(packageDir: string): PackageReadResult {
     entry.provides = manifest.provides?.length ? manifest.provides : undefined;
     entry.conflicts = manifest.conflicts?.length ? manifest.conflicts : undefined;
     entry.replaces = manifest.replaces?.length ? manifest.replaces : undefined;
+    entry.targeting = manifest.targeting;
+    entry.testEnvironment = manifest.testEnvironment;
   }
 
   return { id, dirName, entry, warnings, errors };
@@ -135,12 +161,12 @@ export function buildRepository(root: string): {
   const packageDirs = discoverPackages(root);
 
   if (packageDirs.length === 0) {
-    warnings.push(`No package directories found under ${root}`);
+    warnings.push(`No package directories with manifest.json found under ${root}`);
     return { repository, warnings, errors };
   }
 
   for (const packageDir of packageDirs) {
-    const result = readPackage(packageDir);
+    const result = readPackage(root, packageDir);
 
     for (const w of result.warnings) {
       warnings.push(`${result.dirName}: ${w}`);
@@ -171,7 +197,7 @@ export const buildRepositoryCommand = new Command('build-repository')
   .description('Build repository.json from a package tree')
   .argument('<root>', 'Root directory containing package directories')
   .option('-o, --output <file>', 'Output file path (default: stdout)')
-  .action((root: string, options: BuildRepositoryOptions) => {
+  .action(async (root: string, options: BuildRepositoryOptions) => {
     const absoluteRoot = path.isAbsolute(root) ? root : path.resolve(process.cwd(), root);
 
     if (!fs.existsSync(absoluteRoot)) {
@@ -189,14 +215,15 @@ export const buildRepositoryCommand = new Command('build-repository')
       console.error(`❌ ${error}`);
     }
 
-    const json = JSON.stringify(repository, null, 2);
+    const unformattedJson = JSON.stringify(repository, null, 2);
+    const json = await formatRepositoryJson(unformattedJson);
 
     if (options.output) {
       const outputPath = path.isAbsolute(options.output) ? options.output : path.resolve(process.cwd(), options.output);
-      fs.writeFileSync(outputPath, json + '\n', 'utf-8');
+      fs.writeFileSync(outputPath, json, 'utf-8');
       console.log(`✅ Wrote repository.json to ${outputPath} (${Object.keys(repository).length} packages)`);
     } else {
-      console.log(json);
+      process.stdout.write(json);
     }
 
     if (errors.length > 0) {

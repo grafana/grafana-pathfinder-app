@@ -39,7 +39,7 @@ The codebase enforces a layered tier model via ratchet tests (`src/validation/ar
 - **Package engine at Tier 2.** The `PackageResolver`, package loader, dependency resolver, and static catalog fetcher live together in `src/package-engine/` as a new Tier 2 engine with its own barrel export (`index.ts`). Lateral isolation means it cannot import from `docs-retrieval`, `learning-paths`, `context-engine`, or other Tier 2 engines.
 - **Graph types at Tier 0, graph builder in CLI.** `GraphNode` and `GraphEdge` type definitions live in `src/types/` for broad importability. The graph construction logic (`build-graph` command) lives in `src/cli/` (excluded from tier enforcement).
 - **Completion state is a consumer concern.** The package engine provides structural dependency resolution ("which packages provide capability X?") but does not check completion state. Determining whether dependencies are satisfied requires completion data from `learning-paths` — callers at Tier 3+ combine both. This avoids a lateral coupling between `package-engine` and `learning-paths`.
-- **Open-world directory semantics.** Package discovery uses the `content.json`-presence heuristic: a subdirectory is a package if and only if it contains `content.json`. Unknown files and subdirectories in or alongside package directories are silently ignored — not warned, not errored. This is the directory-level analog of `.passthrough()` in the JSON schemas. See [extension metadata](./PATHFINDER-PACKAGE-DESIGN.md#extension-metadata).
+- **Open-world directory semantics.** Repository package discovery uses the `manifest.json`-presence heuristic: any subdirectory at any depth is a package candidate if and only if it contains `manifest.json`. Discovery skips `assets/` subtrees and ignores unknown files/directories elsewhere — not warned, not errored. This is the directory-level analog of `.passthrough()` in the JSON schemas. See [extension metadata](./PATHFINDER-PACKAGE-DESIGN.md#extension-metadata).
 
 ### Dual registration
 
@@ -126,30 +126,30 @@ This plan is designed to support and further the [content testing strategy](./TE
 - 38 Layer 1 tests in `src/validation/validate-package.test.ts` and `src/validation/build-graph.test.ts`
 - All 90 test suites pass (1872 tests, 0 failures)
 
-### Phase 2: Bundled repository migration
+### Phase 2: Bundled repository migration ✅
 
-**Goal:** Migrate bundled content (`src/bundled-interactives/`) into the package directory structure, write manifests for each guide, and generate `repository.json` and dependency graph via CLI. Prove the end-to-end pipeline on a small, controlled corpus before migrating external content.
+**Status:** Complete
 
-**Testing layers:** Layer 1 + Layer 2
+**Key decisions and artifacts:**
 
-**Deliverables:**
-
-- [ ] Restructure `src/bundled-interactives/` into package directories:
-  - [ ] Each guide becomes a directory (e.g., `welcome-to-grafana/content.json` instead of `welcome-to-grafana.json`)
-  - [ ] Static link files in `static-links/` migrated to package directories
-  - [ ] Existing `index.json` retained during transition for backwards compatibility
-- [ ] Write `manifest.json` for each bundled guide:
-  - [ ] Seed metadata from current `index.json` entries (`summary` → `description`, `url` → `startingLocation`, `targetPlatform` → `targeting.match`)
-  - [ ] Add dependency fields to express relationships between bundled guides
-  - [ ] Add `targeting` with recommender match expressions
-  - [ ] Set `repository` provenance metadata for the bundled repository
-- [ ] Generate `repository.json` for the bundled repository using `pathfinder-cli build-repository` from Phase 1
-- [ ] Generate dependency graph using `pathfinder-cli build-graph` from Phase 1 (for lint validation — not for plugin runtime consumption)
-- [ ] Validate all bundled packages pass `validate --packages` in CI
-- [ ] Add pre-commit hook for bundled repository that regenerates `repository.json` on commit
-- [ ] CI verification: rebuild `repository.json`, diff against committed version, fail on divergence
-
-**Why third:** Proves the full end-to-end pipeline (schema → CLI → repository index → graph) on a small, controlled corpus that lives inside the plugin repository. By the time external content migrates (Phase 4), the migration pattern is already validated and the tooling is battle-tested.
+- 10 guides migrated to package directories (`<guide-name>/content.json` + `manifest.json`)
+- `repository.json` generated with 10 packages, committed as lockfile (CI verifies freshness via rebuild + diff)
+- Dependency graph validated: 0 errors, 3 warnings (orphaned test/demo/reference packages — expected)
+- `static-links/` retained as-is — these are recommendation rules consumed by the context engine, not content packages. They use a different schema (`rules` array with `match` expressions) and don't conform to `content.json`/`manifest.json`. Migration deferred: when the recommender adopts package `targeting.match` metadata, static-links become redundant and can be removed.
+- `index.json` retained for backwards compatibility — `filename` fields updated to point to directory paths (e.g., `welcome-to-grafana/content.json`). The content-fetcher and context engine continue to use it unchanged.
+- `repository` field set to `"bundled"` to distinguish from the external `interactive-tutorials` repo (which uses the schema default `"interactive-tutorials"`)
+- `testEnvironment.tier` set per guide: `"local"` for OSS guides, `"cloud"` for cloud-only guides
+- Dependency relationships expressed: `loki-grafana-101` depends on `prometheus-grafana-101`; dashboard and query guides recommend their respective welcome tours; `provides` capabilities declared for downstream resolution
+- `targeting.match` uses the recommender's match expression grammar (`urlPrefix`, `targetPlatform`, `and`/`or` combinators)
+- Pre-commit hook **not implemented** — the project has no pre-commit infrastructure (no `.husky/`, no `.lintstagedrc`). CI freshness check (`repository:check` script) is the enforcement mechanism instead.
+- CI: new `validate-packages` job in `.github/workflows/ci.yml` builds CLI, validates packages, and checks `repository.json` freshness. Added to CI gate.
+- npm scripts added: `validate:packages`, `repository:build`, `repository:check`
+- Layer 1 + Layer 2 tests: 43 tests in `bundled-guides.test.ts` (guide content validation) and `bundled-repository.test.ts` (repository schema, freshness, ID consistency, dependency integrity, cycle detection)
+- `RepositoryEntry` extended to denormalize `author`, `targeting`, and `testEnvironment` from manifests — closes the gap between the design spec's "denormalized manifest metadata" intent and the Phase 2 implementation. `author` added to `PackageMetadataFields` (shared with `GraphNode`); `targeting` and `testEnvironment` added to `RepositoryEntry` only (operational concerns, not graph visualization). `build-repository` and `build-graph` updated to propagate the new fields. Design spec field lists in `identity-and-resolution.md` and Phase 4 catalog format updated to match.
+- `testEnvironment.minVersion` set to `"12.2.0"` across all 10 bundled guides
+- `author` set to `{ name: "Interactive Learning", team: "Grafana Developer Advocacy" }` across all 10 bundled guides
+- `recommends` connections aligned with `paths.json`: `first-dashboard` now recommends `prometheus-grafana-101` (getting-started path); `prometheus-advanced-queries` now recommends `loki-grafana-101` (observability-basics path)
+- CI fix: removed invalid `persist-credentials` parameter from `actions/setup-node` steps in `ci.yml` (valid only on `actions/checkout`)
 
 ### Phase 3: Plugin runtime resolution
 
@@ -238,7 +238,7 @@ This plan is designed to support and further the [content testing strategy](./TE
   - [ ] Dependency graph JSON follows the same CI-generated + CDN-published pattern
 - [ ] **Static catalog resolution** (in `src/package-engine/` — extends the PackageResolver from Phase 3):
   - [ ] Build process: CLI aggregates all `repository.json` files (bundled committed lockfile + CDN-published remote indexes) into single `packages-catalog.json`, published to CDN
-  - [ ] Catalog format includes denormalized metadata: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository, title, type, description, category, startingLocation, depends, recommends, suggests, provides, conflicts, replaces } } }` — structurally equivalent to `repository.json` but with URLs instead of paths, enabling dependency resolution from the catalog alone without additional per-package manifest fetches
+  - [ ] Catalog format includes denormalized metadata: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository, title, type, description, category, author, startingLocation, depends, recommends, suggests, provides, conflicts, replaces, targeting, testEnvironment } } }` — structurally equivalent to `repository.json` but with URLs instead of paths, enabling dependency resolution and recommender input from the catalog alone without additional per-package manifest fetches
   - [ ] Plugin fetch strategy: on startup, fetch catalog from CDN; cache in memory for session; fall back to bundled repository if fetch fails (offline/OSS support)
   - [ ] Plugin resolution flow: check bundled repository first (baseline content), then static catalog (extended content)
   - [ ] Same `PackageResolver` interface and `PackageResolution` discriminated union — adds a second resolution tier
