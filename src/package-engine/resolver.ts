@@ -50,6 +50,7 @@ export class BundledPackageResolver implements PackageResolver {
     const entry = this.repository[packageId]!;
 
     const basePath = entry.path;
+    // Scheme is internal to the package-engine loader; not a docs-retrieval URL.
     const contentUrl = `bundled:${basePath}content.json`;
     const manifestUrl = `bundled:${basePath}manifest.json`;
 

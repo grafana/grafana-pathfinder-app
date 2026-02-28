@@ -179,7 +179,16 @@ export interface RepositoryJson {
 export interface PackageResolutionSuccess {
   ok: true;
   id: string;
+  /**
+   * Opaque locator for the package's content.json, consumed by the
+   * package-engine loader — NOT compatible with the docs-retrieval
+   * fetchContent() pipeline which uses a different `bundled:<id>` scheme.
+   */
   contentUrl: string;
+  /**
+   * Opaque locator for the package's manifest.json, consumed by the
+   * package-engine loader.
+   */
   manifestUrl: string;
   repository: string;
   /** Populated when resolve options request content loading */
