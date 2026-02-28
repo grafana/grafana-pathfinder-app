@@ -178,16 +178,27 @@ describe('getTransitiveDependencies', () => {
     expect(deps).toEqual(['welcome-tour']);
   });
 
-  it('should return transitive dependencies', () => {
+  it('should return transitive dependencies in topological order (leaves first)', () => {
     const deps = getTransitiveDependencies(FIXTURE_REPO, 'advanced-queries');
-    expect(deps).toContain('configure-prometheus');
-    expect(deps).toContain('welcome-tour');
-    expect(deps).toHaveLength(2);
+    expect(deps).toEqual(['welcome-tour', 'configure-prometheus']);
   });
 
   it('should not include the package itself', () => {
     const deps = getTransitiveDependencies(FIXTURE_REPO, 'first-dashboard');
     expect(deps).not.toContain('first-dashboard');
+  });
+
+  it('should place shared leaf dependencies before all dependents', () => {
+    const deps = getTransitiveDependencies(FIXTURE_REPO, 'first-dashboard');
+    const welcomeIdx = deps.indexOf('welcome-tour');
+    const promIdx = deps.indexOf('configure-prometheus');
+    const lokiIdx = deps.indexOf('configure-loki');
+
+    expect(welcomeIdx).toBeGreaterThanOrEqual(0);
+    expect(promIdx).toBeGreaterThanOrEqual(0);
+    expect(lokiIdx).toBeGreaterThanOrEqual(0);
+    expect(welcomeIdx).toBeLessThan(promIdx);
+    expect(welcomeIdx).toBeLessThan(lokiIdx);
   });
 
   it('should return empty array for a package with no depends', () => {
@@ -198,7 +209,7 @@ describe('getTransitiveDependencies', () => {
     expect(getTransitiveDependencies(FIXTURE_REPO, 'nonexistent')).toEqual([]);
   });
 
-  it('should handle circular dependencies gracefully', () => {
+  it('should handle circular dependencies gracefully in topological order', () => {
     const circular: RepositoryJson = {
       A: { path: 'A/', type: 'guide', depends: ['B'] },
       B: { path: 'B/', type: 'guide', depends: ['C'] },
@@ -206,9 +217,7 @@ describe('getTransitiveDependencies', () => {
     };
 
     const deps = getTransitiveDependencies(circular, 'A');
-    expect(deps).toContain('B');
-    expect(deps).toContain('C');
-    expect(deps).not.toContain('A');
+    expect(deps).toEqual(['C', 'B']);
   });
 
   it('should handle self-referential dependencies', () => {

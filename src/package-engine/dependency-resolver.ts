@@ -135,22 +135,19 @@ export function getTransitiveDependencies(repository: RepositoryJson, packageId:
     visited.add(id);
 
     const entry = ownEntry(repository, id);
-    if (!entry?.depends) {
-      return;
+    if (entry?.depends) {
+      const depIds = flattenDependencyList(entry.depends);
+      for (const depId of depIds) {
+        dfs(depId);
+      }
     }
 
-    const depIds = flattenDependencyList(entry.depends);
-    for (const depId of depIds) {
-      dfs(depId);
-    }
+    result.push(id);
   }
 
   dfs(packageId);
-  visited.delete(packageId);
 
-  for (const id of visited) {
-    result.push(id);
-  }
+  result.pop();
 
   return result;
 }
