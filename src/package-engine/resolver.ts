@@ -22,6 +22,7 @@ import type {
   RepositoryJson,
   ResolveOptions,
 } from '../types/package.types';
+import { RepositoryJsonSchema } from '../types/package.schema';
 
 import { loadBundledContent, loadBundledManifest } from './loader';
 
@@ -122,5 +123,5 @@ export class BundledPackageResolver implements PackageResolver {
  */
 export function createBundledResolver(): BundledPackageResolver {
   const repositoryData: unknown = require('../bundled-interactives/repository.json');
-  return new BundledPackageResolver(repositoryData as RepositoryJson);
+  return new BundledPackageResolver(RepositoryJsonSchema.parse(repositoryData));
 }

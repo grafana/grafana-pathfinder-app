@@ -195,6 +195,7 @@ This plan is designed to support and further the [content testing strategy](./TE
   - [ ] Plugin fetch strategy: on startup, fetch catalog from CDN; cache in memory for session; fall back to bundled repository if fetch fails (offline/OSS support)
   - [ ] Plugin resolution flow: check bundled repository first (baseline content), then static catalog (extended content)
   - [ ] Same `PackageResolver` interface and `PackageResolution` discriminated union — adds a second resolution tier
+- [ ] Add runtime ID consistency check in resolver: verify that loaded `content.id` and `manifest.id` match the requested `packageId` after loading. Not needed for bundled content (build-time invariants enforce this) but important for remote content where catalog/CDN drift can cause mismatched payloads.
 - [ ] Verify plugin loads and renders `content.json` correctly from both bundled and remote sources
 - [ ] Verify `validate --packages` passes in CI (validates both files)
 - [ ] Extend e2e CLI to read `manifest.json` for pre-flight environment checks (Layer 3 enhancement)
