@@ -75,7 +75,12 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 2: Bundled repository migration             | Layer 1 + Layer 2 |
 | 3: Plugin runtime resolution                | Layer 2           |
 | 3b: Package authoring documentation         | —                 |
-| 4: Pilot migration of interactive-tutorials | Layer 2 + Layer 3 |
+| 4a: Static catalog types and build CLI      | Layer 1           |
+| 4b: Pilot migration (interactive-tutorials) | Layer 1           |
+| 4c: E2E manifest pre-flight                 | Layer 3           |
+| 4d: Static catalog resolver                 | Layer 2           |
+| 4e: Integration verification                | Layer 2 + Layer 3 |
+| 4f: Path migration tooling                  | Layer 1           |
 | 5: Path and journey integration             | Layer 1 + Layer 2 |
 | 6: Layer 4 test environment routing         | Layer 4           |
 | 7: Repository registry service              | —                 |
@@ -183,48 +188,132 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **What this does NOT include:** No code changes — schemas, engine, and CLI are unchanged. No design spec changes. No AGENTS.md updates.
 
-### Phase 4: Pilot migration of interactive-tutorials
+### Phase 4: Pilot migration, static catalog, and pipeline completion
 
-**Goal:** Migrate 3-5 guides from `interactive-tutorials` to the package format, add static catalog resolution for remote content, and validate the full authoring-to-testing pipeline across both bundled and external repositories.
+**Goal:** Extend from bundled-only resolution to multi-repository resolution via a static catalog, migrate pilot guides in `interactive-tutorials` to the package format, add manifest-aware e2e pre-flight checks, and provide path migration tooling.
 
-**Testing layers:** Layer 2 + Layer 3
+**Testing layers:** Layer 1 + Layer 2 + Layer 3
 
-> **Re-planning note:** Phase 4 combines multiple distinct work streams (pilot migration, static catalog resolution, CDN publication, path migration tooling, e2e extension). Documentation was pulled into Phase 3b and is complete. When decomposing Phase 4 into sub-phases, the authoring docs can be referenced immediately by content authors.
+Phase 4 is decomposed into six sub-phases. Sub-phases 4a, 4b, 4c, and 4f can run in parallel (Wave 1). Sub-phase 4d depends on 4a (Wave 2). Sub-phase 4e depends on 4b and 4d (Wave 3).
 
-**Deliverables:**
+```
+Wave 1 (parallel): 4a, 4b, 4c, 4f
+Wave 2:            4d (after 4a)
+Wave 3:            4e (after 4b + 4d)
+```
 
-- [ ] Convert `welcome-to-grafana`, `prometheus-grafana-101`, `first-dashboard` to directory packages in `interactive-tutorials`
-- [ ] For each, create `manifest.json` with flat metadata (description, language, category, author, startingLocation)
-- [ ] Add dependency fields (depends, provides, suggests) to `manifest.json` to express the "Getting started" learning path
-- [ ] Add `targeting` with recommender match expressions to `manifest.json`
-- [ ] Pilot guides include `testEnvironment` in their manifests
-- [ ] **`interactive-tutorials` repository index publication:**
-  - [ ] `repository.json` generated as a CI build artifact during the `interactive-tutorials` CI pipeline, not committed to git
-  - [ ] Published to CDN alongside guide content — always available to the plugin runtime without being a tracked file in the repository
-  - [ ] Same `pathfinder-cli build-repository` command as Phase 0/2, different publication strategy: CI-generated + CDN-published rather than committed lockfile (appropriate for high-velocity content repository where guides change frequently)
-  - [ ] Dependency graph JSON follows the same CI-generated + CDN-published pattern
-- [ ] **Static catalog resolution** (in `src/package-engine/` — extends the PackageResolver from Phase 3):
-  - [ ] Build process: CLI aggregates all `repository.json` files (bundled committed lockfile + CDN-published remote indexes) into single `packages-catalog.json`, published to CDN
-  - [ ] Catalog format includes denormalized metadata: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository, title, type, description, category, author, startingLocation, depends, recommends, suggests, provides, conflicts, replaces, targeting, testEnvironment } } }` — structurally equivalent to `repository.json` but with URLs instead of paths, enabling dependency resolution and recommender input from the catalog alone without additional per-package manifest fetches
-  - [ ] Plugin fetch strategy: on startup, fetch catalog from CDN; cache in memory for session; fall back to bundled repository if fetch fails (offline/OSS support)
-  - [ ] Plugin resolution flow: check bundled repository first (baseline content), then static catalog (extended content)
-  - [ ] Same `PackageResolver` interface and `PackageResolution` discriminated union — adds a second resolution tier
-- [ ] Add runtime ID consistency check in resolver: verify that loaded `content.id` and `manifest.id` match the requested `packageId` after loading. Not needed for bundled content (build-time invariants enforce this) but important for remote content where catalog/CDN drift can cause mismatched payloads.
-- [ ] Verify plugin loads and renders `content.json` correctly from both bundled and remote sources
-- [ ] Verify `validate --packages` passes in CI (validates both files)
-- [ ] Extend e2e CLI to read `manifest.json` for pre-flight environment checks (Layer 3 enhancement)
-- [ ] **Path migration tooling:**
-  - [ ] `migrate-paths` command: tool-assisted migration of existing learning path metadata
-  - [ ] Reads `website/content/docs/learning-journeys/journeys.yaml` (external repo) for dependency graph data
-  - [ ] Reads markdown front-matter from `website/content/docs/learning-journeys/*.md` for title, description, and metadata
-  - [ ] Generates draft `manifest.json` files (with `type: "path"`) for all `*-lj` directories in `interactive-tutorials`
-  - [ ] Uses bare package IDs throughout (no repository prefix in `id` field or dependency references)
-  - [ ] Sets `repository: "interactive-tutorials"` as provenance metadata (not used for resolution)
-  - [ ] Maps `journeys.yaml` `links.to` relationships → `recommends` field in `manifest.json` using bare IDs (soft dependencies, not hard `depends`)
-  - [ ] Extracts `startingLocation` from existing `index.json` `url` field or `targeting.match` URL rules during migration (first URL from targeting becomes `startingLocation`, falls back to `"/"` if no URL rules present)
-  - [ ] Outputs draft manifests for human review and refinement before committing
+#### Phase 4a: Static catalog types and build CLI
 
-**Why fifth:** By this point, the end-to-end pipeline is already proven on bundled content (Phases 2-3). This phase extends to external content with confidence, adds the remote resolution tier, and validates the full authoring-to-testing pipeline across repositories. Layer 3 e2e integration validates the complete workflow.
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 1
+**Can start:** Immediately
+
+New types, schemas, and a CLI command that aggregates multiple `repository.json` files into a single `packages-catalog.json` with full URLs instead of relative paths.
+
+- [ ] `CatalogEntry` and `CatalogJson` types in `src/types/package.types.ts` — structurally like `RepositoryEntry` but with `contentUrl` and `manifestUrl` (URLs) instead of `path`
+- [ ] Corresponding Zod schemas in `src/types/package.schema.ts`
+- [ ] `build-catalog` CLI command in `src/cli/commands/build-catalog.ts` — accepts `name:baseUrl:repoPath` entries (e.g., `bundled:bundled::src/bundled-interactives/repository.json` and `tutorials:https://cdn.grafana.com/tutorials/:path/to/repository.json`), resolves paths to URLs, merges, outputs `packages-catalog.json`
+- [ ] Register in `src/cli/index.ts`
+- [ ] Layer 1 tests: schema validation, URL generation, merge behavior, duplicate ID handling
+- [ ] Update `docs/developer/CLI_TOOLS.md` with `build-catalog` usage
+
+**Key design decision:** The `build-catalog` command maps each repository's relative paths to absolute URLs. The entry format `name:baseUrl:repoPath` provides this. The `bundled:` scheme uses an empty base URL (indicating no remote URL — bundled content uses a different fetch path in the resolver).
+
+#### Phase 4b: Pilot migration (interactive-tutorials)
+
+**Repo:** `interactive-tutorials` (external)
+**Testing:** Layer 1 (validation passes in that repo's CI)
+**Can start:** Immediately
+
+Convert 3-5 existing guides to the two-file package format and set up CI-generated `repository.json` publication. Uses the package authoring docs from Phase 3b as the reference.
+
+- [ ] Convert `welcome-to-grafana`, `prometheus-grafana-101`, `first-dashboard` (and optionally 1-2 more) to `content.json` + `manifest.json` directory packages
+- [ ] Each `manifest.json` includes: `type`, `description`, `category`, `author`, `startingLocation`, dependency fields (`depends`, `recommends`, `provides`), `targeting` with match expressions, `testEnvironment`
+- [ ] CI pipeline: `pathfinder-cli build-repository` runs in CI, outputs `repository.json` as build artifact (not committed to git)
+- [ ] CI pipeline: `pathfinder-cli build-graph` runs in CI for dependency visualization
+- [ ] CDN publication step (or staging equivalent) for `repository.json` alongside guide content
+- [ ] `validate --packages` passes in CI
+
+**Prerequisite:** The `interactive-tutorials` repo needs `pathfinder-cli` available — either as a devDependency or built from this repo during CI.
+
+#### Phase 4c: E2E manifest pre-flight
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 3
+**Can start:** Immediately
+
+Extend the e2e CLI to read `manifest.json` for pre-flight environment checks before running guide tests.
+
+- [ ] Extend `src/cli/commands/e2e.ts` to accept `--package <dir>` (loads `content.json` from the package directory instead of a bare JSON file)
+- [ ] When `manifest.json` exists in the package dir, read `testEnvironment` for pre-flight checks:
+  - [ ] `tier`: verify the current test environment matches (e.g., skip cloud-only guides when testing against local Docker)
+  - [ ] `minVersion`: check Grafana version via API before running (fail fast with clear message)
+  - [ ] `plugins`: verify required plugins are installed
+- [ ] Pre-flight failures produce structured skip/fail messages, not silent passes
+- [ ] Layer 3 tests for the pre-flight checking logic
+
+**Scope boundary:** This does NOT add full Layer 4 test environment routing (that's Phase 6). It adds manifest-aware pre-flight checks to the existing e2e runner.
+
+#### Phase 4d: Static catalog resolver
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 2
+**Depends on:** 4a (needs `CatalogJson` types and schema)
+
+A second `PackageResolver` implementation that fetches content from a static catalog (CDN-published `packages-catalog.json`), plus a composite resolver that chains bundled and catalog resolution.
+
+- [ ] `StaticCatalogResolver` implementing `PackageResolver` in `src/package-engine/`:
+  - [ ] Constructor accepts a fetched `CatalogJson`
+  - [ ] `resolve()` looks up the package in the catalog, returns `PackageResolution` with CDN URLs
+  - [ ] Content/manifest loading via `fetch()` when `loadContent` option is true
+- [ ] `CatalogFetcher` (or inline in resolver factory): on startup, fetch catalog from configured CDN URL; cache in memory for session duration; fall back to empty catalog on network failure
+- [ ] `CompositePackageResolver` (or `createCompositeResolver()` factory):
+  - [ ] Checks bundled resolver first (baseline content always available)
+  - [ ] Falls back to static catalog resolver (extended content from remote repos)
+  - [ ] Same `PackageResolver` interface — callers don't know which tier resolved
+- [ ] Runtime ID consistency check: after loading remote content, verify `content.id` and `manifest.id` match the requested `packageId`. Not needed for bundled content (build-time invariants), but critical for remote content where catalog/CDN drift can cause mismatched payloads.
+- [ ] Export from `src/package-engine/index.ts` barrel
+- [ ] Layer 2 tests: catalog resolution, composite resolution ordering, fallback behavior, ID consistency check, network failure handling
+
+**Key design decision:** The composite resolver preserves the single `PackageResolver` interface — consumers don't change. The resolution priority (bundled first, catalog second) means bundled content always wins for packages that exist in both, providing offline/OSS baseline support.
+
+#### Phase 4e: Integration verification
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 2 + Layer 3
+**Depends on:** 4b (pilot guides exist and are published) + 4d (catalog resolver works)
+
+End-to-end verification that the plugin correctly loads and renders `content.json` from both bundled and remote sources through the new composite resolver.
+
+- [ ] Integration test: create a composite resolver with bundled repo + a test catalog pointing to the pilot guides from 4b, verify resolution succeeds for both bundled and remote packages
+- [ ] Verify rendered output matches between bundled and remote loading of the same guide
+- [ ] Verify `build-catalog` correctly aggregates the bundled `repository.json` and the `interactive-tutorials` `repository.json` into a single catalog
+- [ ] Verify `validate --packages` passes against the pilot migration output
+- [ ] Update this document with Phase 4 completion notes and key decisions
+
+#### Phase 4f: Path migration tooling
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 1
+**Can start:** Immediately
+
+A `migrate-paths` CLI command that reads existing learning path metadata from external sources and generates draft `manifest.json` files.
+
+- [ ] `migrate-paths` command in `src/cli/commands/migrate-paths.ts`
+- [ ] Reads `journeys.yaml` from `website/content/docs/learning-journeys/` (path provided as CLI arg)
+- [ ] Reads markdown front-matter from `*.md` files in the same directory for title, description, and metadata
+- [ ] Generates draft `manifest.json` files (with `type: "path"`) for all `*-lj` directories in `interactive-tutorials`
+- [ ] Uses bare package IDs throughout (no repository prefix in `id` field or dependency references)
+- [ ] Sets `repository: "interactive-tutorials"` as provenance metadata (not used for resolution)
+- [ ] Maps `journeys.yaml` `links.to` relationships → `recommends` field in `manifest.json` using bare IDs (soft dependencies, not hard `depends`)
+- [ ] Extracts `startingLocation` from existing `index.json` `url` field or `targeting.match` URL rules during migration (first URL from targeting becomes `startingLocation`, falls back to `"/"` if no URL rules present)
+- [ ] Outputs to a staging directory for human review and refinement before committing
+- [ ] Register in `src/cli/index.ts`
+- [ ] Layer 1 tests with fixture YAML/MD files
+
+**Scope boundary:** This produces draft manifests. The actual migration (committing them to `interactive-tutorials`, validating, rebuilding repository.json) is a follow-up human or agent task.
+
+**Why fifth:** By this point, the end-to-end pipeline is already proven on bundled content (Phases 2-3). Phase 4 extends to external content with confidence, adds the remote resolution tier, and validates the full authoring-to-testing pipeline across repositories. The sub-phase decomposition enables parallel agent execution across the independent work streams.
 
 ### Phase 5: Path and journey integration
 
@@ -359,8 +448,13 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | 1: CLI package validation                   | CI validation, cross-file checks, dependency graph                              | Layer 1           |
 | 2: Bundled repository migration             | End-to-end proof on local corpus, bundled `repository.json`                     | Layer 1 + Layer 2 |
 | 3: Plugin runtime resolution                | PackageResolver consuming bundled repo, local resolution tier                   | Layer 2           |
-| 3b: Package authoring documentation         | Practitioner docs for package format and CLI commands                            | —                 |
-| 4: Pilot migration of interactive-tutorials | Remote content, static catalog, full authoring-to-testing pipeline              | Layer 2 + Layer 3 |
+| 3b: Package authoring documentation         | Practitioner docs for package format and CLI commands                           | —                 |
+| 4a: Static catalog types and build CLI      | Catalog schema and `build-catalog` CLI for multi-repo aggregation               | Layer 1           |
+| 4b: Pilot migration (interactive-tutorials) | External repo guides in package format, CI-generated repository.json            | Layer 1           |
+| 4c: E2E manifest pre-flight                 | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                | Layer 3           |
+| 4d: Static catalog resolver                 | Remote content resolution via static catalog, composite resolver                | Layer 2           |
+| 4e: Integration verification                | Full pipeline verified across bundled and remote sources                        | Layer 2 + Layer 3 |
+| 4f: Path migration tooling                  | `migrate-paths` CLI for draft manifest generation from existing paths           | Layer 1           |
 | 5: Path and journey integration             | Two-level metapackage model (paths + journeys), `steps`, docs partner alignment | Layer 1 + Layer 2 |
 | 6: Layer 4 test environment routing         | Managed environment routing, version matrix, dataset provisioning               | Layer 4           |
 | 7: Repository registry service              | Dynamic multi-repo resolution, rapid content updates, ecosystem scale           | —                 |
