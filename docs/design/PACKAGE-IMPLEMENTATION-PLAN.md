@@ -74,6 +74,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 1: CLI package validation                   | Layer 1           |
 | 2: Bundled repository migration             | Layer 1 + Layer 2 |
 | 3: Plugin runtime resolution                | Layer 2           |
+| 3b: Package authoring documentation         | —                 |
 | 4: Pilot migration of interactive-tutorials | Layer 2 + Layer 3 |
 | 5: Path and journey integration             | Layer 1 + Layer 2 |
 | 6: Layer 4 test environment routing         | Layer 4           |
@@ -169,13 +170,26 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **Why fourth:** Completes the local end-to-end cycle: bundled content is migrated (Phase 2), and the plugin can now load and resolve it at runtime. Establishes the `PackageResolver` interface that later tiers (static catalog in Phase 4, registry service in Phase 7) will implement.
 
+### Phase 3b: Package authoring documentation
+
+**Goal:** Produce practitioner-facing documentation for the two-file package model, covering the full CLI surface introduced in Phases 0-3. Pulled forward from Phase 4 line 202 so content authors can begin using the package format without waiting for the pilot migration.
+
+**Deliverables:**
+
+- [ ] **Package authoring guide** (`docs/developer/package-authoring.md`): field reference for `content.json` and `manifest.json`, dependency quick reference (AND/OR syntax, `provides`, `conflicts`, `replaces`), targeting and `testEnvironment` sections, copy-paste templates, worked example converting a bare guide to a package directory
+- [ ] **CLI tools update** (`docs/developer/CLI_TOOLS.md`): document `validate --package`, `validate --packages`, `build-repository`, and `build-graph` commands with usage examples and CI workflow snippet
+- [ ] **Repository index reference** (section within package authoring guide): what `repository.json` is, the two publication strategies (committed lockfile vs CI-generated), freshness check setup
+- [ ] **Authoring hub link** (`docs/developer/interactive-examples/authoring-interactive-journeys.md`): add package authoring guide to the reference docs table
+
+**What this does NOT include:** No code changes — schemas, engine, and CLI are unchanged. No design spec changes. No AGENTS.md updates.
+
 ### Phase 4: Pilot migration of interactive-tutorials
 
 **Goal:** Migrate 3-5 guides from `interactive-tutorials` to the package format, add static catalog resolution for remote content, and validate the full authoring-to-testing pipeline across both bundled and external repositories.
 
 **Testing layers:** Layer 2 + Layer 3
 
-> **Re-planning note:** Phase 4 combines multiple distinct work streams (pilot migration, static catalog resolution, CDN publication, path migration tooling, e2e extension, documentation). When Phases 0-3 are complete, decompose Phase 4 into sub-phases based on decisions made during earlier phases. The right decomposition depends on context that does not yet exist.
+> **Re-planning note:** Phase 4 combines multiple distinct work streams (pilot migration, static catalog resolution, CDN publication, path migration tooling, e2e extension). Documentation was pulled into Phase 3b and is complete. When decomposing Phase 4 into sub-phases, the authoring docs can be referenced immediately by content authors.
 
 **Deliverables:**
 
@@ -199,7 +213,6 @@ This plan is designed to support and further the [content testing strategy](./TE
 - [ ] Verify plugin loads and renders `content.json` correctly from both bundled and remote sources
 - [ ] Verify `validate --packages` passes in CI (validates both files)
 - [ ] Extend e2e CLI to read `manifest.json` for pre-flight environment checks (Layer 3 enhancement)
-- [ ] Document the two-file package authoring workflow for content authors and metadata managers
 - [ ] **Path migration tooling:**
   - [ ] `migrate-paths` command: tool-assisted migration of existing learning path metadata
   - [ ] Reads `website/content/docs/learning-journeys/journeys.yaml` (external repo) for dependency graph data
@@ -346,6 +359,7 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | 1: CLI package validation                   | CI validation, cross-file checks, dependency graph                              | Layer 1           |
 | 2: Bundled repository migration             | End-to-end proof on local corpus, bundled `repository.json`                     | Layer 1 + Layer 2 |
 | 3: Plugin runtime resolution                | PackageResolver consuming bundled repo, local resolution tier                   | Layer 2           |
+| 3b: Package authoring documentation         | Practitioner docs for package format and CLI commands                            | —                 |
 | 4: Pilot migration of interactive-tutorials | Remote content, static catalog, full authoring-to-testing pipeline              | Layer 2 + Layer 3 |
 | 5: Path and journey integration             | Two-level metapackage model (paths + journeys), `steps`, docs partner alignment | Layer 1 + Layer 2 |
 | 6: Layer 4 test environment routing         | Managed environment routing, version matrix, dataset provisioning               | Layer 4           |

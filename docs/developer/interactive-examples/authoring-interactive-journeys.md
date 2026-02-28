@@ -19,6 +19,7 @@ The following reference docs cover every aspect of the guide format and interact
 | [Selectors reference](./selectors-reference.md)       | How to target DOM elements — selector priority, `grafana:` prefix resolution, pseudo-selectors, and debugging techniques                                         |
 | [Requirements reference](./requirements-reference.md) | Pre-condition and post-condition system — requirement types, validation flow, `canFix` behavior, and the requirements manager                                    |
 | [Guided interactions](./guided-interactions.md)       | User-performed action mode — when to use guided blocks, completion detection, cancel/skip behavior, and multi-step guided sequences                              |
+| [Package authoring](../package-authoring.md)          | Two-file package model — `content.json` + `manifest.json` field reference, dependency syntax, targeting, templates, and repository index                         |
 
 ## Related engine docs
 
