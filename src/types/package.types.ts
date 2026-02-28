@@ -169,6 +169,70 @@ export interface RepositoryJson {
   [packageId: string]: RepositoryEntry;
 }
 
+// ============ RESOLUTION TYPES ============
+
+/**
+ * Successful package resolution — the resolver found the package and
+ * built URLs for its content and manifest.
+ * @coupling PackageResolver in package-engine/
+ */
+export interface PackageResolutionSuccess {
+  ok: true;
+  id: string;
+  /**
+   * Opaque locator for the package's content.json, consumed by the
+   * package-engine loader — NOT compatible with the docs-retrieval
+   * fetchContent() pipeline which uses a different `bundled:<id>` scheme.
+   */
+  contentUrl: string;
+  /**
+   * Opaque locator for the package's manifest.json, consumed by the
+   * package-engine loader.
+   */
+  manifestUrl: string;
+  repository: string;
+  /** Populated when resolve options request content loading */
+  manifest?: ManifestJson;
+  /** Populated when resolve options request content loading */
+  content?: ContentJson;
+}
+
+/**
+ * Structured error from a failed resolution attempt.
+ */
+export interface ResolutionError {
+  code: 'not-found' | 'network-error' | 'parse-error' | 'validation-error';
+  message: string;
+}
+
+/**
+ * Failed package resolution — the resolver could not produce a result.
+ */
+export interface PackageResolutionFailure {
+  ok: false;
+  id: string;
+  error: ResolutionError;
+}
+
+/** Discriminated union: callers must check `.ok` before accessing data. */
+export type PackageResolution = PackageResolutionSuccess | PackageResolutionFailure;
+
+/**
+ * Options for {@link PackageResolver.resolve}.
+ */
+export interface ResolveOptions {
+  /** When true, fetch and populate manifest and content on the resolution result */
+  loadContent?: boolean;
+}
+
+/**
+ * Resolves bare package IDs to content/manifest locations.
+ * Implementations may back onto bundled content, a static catalog, or a registry service.
+ */
+export interface PackageResolver {
+  resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution>;
+}
+
 // ============ GRAPH TYPES ============
 
 /**

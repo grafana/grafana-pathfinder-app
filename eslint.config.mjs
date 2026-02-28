@@ -14,6 +14,7 @@ const TIER_2_ENGINES = [
   'interactive-engine',
   'requirements-manager',
   'learning-paths',
+  'package-engine',
 ];
 const TIER_1_PLUS = [
   'lib',
