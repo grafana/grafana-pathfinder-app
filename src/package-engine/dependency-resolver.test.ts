@@ -229,7 +229,7 @@ describe('getTransitiveDependencies', () => {
     expect(deps).toEqual([]);
   });
 
-  it('should handle dangling references without error', () => {
+  it('should preserve dangling IDs so consumers can detect unresolvable dependencies', () => {
     const dangling: RepositoryJson = {
       A: { path: 'A/', type: 'guide', depends: ['B'] },
     };

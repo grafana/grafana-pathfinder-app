@@ -123,6 +123,14 @@ export function getPackageDependencies(repository: RepositoryJson, packageId: st
  * depth-first traversal. Handles cycles by tracking visited nodes.
  *
  * Returns package IDs in topological order (dependencies before dependents).
+ *
+ * Dangling IDs (declared in `depends` but absent from the repository) are
+ * intentionally preserved in the result. This function reports the structural
+ * dependency tree as declared, not as resolved. Consumers at Tier 3+ combine
+ * this output with resolver existence checks and learning-paths completion
+ * data to determine actual satisfaction — filtering here would hide missing
+ * dependencies from that logic and break cross-repository resolution when
+ * additional tiers are added (Phase 4+).
  */
 export function getTransitiveDependencies(repository: RepositoryJson, packageId: string): string[] {
   const visited = new Set<string>();
