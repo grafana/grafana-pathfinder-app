@@ -22,11 +22,11 @@ The directory name should match the package `id`.
 
 ### File ownership
 
-| File | Required | Who edits it | Contains |
-| --- | --- | --- | --- |
-| `content.json` | Yes | Content authors (block editor) | `schemaVersion`, `id`, `title`, `blocks` |
-| `manifest.json` | No | Product, enablement, recommender teams | Flat metadata, dependencies, `targeting`, `testEnvironment` |
-| `assets/` | No | Content authors | Images, diagrams, supplementary non-JSON resources |
+| File            | Required | Who edits it                           | Contains                                                    |
+| --------------- | -------- | -------------------------------------- | ----------------------------------------------------------- |
+| `content.json`  | Yes      | Content authors (block editor)         | `schemaVersion`, `id`, `title`, `blocks`                    |
+| `manifest.json` | No       | Product, enablement, recommender teams | Flat metadata, dependencies, `targeting`, `testEnvironment` |
+| `assets/`       | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources          |
 
 Content and metadata are separate files because they serve different consumers, are authored by different roles, and change for different reasons. The block editor reads and writes `content.json` without touching `manifest.json`. Git diffs stay scoped to the concern being changed.
 
@@ -44,12 +44,12 @@ Package directories may contain arbitrary additional files and subdirectories be
 
 The content file is what the block editor produces. It contains only the fields needed to render the guide.
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `schemaVersion` | `string` | No | Schema version (default: `"1.1.0"` for packages) |
-| `id` | `string` | Yes | Bare package identifier — must match `manifest.json` |
-| `title` | `string` | Yes | Display title for the guide |
-| `blocks` | `JsonBlock[]` | Yes | Array of content blocks (see [JSON guide format](./interactive-examples/json-guide-format.md)) |
+| Field           | Type          | Required | Description                                                                                    |
+| --------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `schemaVersion` | `string`      | No       | Schema version (default: `"1.1.0"` for packages)                                               |
+| `id`            | `string`      | Yes      | Bare package identifier — must match `manifest.json`                                           |
+| `title`         | `string`      | Yes      | Display title for the guide                                                                    |
+| `blocks`        | `JsonBlock[]` | Yes      | Array of content blocks (see [JSON guide format](./interactive-examples/json-guide-format.md)) |
 
 ---
 
@@ -57,26 +57,26 @@ The content file is what the block editor produces. It contains only the fields 
 
 The manifest carries metadata, dependencies, and targeting as flat top-level fields. All fields except `id` and `type` are optional.
 
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `schemaVersion` | `string` | No | `"1.1.0"` | Schema version |
-| `id` | `string` | **Yes** | — | Bare package identifier — must match `content.json` |
-| `type` | `"guide"` \| `"path"` \| `"journey"` | **Yes** | — | Package type |
-| `repository` | `string` | No | `"interactive-tutorials"` | Provenance — which repository this package belongs to |
-| `steps` | `string[]` | Required for `path`/`journey` | — | Ordered bare IDs of child packages |
-| `description` | `string` | Recommended | — | Full description for display and search |
-| `language` | `string` | No | `"en"` | Content language (BCP 47 tag) |
-| `category` | `string` | Recommended | — | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`) |
-| `author` | `{ name?, team? }` | Recommended | — | Content author or owning team |
-| `startingLocation` | `string` | Recommended | `"/"` | URL path where the guide expects to begin execution |
-| `depends` | `DependencyList` | No | — | Hard prerequisites — must be completed first |
-| `recommends` | `DependencyList` | No | — | Soft prerequisites — recommended but not required |
-| `suggests` | `DependencyList` | No | — | Related content for enrichment |
-| `provides` | `string[]` | No | — | Virtual capabilities this guide provides on completion |
-| `conflicts` | `string[]` | No | — | Packages this one conflicts with (mutually exclusive) |
-| `replaces` | `string[]` | No | — | Packages this one supersedes entirely |
-| `targeting` | `{ match? }` | No | — | Advisory recommendation targeting (see [targeting](#targeting)) |
-| `testEnvironment` | `TestEnvironment` | Recommended | `{ tier: "cloud" }` | Test infrastructure requirements (see [testEnvironment](#testenvironment)) |
+| Field              | Type                                 | Required                      | Default                   | Description                                                                |
+| ------------------ | ------------------------------------ | ----------------------------- | ------------------------- | -------------------------------------------------------------------------- |
+| `schemaVersion`    | `string`                             | No                            | `"1.1.0"`                 | Schema version                                                             |
+| `id`               | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                        |
+| `type`             | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                               |
+| `repository`       | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                      |
+| `steps`            | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                         |
+| `description`      | `string`                             | Recommended                   | —                         | Full description for display and search                                    |
+| `language`         | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                              |
+| `category`         | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)     |
+| `author`           | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team                                              |
+| `startingLocation` | `string`                             | Recommended                   | `"/"`                     | URL path where the guide expects to begin execution                        |
+| `depends`          | `DependencyList`                     | No                            | —                         | Hard prerequisites — must be completed first                               |
+| `recommends`       | `DependencyList`                     | No                            | —                         | Soft prerequisites — recommended but not required                          |
+| `suggests`         | `DependencyList`                     | No                            | —                         | Related content for enrichment                                             |
+| `provides`         | `string[]`                           | No                            | —                         | Virtual capabilities this guide provides on completion                     |
+| `conflicts`        | `string[]`                           | No                            | —                         | Packages this one conflicts with (mutually exclusive)                      |
+| `replaces`         | `string[]`                           | No                            | —                         | Packages this one supersedes entirely                                      |
+| `targeting`        | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))            |
+| `testEnvironment`  | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment)) |
 
 ---
 
@@ -86,23 +86,23 @@ Dependency fields use **conjunctive normal form** (CNF): the outer array is AND,
 
 ### AND/OR syntax
 
-| JSON | Meaning | Debian equivalent |
-| --- | --- | --- |
-| `["A", "B"]` | A **and** B | `A, B` |
-| `[["A", "B"]]` | A **or** B | `A \| B` |
-| `[["A", "B"], "C"]` | (A **or** B) **and** C | `A \| B, C` |
-| `["A", ["B", "C"], "D"]` | A **and** (B **or** C) **and** D | `A, B \| C, D` |
+| JSON                     | Meaning                          | Debian equivalent |
+| ------------------------ | -------------------------------- | ----------------- |
+| `["A", "B"]`             | A **and** B                      | `A, B`            |
+| `[["A", "B"]]`           | A **or** B                       | `A \| B`          |
+| `[["A", "B"], "C"]`      | (A **or** B) **and** C           | `A \| B, C`       |
+| `["A", ["B", "C"], "D"]` | A **and** (B **or** C) **and** D | `A, B \| C, D`    |
 
 ### Dependency field semantics
 
-| Field | Meaning | Effect |
-| --- | --- | --- |
-| `depends` | Hard prerequisite — must be completed before this guide is accessible | Blocks access |
-| `recommends` | Soft prerequisite — most users benefit from completing first | Prompts but does not block |
-| `suggests` | Related content that enhances understanding | Informational only |
-| `provides` | Completing this guide satisfies any dependency on the named capability | Enables virtual capabilities |
-| `conflicts` | Cannot be meaningfully used together (deprecated content, mutually exclusive) | Schema-only — not enforced at runtime yet |
-| `replaces` | This guide supersedes another entirely | Schema-only — not enforced at runtime yet |
+| Field        | Meaning                                                                       | Effect                                    |
+| ------------ | ----------------------------------------------------------------------------- | ----------------------------------------- |
+| `depends`    | Hard prerequisite — must be completed before this guide is accessible         | Blocks access                             |
+| `recommends` | Soft prerequisite — most users benefit from completing first                  | Prompts but does not block                |
+| `suggests`   | Related content that enhances understanding                                   | Informational only                        |
+| `provides`   | Completing this guide satisfies any dependency on the named capability        | Enables virtual capabilities              |
+| `conflicts`  | Cannot be meaningfully used together (deprecated content, mutually exclusive) | Schema-only — not enforced at runtime yet |
+| `replaces`   | This guide supersedes another entirely                                        | Schema-only — not enforced at runtime yet |
 
 ### Virtual capabilities
 
@@ -169,14 +169,14 @@ The `match` field is loosely typed — the recommender owns match semantics. The
 
 The `testEnvironment` field declares what infrastructure a guide needs for Layer 4 E2E testing.
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `tier` | `string` | Environment tier: `"local"` (OSS/Docker), `"cloud"` (Grafana Cloud), etc. |
-| `minVersion` | `string` | Minimum Grafana version (semver, e.g., `"12.2.0"`) |
-| `datasets` | `string[]` | Named datasets the environment must provision |
-| `datasources` | `string[]` | Data source types the environment must have |
-| `plugins` | `string[]` | Plugin IDs the environment must have installed |
-| `instance` | `string` | Specific Grafana instance hostname (e.g., `play.grafana.org`) |
+| Field         | Type       | Description                                                               |
+| ------------- | ---------- | ------------------------------------------------------------------------- |
+| `tier`        | `string`   | Environment tier: `"local"` (OSS/Docker), `"cloud"` (Grafana Cloud), etc. |
+| `minVersion`  | `string`   | Minimum Grafana version (semver, e.g., `"12.2.0"`)                        |
+| `datasets`    | `string[]` | Named datasets the environment must provision                             |
+| `datasources` | `string[]` | Data source types the environment must have                               |
+| `plugins`     | `string[]` | Plugin IDs the environment must have installed                            |
+| `instance`    | `string`   | Specific Grafana instance hostname (e.g., `play.grafana.org`)             |
 
 When `testEnvironment` is omitted, the default is `{ tier: "cloud" }`.
 
@@ -223,10 +223,10 @@ Each entry maps a bare package ID to a `RepositoryEntry` with the package's path
 
 There are two strategies, chosen based on how frequently the repository's content changes:
 
-| Strategy | When to use | How it works |
-| --- | --- | --- |
-| **Committed lockfile** | Low-velocity repos (e.g., bundled guides in the plugin repo) | `repository.json` is committed to git; CI verifies freshness by rebuilding and diffing |
-| **CI-generated** | High-velocity repos (e.g., `interactive-tutorials`) | `repository.json` is generated as a CI build artifact and published to CDN, not committed |
+| Strategy               | When to use                                                  | How it works                                                                              |
+| ---------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| **Committed lockfile** | Low-velocity repos (e.g., bundled guides in the plugin repo) | `repository.json` is committed to git; CI verifies freshness by rebuilding and diffing    |
+| **CI-generated**       | High-velocity repos (e.g., `interactive-tutorials`)          | `repository.json` is generated as a CI build artifact and published to CDN, not committed |
 
 ### Setting up the freshness check (committed lockfile)
 
@@ -340,11 +340,7 @@ A path composes multiple guides into an ordered sequence:
   "type": "path",
   "description": "A guided learning path through the fundamentals of Grafana.",
   "category": "getting-started",
-  "steps": [
-    "welcome-to-grafana",
-    "first-dashboard",
-    "prometheus-grafana-101"
-  ]
+  "steps": ["welcome-to-grafana", "first-dashboard", "prometheus-grafana-101"]
 }
 ```
 
