@@ -31,6 +31,7 @@ export const TIER_MAP: Record<string, number> = {
   'interactive-engine': 2,
   'requirements-manager': 2,
   'learning-paths': 2,
+  'package-engine': 2,
   integrations: 3,
   components: 4,
   pages: 4,

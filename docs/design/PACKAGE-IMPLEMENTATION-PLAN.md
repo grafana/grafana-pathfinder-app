@@ -151,68 +151,21 @@ This plan is designed to support and further the [content testing strategy](./TE
 - `recommends` connections aligned with `paths.json`: `first-dashboard` now recommends `prometheus-grafana-101` (getting-started path); `prometheus-advanced-queries` now recommends `loki-grafana-101` (observability-basics path)
 - CI fix: removed invalid `persist-credentials` parameter from `actions/setup-node` steps in `ci.yml` (valid only on `actions/checkout`)
 
-### Phase 3: Plugin runtime resolution
+### Phase 3: Plugin runtime resolution ✅
 
-**Goal:** The plugin can consume packages at runtime using the bundled `repository.json`. Single local resolution tier — no remote content, no static catalog. Architecture designed for forward compatibility with additional resolution tiers in later phases.
+**Status:** Complete
 
-**Testing layers:** Layer 2
+**Key decisions and artifacts:**
 
-**Deliverables:**
-
-- [ ] **Package engine setup** (`src/package-engine/`, Tier 2):
-  - [ ] Create `src/package-engine/` directory with `index.ts` barrel export
-  - [ ] Register in `TIER_MAP` (`src/validation/import-graph.ts`) as tier 2 and in `TIER_2_ENGINES` / tier constants (`eslint.config.mjs`)
-  - [ ] Verify `npm run test:ci` passes with new engine registered (tier map completeness test)
-- [ ] **PackageResolver implementation** (in `src/package-engine/`):
-  - [ ] Reads bundled `repository.json` to build in-memory package lookup
-  - [ ] Resolves bare ID → content URL + manifest URL from bundled repository paths
-  - [ ] `resolve()` returns a discriminated union — either package information or a rich error. Resolution can fail due to nonexistent ID, network failure, or other errors. Callers must discriminate before accessing data (works with `noUncheckedIndexedAccess`).
-  - [ ] Resolution interface (type definitions in `src/types/`, Tier 0):
-    ```typescript
-    interface PackageResolutionSuccess {
-      ok: true;
-      id: string;
-      contentUrl: string;
-      manifestUrl: string;
-      repository: string;
-      /** Populated when resolve options request content loading */
-      manifest?: ManifestJson;
-      /** Populated when resolve options request content loading */
-      content?: ContentJson;
-    }
-    interface ResolutionError {
-      code: 'not-found' | 'network-error' | 'parse-error' | 'validation-error';
-      message: string;
-    }
-    interface PackageResolutionFailure {
-      ok: false;
-      id: string;
-      error: ResolutionError;
-    }
-    type PackageResolution = PackageResolutionSuccess | PackageResolutionFailure;
-    interface ResolveOptions {
-      /** When true, fetch and populate manifest and content on the resolution result */
-      loadContent?: boolean;
-    }
-    interface PackageResolver {
-      resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution>;
-    }
-    ```
-  - [ ] Repositories are internal to the resolver — URLs pointing to indexes, not first-class objects
-- [ ] **Package loader** (in `src/package-engine/`):
-  - [ ] Load directory packages (`content.json` + `manifest.json`) from resolved locations. Package directories may contain additional files and subdirectories placed by extension tools (see [extension metadata](./PATHFINDER-PACKAGE-DESIGN.md#extension-metadata)); the loader reads only the known core files and does not warn about unknown directory contents.
-  - [ ] Fallback to single-file guides for backwards compatibility — the loader recognizes old-format single-file JSON and parses it using schemas from `src/types/` (Tier 0) and validation from `src/validation/` (Tier 1). This is self-contained within the package engine; no import from `docs-retrieval` is needed.
-  - [ ] Handle local (bundled) content sources
-  - [ ] **Transitional duplication note:** During the migration period, content loading logic will exist in both `docs-retrieval` (existing paths) and `package-engine` (new package loading + legacy fallback). The duplication is intentional — it avoids a lateral coupling between the two Tier 2 engines. Full resolution depends on work in the external `grafana-recommender` microservice (outside this plan's scope) to adopt package resolution; until then, both code paths must remain.
-- [ ] **Structural dependency resolution** (in `src/package-engine/`):
-  - [ ] Resolve structural `depends`, `suggests`, and `provides` relationships using metadata from `repository.json` directly (not from CLI-generated graph)
-  - [ ] **Provides-aware resolution (structural only):** given a dependency target, determine which packages provide that capability. Example: `getProviders("datasource-configured")` returns `["configure-prometheus", "configure-loki"]`. The package engine answers "which packages satisfy this?" — not "is it satisfied?"
-  - [ ] **Satisfaction checking is a consumer concern.** Determining whether a dependency is actually satisfied requires completion state from `learning-paths` (Tier 2). The package engine cannot import from `learning-paths` (lateral isolation). Consumers at Tier 3+ (integrations) or Tier 4 (components) combine structural resolution from the package engine with completion data from `learning-paths` to determine satisfaction.
-  - [ ] Support navigation and recommendations based on dependency metadata
-  - [ ] Handle circular dependencies gracefully
-- [ ] Plugin runtime does **not** consume the CLI-generated dependency graph — that artifact is for the recommender service, visualization, and lint tooling. This keeps client memory bounded as the content corpus grows.
-- [ ] **Barrel export surface** (`src/package-engine/index.ts`): export `PackageResolver`, the resolution type union, loader functions, and structural dependency query functions. Design for stability — consumers should not need internal imports.
-- [ ] Layer 2 unit tests for bundled resolution, package loader, and structural dependency resolver
+- Resolution types (`PackageResolutionSuccess`, `PackageResolutionFailure`, `PackageResolution`, `ResolveOptions`, `PackageResolver`, `ResolutionError`) added to `src/types/package.types.ts` at Tier 0; exported from `src/types/index.ts` for broad importability
+- `package-engine` registered as Tier 2 in both `TIER_MAP` (`src/validation/import-graph.ts`) and `TIER_2_ENGINES` (`eslint.config.mjs`); architecture ratchet tests pass with unchanged violation counts (vertical=4, lateral=9, barrel=0)
+- **`BundledPackageResolver`** in `src/package-engine/resolver.ts`: constructor accepts `RepositoryJson`, resolves bare IDs to `bundled:<path>content.json` / `bundled:<path>manifest.json` URLs; `createBundledResolver()` factory loads bundled `repository.json` via webpack `require()`
+- **Package loader** in `src/package-engine/loader.ts`: `loadBundledContent()`, `loadBundledManifest()`, `loadBundledLegacyGuide()` — all return `LoadOutcome<T>` discriminated union reusing `ResolutionError` codes; manifest loading uses `.loose()` (Zod v4 replacement for `.passthrough()`) to tolerate extension metadata; content loading self-contained within package engine (no import from `docs-retrieval`, intentional transitional duplication)
+- **Structural dependency resolver** in `src/package-engine/dependency-resolver.ts`: `getProviders()`, `getPackageDependencies()`, `getTransitiveDependencies()` (DFS with visited set for cycle safety), `getRecommendedBy()`, `getDependedOnBy()`, `flattenDependencyList()`, `buildProvidesIndex()`, `listPackageIds()`, `getRepositoryEntry()` — all pure functions taking `RepositoryJson` as parameter, no state
+- **Barrel export** (`src/package-engine/index.ts`): resolver class + factory, loader functions + types, dependency query functions + types
+- Bundled content URLs use `bundled:` scheme (e.g., `bundled:first-dashboard/content.json`) consistent with existing `bundled:` prefix convention in `docs-retrieval`
+- Manifest loading is optional — resolver returns `manifest: undefined` when manifest fails to load, success when only content loads; this supports future packages that may lack manifests during migration
+- 72 Layer 2 tests across 3 test files: `resolver.test.ts` (mocked loader for content paths, real bundled repo for factory), `loader.test.ts` (real bundled content integration), `dependency-resolver.test.ts` (pure fixture-based unit tests including cycle handling)
 
 **Why fourth:** Completes the local end-to-end cycle: bundled content is migrated (Phase 2), and the plugin can now load and resolve it at runtime. Establishes the `PackageResolver` interface that later tiers (static catalog in Phase 4, registry service in Phase 7) will implement.
 
