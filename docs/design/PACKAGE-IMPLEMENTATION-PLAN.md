@@ -68,24 +68,24 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 ### Phase-to-layer mapping
 
-| Phase                                       | Testing layers    |
-| ------------------------------------------- | ----------------- |
-| 0: Schema foundation                        | Layer 1           |
-| 1: CLI package validation                   | Layer 1           |
-| 2: Bundled repository migration             | Layer 1 + Layer 2 |
-| 3: Plugin runtime resolution                | Layer 2           |
-| 3b: Package authoring documentation         | —                 |
-| 4a: Static catalog types and build CLI      | Layer 1           |
-| 4b: Pilot migration (interactive-tutorials) | Layer 1           |
-| 4c: E2E manifest pre-flight                 | Layer 3           |
-| 4d: Static catalog resolver                 | Layer 2           |
-| 4e: Integration verification                | Layer 2 + Layer 3 |
-| 4f: Path migration tooling                  | Layer 1           |
-| 5: Path and journey integration             | Layer 1 + Layer 2 |
-| 6: Layer 4 test environment routing         | Layer 4           |
-| 7: Repository registry service              | —                 |
-| 8: SCORM foundation                         | —                 |
-| 9+: SCORM import pipeline                   | —                 |
+| Phase                                       | Testing layers     |
+| ------------------------------------------- | ------------------ |
+| 0: Schema foundation                        | Layer 1            |
+| 1: CLI package validation                   | Layer 1            |
+| 2: Bundled repository migration             | Layer 1 + Layer 2  |
+| 3: Plugin runtime resolution                | Layer 2            |
+| 3b: Package authoring documentation         | —                  |
+| 4a: Backend package resolution routes       | Go tests + Layer 2 |
+| 4b: Pilot migration (interactive-tutorials) | Layer 1            |
+| 4c: E2E manifest pre-flight                 | Layer 3            |
+| 4d: Frontend remote resolver                | Layer 2            |
+| 4e: Integration verification                | Layer 2 + Layer 3  |
+| 4f: Path migration tooling                  | Layer 1            |
+| 5: Path and journey integration             | Layer 1 + Layer 2  |
+| 6: Layer 4 test environment routing         | Layer 4            |
+| 7: Repository registry service              | —                  |
+| 8: SCORM foundation                         | —                  |
+| 9+: SCORM import pipeline                   | —                  |
 
 ---
 
@@ -188,13 +188,15 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **What this does NOT include:** No code changes — schemas, engine, and CLI are unchanged. No design spec changes. No AGENTS.md updates.
 
-### Phase 4: Pilot migration, static catalog, and pipeline completion
+### Phase 4: Pilot migration, backend resolution, and pipeline completion
 
-**Goal:** Extend from bundled-only resolution to multi-repository resolution via a static catalog, migrate pilot guides in `interactive-tutorials` to the package format, add manifest-aware e2e pre-flight checks, and provide path migration tooling.
+**Goal:** Extend from bundled-only resolution to multi-repository resolution via backend package routes, migrate pilot guides in `interactive-tutorials` to the package format, add manifest-aware e2e pre-flight checks, and provide path migration tooling.
 
 **Testing layers:** Layer 1 + Layer 2 + Layer 3
 
-Phase 4 is decomposed into six sub-phases. Sub-phases 4a, 4b, 4c, and 4f can run in parallel (Wave 1). Sub-phase 4d depends on 4a (Wave 2). Sub-phase 4e depends on 4b and 4d (Wave 3).
+**Architecture decision: recommender-based resolution, not static catalog.** The original design proposed a static `packages-catalog.json` that aggregated all repository indexes into a single file fetched by the frontend plugin at startup. This was replaced with resolution routes on the recommender microservice ([`grafana-recommender`](https://github.com/grafana/grafana-recommender)) for three reasons: (1) a pre-aggregated catalog suffers from freshness lag — any content repo update requires rebuilding and re-publishing the catalog; (2) the frontend plugin holds the full catalog in memory for the session, which scales poorly as the content corpus grows; (3) the recommender already needs repository index data for targeting and dependency graph analysis anyway — adding resolution routes to the same service that already caches these indexes avoids duplicating infrastructure. Moving resolution to the recommender keeps the frontend thin (it only needs bare IDs and the recommender URL), puts index caching where memory is cheap (server-side), and avoids build-time coupling between the plugin and every content repository's publication cadence. The frontend's `PackageResolver` interface is unchanged — only the implementation moves from local index lookup to a recommender HTTP call. Bundled content continues to resolve locally for offline/OSS support.
+
+Phase 4 is decomposed into five sub-phases. Sub-phases 4a, 4b, 4c, and 4f can run in parallel (Wave 1). Sub-phase 4d depends on 4a (Wave 2). Sub-phase 4e depends on 4b and 4d (Wave 3).
 
 ```
 Wave 1 (parallel): 4a, 4b, 4c, 4f
@@ -202,26 +204,41 @@ Wave 2:            4d (after 4a)
 Wave 3:            4e (after 4b + 4d)
 ```
 
-#### Phase 4a: Static catalog types and build CLI
+#### Phase 4a: Backend package resolution routes
 
-**Repo:** `grafana-pathfinder-app`
-**Testing:** Layer 1
+**Repo:** [`grafana-recommender`](https://github.com/grafana/grafana-recommender) (the Go recommender microservice — **not** the Go plugin backend in `grafana-pathfinder-app/pkg/`). A local clone lives at `../grafana-recommender/` relative to this repo for agent inspection; see `AGENTS.md` there for repo conventions.
+**Testing:** Go unit tests + Layer 2
 **Can start:** Immediately
 
-New types, schemas, and a CLI command that aggregates multiple `repository.json` files into a single `packages-catalog.json` with full URLs instead of relative paths.
+Add package resolution endpoints to the recommender microservice. The recommender already fetches external configuration via URL (see `loadFromURL` and `STATE_RECOMMENDATIONS_URL` in `cmd/recommender/main.go`); the same pattern extends to fetching and caching remote `repository.json` files. Resolution routes resolve bare package IDs across repositories in priority order and serve content and manifest JSON to the frontend plugin.
 
-- [ ] `CatalogEntry` and `CatalogJson` types in `src/types/package.types.ts` — structurally like `RepositoryEntry` but with `contentUrl` and `manifestUrl` (URLs) instead of `path`
-- [ ] Corresponding Zod schemas in `src/types/package.schema.ts`
-- [ ] `build-catalog` CLI command in `src/cli/commands/build-catalog.ts` — accepts `name:baseUrl:repoPath` entries (e.g., `bundled:bundled::src/bundled-interactives/repository.json` and `tutorials:https://cdn.grafana.com/tutorials/:path/to/repository.json`), resolves paths to URLs, merges, outputs `packages-catalog.json`
-- [ ] Register in `src/cli/index.ts`
-- [ ] Layer 1 tests: schema validation, URL generation, merge behavior, duplicate ID handling
-- [ ] Update `docs/developer/CLI_TOOLS.md` with `build-catalog` usage
+- [ ] **Resolution endpoints in `cmd/recommender/main.go` (or a new `packages.go` handler file):**
+  - [ ] `GET /api/packages/{id}/content` — resolves the bare package ID and returns the package's `content.json` (proxied from CDN or served from cache)
+  - [ ] `GET /api/packages/{id}/manifest` — resolves the bare package ID and returns the package's `manifest.json`
+  - [ ] Both endpoints return 404 with a structured `ResolutionError` when the package is not found
+  - [ ] Both endpoints return appropriate cache headers for downstream caching
+- [ ] **Repository index management:**
+  - [ ] Config-driven list of repository URLs (e.g., `https://cdn.grafana.com/interactive-tutorials/repository.json`) via environment variable (consistent with the recommender's existing `STATE_RECOMMENDATIONS_URL` pattern)
+  - [ ] Periodic fetch and in-memory caching of each repository's `repository.json` with configurable TTL (aligned with the recommender's existing ~20-minute refresh cycle)
+  - [ ] Repository priority ordering: remote repositories ordered by configuration
+  - [ ] Graceful degradation: if a remote repository is unreachable, use the last cached version; if no cache exists, skip that repository
+- [ ] **Resolution logic:**
+  - [ ] Given a bare package ID, check repositories in priority order until a match is found
+  - [ ] Construct content/manifest CDN URLs from the matched `RepositoryEntry.path` and the repository's base URL
+  - [ ] Runtime ID consistency check: after fetching remote content, verify `content.id` and `manifest.id` match the requested package ID (guards against catalog/CDN drift)
+- [ ] **Go unit tests** for resolution logic, priority ordering, caching, fallback behavior, ID consistency checks
+- [ ] **Shared repository index** between resolution routes and the recommender — the recommender's existing periodic refresh of content indexes (via `loadAllConfigs`) can be unified with the package resolution index, since both consume the same `repository.json` files
+- [ ] **Update `openapi.yaml`** in `grafana-recommender` with the new resolution endpoints
 
-**Key design decision:** The `build-catalog` command maps each repository's relative paths to absolute URLs. The entry format `name:baseUrl:repoPath` provides this. The `bundled:` scheme uses an empty base URL (indicating no remote URL — bundled content uses a different fetch path in the resolver).
+**Key design decisions:**
+
+- The recommender proxies content rather than redirecting so that CORS and mixed-content issues are handled server-side. The recommender already sets `Access-Control-Allow-Origin: *`, so the frontend plugin can call resolution routes directly. If performance requires it, a redirect mode can be added later.
+- Repository configuration lives in environment variables (consistent with the recommender's existing config pattern) so that different deployments can point to different content repositories without code changes.
+- The recommender and resolution routes share the same cached repository indexes — one refresh cycle, two consumers. The `loadAllConfigs` / `/reload` pattern extends to include repository index refresh.
 
 #### Phase 4b: Pilot migration (interactive-tutorials)
 
-**Repo:** `interactive-tutorials` (external)
+**Repo:** [`interactive-tutorials`](https://github.com/grafana/interactive-tutorials) (external content repository). A local clone lives at `../interactive-tutorials/` relative to this repo for agent inspection.
 **Testing:** Layer 1 (validation passes in that repo's CI)
 **Can start:** Immediately
 
@@ -234,7 +251,7 @@ Convert 3-5 existing guides to the two-file package format and set up CI-generat
 - [ ] CDN publication step (or staging equivalent) for `repository.json` alongside guide content
 - [ ] `validate --packages` passes in CI
 
-**Prerequisite:** The `interactive-tutorials` repo needs `pathfinder-cli` available — either as a devDependency or built from this repo during CI.
+**CLI availability:** The `interactive-tutorials` CI already checks out `grafana-pathfinder-app`, installs dependencies, and builds the CLI for guide validation (see `.github/workflows/validate-json.yml`, `validate-guides` job). The same cross-repo checkout pattern extends to run `build-repository`, `build-graph`, and `validate --packages`.
 
 #### Phase 4c: E2E manifest pre-flight
 
@@ -254,40 +271,38 @@ Extend the e2e CLI to read `manifest.json` for pre-flight environment checks bef
 
 **Scope boundary:** This does NOT add full Layer 4 test environment routing (that's Phase 6). It adds manifest-aware pre-flight checks to the existing e2e runner.
 
-#### Phase 4d: Static catalog resolver
+#### Phase 4d: Frontend remote resolver
 
 **Repo:** `grafana-pathfinder-app`
 **Testing:** Layer 2
-**Depends on:** 4a (needs `CatalogJson` types and schema)
+**Depends on:** 4a (backend routes must exist)
 
-A second `PackageResolver` implementation that fetches content from a static catalog (CDN-published `packages-catalog.json`), plus a composite resolver that chains bundled and catalog resolution.
+A thin frontend `PackageResolver` implementation that resolves bare package IDs by calling the recommender's resolution routes from Phase 4a. Composed with the existing `BundledPackageResolver` for offline fallback.
 
-- [ ] `StaticCatalogResolver` implementing `PackageResolver` in `src/package-engine/`:
-  - [ ] Constructor accepts a fetched `CatalogJson`
-  - [ ] `resolve()` looks up the package in the catalog, returns `PackageResolution` with CDN URLs
-  - [ ] Content/manifest loading via `fetch()` when `loadContent` option is true
-- [ ] `CatalogFetcher` (or inline in resolver factory): on startup, fetch catalog from configured CDN URL; cache in memory for session duration; fall back to empty catalog on network failure
+- [ ] `BackendPackageResolver` implementing `PackageResolver` in `src/package-engine/`:
+  - [ ] `resolve()` calls `GET /api/packages/{id}/content` on the recommender microservice directly (the recommender already allows cross-origin requests via `Access-Control-Allow-Origin: *`). The recommender URL is discovered via the same mechanism the frontend already uses for `/recommend` calls.
+  - [ ] Returns `PackageResolution` with the loaded content; populates `manifest` when `loadContent` is requested by calling the manifest endpoint
+  - [ ] Handles 404 as `not-found`, network failures as `network-error`
 - [ ] `CompositePackageResolver` (or `createCompositeResolver()` factory):
-  - [ ] Checks bundled resolver first (baseline content always available)
-  - [ ] Falls back to static catalog resolver (extended content from remote repos)
+  - [ ] Checks `BundledPackageResolver` first (baseline content, works offline/OSS)
+  - [ ] Falls back to `BackendPackageResolver` (remote content via recommender)
   - [ ] Same `PackageResolver` interface — callers don't know which tier resolved
-- [ ] Runtime ID consistency check: after loading remote content, verify `content.id` and `manifest.id` match the requested `packageId`. Not needed for bundled content (build-time invariants), but critical for remote content where catalog/CDN drift can cause mismatched payloads.
 - [ ] Export from `src/package-engine/index.ts` barrel
-- [ ] Layer 2 tests: catalog resolution, composite resolution ordering, fallback behavior, ID consistency check, network failure handling
+- [ ] Layer 2 tests: composite resolution ordering, bundled-first behavior, fallback to recommender, network failure handling
 
-**Key design decision:** The composite resolver preserves the single `PackageResolver` interface — consumers don't change. The resolution priority (bundled first, catalog second) means bundled content always wins for packages that exist in both, providing offline/OSS baseline support.
+**Key design decision:** The composite resolver preserves the single `PackageResolver` interface — consumers don't change. The resolution priority (bundled first, recommender second) means bundled content always wins for packages that exist locally, providing offline/OSS baseline support. The frontend never fetches or stores repository indexes — all multi-repo resolution logic lives in the recommender. In environments where the recommender is unavailable (e.g., air-gapped OSS), only bundled content resolves — this is the expected graceful degradation.
 
 #### Phase 4e: Integration verification
 
 **Repo:** `grafana-pathfinder-app`
 **Testing:** Layer 2 + Layer 3
-**Depends on:** 4b (pilot guides exist and are published) + 4d (catalog resolver works)
+**Depends on:** 4b (pilot guides exist and are published) + 4d (frontend resolver works)
 
-End-to-end verification that the plugin correctly loads and renders `content.json` from both bundled and remote sources through the new composite resolver.
+End-to-end verification that the plugin correctly loads and renders `content.json` from both bundled and remote sources through the composite resolver and backend routes.
 
-- [ ] Integration test: create a composite resolver with bundled repo + a test catalog pointing to the pilot guides from 4b, verify resolution succeeds for both bundled and remote packages
+- [ ] Integration test: configure the recommender with the `interactive-tutorials` repository URL, verify that the recommender resolves pilot guide IDs and returns content
+- [ ] Verify the composite resolver correctly falls through from bundled (miss) to backend (hit) for remote-only packages
 - [ ] Verify rendered output matches between bundled and remote loading of the same guide
-- [ ] Verify `build-catalog` correctly aggregates the bundled `repository.json` and the `interactive-tutorials` `repository.json` into a single catalog
 - [ ] Verify `validate --packages` passes against the pilot migration output
 - [ ] Update this document with Phase 4 completion notes and key decisions
 
@@ -313,7 +328,7 @@ A `migrate-paths` CLI command that reads existing learning path metadata from ex
 
 **Scope boundary:** This produces draft manifests. The actual migration (committing them to `interactive-tutorials`, validating, rebuilding repository.json) is a follow-up human or agent task.
 
-**Why fifth:** By this point, the end-to-end pipeline is already proven on bundled content (Phases 2-3). Phase 4 extends to external content with confidence, adds the remote resolution tier, and validates the full authoring-to-testing pipeline across repositories. The sub-phase decomposition enables parallel agent execution across the independent work streams.
+**Why fifth:** By this point, the end-to-end pipeline is already proven on bundled content (Phases 2-3). Phase 4 extends to external content with confidence via recommender resolution routes. The frontend stays thin — it resolves bundled content locally and delegates remote resolution to the recommender, which shares its repository index cache with the recommendation engine. The sub-phase decomposition enables parallel agent execution across the independent work streams.
 
 ### Phase 5: Path and journey integration
 
@@ -368,57 +383,33 @@ A `migrate-paths` CLI command that reads existing learning path metadata from ex
 
 **Why seventh:** Layer 4 foundation from the testing strategy. Depends on the package format being stable and adopted. Narrower than originally scoped because `testEnvironment` schema (Phase 0) and e2e CLI reading (Phase 4) are already complete.
 
-### Phase 7: Repository registry service
+### Phase 7: Repository registry and multi-tenancy
 
-**Goal:** Replace static catalog (Phase 4) with dynamic repository registry service that supports multiple repositories, rapid content updates without plugin releases, and scalable multi-repo ecosystem.
+**Goal:** Evolve the recommender's config-driven repository list (Phase 4a) into a dynamic registry that supports repository discovery, multi-tenancy, and ecosystem-scale package management. Phase 4a establishes the recommender resolution routes and config-driven repository list; Phase 7 makes the registry dynamic and adds operational capabilities.
 
 **Deliverables:**
 
-- [ ] **Registry service architecture:**
-  - [ ] Service endpoint: `GET /registry` returns list of known repositories with their locations
-  - [ ] Service endpoint: `GET /resolve/{packageId}` returns package resolution (same `PackageResolution` format)
-  - [ ] Example registry response:
-    ```json
-    {
-      "repositories": {
-        "interactive-tutorials": "https://cdn.grafana.com/repos/interactive-tutorials/",
-        "partner-integrations": "https://partners.grafana.com/packages/"
-      }
-    }
-    ```
-  - [ ] Example resolution response:
-    ```json
-    {
-      "id": "welcome-to-grafana",
-      "contentUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/content.json",
-      "manifestUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/manifest.json",
-      "repository": "interactive-tutorials"
-    }
-    ```
-- [ ] **Catalog aggregation:**
-  - [ ] Service dynamically aggregates all `repository.json` files from known repositories
-  - [ ] Maintains global catalog in memory/cache (refresh on interval or webhook trigger)
-  - [ ] Detects package ID collisions across repositories — the registry maintains a compound key (repository + package ID) internally, distinguishing the same bare ID published by different repositories. The `PackageResolver` resolves bare IDs using priority-based clobber semantics (first repository in priority order wins). This evolves the identity model: Phases 0-6 assume globally unique bare IDs; Phase 7 introduces registry-scoped uniqueness with deterministic resolution order.
-- [ ] **Repository discovery:**
-  - [ ] Config-driven registry: service reads repository list from configuration file
-  - [ ] Repositories can be added/removed without service code changes
-  - [ ] Each repository publishes `repository.json` at known location
-- [ ] **Plugin integration:**
-  - [ ] Plugin detects registry availability (feature flag or endpoint probe)
-  - [ ] If registry available, use dynamic resolution; otherwise fall back to static catalog (Phase 4)
-  - [ ] Same `PackageResolver` interface — only implementation changes
-  - [ ] Gradual cutover: can run both approaches simultaneously during transition
-- [ ] **Performance and reliability:**
-  - [ ] Resolution result caching (per-session in plugin, TTL-based in service)
-  - [ ] Service monitoring: track resolution failures, catalog staleness, repository availability
-  - [ ] Graceful degradation: if specific repository unavailable, serve from cached catalog
-- [ ] **Use cases that justify registry over static catalog:**
-  - [ ] Rapid content updates: new packages available immediately without plugin release
-  - [ ] Partner/team repositories: independent content publishing without central coordination
-  - [ ] Multi-tenancy: different users/orgs see different package catalogs (future extension)
-  - [ ] Scale: 1000+ packages across many repositories
+- [ ] **Dynamic repository discovery:**
+  - [ ] `GET /api/registry` endpoint returns the live list of known repositories with their locations and priority
+  - [ ] Repositories can be added/removed via API without service restarts (upgrade from Phase 4a's config-driven list)
+  - [ ] Webhook or polling triggers for immediate repository index refresh when content repos publish updates (upgrade from Phase 4a's TTL-based refresh)
+- [ ] **Cross-repository identity evolution:**
+  - [ ] Registry maintains a compound key (repository + package ID) internally, distinguishing the same bare ID published by different repositories
+  - [ ] Resolution continues to use priority-based clobber semantics (first repository in priority order wins), but the registry can report shadowed packages for diagnostics
+  - [ ] This evolves the identity model: Phases 0-6 assume globally unique bare IDs; Phase 7 introduces registry-scoped uniqueness with deterministic resolution order
+- [ ] **Multi-tenancy:**
+  - [ ] Different users/orgs can see different package catalogs based on tenant configuration
+  - [ ] Repository priority ordering can vary per tenant
+- [ ] **Performance and reliability at scale:**
+  - [ ] Resolution result caching with TTL (builds on Phase 4a's in-memory cache)
+  - [ ] Service monitoring: track resolution failures, index staleness, repository availability
+  - [ ] Graceful degradation: if specific repository unavailable, serve from cached index
+  - [ ] Target: 1000+ packages across many repositories
+- [ ] **Recommender evolution:**
+  - [ ] Recommender endpoints evolve to return bare package IDs alongside URLs (the frontend can resolve bare IDs via the `/api/packages/{id}/content` route from Phase 4a)
+  - [ ] Dependency graph data from repository indexes feeds into recommendation quality
 
-**Why eighth:** Addresses scalability limitations of static catalog (Phase 4). Enables rapid content updates, independent repository management, and ecosystem growth. Static catalog remains as fallback for offline/OSS support.
+**Why eighth:** Extends Phase 4a's backend resolution from a config-driven bootstrap to a production registry. Enables rapid content updates (webhook-triggered refresh), independent repository management, and ecosystem growth. The resolution routes and frontend resolver from Phase 4 are unchanged — only the backend's repository discovery and refresh mechanisms evolve.
 
 ### Phase 8: SCORM foundation
 
@@ -442,21 +433,21 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 
 ## Summary
 
-| Phase                                       | Unlocks                                                                         | Testing layers    |
-| ------------------------------------------- | ------------------------------------------------------------------------------- | ----------------- |
-| 0: Schema foundation                        | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema   | Layer 1           |
-| 1: CLI package validation                   | CI validation, cross-file checks, dependency graph                              | Layer 1           |
-| 2: Bundled repository migration             | End-to-end proof on local corpus, bundled `repository.json`                     | Layer 1 + Layer 2 |
-| 3: Plugin runtime resolution                | PackageResolver consuming bundled repo, local resolution tier                   | Layer 2           |
-| 3b: Package authoring documentation         | Practitioner docs for package format and CLI commands                           | —                 |
-| 4a: Static catalog types and build CLI      | Catalog schema and `build-catalog` CLI for multi-repo aggregation               | Layer 1           |
-| 4b: Pilot migration (interactive-tutorials) | External repo guides in package format, CI-generated repository.json            | Layer 1           |
-| 4c: E2E manifest pre-flight                 | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                | Layer 3           |
-| 4d: Static catalog resolver                 | Remote content resolution via static catalog, composite resolver                | Layer 2           |
-| 4e: Integration verification                | Full pipeline verified across bundled and remote sources                        | Layer 2 + Layer 3 |
-| 4f: Path migration tooling                  | `migrate-paths` CLI for draft manifest generation from existing paths           | Layer 1           |
-| 5: Path and journey integration             | Two-level metapackage model (paths + journeys), `steps`, docs partner alignment | Layer 1 + Layer 2 |
-| 6: Layer 4 test environment routing         | Managed environment routing, version matrix, dataset provisioning               | Layer 4           |
-| 7: Repository registry service              | Dynamic multi-repo resolution, rapid content updates, ecosystem scale           | —                 |
-| 8: SCORM foundation                         | SCORM import readiness, extends `type` with course/module                       | —                 |
-| 9+: SCORM import pipeline                   | Full SCORM conversion pipeline                                                  | —                 |
+| Phase                                       | Unlocks                                                                             | Testing layers     |
+| ------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------ |
+| 0: Schema foundation                        | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema       | Layer 1            |
+| 1: CLI package validation                   | CI validation, cross-file checks, dependency graph                                  | Layer 1            |
+| 2: Bundled repository migration             | End-to-end proof on local corpus, bundled `repository.json`                         | Layer 1 + Layer 2  |
+| 3: Plugin runtime resolution                | PackageResolver consuming bundled repo, local resolution tier                       | Layer 2            |
+| 3b: Package authoring documentation         | Practitioner docs for package format and CLI commands                               | —                  |
+| 4a: Backend package resolution routes       | Recommender resolves bare IDs across repos, shared index with recommendation engine | Go tests + Layer 2 |
+| 4b: Pilot migration (interactive-tutorials) | External repo guides in package format, CI-generated repository.json                | Layer 1            |
+| 4c: E2E manifest pre-flight                 | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                    | Layer 3            |
+| 4d: Frontend remote resolver                | Thin frontend resolver calling recommender routes, composite with bundled fallback  | Layer 2            |
+| 4e: Integration verification                | Full pipeline verified across bundled and remote sources                            | Layer 2 + Layer 3  |
+| 4f: Path migration tooling                  | `migrate-paths` CLI for draft manifest generation from existing paths               | Layer 1            |
+| 5: Path and journey integration             | Two-level metapackage model (paths + journeys), `steps`, docs partner alignment     | Layer 1 + Layer 2  |
+| 6: Layer 4 test environment routing         | Managed environment routing, version matrix, dataset provisioning                   | Layer 4            |
+| 7: Repository registry and multi-tenancy    | Dynamic registry, webhook refresh, multi-tenancy, ecosystem scale                   | —                  |
+| 8: SCORM foundation                         | SCORM import readiness, extends `type` with course/module                           | —                  |
+| 9+: SCORM import pipeline                   | Full SCORM conversion pipeline                                                      | —                  |

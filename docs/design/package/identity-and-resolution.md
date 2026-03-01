@@ -124,17 +124,18 @@ This file is committed to the repository. A **pre-commit hook** regenerates it o
 
 ### Package resolution
 
-Given a bare ID like `infrastructure-alerting-find-data-to-alert`, the system resolves it to a loadable content location through a tiered resolution strategy. The resolution tiers are tried in order:
+Given a bare ID like `infrastructure-alerting-find-data-to-alert`, the system resolves it to a loadable content location through a tiered resolution strategy. The frontend plugin tries resolution tiers in order:
 
-1. **Bundled content** — look up the ID in the bundled `repository.json` shipped with the plugin. This covers baseline tutorials that work offline.
-2. **Static catalog** — look up the ID in a `packages-catalog.json` fetched from CDN at startup. This covers extended content beyond the bundled baseline.
-3. **Registry service** (Phase 7) — query a dynamic registry endpoint. This covers rapid content updates and multi-repo ecosystem scale.
+1. **Bundled content** — look up the ID in the bundled `repository.json` shipped with the plugin. This covers baseline tutorials that work offline and in air-gapped environments.
+2. **Backend resolution** — call `GET /api/packages/{id}/content` on the recommender microservice ([`grafana-recommender`](https://github.com/grafana/grafana-recommender)). The recommender fetches and caches `repository.json` files from configured remote repository URLs, resolves the bare ID across repositories in priority order, and returns the content. This covers extended content beyond the bundled baseline without requiring the frontend to hold any repository indexes in memory.
 
-If tier 1 misses, try tier 2. If tier 2 misses, try tier 3 (when available). If all tiers miss, the package is unresolvable.
+If tier 1 misses, try tier 2. If both tiers miss, the package is unresolvable.
 
-This tier ordering intentionally implements **clobber semantics**: if the same package ID exists in multiple tiers, the highest-priority tier wins. Bundled content (tier 1) shadows static catalog content, which shadows registry content. This means Grafana core packages always take precedence over downstream repository packages, providing a clean authority hierarchy without requiring structural namespacing.
+This tier ordering intentionally implements **clobber semantics**: if the same package ID exists in multiple tiers, the highest-priority tier wins. Bundled content (tier 1) shadows backend-resolved content. Within the backend's repository list, repositories are ordered by configured priority — Grafana core repositories take precedence over downstream repositories. This provides a clean authority hierarchy without requiring structural namespacing.
 
-The plugin runtime reads `repository.json` directly for resolution and dependency metadata. It does **not** consume the CLI-generated dependency graph — that artifact is for the recommender service, visualization, and lint tooling. This keeps client memory bounded as the content corpus grows.
+The frontend plugin does **not** fetch, store, or reason about repository indexes for remote content. All multi-repo resolution logic, dependency graph data, and targeting metadata lives server-side in the recommender microservice. The frontend holds only the bundled `repository.json` for offline support. This keeps client memory bounded as the content corpus grows across many repositories.
+
+The recommender shares its cached repository indexes between the package resolution endpoints and the recommendation endpoints. Both consumers benefit from the same periodic refresh cycle (~20 minutes). The recommendation engine uses the indexes for targeting, dependency graph analysis, and recommendation quality; the resolution routes use them to map bare IDs to content locations.
 
 All tiers return the same resolution shape:
 
@@ -162,7 +163,7 @@ interface PackageResolver {
 
 The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. Resolution always returns the package ID and URLs. When `loadContent` is requested, the resolver also fetches and populates the `manifest` and `content` objects on the result. Callers that only need to know where a package is (e.g., catalog UI) skip the load; callers that need the actual package (e.g., the plugin renderer) pass the flag.
 
-Repositories are internal to the resolver — they are URLs that point to indexes, not first-class objects. The resolver knows its set of repository URLs, fetches their indexes, and builds a merged lookup. The MVP implements bundled resolution; the static catalog and Phase 7 registry service implement the same interface with remote sources. The plugin can run multiple resolution tiers simultaneously during transition, falling back gracefully if a tier is unavailable.
+Repositories are internal to the backend — they are URLs that point to indexes, not first-class objects the frontend sees. The backend knows its set of repository URLs via plugin configuration, fetches their indexes on a periodic refresh cycle, and resolves bare IDs from the merged lookup. Phase 7 evolves the config-driven repository list into a dynamic registry with webhook-triggered refresh and multi-tenancy support. The frontend resolver and `PackageResolver` interface are unchanged — only the backend's repository management evolves.
 
 ### Relationship to `index.json`
 
