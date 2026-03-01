@@ -81,6 +81,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 4d: Frontend remote resolver                | Layer 2            |
 | 4e: Integration verification                | Layer 2 + Layer 3  |
 | 4f: Path migration tooling                  | Layer 1            |
+| 4g: Docs-retrieval integration              | Layer 2            |
 | 5: Path and journey integration             | Layer 1 + Layer 2  |
 | 6: Layer 4 test environment routing         | Layer 4            |
 | 7: Dynamic repository registry              | —                  |
@@ -176,18 +177,16 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **Why fourth:** Completes the local end-to-end cycle: bundled content is migrated (Phase 2), and the plugin can now load and resolve it at runtime. Establishes the `PackageResolver` interface that later tiers (static catalog in Phase 4, registry service in Phase 7) will implement.
 
-### Phase 3b: Package authoring documentation
+### Phase 3b: Package authoring documentation ✅
 
-**Goal:** Produce practitioner-facing documentation for the two-file package model, covering the full CLI surface introduced in Phases 0-3. Pulled forward from Phase 4 line 202 so content authors can begin using the package format without waiting for the pilot migration.
+**Status:** Complete
 
-**Deliverables:**
+**Key decisions and artifacts:**
 
-- [ ] **Package authoring guide** (`docs/developer/package-authoring.md`): field reference for `content.json` and `manifest.json`, dependency quick reference (AND/OR syntax, `provides`, `conflicts`, `replaces`), targeting and `testEnvironment` sections, copy-paste templates, worked example converting a bare guide to a package directory
-- [ ] **CLI tools update** (`docs/developer/CLI_TOOLS.md`): document `validate --package`, `validate --packages`, `build-repository`, and `build-graph` commands with usage examples and CI workflow snippet
-- [ ] **Repository index reference** (section within package authoring guide): what `repository.json` is, the two publication strategies (committed lockfile vs CI-generated), freshness check setup
-- [ ] **Authoring hub link** (`docs/developer/interactive-examples/authoring-interactive-journeys.md`): add package authoring guide to the reference docs table
-
-**What this does NOT include:** No code changes — schemas, engine, and CLI are unchanged. No design spec changes. No AGENTS.md updates.
+- Package authoring guide published at `docs/developer/package-authoring.md`: field reference for `content.json` and `manifest.json`, dependency quick reference (AND/OR syntax, `provides`, `conflicts`, `replaces`), targeting and `testEnvironment` sections, copy-paste templates, worked example converting a bare guide to a package directory
+- CLI tools updated in `docs/developer/CLI_TOOLS.md`: documented `validate --package`, `validate --packages`, `build-repository`, and `build-graph` commands with usage examples and CI workflow snippet
+- Repository index reference included within the package authoring guide: what `repository.json` is, the two publication strategies (committed lockfile vs CI-generated), freshness check setup
+- Authoring hub link added in `docs/developer/interactive-examples/authoring-interactive-journeys.md`
 
 ### Phase 4: Pilot migration, backend resolution, and pipeline completion
 
@@ -197,12 +196,13 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **Architecture decision: recommender-based resolution, not static catalog.** The original design proposed a static `packages-catalog.json` that aggregated all repository indexes into a single file fetched by the frontend plugin at startup. This was replaced with resolution routes on the recommender microservice ([`grafana-recommender`](https://github.com/grafana/grafana-recommender)) for three reasons: (1) a pre-aggregated catalog suffers from freshness lag — any content repo update requires rebuilding and re-publishing the catalog; (2) the frontend plugin holds the full catalog in memory for the session, which scales poorly as the content corpus grows; (3) the recommender already needs repository index data for targeting and dependency graph analysis anyway — adding resolution routes to the same service that already caches these indexes avoids duplicating infrastructure. Moving resolution to the recommender keeps the frontend thin (it only needs bare IDs and the recommender URL), puts index caching where memory is cheap (server-side), and avoids build-time coupling between the plugin and every content repository's publication cadence. The frontend's `PackageResolver` interface is unchanged — the implementation calls the recommender's resolution endpoint to get CDN URLs, then fetches content directly from CDN. The recommender is a pure lookup service: bare ID in, CDN URLs out. Bundled content continues to resolve locally for offline/OSS support.
 
-Phase 4 is decomposed into five sub-phases. Sub-phases 4a, 4b, 4c, and 4f can run in parallel (Wave 1). Sub-phase 4d depends on 4a (Wave 2). Sub-phase 4e depends on 4b and 4d (Wave 3).
+Phase 4 is decomposed into seven sub-phases. Sub-phases 4a, 4b, 4c, and 4f can run in parallel (Wave 1). Sub-phase 4d depends on 4a (Wave 2). Sub-phase 4e depends on 4b and 4d (Wave 3). Sub-phase 4g depends on 4e (Wave 4).
 
 ```
 Wave 1 (parallel): 4a, 4b, 4c, 4f
 Wave 2:            4d (after 4a)
 Wave 3:            4e (after 4b + 4d)
+Wave 4:            4g (after 4e)
 ```
 
 #### Phase 4a: Backend package resolution routes
@@ -344,6 +344,35 @@ A `migrate-paths` CLI command that reads existing learning path metadata from ex
 **Scope boundary:** This produces draft manifests. The actual migration (committing them to `interactive-tutorials`, validating, rebuilding repository.json) is a follow-up human or agent task.
 
 **Why fifth:** By this point, the end-to-end pipeline is already proven on bundled content (Phases 2-3). Phase 4 extends to external content with confidence via recommender resolution routes. The frontend stays thin — it resolves bundled content locally and delegates remote resolution to the recommender, which shares its repository index cache with the recommendation engine. The sub-phase decomposition enables parallel agent execution across the independent work streams.
+
+#### Phase 4g: Docs-retrieval integration
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 2
+**Depends on:** 4e (composite resolver verified end-to-end)
+
+Wire the composite `PackageResolver` into the `docs-retrieval` fetch pipeline so that `docs-retrieval` becomes the single entry point for all content fetching — both static documentation and interactive packages. This resolves the "intentional transitional duplication" from Phase 3 and establishes the fetch architecture that Phase 5's navigation enrichment depends on.
+
+**Architecture decision: docs-retrieval dispatches by content type.** Not all content is interactive guides — some is static documentation from a different CDN that doesn't participate in the package system. `docs-retrieval` must distinguish content type and dispatch accordingly:
+
+- **Static documentation:** fetched via the existing `docs-retrieval` pipeline, unchanged
+- **Interactive guide, path, or journey:** delegated to the composite `PackageResolver`, which checks the bundled loader first and falls back to the recommender resolver if configured
+
+The composite resolver is injected into `docs-retrieval` via dependency inversion. Both `docs-retrieval` and `package-engine` are Tier 2 engines (laterally isolated — cannot import from each other). The `PackageResolver` interface is defined at Tier 0 (`src/types/package.types.ts`), so `docs-retrieval` can depend on the interface without violating lateral isolation. The concrete wiring — creating the `CompositePackageResolver` and injecting it into the docs-retrieval fetch pipeline — happens at Tier 3+ (`integrations/`), where both Tier 2 engines are accessible.
+
+- [ ] **Content-type dispatch in `docs-retrieval`:**
+  - [ ] Add a code path that identifies interactive content (guide, path, journey) vs. static documentation
+  - [ ] When interactive content is identified, delegate to the injected `PackageResolver` instead of the existing fetch logic
+  - [ ] Static documentation continues through the existing fetch path unchanged
+- [ ] **Dependency injection of `PackageResolver`:**
+  - [ ] `docs-retrieval` accepts a `PackageResolver` (Tier 0 interface) — it does not import from `package-engine` (Tier 2)
+  - [ ] Tier 3+ wiring code creates the `CompositePackageResolver` (bundled-first, recommender-fallback) and passes it into docs-retrieval's fetch pipeline
+- [ ] **Remove transitional duplication:**
+  - [ ] Identify and remove any content-loading code in `package-engine` that duplicated `docs-retrieval` logic (noted as "intentional transitional duplication" in Phase 3)
+  - [ ] Verify that the bundled loader and recommender resolver paths both produce content that the existing renderer can consume without changes
+- [ ] Layer 2 tests: content-type dispatch routing, injected resolver receives interactive content requests, static docs bypass the resolver, fallback behavior when no resolver is injected (e.g., OSS without recommender)
+
+**Why here:** Phase 4e proves the composite resolver works end-to-end. Phase 4g connects it to the rendering pipeline so that resolved content actually reaches the user. This must land before Phase 5 because Phase 5 enriches the resolution response with navigation data (`memberOf`, `recommended`) — that data has no path to the UI unless the renderer is consuming content through the package resolver.
 
 ### Phase 5: Path and journey integration
 
@@ -493,22 +522,23 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 
 ## Summary
 
-| Phase                                       | Unlocks                                                                                       | Testing layers     |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------ |
-| 0: Schema foundation                        | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema                 | Layer 1            |
-| 1: CLI package validation                   | CI validation, cross-file checks, dependency graph                                            | Layer 1            |
-| 2: Bundled repository migration             | End-to-end proof on local corpus, bundled `repository.json`                                   | Layer 1 + Layer 2  |
-| 3: Plugin runtime resolution                | PackageResolver consuming bundled repo, local resolution tier                                 | Layer 2            |
-| 3b: Package authoring documentation         | Practitioner docs for package format and CLI commands                                         | —                  |
-| 4a: Backend package resolution routes       | Recommender resolves bare IDs across repos, shared index with recommendation engine           | Go tests + Layer 2 |
-| 4b: Pilot migration (interactive-tutorials) | External repo guides in package format, CI-generated repository.json                          | Layer 1            |
-| 4c: E2E manifest pre-flight                 | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                              | Layer 3            |
-| 4d: Frontend remote resolver                | Thin frontend resolver calling recommender routes, composite with bundled fallback            | Layer 2            |
-| 4e: Integration verification                | Full pipeline verified across bundled and remote sources                                      | Layer 2 + Layer 3  |
-| 4f: Path migration tooling                  | `migrate-paths` CLI for draft manifest generation from existing paths                         | Layer 1            |
-| 5: Path and journey integration             | Two-level metapackage model, recommender navigation enrichment, `paths.json` deprecation path | Layer 1 + Layer 2  |
-| 6: Layer 4 test environment routing         | Managed environment routing, version matrix, dataset provisioning                             | Layer 4            |
-| 7: Dynamic repository registry              | Dynamic registry, webhook refresh, ecosystem scale (multi-tenancy deferred)                   | —                  |
-| 8: SCORM foundation                         | SCORM import readiness, extends `type` with course/module                                     | —                  |
-| 9+: SCORM import pipeline                   | Full SCORM conversion pipeline                                                                | —                  |
-| 10: Implementation cleanup                  | Dead code removal, duplication consolidation, spec-implementation alignment                   | —                  |
+| Phase                                       | Unlocks                                                                                                 | Testing layers     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------ |
+| 0: Schema foundation                        | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema                           | Layer 1            |
+| 1: CLI package validation                   | CI validation, cross-file checks, dependency graph                                                      | Layer 1            |
+| 2: Bundled repository migration             | End-to-end proof on local corpus, bundled `repository.json`                                             | Layer 1 + Layer 2  |
+| 3: Plugin runtime resolution                | PackageResolver consuming bundled repo, local resolution tier                                           | Layer 2            |
+| 3b: Package authoring documentation         | Practitioner docs for package format and CLI commands                                                   | —                  |
+| 4a: Backend package resolution routes       | Recommender resolves bare IDs across repos, shared index with recommendation engine                     | Go tests + Layer 2 |
+| 4b: Pilot migration (interactive-tutorials) | External repo guides in package format, CI-generated repository.json                                    | Layer 1            |
+| 4c: E2E manifest pre-flight                 | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                                        | Layer 3            |
+| 4d: Frontend remote resolver                | Thin frontend resolver calling recommender routes, composite with bundled fallback                      | Layer 2            |
+| 4e: Integration verification                | Full pipeline verified across bundled and remote sources                                                | Layer 2 + Layer 3  |
+| 4f: Path migration tooling                  | `migrate-paths` CLI for draft manifest generation from existing paths                                   | Layer 1            |
+| 4g: Docs-retrieval integration              | Package resolver wired into rendering pipeline, content-type dispatch, transitional duplication removed | Layer 2            |
+| 5: Path and journey integration             | Two-level metapackage model, recommender navigation enrichment, `paths.json` deprecation path           | Layer 1 + Layer 2  |
+| 6: Layer 4 test environment routing         | Managed environment routing, version matrix, dataset provisioning                                       | Layer 4            |
+| 7: Dynamic repository registry              | Dynamic registry, webhook refresh, ecosystem scale (multi-tenancy deferred)                             | —                  |
+| 8: SCORM foundation                         | SCORM import readiness, extends `type` with course/module                                               | —                  |
+| 9+: SCORM import pipeline                   | Full SCORM conversion pipeline                                                                          | —                  |
+| 10: Implementation cleanup                  | Dead code removal, duplication consolidation, spec-implementation alignment                             | —                  |
