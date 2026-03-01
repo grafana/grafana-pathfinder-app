@@ -325,4 +325,129 @@ describe('buildRepository', () => {
     expect(Object.keys(repository)).toHaveLength(0);
     expect(warnings.length).toBeGreaterThan(0);
   });
+
+  describe('exclude option', () => {
+    it('should exclude a subtree so its packages are not discovered', () => {
+      writeJson(path.join(tmpDir, 'my-guide', 'content.json'), {
+        id: 'my-guide',
+        title: 'My guide',
+        blocks: [],
+      });
+      writeJson(path.join(tmpDir, 'my-guide', 'manifest.json'), {
+        id: 'my-guide',
+        type: 'guide',
+      });
+
+      writeJson(path.join(tmpDir, 'vendor', 'other', 'content.json'), {
+        id: 'other',
+        title: 'Other guide',
+        blocks: [],
+      });
+      writeJson(path.join(tmpDir, 'vendor', 'other', 'manifest.json'), {
+        id: 'other',
+        type: 'guide',
+      });
+
+      const { repository, errors } = buildRepository(tmpDir, { exclude: ['vendor'] });
+      expect(errors).toHaveLength(0);
+      expect(Object.keys(repository)).toHaveLength(1);
+      expect(repository['my-guide']).toBeDefined();
+      expect(repository['other']).toBeUndefined();
+    });
+
+    it('should allow multiple excludes', () => {
+      writeJson(path.join(tmpDir, 'keep-a', 'content.json'), { id: 'keep-a', title: 'A', blocks: [] });
+      writeJson(path.join(tmpDir, 'keep-a', 'manifest.json'), { id: 'keep-a', type: 'guide' });
+
+      writeJson(path.join(tmpDir, 'skip-one', 'pkg', 'content.json'), { id: 'pkg-one', title: 'One', blocks: [] });
+      writeJson(path.join(tmpDir, 'skip-one', 'pkg', 'manifest.json'), { id: 'pkg-one', type: 'guide' });
+
+      writeJson(path.join(tmpDir, 'skip-two', 'pkg', 'content.json'), { id: 'pkg-two', title: 'Two', blocks: [] });
+      writeJson(path.join(tmpDir, 'skip-two', 'pkg', 'manifest.json'), { id: 'pkg-two', type: 'guide' });
+
+      const { repository, errors } = buildRepository(tmpDir, {
+        exclude: ['skip-one', 'skip-two'],
+      });
+      expect(errors).toHaveLength(0);
+      expect(Object.keys(repository)).toHaveLength(1);
+      expect(repository['keep-a']).toBeDefined();
+      expect(repository['pkg-one']).toBeUndefined();
+      expect(repository['pkg-two']).toBeUndefined();
+    });
+
+    it('should avoid duplicate ID when excluding the other tree', () => {
+      writeJson(path.join(tmpDir, 'first-dashboard', 'content.json'), {
+        id: 'first-dashboard',
+        title: 'First dashboard (local)',
+        blocks: [],
+      });
+      writeJson(path.join(tmpDir, 'first-dashboard', 'manifest.json'), {
+        id: 'first-dashboard',
+        type: 'guide',
+      });
+
+      writeJson(path.join(tmpDir, 'pathfinder-app', 'src', 'bundled-interactives', 'first-dashboard', 'content.json'), {
+        id: 'first-dashboard',
+        title: 'First dashboard (bundled)',
+        blocks: [],
+      });
+      writeJson(
+        path.join(tmpDir, 'pathfinder-app', 'src', 'bundled-interactives', 'first-dashboard', 'manifest.json'),
+        {
+          id: 'first-dashboard',
+          type: 'guide',
+        }
+      );
+
+      const withoutExclude = buildRepository(tmpDir);
+      expect(withoutExclude.errors.some((e) => e.includes('Duplicate package ID'))).toBe(true);
+
+      const withExclude = buildRepository(tmpDir, { exclude: ['pathfinder-app'] });
+      expect(withExclude.errors).toHaveLength(0);
+      expect(Object.keys(withExclude.repository)).toHaveLength(1);
+      expect(withExclude.repository['first-dashboard']?.title).toBe('First dashboard (local)');
+    });
+
+    it('should treat exclude as relative to root', () => {
+      writeJson(path.join(tmpDir, 'included', 'content.json'), { id: 'included', title: 'Included', blocks: [] });
+      writeJson(path.join(tmpDir, 'included', 'manifest.json'), { id: 'included', type: 'guide' });
+
+      writeJson(path.join(tmpDir, 'nested', 'excluded', 'content.json'), {
+        id: 'excluded',
+        title: 'Excluded',
+        blocks: [],
+      });
+      writeJson(path.join(tmpDir, 'nested', 'excluded', 'manifest.json'), { id: 'excluded', type: 'guide' });
+
+      const { repository, errors } = buildRepository(tmpDir, { exclude: ['nested/excluded'] });
+      expect(errors).toHaveLength(0);
+      expect(repository['included']).toBeDefined();
+      expect(repository['excluded']).toBeUndefined();
+    });
+
+    it('should not descend into excluded directory but may include siblings', () => {
+      writeJson(path.join(tmpDir, 'sibling-a', 'content.json'), { id: 'sibling-a', title: 'A', blocks: [] });
+      writeJson(path.join(tmpDir, 'sibling-a', 'manifest.json'), { id: 'sibling-a', type: 'guide' });
+
+      writeJson(path.join(tmpDir, 'excluded-tree', 'deep', 'pkg', 'content.json'), {
+        id: 'deep-pkg',
+        title: 'Deep',
+        blocks: [],
+      });
+      writeJson(path.join(tmpDir, 'excluded-tree', 'deep', 'pkg', 'manifest.json'), {
+        id: 'deep-pkg',
+        type: 'guide',
+      });
+
+      writeJson(path.join(tmpDir, 'sibling-b', 'content.json'), { id: 'sibling-b', title: 'B', blocks: [] });
+      writeJson(path.join(tmpDir, 'sibling-b', 'manifest.json'), { id: 'sibling-b', type: 'guide' });
+
+      const { repository, errors } = buildRepository(tmpDir, { exclude: ['excluded-tree'] });
+      expect(errors).toHaveLength(0);
+      expect(Object.keys(repository)).toHaveLength(2);
+      expect(repository['sibling-a']).toBeDefined();
+      expect(repository['sibling-b']).toBeDefined();
+      expect(repository['deep-pkg']).toBeUndefined();
+    });
+  });
 });
