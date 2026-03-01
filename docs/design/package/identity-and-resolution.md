@@ -158,8 +158,8 @@ interface PackageResolution {
 }
 
 interface PackageNavigation {
-  /** Paths/journeys this package participates in, with per-path next step and position for progress display */
-  memberOf?: Array<{ id: string; type: string; position: number; total: number; next?: string }>;
+  /** Paths/journeys this package participates in, with the parent's full steps array for progress computation */
+  memberOf?: Array<{ id: string; type: string; steps: string[] }>;
   /** Packages linked via recommends edges in the dependency graph */
   recommended?: string[];
 }
@@ -176,7 +176,7 @@ interface PackageResolver {
 
 The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. Resolution always returns the package ID and CDN URLs. When `loadContent` is requested, the resolver also fetches and populates the `manifest` and `content` objects on the result (fetching from the CDN URLs in the response). Callers that only need to know where a package is (e.g., catalog UI) skip the load; callers that need the actual package (e.g., the plugin renderer) pass the flag.
 
-The `navigation` field is populated by the recommender's resolution endpoint starting in Phase 5. The recommender computes `memberOf` by scanning all metapackages whose `steps` arrays contain this package ID, including each membership's `next` step (from array order in the parent metapackage), and `recommended` from `recommends` edges — all from its cached repository indexes. `next` is per-`memberOf` entry rather than top-level because a package can participate in multiple paths simultaneously; the frontend chooses which path's `next` to surface based on navigation context (defaulting to the first entry when no context is available). The frontend renders this navigation directly, overlaying client-side completion state for display. In a future phase, the frontend will send completion data alongside context, enabling the recommender to return completion-aware navigation.
+The `navigation` field is populated by the recommender's resolution endpoint starting in Phase 5. The recommender computes `memberOf` by scanning all metapackages whose `steps` arrays contain this package ID, copying each parent's full `steps` array into the entry, and `recommended` from `recommends` edges — all from its cached repository indexes. The `memberOf` entry carries only the parent's `id`, `type`, and `steps` — the frontend derives position (`steps.indexOf(currentId)`), total (`steps.length`), next step, and completion progress locally. This keeps the recommender's response minimal and avoids baking in structural navigation decisions (like "next") that may conflict with the frontend's completion-aware logic. The frontend renders this navigation directly, overlaying client-side completion state for display. In a future phase, the frontend will send completion data alongside context, enabling the recommender to return completion-aware navigation.
 
 Repositories are internal to the recommender — they are URLs that point to indexes, not first-class objects the frontend sees. The recommender knows its set of repository URLs via environment configuration, fetches their indexes on a periodic refresh cycle, and resolves bare IDs from the merged lookup. Phase 7 evolves the config-driven repository list into a dynamic registry with webhook-triggered refresh. The frontend resolver and `PackageResolver` interface are unchanged — only the recommender's repository management evolves.
 

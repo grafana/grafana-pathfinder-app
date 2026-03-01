@@ -244,7 +244,7 @@ Add a package resolution endpoint to the recommender microservice. The recommend
 - **Resolution responses are cacheable.** The response is a pure function of the package ID and the current repository index state. Cache headers can be set based on the repository refresh TTL.
 - Repository configuration lives in environment variables (consistent with the recommender's existing config pattern) so that different deployments can point to different content repositories without code changes.
 - The recommender and resolution routes share the same cached repository indexes — one refresh cycle, two consumers. The `loadAllConfigs` / `/reload` pattern extends to include repository index refresh.
-- **Enriched resolution with navigation (Phase 5).** The resolution response is designed to be extended with graph-derived navigation fields (`memberOf` with per-path `next`, `recommended`) when path and journey integration lands. The recommender holds the full dependency graph from its cached repository indexes and is the natural place to compute "what comes next" for a given package. See Phase 5 for the navigation enrichment design.
+- **Enriched resolution with navigation (Phase 5).** The resolution response is designed to be extended with graph-derived navigation fields (`memberOf` with parent `steps`, `recommended`) when path and journey integration lands. The recommender holds the full dependency graph from its cached repository indexes and is the natural place to provide metapackage membership data. See Phase 5 for the navigation enrichment design.
 
 #### Phase 4b: Pilot migration (interactive-tutorials)
 
@@ -295,7 +295,7 @@ A thin frontend `PackageResolver` implementation that resolves bare package IDs 
   - [ ] Handles 404 as `not-found`, network failures as `network-error`
 - [ ] `CompositePackageResolver` (or `createCompositeResolver()` factory):
   - [ ] Checks `BundledPackageResolver` first (baseline content, works offline/OSS)
-  - [ ] Falls back to `RecommenderPackageResolver` (remote content resolved via recommender, fetched from CDN)
+  - [ ] Falls back to `RecommenderPackageResolver` only if the user has enabled the online recommender in plugin settings (the existing setting that gates recommender use for OSS). When this setting is off, the recommender resolver is not instantiated — bundled-miss means the package does not exist.
   - [ ] Same `PackageResolver` interface — callers don't know which tier resolved
 - [ ] Export from `src/package-engine/index.ts` barrel
 - [ ] Layer 2 tests: composite resolution ordering, bundled-first behavior, fallback to recommender, network failure handling, CDN fetch from resolved URLs
@@ -303,9 +303,9 @@ A thin frontend `PackageResolver` implementation that resolves bare package IDs 
 **Key design decisions:**
 
 - The composite resolver preserves the single `PackageResolver` interface — consumers don't change. The resolution priority (bundled first, recommender second) means bundled content always wins for packages that exist locally, providing offline/OSS baseline support.
+- **Recommender gated by plugin setting.** The `RecommenderPackageResolver` is only instantiated when the user has enabled the online recommender in plugin settings (the existing setting that gates recommender use for OSS). When the setting is off, the composite resolver contains only the bundled resolver — no network calls are attempted, and a bundled-miss means the package does not exist. This eliminates latency and error noise in environments where the recommender is genuinely unavailable. No circuit-breaker is needed: the setting is the gate.
 - The frontend never fetches or stores repository indexes — all multi-repo resolution logic lives in the recommender. The frontend receives CDN URLs from the resolution response and fetches content directly.
-- In environments where the recommender is unavailable (e.g., air-gapped OSS), only bundled content resolves — this is the expected graceful degradation.
-- The resolution response will be extended with graph-derived navigation fields in Phase 5 (`memberOf` with per-path `next`, `recommended`). The `RecommenderPackageResolver` should be designed to pass these through to callers when present, even though Phase 4d does not consume them yet.
+- The resolution response will be extended with graph-derived navigation fields in Phase 5 (`memberOf` with parent `steps`, `recommended`). The `RecommenderPackageResolver` should be designed to pass these through to callers when present, even though Phase 4d does not consume them yet.
 
 #### Phase 4e: Integration verification
 
@@ -376,6 +376,8 @@ The composite resolver is injected into `docs-retrieval` via dependency inversio
 
 ### Phase 5: Path and journey integration
 
+**Decomposition note:** This phase has significant breadth (CLI validation, recommender enrichment, frontend UI, migration/deprecation) and should be decomposed into sub-phases before execution, in light of decisions made during Phase 4. Defer decomposition until Phase 4 is complete.
+
 **Goal:** Paths and journeys are working metapackage types at two composition levels. A path (`type: "path"`) composes guides into an ordered sequence; a journey (`type: "journey"`) composes paths (or any packages) into a larger learning arc. The CLI validates both, the dependency graph treats them as first-class nodes, and the recommender's resolution response provides graph-derived navigation so the frontend can render "next step" and path progress without client-side graph reasoning. See [learning paths and journeys](./PATHFINDER-PACKAGE-DESIGN.md#learning-journeys) for the full design.
 
 **Testing layers:** Layer 1 + Layer 2
@@ -390,15 +392,29 @@ The composite resolver is injected into `docs-retrieval` via dependency inversio
   "repository": "interactive-tutorials",
   "navigation": {
     "memberOf": [
-      { "id": "getting-started", "type": "path", "position": 2, "total": 4, "next": "first-dashboard" },
-      { "id": "observability-basics", "type": "path", "position": 3, "total": 5, "next": "loki-grafana-101" }
+      {
+        "id": "getting-started",
+        "type": "path",
+        "steps": ["welcome-to-grafana", "prometheus-grafana-101", "first-dashboard", "loki-grafana-101"]
+      },
+      {
+        "id": "observability-basics",
+        "type": "path",
+        "steps": [
+          "welcome-to-grafana",
+          "first-dashboard",
+          "prometheus-grafana-101",
+          "prometheus-advanced-queries",
+          "loki-grafana-101"
+        ]
+      }
     ],
     "recommended": ["loki-grafana-101", "prometheus-advanced-queries"]
   }
 }
 ```
 
-- `memberOf`: which paths/journeys this package participates in. Each entry carries `position` and `total` for progress display, plus `next` — the next step in that specific parent metapackage's `steps` array (structural array order). `next` is per-`memberOf` entry rather than top-level because a package can participate in multiple paths simultaneously. The frontend chooses which path's `next` to surface based on navigation context, defaulting to the first entry when no context is available.
+- `memberOf`: which paths/journeys this package participates in. Each entry carries the parent's `id`, `type`, and full `steps` array. The frontend derives everything it needs locally: position (`steps.indexOf(currentId)`), total (`steps.length`), next structural step, and completion-aware next (first incomplete step). This avoids baking structural navigation decisions into the recommender response that may conflict with the frontend's completion-aware logic.
 - `recommended`: packages linked via `recommends` edges in the dependency graph — "where else might the user go from here?"
 
 This replaces the earlier "learning path reconciliation at Tier 3+" design. The frontend does not need a Tier 3+ utility to stitch `package-engine` and `learning-paths` together — the recommender provides navigation directly.
@@ -428,20 +444,21 @@ This replaces the earlier "learning path reconciliation at Tier 3+" design. The 
   - [ ] Graph lint: `steps` references must resolve to existing packages in global catalog
   - [ ] Cycle detection in `steps` chains (error-level — a step cannot transitively contain its parent)
 - [ ] **Recommender navigation enrichment** (in `grafana-recommender`):
-  - [ ] Extend `GET /api/packages/{id}` resolution response with `navigation` field (`memberOf` with per-path `next`, `recommended`)
-  - [ ] `memberOf` computed by scanning all metapackages whose `steps` arrays contain this package ID; each entry includes `next` from that metapackage's `steps` array order
+  - [ ] Extend `GET /api/packages/{id}` resolution response with `navigation` field (`memberOf` with parent `steps`, `recommended`)
+  - [ ] `memberOf` computed by scanning all metapackages whose `steps` arrays contain this package ID; each entry includes the parent's `id`, `type`, and full `steps` array
   - [ ] `recommended` computed from `recommends` edges in the dependency graph
-  - [ ] Go unit tests for navigation computation (single-path membership, multi-path membership, journey-level membership, packages with no parent metapackage, `next` correctness for last-step-in-path)
+  - [ ] Go unit tests for navigation computation (single-path membership, multi-path membership, journey-level membership, packages with no parent metapackage)
 - [ ] **Frontend navigation display** (in `grafana-pathfinder-app`):
-  - [ ] UI: display path/journey progress using `memberOf` data (position, total)
-  - [ ] UI: "next step" navigation using `memberOf[].next` — frontend selects which path's `next` to surface based on navigation context (e.g., which path the user arrived from), defaulting to the first `memberOf` entry
+  - [ ] UI: display path/journey progress computed from `memberOf[].steps` and local completion state (position, total, completed count)
+  - [ ] UI: "next step" navigation computed locally — next incomplete step from `memberOf[].steps` using completion data, not structural array order
+  - [ ] UI: path context selection — when multiple `memberOf` entries exist, select which path to display based on navigation context (e.g., which path the user arrived from), defaulting to the first entry
   - [ ] UI: recommended content links using `navigation.recommended`
   - [ ] UI: learning path cards use package metadata (description, category) from the resolution response when available
   - [ ] Frontend overlays client-side completion state on the structural navigation for display
 - [ ] **`paths.json` deprecation path:** With navigation provided by the recommender's resolution response, curated `paths.json` becomes redundant once all paths are expressed as metapackages with `steps` arrays. During transition, `paths.json` continues to serve as the fallback for paths not yet migrated to metapackages.
 - [ ] Align with docs partners' YAML format for learning path relationships
 - [ ] Layer 1 unit tests for path and journey schema validation (`type`, `steps`, nested structure)
-- [ ] Layer 2 unit tests for frontend navigation display logic (rendering `memberOf` with per-path `next`, `recommended`, path context selection, completion overlay)
+- [ ] Layer 2 unit tests for frontend navigation display logic (progress computation from `memberOf[].steps`, completion-aware next step, path context selection, `recommended` rendering)
 
 **Why sixth:** First user-visible payoff of the package model. Introduces two-level metapackage composition (paths compose guides, journeys compose paths) that SCORM `"course"` and `"module"` types will later build on. Content authors and docs partners see dependency declarations reflected in the learning experience. The recommender's enriched resolution response eliminates the need for client-side graph reasoning, keeping the frontend thin.
 
