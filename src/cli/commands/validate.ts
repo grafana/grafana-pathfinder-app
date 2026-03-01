@@ -13,6 +13,7 @@ import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/fi
 
 interface ValidateOptions {
   bundled?: boolean;
+  stdin?: boolean;
   strict?: boolean;
   format?: 'text' | 'json';
   package?: string;
@@ -186,16 +187,66 @@ function runPackagesValidation(rootDir: string, options: ValidateOptions): void 
   }
 }
 
+// --- Stdin validation ---
+
+export function readStdin(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    process.stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
+    process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    process.stdin.on('error', reject);
+  });
+}
+
+function runStdinValidation(input: string, options: ValidateOptions): void {
+  const result = validateGuideFromString(input, { strict: options.strict });
+  const legacy = toLegacyResult(result);
+
+  if (options.format === 'json') {
+    const { isValid, errors, warnings } = legacy;
+    console.log(JSON.stringify({ isValid, errors, warnings }, null, 2));
+  } else {
+    if (result.isValid) {
+      console.log('✅ Valid guide');
+      if (!options.strict && result.warnings.length > 0) {
+        console.log(`\n⚠️  Warnings:\n`);
+        for (const warning of legacy.warnings) {
+          console.log(`  - ${warning}`);
+        }
+      }
+    } else {
+      console.log('❌ Invalid guide\n');
+      for (const error of legacy.errors) {
+        console.log(`  - ${error}`);
+      }
+    }
+  }
+
+  if (!result.isValid) {
+    process.exit(1);
+  }
+}
+
 export const validateCommand = new Command('validate')
   .description('Validate JSON guide files or package directories')
   .arguments('[files...]')
   .option('--bundled', 'Validate all bundled guides in src/bundled-interactives/')
+  .option('--stdin', 'Read a single JSON guide from stdin instead of files')
   .option('--strict', 'Treat warnings as errors')
   .option('--format <format>', 'Output format: text or json', 'text')
   .option('--package <dir>', 'Validate a single package directory (expects content.json)')
   .option('--packages <dir>', 'Validate a tree of package directories')
   .action(async (files: string[], options: ValidateOptions) => {
     try {
+      if (options.stdin) {
+        if (files.length > 0 || options.bundled || options.package || options.packages) {
+          console.error('--stdin is mutually exclusive with file arguments, --bundled, --package, and --packages');
+          process.exit(1);
+        }
+        const input = await readStdin();
+        return runStdinValidation(input, options);
+      }
+
       if (options.package) {
         return runPackageValidation(options.package, options);
       }

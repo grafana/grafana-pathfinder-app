@@ -10,6 +10,7 @@ import { Command } from 'commander';
 import { buildGraphCommand } from './commands/build-graph';
 import { buildRepositoryCommand } from './commands/build-repository';
 import { e2eCommand } from './commands/e2e';
+import { schemaCommand } from './commands/schema';
 import { validateCommand } from './commands/validate';
 
 const program = new Command();
@@ -20,5 +21,6 @@ program.addCommand(validateCommand);
 program.addCommand(e2eCommand);
 program.addCommand(buildRepositoryCommand);
 program.addCommand(buildGraphCommand);
+program.addCommand(schemaCommand);
 
 program.parse(process.argv);
