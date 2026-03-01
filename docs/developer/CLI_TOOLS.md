@@ -209,6 +209,7 @@ node dist/cli/cli/index.js build-repository <root> [options]
 ### Options
 
 - `-o, --output <file>`: Output file path. If omitted, writes to stdout.
+- `-e, --exclude <paths...>`: Path(s) to exclude from the scan, relative to `<root>`. Excluded trees are not descended into. Use this when the root contains another repo (e.g. pathfinder-app) and you want to index only your packages.
 
 ### Examples
 
@@ -224,6 +225,12 @@ node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bund
 node dist/cli/cli/index.js build-repository src/bundled-interactives
 ```
 
+**Exclude a subtree (e.g. when running from a repo that has pathfinder-app checked out):**
+
+```bash
+node pathfinder-app/dist/cli/cli/index.js build-repository . -e pathfinder-app -o repository.json
+```
+
 There are convenience npm scripts:
 
 ```bash
@@ -233,7 +240,7 @@ npm run repository:check   # Rebuild to temp file and diff — fails if committe
 
 ### How discovery works
 
-The command walks the directory tree starting at `<root>`. Any subdirectory at any depth containing `manifest.json` is treated as a package. The `assets/` subtree is skipped during traversal. Directories without `manifest.json` are not packages.
+The command walks the directory tree starting at `<root>`. Any subdirectory at any depth containing `manifest.json` is treated as a package. The `assets/` subtree is skipped during traversal. Directories without `manifest.json` are not packages. If `--exclude` is used, any path equal to or under an excluded path is not descended into, so packages inside excluded trees are not discovered.
 
 ### Output format
 

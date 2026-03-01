@@ -20,6 +20,7 @@ import { readJsonFile } from '../../validation/package-io';
 
 interface BuildRepositoryOptions {
   output?: string;
+  exclude?: string[];
 }
 
 async function formatRepositoryJson(json: string): Promise<string> {
@@ -34,11 +35,22 @@ async function formatRepositoryJson(json: string): Promise<string> {
 }
 
 /**
+ * Returns true if dir is equal to or under any of the excluded absolute paths.
+ */
+function isExcluded(dir: string, excludePaths: string[]): boolean {
+  const normalizedDir = path.normalize(dir);
+  return excludePaths.some((excluded) => {
+    const normalizedExcluded = path.normalize(excluded);
+    return normalizedDir === normalizedExcluded || normalizedDir.startsWith(normalizedExcluded + path.sep);
+  });
+}
+
+/**
  * Discover package directories under a root.
  * A package directory is any directory containing manifest.json.
- * Recurses arbitrarily deep, excluding assets/ subtrees.
+ * Recurses arbitrarily deep, excluding assets/ subtrees and any paths in excludePaths (absolute).
  */
-function discoverPackages(root: string): string[] {
+function discoverPackages(root: string, excludePaths: string[] = []): string[] {
   if (!fs.existsSync(root)) {
     return [];
   }
@@ -63,7 +75,11 @@ function discoverPackages(root: string): string[] {
       if (!entry.isDirectory() || entry.name === 'assets') {
         continue;
       }
-      stack.push(path.join(currentDir, entry.name));
+      const childDir = path.join(currentDir, entry.name);
+      if (isExcluded(childDir, excludePaths)) {
+        continue;
+      }
+      stack.push(childDir);
     }
   }
 
@@ -148,8 +164,13 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
 
 /**
  * Build a repository.json from a package tree root.
+ * @param root - Absolute path to the package tree root
+ * @param options.exclude - Optional list of paths to exclude (relative to root or absolute); excluded trees are not descended into
  */
-export function buildRepository(root: string): {
+export function buildRepository(
+  root: string,
+  options?: { exclude?: string[] }
+): {
   repository: RepositoryJson;
   warnings: string[];
   errors: string[];
@@ -158,7 +179,9 @@ export function buildRepository(root: string): {
   const errors: string[] = [];
   const repository: RepositoryJson = {};
 
-  const packageDirs = discoverPackages(root);
+  const absoluteExcludes =
+    options?.exclude?.map((p) => (path.isAbsolute(p) ? path.normalize(p) : path.join(root, p))) ?? [];
+  const packageDirs = discoverPackages(root, absoluteExcludes);
 
   if (packageDirs.length === 0) {
     warnings.push(`No package directories with manifest.json found under ${root}`);
@@ -197,6 +220,10 @@ export const buildRepositoryCommand = new Command('build-repository')
   .description('Build repository.json from a package tree')
   .argument('<root>', 'Root directory containing package directories')
   .option('-o, --output <file>', 'Output file path (default: stdout)')
+  .option(
+    '-e, --exclude <paths...>',
+    'Path(s) to exclude from scan (relative to root); excluded trees are not descended into'
+  )
   .action(async (root: string, options: BuildRepositoryOptions) => {
     const absoluteRoot = path.isAbsolute(root) ? root : path.resolve(process.cwd(), root);
 
@@ -205,7 +232,8 @@ export const buildRepositoryCommand = new Command('build-repository')
       process.exit(1);
     }
 
-    const { repository, warnings, errors } = buildRepository(absoluteRoot);
+    const exclude = options.exclude ? (Array.isArray(options.exclude) ? options.exclude : [options.exclude]) : [];
+    const { repository, warnings, errors } = buildRepository(absoluteRoot, { exclude });
 
     for (const warning of warnings) {
       console.warn(`⚠️  ${warning}`);
