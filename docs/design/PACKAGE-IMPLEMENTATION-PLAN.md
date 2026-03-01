@@ -353,7 +353,7 @@ A `migrate-paths` CLI command that reads existing learning path metadata from ex
 
 Wire the composite `PackageResolver` into the `docs-retrieval` fetch pipeline so that `docs-retrieval` becomes the single entry point for all content fetching — both static documentation and interactive packages. This resolves the "intentional transitional duplication" from Phase 3 and establishes the fetch architecture that Phase 5's navigation enrichment depends on.
 
-**Architecture decision: docs-retrieval dispatches by content type.** Not all content is interactive guides — some is static documentation from a different CDN that doesn't participate in the package system. `docs-retrieval` must distinguish content type and dispatch accordingly:
+**Architecture decision: docs-retrieval dispatches by content type.** Not all content is interactive guides — some is static documentation from a different CDN that doesn't participate in the package system. `docs-retrieval` must distinguish content type and dispatch accordingly. **The dispatch signal already exists:** the `Recommendation` interface (`src/types/context.types.ts`) carries a `type` field (`'learning-journey' | 'docs-page' | 'interactive'`), and the context engine already discriminates on it (see `context.service.ts`). Phase 4g wires this existing discriminator to route interactive content through the `PackageResolver` — no new dispatch heuristic is needed.
 
 - **Static documentation:** fetched via the existing `docs-retrieval` pipeline, unchanged
 - **Interactive guide, path, or journey:** delegated to the composite `PackageResolver`, which checks the bundled loader first and falls back to the recommender resolver if configured
