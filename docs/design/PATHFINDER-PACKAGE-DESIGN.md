@@ -623,7 +623,7 @@ These are explicitly out of scope for this design but are documented here for fu
 
 ### Multi-repository package discovery
 
-With bare IDs, the system needs a way to discover packages across multiple independently managed repositories. The [implementation plan](./PACKAGE-IMPLEMENTATION-PLAN.md) addresses this in phases: bundled content is migrated first as a local repository (Phase 2), a static catalog (Phase 4) aggregates all `repository.json` files into a single `packages-catalog.json` published to CDN, and a registry service (Phase 7) provides dynamic resolution with automatic catalog aggregation. All implement the same `PackageResolver` interface (see [package resolution](./package/identity-and-resolution.md#package-resolution)).
+With bare IDs, the system needs a way to discover packages across multiple independently managed repositories. The [implementation plan](./PACKAGE-IMPLEMENTATION-PLAN.md) addresses this in phases: bundled content is migrated first as a local repository (Phase 2), the recommender microservice provides resolution routes that resolve bare IDs across repositories and return CDN URLs (Phase 4), and a dynamic registry (Phase 7) evolves the config-driven repository list into a production registry with webhook-triggered refresh. All implement the same `PackageResolver` interface (see [package resolution](./package/identity-and-resolution.md#package-resolution)).
 
 Until multi-repo is needed, the bundled repository is the only repository and resolution is handled by reading `repository.json` directly.
 

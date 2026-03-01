@@ -106,7 +106,11 @@ Each repository root contains a `repository.json` file. It is a top-level JSON o
 
 Note that `infrastructure-alerting-find-data-to-alert` is a journey-specific step nested under its journey directory (`infrastructure-alerting/find-data-to-alert/`), while `install-alloy` is a shared step that lives as an independent top-level package (`install-alloy/`). Both are real packages resolved by bare ID through the repository index. Multiple journeys (e.g., `linux-server-integration`, `macos-integration`) can reference `install-alloy` in their `steps` arrays without physical duplication.
 
-The `path` is relative to the repository root directory. Denormalized metadata fields (`title`, `type`, `description`, `category`, `author`, `startingLocation`, all dependency arrays, `targeting`, and `testEnvironment`) are included so that consumers can build dependency graphs, search catalogs, compute learning paths, and derive recommender input from `repository.json` alone — without re-reading every individual `manifest.json`.
+**Path resolution rule:** The `path` field is always a relative path resolved against the location of the `repository.json` file that contains it. The consumer that loaded `repository.json` already knows where it came from — a filesystem directory for bundled content, an HTTP base URL for remote repositories — and resolves `path` against that base to locate `content.json` and `manifest.json`. Absolute URLs are not permitted; the schema rejects values containing `://`. This follows the same model as HTML relative URLs resolved against the document base, or Debian `Packages` file paths resolved against the repository root.
+
+A repository index may only reference content within its own tree. Cross-repository content is referenced by bare ID through the dependency system (`depends`, `recommends`, `suggests`), not by path. Repositories own their content — a repository that needs to reference another repository's package does so via a bare ID dependency, letting the [package resolver](#package-resolution) handle cross-repository lookup.
+
+Denormalized metadata fields (`title`, `type`, `description`, `category`, `author`, `startingLocation`, all dependency arrays, `targeting`, and `testEnvironment`) are included so that consumers can build dependency graphs, search catalogs, compute learning paths, and derive recommender input from `repository.json` alone — without re-reading every individual `manifest.json`.
 
 **Denormalization decision:** The `repository.json` file includes metadata that has its source of truth in each package's `manifest.json`. This denormalization is safe because `repository.json` is always a compiled build artifact — regenerated from source on every commit and verified in CI. It cannot diverge from the source-of-truth files because it is never hand-edited.
 
@@ -127,7 +131,7 @@ This file is committed to the repository. A **pre-commit hook** regenerates it o
 Given a bare ID like `infrastructure-alerting-find-data-to-alert`, the system resolves it to a loadable content location through a tiered resolution strategy. The frontend plugin tries resolution tiers in order:
 
 1. **Bundled content** — look up the ID in the bundled `repository.json` shipped with the plugin. This covers baseline tutorials that work offline and in air-gapped environments.
-2. **Backend resolution** — call `GET /api/packages/{id}/content` on the recommender microservice ([`grafana-recommender`](https://github.com/grafana/grafana-recommender)). The recommender fetches and caches `repository.json` files from configured remote repository URLs, resolves the bare ID across repositories in priority order, and returns the content. This covers extended content beyond the bundled baseline without requiring the frontend to hold any repository indexes in memory.
+2. **Backend resolution** — call `GET /api/packages/{id}` on the recommender microservice ([`grafana-recommender`](https://github.com/grafana/grafana-recommender)). The recommender fetches and caches `repository.json` files from configured remote repository URLs, resolves the bare ID across repositories in priority order, and returns a JSON resolution response containing CDN URLs for the package's `content.json` and `manifest.json`. The frontend then fetches directly from CDN. The recommender is a pure lookup service: bare ID in, CDN URLs out. This covers extended content beyond the bundled baseline without requiring the frontend to hold any repository indexes in memory.
 
 If tier 1 misses, try tier 2. If both tiers miss, the package is unresolvable.
 
@@ -135,7 +139,7 @@ This tier ordering intentionally implements **clobber semantics**: if the same p
 
 The frontend plugin does **not** fetch, store, or reason about repository indexes for remote content. All multi-repo resolution logic, dependency graph data, and targeting metadata lives server-side in the recommender microservice. The frontend holds only the bundled `repository.json` for offline support. This keeps client memory bounded as the content corpus grows across many repositories.
 
-The recommender shares its cached repository indexes between the package resolution endpoints and the recommendation endpoints. Both consumers benefit from the same periodic refresh cycle (~20 minutes). The recommendation engine uses the indexes for targeting, dependency graph analysis, and recommendation quality; the resolution routes use them to map bare IDs to content locations.
+The recommender shares its cached repository indexes between the package resolution endpoint and the recommendation endpoints. Both consumers benefit from the same periodic refresh cycle (~20 minutes). The recommendation engine uses the indexes for targeting, dependency graph analysis, and recommendation quality; the resolution endpoint uses them to map bare IDs to CDN content locations.
 
 All tiers return the same resolution shape:
 
@@ -149,6 +153,17 @@ interface PackageResolution {
   manifest?: ManifestJson;
   /** Populated when resolve options request content loading */
   content?: ContentJson;
+  /** Graph-derived navigation (populated by recommender resolution, Phase 5+) */
+  navigation?: PackageNavigation;
+}
+
+interface PackageNavigation {
+  /** Next step in the parent metapackage's steps array (structural order) */
+  next?: string;
+  /** Paths/journeys this package participates in, with position for progress display */
+  memberOf?: Array<{ id: string; type: string; position: number; total: number }>;
+  /** Packages linked via recommends edges in the dependency graph */
+  recommended?: string[];
 }
 
 interface ResolveOptions {
@@ -161,9 +176,11 @@ interface PackageResolver {
 }
 ```
 
-The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. Resolution always returns the package ID and URLs. When `loadContent` is requested, the resolver also fetches and populates the `manifest` and `content` objects on the result. Callers that only need to know where a package is (e.g., catalog UI) skip the load; callers that need the actual package (e.g., the plugin renderer) pass the flag.
+The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. Resolution always returns the package ID and CDN URLs. When `loadContent` is requested, the resolver also fetches and populates the `manifest` and `content` objects on the result (fetching from the CDN URLs in the response). Callers that only need to know where a package is (e.g., catalog UI) skip the load; callers that need the actual package (e.g., the plugin renderer) pass the flag.
 
-Repositories are internal to the backend — they are URLs that point to indexes, not first-class objects the frontend sees. The backend knows its set of repository URLs via plugin configuration, fetches their indexes on a periodic refresh cycle, and resolves bare IDs from the merged lookup. Phase 7 evolves the config-driven repository list into a dynamic registry with webhook-triggered refresh and multi-tenancy support. The frontend resolver and `PackageResolver` interface are unchanged — only the backend's repository management evolves.
+The `navigation` field is populated by the recommender's resolution endpoint starting in Phase 5. The recommender computes `next` from `steps` array order, `memberOf` by scanning all metapackages, and `recommended` from `recommends` edges — all from its cached repository indexes. The frontend renders this navigation directly, overlaying client-side completion state for display. In a future phase, the frontend will send completion data alongside context, enabling the recommender to return completion-aware navigation.
+
+Repositories are internal to the recommender — they are URLs that point to indexes, not first-class objects the frontend sees. The recommender knows its set of repository URLs via environment configuration, fetches their indexes on a periodic refresh cycle, and resolves bare IDs from the merged lookup. Phase 7 evolves the config-driven repository list into a dynamic registry with webhook-triggered refresh. The frontend resolver and `PackageResolver` interface are unchanged — only the recommender's repository management evolves.
 
 ### Relationship to `index.json`
 
