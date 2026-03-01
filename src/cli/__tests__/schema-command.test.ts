@@ -9,7 +9,9 @@ describe('schema command', () => {
     });
 
     it.each(EXPECTED_SCHEMA_NAMES)('has a description for "%s"', (name) => {
-      expect(SCHEMA_REGISTRY[name].description).toBeTruthy();
+      const entry = SCHEMA_REGISTRY[name];
+      expect(entry).toBeDefined();
+      expect(entry!.description).toBeTruthy();
     });
   });
 
@@ -72,15 +74,18 @@ describe('schema command', () => {
     it('each schema is valid JSON Schema', () => {
       const all = exportAllSchemas(false);
       for (const name of EXPECTED_SCHEMA_NAMES) {
-        expect(all[name]).toBeDefined();
-        expect(all[name]['$schema']).toBeDefined();
+        const schema = all[name];
+        expect(schema).toBeDefined();
+        expect(schema!['$schema']).toBeDefined();
       }
     });
 
     it('includes x-schema-version in all schemas when requested', () => {
       const all = exportAllSchemas(true);
       for (const name of EXPECTED_SCHEMA_NAMES) {
-        expect(all[name]['x-schema-version']).toBeTruthy();
+        const schema = all[name];
+        expect(schema).toBeDefined();
+        expect(schema!['x-schema-version']).toBeTruthy();
       }
     });
   });

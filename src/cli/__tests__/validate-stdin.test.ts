@@ -70,13 +70,13 @@ describe('validate --stdin', () => {
       const result = validateGuideFromString('not json at all');
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0].message).toContain('valid JSON');
+      expect(result.errors[0]?.message).toContain('valid JSON');
     });
 
     it('returns a parse error for a JSON array', () => {
       const result = validateGuideFromString('[1, 2, 3]');
       expect(result.isValid).toBe(false);
-      expect(result.errors[0].message).toContain('object');
+      expect(result.errors[0]?.message).toContain('object');
     });
   });
 
