@@ -13,6 +13,13 @@
     "declaration": false,
     "moduleResolution": "node"
   },
-  "include": ["src/cli/**/*", "src/types/json-guide.types.ts", "src/types/json-guide.schema.ts", "src/types/package.types.ts", "src/types/package.schema.ts", "src/validation/**/*"],
+  "include": [
+    "src/cli/**/*",
+    "src/types/json-guide.types.ts",
+    "src/types/json-guide.schema.ts",
+    "src/types/package.types.ts",
+    "src/types/package.schema.ts",
+    "src/validation/**/*"
+  ],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/__tests__/**"]
 }
