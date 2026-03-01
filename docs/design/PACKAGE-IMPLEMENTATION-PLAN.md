@@ -86,6 +86,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 7: Dynamic repository registry              | —                  |
 | 8: SCORM foundation                         | —                  |
 | 9+: SCORM import pipeline                   | —                  |
+| 10: Implementation cleanup                  | —                  |
 
 ---
 
@@ -243,7 +244,7 @@ Add a package resolution endpoint to the recommender microservice. The recommend
 - **Resolution responses are cacheable.** The response is a pure function of the package ID and the current repository index state. Cache headers can be set based on the repository refresh TTL.
 - Repository configuration lives in environment variables (consistent with the recommender's existing config pattern) so that different deployments can point to different content repositories without code changes.
 - The recommender and resolution routes share the same cached repository indexes — one refresh cycle, two consumers. The `loadAllConfigs` / `/reload` pattern extends to include repository index refresh.
-- **Enriched resolution with navigation (Phase 5).** The resolution response is designed to be extended with graph-derived navigation fields (`next`, `memberOf`, `recommended`) when path and journey integration lands. The recommender holds the full dependency graph from its cached repository indexes and is the natural place to compute "what comes next" for a given package. See Phase 5 for the navigation enrichment design.
+- **Enriched resolution with navigation (Phase 5).** The resolution response is designed to be extended with graph-derived navigation fields (`memberOf` with per-path `next`, `recommended`) when path and journey integration lands. The recommender holds the full dependency graph from its cached repository indexes and is the natural place to compute "what comes next" for a given package. See Phase 5 for the navigation enrichment design.
 
 #### Phase 4b: Pilot migration (interactive-tutorials)
 
@@ -304,7 +305,7 @@ A thin frontend `PackageResolver` implementation that resolves bare package IDs 
 - The composite resolver preserves the single `PackageResolver` interface — consumers don't change. The resolution priority (bundled first, recommender second) means bundled content always wins for packages that exist locally, providing offline/OSS baseline support.
 - The frontend never fetches or stores repository indexes — all multi-repo resolution logic lives in the recommender. The frontend receives CDN URLs from the resolution response and fetches content directly.
 - In environments where the recommender is unavailable (e.g., air-gapped OSS), only bundled content resolves — this is the expected graceful degradation.
-- The resolution response will be extended with graph-derived navigation fields in Phase 5 (`next`, `memberOf`, `recommended`). The `RecommenderPackageResolver` should be designed to pass these through to callers when present, even though Phase 4d does not consume them yet.
+- The resolution response will be extended with graph-derived navigation fields in Phase 5 (`memberOf` with per-path `next`, `recommended`). The `RecommenderPackageResolver` should be designed to pass these through to callers when present, even though Phase 4d does not consume them yet.
 
 #### Phase 4e: Integration verification
 
@@ -359,15 +360,16 @@ A `migrate-paths` CLI command that reads existing learning path metadata from ex
   "manifestUrl": "https://interactive-learning.grafana.net/guides/prometheus-grafana-101/manifest.json",
   "repository": "interactive-tutorials",
   "navigation": {
-    "next": "first-dashboard",
-    "memberOf": [{ "id": "getting-started", "type": "path", "position": 2, "total": 4 }],
+    "memberOf": [
+      { "id": "getting-started", "type": "path", "position": 2, "total": 4, "next": "first-dashboard" },
+      { "id": "observability-basics", "type": "path", "position": 3, "total": 5, "next": "loki-grafana-101" }
+    ],
     "recommended": ["loki-grafana-101", "prometheus-advanced-queries"]
   }
 }
 ```
 
-- `next`: the next step in the parent metapackage's `steps` array (structural array order)
-- `memberOf`: which paths/journeys this package participates in, with position and total for progress display
+- `memberOf`: which paths/journeys this package participates in. Each entry carries `position` and `total` for progress display, plus `next` — the next step in that specific parent metapackage's `steps` array (structural array order). `next` is per-`memberOf` entry rather than top-level because a package can participate in multiple paths simultaneously. The frontend chooses which path's `next` to surface based on navigation context, defaulting to the first entry when no context is available.
 - `recommended`: packages linked via `recommends` edges in the dependency graph — "where else might the user go from here?"
 
 This replaces the earlier "learning path reconciliation at Tier 3+" design. The frontend does not need a Tier 3+ utility to stitch `package-engine` and `learning-paths` together — the recommender provides navigation directly.
@@ -397,21 +399,20 @@ This replaces the earlier "learning path reconciliation at Tier 3+" design. The 
   - [ ] Graph lint: `steps` references must resolve to existing packages in global catalog
   - [ ] Cycle detection in `steps` chains (error-level — a step cannot transitively contain its parent)
 - [ ] **Recommender navigation enrichment** (in `grafana-recommender`):
-  - [ ] Extend `GET /api/packages/{id}` resolution response with `navigation` field (`next`, `memberOf`, `recommended`)
-  - [ ] `next` computed from `steps` array order in the parent metapackage
-  - [ ] `memberOf` computed by scanning all metapackages whose `steps` arrays contain this package ID
+  - [ ] Extend `GET /api/packages/{id}` resolution response with `navigation` field (`memberOf` with per-path `next`, `recommended`)
+  - [ ] `memberOf` computed by scanning all metapackages whose `steps` arrays contain this package ID; each entry includes `next` from that metapackage's `steps` array order
   - [ ] `recommended` computed from `recommends` edges in the dependency graph
-  - [ ] Go unit tests for navigation computation (single-path membership, multi-path membership, journey-level membership, packages with no parent metapackage)
+  - [ ] Go unit tests for navigation computation (single-path membership, multi-path membership, journey-level membership, packages with no parent metapackage, `next` correctness for last-step-in-path)
 - [ ] **Frontend navigation display** (in `grafana-pathfinder-app`):
   - [ ] UI: display path/journey progress using `memberOf` data (position, total)
-  - [ ] UI: "next step" navigation using `navigation.next`
+  - [ ] UI: "next step" navigation using `memberOf[].next` — frontend selects which path's `next` to surface based on navigation context (e.g., which path the user arrived from), defaulting to the first `memberOf` entry
   - [ ] UI: recommended content links using `navigation.recommended`
   - [ ] UI: learning path cards use package metadata (description, category) from the resolution response when available
   - [ ] Frontend overlays client-side completion state on the structural navigation for display
 - [ ] **`paths.json` deprecation path:** With navigation provided by the recommender's resolution response, curated `paths.json` becomes redundant once all paths are expressed as metapackages with `steps` arrays. During transition, `paths.json` continues to serve as the fallback for paths not yet migrated to metapackages.
 - [ ] Align with docs partners' YAML format for learning path relationships
 - [ ] Layer 1 unit tests for path and journey schema validation (`type`, `steps`, nested structure)
-- [ ] Layer 2 unit tests for frontend navigation display logic (rendering `memberOf`, `next`, `recommended`, completion overlay)
+- [ ] Layer 2 unit tests for frontend navigation display logic (rendering `memberOf` with per-path `next`, `recommended`, path context selection, completion overlay)
 
 **Why sixth:** First user-visible payoff of the package model. Introduces two-level metapackage composition (paths compose guides, journeys compose paths) that SCORM `"course"` and `"module"` types will later build on. Content authors and docs partners see dependency declarations reflected in the learning experience. The recommender's enriched resolution response eliminates the need for client-side graph reasoning, keeping the frontend thin.
 
@@ -475,6 +476,19 @@ This replaces the earlier "learning path reconciliation at Tier 3+" design. The 
 
 Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-8 is the foundation it writes to.
 
+### Phase 10: Implementation cleanup
+
+**Goal:** Revisit code committed in earlier phases that may be unnecessary given design decisions made in later phases. This is a scheduled debt reconciliation pass — earlier phases were executed under assumptions that later phases refined or replaced.
+
+**Known candidates:**
+
+- [ ] **`src/package-engine/dependency-resolver.ts`:** Exports 10 structural dependency query functions (`getProviders`, `getTransitiveDependencies`, `getRecommendedBy`, `getDependedOnBy`, etc.) from the package-engine barrel. No consumer outside its own test file. The CLI graph builder (`src/cli/commands/build-graph.ts`) implements equivalent logic independently (`extractDependencyIds`, `buildProvidesMap`, `detectCycles`). The Phase 5 decision (graph navigation lives in the recommender) means the frontend will not need client-side dependency queries. **Action:** verify no runtime or CLI code path imports these functions; if confirmed, delete the module and its tests. If the CLI graph builder should share this logic instead of duplicating it, consolidate into `validation/` (Tier 1) where both CLI and future consumers can reach it.
+- [ ] **`loadBundledLegacyGuide` in `src/package-engine/loader.ts`:** Exported from the barrel but unused outside its own module and tests. Phase 2 migrated all bundled guides to the package directory format. **Action:** verify no import path; if confirmed, remove the function and its tests.
+- [ ] **Functional duplication between `build-graph.ts` and `dependency-resolver.ts`:** `extractDependencyIds` duplicates `flattenDependencyList`/`flattenClause`; `buildProvidesMap` duplicates `buildProvidesIndex`. If both modules survive cleanup, one should consume the other. If `dependency-resolver.ts` is deleted, the CLI's local copies are canonical and no action is needed.
+- [ ] **Resolution type alignment:** The design spec in `identity-and-resolution.md` shows a flat `PackageResolution` interface (success-only shape). The implementation uses a discriminated union (`PackageResolutionSuccess | PackageResolutionFailure` with `ok: true/false`). Reconcile the spec to match the implementation or vice versa — the discriminated union is more expressive and should likely win.
+
+**Process:** For each candidate, confirm the usage analysis, execute the deletion or consolidation, run the tidy-up skill, and verify all tests pass with unchanged violation counts.
+
 ---
 
 ## Summary
@@ -497,3 +511,4 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | 7: Dynamic repository registry              | Dynamic registry, webhook refresh, ecosystem scale (multi-tenancy deferred)                   | —                  |
 | 8: SCORM foundation                         | SCORM import readiness, extends `type` with course/module                                     | —                  |
 | 9+: SCORM import pipeline                   | Full SCORM conversion pipeline                                                                | —                  |
+| 10: Implementation cleanup                  | Dead code removal, duplication consolidation, spec-implementation alignment                   | —                  |
