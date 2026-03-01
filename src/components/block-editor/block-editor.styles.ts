@@ -452,6 +452,30 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     },
   }),
 
+  // Persistent highlight for the last modified block
+  lastModifiedContainer: css({
+    borderColor: theme.colors.warning.border,
+    boxShadow: `0 0 0 2px ${theme.colors.warning.transparent}`,
+  }),
+
+  // Block sequence number badge
+  blockNumber: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '20px',
+    height: '20px',
+    padding: `0 ${theme.spacing(0.5)}`,
+    borderRadius: '10px',
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    flexShrink: 0,
+    fontVariantNumeric: 'tabular-nums',
+  }),
+
   // Collapse button for sections/conditionals
   collapseButton: css({
     display: 'flex',
