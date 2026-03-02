@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1
+
+### Fixed
+
+- **Terminal reconnection**: Fixed issues with reconnection and timeouts to VMs (#639)
+
 ## 2.0.0
 
 ### Added
