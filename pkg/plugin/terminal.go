@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -56,7 +56,7 @@ func normalizePrivateKey(key string) string {
 // ConnectSSHViaRelay establishes an SSH connection through a WebSocket relay.
 // This is used when direct TCP access to the VM is not available (e.g., Grafana Cloud).
 func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token string) (*ssh.Client, error) {
-	logger := log.DefaultLogger
+	logger := backend.Logger
 
 	if creds == nil {
 		return nil, fmt.Errorf("credentials are nil")
@@ -116,6 +116,13 @@ func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token 
 		"vmID", vmID,
 		"dialDurationMs", dialDuration.Milliseconds(),
 	)
+
+	// Set up pong handler to reset read deadline when we receive pong responses.
+	// The relay sends pings every 30s; we extend our read deadline on each pong
+	// to keep the connection alive through load balancers with idle timeouts.
+	wsConn.SetPongHandler(func(appData string) error {
+		return wsConn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	})
 
 	conn := NewWSConn(wsConn)
 
@@ -312,7 +319,7 @@ func (ts *TerminalSession) forwardStderr() {
 		n, err := ts.stderr.Read(buf)
 		if err != nil {
 			if err != io.EOF && !ts.isClosed() {
-				log.DefaultLogger.Warn("stderr read error", "error", err, "vmID", ts.VMID)
+				backend.Logger.Warn("Stderr read error", "error", err, "vmID", ts.VMID)
 			}
 			return
 		}

@@ -84,6 +84,12 @@ func (a *App) Dispose() {
 	streamSessionsMu.Unlock()
 }
 
+// ctxLogger returns a contextual logger that automatically includes traceID,
+// endpoint, pluginID, and other metadata from the context for better debugging.
+func (a *App) ctxLogger(ctx context.Context) log.Logger {
+	return a.logger.FromContext(ctx)
+}
+
 // CheckHealth handles health check requests.
 func (a *App) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	// Basic health check

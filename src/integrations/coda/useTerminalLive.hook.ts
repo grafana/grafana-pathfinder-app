@@ -162,6 +162,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
   const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track if we're currently attempting to reconnect (prevents loops)
+  const reconnectingRef = useRef<boolean>(false);
+  // Ref to hold attemptReconnect function (populated after connect is defined)
+  const attemptReconnectRef = useRef<(() => void) | null>(null);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -216,7 +220,15 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       if (duration > 500) {
         connectionLog.warn('Slow input request', { vmId: id, durationMs: Math.round(duration) });
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      // Check for 410 Gone - session expired but VM still active
+      const fetchError = err as { status?: number };
+      if (fetchError.status === 410) {
+        connectionLog.warn('Session expired, attempting reconnect', { vmId: id });
+        attemptReconnectRef.current?.();
+        return;
+      }
+
       connectionLog.error('Failed to send input', err, {
         vmId: id,
         inputLength: inputData.length,
@@ -247,7 +259,15 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         user: userLogin,
       });
       httpLog.success(200, { vmId: id, rows, cols });
-    } catch (err) {
+    } catch (err: unknown) {
+      // Check for 410 Gone - session expired but VM still active
+      const fetchError = err as { status?: number };
+      if (fetchError.status === 410) {
+        connectionLog.warn('Session expired during resize, attempting reconnect', { vmId: id });
+        attemptReconnectRef.current?.();
+        return;
+      }
+
       httpLog.failure(err);
       connectionLog.error('Failed to send resize', err, {
         vmId: id,
@@ -407,6 +427,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                     clearTimeout(handshakeTimeoutRef.current);
                     handshakeTimeoutRef.current = null;
                   }
+                  // Reset reconnecting flag on successful connection
+                  reconnectingRef.current = false;
 
                   // Update current VM ID ref from backend (needed for input routing)
                   if (msg.vmId) {
@@ -583,6 +605,28 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     // Connect to stream - backend handles VM assignment and reuse
     connectLiveStream('new', terminal);
   }, [terminalRef, cleanup, connectLiveStream]);
+
+  // Populate attemptReconnect ref now that connect is defined
+  // Must be in useEffect to avoid updating ref during render
+  useEffect(() => {
+    attemptReconnectRef.current = () => {
+      if (reconnectingRef.current) {
+        return; // Already reconnecting
+      }
+      reconnectingRef.current = true;
+
+      const terminal = terminalRef.current;
+      if (terminal) {
+        terminal.writeln('\r\n\x1b[33m⚠ Session expired, reconnecting...\x1b[0m');
+      }
+
+      // Small delay to avoid rapid reconnection attempts
+      setTimeout(() => {
+        reconnectingRef.current = false;
+        connect();
+      }, 1000);
+    };
+  }, [connect, terminalRef]);
 
   /**
    * Disconnect from the terminal
