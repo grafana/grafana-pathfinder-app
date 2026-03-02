@@ -84,6 +84,19 @@ const pathfinderFeatureFlags = {
     defaultValue: DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue,
     trackingKey: 'experiment_variant',
   },
+  /**
+   * A/B experiment for users with accounts 24+ hours old
+   * - "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
+   * - "control": In experiment, no sidebar (native Grafana help only)
+   * - "treatment": In experiment, sidebar auto-opens for users with accounts >= 24 hours old
+   * Default: "excluded" to preserve normal behavior if flag not set
+   */
+  'pathfinder.after-24h-experiment': {
+    valueType: 'object',
+    values: [DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue],
+    defaultValue: DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue,
+    trackingKey: 'after_24h_experiment',
+  },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
 // Helper to get typed keys from the flag definitions

@@ -1,5 +1,5 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
-import { getAppEvents, locationService } from '@grafana/runtime';
+import { locationService } from '@grafana/runtime';
 import React, { lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import AppComponent from './components/App/App';
@@ -12,24 +12,18 @@ import { getConfigWithDefaults, DocsPluginConfig, PLUGIN_BASE_URL } from './cons
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl, validateRedirectPath } from './security';
-import {
-  initializeOpenFeature,
-  getFeatureFlagValue,
-  getExperimentConfig,
-  ExperimentConfig,
-  matchPathPattern,
-} from './utils/openfeature';
+import { initializeOpenFeature } from './utils/openfeature';
 import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
-import { StorageKeys } from './lib/user-storage';
 import {
+  initializeExperiments,
+  shouldMountSidebar,
+  setupMainExperimentAutoOpen,
+  setupAfter24hAutoOpen,
+  attemptAutoOpen,
+  getAutoOpenFeatureFlag,
+  getCurrentPath,
   createExperimentDebugger,
-  logExperimentConfig,
-  shouldAutoOpenForPath,
-  markParentAutoOpened,
-  markGlobalAutoOpened,
-  syncExperimentStateFromUserStorage,
-  resetExperimentState,
-} from './utils/experiment-debug';
+} from './utils/experiments';
 import MemoizedContextPanel from './components/App/ContextPanel';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
@@ -50,56 +44,12 @@ try {
   console.error('[OpenFeature] Error initializing feature flags:', e);
 }
 
-// Evaluate A/B experiment config at module load time
-// GOFF returns an object with { variant, pages, resetCache }:
-// - variant "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
-// - variant "control": In experiment, no sidebar (native Grafana help only)
-// - variant "treatment": In experiment, sidebar auto-opens on target pages
-// - pages: Array of page path prefixes where auto-open should trigger (treatment only)
-// - resetCache: When toggled true, clears session storage to allow sidebar to auto-open again
-const experimentConfig: ExperimentConfig = getExperimentConfig('pathfinder.experiment-variant');
-const experimentVariant = experimentConfig.variant;
+// Initialize experiments and get state
+const experimentState = initializeExperiments();
+const { mainConfig, mainVariant, after24hVariant } = experimentState;
 
 // Expose experiment debugging utilities on window.__pathfinderExperiment
-createExperimentDebugger(experimentConfig);
-
-// Check for manual pop-open reset via resetCache field in experiment config
-// This allows operators to clear the "Clippy protection" via GOFF
-// Uses localStorage to track if the reset has been processed (persists across sessions)
-// Only resets when resetCache transitions from false → true (not on every page load while true)
-const hostname = window.location.hostname;
-const resetProcessedKey = `${StorageKeys.EXPERIMENT_RESET_PROCESSED_PREFIX}${hostname}`;
-const resetProcessed = localStorage.getItem(resetProcessedKey);
-
-if (experimentConfig.resetCache) {
-  // resetCache is true - check if we've already processed this reset
-  if (resetProcessed !== 'true') {
-    // First time seeing resetCache as true - reset experiment state and mark as processed
-    // This clears both sessionStorage and Grafana user storage
-    resetExperimentState(hostname).catch((error) => {
-      console.warn('[Pathfinder] Failed to reset experiment state:', error);
-    });
-    localStorage.setItem(resetProcessedKey, 'true');
-
-    console.log('[Pathfinder] Pop-open reset triggered: cleared auto-open tracking in all storages');
-  }
-} else {
-  // resetCache is false - reset the processed marker so next true triggers a reset
-  if (resetProcessed === 'true') {
-    localStorage.setItem(resetProcessedKey, 'false');
-  }
-}
-const targetPages = experimentConfig.pages;
-
-// Sync experiment state from Grafana user storage to sessionStorage
-// This restores auto-open tracking from previous sessions/browsers
-// Fire and forget - don't block module initialization
-syncExperimentStateFromUserStorage(hostname, targetPages).catch((error) => {
-  console.warn('[Pathfinder] Failed to sync experiment state from user storage:', error);
-});
-
-// Log experiment config for debugging (warning level so it's visible)
-logExperimentConfig(experimentConfig);
+createExperimentDebugger(mainConfig);
 
 // Check if Pathfinder was already docked (browser restore scenario)
 try {
@@ -241,156 +191,27 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     }
   }
 
-  // Check if auto-open is enabled
-  // - treatment: auto-open on target pages from GOFF config (or all pages if no target specified)
-  // - excluded: use normal behavior (respect sessionStorage and config settings)
-  // - control: no sidebar is registered, skip auto-open entirely
-  const featureFlagEnabled = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
-  const isTreatment = experimentVariant === 'treatment';
-  const isExcluded = experimentVariant === 'excluded';
+  // Get current path for auto-open logic
+  const currentPath = getCurrentPath();
 
-  // Check if current page matches any target page from GOFF config (treatment only)
-  const location = locationService.getLocation();
-  const currentPath = location.pathname || window.location.pathname || '';
-  const isTargetPage =
-    targetPages.length === 0 || targetPages.some((targetPath) => matchPathPattern(targetPath, currentPath));
+  // Setup main experiment auto-open logic
+  setupMainExperimentAutoOpen(experimentState, {
+    currentPath,
+    featureFlagEnabled: getAutoOpenFeatureFlag(),
+    pluginConfig: config,
+  });
 
-  // Determine if we should auto-open:
-  // - Treatment group: auto-open on target pages
-  // - Excluded group: use normal auto-open behavior (respects config/flags)
-  // - Control group: no sidebar, no auto-open
-  const shouldAutoOpen =
-    (isTreatment && isTargetPage) || (isExcluded && (featureFlagEnabled || config.openPanelOnLaunch));
-
-  // Auto-open panel if enabled
-  if (shouldAutoOpen) {
-    // Include hostname to make this unique per Grafana instance
-    const hostname = window.location.hostname;
-    // Global session key for excluded variant (once per session globally)
-    // Global session key for excluded variant (once per session globally)
-    // Uses module-level hostname for consistency
-    const sessionKey = `${StorageKeys.EXPERIMENT_SESSION_AUTO_OPENED_PREFIX}${hostname}`;
-
-    const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
-    const hasAutoOpened = sessionStorage.getItem(sessionKey);
-
-    // For treatment: check per-page (once per target page pattern)
-    // For excluded: check global (once per session)
-    const matchingPattern = isTreatment ? shouldAutoOpenForPath(hostname, targetPages, currentPath) : null;
-    const shouldOpenNow = isTreatment ? matchingPattern !== null : !hasAutoOpened;
-
-    // Auto-open immediately if not on onboarding flow
-    // Skip if sidebar is already in use by another plugin (e.g., Assistant)
-    // Don't mark storage when skipping - try again next session
-    if (shouldOpenNow && !isOnboardingFlow) {
-      if (isSidebarAlreadyInUse()) {
-        console.log('[Pathfinder] Skipping auto-open: sidebar already in use by another plugin');
-      } else {
-        if (isTreatment && matchingPattern) {
-          markParentAutoOpened(hostname, matchingPattern);
-        } else if (!isTreatment) {
-          markGlobalAutoOpened(hostname);
-        }
-        sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open', 'auto-open');
-        attemptAutoOpen(200);
-      }
-    }
-
-    // If user starts on onboarding flow, listen for navigation away from it
-    if ((isTreatment || !hasAutoOpened) && isOnboardingFlow) {
-      const checkLocationChange = () => {
-        const newLocation = locationService.getLocation();
-        const newPath = newLocation.pathname || window.location.pathname || '';
-        const stillOnOnboarding = newPath.includes('/a/grafana-setupguide-app/onboarding-flow');
-        const alreadyOpened = sessionStorage.getItem(sessionKey);
-
-        // For treatment: check per-page tracking
-        // For excluded: check global tracking
-        const newMatchingPattern = isTreatment ? shouldAutoOpenForPath(hostname, targetPages, newPath) : null;
-        const shouldOpenAfterOnboarding = isTreatment ? newMatchingPattern !== null : !alreadyOpened;
-
-        // If we've left onboarding and should open, do it now
-        // Skip if sidebar is already in use - don't mark storage, try next session
-        if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
-          if (isSidebarAlreadyInUse()) {
-            console.log('[Pathfinder] Skipping auto-open after onboarding: sidebar already in use');
-          } else {
-            if (isTreatment && newMatchingPattern) {
-              markParentAutoOpened(hostname, newMatchingPattern);
-            } else if (!isTreatment) {
-              markGlobalAutoOpened(hostname);
-            }
-            sidebarState.setPendingOpenSource(
-              isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding',
-              'auto-open'
-            );
-            attemptAutoOpen(500);
-          }
-        }
-      };
-
-      document.addEventListener('grafana:location-changed', checkLocationChange);
-
-      try {
-        const history = locationService.getHistory();
-        if (history) {
-          const unlisten = history.listen(checkLocationChange);
-          (window as any).__pathfinderAutoOpenUnlisten = unlisten;
-        }
-      } catch (error) {
-        window.addEventListener('popstate', checkLocationChange);
-      }
-    }
-  }
-
-  // Treatment variant: If user starts on a non-target page, listen for navigation to target pages
-  // This ensures auto-open triggers when they navigate to a target page (e.g., from home to Synthetic Monitoring)
-  // Uses per-page tracking: auto-opens once per target page pattern, not globally
-  if (isTreatment && !isTargetPage && targetPages.length > 0) {
-    const hostname = window.location.hostname;
-
-    const checkNavigationToTargetPage = () => {
-      const newLocation = locationService.getLocation();
-      const newPath = newLocation.pathname || window.location.pathname || '';
-
-      // Check if new path matches a target page that hasn't auto-opened yet
-      const matchingPattern = shouldAutoOpenForPath(hostname, targetPages, newPath);
-
-      // Skip if sidebar is already in use - don't mark as opened, try next session
-      if (matchingPattern) {
-        if (isSidebarAlreadyInUse()) {
-          console.log('[Pathfinder] Skipping auto-open on navigation: sidebar already in use');
-        } else {
-          markParentAutoOpened(hostname, matchingPattern);
-          sidebarState.setPendingOpenSource('experiment_treatment_navigation', 'auto-open');
-          attemptAutoOpen(300);
-        }
-      }
-    };
-
-    // Listen for Grafana location changes
-    document.addEventListener('grafana:location-changed', checkNavigationToTargetPage);
-
-    // Also listen via locationService history API
-    try {
-      const history = locationService.getHistory();
-      if (history) {
-        const unlisten = history.listen(checkNavigationToTargetPage);
-        (window as any).__pathfinderTreatmentNavUnlisten = unlisten;
-      }
-    } catch (error) {
-      window.addEventListener('popstate', checkNavigationToTargetPage);
-    }
-  }
+  // Setup after-24h experiment auto-open logic
+  setupAfter24hAutoOpen(experimentState, currentPath);
 };
 
 export { plugin };
 
-// Register sidebar for everyone EXCEPT control group
+// Register sidebar for everyone EXCEPT control groups from EITHER experiment
 // - excluded: normal behavior (sidebar available)
 // - control: no sidebar (native Grafana help only)
-// - treatment: sidebar + auto-open on target pages
-if (experimentVariant !== 'control') {
+// - treatment: sidebar + auto-open (on target pages for main experiment, for 24h+ users for after-24h experiment)
+if (shouldMountSidebar(mainVariant, after24hVariant)) {
   plugin.addComponent({
     targets: `grafana/extension-sidebar/v0-alpha`,
     title: 'Interactive learning',
@@ -642,40 +463,4 @@ const findDocPage = function (param: string): DocPage | null {
   }
 
   return null;
-};
-
-/**
- * Checks if any extension sidebar is already open/docked in Grafana
- * This prevents Pathfinder from forcefully taking over when another plugin (like Assistant) is in use
- *
- * @returns true if a sidebar is already docked/open, false otherwise
- */
-const isSidebarAlreadyInUse = (): boolean => {
-  try {
-    return localStorage.getItem('grafana.navigation.extensionSidebarDocked') !== null;
-  } catch {
-    // localStorage might be unavailable in some contexts
-    return false;
-  }
-};
-
-/**
- * Attempts to auto-open the sidebar with configured tutorial
- * This is extracted as a function so it can be called both on init and after navigation
- */
-const attemptAutoOpen = (delay = 200) => {
-  setTimeout(() => {
-    try {
-      const appEvents = getAppEvents();
-      appEvents.publish({
-        type: 'open-extension-sidebar',
-        payload: {
-          pluginId: pluginJson.id,
-          componentTitle: 'Interactive learning',
-        },
-      });
-    } catch (error) {
-      console.error('Failed to auto-open Interactive learning panel:', error);
-    }
-  }, delay);
 };
