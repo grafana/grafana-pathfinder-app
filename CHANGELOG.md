@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2
+
+### Fixed
+
+- **Terminal connection**: Fixed an issue with connection timeout
+
 ## 2.0.1
 
 ### Fixed

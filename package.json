@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
