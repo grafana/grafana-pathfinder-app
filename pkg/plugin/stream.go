@@ -93,7 +93,8 @@ type TerminalStreamOutput struct {
 //   - "new": Backend will provision a fresh VM in RunStream
 //   - Any other value: Treated as existing VM ID (will be validated/replaced in RunStream)
 func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
-	a.logger.Info("SubscribeStream called", "path", req.Path)
+	ctxLogger := a.ctxLogger(ctx)
+	ctxLogger.Info("SubscribeStream called", "path", req.Path)
 
 	// Parse channel path: terminal/{vmId} or terminal/{vmId}/{nonce}
 	parts := strings.Split(req.Path, "/")
@@ -107,7 +108,7 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 
 	// Check if Coda is configured (has JWT token)
 	if a.coda == nil {
-		a.logger.Error("Coda not registered for stream subscription")
+		ctxLogger.Error("Coda not registered for stream subscription")
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusNotFound,
 		}, nil
@@ -115,7 +116,7 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 
 	// Allow "new" vmId - RunStream will provision a fresh VM
 	if vmID == "new" || vmID == "" {
-		a.logger.Info("Stream subscription accepted for new VM provisioning")
+		ctxLogger.Info("Stream subscription accepted for new VM provisioning")
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusOK,
 		}, nil
@@ -126,7 +127,7 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 	vm, err := a.coda.GetVM(ctx, vmID)
 	if err != nil {
 		// VM not found - still accept, RunStream will provision a new one
-		a.logger.Info("VM not found, will provision in RunStream", "vmID", vmID)
+		ctxLogger.Info("VM not found, will provision in RunStream", "vmID", vmID)
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusOK,
 		}, nil
@@ -135,14 +136,14 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 	// Only reject destroyed or error states at subscription time for better UX
 	// (avoids immediate subscription failure for expired VMs - RunStream handles replacement)
 	if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
-		a.logger.Info("VM in terminal state, will provision replacement in RunStream", "vmID", vmID, "state", vm.State)
+		ctxLogger.Info("VM in terminal state, will provision replacement in RunStream", "vmID", vmID, "state", vm.State)
 		// Still accept - RunStream will handle provisioning a replacement
 		return &backend.SubscribeStreamResponse{
 			Status: backend.SubscribeStreamStatusOK,
 		}, nil
 	}
 
-	a.logger.Info("Stream subscription accepted", "vmID", vmID, "state", vm.State)
+	ctxLogger.Info("Stream subscription accepted", "vmID", vmID, "state", vm.State)
 
 	return &backend.SubscribeStreamResponse{
 		Status: backend.SubscribeStreamStatusOK,
@@ -153,12 +154,13 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 // This handles terminal input from the frontend (keyboard input, resize events).
 // This is the primary input path for bidirectional terminal communication.
 func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamRequest) (*backend.PublishStreamResponse, error) {
-	a.logger.Debug("PublishStream called", "path", req.Path, "dataLen", len(req.Data))
+	ctxLogger := a.ctxLogger(ctx)
+	ctxLogger.Debug("PublishStream called", "path", req.Path, "dataLen", len(req.Data))
 
 	// Parse channel path: terminal/{vmId} or terminal/{vmId}/{nonce}
 	parts := strings.Split(req.Path, "/")
 	if len(parts) < 2 || parts[0] != "terminal" {
-		a.logger.Warn("PublishStream: invalid path", "path", req.Path)
+		ctxLogger.Warn("PublishStream: invalid path", "path", req.Path)
 		return &backend.PublishStreamResponse{
 			Status: backend.PublishStreamStatusNotFound,
 		}, nil
@@ -172,7 +174,7 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 	streamSessionsMu.Unlock()
 
 	if !exists || sess == nil || sess.session == nil {
-		a.logger.Warn("PublishStream: no active session", "vmID", vmID, "path", req.Path)
+		ctxLogger.Warn("PublishStream: no active session", "vmID", vmID, "path", req.Path)
 		return &backend.PublishStreamResponse{
 			Status: backend.PublishStreamStatusNotFound,
 		}, nil
@@ -181,7 +183,7 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 	// Parse the input message
 	var input TerminalInput
 	if err := json.Unmarshal(req.Data, &input); err != nil {
-		a.logger.Error("PublishStream: failed to parse input", "error", err, "data", string(req.Data))
+		ctxLogger.Error("PublishStream: failed to parse input", "error", err, "data", string(req.Data))
 		return &backend.PublishStreamResponse{
 			Status: backend.PublishStreamStatusPermissionDenied,
 		}, nil
@@ -191,20 +193,20 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 	switch input.Type {
 	case "input":
 		if err := sess.session.Write([]byte(input.Data)); err != nil {
-			a.logger.Error("PublishStream: failed to write to SSH", "vmID", vmID, "error", err)
+			ctxLogger.Error("PublishStream: failed to write to SSH", "vmID", vmID, "error", err)
 		} else {
-			a.logger.Debug("PublishStream: wrote input to SSH", "vmID", vmID, "dataLen", len(input.Data))
+			ctxLogger.Debug("PublishStream: wrote input to SSH", "vmID", vmID, "dataLen", len(input.Data))
 		}
 	case "resize":
 		if input.Rows > 0 && input.Cols > 0 {
 			if err := sess.session.Resize(input.Rows, input.Cols); err != nil {
-				a.logger.Error("PublishStream: failed to resize terminal", "vmID", vmID, "error", err)
+				ctxLogger.Error("PublishStream: failed to resize terminal", "vmID", vmID, "error", err)
 			} else {
-				a.logger.Debug("PublishStream: resized terminal", "vmID", vmID, "rows", input.Rows, "cols", input.Cols)
+				ctxLogger.Debug("PublishStream: resized terminal", "vmID", vmID, "rows", input.Rows, "cols", input.Cols)
 			}
 		}
 	default:
-		a.logger.Warn("PublishStream: unknown input type", "type", input.Type)
+		ctxLogger.Warn("PublishStream: unknown input type", "type", input.Type)
 	}
 
 	return &backend.PublishStreamResponse{
@@ -291,6 +293,7 @@ const (
 
 // waitForVMActive polls until VM is active and returns it, sending status updates
 func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender, vmID string) (*VM, error) {
+	ctxLogger := a.ctxLogger(ctx)
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
@@ -302,7 +305,7 @@ func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender,
 		case <-ticker.C:
 			vm, err := a.coda.GetVM(ctx, vmID)
 			if err != nil {
-				a.logger.Warn("Failed to poll VM status", "vmID", vmID, "error", err)
+				ctxLogger.Warn("Failed to poll VM status", "vmID", vmID, "error", err)
 				continue
 			}
 
@@ -336,7 +339,8 @@ func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender,
 // RunStream is called once for each active stream subscription.
 // It runs for the lifetime of the stream, sending data to the client.
 func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
-	a.logger.Info("RunStream started", "path", req.Path)
+	ctxLogger := a.ctxLogger(ctx)
+	ctxLogger.Info("RunStream started", "path", req.Path)
 
 	// Parse channel path: terminal/{vmId} or terminal/{vmId}/{nonce}
 	parts := strings.Split(req.Path, "/")
@@ -355,7 +359,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 	// Extract user login for per-user VM tracking
 	userLogin := getUserLogin(req)
-	a.logger.Info("User identified for VM tracking", "userLogin", userLogin)
+	ctxLogger.Info("User identified for VM tracking", "userLogin", userLogin)
 
 	var vm *VM
 	var err error
@@ -368,19 +372,19 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 	if hasExisting {
 		// User has a tracked VM - try to reuse it
-		a.logger.Info("Found existing VM for user", "userLogin", userLogin, "vmID", existingVmID)
+		ctxLogger.Info("Found existing VM for user", "userLogin", userLogin, "vmID", existingVmID)
 		vm, err = a.coda.GetVM(ctx, existingVmID)
 
 		if err != nil {
 			// VM doesn't exist anymore - remove from tracking and provision new
-			a.logger.Info("Tracked VM not found, will provision new", "userLogin", userLogin, "vmID", existingVmID, "error", err)
+			ctxLogger.Info("Tracked VM not found, will provision new", "userLogin", userLogin, "vmID", existingVmID, "error", err)
 			userVMsMu.Lock()
 			delete(userVMs, userLogin)
 			userVMsMu.Unlock()
 			hasExisting = false
 		} else if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
 			// VM is in terminal state - remove from tracking and provision new
-			a.logger.Info("Tracked VM in terminal state, will provision new", "userLogin", userLogin, "vmID", existingVmID, "state", vm.State)
+			ctxLogger.Info("Tracked VM in terminal state, will provision new", "userLogin", userLogin, "vmID", existingVmID, "state", vm.State)
 			userVMsMu.Lock()
 			delete(userVMs, userLogin)
 			userVMsMu.Unlock()
@@ -388,14 +392,14 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		} else {
 			// VM exists and is valid - reuse it
 			vmID = existingVmID
-			a.logger.Info("Reusing existing VM for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
+			ctxLogger.Info("Reusing existing VM for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
 			sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", vmID)
 		}
 	}
 
 	// If no existing valid VM, provision a new one
 	if !hasExisting {
-		a.logger.Info("Provisioning new VM for user", "userLogin", userLogin)
+		ctxLogger.Info("Provisioning new VM for user", "userLogin", userLogin)
 		sendStreamStatusWithVmId(sender, "provisioning", "Provisioning new VM...", "")
 
 		vm, err = a.coda.CreateVM(ctx, "vm-aws", userLogin)
@@ -411,20 +415,20 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		userVMs[userLogin] = vmID
 		userVMsMu.Unlock()
 
-		a.logger.Info("New VM created and tracked for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
+		ctxLogger.Info("New VM created and tracked for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
 		sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
 	}
 
 	// If VM is not active, poll and push status updates until it's ready
 	if vm.State != "active" || vm.Credentials == nil {
-		a.logger.Info("VM not ready, polling for status updates", "vmID", vmID, "state", vm.State)
+		ctxLogger.Info("VM not ready, polling for status updates", "vmID", vmID, "state", vm.State)
 
 		vm, err = a.waitForVMActive(ctx, sender, vmID)
 		if err != nil {
 			return err
 		}
 
-		a.logger.Info("VM is now active", "vmID", vmID)
+		ctxLogger.Info("VM is now active", "vmID", vmID)
 	}
 
 	// Create context that cancels when stream ends
@@ -443,7 +447,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
 
 		if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
-			a.logger.Error("Failed to send frame", "error", err)
+			ctxLogger.Error("Failed to send frame", "error", err)
 		}
 	}
 
@@ -467,7 +471,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	var lastErr error
 
 	for vmAttempt := 1; vmAttempt <= maxVMAttempts; vmAttempt++ {
-		a.logger.Info("Starting SSH connection attempts for VM",
+		ctxLogger.Info("Starting SSH connection attempts for VM",
 			"vmID", vmID,
 			"vmAttempt", vmAttempt,
 			"maxVMAttempts", maxVMAttempts,
@@ -478,7 +482,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			// Check context cancellation
 			select {
 			case <-ctx.Done():
-				a.logger.Info("Connection cancelled by user", "vmID", vmID)
+				ctxLogger.Info("Connection cancelled by user", "vmID", vmID)
 				return ctx.Err()
 			default:
 			}
@@ -491,13 +495,13 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 			// Validate relay URL against allowlist to prevent token exfiltration
 			if !IsAllowedRelayURL(a.settings.CodaRelayURL) {
-				a.logger.Error("Relay URL not in allowlist", "relayURL", a.settings.CodaRelayURL)
+				ctxLogger.Error("Relay URL not in allowlist", "relayURL", a.settings.CodaRelayURL)
 				sendStreamError(sender, "Relay URL is not a trusted host")
 				return errors.New("relay URL not in allowlist")
 			}
 
 			// Log credentials info (without sensitive data)
-			a.logger.Info("Creating SSH session via relay",
+			ctxLogger.Info("Creating SSH session via relay",
 				"vmID", vmID,
 				"host", vm.Credentials.PublicIP,
 				"port", vm.Credentials.SSHPort,
@@ -517,7 +521,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			}
 			accessToken, err := a.coda.GetAccessToken(ctx)
 			if err != nil {
-				a.logger.Error("Failed to get access token for relay", "error", err)
+				ctxLogger.Error("Failed to get access token for relay", "error", err)
 				sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
 				return fmt.Errorf("failed to get access token: %w", err)
 			}
@@ -525,7 +529,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
 			if err != nil {
 				lastErr = err
-				a.logger.Warn("Relay connection failed",
+				ctxLogger.Warn("Relay connection failed",
 					"vmID", vmID,
 					"error", err,
 					"vmAttempt", vmAttempt,
@@ -534,7 +538,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 				// Check if error is retryable and we have same-VM retries left
 				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
-					a.logger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
+					ctxLogger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
 					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
 					time.Sleep(sshRetryDelay)
 					continue
@@ -544,12 +548,12 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 				break
 			}
 
-			a.logger.Info("Relay connection established, creating terminal session", "vmID", vmID)
+			ctxLogger.Info("Relay connection established, creating terminal session", "vmID", vmID)
 			session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
 			if err != nil {
 				_ = sshClient.Close()
 				lastErr = err
-				a.logger.Warn("Failed to create terminal session with relay client",
+				ctxLogger.Warn("Failed to create terminal session with relay client",
 					"vmID", vmID,
 					"error", err,
 					"vmAttempt", vmAttempt,
@@ -558,7 +562,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 				// Check if error is retryable and we have same-VM retries left
 				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
-					a.logger.Info("Session creation failed, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
+					ctxLogger.Info("Session creation failed, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
 					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
 					time.Sleep(sshRetryDelay)
 					continue
@@ -573,13 +577,13 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 		// If we got a session, we're done
 		if session != nil {
-			a.logger.Info("SSH connection successful", "vmID", vmID, "vmAttempt", vmAttempt)
+			ctxLogger.Info("SSH connection successful", "vmID", vmID, "vmAttempt", vmAttempt)
 			break
 		}
 
 		// All same-VM retries failed - provision new VM if under limit
 		if vmAttempt < maxVMAttempts {
-			a.logger.Info("All SSH retries failed for VM, provisioning new one",
+			ctxLogger.Info("All SSH retries failed for VM, provisioning new one",
 				"failedVmID", vmID,
 				"vmAttempt", vmAttempt,
 				"lastError", lastErr,
@@ -590,7 +594,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			// Provision a fresh VM for the user
 			newVM, createErr := a.coda.CreateVM(ctx, "vm-aws", userLogin)
 			if createErr != nil {
-				a.logger.Error("Failed to provision fresh VM for retry", "error", createErr)
+				ctxLogger.Error("Failed to provision fresh VM for retry", "error", createErr)
 				sendStreamError(sender, fmt.Sprintf("Failed to provision replacement VM: %v", createErr))
 				return fmt.Errorf("failed to provision replacement VM: %w", createErr)
 			}
@@ -601,7 +605,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			userVMs[userLogin] = vmID
 			userVMsMu.Unlock()
 
-			a.logger.Info("Fresh VM provisioned for retry", "newVmID", vmID, "state", newVM.State, "vmAttempt", vmAttempt+1, "userLogin", userLogin)
+			ctxLogger.Info("Fresh VM provisioned for retry", "newVmID", vmID, "state", newVM.State, "vmAttempt", vmAttempt+1, "userLogin", userLogin)
 			sendStreamStatusWithVmId(sender, newVM.State, fmt.Sprintf("VM %d allocated, waiting for boot...", vmAttempt+1), vmID)
 
 			// Wait for new VM to be active
@@ -614,7 +618,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 	if session == nil {
 		errMsg := fmt.Sprintf("SSH connection failed after %d VMs (last error: %v)", maxVMAttempts, lastErr)
-		a.logger.Error("All VM attempts exhausted", "lastError", lastErr)
+		ctxLogger.Error("All VM attempts exhausted", "lastError", lastErr)
 		sendStreamError(sender, errMsg)
 		return errors.New(errMsg)
 	}
@@ -644,12 +648,12 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
 
 	if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
-		a.logger.Error("Failed to send connected message", "vmID", vmID, "error", err)
+		ctxLogger.Error("Failed to send connected message", "vmID", vmID, "error", err)
 	} else {
-		a.logger.Info("Sent connected message to frontend", "vmID", vmID)
+		ctxLogger.Info("Sent connected message to frontend", "vmID", vmID)
 	}
 
-	a.logger.Info("Terminal session started", "vmID", vmID)
+	ctxLogger.Info("Terminal session started", "vmID", vmID)
 
 	// Poll VM state to detect expiry/destruction and disconnect gracefully
 	// Capture vmID and userLogin for the goroutine
@@ -665,17 +669,17 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			case <-ticker.C:
 				polledVM, err := a.coda.GetVM(streamCtx, pollVmID)
 				if err != nil {
-					a.logger.Warn("VM state poll failed", "vmID", pollVmID, "error", err)
+					ctxLogger.Warn("VM state poll failed", "vmID", pollVmID, "error", err)
 					continue
 				}
 				if polledVM.State == "destroying" || polledVM.State == "destroyed" || polledVM.State == "error" {
-					a.logger.Info("VM no longer active, ending stream", "vmID", pollVmID, "state", polledVM.State, "userLogin", pollUserLogin)
+					ctxLogger.Info("VM no longer active, ending stream", "vmID", pollVmID, "state", polledVM.State, "userLogin", pollUserLogin)
 
 					// Remove VM from user tracking since it's no longer valid
 					userVMsMu.Lock()
 					if userVMs[pollUserLogin] == pollVmID {
 						delete(userVMs, pollUserLogin)
-						a.logger.Info("Removed expired VM from user tracking", "userLogin", pollUserLogin, "vmID", pollVmID)
+						ctxLogger.Info("Removed expired VM from user tracking", "userLogin", pollUserLogin, "vmID", pollVmID)
 					}
 					userVMsMu.Unlock()
 
@@ -701,6 +705,6 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
 	_ = sender.SendFrame(frame, data.IncludeAll)
 
-	a.logger.Info("RunStream ended", "vmID", vmID)
+	ctxLogger.Info("RunStream ended", "vmID", vmID)
 	return nil
 }

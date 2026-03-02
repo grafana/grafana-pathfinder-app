@@ -122,11 +122,28 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	}
 	streamSessionsMu.Unlock()
 
+	ctxLogger := a.ctxLogger(r.Context())
 	if sess == nil || sess.session == nil {
-		a.logger.Warn("No active session found for terminal input",
+		ctxLogger.Warn("No active session found for terminal input",
 			"vmID", vmID,
 			"requestUser", userLogin,
 		)
+
+		// Check if VM still exists and is active - if so, tell frontend to reconnect
+		if a.coda != nil {
+			vm, err := a.coda.GetVM(r.Context(), vmID)
+			if err == nil && (vm.State == "active" || vm.State == "pooled") {
+				ctxLogger.Info("VM still active but session expired, requesting reconnect",
+					"vmID", vmID,
+					"vmState", vm.State,
+					"requestUser", userLogin,
+				)
+				w.Header().Set("X-Reconnect-Required", "true")
+				a.writeError(w, "Session expired, please reconnect", http.StatusGone) // 410
+				return
+			}
+		}
+
 		a.writeError(w, "No active session for VM", http.StatusNotFound)
 		return
 	}
@@ -135,14 +152,14 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	switch input.Type {
 	case "input":
 		if err := sess.session.Write([]byte(input.Data)); err != nil {
-			a.logger.Error("Failed to write to terminal", "vmID", vmID, "error", err)
+			ctxLogger.Error("Failed to write to terminal", "vmID", vmID, "error", err)
 			a.writeError(w, "Failed to write to terminal", http.StatusInternalServerError)
 			return
 		}
 	case "resize":
 		if input.Rows > 0 && input.Cols > 0 {
 			if err := sess.session.Resize(input.Rows, input.Cols); err != nil {
-				a.logger.Error("Failed to resize terminal", "vmID", vmID, "error", err)
+				ctxLogger.Error("Failed to resize terminal", "vmID", vmID, "error", err)
 				a.writeError(w, "Failed to resize terminal", http.StatusInternalServerError)
 				return
 			}
@@ -249,11 +266,12 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.logger.Info("Registering with Coda API", "instanceId", req.InstanceID, "apiUrl", codaAPIURL)
+	ctxLogger := a.ctxLogger(r.Context())
+	ctxLogger.Info("Registering with Coda API", "instanceId", req.InstanceID, "apiUrl", codaAPIURL)
 
 	result, err := Register(r.Context(), codaAPIURL, enrollmentKey, req.InstanceID, req.InstanceURL)
 	if err != nil {
-		a.logger.Error("Failed to register with Coda", "error", err)
+		ctxLogger.Error("Failed to register with Coda", "error", err)
 		if strings.Contains(err.Error(), "invalid enrollment key") {
 			a.writeError(w, err.Error(), http.StatusUnauthorized)
 		} else {
@@ -262,7 +280,7 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.logger.Info("Successfully registered with Coda", "instanceId", req.InstanceID, "jti", result.JTI)
+	ctxLogger.Info("Successfully registered with Coda", "instanceId", req.InstanceID, "jti", result.JTI)
 
 	a.writeJSON(w, result, http.StatusCreated)
 }
@@ -295,11 +313,12 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		user = "unknown"
 	}
 
-	a.logger.Info("Creating VM", "template", req.Template, "user", user)
+	ctxLogger := a.ctxLogger(r.Context())
+	ctxLogger.Info("Creating VM", "template", req.Template, "user", user)
 
 	vm, err := a.coda.CreateVM(r.Context(), req.Template, user)
 	if err != nil {
-		a.logger.Error("Failed to create VM", "error", err)
+		ctxLogger.Error("Failed to create VM", "error", err)
 		// Check if this is an auth error
 		if strings.Contains(err.Error(), "authentication failed") {
 			a.writeError(w, err.Error(), http.StatusUnauthorized)
@@ -319,9 +338,10 @@ func (a *App) handleGetVM(w http.ResponseWriter, r *http.Request, vmID string) {
 		return
 	}
 
+	ctxLogger := a.ctxLogger(r.Context())
 	vm, err := a.coda.GetVM(r.Context(), vmID)
 	if err != nil {
-		a.logger.Error("Failed to get VM", "vmID", vmID, "error", err)
+		ctxLogger.Error("Failed to get VM", "vmID", vmID, "error", err)
 		if strings.Contains(err.Error(), "not found") {
 			a.writeError(w, "VM not found", http.StatusNotFound)
 		} else if strings.Contains(err.Error(), "authentication failed") {
@@ -342,12 +362,13 @@ func (a *App) handleDeleteVM(w http.ResponseWriter, r *http.Request, vmID string
 		return
 	}
 
+	ctxLogger := a.ctxLogger(r.Context())
 	// Get user from Grafana context header for authorization check
 	user := r.Header.Get("X-Grafana-User")
-	a.logger.Info("Deleting VM", "vmID", vmID, "user", user)
+	ctxLogger.Info("Deleting VM", "vmID", vmID, "user", user)
 
 	if err := a.coda.DeleteVM(r.Context(), vmID); err != nil {
-		a.logger.Error("Failed to delete VM", "vmID", vmID, "error", err)
+		ctxLogger.Error("Failed to delete VM", "vmID", vmID, "error", err)
 		// Check if this is an auth error
 		if strings.Contains(err.Error(), "authentication failed") {
 			a.writeError(w, err.Error(), http.StatusUnauthorized)
@@ -367,9 +388,10 @@ func (a *App) handleListVMs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctxLogger := a.ctxLogger(r.Context())
 	vms, err := a.coda.ListVMs(r.Context())
 	if err != nil {
-		a.logger.Error("Failed to list VMs", "error", err)
+		ctxLogger.Error("Failed to list VMs", "error", err)
 		// Check if this is an auth error
 		if strings.Contains(err.Error(), "authentication failed") {
 			a.writeError(w, err.Error(), http.StatusUnauthorized)
