@@ -130,7 +130,7 @@ interface UseTerminalLiveReturn {
 
 /** Terminal stream output message (sent from backend in DataFrame) */
 interface TerminalStreamOutput {
-  type: 'output' | 'error' | 'connected' | 'disconnected' | 'status';
+  type: 'output' | 'error' | 'connected' | 'disconnected' | 'status' | 'heartbeat';
   data?: string;
   error?: string;
   state?: string; // VM state for 'status' type: 'pending', 'provisioning', 'active'
@@ -166,6 +166,14 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   const reconnectingRef = useRef<boolean>(false);
   // Ref to hold attemptReconnect function (populated after connect is defined)
   const attemptReconnectRef = useRef<(() => void) | null>(null);
+  // Track reconnect attempts to prevent infinite loops (max 5 attempts)
+  const reconnectAttemptCountRef = useRef<number>(0);
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  // Track when we last connected to add grace period before allowing 410 reconnects
+  const lastConnectedTimeRef = useRef<number>(0);
+  const CONNECTION_GRACE_PERIOD_MS = 2000;
+  // Track if current connect is from auto-reconnect (vs user-initiated)
+  const isAutoReconnectRef = useRef<boolean>(false);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -423,6 +431,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   break;
 
                 case 'connected':
+                  // Set connected time for grace period
+                  lastConnectedTimeRef.current = Date.now();
                   if (handshakeTimeoutRef.current) {
                     clearTimeout(handshakeTimeoutRef.current);
                     handshakeTimeoutRef.current = null;
@@ -490,6 +500,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
                   terminal.writeln('\x1b[33m  Session ended - VM disconnected\x1b[0m');
                   terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+                  break;
+
+                case 'heartbeat':
+                  // Silently ignore - backend sends these every 25s to keep stream alive
                   break;
               }
             }
@@ -572,6 +586,12 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * - Backend pushes status updates via the stream
    */
   const connect = useCallback(async () => {
+    // Reset attempt counter on user-initiated connect (not on auto-reconnect)
+    if (!isAutoReconnectRef.current) {
+      reconnectAttemptCountRef.current = 0;
+    }
+    isAutoReconnectRef.current = false;
+
     const terminal = terminalRef.current;
     if (!terminal) {
       connectionLog.error('Terminal instance not available', null, {
@@ -610,9 +630,29 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   // Must be in useEffect to avoid updating ref during render
   useEffect(() => {
     attemptReconnectRef.current = () => {
+      // Grace period: ignore 410s that occur within 2 seconds of connecting
+      // This handles the race condition where sendResize fires before backend session is ready
+      const timeSinceConnect = Date.now() - lastConnectedTimeRef.current;
+      if (timeSinceConnect < CONNECTION_GRACE_PERIOD_MS) {
+        return;
+      }
+
       if (reconnectingRef.current) {
         return; // Already reconnecting
       }
+
+      // Max retry limit to prevent infinite loops
+      reconnectAttemptCountRef.current += 1;
+      if (reconnectAttemptCountRef.current > MAX_RECONNECT_ATTEMPTS) {
+        const terminal = terminalRef.current;
+        if (terminal) {
+          terminal.writeln(
+            '\r\n\x1b[31m✖ Max reconnection attempts reached. Please click Connect to try again.\x1b[0m'
+          );
+        }
+        return;
+      }
+
       reconnectingRef.current = true;
 
       const terminal = terminalRef.current;
@@ -623,6 +663,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       // Small delay to avoid rapid reconnection attempts
       setTimeout(() => {
         reconnectingRef.current = false;
+        isAutoReconnectRef.current = true;
         connect();
       }, 1000);
     };

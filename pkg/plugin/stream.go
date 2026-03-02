@@ -655,6 +655,40 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 	ctxLogger.Info("Terminal session started", "vmID", vmID)
 
+	// Start heartbeat sender to keep Grafana Live stream alive
+	// Grafana closes idle streams after ~3-5 seconds, so we must send immediately
+	// and then every 10 seconds to stay well under the timeout
+	go func() {
+		// Send IMMEDIATE heartbeat to prevent early stream closure
+		heartbeat := TerminalStreamOutput{Type: "heartbeat"}
+		jsonBytes, _ := json.Marshal(heartbeat)
+		frame := data.NewFrame("terminal")
+		frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+		if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+			ctxLogger.Debug("Initial heartbeat send failed", "error", err)
+			return
+		}
+		ctxLogger.Debug("Sent initial heartbeat")
+
+		heartbeatTicker := time.NewTicker(10 * time.Second)
+		defer heartbeatTicker.Stop()
+		for {
+			select {
+			case <-streamCtx.Done():
+				return
+			case <-heartbeatTicker.C:
+				heartbeat := TerminalStreamOutput{Type: "heartbeat"}
+				jsonBytes, _ := json.Marshal(heartbeat)
+				frame := data.NewFrame("terminal")
+				frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+				if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+					ctxLogger.Debug("Heartbeat send failed, stream likely closed", "error", err)
+					return
+				}
+			}
+		}
+	}()
+
 	// Poll VM state to detect expiry/destruction and disconnect gracefully
 	// Capture vmID and userLogin for the goroutine
 	pollVmID := vmID
