@@ -35,7 +35,7 @@ type App struct {
 	streamSessions   map[string]*streamSession
 	streamSessionsMu sync.Mutex
 
-	// Secondary index for O(1) session lookup by vmID+userLogin
+	// Secondary index for O(1) session lookup by vmID
 	sessionsByVM   map[string]*streamSession
 	sessionsByVMMu sync.Mutex
 

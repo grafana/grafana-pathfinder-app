@@ -685,7 +685,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		sender:    sender,
 		cancel:    cancel,
 	}
-	vmSessionKey := vmID + ":" + userLogin
+	vmSessionKey := vmID
 
 	a.streamSessionsMu.Lock()
 	a.streamSessions[req.Path] = sess
@@ -700,8 +700,13 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		delete(a.streamSessions, req.Path)
 		a.streamSessionsMu.Unlock()
 
+		// Only remove from secondary index if it still points to THIS session.
+		// A newer RunStream for the same VM may have already overwritten the entry;
+		// unconditional delete would destroy the newer session's registration.
 		a.sessionsByVMMu.Lock()
-		delete(a.sessionsByVM, vmSessionKey)
+		if a.sessionsByVM[vmSessionKey] == sess {
+			delete(a.sessionsByVM, vmSessionKey)
+		}
 		a.sessionsByVMMu.Unlock()
 	}()
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.4
+
+### Fixed
+
+- **Session key simplification**: Removed `userLogin` from `sessionsByVM` key, using `vmID` alone. Eliminates identity-mismatch bugs across SDK paths and the reconnect race condition where an old RunStream's teardown could delete a newer session's registration
+- **Reconnect race condition**: Fixed race where overlapping RunStream teardown for the same VM could delete the active session from the secondary index, causing 410 errors in Grafana Cloud
+
 ## 2.0.3
 
 ### Security

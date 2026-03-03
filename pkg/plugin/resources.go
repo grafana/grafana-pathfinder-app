@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 // registerRoutes sets up the HTTP routes for the plugin.
@@ -102,25 +100,16 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract user from the SDK's PluginContext (set by httpadapter from gRPC metadata).
-	// This matches the user identity used in RunStream via getUserLogin().
-	pluginCtx := backend.PluginConfigFromContext(r.Context())
-	userLogin := "anonymous"
-	if pluginCtx.User != nil && pluginCtx.User.Login != "" {
-		userLogin = pluginCtx.User.Login
-	}
-
-	// O(1) session lookup via secondary index
-	vmSessionKey := vmID + ":" + userLogin
+	// O(1) session lookup via secondary index (keyed by vmID alone;
+	// vmIDs are unique per-VM and only known to the owning user's frontend)
 	a.sessionsByVMMu.Lock()
-	sess := a.sessionsByVM[vmSessionKey]
+	sess := a.sessionsByVM[vmID]
 	a.sessionsByVMMu.Unlock()
 
 	ctxLogger := a.ctxLogger(r.Context())
 	if sess == nil || sess.session == nil {
 		ctxLogger.Warn("No active session found for terminal input",
 			"vmID", vmID,
-			"requestUser", userLogin,
 		)
 
 		// Check if VM still exists and is active - if so, tell frontend to reconnect
@@ -130,7 +119,6 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 				ctxLogger.Info("VM still active but session expired, requesting reconnect",
 					"vmID", vmID,
 					"vmState", vm.State,
-					"requestUser", userLogin,
 				)
 				w.Header().Set("X-Reconnect-Required", "true")
 				a.writeError(w, "Session expired, please reconnect", http.StatusGone) // 410
