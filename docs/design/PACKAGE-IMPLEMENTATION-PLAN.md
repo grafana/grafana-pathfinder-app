@@ -226,7 +226,7 @@ Add a package resolution endpoint to the recommender microservice. The recommend
   - [ ] Returns 404 with a structured `ResolutionError` when the package is not found
   - [ ] Returns appropriate cache headers for downstream caching (resolution responses are cacheable — they are a pure function of the package ID and the current repository index state)
 - [ ] **Repository index management:**
-  - [ ] Config-driven list of repository URLs (e.g., `https://cdn.grafana.com/interactive-tutorials/repository.json`) via environment variable (consistent with the recommender's existing `STATE_RECOMMENDATIONS_URL` pattern)
+  - [ ] Config-driven list of repository URLs (e.g., `https://interactive-learning.grafana.net/packages/repository.json` for the `interactive-tutorials` pilot) via environment variable (consistent with the recommender's existing `STATE_RECOMMENDATIONS_URL` pattern)
   - [ ] Periodic fetch and in-memory caching of each repository's `repository.json` with configurable TTL (aligned with the recommender's existing ~20-minute refresh cycle)
   - [ ] Repository priority ordering: remote repositories ordered by configuration
   - [ ] Graceful degradation: if a remote repository is unreachable, use the last cached version; if no cache exists, skip that repository
@@ -252,13 +252,15 @@ Add a package resolution endpoint to the recommender microservice. The recommend
 **Testing:** Layer 1 (validation passes in that repo's CI)
 **Can start:** Immediately
 
+**Status:** In progress — [WIP: Package migration](https://github.com/grafana/interactive-tutorials/pull/142) (draft PR, not yet merged). This is a partial migration: not every guide in the repo is converted, but enough to prove the pipeline end-to-end. Once merged, `https://interactive-learning.grafana.net/packages/repository.json` will resolve to a valid `repository.json` and the partial migration milestone will be complete.
+
 Convert 3-5 existing guides to the two-file package format and set up CI-generated `repository.json` publication. Uses the package authoring docs from Phase 3b as the reference.
 
 - [ ] Convert `welcome-to-grafana`, `prometheus-grafana-101`, `first-dashboard` (and optionally 1-2 more) to `content.json` + `manifest.json` directory packages
 - [ ] Each `manifest.json` includes: `type`, `description`, `category`, `author`, `startingLocation`, dependency fields (`depends`, `recommends`, `provides`), `targeting` with match expressions, `testEnvironment`
 - [ ] CI pipeline: `pathfinder-cli build-repository` runs in CI, outputs `repository.json` as build artifact (not committed to git)
 - [ ] CI pipeline: `pathfinder-cli build-graph` runs in CI for dependency visualization
-- [ ] CDN publication step (or staging equivalent) for `repository.json` alongside guide content
+- [ ] CDN publication step publishes `repository.json` to `https://interactive-learning.grafana.net/packages/repository.json` alongside guide content
 - [ ] `validate --packages` passes in CI
 
 **CLI availability:** The `interactive-tutorials` CI already checks out `grafana-pathfinder-app`, installs dependencies, and builds the CLI for guide validation (see `.github/workflows/validate-json.yml`, `validate-guides` job). The same cross-repo checkout pattern extends to run `build-repository`, `build-graph`, and `validate --packages`.
