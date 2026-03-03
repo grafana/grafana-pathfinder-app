@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,9 +32,9 @@ type TerminalSession struct {
 	closed bool
 }
 
-// normalizePrivateKey ensures the private key has proper newline characters.
-// Some JSON responses may have literal "\n" strings instead of actual newlines.
-func normalizePrivateKey(key string) string {
+// normalizePrivateKey ensures the private key has proper newline characters
+// and validates the result is a well-formed PEM block.
+func normalizePrivateKey(key string) (string, error) {
 	// If the key contains literal \n (backslash + n), replace with actual newlines
 	if strings.Contains(key, "\\n") {
 		key = strings.ReplaceAll(key, "\\n", "\n")
@@ -50,7 +51,13 @@ func normalizePrivateKey(key string) string {
 		key = key + "\n"
 	}
 
-	return key
+	// Validate the result is a valid PEM block
+	block, _ := pem.Decode([]byte(key))
+	if block == nil {
+		return "", fmt.Errorf("normalized key is not valid PEM")
+	}
+
+	return key, nil
 }
 
 // ConnectSSHViaRelay establishes an SSH connection through a WebSocket relay.
@@ -126,7 +133,12 @@ func ConnectSSHViaRelay(relayURL string, vmID string, creds *Credentials, token 
 
 	conn := NewWSConn(wsConn)
 
-	normalizedKey := normalizePrivateKey(creds.SSHPrivateKey)
+	normalizedKey, err := normalizePrivateKey(creds.SSHPrivateKey)
+	if err != nil {
+		_ = conn.Close()
+		logger.Error("SSH key normalization failed", "vmID", vmID, "error", err)
+		return nil, fmt.Errorf("failed to normalize private key: %w", err)
+	}
 	signer, err := ssh.ParsePrivateKey([]byte(normalizedKey))
 	if err != nil {
 		_ = conn.Close()
@@ -234,8 +246,8 @@ func NewTerminalSessionWithClient(vmID string, client *ssh.Client, onOutput func
 	// Request PTY for interactive terminal
 	modes := ssh.TerminalModes{
 		ssh.ECHO:          1,     // Enable echo
-		ssh.TTY_OP_ISPEED: 14400, // Input speed
-		ssh.TTY_OP_OSPEED: 14400, // Output speed
+		ssh.TTY_OP_ISPEED: 38400, // Input speed
+		ssh.TTY_OP_OSPEED: 38400, // Output speed
 	}
 
 	// Default terminal size, will be resized by client
@@ -292,7 +304,7 @@ func NewTerminalSessionWithClient(vmID string, client *ssh.Client, onOutput func
 
 // forwardOutput reads from SSH stdout and calls the output callback.
 func (ts *TerminalSession) forwardOutput() {
-	buf := make([]byte, 4096)
+	buf := make([]byte, 32*1024)
 	for {
 		n, err := ts.stdout.Read(buf)
 		if err != nil {
@@ -314,7 +326,7 @@ func (ts *TerminalSession) forwardOutput() {
 
 // forwardStderr reads from SSH stderr and calls the output callback.
 func (ts *TerminalSession) forwardStderr() {
-	buf := make([]byte, 4096)
+	buf := make([]byte, 32*1024)
 	for {
 		n, err := ts.stderr.Read(buf)
 		if err != nil {

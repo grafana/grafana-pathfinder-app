@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 // registerRoutes sets up the HTTP routes for the plugin.
@@ -75,7 +77,6 @@ type TerminalInput struct {
 	Data string `json:"data,omitempty"`
 	Rows int    `json:"rows,omitempty"`
 	Cols int    `json:"cols,omitempty"`
-	User string `json:"user,omitempty"`
 }
 
 // handleTerminalInput handles POST /terminal/{vmId} for sending input to the terminal
@@ -101,26 +102,19 @@ func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user from request body (frontend source of truth for multi-tenancy),
-	// falling back to X-Grafana-User header for backward compatibility
-	userLogin := input.User
-	if userLogin == "" {
-		userLogin = r.Header.Get("X-Grafana-User")
-	}
-	if userLogin == "" {
-		userLogin = "anonymous"
+	// Extract user from the SDK's PluginContext (set by httpadapter from gRPC metadata).
+	// This matches the user identity used in RunStream via getUserLogin().
+	pluginCtx := backend.PluginConfigFromContext(r.Context())
+	userLogin := "anonymous"
+	if pluginCtx.User != nil && pluginCtx.User.Login != "" {
+		userLogin = pluginCtx.User.Login
 	}
 
-	// Find session by vmID + userLogin for deterministic multi-tenant lookup
-	streamSessionsMu.Lock()
-	var sess *streamSession
-	for _, s := range streamSessions {
-		if s != nil && s.vmID == vmID && s.userLogin == userLogin {
-			sess = s
-			break
-		}
-	}
-	streamSessionsMu.Unlock()
+	// O(1) session lookup via secondary index
+	vmSessionKey := vmID + ":" + userLogin
+	a.sessionsByVMMu.Lock()
+	sess := a.sessionsByVM[vmSessionKey]
+	a.sessionsByVMMu.Unlock()
 
 	ctxLogger := a.ctxLogger(r.Context())
 	if sess == nil || sess.session == nil {

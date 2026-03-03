@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -29,6 +30,18 @@ type App struct {
 
 	// Logger
 	logger log.Logger
+
+	// Active streaming sessions (channel path -> session)
+	streamSessions   map[string]*streamSession
+	streamSessionsMu sync.Mutex
+
+	// Secondary index for O(1) session lookup by vmID+userLogin
+	sessionsByVM   map[string]*streamSession
+	sessionsByVMMu sync.Mutex
+
+	// Active VMs per user (userLogin -> vmID) for cross-reconnection reuse
+	userVMs   map[string]string
+	userVMsMu sync.RWMutex
 }
 
 // NewApp creates a new App instance.
@@ -43,8 +56,11 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 	}
 
 	app := &App{
-		settings: settings,
-		logger:   logger,
+		settings:       settings,
+		logger:         logger,
+		streamSessions: make(map[string]*streamSession),
+		sessionsByVM:   make(map[string]*streamSession),
+		userVMs:        make(map[string]string),
 	}
 
 	if settings.RefreshToken != "" && settings.CodaAPIURL != "" {
@@ -69,8 +85,8 @@ func (a *App) Dispose() {
 	a.logger.Info("Disposing plugin instance")
 
 	// Close all active streaming sessions
-	streamSessionsMu.Lock()
-	for path, sess := range streamSessions {
+	a.streamSessionsMu.Lock()
+	for path, sess := range a.streamSessions {
 		if sess != nil {
 			if sess.session != nil {
 				_ = sess.session.Close()
@@ -78,10 +94,24 @@ func (a *App) Dispose() {
 			if sess.cancel != nil {
 				sess.cancel()
 			}
-			delete(streamSessions, path)
+			delete(a.streamSessions, path)
 		}
 	}
-	streamSessionsMu.Unlock()
+	a.streamSessionsMu.Unlock()
+
+	// Clear secondary session index
+	a.sessionsByVMMu.Lock()
+	for k := range a.sessionsByVM {
+		delete(a.sessionsByVM, k)
+	}
+	a.sessionsByVMMu.Unlock()
+
+	// Clear user VM mappings
+	a.userVMsMu.Lock()
+	for k := range a.userVMs {
+		delete(a.userVMs, k)
+	}
+	a.userVMsMu.Unlock()
 }
 
 // ctxLogger returns a contextual logger that automatically includes traceID,

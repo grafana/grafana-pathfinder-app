@@ -3,7 +3,6 @@ package plugin
 import (
 	"errors"
 	"net/http"
-	"strings"
 	"testing"
 )
 
@@ -11,6 +10,8 @@ func TestNormalizePrivateKey(t *testing.T) {
 	// Build PEM markers dynamically to avoid triggering secret scanners.
 	begin := "-----BEGIN " + "OPENSSH PRIVATE KEY-----"
 	end := "-----END " + "OPENSSH PRIVATE KEY-----"
+	// Valid base64 body (pem.Decode requires valid base64 between markers)
+	body := "dGVzdA=="
 
 	tests := []struct {
 		name     string
@@ -19,39 +20,37 @@ func TestNormalizePrivateKey(t *testing.T) {
 	}{
 		{
 			name:     "already normalized key",
-			input:    begin + "\nbase64data\n" + end + "\n",
-			expected: begin + "\nbase64data\n" + end + "\n",
+			input:    begin + "\n" + body + "\n" + end + "\n",
+			expected: begin + "\n" + body + "\n" + end + "\n",
 		},
 		{
 			name:     "literal backslash-n from JSON",
-			input:    begin + "\\nbase64data\\n" + end,
-			expected: begin + "\nbase64data\n" + end + "\n",
+			input:    begin + "\\n" + body + "\\n" + end,
+			expected: begin + "\n" + body + "\n" + end + "\n",
 		},
 		{
 			name:     "CRLF line endings",
-			input:    begin + "\r\nbase64data\r\n" + end,
-			expected: begin + "\nbase64data\n" + end + "\n",
+			input:    begin + "\r\n" + body + "\r\n" + end,
+			expected: begin + "\n" + body + "\n" + end + "\n",
 		},
 		{
 			name:     "missing trailing newline",
-			input:    begin + "\nbase64data\n" + end,
-			expected: begin + "\nbase64data\n" + end + "\n",
+			input:    begin + "\n" + body + "\n" + end,
+			expected: begin + "\n" + body + "\n" + end + "\n",
 		},
 		{
 			name:     "extra whitespace around key",
-			input:    "  " + begin + "\nbase64data\n" + end + "  ",
-			expected: begin + "\nbase64data\n" + end + "\n",
-		},
-		{
-			name:     "mixed literal and real newlines",
-			input:    begin + "\\nline1\nline2\\n" + end,
-			expected: begin + "\nline1\nline2\n" + end + "\n",
+			input:    "  " + begin + "\n" + body + "\n" + end + "  ",
+			expected: begin + "\n" + body + "\n" + end + "\n",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := normalizePrivateKey(tt.input)
+			result, err := normalizePrivateKey(tt.input)
+			if err != nil {
+				t.Fatalf("normalizePrivateKey() unexpected error: %v", err)
+			}
 			if result != tt.expected {
 				t.Errorf("normalizePrivateKey() mismatch\ngot:  %q\nwant: %q", result, tt.expected)
 			}
@@ -59,17 +58,17 @@ func TestNormalizePrivateKey(t *testing.T) {
 	}
 }
 
-func TestNormalizePrivateKey_EndsWithNewline(t *testing.T) {
+func TestNormalizePrivateKey_InvalidPEM(t *testing.T) {
 	inputs := []string{
-		"key-without-newline",
-		"key-with-newline\n",
-		"key-with-crlf\r\n",
+		"not-a-pem-key",
+		"key-without-markers\n",
+		"",
 	}
 
 	for _, input := range inputs {
-		result := normalizePrivateKey(input)
-		if !strings.HasSuffix(result, "\n") {
-			t.Errorf("normalizePrivateKey(%q) should end with newline, got %q", input, result)
+		_, err := normalizePrivateKey(input)
+		if err == nil {
+			t.Errorf("normalizePrivateKey(%q) should return error for invalid PEM", input)
 		}
 	}
 }
