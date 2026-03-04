@@ -13,6 +13,9 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/coda/register", a.handleCodaRegister)
 	mux.HandleFunc("/vms", a.handleVMs)
 	mux.HandleFunc("/vms/", a.handleVMByID)
+	mux.HandleFunc("/mcp", a.handleMCP)
+	mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)
+	mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 

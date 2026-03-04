@@ -79,6 +79,40 @@ class GlobalSidebarState {
     // to properly track the source via consumePendingOpenSource()
   }
 
+  /**
+   * Opens the Pathfinder sidebar and launches a specific bundled guide by ID.
+   * Used by the MCP launch_guide tool via the frontend polling hook.
+   *
+   * @param guideId - The bundled guide ID (e.g. 'prometheus-grafana-101')
+   */
+  public openWithGuide(guideId: string): void {
+    this.setPendingOpenSource('mcp_launch', 'auto-open');
+
+    const dispatch = () => {
+      // Small delay so docs-panel's useEffect listener is registered after mount
+      setTimeout(() => {
+        document.dispatchEvent(
+          new CustomEvent('auto-launch-tutorial', {
+            detail: {
+              url: `bundled:${guideId}`,
+              title: guideId,
+              type: 'docs-page',
+            },
+          })
+        );
+      }, 300);
+    };
+
+    if (this.getIsSidebarMounted()) {
+      // Sidebar is already open — dispatch directly (typical case from polling hook)
+      dispatch();
+    } else {
+      // Sidebar needs to open first — wait for mount before dispatching
+      window.addEventListener('pathfinder-sidebar-mounted', dispatch, { once: true });
+      this.openSidebar('Interactive learning');
+    }
+  }
+
   public closeSidebar(): void {
     this.setIsSidebarMounted(false);
 

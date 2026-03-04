@@ -25,6 +25,7 @@ import {
   createExperimentDebugger,
 } from './utils/experiments';
 import MemoizedContextPanel from './components/App/ContextPanel';
+import { usePendingGuideLaunch } from './hooks';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -227,6 +228,9 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
       useEffect(() => {
         (window as any).__pathfinderPluginConfig = config;
       }, [config]);
+
+      // Poll for pending guide launches queued by the MCP launch_guide tool
+      usePendingGuideLaunch();
 
       // Process queued docs links when sidebar mounts
       useEffect(() => {
