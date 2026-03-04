@@ -686,6 +686,10 @@ func (a *App) toolCreateGuideTemplate(w http.ResponseWriter, id json.RawMessage,
 		writeMCPError(w, id, errCodeParams, "required parameter 'id' is missing")
 		return
 	}
+	if !validGuideIDPattern.MatchString(args.ID) {
+		writeMCPError(w, id, errCodeParams, "invalid guide ID: must be lowercase alphanumeric and hyphens only")
+		return
+	}
 	if args.Title == "" {
 		writeMCPError(w, id, errCodeParams, "required parameter 'title' is missing")
 		return
@@ -772,7 +776,7 @@ func (a *App) handlePendingLaunch(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && path == "/clear":
 		a.clearPendingLaunch(w, user)
 	default:
-		http.Error(w, "not found", http.StatusNotFound)
+		a.writeError(w, "not found", http.StatusNotFound)
 	}
 }
 

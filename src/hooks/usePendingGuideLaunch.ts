@@ -37,15 +37,18 @@ export function usePendingGuideLaunch(): void {
         if (response?.guideId) {
           isLaunching.current = true;
 
-          // Clear the pending state before launching to avoid re-trigger
           try {
-            await getBackendSrv().post(`${RESOURCE_BASE}/pending-launch/clear`, {});
-          } catch {
-            // Non-fatal: proceed with launch even if clear fails
-          }
+            // Clear the pending state before launching to avoid re-trigger
+            try {
+              await getBackendSrv().post(`${RESOURCE_BASE}/pending-launch/clear`, {});
+            } catch {
+              // Non-fatal: proceed with launch even if clear fails
+            }
 
-          sidebarState.openWithGuide(response.guideId);
-          isLaunching.current = false;
+            sidebarState.openWithGuide(response.guideId);
+          } finally {
+            isLaunching.current = false;
+          }
         }
       } catch {
         // Network errors are expected during startup or when backend is unavailable
