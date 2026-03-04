@@ -11,6 +11,7 @@ import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig, PLUGIN_BASE_URL } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
+import { suggestionState } from './global-state/suggestion';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl, validateRedirectPath } from './security';
 import { initializeOpenFeature } from './utils/openfeature';
 import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
@@ -319,6 +320,68 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
     },
     onClick: () => {},
   });
+
+  // Listen for external app suggestion events to open sidebar with featured content.
+  // Sets detail.status ('accepted' | 'rejected') and detail.reason so the caller
+  // can read the result synchronously after dispatchEvent returns.
+  document.addEventListener('pathfinder-suggest', ((event: CustomEvent) => {
+    const detail = event.detail;
+    if (!detail || !Array.isArray(detail.suggestions)) {
+      console.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
+      detail.status = 'rejected';
+      detail.reason = 'invalid_payload';
+      return;
+    }
+
+    const valid = detail.suggestions.filter(
+      (s: unknown) =>
+        s &&
+        typeof s === 'object' &&
+        typeof (s as Record<string, unknown>).title === 'string' &&
+        typeof (s as Record<string, unknown>).url === 'string'
+    );
+
+    if (valid.length === 0) {
+      console.warn('[Pathfinder] pathfinder-suggest event had no valid suggestions (need title + url)');
+      detail.status = 'rejected';
+      detail.reason = 'no_valid_suggestions';
+      return;
+    }
+
+    // Check if another plugin is occupying the sidebar
+    try {
+      const dockedValue = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
+      if (dockedValue) {
+        let dockedPluginId: string | undefined;
+        try {
+          dockedPluginId = JSON.parse(dockedValue)?.pluginId;
+        } catch {
+          // Older Grafana versions may store a plain string
+        }
+
+        if (dockedPluginId && dockedPluginId !== pluginJson.id) {
+          console.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', dockedPluginId);
+          detail.status = 'rejected';
+          detail.reason = 'sidebar_in_use';
+          return;
+        }
+      }
+    } catch {
+      // localStorage unavailable -- proceed optimistically
+    }
+
+    suggestionState.setSuggestions(valid);
+
+    // If Pathfinder is already docked, just update the featured zone without re-opening
+    if (sidebarState.getIsSidebarMounted()) {
+      detail.status = 'accepted';
+      return;
+    }
+
+    sidebarState.setPendingOpenSource('external_suggestion', 'auto-open');
+    sidebarState.openSidebar('Interactive learning');
+    detail.status = 'accepted';
+  }) as EventListener);
 }
 
 interface DocPage {

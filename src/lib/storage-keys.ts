@@ -36,6 +36,8 @@ export const StorageKeys = {
   EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
   EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
   EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
+  // External app suggestions for the featured zone (sessionStorage)
+  SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
 } as const;
 
 export type StorageKeyName = keyof typeof StorageKeys;
