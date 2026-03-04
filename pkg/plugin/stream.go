@@ -1,32 +1,23 @@
 // Package plugin implements the Grafana Pathfinder app plugin backend.
 //
-// Terminal Streaming Architecture (Hybrid: Grafana Live + HTTP):
+// Terminal Streaming Architecture (Bidirectional Grafana Live):
 //
 //	┌─────────────┐                      ┌─────────────┐
 //	│   Frontend  │                      │   Backend   │
 //	│  (xterm.js) │                      │  (Go/SSH)   │
 //	└──────┬──────┘                      └──────┬──────┘
 //	       │                                    │
-//	       │  ── HTTP POST /terminal/{id} ───► │  (keyboard input, resize)
+//	       │  ── PublishStream ──────────────► │  (keyboard input, resize)
 //	       │                                    │
-//	       │  ◄──── Grafana Live RunStream ────│  (SSH output, status)
+//	       │  ◄──── RunStream ─────────────── │  (SSH output, status)
 //	       │                                    │
 //
-// Architecture Notes:
-// - Output: Grafana Live streaming via RunStream (real-time SSH output)
-// - Input: HTTP POST to /api/plugins/.../resources/terminal/{vmId}
-//
-// Why not use PublishStream for input?
-// Grafana's /api/live/publish HTTP endpoint restricts frontend publishing
-// to plugin channels (returns 403 Forbidden). While the SDK's PublishStream
-// handler is implemented, the HTTP publish path is blocked by Grafana's
-// security layer. We use a dedicated HTTP resource endpoint instead.
+// Both directions use a single Grafana Live WebSocket connection.
 //
 // Handler Responsibilities:
 // - SubscribeStream: Authorizes subscription, validates VM exists
-// - PublishStream: Implemented but not used (frontend can't publish via Live)
+// - PublishStream: Receives terminal input from the frontend (keyboard, resize)
 // - RunStream: Establishes SSH connection, streams output to frontend
-// - handleTerminalInput (resources.go): Receives terminal input via HTTP POST
 package plugin
 
 import (
@@ -38,6 +29,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
 // Ensure App implements StreamHandler (bidirectional streaming)
@@ -51,6 +43,10 @@ type streamSession struct {
 	sender    *backend.StreamSender
 	cancel    context.CancelFunc
 }
+
+// streamSessions is managed on the App instance (see app.go)
+
+// userVMs is managed on the App instance (see app.go)
 
 // getUserLogin extracts the user login from a RunStreamRequest.
 // Falls back to "anonymous" if user info is not available.
@@ -135,10 +131,17 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 	}, nil
 }
 
-// PublishStream implements backend.StreamHandler for SDK interface compliance.
-// In practice this is never invoked because Grafana blocks frontend publishing
-// to plugin channels (returns 403 Forbidden). Terminal input is routed through
-// the HTTP POST endpoint in handleTerminalInput (resources.go) instead.
+// TerminalInput represents input sent to the terminal from the frontend via PublishStream.
+type TerminalInput struct {
+	Type string `json:"type"` // "input", "resize"
+	Data string `json:"data,omitempty"`
+	Rows int    `json:"rows,omitempty"`
+	Cols int    `json:"cols,omitempty"`
+}
+
+// PublishStream is called when a client publishes a message to a stream.
+// This handles terminal input from the frontend (keyboard input, resize events)
+// over the same Grafana Live WebSocket used for output streaming.
 func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamRequest) (*backend.PublishStreamResponse, error) {
 	ctxLogger := a.ctxLogger(ctx)
 	ctxLogger.Debug("PublishStream called", "path", req.Path, "dataLen", len(req.Data))
@@ -154,7 +157,7 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 
 	vmID := parts[1]
 
-	// Get the active session
+	// Look up the active session by channel path
 	a.streamSessionsMu.Lock()
 	sess, exists := a.streamSessions[req.Path]
 	a.streamSessionsMu.Unlock()
@@ -170,9 +173,7 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 	var input TerminalInput
 	if err := json.Unmarshal(req.Data, &input); err != nil {
 		ctxLogger.Error("PublishStream: failed to parse input", "error", err, "data", string(req.Data))
-		return &backend.PublishStreamResponse{
-			Status: backend.PublishStreamStatusPermissionDenied,
-		}, nil
+		return nil, fmt.Errorf("invalid terminal input: %w", err)
 	}
 
 	// Handle the message
@@ -206,14 +207,10 @@ func sendStreamError(sender *backend.StreamSender, errMsg string) {
 		Type:  "error",
 		Error: errMsg,
 	}
-	jsonBytes, err := json.Marshal(output)
-	if err != nil {
-		backend.Logger.Error("Failed to marshal stream error", "error", err, "errMsg", errMsg)
-		return
-	}
-	if err := sender.SendJSON(jsonBytes); err != nil {
-		backend.Logger.Error("Failed to send stream error", "error", err)
-	}
+	jsonBytes, _ := json.Marshal(output)
+	frame := data.NewFrame("terminal")
+	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+	_ = sender.SendFrame(frame, data.IncludeAll)
 }
 
 // sendStreamStatusWithVmId sends a VM provisioning status update with the VM ID
@@ -224,14 +221,10 @@ func sendStreamStatusWithVmId(sender *backend.StreamSender, state string, messag
 		Message: message,
 		VmId:    vmId,
 	}
-	jsonBytes, err := json.Marshal(output)
-	if err != nil {
-		backend.Logger.Error("Failed to marshal stream status", "error", err, "state", state)
-		return
-	}
-	if err := sender.SendJSON(jsonBytes); err != nil {
-		backend.Logger.Error("Failed to send stream status", "error", err)
-	}
+	jsonBytes, _ := json.Marshal(output)
+	frame := data.NewFrame("terminal")
+	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+	_ = sender.SendFrame(frame, data.IncludeAll)
 }
 
 // statusMessageForState returns a human-readable message for a VM state
@@ -262,8 +255,7 @@ func isSSHAuthError(err error) bool {
 		strings.Contains(errStr, "permission denied")
 }
 
-// isSSHRetryableError checks if an error is retryable on the same VM (transient network issues).
-// Auth errors are NOT included here -- they require a new VM, not a same-VM retry.
+// isSSHRetryableError checks if an error is retryable (timeouts, connection issues, auth failures)
 func isSSHRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -275,7 +267,8 @@ func isSSHRetryableError(err error) bool {
 		strings.Contains(errStr, "no route to host") ||
 		strings.Contains(errStr, "i/o timeout") ||
 		strings.Contains(errStr, "eof") ||
-		strings.Contains(errStr, "broken pipe")
+		strings.Contains(errStr, "broken pipe") ||
+		isSSHAuthError(err)
 }
 
 // SSH retry constants
@@ -288,14 +281,6 @@ const (
 // waitForVMActive polls until VM is active and returns it, sending status updates
 func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender, vmID string) (*VM, error) {
 	ctxLogger := a.ctxLogger(ctx)
-
-	// Immediate first check before entering ticker loop
-	vm, err := a.coda.GetVM(ctx, vmID)
-	if err == nil && vm.State == "active" && vm.Credentials != nil {
-		sendStreamStatusWithVmId(sender, vm.State, statusMessageForState(vm.State), vmID)
-		return vm, nil
-	}
-
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
@@ -437,70 +422,34 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Buffered channel for output coalescing to reduce per-message gRPC overhead.
-	// The forwardOutput goroutine writes to this channel; a dedicated coalescer
-	// goroutine batches reads within a short window before sending.
-	const outputChanSize = 64
-	const coalesceWindow = 5 * time.Millisecond
-	const maxCoalesceSize = 32 * 1024
-	outputCh := make(chan []byte, outputChanSize)
-
-	// Output callback - sends to coalescing channel
+	// Output callback - sends data to frontend via Grafana Live
 	onOutput := func(outputBytes []byte) {
-		select {
-		case outputCh <- outputBytes:
-		default:
-			ctxLogger.Warn("Output channel full, dropping data", "len", len(outputBytes))
+		output := TerminalStreamOutput{
+			Type: "output",
+			Data: string(outputBytes),
+		}
+		jsonBytes, _ := json.Marshal(output)
+
+		frame := data.NewFrame("terminal")
+		frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+
+		if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+			ctxLogger.Error("Failed to send frame", "error", err)
 		}
 	}
 
 	// Error callback
 	onError := func(err error) {
-		sendStreamError(sender, err.Error())
+		output := TerminalStreamOutput{
+			Type:  "error",
+			Error: err.Error(),
+		}
+		jsonBytes, _ := json.Marshal(output)
+
+		frame := data.NewFrame("terminal")
+		frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+		_ = sender.SendFrame(frame, data.IncludeAll)
 	}
-
-	// Output coalescing goroutine
-	go func() {
-		var buf []byte
-		timer := time.NewTimer(coalesceWindow)
-		timer.Stop()
-
-		flush := func() {
-			if len(buf) == 0 {
-				return
-			}
-			output := TerminalStreamOutput{
-				Type: "output",
-				Data: string(buf),
-			}
-			jsonBytes, err := json.Marshal(output)
-			if err != nil {
-				ctxLogger.Error("Failed to marshal coalesced output", "error", err)
-			} else if err := sender.SendJSON(jsonBytes); err != nil {
-				ctxLogger.Error("Failed to send coalesced output", "error", err)
-			}
-			buf = buf[:0]
-		}
-
-		for {
-			select {
-			case <-streamCtx.Done():
-				flush()
-				return
-			case data := <-outputCh:
-				buf = append(buf, data...)
-				if len(buf) >= maxCoalesceSize {
-					timer.Stop()
-					flush()
-				} else if len(buf) == len(data) {
-					// First data in a new batch -- start the coalesce timer
-					timer.Reset(coalesceWindow)
-				}
-			case <-timer.C:
-				flush()
-			}
-		}
-	}()
 
 	// Two-level SSH retry logic:
 	// - Outer loop: VM attempts (max 3 VMs to prevent resource waste)
@@ -574,23 +523,15 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 					"sshRetry", sshRetry,
 				)
 
-				// Auth errors won't resolve with the same VM -- break to outer loop
-				if isSSHAuthError(err) {
-					ctxLogger.Info("Auth error, skipping same-VM retries", "vmID", vmID)
-					break
-				}
-
+				// Check if error is retryable and we have same-VM retries left
 				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
 					ctxLogger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
 					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-time.After(sshRetryDelay):
-					}
+					time.Sleep(sshRetryDelay)
 					continue
 				}
 
+				// All same-VM retries exhausted, break to try new VM
 				break
 			}
 
@@ -606,22 +547,15 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 					"sshRetry", sshRetry,
 				)
 
-				if isSSHAuthError(err) {
-					ctxLogger.Info("Auth error during session creation, skipping same-VM retries", "vmID", vmID)
-					break
-				}
-
+				// Check if error is retryable and we have same-VM retries left
 				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
 					ctxLogger.Info("Session creation failed, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
 					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-time.After(sshRetryDelay):
-					}
+					time.Sleep(sshRetryDelay)
 					continue
 				}
 
+				// All same-VM retries exhausted, break to try new VM
 				break
 			}
 			// Success!
@@ -677,43 +611,30 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	}
 	defer func() { _ = session.Close() }()
 
-	// Store session for PublishStream and handleTerminalInput to use
-	sess := &streamSession{
+	// Store session for PublishStream to find
+	a.streamSessionsMu.Lock()
+	a.streamSessions[req.Path] = &streamSession{
 		vmID:      vmID,
 		userLogin: userLogin,
 		session:   session,
 		sender:    sender,
 		cancel:    cancel,
 	}
-	vmSessionKey := vmID
-
-	a.streamSessionsMu.Lock()
-	a.streamSessions[req.Path] = sess
 	a.streamSessionsMu.Unlock()
-
-	a.sessionsByVMMu.Lock()
-	a.sessionsByVM[vmSessionKey] = sess
-	a.sessionsByVMMu.Unlock()
 
 	defer func() {
 		a.streamSessionsMu.Lock()
 		delete(a.streamSessions, req.Path)
 		a.streamSessionsMu.Unlock()
-
-		// Only remove from secondary index if it still points to THIS session.
-		// A newer RunStream for the same VM may have already overwritten the entry;
-		// unconditional delete would destroy the newer session's registration.
-		a.sessionsByVMMu.Lock()
-		if a.sessionsByVM[vmSessionKey] == sess {
-			delete(a.sessionsByVM, vmSessionKey)
-		}
-		a.sessionsByVMMu.Unlock()
 	}()
 
 	// Send connected message to frontend with vmId so it can cache it
 	connectedOutput := TerminalStreamOutput{Type: "connected", VmId: vmID}
 	jsonBytes, _ := json.Marshal(connectedOutput)
-	if err := sender.SendJSON(jsonBytes); err != nil {
+	frame := data.NewFrame("terminal")
+	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+
+	if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
 		ctxLogger.Error("Failed to send connected message", "vmID", vmID, "error", err)
 	} else {
 		ctxLogger.Info("Sent connected message to frontend", "vmID", vmID)
@@ -725,45 +646,31 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	// Grafana may close idle streams, so we send heartbeats every 3 seconds
 	// to ensure the stream stays active even when the user is idle
 	go func() {
-		const maxConsecutiveFailures = 5
-		consecutiveFailures := 0
+		// Send IMMEDIATE heartbeat to prevent early stream closure
+		heartbeat := TerminalStreamOutput{Type: "heartbeat"}
+		jsonBytes, _ := json.Marshal(heartbeat)
+		frame := data.NewFrame("terminal")
+		frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+		if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+			ctxLogger.Debug("Initial heartbeat send failed", "error", err)
+			return
+		}
+		ctxLogger.Debug("Sent initial heartbeat")
 
 		heartbeatTicker := time.NewTicker(3 * time.Second)
 		defer heartbeatTicker.Stop()
-
-		sendHeartbeat := func() bool {
-			heartbeat := TerminalStreamOutput{Type: "heartbeat"}
-			jsonBytes, _ := json.Marshal(heartbeat)
-			return sender.SendJSON(jsonBytes) == nil
-		}
-
-		// Send immediate heartbeat
-		if !sendHeartbeat() {
-			ctxLogger.Debug("Initial heartbeat send failed, will retry on next tick")
-			consecutiveFailures++
-		} else {
-			ctxLogger.Debug("Sent initial heartbeat")
-		}
-
 		for {
 			select {
 			case <-streamCtx.Done():
 				return
 			case <-heartbeatTicker.C:
-				if sendHeartbeat() {
-					consecutiveFailures = 0
-				} else {
-					consecutiveFailures++
-					ctxLogger.Debug("Heartbeat send failed",
-						"consecutiveFailures", consecutiveFailures,
-						"maxAllowed", maxConsecutiveFailures)
-
-					if consecutiveFailures >= maxConsecutiveFailures {
-						ctxLogger.Warn("Multiple consecutive heartbeat failures, connection likely dead",
-							"consecutiveFailures", consecutiveFailures)
-						cancel()
-						return
-					}
+				heartbeat := TerminalStreamOutput{Type: "heartbeat"}
+				jsonBytes, _ := json.Marshal(heartbeat)
+				frame := data.NewFrame("terminal")
+				frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+				if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+					ctxLogger.Debug("Heartbeat send failed, stream likely closed", "error", err)
+					return
 				}
 			}
 		}
@@ -814,8 +721,10 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 
 	// Send disconnected message
 	disconnectedOutput := TerminalStreamOutput{Type: "disconnected"}
-	disconnectedBytes, _ := json.Marshal(disconnectedOutput)
-	_ = sender.SendJSON(disconnectedBytes)
+	jsonBytes, _ = json.Marshal(disconnectedOutput)
+	frame = data.NewFrame("terminal")
+	frame.Fields = append(frame.Fields, data.NewField("data", nil, []string{string(jsonBytes)}))
+	_ = sender.SendFrame(frame, data.IncludeAll)
 
 	ctxLogger.Info("RunStream ended", "vmID", vmID)
 	return nil

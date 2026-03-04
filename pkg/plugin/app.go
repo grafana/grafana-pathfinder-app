@@ -35,10 +35,6 @@ type App struct {
 	streamSessions   map[string]*streamSession
 	streamSessionsMu sync.Mutex
 
-	// Secondary index for O(1) session lookup by vmID
-	sessionsByVM   map[string]*streamSession
-	sessionsByVMMu sync.Mutex
-
 	// Active VMs per user (userLogin -> vmID) for cross-reconnection reuse
 	userVMs   map[string]string
 	userVMsMu sync.RWMutex
@@ -59,7 +55,6 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 		settings:       settings,
 		logger:         logger,
 		streamSessions: make(map[string]*streamSession),
-		sessionsByVM:   make(map[string]*streamSession),
 		userVMs:        make(map[string]string),
 	}
 
@@ -98,13 +93,6 @@ func (a *App) Dispose() {
 		}
 	}
 	a.streamSessionsMu.Unlock()
-
-	// Clear secondary session index
-	a.sessionsByVMMu.Lock()
-	for k := range a.sessionsByVM {
-		delete(a.sessionsByVM, k)
-	}
-	a.sessionsByVMMu.Unlock()
 
 	// Clear user VM mappings
 	a.userVMsMu.Lock()

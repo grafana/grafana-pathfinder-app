@@ -1,13 +1,13 @@
 /**
  * Grafana Live terminal connection hook
  *
- * This hook provides the interface for connecting to a terminal backend
- * via Grafana Live streaming. It manages VM provisioning through the
- * plugin backend and bidirectional terminal I/O via Grafana Live channels.
+ * Bidirectional terminal I/O over a single Grafana Live WebSocket:
+ * - Output (SSH → frontend): RunStream sends frames via sender.SendFrame
+ * - Input (frontend → SSH): Frontend publishes via liveSrv.publish → PublishStream
  */
 
 import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
-import { getBackendSrv, getGrafanaLiveSrv } from '@grafana/runtime';
+import { getGrafanaLiveSrv, type GrafanaLiveSrv } from '@grafana/runtime';
 import {
   LiveChannelScope,
   LiveChannelAddress,
@@ -26,14 +26,6 @@ interface ConnectionLog {
   info: (message: string, data?: Record<string, unknown>) => void;
   warn: (message: string, data?: Record<string, unknown>) => void;
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
-  httpRequest: (
-    method: string,
-    url: string,
-    startTime: number
-  ) => {
-    success: (status: number, data?: Record<string, unknown>) => void;
-    failure: (error: unknown, status?: number) => void;
-  };
   liveStream: (event: string, data?: Record<string, unknown>) => void;
 }
 
@@ -88,29 +80,6 @@ function createConnectionLog(): ConnectionLog {
       });
     },
 
-    httpRequest: (method: string, url: string, startTime: number) => ({
-      success: (status: number, data?: Record<string, unknown>) => {
-        const duration = Math.round(performance.now() - startTime);
-        devLog(console.log, `[Terminal] HTTP ${method} ${url} - SUCCESS`, {
-          status,
-          durationMs: duration,
-          elapsedMs: elapsed(),
-          ...data,
-        });
-      },
-      failure: (error: unknown, status?: number) => {
-        const duration = Math.round(performance.now() - startTime);
-        const errorDetails =
-          error instanceof Error ? { errorName: error.name, errorMessage: error.message } : { rawError: error };
-        console.error(`[Terminal] HTTP ${method} ${url} - FAILED`, {
-          status,
-          durationMs: duration,
-          elapsedMs: elapsed(),
-          ...errorDetails,
-        });
-      },
-    }),
-
     liveStream: (event: string, data?: Record<string, unknown>) => {
       devLog(console.log, `[Terminal] LiveStream: ${event}`, {
         elapsedMs: elapsed(),
@@ -119,14 +88,6 @@ function createConnectionLog(): ConnectionLog {
     },
   };
 }
-
-// Note on Grafana Live bidirectional limitations:
-// The SDK's PublishStream handler supports receiving messages from clients,
-// but Grafana blocks frontend publishing to plugin channels (403 Forbidden).
-// This restriction applies to BOTH:
-//   - HTTP POST to /api/live/publish
-//   - WebSocket publish with { useSocket: true }
-// We use HTTP POST to a dedicated plugin endpoint as a workaround.
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -187,25 +148,14 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
   // REACT: refs for subscriptions and cleanup (R1)
   const subscriptionRef = useRef<Subscription | null>(null);
-  // currentVmIdRef tracks the VM ID for the current session (needed for input routing)
+  // currentVmIdRef tracks the VM ID for the current session (used in logging)
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
   const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track if we're currently attempting to reconnect (prevents loops)
-  const reconnectingRef = useRef<boolean>(false);
-  // Ref to hold attemptReconnect function (populated after connect is defined)
-  const attemptReconnectRef = useRef<(() => void) | null>(null);
-  // Track reconnect attempts to prevent infinite loops (max 5 attempts)
-  const reconnectAttemptCountRef = useRef<number>(0);
-  const MAX_RECONNECT_ATTEMPTS = 5;
-  // Track when we last connected to add grace period before allowing 410 reconnects
-  const lastConnectedTimeRef = useRef<number>(0);
-  const CONNECTION_GRACE_PERIOD_MS = 2000;
-  // Connection must survive this long to be considered "stable" and reset the reconnect counter
-  const CONNECTION_STABLE_THRESHOLD_MS = 30000;
-  // Track if current connect is from auto-reconnect (vs user-initiated)
-  const isAutoReconnectRef = useRef<boolean>(false);
+
+  // Grafana Live publish refs: populated in connectLiveStream, read by sendInput/sendResize
+  const liveSrvRef = useRef<GrafanaLiveSrv | undefined>(undefined);
+  const addressRef = useRef<LiveChannelAddress | null>(null);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -221,10 +171,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       clearTimeout(handshakeTimeoutRef.current);
       handshakeTimeoutRef.current = null;
     }
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
+    liveSrvRef.current = undefined;
+    addressRef.current = null;
   }, []);
 
   // REACT: cleanup on unmount (R1)
@@ -233,84 +181,39 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   }, [cleanup]);
 
   /**
-   * Send input to the terminal via HTTP POST
-   *
-   * Note: Grafana Live's publish is blocked for plugin channels (403 Forbidden),
-   * even when using the experimental { useSocket: true } option.
-   * We use a dedicated HTTP endpoint for terminal input instead.
-   *
-   * Architecture:
-   * - Output: Grafana Live streaming (RunStream → frontend)
-   * - Input: HTTP POST /api/plugins/{id}/resources/terminal/{vmId} (frontend → backend)
+   * Send input to the terminal via Grafana Live publish.
+   * Publishes a plain object to the same channel used by RunStream/SubscribeStream.
    */
-  const sendInput = useCallback(async (id: string, inputData: string) => {
-    // Don't send input for placeholder IDs - wait for real VM ID
-    if (!id || id === 'new') {
+  const sendInput = useCallback(async (inputData: string) => {
+    const liveSrv = liveSrvRef.current;
+    const address = addressRef.current;
+    if (!liveSrv || !address) {
       return;
     }
 
-    const url = `/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`;
-    const startTime = performance.now();
-
     try {
-      await getBackendSrv().post(url, {
-        type: 'input',
-        data: inputData,
-      });
-      // Only log slow input requests (> 500ms) to avoid noise
-      const duration = performance.now() - startTime;
-      if (duration > 500) {
-        connectionLogRef.current.warn('Slow input request', { vmId: id, durationMs: Math.round(duration) });
-      }
+      await liveSrv.publish(address, { type: 'input', data: inputData });
     } catch (err: unknown) {
-      // Check for 410 Gone - session expired but VM still active
-      const fetchError = err as { status?: number };
-      if (fetchError.status === 410) {
-        connectionLogRef.current.warn('Session expired, attempting reconnect', { vmId: id });
-        attemptReconnectRef.current?.();
-        return;
-      }
-
-      connectionLogRef.current.error('Failed to send input', err, {
-        vmId: id,
-        inputLength: inputData.length,
+      connectionLogRef.current.error('Failed to publish input', err, {
         category: 'input_failure',
       });
     }
   }, []);
 
   /**
-   * Send resize event to the terminal via HTTP POST
+   * Send resize event to the terminal via Grafana Live publish.
    */
-  const sendResize = useCallback(async (id: string, rows: number, cols: number) => {
-    // Don't send resize for placeholder IDs - wait for real VM ID
-    if (!id || id === 'new') {
+  const sendResize = useCallback(async (rows: number, cols: number) => {
+    const liveSrv = liveSrvRef.current;
+    const address = addressRef.current;
+    if (!liveSrv || !address) {
       return;
     }
 
-    const url = `/api/plugins/${PLUGIN_ID}/resources/terminal/${id}`;
-    const startTime = performance.now();
-    const httpLog = connectionLogRef.current.httpRequest('POST', `${url} (resize)`, startTime);
-
     try {
-      await getBackendSrv().post(url, {
-        type: 'resize',
-        rows,
-        cols,
-      });
-      httpLog.success(200, { vmId: id, rows, cols });
+      await liveSrv.publish(address, { type: 'resize', rows, cols });
     } catch (err: unknown) {
-      // Check for 410 Gone - session expired but VM still active
-      const fetchError = err as { status?: number };
-      if (fetchError.status === 410) {
-        connectionLogRef.current.warn('Session expired during resize, attempting reconnect', { vmId: id });
-        attemptReconnectRef.current?.();
-        return;
-      }
-
-      httpLog.failure(err);
-      connectionLogRef.current.error('Failed to send resize', err, {
-        vmId: id,
+      connectionLogRef.current.error('Failed to publish resize', err, {
         rows,
         cols,
         category: 'resize_failure',
@@ -324,16 +227,23 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    */
   const parseTerminalOutput = useCallback((message: unknown): TerminalStreamOutput | null => {
     try {
-      // SendJSON sends raw JSON objects directly
+      // Direct JSON object (from SendJSON)
       if (message && typeof message === 'object') {
-        // Check if it's already in the expected format
         const msg = message as Record<string, unknown>;
         if (typeof msg.type === 'string') {
           return message as TerminalStreamOutput;
         }
+
+        // DataFrame format (from SendFrame): extract JSON string from data.values[0][0]
+        const df = msg as { data?: { values?: unknown[][] }; schema?: unknown };
+        if (df.data?.values?.[0]?.[0]) {
+          const raw = df.data.values[0][0];
+          if (typeof raw === 'string') {
+            return JSON.parse(raw) as TerminalStreamOutput;
+          }
+        }
       }
 
-      // Fallback: try parsing if it's a string
       if (typeof message === 'string') {
         return JSON.parse(message) as TerminalStreamOutput;
       }
@@ -378,6 +288,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       });
 
       currentVmIdRef.current = id;
+
+      // Store refs so sendInput/sendResize can publish to this channel
+      liveSrvRef.current = liveSrv;
+      addressRef.current = address;
 
       // Safety-net timeout: if the backend never sends "connected" (e.g. SSH
       // dial blocks or RunStream fails silently), surface an error instead of
@@ -461,16 +375,12 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   break;
 
                 case 'connected':
-                  // Set connected time for grace period
-                  lastConnectedTimeRef.current = Date.now();
                   if (handshakeTimeoutRef.current) {
                     clearTimeout(handshakeTimeoutRef.current);
                     handshakeTimeoutRef.current = null;
                   }
-                  // Reset reconnecting flag on successful connection
-                  reconnectingRef.current = false;
 
-                  // Update current VM ID ref from backend (needed for input routing)
+                  // Update current VM ID ref from backend
                   if (msg.vmId) {
                     connectionLogRef.current.info('VM ID from backend', { vmId: msg.vmId });
                     currentVmIdRef.current = msg.vmId;
@@ -504,16 +414,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                     inputDisposerRef.current.dispose();
                   }
                   inputDisposerRef.current = terminal.onData((inputData) => {
-                    if (currentVmIdRef.current) {
-                      sendInput(currentVmIdRef.current, inputData);
-                    }
+                    sendInput(inputData);
                   });
 
-                  // Use the actual VM ID from backend (not the placeholder 'new')
-                  const actualVmId = msg.vmId || currentVmIdRef.current || id;
-                  if (actualVmId && actualVmId !== 'new') {
-                    sendResize(actualVmId, terminal.rows, terminal.cols);
-                  }
+                  sendResize(terminal.rows, terminal.cols);
                   break;
 
                 case 'disconnected':
@@ -562,7 +466,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                 vmId: id,
                 category: 'live_channel_disconnected',
               });
-              // Dispose input handler to prevent 410 cascade from stale typing
               if (inputDisposerRef.current) {
                 inputDisposerRef.current.dispose();
                 inputDisposerRef.current = null;
@@ -582,7 +485,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             clearTimeout(handshakeTimeoutRef.current);
             handshakeTimeoutRef.current = null;
           }
-          // Dispose input handler to prevent 410 cascade from stale typing
           if (inputDisposerRef.current) {
             inputDisposerRef.current.dispose();
             inputDisposerRef.current = null;
@@ -600,7 +502,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             clearTimeout(handshakeTimeoutRef.current);
             handshakeTimeoutRef.current = null;
           }
-          // Dispose input handler to prevent 410 cascade from stale typing
           if (inputDisposerRef.current) {
             inputDisposerRef.current.dispose();
             inputDisposerRef.current = null;
@@ -631,12 +532,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * - Backend pushes status updates via the stream
    */
   const connect = useCallback(async () => {
-    // Reset attempt counter on user-initiated connect (not on auto-reconnect)
-    if (!isAutoReconnectRef.current) {
-      reconnectAttemptCountRef.current = 0;
-    }
-    isAutoReconnectRef.current = false;
-
     const terminal = terminalRef.current;
     if (!terminal) {
       connectionLogRef.current.error('Terminal instance not available', null, {
@@ -655,6 +550,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     setError(null);
     cleanup();
 
+    // Clear vmId during reconnect so stray resize/input events are dropped
+    // until the new session sends 'connected' with the real vmId
+    currentVmIdRef.current = null;
+
     // Clear terminal and show connection header
     terminal.clear();
     terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
@@ -672,58 +571,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     // Connect to stream - backend handles VM assignment and reuse
     connectLiveStream('new', terminal);
   }, [terminalRef, cleanup, connectLiveStream]);
-
-  // Populate attemptReconnect ref now that connect is defined
-  // Must be in useEffect to avoid updating ref during render
-  useEffect(() => {
-    attemptReconnectRef.current = () => {
-      // Grace period: ignore 410s that occur within 2 seconds of connecting
-      // This handles the race condition where sendResize fires before backend session is ready
-      const timeSinceConnect = Date.now() - lastConnectedTimeRef.current;
-      if (timeSinceConnect < CONNECTION_GRACE_PERIOD_MS) {
-        return;
-      }
-
-      if (reconnectingRef.current) {
-        return; // Already reconnecting
-      }
-
-      // If the last connection was stable (survived 30+ seconds), reset the counter
-      // This prevents persistent failures from being masked by brief successful connections
-      if (timeSinceConnect > CONNECTION_STABLE_THRESHOLD_MS) {
-        reconnectAttemptCountRef.current = 0;
-      }
-
-      // Max retry limit to prevent infinite loops
-      reconnectAttemptCountRef.current += 1;
-      if (reconnectAttemptCountRef.current > MAX_RECONNECT_ATTEMPTS) {
-        const terminal = terminalRef.current;
-        if (terminal) {
-          terminal.writeln(
-            '\r\n\x1b[31m✖ Max reconnection attempts reached. Please click Connect to try again.\x1b[0m'
-          );
-        }
-        return;
-      }
-
-      reconnectingRef.current = true;
-
-      // Exponential backoff: 1s, 2s, 4s, 8s, 16s (max)
-      const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttemptCountRef.current - 1), 16000);
-
-      const terminal = terminalRef.current;
-      if (terminal) {
-        terminal.writeln(`\r\n\x1b[33m⚠ Session expired, reconnecting in ${backoffDelay / 1000}s...\x1b[0m`);
-      }
-
-      reconnectTimeoutRef.current = setTimeout(() => {
-        reconnectTimeoutRef.current = null;
-        reconnectingRef.current = false;
-        isAutoReconnectRef.current = true;
-        connect();
-      }, backoffDelay);
-    };
-  }, [connect, terminalRef]);
 
   /**
    * Disconnect from the terminal
@@ -745,13 +592,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   }, [cleanup, terminalRef]);
 
   /**
-   * Send resize event to backend
+   * Send resize event to backend via Grafana Live publish
    */
   const resize = useCallback(
     (rows: number, cols: number) => {
-      if (currentVmIdRef.current) {
-        sendResize(currentVmIdRef.current, rows, cols);
-      }
+      sendResize(rows, cols);
     },
     [sendResize]
   );
@@ -761,12 +606,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    */
   const sendCommand = useCallback(
     async (command: string) => {
-      const vmId = currentVmIdRef.current;
-      if (!vmId) {
-        connectionLogRef.current.warn('Cannot send command: no active VM');
+      if (!addressRef.current) {
+        connectionLogRef.current.warn('Cannot send command: not connected');
         return;
       }
-      await sendInput(vmId, command + '\n');
+      await sendInput(command + '\n');
     },
     [sendInput]
   );

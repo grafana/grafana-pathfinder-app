@@ -8,26 +8,11 @@ import (
 )
 
 // registerRoutes sets up the HTTP routes for the plugin.
-//
-// Terminal I/O Architecture (Hybrid):
-// - Output: Grafana Live streaming via RunStream (see stream.go)
-// - Input: HTTP POST /terminal/{vmId} (this file)
-//
-// Note: While the SDK supports PublishStream for bidirectional Live communication,
-// Grafana's /api/live/publish endpoint blocks frontend publishing to plugin channels
-// (returns 403 Forbidden). We use this HTTP endpoint for terminal input instead.
+// Terminal I/O is handled entirely via Grafana Live (see stream.go).
 func (a *App) registerRoutes(mux *http.ServeMux) {
-	// Coda registration endpoint
 	mux.HandleFunc("/coda/register", a.handleCodaRegister)
-
-	// VM management endpoints
 	mux.HandleFunc("/vms", a.handleVMs)
 	mux.HandleFunc("/vms/", a.handleVMByID)
-
-	// Terminal input endpoint (required because Grafana Live blocks frontend publishing)
-	mux.HandleFunc("/terminal/", a.handleTerminalInput)
-
-	// Health check
 	mux.HandleFunc("/health", a.handleHealth)
 }
 
@@ -64,95 +49,6 @@ func (a *App) handleVMByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
-}
-
-// Note: Terminal output is streamed via Grafana Live (see stream.go)
-// Terminal input is sent via HTTP POST to this endpoint
-
-// TerminalInput represents input sent to the terminal
-type TerminalInput struct {
-	Type string `json:"type"` // "input", "resize"
-	Data string `json:"data,omitempty"`
-	Rows int    `json:"rows,omitempty"`
-	Cols int    `json:"cols,omitempty"`
-}
-
-// handleTerminalInput handles POST /terminal/{vmId} for sending input to the terminal
-func (a *App) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Extract VM ID from path: /terminal/{vmId}
-	path := strings.TrimPrefix(r.URL.Path, "/terminal/")
-	vmID := strings.TrimSuffix(path, "/")
-
-	if vmID == "" {
-		http.Error(w, "VM ID required", http.StatusBadRequest)
-		return
-	}
-
-	// Parse input
-	var input TerminalInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		a.writeError(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// O(1) session lookup via secondary index (keyed by vmID alone;
-	// vmIDs are unique per-VM and only known to the owning user's frontend)
-	a.sessionsByVMMu.Lock()
-	sess := a.sessionsByVM[vmID]
-	a.sessionsByVMMu.Unlock()
-
-	ctxLogger := a.ctxLogger(r.Context())
-	if sess == nil || sess.session == nil {
-		ctxLogger.Warn("No active session found for terminal input",
-			"vmID", vmID,
-		)
-
-		// Check if VM still exists and is active - if so, tell frontend to reconnect
-		if a.coda != nil {
-			vm, err := a.coda.GetVM(r.Context(), vmID)
-			if err == nil && (vm.State == "active" || vm.State == "pooled") {
-				ctxLogger.Info("VM still active but session expired, requesting reconnect",
-					"vmID", vmID,
-					"vmState", vm.State,
-				)
-				w.Header().Set("X-Reconnect-Required", "true")
-				a.writeError(w, "Session expired, please reconnect", http.StatusGone) // 410
-				return
-			}
-		}
-
-		a.writeError(w, "No active session for VM", http.StatusNotFound)
-		return
-	}
-
-	// Handle the input
-	switch input.Type {
-	case "input":
-		if err := sess.session.Write([]byte(input.Data)); err != nil {
-			ctxLogger.Error("Failed to write to terminal", "vmID", vmID, "error", err)
-			a.writeError(w, "Failed to write to terminal", http.StatusInternalServerError)
-			return
-		}
-	case "resize":
-		if input.Rows > 0 && input.Cols > 0 {
-			if err := sess.session.Resize(input.Rows, input.Cols); err != nil {
-				ctxLogger.Error("Failed to resize terminal", "vmID", vmID, "error", err)
-				a.writeError(w, "Failed to resize terminal", http.StatusInternalServerError)
-				return
-			}
-		}
-	default:
-		a.writeError(w, "Unknown input type", http.StatusBadRequest)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // allowedHostSuffixes lists the trusted domain suffixes to prevent
