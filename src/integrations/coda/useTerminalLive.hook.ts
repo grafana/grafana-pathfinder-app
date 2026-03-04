@@ -191,7 +191,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * stream, causing a 404.
    */
   const publishOverSocket = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     (address: LiveChannelAddress, data: unknown) =>
       (liveSrvRef.current as any)?.publish(address, data, { useSocket: true }),
     []
