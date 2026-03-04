@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.0.7
+
+### Changed
+
+- **Experiment refactor**: Extracted experiment logic into dedicated `experiments/` module with separate orchestrator, utilities, and debug tooling; simplified `module.tsx` by removing inline experiment wiring
+- **OpenFeature integration**: Added OpenFeature client wrapper for standardized feature flag evaluation
+- **Analytics**: Added RudderStack event support and new suggestion state tracking via `global-state/suggestion.ts`
+
+## 2.0.6
+
+### Fixed
+
+- **Terminal streaming**: Fixed terminal streaming issue in the Coda terminal live hook
+- **Publish**: Fixed publish issue with terminal live hook import
+
+## 2.0.5
+
+### Fixed
+
+- **Terminal streaming**: Simplified streaming implementation across backend (`stream.go`, `resources.go`) and frontend (`useTerminalLive` hook), removing redundant code paths
+
 ## 2.0.4
 
 ### Fixed
