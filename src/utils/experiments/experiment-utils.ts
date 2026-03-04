@@ -5,8 +5,6 @@
  * These are pure utility functions that don't depend on experiment orchestration.
  */
 
-import { getBackendSrv } from '@grafana/runtime';
-
 import { matchPathPattern } from '../openfeature';
 import { experimentAutoOpenStorage, StorageKeys } from '../../lib/user-storage';
 
@@ -28,14 +26,6 @@ export const getStorageKeys = (hostname: string) => ({
   treatmentOpened: `grafana-pathfinder-experiment-treatment-opened-${hostname}`,
   // Per-page treatment prefix
   treatmentPagePrefix: `${StorageKeys.EXPERIMENT_TREATMENT_PAGE_PREFIX}${hostname}-`,
-});
-
-/**
- * Storage keys for after-24h experiment
- */
-export const getAfter24hStorageKeys = (hostname: string) => ({
-  resetProcessed: `${StorageKeys.AFTER_24H_RESET_PROCESSED_PREFIX}${hostname}`,
-  autoOpened: `${StorageKeys.AFTER_24H_SESSION_AUTO_OPENED_PREFIX}${hostname}`,
 });
 
 // ============================================================================
@@ -206,65 +196,6 @@ export function shouldAutoOpenForPath(hostname: string, targetPages: string[], c
 
   // Return parent path for tracking (not exact pattern)
   return parentPath;
-}
-
-// ============================================================================
-// AFTER-24H EXPERIMENT STORAGE HELPERS
-// ============================================================================
-
-/**
- * Check if after-24h auto-open has already occurred this session
- */
-export function hasAfter24hAutoOpened(hostname: string): boolean {
-  const keys = getAfter24hStorageKeys(hostname);
-  return sessionStorage.getItem(keys.autoOpened) === 'true';
-}
-
-/**
- * Mark after-24h auto-open as having occurred
- */
-export function markAfter24hAutoOpened(hostname: string): void {
-  const keys = getAfter24hStorageKeys(hostname);
-  sessionStorage.setItem(keys.autoOpened, 'true');
-}
-
-/**
- * Reset after-24h experiment state
- */
-export function resetAfter24hExperimentState(hostname: string): void {
-  const keys = getAfter24hStorageKeys(hostname);
-  sessionStorage.removeItem(keys.autoOpened);
-}
-
-// ============================================================================
-// USER AGE CHECK
-// ============================================================================
-
-/**
- * Checks if the current user's account is 24 hours old or older
- * Used by the after-24h experiment to determine if auto-open should trigger
- *
- * @returns Promise<boolean> - true if account is >= 24 hours old, false otherwise
- */
-export async function isUserAccountOlderThan24Hours(): Promise<boolean> {
-  try {
-    const user = await getBackendSrv().get('/api/user');
-    if (!user.createdAt) {
-      console.warn('[Pathfinder] User createdAt not available');
-      return false;
-    }
-
-    const createdAt = new Date(user.createdAt);
-    const now = new Date();
-    const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-
-    console.warn(`[Pathfinder] User account age: ${hoursDiff.toFixed(2)} hours (created: ${user.createdAt})`);
-
-    return hoursDiff >= 24;
-  } catch (error) {
-    console.warn('[Pathfinder] Failed to fetch user creation time:', error);
-    return false; // Fail safe - don't auto-open if we can't determine age
-  }
 }
 
 // ============================================================================

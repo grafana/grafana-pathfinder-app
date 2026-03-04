@@ -4,11 +4,6 @@
  * Tests storage helpers, path utilities, and user-related checks for experiments.
  */
 
-// Mock @grafana/runtime
-jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: jest.fn(),
-}));
-
 // Mock user-storage
 jest.mock('../../lib/user-storage', () => ({
   experimentAutoOpenStorage: {
@@ -21,8 +16,6 @@ jest.mock('../../lib/user-storage', () => ({
     EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
     EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
     EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
-    AFTER_24H_SESSION_AUTO_OPENED_PREFIX: 'grafana-pathfinder-after-24h-auto-opened-',
-    AFTER_24H_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-after-24h-reset-processed-',
   },
 }));
 
@@ -36,8 +29,6 @@ jest.mock('../openfeature', () => ({
   }),
 }));
 
-import { getBackendSrv } from '@grafana/runtime';
-
 import {
   getParentPath,
   getTreatmentPageKey,
@@ -46,14 +37,9 @@ import {
   markParentAutoOpened,
   markGlobalAutoOpened,
   shouldAutoOpenForPath,
-  hasAfter24hAutoOpened,
-  markAfter24hAutoOpened,
-  resetAfter24hExperimentState,
-  isUserAccountOlderThan24Hours,
   isSidebarAlreadyInUse,
   isOnboardingFlowPath,
   getStorageKeys,
-  getAfter24hStorageKeys,
   syncExperimentStateFromUserStorage,
   resetExperimentState,
 } from './experiment-utils';
@@ -85,15 +71,6 @@ describe('experiment-utils', () => {
       expect(keys.resetProcessed).toBe(`grafana-pathfinder-pop-open-reset-processed-${hostname}`);
       expect(keys.autoOpened).toBe(`grafana-interactive-learning-panel-auto-opened-${hostname}`);
       expect(keys.treatmentPagePrefix).toBe(`grafana-pathfinder-treatment-page-${hostname}-`);
-    });
-  });
-
-  describe('getAfter24hStorageKeys', () => {
-    it('should return after-24h storage keys with hostname', () => {
-      const keys = getAfter24hStorageKeys(hostname);
-
-      expect(keys.resetProcessed).toBe(`grafana-pathfinder-after-24h-reset-processed-${hostname}`);
-      expect(keys.autoOpened).toBe(`grafana-pathfinder-after-24h-auto-opened-${hostname}`);
     });
   });
 
@@ -270,99 +247,6 @@ describe('experiment-utils', () => {
         const result = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/dashboard/browse');
         expect(result).toBeNull();
       });
-    });
-  });
-
-  describe('after-24h experiment storage', () => {
-    describe('hasAfter24hAutoOpened', () => {
-      it('should return false when not auto-opened', () => {
-        expect(hasAfter24hAutoOpened(hostname)).toBe(false);
-      });
-
-      it('should return true when auto-opened', () => {
-        const keys = getAfter24hStorageKeys(hostname);
-        sessionStorage.setItem(keys.autoOpened, 'true');
-        expect(hasAfter24hAutoOpened(hostname)).toBe(true);
-      });
-    });
-
-    describe('markAfter24hAutoOpened', () => {
-      it('should mark as auto-opened in sessionStorage', () => {
-        markAfter24hAutoOpened(hostname);
-
-        const keys = getAfter24hStorageKeys(hostname);
-        expect(sessionStorage.getItem(keys.autoOpened)).toBe('true');
-      });
-    });
-
-    describe('resetAfter24hExperimentState', () => {
-      it('should clear session storage', () => {
-        markAfter24hAutoOpened(hostname);
-        expect(hasAfter24hAutoOpened(hostname)).toBe(true);
-
-        resetAfter24hExperimentState(hostname);
-        expect(hasAfter24hAutoOpened(hostname)).toBe(false);
-      });
-    });
-  });
-
-  describe('isUserAccountOlderThan24Hours', () => {
-    it('should return true for account older than 24 hours', async () => {
-      const mockGet = jest.fn().mockResolvedValue({
-        createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
-      });
-      (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
-
-      const result = await isUserAccountOlderThan24Hours();
-
-      expect(result).toBe(true);
-      expect(mockGet).toHaveBeenCalledWith('/api/user');
-    });
-
-    it('should return false for account younger than 24 hours', async () => {
-      const mockGet = jest.fn().mockResolvedValue({
-        createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-      });
-      (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
-
-      const result = await isUserAccountOlderThan24Hours();
-
-      expect(result).toBe(false);
-    });
-
-    it('should return false when createdAt is not available', async () => {
-      const mockGet = jest.fn().mockResolvedValue({});
-      (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
-
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-      const result = await isUserAccountOlderThan24Hours();
-
-      expect(result).toBe(false);
-      expect(consoleSpy).toHaveBeenCalledWith('[Pathfinder] User createdAt not available');
-      consoleSpy.mockRestore();
-    });
-
-    it('should return false on API error', async () => {
-      const mockGet = jest.fn().mockRejectedValue(new Error('API error'));
-      (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
-
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-      const result = await isUserAccountOlderThan24Hours();
-
-      expect(result).toBe(false);
-      expect(consoleSpy).toHaveBeenCalledWith('[Pathfinder] Failed to fetch user creation time:', expect.any(Error));
-      consoleSpy.mockRestore();
-    });
-
-    it('should return true for account exactly 24 hours old', async () => {
-      const mockGet = jest.fn().mockResolvedValue({
-        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      });
-      (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
-
-      const result = await isUserAccountOlderThan24Hours();
-
-      expect(result).toBe(true);
     });
   });
 

@@ -10,8 +10,16 @@
  * - showCache(): Display current storage state
  */
 
-import { experimentAutoOpenStorage, StorageKeys } from '../../lib/user-storage';
-import { getExperimentConfig, type ExperimentConfig } from '../openfeature';
+import { experimentAutoOpenStorage } from '../../lib/user-storage';
+import {
+  getExperimentConfig,
+  setFlagOverride,
+  removeFlagOverride,
+  clearFlagOverrides,
+  getFlagOverrides,
+  pathfinderFeatureFlags,
+  type ExperimentConfig,
+} from '../openfeature';
 import { getStorageKeys } from './experiment-utils';
 
 // Rate limiting for refetch
@@ -111,10 +119,6 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       // Clear per-page treatment keys
       perPageKeys.forEach((key) => sessionStorage.removeItem(key));
 
-      // Clear after-24h session storage
-      const after24hSessionKey = `${StorageKeys.AFTER_24H_SESSION_AUTO_OPENED_PREFIX}${hostname}`;
-      sessionStorage.removeItem(after24hSessionKey);
-
       // Clear Grafana user storage
       try {
         await experimentAutoOpenStorage.clear();
@@ -148,9 +152,6 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
         console.warn('[Pathfinder] Could not read user storage state');
       }
 
-      // Get after-24h state
-      const after24hSessionKey = `${StorageKeys.AFTER_24H_SESSION_AUTO_OPENED_PREFIX}${hostname}`;
-
       const state = {
         localStorage: {
           resetProcessed: localStorage.getItem(storageKeys.resetProcessed),
@@ -158,7 +159,6 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
         sessionStorage: {
           autoOpened: sessionStorage.getItem(storageKeys.autoOpened),
           treatmentOpened: sessionStorage.getItem(storageKeys.treatmentOpened),
-          after24hAutoOpened: sessionStorage.getItem(after24hSessionKey),
         },
         perPageKeys,
         userStorage: userStorageState,
@@ -178,12 +178,6 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
         '=',
         state.sessionStorage.treatmentOpened
       );
-      console.log(
-        '  After-24h auto-opened (sessionStorage):',
-        after24hSessionKey,
-        '=',
-        state.sessionStorage.after24hAutoOpened
-      );
 
       if (Object.keys(perPageKeys).length > 0) {
         console.log('[Pathfinder] Per-page treatment keys (auto-open once per target page):', perPageKeys);
@@ -200,6 +194,42 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
 
     // Storage keys for reference
     storageKeys,
+
+    // --- Flag override methods (persist in localStorage, take effect on next page load) ---
+
+    flags: Object.keys(pathfinderFeatureFlags),
+
+    setOverride: (flagName: string, value: unknown) => {
+      if (!(flagName in pathfinderFeatureFlags)) {
+        console.warn(`[Pathfinder] Unknown flag '${flagName}'. Known flags:`, Object.keys(pathfinderFeatureFlags));
+      }
+      setFlagOverride(flagName, value);
+      console.log(`[Pathfinder] Override set for '${flagName}':`, value);
+      console.log('[Pathfinder] Refresh the page for the override to take effect.');
+    },
+
+    removeOverride: (flagName: string) => {
+      removeFlagOverride(flagName);
+      console.log(`[Pathfinder] Override removed for '${flagName}'. Refresh the page to use GOFF value.`);
+    },
+
+    clearOverrides: () => {
+      clearFlagOverrides();
+      console.log('[Pathfinder] All overrides cleared. Refresh the page to use GOFF values.');
+    },
+
+    showOverrides: () => {
+      const overrides = getFlagOverrides();
+      if (Object.keys(overrides).length === 0) {
+        console.log('[Pathfinder] No flag overrides set.');
+      } else {
+        console.log('[Pathfinder] Active flag overrides (take effect on page load):');
+        for (const [flag, value] of Object.entries(overrides)) {
+          console.log(`  ${flag}:`, value);
+        }
+      }
+      return overrides;
+    },
   };
 }
 

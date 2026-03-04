@@ -85,10 +85,10 @@ const pathfinderFeatureFlags = {
     trackingKey: 'experiment_variant',
   },
   /**
-   * A/B experiment for users with accounts 24+ hours old
+   * A/B experiment for sidebar availability
    * - "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
    * - "control": In experiment, no sidebar (native Grafana help only)
-   * - "treatment": In experiment, sidebar auto-opens for users with accounts >= 24 hours old
+   * - "treatment": In experiment, sidebar available (no auto-open)
    * Default: "excluded" to preserve normal behavior if flag not set
    */
   'pathfinder.after-24h-experiment': {
@@ -279,6 +279,58 @@ export async function evaluateFeatureFlag<T extends FeatureFlagName>(flagName: T
 }
 
 // ============================================================================
+// LOCAL OVERRIDES (for browser console testing)
+// ============================================================================
+
+const FLAG_OVERRIDE_STORAGE_KEY = 'grafana-pathfinder-flag-overrides';
+
+/**
+ * Read all flag overrides from localStorage.
+ * Returns an empty object if none are set or localStorage is unavailable.
+ */
+export function getFlagOverrides(): Record<string, unknown> {
+  try {
+    const raw = localStorage.getItem(FLAG_OVERRIDE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Set a local override for a feature flag.
+ * The override is stored in localStorage and takes effect on the next page load.
+ *
+ * @param flagName - The flag to override (e.g. 'pathfinder.after-24h-experiment')
+ * @param value - The override value (boolean, string, number, or object)
+ */
+export function setFlagOverride(flagName: string, value: unknown): void {
+  const overrides = getFlagOverrides();
+  overrides[flagName] = value;
+  localStorage.setItem(FLAG_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+}
+
+/**
+ * Remove a single flag override.
+ */
+export function removeFlagOverride(flagName: string): void {
+  const overrides = getFlagOverrides();
+  delete overrides[flagName];
+  if (Object.keys(overrides).length === 0) {
+    localStorage.removeItem(FLAG_OVERRIDE_STORAGE_KEY);
+  } else {
+    localStorage.setItem(FLAG_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+  }
+}
+
+/**
+ * Remove all flag overrides.
+ */
+export function clearFlagOverrides(): void {
+  localStorage.removeItem(FLAG_OVERRIDE_STORAGE_KEY);
+}
+
+// ============================================================================
 // BACKWARDS COMPATIBLE SYNC FUNCTIONS
 // ============================================================================
 // Note: All sync functions below are automatically tracked by the TrackingHook
@@ -301,6 +353,12 @@ export async function evaluateFeatureFlag<T extends FeatureFlagName>(flagName: T
  */
 export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): boolean => {
   try {
+    const overrides = getFlagOverrides();
+    if (flagName in overrides && typeof overrides[flagName] === 'boolean') {
+      console.warn(`[OpenFeature] Using local override for '${flagName}':`, overrides[flagName]);
+      return overrides[flagName] as boolean;
+    }
+
     const client = getFeatureFlagClient();
     return client.getBooleanValue(flagName, defaultValue);
   } catch (error) {
@@ -351,6 +409,22 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
  */
 export const getExperimentConfig = (flagName: string): ExperimentConfig => {
   try {
+    // Check for local override first
+    const overrides = getFlagOverrides();
+    if (flagName in overrides) {
+      const override = overrides[flagName];
+      if (override && typeof override === 'object' && !Array.isArray(override) && 'variant' in override) {
+        const record = override as Record<string, unknown>;
+        const config: ExperimentConfig = {
+          variant: (record.variant as ExperimentConfig['variant']) ?? 'excluded',
+          pages: Array.isArray(record.pages) ? (record.pages as string[]) : [],
+          resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,
+        };
+        console.warn(`[OpenFeature] Using local override for '${flagName}':`, config);
+        return config;
+      }
+    }
+
     const client = getFeatureFlagClient();
     const value = client.getObjectValue(flagName, DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue);
 

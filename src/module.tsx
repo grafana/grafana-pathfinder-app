@@ -18,7 +18,6 @@ import {
   initializeExperiments,
   shouldMountSidebar,
   setupMainExperimentAutoOpen,
-  setupAfter24hAutoOpen,
   attemptAutoOpen,
   getAutoOpenFeatureFlag,
   getCurrentPath,
@@ -200,9 +199,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     featureFlagEnabled: getAutoOpenFeatureFlag(),
     pluginConfig: config,
   });
-
-  // Setup after-24h experiment auto-open logic
-  setupAfter24hAutoOpen(experimentState, currentPath);
 };
 
 export { plugin };

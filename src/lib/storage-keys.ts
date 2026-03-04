@@ -36,9 +36,6 @@ export const StorageKeys = {
   EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
   EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
   EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
-  // After-24h experiment session storage key prefixes (used with hostname suffix)
-  AFTER_24H_SESSION_AUTO_OPENED_PREFIX: 'grafana-pathfinder-after-24h-auto-opened-',
-  AFTER_24H_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-after-24h-reset-processed-',
 } as const;
 
 export type StorageKeyName = keyof typeof StorageKeys;

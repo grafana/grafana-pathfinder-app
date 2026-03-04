@@ -10,7 +10,6 @@
 // Re-export from experiment-utils
 export {
   getStorageKeys,
-  getAfter24hStorageKeys,
   getParentPath,
   getTreatmentPageKey,
   findMatchingTargetPage,
@@ -20,10 +19,6 @@ export {
   syncExperimentStateFromUserStorage,
   resetExperimentState,
   shouldAutoOpenForPath,
-  hasAfter24hAutoOpened,
-  markAfter24hAutoOpened,
-  resetAfter24hExperimentState,
-  isUserAccountOlderThan24Hours,
   isSidebarAlreadyInUse,
   isOnboardingFlowPath,
 } from './experiment-utils';
@@ -34,7 +29,6 @@ export {
   shouldMountSidebar,
   attemptAutoOpen,
   setupMainExperimentAutoOpen,
-  setupAfter24hAutoOpen,
   getAutoOpenFeatureFlag,
   getCurrentPath,
   type ExperimentState,

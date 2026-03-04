@@ -3,7 +3,7 @@
  *
  * High-level orchestration logic for experiments:
  * - Initializes experiment configs from OpenFeature
- * - Handles resetCache logic for both experiments
+ * - Handles resetCache logic for the main experiment
  * - Manages auto-open triggering for sidebar
  * - Determines if sidebar should be mounted based on experiment variants
  */
@@ -17,16 +17,11 @@ import { getExperimentConfig, getFeatureFlagValue, matchPathPattern, type Experi
 
 import {
   getStorageKeys,
-  getAfter24hStorageKeys,
   syncExperimentStateFromUserStorage,
   resetExperimentState,
-  resetAfter24hExperimentState,
   shouldAutoOpenForPath,
   markParentAutoOpened,
   markGlobalAutoOpened,
-  markAfter24hAutoOpened,
-  hasAfter24hAutoOpened,
-  isUserAccountOlderThan24Hours,
   isSidebarAlreadyInUse,
   isOnboardingFlowPath,
 } from './experiment-utils';
@@ -81,17 +76,12 @@ export function initializeExperiments(): ExperimentState {
     `[Pathfinder] Experiment config loaded: variant="${mainVariant}", pages=${JSON.stringify(targetPages)}, resetCache=${mainConfig.resetCache}`
   );
 
-  // Evaluate after-24h experiment config
+  // Evaluate after-24h experiment config (used only for sidebar mounting decision)
   const after24hConfig: ExperimentConfig = getExperimentConfig('pathfinder.after-24h-experiment');
   const after24hVariant = after24hConfig.variant;
 
-  // Handle resetCache for after-24h experiment
-  handleAfter24hExperimentResetCache(hostname, after24hConfig);
-
   // Log after-24h experiment config
-  console.warn(
-    `[Pathfinder] After-24h experiment config loaded: variant="${after24hVariant}", resetCache=${after24hConfig.resetCache}`
-  );
+  console.warn(`[Pathfinder] After-24h experiment config loaded: variant="${after24hVariant}"`);
 
   return {
     mainConfig,
@@ -118,27 +108,6 @@ function handleMainExperimentResetCache(hostname: string, config: ExperimentConf
       });
       localStorage.setItem(resetProcessedKey, 'true');
       console.log('[Pathfinder] Pop-open reset triggered: cleared auto-open tracking in all storages');
-    }
-  } else {
-    if (resetProcessed === 'true') {
-      localStorage.setItem(resetProcessedKey, 'false');
-    }
-  }
-}
-
-/**
- * Handles resetCache logic for after-24h experiment.
- */
-function handleAfter24hExperimentResetCache(hostname: string, config: ExperimentConfig): void {
-  const keys = getAfter24hStorageKeys(hostname);
-  const resetProcessedKey = keys.resetProcessed;
-  const resetProcessed = localStorage.getItem(resetProcessedKey);
-
-  if (config.resetCache) {
-    if (resetProcessed !== 'true') {
-      resetAfter24hExperimentState(hostname);
-      localStorage.setItem(resetProcessedKey, 'true');
-      console.log('[Pathfinder] After-24h pop-open reset triggered: cleared auto-open tracking');
     }
   } else {
     if (resetProcessed === 'true') {
@@ -331,97 +300,6 @@ function setupTreatmentNavigationListener(hostname: string, targetPages: string[
     }
   } catch (error) {
     window.addEventListener('popstate', checkNavigationToTargetPage);
-  }
-}
-
-/**
- * Sets up auto-open logic for the after-24h experiment.
- * Only triggers for treatment variant with accounts >= 24 hours old.
- */
-export function setupAfter24hAutoOpen(state: ExperimentState, currentPath: string): void {
-  const { after24hVariant, hostname } = state;
-
-  if (after24hVariant !== 'treatment') {
-    return;
-  }
-
-  const hasAlreadyOpened = hasAfter24hAutoOpened(hostname);
-  const isOnboardingFlow = isOnboardingFlowPath(currentPath);
-
-  // Only proceed if we haven't auto-opened in this session and not on onboarding
-  if (!hasAlreadyOpened && !isOnboardingFlow) {
-    isUserAccountOlderThan24Hours().then((isOldEnough) => {
-      if (isOldEnough) {
-        // Check again if auto-opened while we were fetching (race condition guard)
-        if (hasAfter24hAutoOpened(hostname)) {
-          return;
-        }
-
-        if (isSidebarAlreadyInUse()) {
-          console.log('[Pathfinder] Skipping after-24h auto-open: sidebar already in use by another plugin');
-          return;
-        }
-
-        markAfter24hAutoOpened(hostname);
-        sidebarState.setPendingOpenSource('after_24h_experiment_treatment', 'auto-open');
-        attemptAutoOpen(200);
-        console.log('[Pathfinder] After-24h experiment: auto-opening for user with account >= 24 hours old');
-      } else {
-        console.log('[Pathfinder] After-24h experiment: user account is less than 24 hours old, skipping auto-open');
-      }
-    });
-  }
-
-  // If user starts on onboarding flow, listen for navigation away from it
-  if (!hasAlreadyOpened && isOnboardingFlow) {
-    setupAfter24hOnboardingFlowListener(hostname);
-  }
-}
-
-/**
- * Sets up listener for navigation away from onboarding flow (after-24h experiment).
- */
-function setupAfter24hOnboardingFlowListener(hostname: string): void {
-  const checkAfter24hLocationChange = () => {
-    const newLocation = locationService.getLocation();
-    const newPath = newLocation.pathname || window.location.pathname || '';
-    const stillOnOnboarding = isOnboardingFlowPath(newPath);
-    const alreadyOpened = hasAfter24hAutoOpened(hostname);
-
-    if (!stillOnOnboarding && !alreadyOpened) {
-      isUserAccountOlderThan24Hours().then((isOldEnough) => {
-        // Re-check storage after async operation
-        if (hasAfter24hAutoOpened(hostname)) {
-          return;
-        }
-
-        if (isOldEnough) {
-          if (isSidebarAlreadyInUse()) {
-            console.log('[Pathfinder] Skipping after-24h auto-open after onboarding: sidebar already in use');
-            return;
-          }
-
-          markAfter24hAutoOpened(hostname);
-          sidebarState.setPendingOpenSource('after_24h_experiment_treatment_after_onboarding', 'auto-open');
-          attemptAutoOpen(500);
-          console.log(
-            '[Pathfinder] After-24h experiment: auto-opening after onboarding for user with account >= 24 hours old'
-          );
-        }
-      });
-    }
-  };
-
-  document.addEventListener('grafana:location-changed', checkAfter24hLocationChange);
-
-  try {
-    const history = locationService.getHistory();
-    if (history) {
-      const unlisten = history.listen(checkAfter24hLocationChange);
-      (window as any).__pathfinderAfter24hNavUnlisten = unlisten;
-    }
-  } catch (error) {
-    window.addEventListener('popstate', checkAfter24hLocationChange);
   }
 }
 

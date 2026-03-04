@@ -549,6 +549,158 @@ describe('openfeature', () => {
     });
   });
 
+  describe('flag overrides', () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('getFlagOverrides should return empty object when no overrides set', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { getFlagOverrides } = require('./openfeature');
+        expect(getFlagOverrides()).toEqual({});
+      });
+    });
+
+    it('setFlagOverride should persist to localStorage', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getFlagOverrides } = require('./openfeature');
+        setFlagOverride('pathfinder.auto-open-sidebar', true);
+
+        expect(getFlagOverrides()).toEqual({ 'pathfinder.auto-open-sidebar': true });
+      });
+    });
+
+    it('removeFlagOverride should remove a single override', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, removeFlagOverride, getFlagOverrides } = require('./openfeature');
+        setFlagOverride('pathfinder.auto-open-sidebar', true);
+        setFlagOverride('pathfinder.after-24h-experiment', { variant: 'control', pages: [] });
+
+        removeFlagOverride('pathfinder.auto-open-sidebar');
+
+        const overrides = getFlagOverrides();
+        expect('pathfinder.auto-open-sidebar' in overrides).toBe(false);
+        expect('pathfinder.after-24h-experiment' in overrides).toBe(true);
+      });
+    });
+
+    it('clearFlagOverrides should remove all overrides', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, clearFlagOverrides, getFlagOverrides } = require('./openfeature');
+        setFlagOverride('pathfinder.auto-open-sidebar', true);
+        setFlagOverride('pathfinder.after-24h-experiment', { variant: 'control', pages: [] });
+
+        clearFlagOverrides();
+
+        expect(getFlagOverrides()).toEqual({});
+      });
+    });
+
+    it('getFeatureFlagValue should use override when set', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        mockOF.mockClient.getBooleanValue.mockReturnValue(false);
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+        const { setFlagOverride, getFeatureFlagValue } = require('./openfeature');
+        setFlagOverride('pathfinder.auto-open-sidebar', true);
+
+        const result = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
+
+        expect(result).toBe(true);
+        expect(mockOF.mockClient.getBooleanValue).not.toHaveBeenCalled();
+        consoleSpy.mockRestore();
+      });
+    });
+
+    it('getFeatureFlagValue should ignore non-boolean overrides', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        mockOF.mockClient.getBooleanValue.mockReturnValue(false);
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getFeatureFlagValue } = require('./openfeature');
+        setFlagOverride('pathfinder.auto-open-sidebar', 'not-a-boolean');
+
+        const result = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
+
+        expect(result).toBe(false);
+        expect(mockOF.mockClient.getBooleanValue).toHaveBeenCalled();
+      });
+    });
+
+    it('getExperimentConfig should use override when set', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'excluded',
+          pages: [],
+        });
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.after-24h-experiment', { variant: 'control', pages: [] });
+
+        const result = getExperimentConfig('pathfinder.after-24h-experiment');
+
+        expect(result).toEqual({ variant: 'control', pages: [], resetCache: false });
+        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
+        consoleSpy.mockRestore();
+      });
+    });
+
+    it('getExperimentConfig should fall through when override has no variant', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'excluded',
+          pages: [],
+        });
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.after-24h-experiment', { pages: [] });
+
+        const result = getExperimentConfig('pathfinder.after-24h-experiment');
+
+        expect(result).toEqual({ variant: 'excluded', pages: [], resetCache: false });
+        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
+      });
+    });
+  });
+
   describe('matchPathPattern', () => {
     it('should match exact paths', () => {
       jest.isolateModules(() => {

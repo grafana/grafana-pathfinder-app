@@ -39,8 +39,6 @@ jest.mock('../../lib/user-storage', () => ({
     EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
     EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
     EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
-    AFTER_24H_SESSION_AUTO_OPENED_PREFIX: 'grafana-pathfinder-after-24h-auto-opened-',
-    AFTER_24H_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-after-24h-reset-processed-',
   },
 }));
 
@@ -66,15 +64,6 @@ jest.mock('../openfeature', () => ({
   },
 }));
 
-// Mock experiment-utils
-jest.mock('./experiment-utils', () => {
-  const actual = jest.requireActual('./experiment-utils');
-  return {
-    ...actual,
-    isUserAccountOlderThan24Hours: jest.fn(),
-  };
-});
-
 import {
   initializeExperiments,
   shouldMountSidebar,
@@ -82,7 +71,6 @@ import {
   getAutoOpenFeatureFlag,
   getCurrentPath,
 } from './experiment-orchestrator';
-import { isUserAccountOlderThan24Hours } from './experiment-utils';
 
 describe('experiment-orchestrator', () => {
   beforeEach(() => {
@@ -140,29 +128,6 @@ describe('experiment-orchestrator', () => {
 
       expect(consoleSpy).toHaveBeenCalledWith(
         '[Pathfinder] Pop-open reset triggered: cleared auto-open tracking in all storages'
-      );
-      consoleSpy.mockRestore();
-    });
-
-    it('should handle resetCache for after-24h experiment', () => {
-      mockGetExperimentConfig
-        .mockReturnValueOnce({
-          variant: 'excluded',
-          pages: [],
-          resetCache: false,
-        })
-        .mockReturnValueOnce({
-          variant: 'treatment',
-          pages: [],
-          resetCache: true,
-        });
-
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
-      initializeExperiments();
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[Pathfinder] After-24h pop-open reset triggered: cleared auto-open tracking'
       );
       consoleSpy.mockRestore();
     });
@@ -308,28 +273,6 @@ describe('experiment-orchestrator', () => {
 
       // Falls back to window.location.pathname which is "/" in JSDOM
       expect(result).toBe('/');
-    });
-  });
-
-  describe('after-24h auto-open', () => {
-    it('should check user account age for treatment variant', async () => {
-      (isUserAccountOlderThan24Hours as jest.Mock).mockResolvedValue(true);
-
-      mockGetExperimentConfig
-        .mockReturnValueOnce({
-          variant: 'excluded',
-          pages: [],
-          resetCache: false,
-        })
-        .mockReturnValueOnce({
-          variant: 'treatment',
-          pages: [],
-          resetCache: false,
-        });
-
-      const state = initializeExperiments();
-
-      expect(state.after24hVariant).toBe('treatment');
     });
   });
 });
