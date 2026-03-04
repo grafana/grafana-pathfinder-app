@@ -181,45 +181,66 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   }, [cleanup]);
 
   /**
+   * Publish over the WebSocket rather than HTTP POST.
+   *
+   * GrafanaLiveService.publish() accepts an undeclared third `options` arg.
+   * Passing `{ useSocket: true }` routes the message through the existing
+   * Centrifuge WebSocket instead of `POST /api/live/publish`. This is
+   * critical in multi-node deployments (e.g. Grafana Cloud) where HTTP
+   * requests are load-balanced and may hit a node that isn't running the
+   * stream, causing a 404.
+   */
+  const publishOverSocket = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (address: LiveChannelAddress, data: unknown) =>
+      (liveSrvRef.current as any)?.publish(address, data, { useSocket: true }),
+    []
+  );
+
+  /**
    * Send input to the terminal via Grafana Live publish.
    * Publishes a plain object to the same channel used by RunStream/SubscribeStream.
    */
-  const sendInput = useCallback(async (inputData: string) => {
-    const liveSrv = liveSrvRef.current;
-    const address = addressRef.current;
-    if (!liveSrv || !address) {
-      return;
-    }
+  const sendInput = useCallback(
+    async (inputData: string) => {
+      const address = addressRef.current;
+      if (!liveSrvRef.current || !address) {
+        return;
+      }
 
-    try {
-      await liveSrv.publish(address, { type: 'input', data: inputData });
-    } catch (err: unknown) {
-      connectionLogRef.current.error('Failed to publish input', err, {
-        category: 'input_failure',
-      });
-    }
-  }, []);
+      try {
+        await publishOverSocket(address, { type: 'input', data: inputData });
+      } catch (err: unknown) {
+        connectionLogRef.current.error('Failed to publish input', err, {
+          category: 'input_failure',
+        });
+      }
+    },
+    [publishOverSocket]
+  );
 
   /**
    * Send resize event to the terminal via Grafana Live publish.
    */
-  const sendResize = useCallback(async (rows: number, cols: number) => {
-    const liveSrv = liveSrvRef.current;
-    const address = addressRef.current;
-    if (!liveSrv || !address) {
-      return;
-    }
+  const sendResize = useCallback(
+    async (rows: number, cols: number) => {
+      const address = addressRef.current;
+      if (!liveSrvRef.current || !address) {
+        return;
+      }
 
-    try {
-      await liveSrv.publish(address, { type: 'resize', rows, cols });
-    } catch (err: unknown) {
-      connectionLogRef.current.error('Failed to publish resize', err, {
-        rows,
-        cols,
-        category: 'resize_failure',
-      });
-    }
-  }, []);
+      try {
+        await publishOverSocket(address, { type: 'resize', rows, cols });
+      } catch (err: unknown) {
+        connectionLogRef.current.error('Failed to publish resize', err, {
+          rows,
+          cols,
+          category: 'resize_failure',
+        });
+      }
+    },
+    [publishOverSocket]
+  );
 
   /**
    * Parse terminal output from a Grafana Live message.
