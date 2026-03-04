@@ -16,6 +16,7 @@ import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
+import { getResumeInfo as computeResumeInfo, computeStepEligibility } from './step-section-utils';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -617,38 +618,16 @@ export function InteractiveSection({
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render
-  const stepEligibility = useMemo(() => {
-    return stepComponents.map((stepInfo, index) => {
-      // First step is always eligible (Trust but Verify)
-      if (index === 0) {
-        return true;
-      }
-
-      // Subsequent steps are eligible if all previous steps are completed
-      // Noop steps (informational only) are always considered "complete" for eligibility purposes
-      // since they have no action to perform
-      return stepComponents
-        .slice(0, index)
-        .every((prevStep) => prevStep.targetAction === 'noop' || completedSteps.has(prevStep.stepId));
-    });
-  }, [completedSteps, stepComponents]); // Only recalculate when these change
+  const stepEligibility = useMemo(
+    () => computeStepEligibility(stepComponents, completedSteps),
+    [completedSteps, stepComponents]
+  );
 
   // Calculate resume information for button display
-  const getResumeInfo = useCallback(() => {
-    if (stepComponents.length === 0) {
-      return { nextStepIndex: 0, remainingSteps: 0, isResume: false };
-    }
-
-    // Use currentStepIndex directly - no iteration needed!
-    const nextStepIndex = currentStepIndex;
-
-    // If currentStepIndex is beyond the end, it means all steps are completed
-    const allCompleted = nextStepIndex >= stepComponents.length;
-    const remainingSteps = allCompleted ? stepComponents.length : stepComponents.length - nextStepIndex;
-    const isResume = !allCompleted && nextStepIndex > 0;
-
-    return { nextStepIndex, remainingSteps, isResume };
-  }, [stepComponents.length, currentStepIndex]);
+  const getResumeInfo = useCallback(
+    () => computeResumeInfo(stepComponents, currentStepIndex),
+    [stepComponents, currentStepIndex]
+  );
 
   // Handle individual step completion
   const handleStepComplete = useCallback(
@@ -1629,7 +1608,7 @@ export function InteractiveSection({
               if (resumeInfo.isResume) {
                 return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
               }
-              return hints || `Run through all ${stepComponents.length} steps in sequence`;
+              return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
             })()}
           >
             {(() => {
@@ -1643,7 +1622,7 @@ export function InteractiveSection({
               if (resumeInfo.isResume) {
                 return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
               }
-              return `▶ Do Section (${stepComponents.length} steps)`;
+              return `▶ Do Section (${nonNoopSteps.length} steps)`;
             })()}
           </Button>
         )}
