@@ -55,3 +55,4 @@ plans/
 # Prevent generated JS artifacts in src from being committed
 src/**/*.js
 src/**/*.js.map
+.gitnexus
