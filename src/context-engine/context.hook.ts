@@ -4,6 +4,7 @@ import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
 import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
+import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -89,10 +90,19 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
 
+        // Prepend external suggestions (if any) so they appear first in the featured zone
+        const suggestions = suggestionState.getSuggestions();
+        const suggestionUrls = new Set(suggestions.map((s) => s.url));
+        const tagged = suggestions.map((s) => ({ ...s, _fromSuggestion: true as const }));
+        const mergedFeatured =
+          tagged.length > 0
+            ? [...tagged, ...featuredRecommendations.filter((r) => !suggestionUrls.has(r.url))]
+            : featuredRecommendations;
+
         setContextData((prev) => ({
           ...prev,
           recommendations,
-          featuredRecommendations,
+          featuredRecommendations: mergedFeatured,
           recommendationsError: error,
           recommendationsErrorType: errorType,
           usingFallbackRecommendations,
@@ -197,6 +207,32 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
     };
   }, [debouncedRefresh]);
+
+  // Merge external suggestions into featuredRecommendations
+  const applySuggestions = useCallback(() => {
+    const suggestions = suggestionState.getSuggestions();
+    setContextData((prev) => {
+      const withoutOld = prev.featuredRecommendations.filter((r) => !r._fromSuggestion);
+      if (suggestions.length === 0) {
+        return withoutOld.length === prev.featuredRecommendations.length
+          ? prev
+          : { ...prev, featuredRecommendations: withoutOld };
+      }
+      const suggestionUrls = new Set(suggestions.map((s) => s.url));
+      const dedupedExisting = withoutOld.filter((r) => !suggestionUrls.has(r.url));
+      const tagged = suggestions.map((s) => ({ ...s, _fromSuggestion: true as const }));
+      return { ...prev, featuredRecommendations: [...tagged, ...dedupedExisting] };
+    });
+  }, []);
+
+  // Apply suggestions on mount and when they change
+  useEffect(() => {
+    applySuggestions();
+
+    const handler = () => applySuggestions();
+    document.addEventListener(SUGGESTIONS_UPDATED_EVENT, handler);
+    return () => document.removeEventListener(SUGGESTIONS_UPDATED_EVENT, handler);
+  }, [applySuggestions]);
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
