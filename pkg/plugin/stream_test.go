@@ -49,8 +49,8 @@ func TestIsSSHRetryableError(t *testing.T) {
 		{"i/o timeout", errors.New("i/o timeout"), true},
 		{"eof", errors.New("unexpected eof"), true},
 		{"broken pipe", errors.New("broken pipe"), true},
-		{"ssh auth error (also retryable)", errors.New("permission denied"), true},
-		{"ssh handshake (also retryable)", errors.New("ssh handshake failed"), true},
+		{"ssh auth error (not retryable on same VM)", errors.New("permission denied"), false},
+		{"ssh handshake (not retryable on same VM)", errors.New("ssh handshake failed"), false},
 		{"generic error not retryable", errors.New("some random error"), false},
 		{"empty error message", errors.New(""), false},
 	}

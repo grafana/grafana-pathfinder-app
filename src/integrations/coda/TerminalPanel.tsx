@@ -130,7 +130,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     }
   }, [isExpanded, resize, status]);
 
-  // Fit terminal when expanded or height changes
+  // Fit terminal when expanded or height changes (but not on status changes,
+  // since the connected handler already sends an initial resize)
   useEffect(() => {
     if (isExpanded) {
       // Small delay to ensure DOM has updated
@@ -138,7 +139,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [isExpanded, height, handleFit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately excluding handleFit to avoid re-triggering on status changes
+  }, [isExpanded, height]);
 
   // Handle window resize
   useEffect(() => {

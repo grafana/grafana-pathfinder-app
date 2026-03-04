@@ -5,6 +5,7 @@
   "id": "grafana-pathfinder-app",
   "backend": true,
   "executable": "gpx_grafana-pathfinder-app",
+  "streaming": true,
   "autoEnabled": true,
   "info": {
     "keywords": ["app", "documentation", "learning", "command palette", "search"],

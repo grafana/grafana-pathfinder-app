@@ -54,11 +54,16 @@ func (c *WSConn) Read(b []byte) (int, error) {
 	}
 }
 
+const wsWriteTimeout = 30 * time.Second
+
 // Write writes data to the WebSocket connection as a binary message.
 func (c *WSConn) Write(b []byte) (int, error) {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 
+	if err := c.ws.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+		return 0, err
+	}
 	err := c.ws.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return 0, err

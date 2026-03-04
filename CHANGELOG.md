@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.0.4
+
+### Fixed
+
+- **Session key simplification**: Removed `userLogin` from `sessionsByVM` key, using `vmID` alone. Eliminates identity-mismatch bugs across SDK paths and the reconnect race condition where an old RunStream's teardown could delete a newer session's registration
+- **Reconnect race condition**: Fixed race where overlapping RunStream teardown for the same VM could delete the active session from the secondary index, causing 410 errors in Grafana Cloud
+
+## 2.0.3
+
+### Security
+
+- **Terminal input auth**: Removed client-controlled user identity from terminal input; user is now derived exclusively from the SDK's `PluginContext` to prevent session impersonation
+
+### Fixed
+
+- **Session lookup**: Fixed 410 (Gone) errors on every terminal input/resize caused by user identity mismatch between `RunStream` (SDK PluginContext) and `handleTerminalInput` (missing HTTP header)
+- **Instance lifecycle**: Moved `streamSessions` and `userVMs` from package-level globals into `App` struct fields so they are properly scoped to plugin instance lifecycle and cleaned on `Dispose()`
+- **SSH retry logic**: Auth errors (wrong key, permission denied) no longer waste same-VM retry budget; they break immediately to provision a new VM
+- **Context-aware retries**: Replaced `time.Sleep` in SSH retry loops with `select`/`time.After` so context cancellation is respected immediately
+- **WebSocket write deadline**: Added 30s write deadline on WebSocket writes to prevent indefinite blocking when the relay stops reading
+- **Reconnect timer leak**: Stored reconnect `setTimeout` ID in a ref and clear it on unmount to prevent post-unmount state updates
+- **PEM validation**: `normalizePrivateKey` now validates the result with `pem.Decode` and returns an error for malformed keys instead of passing them silently to `ssh.ParsePrivateKey`
+- **First poll delay**: `waitForVMActive` now polls immediately before entering the 3-second ticker loop, avoiding unnecessary delay for already-active VMs
+
+### Improved
+
+- **Session lookup performance**: Added secondary `sessionsByVM` index for O(1) terminal input routing instead of O(n) scan under mutex
+- **Output throughput**: Added output coalescing goroutine that batches SSH output within a 5ms window (up to 32KB) before sending, reducing per-message gRPC overhead
+- **Buffer sizes**: Increased SSH read buffers from 4KB to 32KB and PTY baud rates from 14400 to 38400
+- **Console log gating**: Terminal connection logs gated behind dev mode per Grafana best practices; `connectionLog` converted to a per-connection factory to eliminate shared mutable state
+- **Error logging**: `sendStreamError` and `sendStreamStatusWithVmId` now log marshal and send errors instead of silently discarding them
+- **PublishStream comment**: Corrected misleading comment to clarify it is implemented for SDK compliance but never invoked
+
 ## 2.0.2
 
 ### Fixed

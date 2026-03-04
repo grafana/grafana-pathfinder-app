@@ -1,32 +1,23 @@
 // Package plugin implements the Grafana Pathfinder app plugin backend.
 //
-// Terminal Streaming Architecture (Hybrid: Grafana Live + HTTP):
+// Terminal Streaming Architecture (Bidirectional Grafana Live):
 //
 //	┌─────────────┐                      ┌─────────────┐
 //	│   Frontend  │                      │   Backend   │
 //	│  (xterm.js) │                      │  (Go/SSH)   │
 //	└──────┬──────┘                      └──────┬──────┘
 //	       │                                    │
-//	       │  ── HTTP POST /terminal/{id} ───► │  (keyboard input, resize)
+//	       │  ── PublishStream ──────────────► │  (keyboard input, resize)
 //	       │                                    │
-//	       │  ◄──── Grafana Live RunStream ────│  (SSH output, status)
+//	       │  ◄──── RunStream ─────────────── │  (SSH output, status)
 //	       │                                    │
 //
-// Architecture Notes:
-// - Output: Grafana Live streaming via RunStream (real-time SSH output)
-// - Input: HTTP POST to /api/plugins/.../resources/terminal/{vmId}
-//
-// Why not use PublishStream for input?
-// Grafana's /api/live/publish HTTP endpoint restricts frontend publishing
-// to plugin channels (returns 403 Forbidden). While the SDK's PublishStream
-// handler is implemented, the HTTP publish path is blocked by Grafana's
-// security layer. We use a dedicated HTTP resource endpoint instead.
+// Both directions use a single Grafana Live WebSocket connection.
 //
 // Handler Responsibilities:
 // - SubscribeStream: Authorizes subscription, validates VM exists
-// - PublishStream: Implemented but not used (frontend can't publish via Live)
+// - PublishStream: Receives terminal input from the frontend (keyboard, resize)
 // - RunStream: Establishes SSH connection, streams output to frontend
-// - handleTerminalInput (resources.go): Receives terminal input via HTTP POST
 package plugin
 
 import (
@@ -35,7 +26,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -54,18 +44,9 @@ type streamSession struct {
 	cancel    context.CancelFunc
 }
 
-// streamSessions holds active streaming sessions (path -> session)
-var (
-	streamSessions   = make(map[string]*streamSession)
-	streamSessionsMu sync.Mutex
-)
+// streamSessions is managed on the App instance (see app.go)
 
-// userVMs tracks active VMs per user (userLogin -> vmID)
-// This allows the backend to reuse VMs for the same user across reconnections
-var (
-	userVMs   = make(map[string]string)
-	userVMsMu sync.RWMutex
-)
+// userVMs is managed on the App instance (see app.go)
 
 // getUserLogin extracts the user login from a RunStreamRequest.
 // Falls back to "anonymous" if user info is not available.
@@ -150,9 +131,17 @@ func (a *App) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamR
 	}, nil
 }
 
+// TerminalInput represents input sent to the terminal from the frontend via PublishStream.
+type TerminalInput struct {
+	Type string `json:"type"` // "input", "resize"
+	Data string `json:"data,omitempty"`
+	Rows int    `json:"rows,omitempty"`
+	Cols int    `json:"cols,omitempty"`
+}
+
 // PublishStream is called when a client publishes a message to a stream.
-// This handles terminal input from the frontend (keyboard input, resize events).
-// This is the primary input path for bidirectional terminal communication.
+// This handles terminal input from the frontend (keyboard input, resize events)
+// over the same Grafana Live WebSocket used for output streaming.
 func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamRequest) (*backend.PublishStreamResponse, error) {
 	ctxLogger := a.ctxLogger(ctx)
 	ctxLogger.Debug("PublishStream called", "path", req.Path, "dataLen", len(req.Data))
@@ -168,10 +157,10 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 
 	vmID := parts[1]
 
-	// Get the active session
-	streamSessionsMu.Lock()
-	sess, exists := streamSessions[req.Path]
-	streamSessionsMu.Unlock()
+	// Look up the active session by channel path
+	a.streamSessionsMu.Lock()
+	sess, exists := a.streamSessions[req.Path]
+	a.streamSessionsMu.Unlock()
 
 	if !exists || sess == nil || sess.session == nil {
 		ctxLogger.Warn("PublishStream: no active session", "vmID", vmID, "path", req.Path)
@@ -184,9 +173,7 @@ func (a *App) PublishStream(ctx context.Context, req *backend.PublishStreamReque
 	var input TerminalInput
 	if err := json.Unmarshal(req.Data, &input); err != nil {
 		ctxLogger.Error("PublishStream: failed to parse input", "error", err, "data", string(req.Data))
-		return &backend.PublishStreamResponse{
-			Status: backend.PublishStreamStatusPermissionDenied,
-		}, nil
+		return nil, fmt.Errorf("invalid terminal input: %w", err)
 	}
 
 	// Handle the message
@@ -268,7 +255,9 @@ func isSSHAuthError(err error) bool {
 		strings.Contains(errStr, "permission denied")
 }
 
-// isSSHRetryableError checks if an error is retryable (timeouts, connection issues, auth failures)
+// isSSHRetryableError checks if an error is retryable on the same VM
+// (timeouts, connection issues). Auth failures are NOT retryable on the
+// same VM -- they trigger provisioning a fresh VM instead.
 func isSSHRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -280,8 +269,7 @@ func isSSHRetryableError(err error) bool {
 		strings.Contains(errStr, "no route to host") ||
 		strings.Contains(errStr, "i/o timeout") ||
 		strings.Contains(errStr, "eof") ||
-		strings.Contains(errStr, "broken pipe") ||
-		isSSHAuthError(err)
+		strings.Contains(errStr, "broken pipe")
 }
 
 // SSH retry constants
@@ -366,9 +354,9 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	var vmID string
 
 	// Check if user already has an active VM
-	userVMsMu.RLock()
-	existingVmID, hasExisting := userVMs[userLogin]
-	userVMsMu.RUnlock()
+	a.userVMsMu.RLock()
+	existingVmID, hasExisting := a.userVMs[userLogin]
+	a.userVMsMu.RUnlock()
 
 	if hasExisting {
 		// User has a tracked VM - try to reuse it
@@ -378,16 +366,16 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		if err != nil {
 			// VM doesn't exist anymore - remove from tracking and provision new
 			ctxLogger.Info("Tracked VM not found, will provision new", "userLogin", userLogin, "vmID", existingVmID, "error", err)
-			userVMsMu.Lock()
-			delete(userVMs, userLogin)
-			userVMsMu.Unlock()
+			a.userVMsMu.Lock()
+			delete(a.userVMs, userLogin)
+			a.userVMsMu.Unlock()
 			hasExisting = false
 		} else if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
 			// VM is in terminal state - remove from tracking and provision new
 			ctxLogger.Info("Tracked VM in terminal state, will provision new", "userLogin", userLogin, "vmID", existingVmID, "state", vm.State)
-			userVMsMu.Lock()
-			delete(userVMs, userLogin)
-			userVMsMu.Unlock()
+			a.userVMsMu.Lock()
+			delete(a.userVMs, userLogin)
+			a.userVMsMu.Unlock()
 			hasExisting = false
 		} else {
 			// VM exists and is valid - reuse it
@@ -411,9 +399,9 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		vmID = vm.ID
 
 		// Store the user -> VM mapping
-		userVMsMu.Lock()
-		userVMs[userLogin] = vmID
-		userVMsMu.Unlock()
+		a.userVMsMu.Lock()
+		a.userVMs[userLogin] = vmID
+		a.userVMsMu.Unlock()
 
 		ctxLogger.Info("New VM created and tracked for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
 		sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
@@ -601,9 +589,9 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 			vmID = newVM.ID
 
 			// Update user -> VM mapping with new VM
-			userVMsMu.Lock()
-			userVMs[userLogin] = vmID
-			userVMsMu.Unlock()
+			a.userVMsMu.Lock()
+			a.userVMs[userLogin] = vmID
+			a.userVMsMu.Unlock()
 
 			ctxLogger.Info("Fresh VM provisioned for retry", "newVmID", vmID, "state", newVM.State, "vmAttempt", vmAttempt+1, "userLogin", userLogin)
 			sendStreamStatusWithVmId(sender, newVM.State, fmt.Sprintf("VM %d allocated, waiting for boot...", vmAttempt+1), vmID)
@@ -624,21 +612,21 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	}
 	defer func() { _ = session.Close() }()
 
-	// Store session for PublishStream and handleTerminalInput to use
-	streamSessionsMu.Lock()
-	streamSessions[req.Path] = &streamSession{
+	// Store session for PublishStream to find
+	a.streamSessionsMu.Lock()
+	a.streamSessions[req.Path] = &streamSession{
 		vmID:      vmID,
 		userLogin: userLogin,
 		session:   session,
 		sender:    sender,
 		cancel:    cancel,
 	}
-	streamSessionsMu.Unlock()
+	a.streamSessionsMu.Unlock()
 
 	defer func() {
-		streamSessionsMu.Lock()
-		delete(streamSessions, req.Path)
-		streamSessionsMu.Unlock()
+		a.streamSessionsMu.Lock()
+		delete(a.streamSessions, req.Path)
+		a.streamSessionsMu.Unlock()
 	}()
 
 	// Send connected message to frontend with vmId so it can cache it
@@ -656,8 +644,8 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	ctxLogger.Info("Terminal session started", "vmID", vmID)
 
 	// Start heartbeat sender to keep Grafana Live stream alive
-	// Grafana closes idle streams after ~3-5 seconds, so we must send immediately
-	// and then every 10 seconds to stay well under the timeout
+	// Grafana may close idle streams, so we send heartbeats every 3 seconds
+	// to ensure the stream stays active even when the user is idle
 	go func() {
 		// Send IMMEDIATE heartbeat to prevent early stream closure
 		heartbeat := TerminalStreamOutput{Type: "heartbeat"}
@@ -670,7 +658,7 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		}
 		ctxLogger.Debug("Sent initial heartbeat")
 
-		heartbeatTicker := time.NewTicker(10 * time.Second)
+		heartbeatTicker := time.NewTicker(3 * time.Second)
 		defer heartbeatTicker.Stop()
 		for {
 			select {
@@ -710,12 +698,12 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 					ctxLogger.Info("VM no longer active, ending stream", "vmID", pollVmID, "state", polledVM.State, "userLogin", pollUserLogin)
 
 					// Remove VM from user tracking since it's no longer valid
-					userVMsMu.Lock()
-					if userVMs[pollUserLogin] == pollVmID {
-						delete(userVMs, pollUserLogin)
+					a.userVMsMu.Lock()
+					if a.userVMs[pollUserLogin] == pollVmID {
+						delete(a.userVMs, pollUserLogin)
 						ctxLogger.Info("Removed expired VM from user tracking", "userLogin", pollUserLogin, "vmID", pollVmID)
 					}
-					userVMsMu.Unlock()
+					a.userVMsMu.Unlock()
 
 					msg := "VM lifetime expired"
 					if polledVM.State == "error" {
