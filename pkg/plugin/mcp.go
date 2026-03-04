@@ -15,6 +15,9 @@ import (
 // Using an allowlist avoids path traversal and rejects IDs with dots, slashes, etc.
 var validGuideIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
+// schemaVersionPattern matches semantic version strings (e.g., "1.0.0").
+var schemaVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
 // ---------------------------------------------------------------------------
 // Pending launch state
 // ---------------------------------------------------------------------------
@@ -55,11 +58,11 @@ type mcpError struct {
 
 // Standard JSON-RPC error codes.
 const (
-	errCodeParse     = -32700
-	errCodeInvalid   = -32600
-	errCodeNotFound  = -32601
-	errCodeParams    = -32602
-	errCodeInternal  = -32603
+	errCodeParse    = -32700
+	errCodeInvalid  = -32600
+	errCodeNotFound = -32601
+	errCodeParams   = -32602
+	errCodeInternal = -32603
 )
 
 // ---------------------------------------------------------------------------
@@ -67,11 +70,11 @@ const (
 // ---------------------------------------------------------------------------
 
 type mcpToolParam struct {
-	Type        string            `json:"type"`
-	Description string            `json:"description,omitempty"`
+	Type        string                  `json:"type"`
+	Description string                  `json:"description,omitempty"`
 	Properties  map[string]mcpToolParam `json:"properties,omitempty"`
-	Required    []string          `json:"required,omitempty"`
-	Enum        []string          `json:"enum,omitempty"`
+	Required    []string                `json:"required,omitempty"`
+	Enum        []string                `json:"enum,omitempty"`
 }
 
 type mcpTool struct {
@@ -418,8 +421,8 @@ var guideSchemas = map[string]interface{}{
 		"required":    []string{"schemaVersion", "id", "title", "blocks"},
 		"properties": map[string]interface{}{
 			"schemaVersion": map[string]interface{}{
-				"type":    "string",
-				"pattern": `^\d+\.\d+\.\d+$`,
+				"type":        "string",
+				"pattern":     `^\d+\.\d+\.\d+$`,
 				"description": "Schema version, currently '1.0.0'",
 			},
 			"id": map[string]interface{}{
@@ -435,17 +438,17 @@ var guideSchemas = map[string]interface{}{
 				"type":        "array",
 				"description": "Ordered list of content blocks",
 				"items": map[string]interface{}{
-					"type": "object",
+					"type":     "object",
 					"required": []string{"type"},
 					"properties": map[string]interface{}{
 						"type": map[string]interface{}{
 							"type": "string",
 							// Must match JsonBlock union in src/types/json-guide.types.ts
-						"enum": []string{
-							"markdown", "html", "section", "conditional", "interactive",
-							"multistep", "guided", "image", "video", "quiz", "assistant",
-							"input", "terminal",
-						},
+							"enum": []string{
+								"markdown", "html", "section", "conditional", "interactive",
+								"multistep", "guided", "image", "video", "quiz", "assistant",
+								"input", "terminal",
+							},
 						},
 					},
 				},
@@ -458,14 +461,14 @@ var guideSchemas = map[string]interface{}{
 		"description": "Pathfinder guide manifest.json schema",
 		"required":    []string{"id", "title", "type", "category"},
 		"properties": map[string]interface{}{
-			"id": map[string]interface{}{"type": "string"},
+			"id":    map[string]interface{}{"type": "string"},
 			"title": map[string]interface{}{"type": "string"},
 			"type": map[string]interface{}{
 				"type": "string",
 				"enum": []string{"guide", "path", "journey"},
 			},
-			"category": map[string]interface{}{"type": "string"},
-			"description": map[string]interface{}{"type": "string"},
+			"category":         map[string]interface{}{"type": "string"},
+			"description":      map[string]interface{}{"type": "string"},
 			"startingLocation": map[string]interface{}{"type": "string"},
 		},
 	},
@@ -579,7 +582,6 @@ func (a *App) toolValidateGuideJSON(w http.ResponseWriter, id json.RawMessage, r
 	}
 
 	// 3. Validate schemaVersion is a semver string (any version is accepted)
-	schemaVersionPattern := regexp.MustCompile(`^\d+\.\d+\.\d+`)
 	if sv, ok := parsed["schemaVersion"].(string); ok {
 		if !schemaVersionPattern.MatchString(sv) {
 			errs = append(errs, validationIssue{
@@ -777,19 +779,16 @@ func (a *App) handlePendingLaunch(w http.ResponseWriter, r *http.Request) {
 func (a *App) getPendingLaunch(w http.ResponseWriter, user string) {
 	pendingLaunchesMu.Lock()
 	launch, ok := pendingLaunches[user]
+
+	// Auto-expire launches older than 5 minutes
+	if ok && time.Since(launch.RequestedAt) > 5*time.Minute {
+		delete(pendingLaunches, user)
+		ok = false
+	}
 	pendingLaunchesMu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	if !ok {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{})
-		return
-	}
-
-	// Auto-expire launches older than 5 minutes
-	if time.Since(launch.RequestedAt) > 5*time.Minute {
-		pendingLaunchesMu.Lock()
-		delete(pendingLaunches, user)
-		pendingLaunchesMu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{})
 		return
 	}
