@@ -91,8 +91,8 @@ interface ExperimentAnalyticsEntry {
 /**
  * Gets the current experiment variant for analytics enrichment.
  *
- * Returns 'treatment' if the user is in treatment for any experiment,
- * 'control' if in control for any (and not treatment for another),
+ * Returns 'control' if the user is in control for any experiment (sidebar not mounted),
+ * 'treatment' if in treatment for any and not control in either,
  * otherwise 'excluded'.
  */
 function getExperimentVariant(): ExperimentConfig['variant'] | null {
@@ -100,11 +100,11 @@ function getExperimentVariant(): ExperimentConfig['variant'] | null {
     const mainVariant = getExperimentConfig('pathfinder.experiment-variant').variant;
     const after24hVariant = getExperimentConfig('pathfinder.after-24h-experiment').variant;
 
-    if (mainVariant === 'treatment' || after24hVariant === 'treatment') {
-      return 'treatment';
-    }
     if (mainVariant === 'control' || after24hVariant === 'control') {
       return 'control';
+    }
+    if (mainVariant === 'treatment' || after24hVariant === 'treatment') {
+      return 'treatment';
     }
     return 'excluded';
   } catch {
