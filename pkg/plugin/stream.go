@@ -255,7 +255,9 @@ func isSSHAuthError(err error) bool {
 		strings.Contains(errStr, "permission denied")
 }
 
-// isSSHRetryableError checks if an error is retryable (timeouts, connection issues, auth failures)
+// isSSHRetryableError checks if an error is retryable on the same VM
+// (timeouts, connection issues). Auth failures are NOT retryable on the
+// same VM -- they trigger provisioning a fresh VM instead.
 func isSSHRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -267,8 +269,7 @@ func isSSHRetryableError(err error) bool {
 		strings.Contains(errStr, "no route to host") ||
 		strings.Contains(errStr, "i/o timeout") ||
 		strings.Contains(errStr, "eof") ||
-		strings.Contains(errStr, "broken pipe") ||
-		isSSHAuthError(err)
+		strings.Contains(errStr, "broken pipe")
 }
 
 // SSH retry constants
