@@ -372,12 +372,31 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
 
     suggestionState.setSuggestions(valid);
 
+    const suggestedTitles = valid.map((s: Record<string, unknown>) => s.title).join(', ');
+    const suggestedUrls = valid.map((s: Record<string, unknown>) => s.url).join(', ');
+
     // If Pathfinder is already docked, just update the featured zone without re-opening
     if (sidebarState.getIsSidebarMounted()) {
+      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+        action: 'suggest',
+        source: 'external_app',
+        suggestion_count: valid.length,
+        suggested_titles: suggestedTitles,
+        suggested_urls: suggestedUrls,
+        sidebar_already_open: true,
+      });
       detail.status = 'accepted';
       return;
     }
 
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'suggest',
+      source: 'external_app',
+      suggestion_count: valid.length,
+      suggested_titles: suggestedTitles,
+      suggested_urls: suggestedUrls,
+      sidebar_already_open: false,
+    });
     sidebarState.setPendingOpenSource('external_suggestion', 'auto-open');
     sidebarState.openSidebar('Interactive learning');
     detail.status = 'accepted';
