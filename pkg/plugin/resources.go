@@ -27,6 +27,12 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	// Terminal input endpoint (required because Grafana Live blocks frontend publishing)
 	mux.HandleFunc("/terminal/", a.handleTerminalInput)
 
+	// MCP (Model Context Protocol) endpoint — HTTP JSON-RPC for AI assistant integration
+	mux.HandleFunc("/mcp", a.handleMCP)
+	// Pending guide launch endpoints — polled by the Pathfinder frontend
+	mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)
+	mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)
+
 	// Health check
 	mux.HandleFunc("/health", a.handleHealth)
 }
