@@ -191,7 +191,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * stream, causing a 404.
    */
   const publishOverSocket = useCallback(
-     
     (address: LiveChannelAddress, data: unknown) =>
       (liveSrvRef.current as any)?.publish(address, data, { useSocket: true }),
     []
