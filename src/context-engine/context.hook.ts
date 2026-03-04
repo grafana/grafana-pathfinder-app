@@ -93,9 +93,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         // Prepend external suggestions (if any) so they appear first in the featured zone
         const suggestions = suggestionState.getSuggestions();
         const suggestionUrls = new Set(suggestions.map((s) => s.url));
+        const tagged = suggestions.map((s) => ({ ...s, _fromSuggestion: true as const }));
         const mergedFeatured =
-          suggestions.length > 0
-            ? [...suggestions, ...featuredRecommendations.filter((r) => !suggestionUrls.has(r.url))]
+          tagged.length > 0
+            ? [...tagged, ...featuredRecommendations.filter((r) => !suggestionUrls.has(r.url))]
             : featuredRecommendations;
 
         setContextData((prev) => ({
@@ -210,13 +211,18 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   // Merge external suggestions into featuredRecommendations
   const applySuggestions = useCallback(() => {
     const suggestions = suggestionState.getSuggestions();
-    if (suggestions.length > 0) {
-      setContextData((prev) => {
-        const existingUrls = new Set(suggestions.map((s) => s.url));
-        const dedupedExisting = prev.featuredRecommendations.filter((r) => !existingUrls.has(r.url));
-        return { ...prev, featuredRecommendations: [...suggestions, ...dedupedExisting] };
-      });
-    }
+    setContextData((prev) => {
+      const withoutOld = prev.featuredRecommendations.filter((r) => !r._fromSuggestion);
+      if (suggestions.length === 0) {
+        return withoutOld.length === prev.featuredRecommendations.length
+          ? prev
+          : { ...prev, featuredRecommendations: withoutOld };
+      }
+      const suggestionUrls = new Set(suggestions.map((s) => s.url));
+      const dedupedExisting = withoutOld.filter((r) => !suggestionUrls.has(r.url));
+      const tagged = suggestions.map((s) => ({ ...s, _fromSuggestion: true as const }));
+      return { ...prev, featuredRecommendations: [...tagged, ...dedupedExisting] };
+    });
   }, []);
 
   // Apply suggestions on mount and when they change

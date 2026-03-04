@@ -326,7 +326,11 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
   // can read the result synchronously after dispatchEvent returns.
   document.addEventListener('pathfinder-suggest', ((event: CustomEvent) => {
     const detail = event.detail;
-    if (!detail || !Array.isArray(detail.suggestions)) {
+    if (!detail) {
+      console.warn('[Pathfinder] pathfinder-suggest event missing detail');
+      return;
+    }
+    if (!Array.isArray(detail.suggestions)) {
       console.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
       detail.status = 'rejected';
       detail.reason = 'invalid_payload';
