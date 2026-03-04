@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+
+- **MCP server**: HTTP Model Context Protocol server at `/api/plugins/grafana-pathfinder-app/resources/mcp`, enabling AI assistants (e.g. Grafana Assistant) to discover and launch Pathfinder guides
+  - `list_guides` — returns the bundled guide catalog with id, title, description, category, and type
+  - `get_guide` — returns the full content JSON for a specific guide by ID
+  - `get_guide_schema` — returns JSON Schema for guide content, manifest, and repository formats
+  - `launch_guide` — queues a guide launch for the current user; Pathfinder opens it automatically within 5 seconds if the sidebar is active
+  - `validate_guide_json` — validates a guide content.json string and returns structured errors and warnings
+  - `create_guide_template` — generates a valid guide skeleton (content.json + manifest.json) ready for editing
+- **Frontend polling hook** (`usePendingGuideLaunch`): polls the backend every 5 seconds and opens the Pathfinder sidebar to the requested guide when a pending launch is found
+- **`openWithGuide` method** on `GlobalSidebarState`: opens the sidebar and dispatches the guide, handling the case where the sidebar is not yet mounted
+
 ## 2.0.7
 
 ### Changed
