@@ -10,6 +10,7 @@ The constants directory is organized into specialized files that separate concer
 - **Interactive guide constants** for timing, behaviors, and action types
 - **Editor constants** for the WYSIWYG guide authoring experience
 - **Z-index constants** for overlay stacking management
+- **Test ID constants** for Playwright e2e testing selectors
 
 ## Files in `/src/constants/`
 
@@ -175,6 +176,51 @@ The constants directory is organized into specialized files that separate concer
 - **Interactive Styles**: Must coordinate with other styling systems to prevent stacking context issues
 
 **Why It Exists**: Pathfinder runs as a Grafana plugin and must render interactive overlays above all Grafana UI elements (modals, navigation, tooltips). These intentionally high z-index values (9999+) ensure guides remain visible and functional regardless of Grafana's own UI state. Centralizing these values prevents z-index conflicts and makes stacking order explicit.
+
+---
+
+### `testIds.ts` - E2E Test Identifiers
+
+**Purpose**: Centralized test identifiers for Playwright end-to-end testing, conforming to Grafana plugin e2e testing best practices.
+
+**Key Responsibilities**:
+
+- Provide stable `data-testid` selectors for Playwright tests
+- Organize selectors by component/feature namespace
+- Support dynamic ID generation for repeated elements (tabs, cards, steps)
+- Enable cross-component test coordination with consistent naming
+
+**Key Exports**:
+
+- `testIds.docsPanel` - Main container, tabs, close button, loading/error states
+- `testIds.contextPanel` - Recommendations, user profile bar, custom guides, other docs sections
+- `testIds.devTools` - Preview banner, full-screen mode, minimized sidebar
+- `testIds.interactive` - Sections, steps, buttons (show me, do it, skip, redo), requirements, quizzes, conditionals
+- `testIds.appConfig` - Configuration form fields (recommender URL, interactive features, timeouts)
+- `testIds.termsAndConditions` - Terms toggle, submit button, content area
+- `testIds.blockEditor` - Modals, palette, form controls, section editing
+
+**Naming Convention**:
+
+- Use kebab-case (lowercase with hyphens)
+- Prefix with component/feature name (e.g., `docs-panel-`, `config-`)
+- Dynamic functions for repeated elements: `tab(tabId)`, `step(stepId)`, `recommendationCard(index)`
+
+**Data Collected**: No data collection. This is pure configuration.
+
+**Used By**:
+
+- `e2e/` - Playwright end-to-end test files
+- `src/components/` - React components applying `data-testid` attributes
+- `src/docs-retrieval/components/interactive/` - Interactive step and quiz components
+
+**Critical Dependencies**:
+
+- **Playwright Tests**: Test files import `testIds` and use `page.getByTestId()` for element selection
+- **Component Implementation**: Components must apply matching `data-testid` attributes for selectors to work
+- **E2E Testing Contract**: Follows the contract defined in `docs/developer/E2E_TESTING_CONTRACT.md`
+
+**Why It Exists**: E2E tests require stable selectors that don't break when CSS classes or DOM structure changes. Centralizing test IDs ensures tests and components stay synchronized, prevents typos in selector strings, and provides clear documentation of the testing surface area. The namespace structure makes it easy to discover which elements are testable for each feature area.
 
 ---
 
