@@ -13,11 +13,21 @@ import { PLUGIN_BASE_URL } from '../../../constants';
 jest.mock('@grafana/runtime', () => {
   const mockPublish = jest.fn();
   const mockPush = jest.fn();
+  const mockConfig = {
+    bootData: {
+      user: {
+        orgRole: 'Admin',
+        isGrafanaAdmin: false,
+      },
+    },
+  };
   return {
+    config: mockConfig,
     getAppEvents: jest.fn(() => ({ publish: mockPublish })),
     locationService: { push: mockPush },
     __mockPublish: mockPublish, // Export for test access
     __mockPush: mockPush, // Export for test access
+    __mockConfig: mockConfig, // Export for test access
   };
 });
 
@@ -36,7 +46,8 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 // Get mock reference after imports
-const { __mockPublish: mockPublish, __mockPush: mockPush } = jest.requireMock('@grafana/runtime');
+const { __mockPublish: mockPublish, __mockPush: mockPush, __mockConfig: mockConfig } =
+  jest.requireMock('@grafana/runtime');
 
 describe('TabBarActions', () => {
   beforeEach(() => {
@@ -109,6 +120,70 @@ describe('TabBarActions', () => {
       fireEvent.click(myLearningButton);
 
       expect(mockPush).toHaveBeenCalledWith(PLUGIN_BASE_URL);
+    });
+  });
+
+  describe('Settings menu item permissions', () => {
+    beforeEach(() => {
+      // Reset mock config to Admin for each test
+      mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+    });
+
+    it('enables Settings menu item for Admin users', () => {
+      mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+      render(<TabBarActions />);
+
+      const menuButton = screen.getByRole('button', { name: 'More options' });
+      fireEvent.click(menuButton);
+
+      const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
+      expect(settingsItem).toBeEnabled();
+    });
+
+    it('enables Settings menu item for Grafana Admin users', () => {
+      mockConfig.bootData.user = { orgRole: 'Viewer', isGrafanaAdmin: true };
+      render(<TabBarActions />);
+
+      const menuButton = screen.getByRole('button', { name: 'More options' });
+      fireEvent.click(menuButton);
+
+      const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
+      expect(settingsItem).toBeEnabled();
+    });
+
+    it('disables Settings menu item for Editor users', () => {
+      mockConfig.bootData.user = { orgRole: 'Editor', isGrafanaAdmin: false };
+      render(<TabBarActions />);
+
+      const menuButton = screen.getByRole('button', { name: 'More options' });
+      fireEvent.click(menuButton);
+
+      const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
+      expect(settingsItem).toBeDisabled();
+    });
+
+    it('disables Settings menu item for Viewer users', () => {
+      mockConfig.bootData.user = { orgRole: 'Viewer', isGrafanaAdmin: false };
+      render(<TabBarActions />);
+
+      const menuButton = screen.getByRole('button', { name: 'More options' });
+      fireEvent.click(menuButton);
+
+      const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
+      expect(settingsItem).toBeDisabled();
+    });
+
+    it('navigates to settings when enabled item is clicked', () => {
+      mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+      render(<TabBarActions />);
+
+      const menuButton = screen.getByRole('button', { name: 'More options' });
+      fireEvent.click(menuButton);
+
+      const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
+      fireEvent.click(settingsItem);
+
+      expect(mockPush).toHaveBeenCalledWith('/plugins/grafana-pathfinder-app?page=configuration');
     });
   });
 });

@@ -5,9 +5,9 @@
  */
 
 import React from 'react';
-import { IconButton, Dropdown, Menu } from '@grafana/ui';
+import { IconButton, Dropdown, Menu, Tooltip } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { getAppEvents, locationService } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
@@ -22,6 +22,9 @@ export interface TabBarActionsProps {
  * Menu contains feedback and settings options.
  */
 export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
+  const user = config.bootData?.user;
+  const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
+
   const handleFeedbackClick = () => {
     reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
       interaction_location: 'header_menu_feedback',
@@ -80,7 +83,21 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
               icon="comment-alt-message"
               onClick={handleFeedbackClick}
             />
-            <Menu.Item label={t('docsPanel.settings', 'Settings')} icon="cog" onClick={handleSettingsClick} />
+            {canAccessPluginSettings ? (
+              <Menu.Item label={t('docsPanel.settings', 'Settings')} icon="cog" onClick={handleSettingsClick} />
+            ) : (
+              <Tooltip
+                content={t(
+                  'docsPanel.settingsNoPermission',
+                  "You don't have permission to access plugin settings"
+                )}
+                placement="left"
+              >
+                <span>
+                  <Menu.Item label={t('docsPanel.settings', 'Settings')} icon="cog" disabled />
+                </span>
+              </Tooltip>
+            )}
           </Menu>
         }
       >
