@@ -48,7 +48,7 @@
   "license": "AGPL-3.0",
   "devDependencies": {
     "@grafana/eslint-config": "^9.0.0",
-    "@grafana/faro-webpack-plugin": "^0.9.2",
+    "@grafana/faro-webpack-plugin": "^0.10.0",
     "@grafana/plugin-e2e": "^3.4.0",
     "@grafana/tsconfig": "^2.0.1",
     "@jest/test-sequencer": "^30.2.0",
