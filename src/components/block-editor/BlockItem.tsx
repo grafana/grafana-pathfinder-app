@@ -53,6 +53,8 @@ export interface BlockItemProps {
   childCount?: number;
   /** Whether this block was just dropped (triggers highlight animation) */
   isJustDropped?: boolean;
+  /** Whether this block was the last one modified (persistent highlight) */
+  isLastModified?: boolean;
 }
 
 /**
@@ -75,6 +77,7 @@ export function BlockItem({
   onToggleCollapse,
   childCount = 0,
   isJustDropped = false,
+  isLastModified = false,
 }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
@@ -89,8 +92,6 @@ export function BlockItem({
 
   const isSection = isSectionBlock(block.block);
   const isConditional = isConditionalBlock(block.block);
-  // Keep these for potential future use, suppress unused warnings
-  void index;
   void totalBlocks;
 
   const handleEdit = useCallback(
@@ -146,6 +147,7 @@ export function BlockItem({
     (isSection || isConditional) && styles.sectionContainer,
     isSelected && styles.selectedContainer,
     isJustDropped && styles.justDroppedContainer,
+    isLastModified && !isJustDropped && styles.lastModifiedContainer,
   ]
     .filter(Boolean)
     .join(' ');
@@ -179,6 +181,7 @@ export function BlockItem({
       {/* Content */}
       <div className={styles.content}>
         <div className={styles.header}>
+          <span className={styles.blockNumber}>{index + 1}</span>
           <span className={styles.typeIcon}>{meta.icon}</span>
           <Badge text={meta.name} color="blue" />
           {isInteractiveBlock(block.block) && (

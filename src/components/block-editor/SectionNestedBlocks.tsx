@@ -35,6 +35,8 @@ export interface SectionNestedBlocksProps {
   onInsertBlockInSection: (type: BlockType, sectionId: string, index?: number) => void;
   // Animation
   justDroppedId?: string | null;
+  /** ID of the last modified block (for persistent highlight) */
+  lastModifiedId?: string | null;
 }
 
 export function SectionNestedBlocks({
@@ -54,6 +56,7 @@ export function SectionNestedBlocks({
   onNestedBlockDuplicate,
   onInsertBlockInSection,
   justDroppedId,
+  lastModifiedId,
 }: SectionNestedBlocksProps) {
   const nestedBlockIds = useMemo(
     () => sectionBlocks.map((_, i) => `${block.id}-nested-${i}`),
@@ -108,6 +111,7 @@ export function SectionNestedBlocks({
                   <div style={{ marginBottom: '8px' }}>
                     <NestedBlockItem
                       block={nestedBlock}
+                      index={nestedIndex}
                       onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
                       onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
                       onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
@@ -119,6 +123,7 @@ export function SectionNestedBlocks({
                           : undefined
                       }
                       isJustDropped={isJustDroppedCheck}
+                      isLastModified={lastModifiedId === nestedBlockId}
                     />
                   </div>
                 </SortableBlock>
