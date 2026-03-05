@@ -291,6 +291,126 @@ describe('validatePackage', () => {
   });
 });
 
+describe('validatePackage — milestone/dependency overlap (Rule 3)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should error when a milestone ID appears in recommends', () => {
+    const pkgDir = path.join(tmpDir, 'overlap-recommends');
+    writeJson(path.join(pkgDir, 'content.json'), { id: 'my-path', title: 'My path', blocks: [] });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      recommends: ['step-1'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.code === 'milestone_dependency_overlap')).toBe(true);
+    expect(result.errors.some((e) => e.message.includes('"step-1"') && e.message.includes('"recommends"'))).toBe(true);
+  });
+
+  it('should error when a milestone ID appears in suggests', () => {
+    const pkgDir = path.join(tmpDir, 'overlap-suggests');
+    writeJson(path.join(pkgDir, 'content.json'), { id: 'my-path', title: 'My path', blocks: [] });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      suggests: ['step-2'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.code === 'milestone_dependency_overlap')).toBe(true);
+    expect(result.errors.some((e) => e.message.includes('"step-2"') && e.message.includes('"suggests"'))).toBe(true);
+  });
+
+  it('should error when a milestone ID appears in depends', () => {
+    const pkgDir = path.join(tmpDir, 'overlap-depends');
+    writeJson(path.join(pkgDir, 'content.json'), { id: 'my-path', title: 'My path', blocks: [] });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      depends: ['step-1'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.code === 'milestone_dependency_overlap')).toBe(true);
+    expect(result.errors.some((e) => e.message.includes('"step-1"') && e.message.includes('"depends"'))).toBe(true);
+  });
+
+  it('should emit one error per conflicting ID across multiple fields', () => {
+    const pkgDir = path.join(tmpDir, 'overlap-multi');
+    writeJson(path.join(pkgDir, 'content.json'), { id: 'my-path', title: 'My path', blocks: [] });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2', 'step-3'],
+      recommends: ['step-1'],
+      suggests: ['step-2'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    const overlapErrors = result.errors.filter((e) => e.code === 'milestone_dependency_overlap');
+    expect(overlapErrors).toHaveLength(2);
+  });
+
+  it('should detect overlap when milestone ID appears in an OR-group within depends', () => {
+    const pkgDir = path.join(tmpDir, 'overlap-or-group');
+    writeJson(path.join(pkgDir, 'content.json'), { id: 'my-path', title: 'My path', blocks: [] });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['step-1'],
+      depends: [['step-1', 'alternative-step']],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.code === 'milestone_dependency_overlap')).toBe(true);
+  });
+
+  it('should not error when milestone IDs appear only in provides or conflicts', () => {
+    const pkgDir = path.join(tmpDir, 'no-overlap-provides');
+    writeJson(path.join(pkgDir, 'content.json'), { id: 'my-path', title: 'My path', blocks: [] });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      provides: ['step-1'],
+      conflicts: ['step-2'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.errors.filter((e) => e.code === 'milestone_dependency_overlap')).toHaveLength(0);
+  });
+
+  it('should not error when no milestones are set', () => {
+    const pkgDir = path.join(tmpDir, 'no-milestones');
+    writeJson(path.join(pkgDir, 'content.json'), { id: 'my-guide', title: 'My guide', blocks: [] });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'my-guide',
+      type: 'guide',
+      recommends: ['some-other-guide'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.errors.filter((e) => e.code === 'milestone_dependency_overlap')).toHaveLength(0);
+  });
+});
+
 describe('validatePackageTree', () => {
   let tmpDir: string;
 
