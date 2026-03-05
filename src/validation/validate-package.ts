@@ -11,6 +11,7 @@ import * as path from 'path';
 
 import { ContentJsonSchema, ManifestJsonSchema } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
+import type { DependencyList, ManifestJson } from '../types/package.types';
 import type { ValidationError, ValidationWarning } from './errors';
 import { readJsonFile } from './package-io';
 import { validateGuide, type ValidationResult } from './validate-guide';
@@ -133,6 +134,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
       }
 
       emitManifestMessages(manifestRead.parsed as Record<string, unknown>, manifest, messages);
+      validateManifestSemantics(manifest, errors);
 
       if (manifest.testEnvironment) {
         validateTestEnvironment(manifest.testEnvironment, messages);
@@ -208,6 +210,38 @@ export function validatePackageTree(
 }
 
 // --- Internal helpers ---
+
+function validateManifestSemantics(manifest: ManifestJson, errors: ValidationError[]): void {
+  if (!manifest.milestones || manifest.milestones.length === 0) {
+    return;
+  }
+
+  const milestoneSet = new Set(manifest.milestones);
+  const flattenIds = (depList: DependencyList): string[] =>
+    depList.flatMap((clause) => (Array.isArray(clause) ? clause : [clause]));
+
+  const depFields: Array<[string, DependencyList]> = [
+    ['recommends', manifest.recommends ?? []],
+    ['suggests', manifest.suggests ?? []],
+    ['depends', manifest.depends ?? []],
+  ];
+
+  for (const [fieldName, depList] of depFields) {
+    for (const id of flattenIds(depList)) {
+      if (milestoneSet.has(id)) {
+        errors.push({
+          message:
+            `manifest.json: package ID "${id}" appears in both "milestones" and "${fieldName}" — ` +
+            `milestones define the path's ordered steps; "${fieldName}" on the path manifest is for ` +
+            `packages related to the path as a whole (e.g. prerequisites or follow-ons). ` +
+            `Remove "${id}" from "${fieldName}".`,
+          path: ['manifest.json', fieldName],
+          code: 'milestone_dependency_overlap',
+        });
+      }
+    }
+  }
+}
 
 function emitManifestMessages(
   raw: Record<string, unknown>,

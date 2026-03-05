@@ -51,6 +51,11 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
   manifest: {
     schema: ManifestJsonObjectSchema,
     description: 'Manifest JSON schema (manifest.json, without cross-field refinement)',
+    refinements: [
+      '"milestones" must be a non-empty array when type is "path" or "journey"',
+      '"milestones" is only valid when type is "path" or "journey" — type must be "path" or "journey" when milestones is present',
+      'Package IDs listed in "milestones" must not also appear in "recommends", "suggests", or "depends"',
+    ],
   },
   repository: {
     schema: RepositoryJsonSchema,
