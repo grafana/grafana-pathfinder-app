@@ -28,6 +28,7 @@ import {
   type JsonAssistantBlock,
   type JsonInputBlock,
   type JsonTerminalBlock,
+  type JsonCodeBlockBlock,
   type JsonStep,
   type AssistantProps,
 } from '../types/json-guide.types';
@@ -242,6 +243,8 @@ function convertBlockByType(
       return convertInputBlock(block, path);
     case 'terminal':
       return convertTerminalBlock(block, path);
+    case 'code-block':
+      return convertCodeBlockBlock(block, path);
     case 'assistant':
       // Legacy wrapper format - pass surrounding context for better AI understanding
       return convertAssistantBlock(block, path, baseUrl, surroundingContext);
@@ -770,6 +773,30 @@ function convertTerminalBlock(block: JsonTerminalBlock, _path: string): Conversi
       children,
     },
     hasInteractive: true,
+  };
+}
+
+function convertCodeBlockBlock(block: JsonCodeBlockBlock, _path: string): ConversionResult {
+  const children = block.content ? parseMarkdownToElements(block.content) : [];
+  const requirements = block.requirements?.join(',') || undefined;
+  const objectives = block.objectives?.join(',') || undefined;
+
+  return {
+    element: {
+      type: 'code-block-step',
+      props: {
+        code: block.code,
+        language: block.language || 'javascript',
+        refTarget: block.reftarget,
+        requirements,
+        objectives,
+        skippable: block.skippable ?? false,
+        hints: block.hint,
+      },
+      children,
+    },
+    hasInteractive: true,
+    hasCode: true,
   };
 }
 

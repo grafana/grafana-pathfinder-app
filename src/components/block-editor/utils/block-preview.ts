@@ -18,6 +18,7 @@ import {
   isQuizBlock,
   isInputBlock,
   isTerminalBlock,
+  isCodeBlockBlock,
   type JsonBlock,
 } from '../../../types/json-guide.types';
 
@@ -109,6 +110,11 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
 
   if (isTerminalBlock(block)) {
     return truncate(`$ ${block.command}`, maxLength);
+  }
+
+  if (isCodeBlockBlock(block)) {
+    const firstLine = block.code.split('\n')[0] ?? '';
+    return truncate(firstLine, maxLength);
   }
 
   // Fallback for unknown block types with content

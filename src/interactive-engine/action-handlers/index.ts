@@ -4,3 +4,4 @@ export { NavigateHandler } from './navigate-handler';
 export { FormFillHandler } from './form-fill-handler';
 export { HoverHandler } from './hover-handler';
 export { GuidedHandler } from './guided-handler';
+export { clearAndInsertCode, type CodeBlockInsertResult } from './code-block-handler';

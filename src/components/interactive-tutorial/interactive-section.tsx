@@ -9,6 +9,7 @@ import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
 import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
 import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
+import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
 import { interactiveStepStorage, sectionCollapseStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
@@ -47,6 +48,7 @@ export function resetInteractiveCounters() {
   resetGuidedCounter();
   resetQuizCounter();
   resetTerminalStepCounter();
+  resetCodeBlockStepCounter();
 }
 
 // Register a section's steps in the global registry (idempotent)
@@ -472,6 +474,23 @@ export function InteractiveSection({
           requirements: props.requirements,
           skippable: props.skippable,
           isMultiStep: false,
+          isGuided: false,
+        });
+        stepIndex++;
+      } else if (React.isValidElement(child) && (child as any).type === CodeBlockStep) {
+        const props = child.props as any;
+        const stepId = `${sectionId}-codeblock-${stepIndex + 1}`;
+
+        steps.push({
+          stepId,
+          element: child as React.ReactElement<any>,
+          index: stepIndex,
+          targetAction: 'code-block',
+          refTarget: props.refTarget,
+          targetValue: undefined,
+          requirements: props.requirements,
+          skippable: props.skippable,
+          isMultiStep: true,
           isGuided: false,
         });
         stepIndex++;
@@ -1482,6 +1501,49 @@ export function InteractiveSection({
           disabled: disabled,
           resetTrigger,
           key: stepInfo.stepId,
+        });
+      } else if (React.isValidElement(child) && (child as any).type === CodeBlockStep) {
+        const stepInfo = stepComponents[stepIndex];
+        if (!stepInfo) {
+          return child;
+        }
+
+        const isEligibleForChecking = stepEligibility[stepIndex];
+        const isCompleted = completedSteps.has(stepInfo.stepId);
+        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          stepIndex
+        );
+
+        stepIndex++;
+
+        return React.cloneElement(child as React.ReactElement<any>, {
+          ...(child.props as any),
+          stepId: stepInfo.stepId,
+          isEligibleForChecking,
+          isCompleted,
+          isCurrentlyExecuting,
+          onStepComplete: handleStepComplete,
+          stepIndex: documentStepIndex,
+          totalSteps: documentTotalSteps,
+          sectionId: sectionId,
+          sectionTitle: title,
+          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting),
+          resetTrigger,
+          key: stepInfo.stepId,
+          ref: (
+            ref: {
+              executeStep: () => Promise<boolean>;
+            } | null
+          ) => {
+            if (ref) {
+              multiStepRefs.current.set(stepInfo.stepId, ref);
+            } else {
+              multiStepRefs.current.delete(stepInfo.stepId);
+            }
+          },
         });
       }
       return child;

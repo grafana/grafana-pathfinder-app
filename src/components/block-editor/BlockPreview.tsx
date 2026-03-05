@@ -193,10 +193,11 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
 
       {/* Render the content using existing pipeline with proper styling */}
       {/* key={resetKey} forces remount when reset is triggered, resetting all interactive component state */}
+      {/* previewContent class overrides journey padding for tighter sidebar layout */}
       <ContentRenderer
         key={resetKey}
         content={content}
-        className={`${journeyStyles} ${interactiveStyles} ${prismStyles}`}
+        className={`${journeyStyles} ${interactiveStyles} ${prismStyles} ${styles.previewContent}`}
       />
     </div>
   );

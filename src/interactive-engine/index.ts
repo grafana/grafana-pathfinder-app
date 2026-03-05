@@ -22,8 +22,9 @@ export { default as GlobalInteractionBlocker } from './global-interaction-blocke
 // Sequential step state hook
 export { useSequentialStepState } from './use-sequential-step-state.hook';
 
-// Action handlers (re-export only GuidedHandler which is used externally)
-export { GuidedHandler } from './action-handlers';
+// Action handlers (re-export only handlers used externally)
+export { GuidedHandler, clearAndInsertCode } from './action-handlers';
+export type { CodeBlockInsertResult } from './action-handlers';
 
 // Auto-completion (re-export from auto-completion index)
 export {

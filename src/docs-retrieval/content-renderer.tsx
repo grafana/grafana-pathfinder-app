@@ -16,6 +16,7 @@ import {
   InteractiveConditional,
   InputBlock,
   TerminalStep,
+  CodeBlockStep,
   resetInteractiveCounters,
   registerSectionSteps,
   getDocumentStepPosition,
@@ -851,6 +852,7 @@ const INTERACTIVE_STEP_TYPES = new Set([
   'interactive-guided',
   'quiz-block',
   'terminal-step',
+  'code-block-step',
 ]);
 
 /**
@@ -881,6 +883,7 @@ const SECTION_TRACKED_STEP_TYPES = new Set([
   'interactive-guided',
   'quiz-block',
   'terminal-step',
+  'code-block-step',
 ]);
 
 /**
@@ -1106,6 +1109,23 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </TerminalStep>
+      );
+    case 'code-block-step':
+      return (
+        <CodeBlockStep
+          key={key}
+          code={sub(element.props.code) ?? element.props.code}
+          language={element.props.language}
+          refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          skippable={element.props.skippable}
+          hints={element.props.hints}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </CodeBlockStep>
       );
     case 'input-block':
       return (
