@@ -116,6 +116,7 @@ export function InteractiveSection({
   disabled = false,
   className,
   id, // HTML id attribute from parsed content
+  autoCollapse, // Author control for auto-collapse behavior
 }: InteractiveSectionProps) {
   // Use provided HTML id or generate sequential fallback
   const sectionId = useMemo(() => {
@@ -533,23 +534,6 @@ export function InteractiveSection({
     }
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
-  // Auto-collapse section when it becomes complete (but only once, don't override manual expansion)
-  // Skip auto-collapse in preview mode - guide authors want to control collapse manually
-  useEffect(() => {
-    if (isPreviewMode) {
-      return; // Don't auto-collapse in preview mode
-    }
-    if (isCompleted && !hasAutoCollapsedRef.current) {
-      hasAutoCollapsedRef.current = true;
-      setIsCollapsed(true);
-      const contentKey = getContentKey();
-      sectionCollapseStorage.set(contentKey, sectionId, true);
-    } else if (!isCompleted) {
-      // Reset the flag when section becomes incomplete (e.g., after reset)
-      hasAutoCollapsedRef.current = false;
-    }
-  }, [isCompleted, sectionId, isPreviewMode]);
-
   // Get plugin configuration to determine if auto-detection is enabled
   const pluginContext = usePluginContext();
   const pluginConfig = useMemo(() => {
@@ -560,6 +544,36 @@ export function InteractiveSection({
   const interactiveConfig = useMemo(() => {
     return getInteractiveConfig(pluginConfig);
   }, [pluginConfig]);
+
+  // Auto-collapse section when it becomes complete (but only once, don't override manual expansion)
+  // Precedence: preview mode > author autoCollapse > user disableAutoCollapse > default
+  useEffect(() => {
+    // Skip in preview mode - guide authors want to control collapse manually
+    if (isPreviewMode) {
+      return;
+    }
+
+    // Author override: if section explicitly sets autoCollapse: false, never auto-collapse
+    if (autoCollapse === false) {
+      return;
+    }
+
+    // User preference: if disableAutoCollapse is true in config, don't auto-collapse
+    if (pluginConfig.disableAutoCollapse) {
+      return;
+    }
+
+    // Default behavior: auto-collapse on completion
+    if (isCompleted && !hasAutoCollapsedRef.current) {
+      hasAutoCollapsedRef.current = true;
+      setIsCollapsed(true);
+      const contentKey = getContentKey();
+      sectionCollapseStorage.set(contentKey, sectionId, true);
+    } else if (!isCompleted) {
+      // Reset the flag when section becomes incomplete (e.g., after reset)
+      hasAutoCollapsedRef.current = false;
+    }
+  }, [isCompleted, sectionId, isPreviewMode, autoCollapse, pluginConfig.disableAutoCollapse]);
 
   // Enable action monitor when component mounts (if feature is enabled in config)
   useEffect(() => {
