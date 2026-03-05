@@ -687,13 +687,15 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     onToggleBlockSelection={onToggleBlockSelection}
                     onConditionalBranchRecord={onConditionalBranchRecord}
                     recordingIntoConditionalBranch={recordingIntoConditionalBranch}
-                    onConditionalBranchBlockEdit={onConditionalBranchBlockEdit
-                      ? (conditionalId, branch, nestedIndex, block) => {
-                          const branchKey = branch === 'whenTrue' ? 'true' : 'false';
-                          triggerLastModified(`${conditionalId}-${branchKey}-${nestedIndex}`);
-                          onConditionalBranchBlockEdit(conditionalId, branch, nestedIndex, block);
-                        }
-                      : undefined}
+                    onConditionalBranchBlockEdit={
+                      onConditionalBranchBlockEdit
+                        ? (conditionalId, branch, nestedIndex, block) => {
+                            const branchKey = branch === 'whenTrue' ? 'true' : 'false';
+                            triggerLastModified(`${conditionalId}-${branchKey}-${nestedIndex}`);
+                            onConditionalBranchBlockEdit(conditionalId, branch, nestedIndex, block);
+                          }
+                        : undefined
+                    }
                     onConditionalBranchBlockDelete={onConditionalBranchBlockDelete}
                     onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
                     onInsertBlockInConditional={onInsertBlockInConditional}
@@ -715,12 +717,14 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     isSelectionMode={isSelectionMode}
                     selectedBlockIds={selectedBlockIds}
                     onToggleBlockSelection={onToggleBlockSelection}
-                    onNestedBlockEdit={onNestedBlockEdit
-                      ? (sectionId, nestedIndex, block) => {
-                          triggerLastModified(`${sectionId}-nested-${nestedIndex}`);
-                          onNestedBlockEdit(sectionId, nestedIndex, block);
-                        }
-                      : undefined}
+                    onNestedBlockEdit={
+                      onNestedBlockEdit
+                        ? (sectionId, nestedIndex, block) => {
+                            triggerLastModified(`${sectionId}-nested-${nestedIndex}`);
+                            onNestedBlockEdit(sectionId, nestedIndex, block);
+                          }
+                        : undefined
+                    }
                     onNestedBlockDelete={onNestedBlockDelete}
                     onNestedBlockDuplicate={onNestedBlockDuplicate}
                     onInsertBlockInSection={onInsertBlockInSection}
