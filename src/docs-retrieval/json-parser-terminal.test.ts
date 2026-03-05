@@ -100,4 +100,61 @@ describe('json-parser terminal block', () => {
     );
     expect(terminalChild).toBeDefined();
   });
+
+  it('passes autoCollapse property to section block', () => {
+    const guide = JSON.stringify({
+      id: 'test-section-autocollapse',
+      title: 'Section with autoCollapse',
+      blocks: [
+        {
+          type: 'section',
+          id: 'no-collapse-section',
+          title: 'Keep expanded',
+          autoCollapse: false,
+          blocks: [
+            {
+              type: 'terminal',
+              command: 'echo test',
+              content: 'Test command',
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = parseJsonGuide(guide);
+    expect(result.isValid).toBe(true);
+
+    const sectionEl = result.data!.elements.find((el) => el.type === 'interactive-section');
+    expect(sectionEl).toBeDefined();
+    expect(sectionEl!.props.autoCollapse).toBe(false);
+  });
+
+  it('defaults autoCollapse to undefined when not specified', () => {
+    const guide = JSON.stringify({
+      id: 'test-section-default',
+      title: 'Section without autoCollapse',
+      blocks: [
+        {
+          type: 'section',
+          id: 'default-section',
+          title: 'Default behavior',
+          blocks: [
+            {
+              type: 'terminal',
+              command: 'echo test',
+              content: 'Test command',
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = parseJsonGuide(guide);
+    expect(result.isValid).toBe(true);
+
+    const sectionEl = result.data!.elements.find((el) => el.type === 'interactive-section');
+    expect(sectionEl).toBeDefined();
+    expect(sectionEl!.props.autoCollapse).toBeUndefined();
+  });
 });

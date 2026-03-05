@@ -18,6 +18,7 @@ export const TERMS_VERSION = '1.0.0';
 export const DEFAULT_ENABLE_AUTO_DETECTION = true; // Enabled by default
 export const DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = 3000; // ms
 export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
+export const DEFAULT_DISABLE_AUTO_COLLAPSE = false; // Auto-collapse enabled by default
 
 // Global Link Interception defaults
 export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Experimental opt-in feature
@@ -78,6 +79,7 @@ export interface DocsPluginConfig {
   enableAutoDetection?: boolean;
   requirementsCheckTimeout?: number;
   guidedStepTimeout?: number;
+  disableAutoCollapse?: boolean;
   // Global Link Interception
   interceptGlobalDocsLinks?: boolean;
   // Open Panel on Launch
@@ -115,6 +117,7 @@ export const getConfigWithDefaults = (
   enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
   requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
+  disableAutoCollapse: config.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
   // Global Link Interception
   interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   // Open Panel on Launch

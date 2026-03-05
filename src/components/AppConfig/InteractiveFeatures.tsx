@@ -8,6 +8,7 @@ import {
   DEFAULT_ENABLE_AUTO_DETECTION,
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
+  DEFAULT_DISABLE_AUTO_COLLAPSE,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -17,6 +18,7 @@ type State = {
   enableAutoDetection: boolean;
   requirementsCheckTimeout: number;
   guidedStepTimeout: number;
+  disableAutoCollapse: boolean;
 };
 
 export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -31,6 +33,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     enableAutoDetection: jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
     requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
     guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
+    disableAutoCollapse: jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
   }));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -57,6 +60,10 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setState({ ...state, enableAutoDetection: event.target.checked });
   };
 
+  const onToggleDisableAutoCollapse = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, disableAutoCollapse: event.target.checked });
+  };
+
   const onChangeRequirementsTimeout = (event: ChangeEvent<HTMLInputElement>) => {
     const value = validateNumber(event.target.value, 1000, 10000, 'requirementsTimeout');
     if (value !== null) {
@@ -76,6 +83,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
       requirementsCheckTimeout: DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
       guidedStepTimeout: DEFAULT_GUIDED_STEP_TIMEOUT,
+      disableAutoCollapse: DEFAULT_DISABLE_AUTO_COLLAPSE,
     });
     setValidationErrors({});
   };
@@ -96,6 +104,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         enableAutoDetection: state.enableAutoDetection,
         requirementsCheckTimeout: state.requirementsCheckTimeout,
         guidedStepTimeout: state.guidedStepTimeout,
+        disableAutoCollapse: state.disableAutoCollapse,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -124,7 +133,8 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const hasChanges =
     state.enableAutoDetection !== (jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION) ||
     state.requirementsCheckTimeout !== (jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT) ||
-    state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT);
+    state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT) ||
+    state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE);
 
   return (
     <form onSubmit={onSubmit}>
@@ -169,6 +179,31 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               </Text>
             </Alert>
           )}
+        </div>
+
+        <div className={styles.divider} />
+
+        <div className={styles.section}>
+          <Text variant="h4" weight="medium">
+            Section collapse behavior
+          </Text>
+          <div className={styles.toggleSection}>
+            <Switch
+              data-testid={testIds.appConfig.interactiveFeatures.disableAutoCollapse}
+              id="disable-auto-collapse"
+              value={state.disableAutoCollapse}
+              onChange={onToggleDisableAutoCollapse}
+            />
+            <div className={styles.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Disable auto-collapse on section completion
+              </Text>
+              <Text variant="body" color="secondary">
+                When enabled, completed sections remain expanded. You can still collapse them manually using the toggle
+                button.
+              </Text>
+            </div>
+          </div>
         </div>
 
         <div className={styles.divider} />

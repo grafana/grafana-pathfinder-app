@@ -125,6 +125,7 @@ export const testIds = {
       debounce: 'config-interactive-debounce-input',
       requirementsTimeout: 'config-interactive-requirements-timeout',
       guidedTimeout: 'config-interactive-guided-timeout',
+      disableAutoCollapse: 'config-interactive-disable-auto-collapse',
       reset: 'config-interactive-reset-defaults',
       submit: 'config-interactive-submit',
     },
@@ -154,6 +155,7 @@ export const testIds = {
     // Section form
     sectionTitleInput: 'block-editor-section-title-input',
     sectionIdInput: 'block-editor-section-id-input',
+    sectionAutoCollapseToggle: 'block-editor-section-auto-collapse-toggle',
     addAndRecordButton: 'block-editor-add-and-record-button',
     // Section empty state and nested add button
     sectionEmptyState: 'block-editor-section-empty-state',

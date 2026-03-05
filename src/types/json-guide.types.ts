@@ -150,6 +150,8 @@ export interface JsonSectionBlock {
   requirements?: string[];
   /** Objectives tracked for completion of this section */
   objectives?: string[];
+  /** Whether to auto-collapse this section on completion. Defaults to true. */
+  autoCollapse?: boolean;
 }
 
 // ============ CONDITIONAL BLOCK ============

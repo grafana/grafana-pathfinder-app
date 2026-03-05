@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Field, Input, Badge, useStyles2, Alert } from '@grafana/ui';
+import { Button, Field, Input, Badge, useStyles2, Alert, Switch } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { testIds } from '../../../constants/testIds';
@@ -59,6 +59,7 @@ export function SectionBlockForm({
   const [title, setTitle] = useState(initial?.title ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
+  const [autoCollapse, setAutoCollapse] = useState(initial?.autoCollapse ?? true);
 
   // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
@@ -82,8 +83,9 @@ export function SectionBlockForm({
       ...(title.trim() && { title: title.trim() }),
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(objArray.length > 0 && { objectives: objArray }),
+      ...(autoCollapse === false && { autoCollapse: false }),
     };
-  }, [sectionId, title, requirements, objectives]);
+  }, [sectionId, title, requirements, objectives, autoCollapse]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -190,6 +192,18 @@ export function SectionBlockForm({
           value={objectives}
           onChange={(e) => setObjectives(e.currentTarget.value)}
           placeholder="e.g., completed-setup, configured-datasource"
+        />
+      </Field>
+
+      {/* Auto-collapse on completion */}
+      <Field
+        label="Auto-collapse on completion"
+        description="When enabled, the section automatically collapses when all steps are completed. Disable to keep the section expanded for reference."
+      >
+        <Switch
+          value={autoCollapse}
+          onChange={(e) => setAutoCollapse(e.currentTarget.checked)}
+          data-testid={testIds.blockEditor.sectionAutoCollapseToggle}
         />
       </Field>
 

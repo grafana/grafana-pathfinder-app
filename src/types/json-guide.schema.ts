@@ -311,6 +311,7 @@ const SectionProps = {
   title: z.string().optional(),
   requirements: z.array(z.string()).optional(),
   objectives: z.array(z.string()).optional(),
+  autoCollapse: z.boolean().optional(),
 };
 
 const AssistantProps = {
@@ -502,7 +503,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'completeEarly',
   ]),
-  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives']),
+  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse']),
   conditional: new Set([
     'type',
     'conditions',
