@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1
+
+### Fixed
+
+- MCP `tools/call` responses now correctly wrap results in the `content` array as required by the MCP 2025-03-26 spec, fixing compatibility with Grafana Assistant
+
 ## 2.1.0
 
 ### Added
