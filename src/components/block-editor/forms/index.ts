@@ -15,6 +15,7 @@ export { MultistepBlockForm } from './MultistepBlockForm';
 export { GuidedBlockForm } from './GuidedBlockForm';
 export { QuizBlockForm } from './QuizBlockForm';
 export { InputBlockForm } from './InputBlockForm';
+export { CodeBlockForm } from './CodeBlockForm';
 export { TypeSwitchDropdown } from './TypeSwitchDropdown';
 export { BranchBlocksEditor } from './BranchBlocksEditor';
 

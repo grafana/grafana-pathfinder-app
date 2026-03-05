@@ -13,6 +13,7 @@ export { InteractiveQuiz } from './interactive-quiz';
 export { InteractiveConditional } from './interactive-conditional';
 export { InputBlock } from './input-block';
 export { TerminalStep, resetTerminalStepCounter } from './terminal-step';
+export { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 
 // Shared types from centralized location
 export type {

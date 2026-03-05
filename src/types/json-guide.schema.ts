@@ -283,6 +283,24 @@ export const JsonTerminalBlockSchema = z.object({
   hint: z.string().optional(),
 });
 
+// ============ CODE BLOCK SCHEMA ============
+
+/**
+ * Schema for code block (insert into Monaco editors).
+ * @coupling Type: JsonCodeBlockBlock
+ */
+export const JsonCodeBlockBlockSchema = z.object({
+  type: z.literal('code-block'),
+  reftarget: z.string().min(1, 'Code block reftarget is required'),
+  language: z.string().optional(),
+  code: z.string().min(1, 'Code is required'),
+  content: z.string().optional(),
+  requirements: z.array(z.string()).optional(),
+  objectives: z.array(z.string()).optional(),
+  skippable: z.boolean().optional(),
+  hint: z.string().optional(),
+});
+
 // ============ BLOCK UNION (Non-recursive blocks) ============
 
 /**
@@ -300,6 +318,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonQuizBlockSchema,
   JsonInputBlockSchema,
   JsonTerminalBlockSchema,
+  JsonCodeBlockBlockSchema,
 ]);
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
@@ -543,6 +562,17 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
   terminal: new Set(['type', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
+  'code-block': new Set([
+    'type',
+    'reftarget',
+    'language',
+    'code',
+    'content',
+    'requirements',
+    'objectives',
+    'skippable',
+    'hint',
+  ]),
   _manifest: new Set([
     'schemaVersion',
     'id',
@@ -583,4 +613,5 @@ export const VALID_BLOCK_TYPES = new Set([
   'input',
   'assistant',
   'terminal',
+  'code-block',
 ]);
