@@ -149,18 +149,18 @@ describe('buildGraph', () => {
     expect(realNodes[0]!.virtual).toBeUndefined();
   });
 
-  it('should create steps edges', () => {
+  it('should create milestones edges', () => {
     const repoPath = writeRepository(tmpDir, 'repository.json', {
-      'my-path': { path: 'path/', type: 'path', steps: ['step-1', 'step-2'] },
+      'my-path': { path: 'path/', type: 'path', milestones: ['step-1', 'step-2'] },
       'step-1': { path: 'step-1/', type: 'guide' },
       'step-2': { path: 'step-2/', type: 'guide' },
     });
 
     const { graph } = buildGraph([{ name: 'test', path: repoPath }]);
 
-    const stepsEdges = graph.edges.filter((e) => e.source === 'my-path' && e.type === 'steps');
-    expect(stepsEdges).toHaveLength(2);
-    expect(stepsEdges.map((e) => e.target)).toEqual(['step-1', 'step-2']);
+    const milestonesEdges = graph.edges.filter((e) => e.source === 'my-path' && e.type === 'milestones');
+    expect(milestonesEdges).toHaveLength(2);
+    expect(milestonesEdges.map((e) => e.target)).toEqual(['step-1', 'step-2']);
   });
 
   it('should create conflicts and replaces edges', () => {
@@ -240,13 +240,13 @@ describe('buildGraph lint checks', () => {
     expect(msgs.filter((m) => m.message.includes('does not exist'))).toHaveLength(0);
   });
 
-  it('should warn on broken step references', () => {
+  it('should warn on broken milestone references', () => {
     const repoPath = writeRepository(tmpDir, 'repository.json', {
-      'my-path': { path: 'path/', type: 'path', steps: ['missing-step'] },
+      'my-path': { path: 'path/', type: 'path', milestones: ['missing-step'] },
     });
 
     const { lintMessages: msgs } = buildGraph([{ name: 'test', path: repoPath }]);
-    expect(msgs.some((m) => m.message.includes('missing-step') && m.message.includes('steps'))).toBe(true);
+    expect(msgs.some((m) => m.message.includes('missing-step') && m.message.includes('milestones'))).toBe(true);
   });
 
   it('should detect cycles in depends chains', () => {
@@ -261,14 +261,14 @@ describe('buildGraph lint checks', () => {
     expect(cycleMsgs.length).toBeGreaterThan(0);
   });
 
-  it('should detect cycles in steps chains', () => {
+  it('should detect cycles in milestones chains', () => {
     const repoPath = writeRepository(tmpDir, 'repository.json', {
-      'path-a': { path: 'a/', type: 'path', steps: ['path-b'] },
-      'path-b': { path: 'b/', type: 'path', steps: ['path-a'] },
+      'path-a': { path: 'a/', type: 'path', milestones: ['path-b'] },
+      'path-b': { path: 'b/', type: 'path', milestones: ['path-a'] },
     });
 
     const { lintMessages: msgs } = buildGraph([{ name: 'test', path: repoPath }]);
-    const cycleMsgs = lintMessages(msgs, 'error').filter((m) => m.message.includes('Cycle in steps'));
+    const cycleMsgs = lintMessages(msgs, 'error').filter((m) => m.message.includes('Cycle in milestones'));
     expect(cycleMsgs.length).toBeGreaterThan(0);
   });
 

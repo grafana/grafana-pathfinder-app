@@ -12,7 +12,7 @@ import * as path from 'path';
 
 import type { RepositoryEntry, RepositoryJson } from '../../types/package.types';
 // ManifestJsonObjectSchema (pre-refinement) is intentional: build-repository
-// applies graceful degradation — a path/journey manifest missing `steps` produces
+// applies graceful degradation — a path/journey manifest missing `milestones` produces
 // a repository entry rather than failing. The `validate` command enforces the
 // refinement (ManifestJsonSchema) for strict correctness checking.
 import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryJsonSchema } from '../../types/package.schema';
@@ -148,7 +148,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.category = manifest.category;
     entry.author = manifest.author;
     entry.startingLocation = manifest.startingLocation;
-    entry.steps = manifest.steps;
+    entry.milestones = manifest.milestones;
     entry.depends = manifest.depends?.length ? manifest.depends : undefined;
     entry.recommends = manifest.recommends?.length ? manifest.recommends : undefined;
     entry.suggests = manifest.suggests?.length ? manifest.suggests : undefined;

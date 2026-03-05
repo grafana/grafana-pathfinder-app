@@ -233,7 +233,7 @@ describe('buildRepository', () => {
     writeJson(path.join(tmpDir, 'journeys', 'infra-alerting', 'manifest.json'), {
       id: 'infra-alerting',
       type: 'journey',
-      steps: ['infra-alerting-find-data'],
+      milestones: ['infra-alerting-find-data'],
     });
 
     writeJson(path.join(tmpDir, 'journeys', 'infra-alerting', 'steps', 'find-data', 'content.json'), {
@@ -275,7 +275,7 @@ describe('buildRepository', () => {
     expect(repository['shadow']).toBeUndefined();
   });
 
-  it('should handle path-type packages with steps', () => {
+  it('should handle path-type packages with milestones', () => {
     writeJson(path.join(tmpDir, 'getting-started', 'content.json'), {
       id: 'getting-started',
       title: 'Getting started path',
@@ -285,7 +285,7 @@ describe('buildRepository', () => {
     writeJson(path.join(tmpDir, 'getting-started', 'manifest.json'), {
       id: 'getting-started',
       type: 'path',
-      steps: ['welcome-to-grafana', 'first-dashboard'],
+      milestones: ['welcome-to-grafana', 'first-dashboard'],
     });
 
     const { repository, errors } = buildRepository(tmpDir);
@@ -294,7 +294,7 @@ describe('buildRepository', () => {
     const entry = repository['getting-started'];
     expect(entry).toBeDefined();
     expect(entry!.type).toBe('path');
-    expect(entry!.steps).toEqual(['welcome-to-grafana', 'first-dashboard']);
+    expect(entry!.milestones).toEqual(['welcome-to-grafana', 'first-dashboard']);
   });
 
   it('should omit empty dependency arrays from entries', () => {

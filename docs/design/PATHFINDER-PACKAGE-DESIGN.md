@@ -258,8 +258,8 @@ interface ManifestJson {
 
   // --- Composition (metapackage model) ---
 
-  /** Ordered steps for paths and journeys (required when type is "path" or "journey") */
-  steps?: string[];
+  /** Ordered milestones for paths and journeys (required when type is "path" or "journey") */
+  milestones?: string[];
 
   // --- Metadata (flat, following Debian conventions) ---
 
@@ -322,8 +322,8 @@ interface JsonGuide {
 
   // --- Composition (metapackage model) ---
 
-  /** Ordered steps for paths and journeys (required when type is "path" or "journey") */
-  steps?: string[];
+  /** Ordered milestones for paths and journeys (required when type is "path" or "journey") */
+  milestones?: string[];
 
   // --- Metadata (flat) ---
 
@@ -472,7 +472,7 @@ The package model supports two levels of metapackage composition following the D
 - A **path** (`type: "path"`) is an ordered sequence of guides that build toward a focused outcome (e.g., "Set up a Linux server integration"). Paths are the primary composition unit — they compose guides into coherent learning experiences.
 - A **journey** (`type: "journey"`) is an ordered sequence of paths (or any packages) that build toward a larger learning arc (e.g., "Infrastructure mastery" composing linux-server-integration, kubernetes-integration, and alerting paths).
 
-Both are first-class packages with a `steps` array declaring the recommended reading order. Steps are real packages — not fragments or sub-units — enabling step reuse, a single identity model, and uniform tooling. The `steps` field references bare package IDs; the CLI validates that each entry resolves to an existing package but does not enforce the type of the referenced package. The type hierarchy (guides in paths, paths in journeys) is convention, not a schema constraint. Completion is set-based (all steps done, regardless of order), and ordering is advisory.
+Both are first-class packages with a `milestones` array declaring the recommended reading order. Milestones are real packages — not fragments or sub-units — enabling milestone reuse, a single identity model, and uniform tooling. The `milestones` field references bare package IDs; the CLI validates that each entry resolves to an existing package but does not enforce the type of the referenced package. The type hierarchy (guides in paths, paths in journeys) is convention, not a schema constraint. Completion is set-based (all milestones done, regardless of order), and ordering is advisory.
 
 > **Full detail:** [package/learning-journeys.md](./package/learning-journeys.md)
 
@@ -551,7 +551,7 @@ Until `build-index` is implemented, `index.json` continues to be maintained sepa
 
 For `content.json`: the existing `KNOWN_FIELDS._guide` applies unchanged. If `content.json` contains metadata/dependency/targeting fields (e.g., from a legacy single-file guide), they are accepted via `.passthrough()` but the canonical location is `manifest.json`.
 
-For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'type'`, `'repository'`, `'steps'`, `'description'`, `'language'`, `'category'`, `'author'`, `'startingLocation'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
+For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'type'`, `'repository'`, `'milestones'`, `'description'`, `'language'`, `'category'`, `'author'`, `'startingLocation'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
 
 ### Schema version
 
