@@ -106,7 +106,7 @@ export interface PackageMetadataFields {
   category?: string;
   author?: Author;
   startingLocation?: string;
-  steps?: string[];
+  milestones?: string[];
   depends?: DependencyList;
   recommends?: DependencyList;
   suggests?: DependencyList;
@@ -128,7 +128,7 @@ export interface ManifestJson {
   type: PackageType;
   repository?: string;
 
-  steps?: string[];
+  milestones?: string[];
 
   description?: string;
   language?: string;
@@ -247,7 +247,14 @@ export interface GraphNode extends PackageMetadataFields {
 }
 
 /** Edge types in the dependency graph */
-export type GraphEdgeType = 'depends' | 'recommends' | 'suggests' | 'provides' | 'conflicts' | 'replaces' | 'steps';
+export type GraphEdgeType =
+  | 'depends'
+  | 'recommends'
+  | 'suggests'
+  | 'provides'
+  | 'conflicts'
+  | 'replaces'
+  | 'milestones';
 
 /**
  * An edge in the dependency graph.

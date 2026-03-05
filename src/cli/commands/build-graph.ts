@@ -6,7 +6,7 @@
  *
  * Graph structure:
  * - Nodes: full manifest metadata from denormalized repository.json
- * - Edges: typed relationships (depends, recommends, suggests, provides, conflicts, replaces, steps)
+ * - Edges: typed relationships (depends, recommends, suggests, provides, conflicts, replaces, milestones)
  * - Virtual nodes: capability names from `provides` fields (distinguished by virtual: true)
  */
 
@@ -193,12 +193,12 @@ export function lintGraph(
       }
     }
 
-    if (entry.steps) {
-      for (const stepId of entry.steps) {
-        if (!realNodeIds.has(stepId)) {
+    if (entry.milestones) {
+      for (const milestoneId of entry.milestones) {
+        if (!realNodeIds.has(milestoneId)) {
           messages.push({
             severity: 'warn',
-            message: `${pkgId}: steps entry "${stepId}" does not resolve to an existing package`,
+            message: `${pkgId}: milestones entry "${milestoneId}" does not resolve to an existing package`,
           });
         }
       }
@@ -215,9 +215,9 @@ export function lintGraph(
     messages.push({ severity: 'warn', message: `Cycle in recommends chain: ${cycle.join(' → ')}` });
   }
 
-  const stepsCycles = detectCycles(allNodeIds, edges, new Set(['steps']));
-  for (const cycle of stepsCycles) {
-    messages.push({ severity: 'error', message: `Cycle in steps chain: ${cycle.join(' → ')}` });
+  const milestonesCycles = detectCycles(allNodeIds, edges, new Set(['milestones']));
+  for (const cycle of milestonesCycles) {
+    messages.push({ severity: 'error', message: `Cycle in milestones chain: ${cycle.join(' → ')}` });
   }
 
   const connectedNodes = new Set<string>();
@@ -286,7 +286,7 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
       author: entry.author,
       type: entry.type,
       startingLocation: entry.startingLocation,
-      steps: entry.steps,
+      milestones: entry.milestones,
       depends: entry.depends,
       recommends: entry.recommends,
       suggests: entry.suggests,
@@ -334,9 +334,9 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
       }
     }
 
-    if (entry.steps) {
-      for (const stepId of entry.steps) {
-        edges.push({ source: pkgId, target: stepId, type: 'steps' });
+    if (entry.milestones) {
+      for (const milestoneId of entry.milestones) {
+        edges.push({ source: pkgId, target: milestoneId, type: 'milestones' });
       }
     }
   }

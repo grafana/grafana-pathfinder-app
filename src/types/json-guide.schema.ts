@@ -547,7 +547,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'id',
     'type',
     'repository',
-    'steps',
+    'milestones',
     'description',
     'language',
     'category',

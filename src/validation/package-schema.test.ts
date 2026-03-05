@@ -151,41 +151,41 @@ describe('ManifestJsonSchema', () => {
 
   it('should accept all valid type values', () => {
     for (const type of ['guide', 'path', 'journey']) {
-      const input = type === 'guide' ? { id: 'test', type } : { id: 'test', type, steps: ['step-1'] };
+      const input = type === 'guide' ? { id: 'test', type } : { id: 'test', type, milestones: ['step-1'] };
       const result = ManifestJsonSchema.safeParse(input);
       expect(result.success).toBe(true);
     }
   });
 
-  it('should require steps when type is "path"', () => {
+  it('should require milestones when type is "path"', () => {
     const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'path' });
     expect(result.success).toBe(false);
   });
 
-  it('should require steps when type is "journey"', () => {
+  it('should require milestones when type is "journey"', () => {
     const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'journey' });
     expect(result.success).toBe(false);
   });
 
-  it('should accept path with steps', () => {
+  it('should accept path with milestones', () => {
     const result = ManifestJsonSchema.safeParse({
       id: 'test-path',
       type: 'path',
-      steps: ['guide-1', 'guide-2'],
+      milestones: ['guide-1', 'guide-2'],
     });
     expect(result.success).toBe(true);
   });
 
-  it('should reject path with empty steps array', () => {
+  it('should reject path with empty milestones array', () => {
     const result = ManifestJsonSchema.safeParse({
       id: 'test-path',
       type: 'path',
-      steps: [],
+      milestones: [],
     });
     expect(result.success).toBe(false);
   });
 
-  it('should not require steps when type is "guide"', () => {
+  it('should not require milestones when type is "guide"', () => {
     const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'guide' });
     expect(result.success).toBe(true);
   });
@@ -358,12 +358,12 @@ describe('RepositoryJsonSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('should accept path entries with steps', () => {
+  it('should accept path entries with milestones', () => {
     const result = RepositoryJsonSchema.safeParse({
       'getting-started': {
         path: 'getting-started/',
         type: 'path',
-        steps: ['welcome', 'first-dashboard'],
+        milestones: ['welcome', 'first-dashboard'],
       },
     });
     expect(result.success).toBe(true);
@@ -444,7 +444,7 @@ describe('GraphEdgeSchema', () => {
   });
 
   it('should accept all edge types', () => {
-    const types = ['depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces', 'steps'];
+    const types = ['depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces', 'milestones'];
     for (const type of types) {
       const result = GraphEdgeSchema.safeParse({ source: 'a', target: 'b', type });
       expect(result.success).toBe(true);

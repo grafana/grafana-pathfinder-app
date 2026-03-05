@@ -115,7 +115,7 @@ export const ManifestJsonObjectSchema = z.object({
   type: PackageTypeSchema,
   repository: z.string().default('interactive-tutorials'),
 
-  steps: z.array(z.string().min(1)).optional(),
+  milestones: z.array(z.string().min(1)).optional(),
 
   description: z.string().optional(),
   language: z.string().default('en'),
@@ -142,18 +142,18 @@ export const ManifestJsonObjectSchema = z.object({
  * - ERROR: id, type (hard requirements)
  * - WARN: description, category, targeting, startingLocation (missing but recommended)
  * - INFO: repository, language, schemaVersion, dependency fields, author, testEnvironment (defaults applied)
- * - Conditional ERROR: steps required when type is "path" or "journey"
+ * - Conditional ERROR: milestones required when type is "path" or "journey"
  *
  * @coupling Type: ManifestJson
  */
 export const ManifestJsonSchema = ManifestJsonObjectSchema.refine(
   (manifest) => {
     if (manifest.type === 'path' || manifest.type === 'journey') {
-      return manifest.steps !== undefined && manifest.steps.length > 0;
+      return manifest.milestones !== undefined && manifest.milestones.length > 0;
     }
     return true;
   },
-  { message: "'steps' is required when type is 'path' or 'journey'" }
+  { message: "'milestones' is required when type is 'path' or 'journey'" }
 );
 
 // ============ SHARED METADATA SCHEMA FIELDS ============
@@ -169,7 +169,7 @@ const packageMetadataSchemaFields = {
   category: z.string().optional(),
   author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),
-  steps: z.array(z.string()).optional(),
+  milestones: z.array(z.string()).optional(),
   depends: DependencyListSchema.optional(),
   recommends: DependencyListSchema.optional(),
   suggests: DependencyListSchema.optional(),
@@ -206,7 +206,7 @@ export const GraphEdgeTypeSchema = z.enum([
   'provides',
   'conflicts',
   'replaces',
-  'steps',
+  'milestones',
 ]) satisfies z.ZodType<GraphEdgeType>;
 
 /**

@@ -113,7 +113,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 - `validation` moved to Tier 1 in both `TIER_MAP` and `eslint.config.mjs`; lateral ratchet dropped from 11 → 9
 - Types in `src/types/package.types.ts`: `ContentJson`, `ManifestJson`, `RepositoryJson`, `RepositoryEntry`, `GraphNode`, `GraphEdge`, `DependencyGraph`, and all dependency/author/targeting types. Resolution types (`PackageResolution`, `PackageResolver`) removed — deferred to Phase 3 implementation.
 - Zod schemas in `src/types/package.schema.ts`: `ContentJsonSchema`, `ManifestJsonSchema`, `ManifestJsonObjectSchema`, `RepositoryJsonSchema`, `RepositoryEntrySchema`, `DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`, `TestEnvironmentSchema`, `PackageTypeSchema`, `GraphNodeSchema`, `GraphEdgeSchema`, `DependencyGraphSchema`
-- `ManifestJsonSchema` uses `.refine()` for the conditional `steps` requirement; `ManifestJsonObjectSchema` is the base shape before refinement for composition use
+- `ManifestJsonSchema` uses `.refine()` for the conditional `milestones` requirement; `ManifestJsonObjectSchema` is the base shape before refinement for composition use
 - `CURRENT_SCHEMA_VERSION` bumped to `"1.1.0"`; `KNOWN_FIELDS._manifest` added with 18 field names
 - `JsonGuideSchemaStrict` retained unchanged for backwards compatibility
 - `build-repository` CLI command implemented in `src/cli/commands/build-repository.ts`
@@ -137,8 +137,8 @@ This plan is designed to support and further the [content testing strategy](./TE
 - Severity-based validation messages: ERROR for required fields, WARN for recommended fields, INFO for defaulted fields
 - `testEnvironment` validation: warns on unrecognized tier values and invalid semver in minVersion
 - `build-graph` CLI command in `src/cli/commands/build-graph.ts`: reads `name:path` repository entries, outputs D3 JSON
-- Graph lint checks implemented: broken refs, broken steps, cycles (DFS-based), orphans, missing description/category
-- Cycle detection uses DFS with separate checks for depends (error), recommends (warn), steps (error)
+- Graph lint checks implemented: broken refs, broken milestones, cycles (DFS-based), orphans, missing description/category
+- Cycle detection uses DFS with separate checks for depends (error), recommends (warn), milestones (error)
 - CNF dependency clauses flattened: all mentioned package IDs get edges regardless of AND/OR semantics (noted as limitation)
 - Virtual capability nodes created for provides targets that don't match real packages (`virtual: true` flag)
 - `ValidationWarning.type` extended with `'missing-asset'` variant
@@ -450,9 +450,9 @@ The composite resolver is injected into `docs-retrieval` via dependency inversio
 
 **Testing layers:** Layer 1 + Layer 2
 
-**Early validation from Phase 4b:** The `interactive-tutorials` pilot migration has already produced a real `type: "path"` metapackage (`prometheus-lj`) with a 9-step `steps` array, `recommends` (`drilldown-metrics-lj`), `suggests` (`private-data-source-connect-lj`), and step-level `depends`/`recommends` chains. This validates the path metapackage model against real content before Phase 5 even begins. Cross-repo references (to not-yet-migrated learning paths) are handled gracefully as dangling references.
+**Early validation from Phase 4b:** The `interactive-tutorials` pilot migration has already produced a real `type: "path"` metapackage (`prometheus-lj`) with a 9-entry `milestones` array, `recommends` (`drilldown-metrics-lj`), `suggests` (`private-data-source-connect-lj`), and step-level `depends`/`recommends` chains. This validates the path metapackage model against real content before Phase 5 even begins. Cross-repo references (to not-yet-migrated learning paths) are handled gracefully as dangling references.
 
-**Architecture decision: graph navigation lives in the recommender.** The full dependency graph (all repositories, all `steps` arrays, all `depends`/`recommends`/`suggests` edges) lives in the recommender's cached repository indexes. The recommender is the natural place to compute graph-derived navigation because: (1) it already holds the complete topology across every repository; (2) it will eventually consume completion state for smarter recommendations; (3) keeping graph reasoning server-side means the frontend stays a renderer, not a graph engine.
+**Architecture decision: graph navigation lives in the recommender.** The full dependency graph (all repositories, all `milestones` arrays, all `depends`/`recommends`/`suggests` edges) lives in the recommender's cached repository indexes. The recommender is the natural place to compute graph-derived navigation because: (1) it already holds the complete topology across every repository; (2) it will eventually consume completion state for smarter recommendations; (3) keeping graph reasoning server-side means the frontend stays a renderer, not a graph engine.
 
 **Navigation enrichment design:** See `docs/design/V1-RECOMMEND.md` Phase 5 in `grafana-recommender` for the full `computeNavigation` implementation design. Both the standalone resolution response (`GET /api/v1/packages/{id}`) and package-backed recommendations in the v1 recommend response (`POST /api/v1/recommend`) carry the same `navigation` field:
 
@@ -467,12 +467,12 @@ The composite resolver is injected into `docs-retrieval` via dependency inversio
       {
         "id": "getting-started",
         "title": "Getting started with Grafana",
-        "steps": ["welcome-to-grafana", "prometheus-grafana-101", "first-dashboard", "loki-grafana-101"]
+        "milestones": ["welcome-to-grafana", "prometheus-grafana-101", "first-dashboard", "loki-grafana-101"]
       },
       {
         "id": "observability-basics",
         "title": "Observability basics",
-        "steps": [
+        "milestones": [
           "welcome-to-grafana",
           "first-dashboard",
           "prometheus-grafana-101",
@@ -488,37 +488,37 @@ The composite resolver is injected into `docs-retrieval` via dependency inversio
 }
 ```
 
-- `memberOf`: which paths/journeys this package participates in. Each entry carries the parent's `id`, `title`, and full `steps` array. The frontend derives everything it needs locally: position (`steps.indexOf(currentId)`), total (`steps.length`), next structural step, and completion-aware next (first incomplete step). This avoids baking structural navigation decisions into the recommender response that may conflict with the frontend's completion-aware logic.
+- `memberOf`: which paths/journeys this package participates in. Each entry carries the parent's `id`, `title`, and full `milestones` array. The frontend derives everything it needs locally: position (`milestones.indexOf(currentId)`), total (`milestones.length`), next structural milestone, and completion-aware next (first incomplete milestone). This avoids baking structural navigation decisions into the recommender response that may conflict with the frontend's completion-aware logic.
 - `recommends`: packages linked via `recommends` edges in the dependency graph — "where else might the user go from here?"
 - `suggests`: packages linked via `suggests` edges — optional or alternative paths, softer than `recommends`
 - `depends`: prerequisite packages from `depends` edges — the frontend can use this to show dependency status
 
 This replaces the earlier "learning path reconciliation at Tier 3+" design. The frontend does not need a Tier 3+ utility to stitch `package-engine` and `learning-paths` together — the recommender provides navigation directly.
 
-**Completion state phasing:** In Phase 5, the recommender computes `navigation` from structural graph data only (array order in `steps`, `recommends`/`suggests`/`depends` edges). The frontend overlays client-side completion state for display (e.g., showing which steps are done, highlighting the next incomplete step). In a future phase beyond this plan's scope, the frontend will send completion data to the recommender alongside context (using the existing `POST /api/v1/recommend` payload pattern), and the recommender will return completion-aware navigation. Server-side completion state is a further future concern. This phasing keeps the resolution response cacheable in Phase 5 while leaving a clean path to personalized navigation later.
+**Completion state phasing:** In Phase 5, the recommender computes `navigation` from structural graph data only (array order in `milestones`, `recommends`/`suggests`/`depends` edges). The frontend overlays client-side completion state for display (e.g., showing which steps are done, highlighting the next incomplete step). In a future phase beyond this plan's scope, the frontend will send completion data to the recommender alongside context (using the existing `POST /api/v1/recommend` payload pattern), and the recommender will return completion-aware navigation. Server-side completion state is a further future concern. This phasing keeps the resolution response cacheable in Phase 5 while leaving a clean path to personalized navigation later.
 
 **Deliverables:**
 
 - [ ] **Path metapackages** (`type: "path"`):
-  - [ ] CLI: validate path packages — `steps` array entries resolve to existing packages in the repository index (by bare ID), cover page `content.json` optional
-  - [ ] Steps may be nested child directories (organizational convenience) or independent top-level packages (for reuse). The CLI validates via repository index resolution, not filesystem child-directory checks.
+  - [ ] CLI: validate path packages — `milestones` array entries resolve to existing packages in the repository index (by bare ID), cover page `content.json` optional
+  - [ ] Milestones may be nested child directories (organizational convenience) or independent top-level packages (for reuse). The CLI validates via repository index resolution, not filesystem child-directory checks.
   - [ ] Pilot: convert 1-2 existing `*-lj` directories to path metapackages with `manifest.json`
-  - [ ] Validate step reuse: confirm that a guide package can appear in multiple paths' `steps` arrays
+  - [ ] Validate milestone reuse: confirm that a guide package can appear in multiple paths' `milestones` arrays
 - [ ] **Journey metapackages** (`type: "journey"`):
-  - [ ] CLI: validate journey packages — `steps` array entries resolve to existing packages (typically paths, but any package type is valid)
+  - [ ] CLI: validate journey packages — `milestones` array entries resolve to existing packages (typically paths, but any package type is valid)
   - [ ] Journey-level `content.json` serves as a cover page (optional)
   - [ ] Pilot: compose 1-2 journeys from existing paths to validate two-level composition
-- [ ] **`steps` field semantics (both levels):**
-  - [ ] `steps` is an ordered `string[]` of bare package IDs — the CLI validates that each entry resolves to an existing package but does NOT enforce the type of the referenced package. The type hierarchy (guides in paths, paths in journeys) is convention, not a schema constraint.
-  - [ ] Completion is set-based at each level: path complete = all steps complete; journey complete = all steps complete (transitively, all constituent guides)
-  - [ ] Ordering is advisory — the UI presents steps in array order but users may jump to any step
+- [ ] **`milestones` field semantics (both levels):**
+  - [ ] `milestones` is an ordered `string[]` of bare package IDs — the CLI validates that each entry resolves to an existing package but does NOT enforce the type of the referenced package. The type hierarchy (guides in paths, paths in journeys) is convention, not a schema constraint.
+  - [ ] Completion is set-based at each level: path complete = all milestones complete; journey complete = all milestones complete (transitively, all constituent guides)
+  - [ ] Ordering is advisory — the UI presents milestones in array order but users may jump to any milestone
 - [ ] **Dependency graph representation:**
   - [ ] Paths and journeys appear as regular nodes with their respective `type` values (everything is a package)
-  - [ ] Steps appear as independent package nodes in the graph (they are packages, can be reused across multiple metapackages)
-  - [ ] Metapackage has `steps` edges to each of its step packages in `steps` array order
-  - [ ] `steps` array contains bare package IDs (e.g., `["step-1", "step-2"]`), no repository prefix
-  - [ ] Graph lint: `steps` references must resolve to existing packages in global catalog
-  - [ ] Cycle detection in `steps` chains (error-level — a step cannot transitively contain its parent)
+  - [ ] Milestones appear as independent package nodes in the graph (they are packages, can be reused across multiple metapackages)
+  - [ ] Metapackage has `milestones` edges to each of its milestone packages in `milestones` array order
+  - [ ] `milestones` array contains bare package IDs (e.g., `["step-1", "step-2"]`), no repository prefix
+  - [ ] Graph lint: `milestones` references must resolve to existing packages in global catalog
+  - [ ] Cycle detection in `milestones` chains (error-level — a milestone cannot transitively contain its parent)
 - [ ] **Recommender navigation enrichment** (in `grafana-recommender` — see `docs/design/V1-RECOMMEND.md` Phase 5 for implementation design):
   - [ ] Implement `computeNavigation(packageID, repos)` in `cmd/recommender/v1recommend.go`
   - [ ] Extend `GET /api/v1/packages/{id}` resolution response with `navigation` field
@@ -535,10 +535,10 @@ This replaces the earlier "learning path reconciliation at Tier 3+" design. The 
   - [ ] UI: recommended content links using `navigation.recommends` and `navigation.suggests`
   - [ ] UI: learning path cards use package metadata (description, category) from the resolution response when available
   - [ ] Frontend overlays client-side completion state on the structural navigation for display
-- [ ] **`paths.json` deprecation path:** With navigation provided by the recommender's resolution response, curated `paths.json` becomes redundant once all paths are expressed as metapackages with `steps` arrays. During transition, `paths.json` continues to serve as the fallback for paths not yet migrated to metapackages.
+- [ ] **`paths.json` deprecation path:** With navigation provided by the recommender's resolution response, curated `paths.json` becomes redundant once all paths are expressed as metapackages with `milestones` arrays. During transition, `paths.json` continues to serve as the fallback for paths not yet migrated to metapackages.
 - [ ] Align with docs partners' YAML format for learning path relationships
-- [ ] Layer 1 unit tests for path and journey schema validation (`type`, `steps`, nested structure)
-- [ ] Layer 2 unit tests for frontend navigation display logic (progress computation from `memberOf[].steps`, completion-aware next step, path context selection, `recommends`/`suggests` rendering)
+- [ ] Layer 1 unit tests for path and journey schema validation (`type`, `milestones`, nested structure)
+- [ ] Layer 2 unit tests for frontend navigation display logic (progress computation from `memberOf[].milestones`, completion-aware next milestone, path context selection, `recommends`/`suggests` rendering)
 
 **Why sixth:** First user-visible payoff of the package model. Introduces two-level metapackage composition (paths compose guides, journeys compose paths) that SCORM `"course"` and `"module"` types will later build on. Content authors and docs partners see dependency declarations reflected in the learning experience. The recommender's enriched resolution response eliminates the need for client-side graph reasoning, keeping the frontend thin.
 
