@@ -562,7 +562,17 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
   terminal: new Set(['type', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
-  'code-block': new Set(['type', 'reftarget', 'language', 'code', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
+  'code-block': new Set([
+    'type',
+    'reftarget',
+    'language',
+    'code',
+    'content',
+    'requirements',
+    'objectives',
+    'skippable',
+    'hint',
+  ]),
   _manifest: new Set([
     'schemaVersion',
     'id',
