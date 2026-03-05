@@ -41,7 +41,8 @@ export type JsonBlock =
   | JsonQuizBlock
   | JsonAssistantBlock
   | JsonInputBlock
-  | JsonTerminalBlock;
+  | JsonTerminalBlock
+  | JsonCodeBlockBlock;
 
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
 
@@ -433,6 +434,35 @@ export interface JsonTerminalBlock {
   hint?: string;
 }
 
+// ============ CODE BLOCK ============
+
+/**
+ * Code block for inserting code into Monaco editors.
+ * Renders syntax-highlighted code with "Copy" and "Insert" buttons.
+ * Copy copies code to clipboard; Insert clears the target Monaco editor and inserts the code.
+ * Participates in sections and step counting like other interactive blocks.
+ * @coupling Zod schema: JsonCodeBlockBlockSchema in json-guide.schema.ts
+ */
+export interface JsonCodeBlockBlock {
+  type: 'code-block';
+  /** CSS selector for the Monaco editor container */
+  reftarget: string;
+  /** Programming language for syntax highlighting (e.g., 'javascript', 'typescript', 'python') */
+  language?: string;
+  /** The code to display and insert */
+  code: string;
+  /** Optional markdown description shown above the code block */
+  content?: string;
+  /** Requirements that must be met for this step */
+  requirements?: string[];
+  /** Objectives tracked for this step */
+  objectives?: string[];
+  /** Whether this step can be skipped if requirements fail */
+  skippable?: boolean;
+  /** Hint shown when step cannot be completed */
+  hint?: string;
+}
+
 // ============ TYPE GUARDS ============
 
 /**
@@ -524,6 +554,13 @@ export function isInputBlock(block: JsonBlock): block is JsonInputBlock {
  */
 export function isTerminalBlock(block: JsonBlock): block is JsonTerminalBlock {
   return block.type === 'terminal';
+}
+
+/**
+ * Type guard for JsonCodeBlockBlock
+ */
+export function isCodeBlockBlock(block: JsonBlock): block is JsonCodeBlockBlock {
+  return block.type === 'code-block';
 }
 
 /**

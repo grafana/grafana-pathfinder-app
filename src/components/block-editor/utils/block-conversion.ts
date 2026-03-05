@@ -33,6 +33,7 @@ const CONVERTIBLE_TYPES: readonly BlockType[] = [
   'quiz',
   'input',
   'terminal',
+  'code-block',
 ];
 
 /**
@@ -53,6 +54,7 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
   quiz: 'question',
   input: 'prompt',
   terminal: 'content',
+  'code-block': 'content',
 };
 
 /**
@@ -75,6 +77,7 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
   guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },
   terminal: { command: 'echo "hello"' },
+  'code-block': { reftarget: "div[data-testid='data-testid Code editor container']", code: '// Your code here' },
 };
 
 // ============ Public API ============

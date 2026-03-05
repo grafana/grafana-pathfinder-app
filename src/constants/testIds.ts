@@ -111,6 +111,13 @@ export const testIds = {
     conditional: (conditionalId: string) => `interactive-conditional-${conditionalId}`,
   },
 
+  // Code Block Step - for inserting code into Monaco editors
+  codeBlock: {
+    step: (stepId: string) => `code-block-step-${stepId}`,
+    showMeButton: (stepId: string) => `code-block-show-me-${stepId}`,
+    insertButton: (stepId: string) => `code-block-insert-${stepId}`,
+  },
+
   // App Configuration
   appConfig: {
     recommenderServiceUrl: 'config-recommender-service-url',

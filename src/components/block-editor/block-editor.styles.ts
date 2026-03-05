@@ -673,8 +673,38 @@ export const getBlockPreviewStyles = (theme: GrafanaTheme2) => ({
   container: css({
     height: '100%',
     overflow: 'auto',
-    padding: theme.spacing(2),
+    padding: theme.spacing(1),
     backgroundColor: theme.colors.background.primary,
+  }),
+
+  // Override journey content styles for preview context - remove extra padding
+  // and let content use full width of the preview container
+  previewContent: css({
+    // Remove the default journey content padding since we're already in a padded container
+    padding: `0 !important`,
+
+    // Make interactive sections and steps take full width
+    '& .interactive-section': {
+      margin: `${theme.spacing(2)} 0`,
+    },
+
+    '& .interactive-step': {
+      margin: `${theme.spacing(1.5)} 0`,
+    },
+
+    '& .code-block': {
+      margin: `${theme.spacing(1.5)} 0`,
+    },
+
+    // Reduce margins on other elements for tighter layout in preview
+    '& h1, & h2, & h3, & h4': {
+      marginTop: theme.spacing(2),
+      marginBottom: theme.spacing(1),
+    },
+
+    '& p': {
+      marginBottom: theme.spacing(1.5),
+    },
   }),
 
   previewHeader: css({

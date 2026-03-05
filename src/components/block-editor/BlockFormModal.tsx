@@ -45,6 +45,7 @@ import { GuidedBlockForm } from './forms/GuidedBlockForm';
 import { QuizBlockForm } from './forms/QuizBlockForm';
 import { InputBlockForm } from './forms/InputBlockForm';
 import { TerminalBlockForm } from './forms/TerminalBlockForm';
+import { CodeBlockForm } from './forms/CodeBlockForm';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   modal: css({
@@ -117,6 +118,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   quiz: QuizBlockForm,
   input: InputBlockForm,
   terminal: TerminalBlockForm,
+  'code-block': CodeBlockForm,
 };
 
 /**

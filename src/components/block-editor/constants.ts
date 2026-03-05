@@ -95,6 +95,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Terminal',
     description: 'Shell command with copy and execute buttons',
   },
+  'code-block': {
+    type: 'code-block',
+    icon: '📋',
+    grafanaIcon: 'document-info',
+    name: 'Code block',
+    description: 'Code snippet with copy and insert into editor',
+  },
 };
 
 /**
@@ -111,6 +118,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'multistep',
   'guided',
   'terminal',
+  'code-block',
   'quiz',
   'input',
 ];

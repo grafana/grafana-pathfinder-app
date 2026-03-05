@@ -27,7 +27,8 @@ export type BlockType =
   | 'guided'
   | 'quiz'
   | 'input'
-  | 'terminal';
+  | 'terminal'
+  | 'code-block';
 
 /**
  * Block metadata for the palette
