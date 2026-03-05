@@ -315,7 +315,7 @@ func (a *App) toolListGuides(w http.ResponseWriter, id json.RawMessage, rawArgs 
 	// Parse repository.json
 	var repo map[string]repositoryEntry
 	if err := json.Unmarshal(repositoryJSON, &repo); err != nil {
-		writeMCPError(w, id, errCodeInternal, "failed to parse guide repository: "+err.Error())
+		writeMCPToolError(w, id, "failed to parse guide repository: "+err.Error())
 		return
 	}
 
@@ -336,7 +336,7 @@ func (a *App) toolListGuides(w http.ResponseWriter, id json.RawMessage, rawArgs 
 		})
 	}
 
-	writeMCPResult(w, id, map[string]interface{}{
+	writeMCPToolResult(w, id, map[string]interface{}{
 		"guides": guides,
 		"total":  len(guides),
 	})
@@ -366,18 +366,18 @@ func (a *App) toolGetGuide(w http.ResponseWriter, id json.RawMessage, rawArgs js
 	contentPath := fmt.Sprintf("static/guides/%s.json", args.ID)
 	data, err := fs.ReadFile(guidesFS, contentPath)
 	if err != nil {
-		writeMCPError(w, id, errCodeParams, fmt.Sprintf("guide not found: %s", args.ID))
+		writeMCPToolError(w, id, fmt.Sprintf("guide not found: %s", args.ID))
 		return
 	}
 
 	// Return the guide content as a parsed JSON value (not a string)
 	var content interface{}
 	if err := json.Unmarshal(data, &content); err != nil {
-		writeMCPError(w, id, errCodeInternal, "failed to parse guide content")
+		writeMCPToolError(w, id, "failed to parse guide content")
 		return
 	}
 
-	writeMCPResult(w, id, map[string]interface{}{
+	writeMCPToolResult(w, id, map[string]interface{}{
 		"id":      args.ID,
 		"content": content,
 	})
@@ -400,11 +400,11 @@ func (a *App) toolGetGuideSchema(w http.ResponseWriter, id json.RawMessage, rawA
 
 	schema, ok := guideSchemas[args.Name]
 	if !ok {
-		writeMCPError(w, id, errCodeParams, fmt.Sprintf("unknown schema name: %s (valid: content, manifest, repository)", args.Name))
+		writeMCPToolError(w, id, fmt.Sprintf("unknown schema name: %s (valid: content, manifest, repository)", args.Name))
 		return
 	}
 
-	writeMCPResult(w, id, map[string]interface{}{
+	writeMCPToolResult(w, id, map[string]interface{}{
 		"name":   args.Name,
 		"schema": schema,
 	})
@@ -518,7 +518,7 @@ func (a *App) toolLaunchGuide(w http.ResponseWriter, id json.RawMessage, rawArgs
 	}
 	contentPath := fmt.Sprintf("static/guides/%s.json", args.GuideID)
 	if _, err := fs.Stat(guidesFS, contentPath); err != nil {
-		writeMCPError(w, id, errCodeParams, fmt.Sprintf("guide not found: %s — use list_guides to see available IDs", args.GuideID))
+		writeMCPToolError(w, id, fmt.Sprintf("guide not found: %s — use list_guides to see available IDs", args.GuideID))
 		return
 	}
 
@@ -532,7 +532,7 @@ func (a *App) toolLaunchGuide(w http.ResponseWriter, id json.RawMessage, rawArgs
 
 	a.logger.Info("Guide launch queued", "user", user, "guideId", args.GuideID)
 
-	writeMCPResult(w, id, map[string]interface{}{
+	writeMCPToolResult(w, id, map[string]interface{}{
 		"status":  "queued",
 		"guideId": args.GuideID,
 		"message": fmt.Sprintf("Guide '%s' will open in the Pathfinder sidebar within a few seconds.", args.GuideID),
@@ -565,7 +565,7 @@ func (a *App) toolValidateGuideJSON(w http.ResponseWriter, id json.RawMessage, r
 	// 1. Parse JSON
 	var parsed map[string]interface{}
 	if err := json.Unmarshal([]byte(args.Content), &parsed); err != nil {
-		writeMCPResult(w, id, map[string]interface{}{
+		writeMCPToolResult(w, id, map[string]interface{}{
 			"isValid":  false,
 			"errors":   []validationIssue{{Path: "", Message: "invalid JSON: " + err.Error()}},
 			"warnings": []validationIssue{},
@@ -658,7 +658,7 @@ func (a *App) toolValidateGuideJSON(w http.ResponseWriter, id json.RawMessage, r
 		warnings = []validationIssue{}
 	}
 
-	writeMCPResult(w, id, map[string]interface{}{
+	writeMCPToolResult(w, id, map[string]interface{}{
 		"isValid":  len(errs) == 0,
 		"errors":   errs,
 		"warnings": warnings,
@@ -747,7 +747,7 @@ func (a *App) toolCreateGuideTemplate(w http.ResponseWriter, id json.RawMessage,
 	contentJSON, _ := json.MarshalIndent(contentTemplate, "", "  ")
 	manifestJSON, _ := json.MarshalIndent(manifestTemplate, "", "  ")
 
-	writeMCPResult(w, id, map[string]interface{}{
+	writeMCPToolResult(w, id, map[string]interface{}{
 		"contentJson":  string(contentJSON),
 		"manifestJson": string(manifestJSON),
 		"instructions": fmt.Sprintf(
@@ -815,6 +815,8 @@ func (a *App) clearPendingLaunch(w http.ResponseWriter, user string) {
 // Response helpers
 // ---------------------------------------------------------------------------
 
+// writeMCPResult writes a raw JSON-RPC result (used for protocol-level responses:
+// initialize, ping, tools/list). Tool call results must use writeMCPToolResult.
 func writeMCPResult(w http.ResponseWriter, id json.RawMessage, result interface{}) {
 	resp := mcpResponse{
 		JSONRPC: "2.0",
@@ -823,6 +825,32 @@ func writeMCPResult(w http.ResponseWriter, id json.RawMessage, result interface{
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// writeMCPToolResult writes a tools/call success response per the MCP spec:
+// result.content must be an array of typed content items.
+func writeMCPToolResult(w http.ResponseWriter, id json.RawMessage, data interface{}) {
+	text, err := json.Marshal(data)
+	if err != nil {
+		writeMCPToolError(w, id, "internal error: failed to serialize result")
+		return
+	}
+	writeMCPResult(w, id, map[string]interface{}{
+		"content": []map[string]string{
+			{"type": "text", "text": string(text)},
+		},
+	})
+}
+
+// writeMCPToolError writes a tools/call error response per the MCP spec:
+// tool execution failures are returned as isError:true content, not JSON-RPC errors.
+func writeMCPToolError(w http.ResponseWriter, id json.RawMessage, message string) {
+	writeMCPResult(w, id, map[string]interface{}{
+		"content": []map[string]string{
+			{"type": "text", "text": message},
+		},
+		"isError": true,
+	})
 }
 
 func writeMCPError(w http.ResponseWriter, id json.RawMessage, code int, message string) {

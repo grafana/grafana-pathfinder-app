@@ -67,6 +67,41 @@ func newTestApp(t *testing.T) *App {
 	return &App{logger: log.DefaultLogger}
 }
 
+// extractToolData parses the tool result from a tools/call response.
+// Per MCP spec, tool results are wrapped in result.content[0].text.
+func extractToolData(t *testing.T, out map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	result, ok := out["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("no result in response: %v", out)
+	}
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatalf("no content array in tool result: %v", result)
+	}
+	item := content[0].(map[string]interface{})
+	text, _ := item["text"].(string)
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(text), &data); err != nil {
+		t.Fatalf("failed to parse tool result text as JSON: %v\ntext: %s", err, text)
+	}
+	return data
+}
+
+// isToolError returns true if the response is a JSON-RPC protocol error
+// or a tool-level execution error (isError:true in result content).
+func isToolError(out map[string]interface{}) bool {
+	if out["error"] != nil {
+		return true
+	}
+	result, _ := out["result"].(map[string]interface{})
+	if result == nil {
+		return false
+	}
+	isError, _ := result["isError"].(bool)
+	return isError
+}
+
 // ---------------------------------------------------------------------------
 // handleMCP — protocol tests
 // ---------------------------------------------------------------------------
@@ -178,12 +213,12 @@ func TestToolsList(t *testing.T) {
 func TestToolListGuides_ReturnsAll(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "list_guides", map[string]interface{}{})
-	result := out["result"].(map[string]interface{})
-	guides := result["guides"].([]interface{})
+	data := extractToolData(t, out)
+	guides := data["guides"].([]interface{})
 	if len(guides) == 0 {
 		t.Error("expected at least one guide")
 	}
-	total := result["total"].(float64)
+	total := data["total"].(float64)
 	if int(total) != len(guides) {
 		t.Errorf("total %d does not match guides length %d", int(total), len(guides))
 	}
@@ -192,8 +227,8 @@ func TestToolListGuides_ReturnsAll(t *testing.T) {
 func TestToolListGuides_FilterByCategory(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "list_guides", map[string]interface{}{"category": "getting-started"})
-	result := out["result"].(map[string]interface{})
-	guides := result["guides"].([]interface{})
+	data := extractToolData(t, out)
+	guides := data["guides"].([]interface{})
 	for _, raw := range guides {
 		g := raw.(map[string]interface{})
 		if g["category"] != "getting-started" {
@@ -205,9 +240,9 @@ func TestToolListGuides_FilterByCategory(t *testing.T) {
 func TestToolListGuides_FilterNoMatch_ReturnsEmptyArray(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "list_guides", map[string]interface{}{"category": "nonexistent-category-xyz"})
-	result := out["result"].(map[string]interface{})
+	data := extractToolData(t, out)
 	// Must be [] not null
-	raw, err := json.Marshal(result["guides"])
+	raw, err := json.Marshal(data["guides"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,14 +261,14 @@ func TestToolListGuides_FilterNoMatch_ReturnsEmptyArray(t *testing.T) {
 func TestToolGetGuide_ValidID(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "get_guide", map[string]interface{}{"id": "first-dashboard"})
-	if out["error"] != nil {
-		t.Fatalf("unexpected error: %v", out["error"])
+	if isToolError(out) {
+		t.Fatalf("unexpected error: %v", out)
 	}
-	result := out["result"].(map[string]interface{})
-	if result["id"] != "first-dashboard" {
-		t.Errorf("expected id 'first-dashboard', got %v", result["id"])
+	data := extractToolData(t, out)
+	if data["id"] != "first-dashboard" {
+		t.Errorf("expected id 'first-dashboard', got %v", data["id"])
 	}
-	if result["content"] == nil {
+	if data["content"] == nil {
 		t.Error("expected content field in result")
 	}
 }
@@ -241,7 +276,7 @@ func TestToolGetGuide_ValidID(t *testing.T) {
 func TestToolGetGuide_MissingID(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "get_guide", map[string]interface{}{})
-	if out["error"] == nil {
+	if !isToolError(out) {
 		t.Error("expected error for missing id")
 	}
 }
@@ -249,7 +284,7 @@ func TestToolGetGuide_MissingID(t *testing.T) {
 func TestToolGetGuide_UnknownID(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "get_guide", map[string]interface{}{"id": "does-not-exist"})
-	if out["error"] == nil {
+	if !isToolError(out) {
 		t.Error("expected error for unknown guide ID")
 	}
 }
@@ -259,7 +294,7 @@ func TestToolGetGuide_PathTraversal(t *testing.T) {
 	cases := []string{"../etc/passwd", "../../secrets", "a/b", "a.b", "A_B"}
 	for _, id := range cases {
 		out := mcpToolCall(t, app, "get_guide", map[string]interface{}{"id": id})
-		if out["error"] == nil {
+		if !isToolError(out) {
 			t.Errorf("expected error for potentially unsafe ID %q", id)
 		}
 	}
@@ -272,11 +307,11 @@ func TestToolGetGuide_PathTraversal(t *testing.T) {
 func TestToolGetGuideSchema_Content(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "get_guide_schema", map[string]interface{}{"name": "content"})
-	if out["error"] != nil {
-		t.Fatalf("unexpected error: %v", out["error"])
+	if isToolError(out) {
+		t.Fatalf("unexpected error: %v", out)
 	}
-	result := out["result"].(map[string]interface{})
-	schema := result["schema"].(map[string]interface{})
+	data := extractToolData(t, out)
+	schema := data["schema"].(map[string]interface{})
 	if schema["type"] != "object" {
 		t.Error("expected schema type to be 'object'")
 	}
@@ -285,7 +320,7 @@ func TestToolGetGuideSchema_Content(t *testing.T) {
 func TestToolGetGuideSchema_UnknownName(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "get_guide_schema", map[string]interface{}{"name": "nonexistent"})
-	if out["error"] == nil {
+	if !isToolError(out) {
 		t.Error("expected error for unknown schema name")
 	}
 }
@@ -302,12 +337,12 @@ func TestToolLaunchGuide_ValidID(t *testing.T) {
 
 	app := newTestApp(t)
 	out := mcpToolCallWithUser(t, app, "launch_guide", map[string]interface{}{"guideId": "first-dashboard"}, "testuser")
-	if out["error"] != nil {
-		t.Fatalf("unexpected error: %v", out["error"])
+	if isToolError(out) {
+		t.Fatalf("unexpected error: %v", out)
 	}
-	result := out["result"].(map[string]interface{})
-	if result["status"] != "queued" {
-		t.Errorf("expected status 'queued', got %v", result["status"])
+	data := extractToolData(t, out)
+	if data["status"] != "queued" {
+		t.Errorf("expected status 'queued', got %v", data["status"])
 	}
 
 	// Verify it was stored
@@ -325,7 +360,7 @@ func TestToolLaunchGuide_ValidID(t *testing.T) {
 func TestToolLaunchGuide_UnknownID(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "launch_guide", map[string]interface{}{"guideId": "does-not-exist"})
-	if out["error"] == nil {
+	if !isToolError(out) {
 		t.Error("expected error for unknown guide ID")
 	}
 }
@@ -333,7 +368,7 @@ func TestToolLaunchGuide_UnknownID(t *testing.T) {
 func TestToolLaunchGuide_InvalidID(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "launch_guide", map[string]interface{}{"guideId": "../etc/passwd"})
-	if out["error"] == nil {
+	if !isToolError(out) {
 		t.Error("expected error for invalid guide ID")
 	}
 }
@@ -459,12 +494,12 @@ func TestToolValidateGuideJSON_ValidGuide(t *testing.T) {
 		]
 	}`
 	out := mcpToolCall(t, app, "validate_guide_json", map[string]interface{}{"content": validGuide})
-	if out["error"] != nil {
-		t.Fatalf("unexpected error: %v", out["error"])
+	if isToolError(out) {
+		t.Fatalf("unexpected error: %v", out)
 	}
-	result := out["result"].(map[string]interface{})
-	if result["isValid"] != true {
-		errs, _ := json.Marshal(result["errors"])
+	data := extractToolData(t, out)
+	if data["isValid"] != true {
+		errs, _ := json.Marshal(data["errors"])
 		t.Errorf("expected isValid=true, got false, errors: %s", errs)
 	}
 }
@@ -472,11 +507,11 @@ func TestToolValidateGuideJSON_ValidGuide(t *testing.T) {
 func TestToolValidateGuideJSON_MissingRequiredFields(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "validate_guide_json", map[string]interface{}{"content": `{"id":"test"}`})
-	result := out["result"].(map[string]interface{})
-	if result["isValid"] != false {
+	data := extractToolData(t, out)
+	if data["isValid"] != false {
 		t.Error("expected isValid=false for guide missing title and blocks")
 	}
-	errs := result["errors"].([]interface{})
+	errs := data["errors"].([]interface{})
 	if len(errs) == 0 {
 		t.Error("expected at least one error")
 	}
@@ -491,8 +526,8 @@ func TestToolValidateGuideJSON_InvalidBlockType(t *testing.T) {
 		"blocks": [{"type": "callout"}]
 	}`
 	out := mcpToolCall(t, app, "validate_guide_json", map[string]interface{}{"content": guide})
-	result := out["result"].(map[string]interface{})
-	if result["isValid"] != false {
+	data := extractToolData(t, out)
+	if data["isValid"] != false {
 		t.Error("expected isValid=false for unknown block type 'callout'")
 	}
 }
@@ -508,8 +543,8 @@ func TestToolValidateGuideJSON_AllValidBlockTypes(t *testing.T) {
 	for _, bt := range blockTypes {
 		guide := `{"schemaVersion":"1.0.0","id":"t","title":"T","blocks":[{"type":"` + bt + `"}]}`
 		out := mcpToolCall(t, app, "validate_guide_json", map[string]interface{}{"content": guide})
-		result := out["result"].(map[string]interface{})
-		errs := result["errors"].([]interface{})
+		data := extractToolData(t, out)
+		errs := data["errors"].([]interface{})
 		// Filter to only block-type errors (there may be other validation errors for missing fields)
 		for _, e := range errs {
 			errMap := e.(map[string]interface{})
@@ -523,8 +558,8 @@ func TestToolValidateGuideJSON_AllValidBlockTypes(t *testing.T) {
 func TestToolValidateGuideJSON_InvalidJSON(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "validate_guide_json", map[string]interface{}{"content": "not json {"})
-	result := out["result"].(map[string]interface{})
-	if result["isValid"] != false {
+	data := extractToolData(t, out)
+	if data["isValid"] != false {
 		t.Error("expected isValid=false for invalid JSON input")
 	}
 }
@@ -533,9 +568,9 @@ func TestToolValidateGuideJSON_FutureSemver(t *testing.T) {
 	app := newTestApp(t)
 	guide := `{"schemaVersion":"2.0.0","id":"t","title":"T","blocks":[]}`
 	out := mcpToolCall(t, app, "validate_guide_json", map[string]interface{}{"content": guide})
-	result := out["result"].(map[string]interface{})
+	data := extractToolData(t, out)
 	// Future semver should be valid (not cause an error)
-	errs := result["errors"].([]interface{})
+	errs := data["errors"].([]interface{})
 	for _, e := range errs {
 		errMap := e.(map[string]interface{})
 		if strings.Contains(errMap["path"].(string), "schemaVersion") {
@@ -554,16 +589,16 @@ func TestToolCreateGuideTemplate_Basic(t *testing.T) {
 		"id":    "my-new-guide",
 		"title": "My New Guide",
 	})
-	if out["error"] != nil {
-		t.Fatalf("unexpected error: %v", out["error"])
+	if isToolError(out) {
+		t.Fatalf("unexpected error: %v", out)
 	}
-	result := out["result"].(map[string]interface{})
+	data := extractToolData(t, out)
 
-	contentJSON, ok := result["contentJson"].(string)
+	contentJSON, ok := data["contentJson"].(string)
 	if !ok || contentJSON == "" {
 		t.Error("expected non-empty contentJson")
 	}
-	manifestJSON, ok := result["manifestJson"].(string)
+	manifestJSON, ok := data["manifestJson"].(string)
 	if !ok || manifestJSON == "" {
 		t.Error("expected non-empty manifestJson")
 	}
@@ -587,9 +622,9 @@ func TestToolCreateGuideTemplate_DefaultCategory(t *testing.T) {
 		"id":    "guide-with-default-cat",
 		"title": "Guide",
 	})
-	result := out["result"].(map[string]interface{})
+	data := extractToolData(t, out)
 	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(result["manifestJson"].(string)), &manifest); err != nil {
+	if err := json.Unmarshal([]byte(data["manifestJson"].(string)), &manifest); err != nil {
 		t.Fatalf("manifestJson is not valid JSON: %v", err)
 	}
 	if manifest["category"] != "getting-started" {
@@ -600,7 +635,7 @@ func TestToolCreateGuideTemplate_DefaultCategory(t *testing.T) {
 func TestToolCreateGuideTemplate_MissingRequired(t *testing.T) {
 	app := newTestApp(t)
 	out := mcpToolCall(t, app, "create_guide_template", map[string]interface{}{"id": "only-id"})
-	if out["error"] == nil {
+	if !isToolError(out) {
 		t.Error("expected error when title is missing")
 	}
 }
