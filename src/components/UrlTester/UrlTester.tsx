@@ -1,13 +1,7 @@
 import { Box, Button, Icon, Input, useStyles2 } from '@grafana/ui';
 import React, { useCallback, useEffect, useState } from 'react';
 import { getUrlTesterStyles } from './url-tester.styles';
-import {
-  isGitHubRawUrl,
-  isInteractiveLearningUrl,
-  isGrafanaDocsUrl,
-  isLocalhostUrl,
-  type UrlValidation,
-} from '../../security';
+import { type UrlValidation } from '../../security';
 
 const STORAGE_KEY = 'pathfinder-url-tester-url';
 
@@ -17,21 +11,15 @@ export interface UrlTesterProps {
 }
 
 /**
- * Unified URL validator for the dev panel
- * Accepts all supported content URLs:
- * - Interactive learning domains (interactive-learning.grafana.net, etc.)
- * - GitHub raw URLs (raw.githubusercontent.com)
- * - Grafana docs URLs (grafana.com/docs)
- * - Localhost URLs (for local testing)
+ * URL validator for the dev panel.
  *
- * Note: This validator is used in the UrlTester which is only visible in dev mode,
- * so we allow all dev-mode URLs without checking isDevModeEnabledGlobal().
+ * WARNING! This function must only be used for dev mode url testing, it bypasses all security checks.
  */
 function validateContentUrl(url: string): UrlValidation {
   if (!url) {
     return {
       isValid: false,
-      errorMessage: 'Please provide a URL',
+      errorMessage: 'Must provide a URL',
     };
   }
 
@@ -44,28 +32,7 @@ function validateContentUrl(url: string): UrlValidation {
     };
   }
 
-  // Accept all supported content sources
-  if (isInteractiveLearningUrl(url)) {
-    return { isValid: true };
-  }
-
-  if (isGitHubRawUrl(url)) {
-    return { isValid: true };
-  }
-
-  if (isGrafanaDocsUrl(url)) {
-    return { isValid: true };
-  }
-
-  if (isLocalhostUrl(url)) {
-    return { isValid: true };
-  }
-
-  return {
-    isValid: false,
-    errorMessage:
-      'URL must be from: interactive-learning.grafana.net, raw.githubusercontent.com, grafana.com/docs, or localhost',
-  };
+  return { isValid: true };
 }
 
 export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterProps) => {
@@ -139,9 +106,7 @@ export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterPr
         }}
         placeholder="https://interactive-learning.grafana.net/tutorial-name"
       />
-      <p className={styles.helpText}>
-        Supported URLs: interactive-learning.grafana.net, raw.githubusercontent.com, grafana.com/docs, localhost
-      </p>
+      <p className={styles.helpText}>Only enter trusted URLs.</p>
       <Box marginTop={1}>
         <Button variant="primary" size="sm" type="submit" disabled={!testUrl.trim() || !onOpenDocsPage}>
           Test URL
