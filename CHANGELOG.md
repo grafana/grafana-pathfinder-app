@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.0
+
+### Added
+
+- **Code block type**: New `code-block` block type for interactive guides with syntax highlighting, copy-to-clipboard, and step completion tracking (#650)
+  - Block editor support with language selector, filename, and code content fields
+  - Action handler for code block interactions in the interactive engine
+- **Auto-collapse section toggle**: Added `autoCollapse` option for interactive sections, configurable in both the block editor and app config (#649)
+
+### Fixed
+
+- **Quiz reset**: Fixed quiz block not resetting answers properly when restarting a guide (#649)
+- **Admin access**: Fixed interactive features configuration page not loading correctly for admin users (#649)
+
+### Security
+
+- **DOMPurify v3.3.2**: Updated DOMPurify to v3.3.2 to address CVE-2026-0540; iframes with `data:` URLs are now fully removed instead of sandboxed (#651)
+
 ## 2.1.1
 
 ### Fixed
