@@ -46,8 +46,11 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 // Get mock reference after imports
-const { __mockPublish: mockPublish, __mockPush: mockPush, __mockConfig: mockConfig } =
-  jest.requireMock('@grafana/runtime');
+const {
+  __mockPublish: mockPublish,
+  __mockPush: mockPush,
+  __mockConfig: mockConfig,
+} = jest.requireMock('@grafana/runtime');
 
 describe('TabBarActions', () => {
   beforeEach(() => {

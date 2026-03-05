@@ -87,10 +87,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
               <Menu.Item label={t('docsPanel.settings', 'Settings')} icon="cog" onClick={handleSettingsClick} />
             ) : (
               <Tooltip
-                content={t(
-                  'docsPanel.settingsNoPermission',
-                  "You don't have permission to access plugin settings"
-                )}
+                content={t('docsPanel.settingsNoPermission', "You don't have permission to access plugin settings")}
                 placement="left"
               >
                 <span>
