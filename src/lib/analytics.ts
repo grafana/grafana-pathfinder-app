@@ -89,17 +89,24 @@ interface ExperimentAnalyticsEntry {
 }
 
 /**
- * Gets the current experiment variant for analytics enrichment
+ * Gets the current experiment variant for analytics enrichment.
  *
- * Returns the simple variant string ('excluded' | 'control' | 'treatment')
- * for easy filtering and segmentation in analytics dashboards.
- *
- * @returns The experiment variant or null if unavailable
+ * Returns 'treatment' if the user is in treatment for any experiment,
+ * 'control' if in control for any (and not treatment for another),
+ * otherwise 'excluded'.
  */
 function getExperimentVariant(): ExperimentConfig['variant'] | null {
   try {
-    const config = getExperimentConfig('pathfinder.experiment-variant');
-    return config.variant;
+    const mainVariant = getExperimentConfig('pathfinder.experiment-variant').variant;
+    const after24hVariant = getExperimentConfig('pathfinder.after-24h-experiment').variant;
+
+    if (mainVariant === 'treatment' || after24hVariant === 'treatment') {
+      return 'treatment';
+    }
+    if (mainVariant === 'control' || after24hVariant === 'control') {
+      return 'control';
+    }
+    return 'excluded';
   } catch {
     return null;
   }
@@ -128,9 +135,11 @@ function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
       ...experimentVariantConfig,
     });
 
-    // Add additional experiments here as needed:
-    // const anotherExperiment = getExperimentConfig('pathfinder.another-experiment');
-    // experiments.push({ flag: 'pathfinder.another-experiment', ...anotherExperiment });
+    const after24hConfig = getExperimentConfig('pathfinder.after-24h-experiment');
+    experiments.push({
+      flag: 'pathfinder.after-24h-experiment',
+      ...after24hConfig,
+    });
 
     return experiments;
   } catch (error) {

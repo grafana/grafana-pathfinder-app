@@ -104,6 +104,9 @@ const ALLOWED_VERTICAL_VIOLATIONS = new Set([
   'docs-retrieval/content-renderer.tsx -> components',
   // Existing cross-domain persistence dependency (legacy coupling)
   'lib/user-storage.ts -> learning-paths',
+  // Terminal requirement check needs to query terminal connection status from the integrations layer.
+  // The dynamic import minimizes coupling and makes terminal code tree-shakeable when disabled.
+  'requirements-manager/requirements-checker.utils.ts -> integrations',
 ]);
 
 /**
@@ -123,8 +126,6 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
   'context-engine/context.service.ts -> docs-retrieval',
   // docs-retrieval cross-engine imports
   'docs-retrieval/content-renderer.tsx -> requirements-manager',
-  'docs-retrieval/json-parser.ts -> validation',
-  'docs-retrieval/content-fetcher.ts -> validation',
   // Phase 4b: 10 interactive component lateral entries removed (files moved to components/)
   // Additional pre-existing cross-engine imports uncovered by AST parsing
   'docs-retrieval/learning-journey-helpers.ts -> learning-paths',

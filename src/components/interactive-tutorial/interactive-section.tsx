@@ -8,6 +8,7 @@ import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
 import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
+import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
 import { interactiveStepStorage, sectionCollapseStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
@@ -15,6 +16,7 @@ import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
+import { getResumeInfo as computeResumeInfo, computeStepEligibility } from './step-section-utils';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -44,6 +46,7 @@ export function resetInteractiveCounters() {
   resetMultiStepCounter();
   resetGuidedCounter();
   resetQuizCounter();
+  resetTerminalStepCounter();
 }
 
 // Register a section's steps in the global registry (idempotent)
@@ -454,6 +457,23 @@ export function InteractiveSection({
           isQuiz: true, // Mark as quiz step
         });
         stepIndex++;
+      } else if (React.isValidElement(child) && (child as any).type === TerminalStep) {
+        const props = child.props as any;
+        const stepId = `${sectionId}-terminal-${stepIndex + 1}`;
+
+        steps.push({
+          stepId,
+          element: child as React.ReactElement<any>,
+          index: stepIndex,
+          targetAction: 'terminal',
+          refTarget: undefined,
+          targetValue: undefined,
+          requirements: props.requirements,
+          skippable: props.skippable,
+          isMultiStep: false,
+          isGuided: false,
+        });
+        stepIndex++;
       }
     });
 
@@ -598,38 +618,16 @@ export function InteractiveSection({
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render
-  const stepEligibility = useMemo(() => {
-    return stepComponents.map((stepInfo, index) => {
-      // First step is always eligible (Trust but Verify)
-      if (index === 0) {
-        return true;
-      }
-
-      // Subsequent steps are eligible if all previous steps are completed
-      // Noop steps (informational only) are always considered "complete" for eligibility purposes
-      // since they have no action to perform
-      return stepComponents
-        .slice(0, index)
-        .every((prevStep) => prevStep.targetAction === 'noop' || completedSteps.has(prevStep.stepId));
-    });
-  }, [completedSteps, stepComponents]); // Only recalculate when these change
+  const stepEligibility = useMemo(
+    () => computeStepEligibility(stepComponents, completedSteps),
+    [completedSteps, stepComponents]
+  );
 
   // Calculate resume information for button display
-  const getResumeInfo = useCallback(() => {
-    if (stepComponents.length === 0) {
-      return { nextStepIndex: 0, remainingSteps: 0, isResume: false };
-    }
-
-    // Use currentStepIndex directly - no iteration needed!
-    const nextStepIndex = currentStepIndex;
-
-    // If currentStepIndex is beyond the end, it means all steps are completed
-    const allCompleted = nextStepIndex >= stepComponents.length;
-    const remainingSteps = allCompleted ? stepComponents.length : stepComponents.length - nextStepIndex;
-    const isResume = !allCompleted && nextStepIndex > 0;
-
-    return { nextStepIndex, remainingSteps, isResume };
-  }, [stepComponents.length, currentStepIndex]);
+  const getResumeInfo = useCallback(
+    () => computeResumeInfo(stepComponents, currentStepIndex),
+    [stepComponents, currentStepIndex]
+  );
 
   // Handle individual step completion
   const handleStepComplete = useCallback(
@@ -1441,6 +1439,36 @@ export function InteractiveSection({
           resetTrigger,
           key: stepInfo.stepId,
         });
+      } else if (React.isValidElement(child) && (child as any).type === TerminalStep) {
+        const stepInfo = stepComponents[stepIndex];
+        if (!stepInfo) {
+          return child;
+        }
+
+        const isEligibleForChecking = stepEligibility[stepIndex];
+        const isCompleted = completedSteps.has(stepInfo.stepId);
+
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          stepIndex
+        );
+
+        stepIndex++;
+
+        return React.cloneElement(child as React.ReactElement<any>, {
+          ...(child.props as any),
+          stepId: stepInfo.stepId,
+          isEligibleForChecking,
+          isCompleted,
+          onStepComplete: handleStepComplete,
+          stepIndex: documentStepIndex,
+          totalSteps: documentTotalSteps,
+          sectionId: sectionId,
+          sectionTitle: title,
+          disabled: disabled,
+          resetTrigger,
+          key: stepInfo.stepId,
+        });
       }
       return child;
     });
@@ -1580,7 +1608,7 @@ export function InteractiveSection({
               if (resumeInfo.isResume) {
                 return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
               }
-              return hints || `Run through all ${stepComponents.length} steps in sequence`;
+              return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
             })()}
           >
             {(() => {
@@ -1594,7 +1622,7 @@ export function InteractiveSection({
               if (resumeInfo.isResume) {
                 return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
               }
-              return `▶ Do Section (${stepComponents.length} steps)`;
+              return `▶ Do Section (${nonNoopSteps.length} steps)`;
             })()}
           </Button>
         )}

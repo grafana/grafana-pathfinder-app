@@ -1,0 +1,3 @@
+node scripts/copy-static.js
+git add pkg/plugin/static/
+npx lint-staged

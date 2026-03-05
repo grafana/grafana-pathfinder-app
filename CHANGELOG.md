@@ -1,5 +1,122 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+
+- **MCP server**: HTTP Model Context Protocol server at `/api/plugins/grafana-pathfinder-app/resources/mcp`, enabling AI assistants (e.g. Grafana Assistant) to discover and launch Pathfinder guides
+  - `list_guides` — returns the bundled guide catalog with id, title, description, category, and type
+  - `get_guide` — returns the full content JSON for a specific guide by ID
+  - `get_guide_schema` — returns JSON Schema for guide content, manifest, and repository formats
+  - `launch_guide` — queues a guide launch for the current user; Pathfinder opens it automatically within 5 seconds if the sidebar is active
+  - `validate_guide_json` — validates a guide content.json string and returns structured errors and warnings
+  - `create_guide_template` — generates a valid guide skeleton (content.json + manifest.json) ready for editing
+- **Frontend polling hook** (`usePendingGuideLaunch`): polls the backend every 5 seconds and opens the Pathfinder sidebar to the requested guide when a pending launch is found
+- **`openWithGuide` method** on `GlobalSidebarState`: opens the sidebar and dispatches the guide, handling the case where the sidebar is not yet mounted
+
+## 2.0.7
+
+### Changed
+
+- **Experiment refactor**: Extracted experiment logic into dedicated `experiments/` module with separate orchestrator, utilities, and debug tooling; simplified `module.tsx` by removing inline experiment wiring
+- **OpenFeature integration**: Added OpenFeature client wrapper for standardized feature flag evaluation
+- **Analytics**: Added RudderStack event support and new suggestion state tracking via `global-state/suggestion.ts`
+
+## 2.0.6
+
+### Fixed
+
+- **Terminal streaming**: Fixed terminal streaming issue in the Coda terminal live hook
+- **Publish**: Fixed publish issue with terminal live hook import
+
+## 2.0.5
+
+### Fixed
+
+- **Terminal streaming**: Simplified streaming implementation across backend (`stream.go`, `resources.go`) and frontend (`useTerminalLive` hook), removing redundant code paths
+
+## 2.0.4
+
+### Fixed
+
+- **Session key simplification**: Removed `userLogin` from `sessionsByVM` key, using `vmID` alone. Eliminates identity-mismatch bugs across SDK paths and the reconnect race condition where an old RunStream's teardown could delete a newer session's registration
+- **Reconnect race condition**: Fixed race where overlapping RunStream teardown for the same VM could delete the active session from the secondary index, causing 410 errors in Grafana Cloud
+
+## 2.0.3
+
+### Security
+
+- **Terminal input auth**: Removed client-controlled user identity from terminal input; user is now derived exclusively from the SDK's `PluginContext` to prevent session impersonation
+
+### Fixed
+
+- **Session lookup**: Fixed 410 (Gone) errors on every terminal input/resize caused by user identity mismatch between `RunStream` (SDK PluginContext) and `handleTerminalInput` (missing HTTP header)
+- **Instance lifecycle**: Moved `streamSessions` and `userVMs` from package-level globals into `App` struct fields so they are properly scoped to plugin instance lifecycle and cleaned on `Dispose()`
+- **SSH retry logic**: Auth errors (wrong key, permission denied) no longer waste same-VM retry budget; they break immediately to provision a new VM
+- **Context-aware retries**: Replaced `time.Sleep` in SSH retry loops with `select`/`time.After` so context cancellation is respected immediately
+- **WebSocket write deadline**: Added 30s write deadline on WebSocket writes to prevent indefinite blocking when the relay stops reading
+- **Reconnect timer leak**: Stored reconnect `setTimeout` ID in a ref and clear it on unmount to prevent post-unmount state updates
+- **PEM validation**: `normalizePrivateKey` now validates the result with `pem.Decode` and returns an error for malformed keys instead of passing them silently to `ssh.ParsePrivateKey`
+- **First poll delay**: `waitForVMActive` now polls immediately before entering the 3-second ticker loop, avoiding unnecessary delay for already-active VMs
+
+### Improved
+
+- **Session lookup performance**: Added secondary `sessionsByVM` index for O(1) terminal input routing instead of O(n) scan under mutex
+- **Output throughput**: Added output coalescing goroutine that batches SSH output within a 5ms window (up to 32KB) before sending, reducing per-message gRPC overhead
+- **Buffer sizes**: Increased SSH read buffers from 4KB to 32KB and PTY baud rates from 14400 to 38400
+- **Console log gating**: Terminal connection logs gated behind dev mode per Grafana best practices; `connectionLog` converted to a per-connection factory to eliminate shared mutable state
+- **Error logging**: `sendStreamError` and `sendStreamStatusWithVmId` now log marshal and send errors instead of silently discarding them
+- **PublishStream comment**: Corrected misleading comment to clarify it is implemented for SDK compliance but never invoked
+
+## 2.0.2
+
+### Fixed
+
+- **Terminal connection**: Fixed an issue with connection timeout
+
+## 2.0.1
+
+### Fixed
+
+- **Terminal reconnection**: Fixed issues with reconnection and timeouts to VMs (#639)
+
+## 2.0.0
+
+### Added
+
+- **Custom guides** (private preview, Grafana Cloud only): Users can create, publish, and manage their own guides with full backend support (#614)
+  - New "Custom guides" section in the context panel shows user-published guides
+  - Guide library modal for browsing and loading saved guides
+  - Publish workflow for sharing guides within an organization
+  - Backend API for guide storage and retrieval
+- **Go backend**: Added plugin backend using `grafana-plugin-sdk-go` for streaming, resource handling, and API endpoints (#591)
+- **Terminal block type** (experimental): New block type for embedding terminal sessions within guides, requires backend configuration (#591)
+- **Guide health telemetry design**: Added design document for guide health monitoring and telemetry (#628)
+- **Package model Phase 0-1**: Initial implementation of the guide packaging model (#623)
+- **Maintain-docs skill**: New AI skill for periodic documentation audits and maintenance (#602)
+
+### Changed
+
+- **Architectural tier model**: Major refactoring to enforce clear architectural boundaries (#607, #608, #609, #613)
+  - Added directory-scoped ESLint import boundary rules encoding the tier model
+  - Added architectural invariant ratchet tests to prevent regressions
+  - Eliminated all barrel bypass violations
+  - Moved components to correct architectural tiers
+- **Stricter TypeScript**: Enabled `noUncheckedIndexedAccess` for stricter null safety on indexed access (#606)
+- **ESLint security rules**: Added `no-restricted-syntax` ESLint rules for security and architecture enforcement (#611)
+- **Block editor UX improvements**: Fixed keyboard navigation, modal footer alignment, and responsive header behavior (#617)
+- **Block editor availability detection**: Library and Publish controls now hide when backend API is unavailable (#631)
+- **Documentation refresh**: Comprehensive documentation updates across all engine subsystems, indexed orphaned docs, and validated stale documentation (#592-#602, #625)
+
+### Fixed
+
+- Fixed deprecated API usage issues
+
+### Chore
+
+- Updated npm to v11.10.1 (#605)
+- Security audit (#590)
+
 ## 1.8.0
 
 ### Added

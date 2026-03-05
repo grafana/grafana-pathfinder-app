@@ -1,0 +1,22 @@
+{
+  "id": "welcome-to-grafana",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
+  "category": "getting-started",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/",
+  "provides": ["grafana-tour-oss"],
+  "targeting": {
+    "match": {
+      "and": [{ "urlPrefix": "/" }, { "targetPlatform": "oss" }]
+    }
+  },
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

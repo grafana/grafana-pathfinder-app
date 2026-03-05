@@ -3,7 +3,9 @@
   "type": "app",
   "name": "Interactive learning",
   "id": "grafana-pathfinder-app",
-  "backend": false,
+  "backend": true,
+  "executable": "gpx_grafana-pathfinder-app",
+  "streaming": true,
   "autoEnabled": true,
   "info": {
     "keywords": ["app", "documentation", "learning", "command palette", "search"],

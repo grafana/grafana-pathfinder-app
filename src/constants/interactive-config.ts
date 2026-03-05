@@ -322,6 +322,8 @@ export const COMMON_REQUIREMENTS = [
   'min-version:',
   // Sequential Dependencies
   'section-completed:',
+  // Terminal Requirements
+  'is-terminal-active',
 ] as const;
 
 /**

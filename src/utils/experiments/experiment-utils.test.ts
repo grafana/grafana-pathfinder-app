@@ -1,14 +1,11 @@
 /**
- * Tests for experiment-debug module
+ * Tests for experiment-utils module
  *
- * Tests the app-level auto-open tracking behavior using the actual experiment config:
- * - Treatment: auto-opens once per parent app (not per page)
- * - Excluded: normal behavior (once globally)
- * - Control: no auto-open
+ * Tests storage helpers, path utilities, and user-related checks for experiments.
  */
 
-// Mock user-storage before importing
-jest.mock('../lib/user-storage', () => ({
+// Mock user-storage
+jest.mock('../../lib/user-storage', () => ({
   experimentAutoOpenStorage: {
     markPageAutoOpened: jest.fn().mockResolvedValue(undefined),
     markGlobalAutoOpened: jest.fn().mockResolvedValue(undefined),
@@ -23,10 +20,8 @@ jest.mock('../lib/user-storage', () => ({
 }));
 
 // Mock openfeature
-jest.mock('./openfeature', () => ({
-  getExperimentConfig: jest.fn(),
+jest.mock('../openfeature', () => ({
   matchPathPattern: jest.fn((pattern: string, path: string) => {
-    // Simple implementation for testing
     if (pattern.endsWith('*')) {
       return path.startsWith(pattern.slice(0, -1));
     }
@@ -34,7 +29,20 @@ jest.mock('./openfeature', () => ({
   }),
 }));
 
-import { getParentPath, shouldAutoOpenForPath, hasParentAutoOpened, markParentAutoOpened } from './experiment-debug';
+import {
+  getParentPath,
+  getTreatmentPageKey,
+  findMatchingTargetPage,
+  hasParentAutoOpened,
+  markParentAutoOpened,
+  markGlobalAutoOpened,
+  shouldAutoOpenForPath,
+  isSidebarAlreadyInUse,
+  isOnboardingFlowPath,
+  getStorageKeys,
+  syncExperimentStateFromUserStorage,
+  resetExperimentState,
+} from './experiment-utils';
 
 // Actual experiment pages from GOFF config
 const EXPERIMENT_PAGES = [
@@ -47,13 +55,23 @@ const EXPERIMENT_PAGES = [
   '/a/grafana-irm-app?irmHomePageActiveTab=My%20IRM*',
 ];
 
-describe('experiment-debug', () => {
+describe('experiment-utils', () => {
   const hostname = 'test.grafana.net';
 
   beforeEach(() => {
-    // Clear sessionStorage before each test
     sessionStorage.clear();
+    localStorage.clear();
     jest.clearAllMocks();
+  });
+
+  describe('getStorageKeys', () => {
+    it('should return storage keys with hostname', () => {
+      const keys = getStorageKeys(hostname);
+
+      expect(keys.resetProcessed).toBe(`grafana-pathfinder-pop-open-reset-processed-${hostname}`);
+      expect(keys.autoOpened).toBe(`grafana-interactive-learning-panel-auto-opened-${hostname}`);
+      expect(keys.treatmentPagePrefix).toBe(`grafana-pathfinder-treatment-page-${hostname}-`);
+    });
   });
 
   describe('getParentPath', () => {
@@ -111,13 +129,32 @@ describe('experiment-debug', () => {
     });
   });
 
+  describe('getTreatmentPageKey', () => {
+    it('should return correct key for parent path', () => {
+      const key = getTreatmentPageKey(hostname, '/a/grafana-irm-app');
+      expect(key).toBe(`grafana-pathfinder-treatment-page-${hostname}-/a/grafana-irm-app`);
+    });
+  });
+
+  describe('findMatchingTargetPage', () => {
+    it('should return matching pattern', () => {
+      const result = findMatchingTargetPage(EXPERIMENT_PAGES, '/a/grafana-irm-app/integrations');
+      expect(result).toBe('/a/grafana-irm-app/integrations*');
+    });
+
+    it('should return null for non-matching path', () => {
+      const result = findMatchingTargetPage(EXPERIMENT_PAGES, '/dashboard/browse');
+      expect(result).toBeNull();
+    });
+  });
+
   describe('hasParentAutoOpened', () => {
     it('should return false when parent has not auto-opened', () => {
       expect(hasParentAutoOpened(hostname, '/a/grafana-irm-app')).toBe(false);
     });
 
     it('should return true when parent has auto-opened', () => {
-      sessionStorage.setItem('grafana-pathfinder-treatment-page-test.grafana.net-/a/grafana-irm-app', 'true');
+      sessionStorage.setItem(`grafana-pathfinder-treatment-page-${hostname}-/a/grafana-irm-app`, 'true');
       expect(hasParentAutoOpened(hostname, '/a/grafana-irm-app')).toBe(true);
     });
   });
@@ -126,16 +163,33 @@ describe('experiment-debug', () => {
     it('should mark parent as auto-opened in sessionStorage', () => {
       markParentAutoOpened(hostname, '/a/grafana-irm-app');
 
-      const key = 'grafana-pathfinder-treatment-page-test.grafana.net-/a/grafana-irm-app';
+      const key = `grafana-pathfinder-treatment-page-${hostname}-/a/grafana-irm-app`;
       expect(sessionStorage.getItem(key)).toBe('true');
     });
 
     it('should call user storage to persist', () => {
-      const { experimentAutoOpenStorage } = require('../lib/user-storage');
+      const { experimentAutoOpenStorage } = require('../../lib/user-storage');
 
       markParentAutoOpened(hostname, '/a/grafana-synthetic-monitoring-app');
 
       expect(experimentAutoOpenStorage.markPageAutoOpened).toHaveBeenCalledWith('/a/grafana-synthetic-monitoring-app');
+    });
+  });
+
+  describe('markGlobalAutoOpened', () => {
+    it('should mark global auto-open in sessionStorage', () => {
+      markGlobalAutoOpened(hostname);
+
+      const keys = getStorageKeys(hostname);
+      expect(sessionStorage.getItem(keys.autoOpened)).toBe('true');
+    });
+
+    it('should call user storage to persist', () => {
+      const { experimentAutoOpenStorage } = require('../../lib/user-storage');
+
+      markGlobalAutoOpened(hostname);
+
+      expect(experimentAutoOpenStorage.markGlobalAutoOpened).toHaveBeenCalled();
     });
   });
 
@@ -148,23 +202,18 @@ describe('experiment-debug', () => {
       });
 
       it('should return null for second IRM page after first opened', () => {
-        // First landing on integrations
         const first = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/integrations');
         expect(first).toBe('/a/grafana-irm-app');
 
-        // Mark as opened
         markParentAutoOpened(hostname, first!);
 
-        // Second landing on schedules - should NOT open
         const second = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/schedules');
         expect(second).toBeNull();
       });
 
       it('should return null for all IRM subpages after any IRM page opened', () => {
-        // Mark IRM as opened
         markParentAutoOpened(hostname, '/a/grafana-irm-app');
 
-        // All IRM pages should return null
         expect(shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/integrations')).toBeNull();
         expect(shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/schedules')).toBeNull();
         expect(shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/escalations')).toBeNull();
@@ -173,26 +222,21 @@ describe('experiment-debug', () => {
       });
 
       it('should allow Synthetic Monitoring to open separately from IRM', () => {
-        // Mark IRM as opened
         markParentAutoOpened(hostname, '/a/grafana-irm-app');
 
-        // Synthetic Monitoring should still be able to open
         const result = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-synthetic-monitoring-app/checks');
         expect(result).toBe('/a/grafana-synthetic-monitoring-app');
       });
 
       it('should track Synthetic Monitoring and IRM independently', () => {
-        // Land on Synthetic Monitoring first
         const sm = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-synthetic-monitoring-app/checks');
         expect(sm).toBe('/a/grafana-synthetic-monitoring-app');
         markParentAutoOpened(hostname, sm!);
 
-        // Land on IRM - should still open (different app)
         const irm = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/integrations');
         expect(irm).toBe('/a/grafana-irm-app');
         markParentAutoOpened(hostname, irm!);
 
-        // Both should now be blocked
         expect(
           shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-synthetic-monitoring-app/probes')
         ).toBeNull();
@@ -204,84 +248,72 @@ describe('experiment-debug', () => {
         expect(result).toBeNull();
       });
     });
+  });
 
-    describe('user journey scenarios', () => {
-      it('Scenario 1: User lands on IRM integrations, then visits other IRM pages', () => {
-        // User lands on /a/grafana-irm-app/integrations
-        const result1 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/integrations');
-        expect(result1).toBe('/a/grafana-irm-app');
-        markParentAutoOpened(hostname, result1!);
+  describe('isSidebarAlreadyInUse', () => {
+    it('should return false when no sidebar is docked', () => {
+      expect(isSidebarAlreadyInUse()).toBe(false);
+    });
 
-        // User navigates to schedules - should NOT auto-open
-        const result2 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/schedules');
-        expect(result2).toBeNull();
-
-        // User navigates to alert-groups - should NOT auto-open
-        const result3 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/alert-groups');
-        expect(result3).toBeNull();
-      });
-
-      it('Scenario 2: User visits Synthetic Monitoring then IRM', () => {
-        // User visits Synthetic Monitoring
-        const result1 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-synthetic-monitoring-app/checks');
-        expect(result1).toBe('/a/grafana-synthetic-monitoring-app');
-        markParentAutoOpened(hostname, result1!);
-
-        // User navigates to IRM - should open (different app)
-        const result2 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/incidents');
-        expect(result2).toBe('/a/grafana-irm-app');
-        markParentAutoOpened(hostname, result2!);
-
-        // User returns to Synthetic Monitoring - should NOT open
-        const result3 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-synthetic-monitoring-app/probes');
-        expect(result3).toBeNull();
-      });
-
-      it('Scenario 3: User visits home page then navigates to target', () => {
-        // User is on home page - not a target
-        const result1 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/');
-        expect(result1).toBeNull();
-
-        // User navigates to IRM - should open
-        const result2 = shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/schedules');
-        expect(result2).toBe('/a/grafana-irm-app');
-      });
+    it('should return true when sidebar is docked', () => {
+      localStorage.setItem('grafana.navigation.extensionSidebarDocked', JSON.stringify({ pluginId: 'some-plugin' }));
+      expect(isSidebarAlreadyInUse()).toBe(true);
     });
   });
 
-  describe('experiment variant behaviors', () => {
-    describe('treatment variant', () => {
-      it('should auto-open on first target page per app', () => {
-        // First IRM page
-        expect(shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/integrations')).toBe(
-          '/a/grafana-irm-app'
-        );
-      });
-
-      it('should not auto-open on subsequent pages of same app', () => {
-        markParentAutoOpened(hostname, '/a/grafana-irm-app');
-
-        expect(shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/schedules')).toBeNull();
-        expect(shouldAutoOpenForPath(hostname, EXPERIMENT_PAGES, '/a/grafana-irm-app/incidents')).toBeNull();
-      });
+  describe('isOnboardingFlowPath', () => {
+    it('should return true for onboarding flow path', () => {
+      expect(isOnboardingFlowPath('/a/grafana-setupguide-app/onboarding-flow')).toBe(true);
+      expect(isOnboardingFlowPath('/a/grafana-setupguide-app/onboarding-flow/step-1')).toBe(true);
     });
 
-    describe('control variant', () => {
-      it('should not auto-open (pages tracked for analytics only)', () => {
-        // Control variant has pages but no auto-open behavior
-        // This is handled in module.tsx, not experiment-debug.ts
-        // The shouldAutoOpenForPath function would still return a value,
-        // but module.tsx won't call it for control variant
-        expect(true).toBe(true); // Placeholder - actual test in integration
+    it('should return false for non-onboarding paths', () => {
+      expect(isOnboardingFlowPath('/dashboard/browse')).toBe(false);
+      expect(isOnboardingFlowPath('/a/grafana-irm-app/integrations')).toBe(false);
+    });
+  });
+
+  describe('syncExperimentStateFromUserStorage', () => {
+    it('should sync global auto-open state', async () => {
+      const { experimentAutoOpenStorage } = require('../../lib/user-storage');
+      experimentAutoOpenStorage.get.mockResolvedValue({
+        pagesAutoOpened: [],
+        globalAutoOpened: true,
       });
+
+      await syncExperimentStateFromUserStorage(hostname, []);
+
+      const keys = getStorageKeys(hostname);
+      expect(sessionStorage.getItem(keys.autoOpened)).toBe('true');
     });
 
-    describe('excluded variant', () => {
-      it('should use global tracking, not app-level', () => {
-        // Excluded variant has empty pages array and uses global tracking
-        // This is handled in module.tsx with markGlobalAutoOpened
-        expect(true).toBe(true); // Placeholder - actual test in integration
+    it('should sync per-page auto-open state', async () => {
+      const { experimentAutoOpenStorage } = require('../../lib/user-storage');
+      experimentAutoOpenStorage.get.mockResolvedValue({
+        pagesAutoOpened: ['/a/grafana-irm-app'],
+        globalAutoOpened: false,
       });
+
+      await syncExperimentStateFromUserStorage(hostname, EXPERIMENT_PAGES);
+
+      expect(hasParentAutoOpened(hostname, '/a/grafana-irm-app')).toBe(true);
+    });
+  });
+
+  describe('resetExperimentState', () => {
+    it('should clear sessionStorage and user storage', async () => {
+      const { experimentAutoOpenStorage } = require('../../lib/user-storage');
+
+      markGlobalAutoOpened(hostname);
+      markParentAutoOpened(hostname, '/a/grafana-irm-app');
+
+      const keys = getStorageKeys(hostname);
+      expect(sessionStorage.getItem(keys.autoOpened)).toBe('true');
+
+      await resetExperimentState(hostname);
+
+      expect(sessionStorage.getItem(keys.autoOpened)).toBeNull();
+      expect(experimentAutoOpenStorage.reset).toHaveBeenCalled();
     });
   });
 });

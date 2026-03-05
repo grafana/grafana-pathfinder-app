@@ -1,5 +1,5 @@
-import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
+import React, { useState, useEffect, useCallback, useRef, ChangeEvent } from 'react';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Spinner } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
@@ -14,29 +14,27 @@ import {
   DEFAULT_PEERJS_PORT,
   DEFAULT_PEERJS_KEY,
   DEFAULT_ENABLE_CODA_TERMINAL,
+  PLUGIN_BACKEND_URL,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
-import { config } from '@grafana/runtime';
+import { config, getBackendSrv } from '@grafana/runtime';
 
 type JsonData = DocsPluginConfig;
 
 type State = {
-  // The URL to reach the recommender service
   recommenderServiceUrl: string;
-  // Auto-launch tutorial URL (for demo scenarios)
   tutorialUrl: string;
-  // Global link interception
   interceptGlobalDocsLinks: boolean;
-  // Open panel on launch
   openPanelOnLaunch: boolean;
-  // Live sessions (collaborative learning)
   enableLiveSessions: boolean;
   peerjsHost: string;
   peerjsPort: number;
   peerjsKey: string;
-  // Coda terminal (experimental)
   enableCodaTerminal: boolean;
+  codaEnrollmentKey: string;
+  codaApiUrl: string;
+  codaRelayUrl: string;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -59,8 +57,18 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
     enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+    codaEnrollmentKey: '',
+    codaApiUrl: jsonData?.codaApiUrl || '',
+    codaRelayUrl: jsonData?.codaRelayUrl || '',
   }));
   const [isSaving, setIsSaving] = useState(false);
+
+  // Coda registration state
+  const codaRegistered = jsonData?.codaRegistered ?? false;
+  const hasProvisionedKey = plugin.meta.secureJsonFields?.codaEnrollmentKey ?? false;
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const autoRegisterAttempted = useRef(false);
 
   // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
   // Get current user ID for scoping
@@ -83,8 +91,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
-  // Only require service URLs when in dev mode, otherwise these are hidden
-  const isSubmitDisabled = showAdvancedConfig ? Boolean(!state.recommenderServiceUrl) : false;
+  const isRecommenderUrlMissing = showAdvancedConfig && !state.recommenderServiceUrl;
+  const isCodaApiUrlMissing = state.enableCodaTerminal && !state.codaApiUrl;
+  const isRelayUrlMissing = state.enableCodaTerminal && !state.codaRelayUrl;
+  const isSubmitDisabled = isRecommenderUrlMissing || isCodaApiUrlMissing || isRelayUrlMissing;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
@@ -184,6 +194,110 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onChangeCodaEnrollmentKey = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      codaEnrollmentKey: event.target.value,
+    });
+    setRegistrationError(null);
+  };
+
+  const onChangeCodaApiUrl = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      codaApiUrl: event.target.value.trim(),
+    });
+  };
+
+  const onChangeCodaRelayUrl = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      codaRelayUrl: event.target.value.trim(),
+    });
+  };
+
+  const performCodaRegistration = useCallback(
+    async (enrollmentKeyOverride?: string, apiUrlOverride?: string) => {
+      const keyToUse = enrollmentKeyOverride ?? '';
+      const apiUrl = apiUrlOverride ?? state.codaApiUrl;
+
+      if (!keyToUse && !hasProvisionedKey) {
+        setRegistrationError('No enrollment key available');
+        return;
+      }
+
+      if (!apiUrl) {
+        setRegistrationError('Coda API URL is required');
+        return;
+      }
+
+      setIsRegistering(true);
+      setRegistrationError(null);
+
+      try {
+        const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
+        const instanceUrl = window.location.origin;
+
+        const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
+          enrollmentKey: keyToUse,
+          instanceId,
+          instanceUrl,
+          codaApiUrl: apiUrl,
+        });
+
+        const secureJsonDataUpdate: Record<string, string> = {
+          codaRefreshToken: response.refreshToken,
+        };
+        if (keyToUse) {
+          secureJsonDataUpdate.codaEnrollmentKey = keyToUse;
+        }
+
+        await updatePluginSettings(plugin.meta.id, {
+          enabled,
+          pinned,
+          jsonData: {
+            ...jsonData,
+            codaRegistered: true,
+            codaApiUrl: apiUrl,
+          },
+          secureJsonData: secureJsonDataUpdate,
+        });
+
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } catch (error) {
+        console.error('Failed to register with Coda:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to register with Coda. Please check your enrollment key.';
+        setRegistrationError(errorMessage);
+        setIsRegistering(false);
+      }
+    },
+    [hasProvisionedKey, enabled, pinned, jsonData, plugin.meta.id, state.codaApiUrl]
+  );
+
+  useEffect(() => {
+    if (
+      state.enableCodaTerminal &&
+      hasProvisionedKey &&
+      state.codaApiUrl &&
+      !codaRegistered &&
+      !isRegistering &&
+      !autoRegisterAttempted.current
+    ) {
+      autoRegisterAttempted.current = true;
+      queueMicrotask(() => performCodaRegistration('', state.codaApiUrl));
+    }
+  }, [
+    state.enableCodaTerminal,
+    hasProvisionedKey,
+    state.codaApiUrl,
+    codaRegistered,
+    isRegistering,
+    performCodaRegistration,
+  ]);
+
   const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
@@ -210,10 +324,30 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
+    setRegistrationError(null);
 
     try {
+      let secureJsonDataUpdate: Record<string, string> = {};
+      let shouldMarkRegistered = codaRegistered;
+
+      if (state.enableCodaTerminal && state.codaEnrollmentKey && state.codaApiUrl && !codaRegistered) {
+        const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
+        const instanceUrl = window.location.origin;
+
+        const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
+          enrollmentKey: state.codaEnrollmentKey,
+          instanceId,
+          instanceUrl,
+          codaApiUrl: state.codaApiUrl,
+        });
+
+        secureJsonDataUpdate.codaRefreshToken = response.refreshToken;
+        secureJsonDataUpdate.codaEnrollmentKey = state.codaEnrollmentKey;
+        shouldMarkRegistered = true;
+      }
+
       const newJsonData = {
-        ...jsonData, // Preserve existing fields
+        ...jsonData,
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
@@ -223,15 +357,18 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsPort: state.peerjsPort,
         peerjsKey: state.peerjsKey,
         enableCodaTerminal: state.enableCodaTerminal,
+        codaApiUrl: state.codaApiUrl,
+        codaRelayUrl: state.codaRelayUrl,
+        codaRegistered: shouldMarkRegistered,
       };
 
       await updatePluginSettings(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: newJsonData,
+        ...(Object.keys(secureJsonDataUpdate).length > 0 && { secureJsonData: secureJsonDataUpdate }),
       });
 
-      // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
       setTimeout(() => {
         try {
           window.location.reload();
@@ -241,9 +378,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       }, 100);
     } catch (error) {
       console.error('Error saving configuration:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save configuration. Please try again.';
+      if (state.enableCodaTerminal && state.codaEnrollmentKey && !codaRegistered) {
+        setRegistrationError(errorMessage);
+      }
       setIsSaving(false);
-      // Re-throw to let user know something went wrong
-      throw error;
     }
   };
 
@@ -531,25 +670,94 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </div>
 
             {state.enableCodaTerminal && (
-              <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
-                <Text variant="body">
-                  <strong>This feature is experimental and requires backend infrastructure.</strong> The terminal panel
-                  will be visible in the sidebar but connection functionality requires a separate backend service to be
-                  running. This is intended for development and testing purposes only.
-                </Text>
-              </Alert>
+              <>
+                <div className={s.marginTop}>
+                  <Text variant="h6">Coda backend registration</Text>
+
+                  {codaRegistered && (
+                    <Alert severity="success" title="Registered with Coda" className={s.marginTop}>
+                      <Text variant="body">VM provisioning is enabled.</Text>
+                    </Alert>
+                  )}
+
+                  <Field
+                    label="API URL"
+                    description="Coda backend API URL"
+                    required
+                    invalid={!state.codaApiUrl}
+                    error={!state.codaApiUrl ? 'API URL is required' : undefined}
+                    className={s.marginTop}
+                  >
+                    <Input
+                      width={60}
+                      value={state.codaApiUrl}
+                      onChange={onChangeCodaApiUrl}
+                      placeholder="https://coda.example.com"
+                    />
+                  </Field>
+
+                  <Field
+                    label="Relay URL"
+                    description="WebSocket relay URL for SSH connections"
+                    required
+                    invalid={!state.codaRelayUrl}
+                    error={!state.codaRelayUrl ? 'Relay URL is required' : undefined}
+                  >
+                    <Input
+                      width={60}
+                      value={state.codaRelayUrl}
+                      onChange={onChangeCodaRelayUrl}
+                      placeholder="wss://relay.example.com"
+                    />
+                  </Field>
+
+                  {state.codaApiUrl && state.codaRelayUrl && (
+                    <Alert severity="info" title="Relay configured" className={s.marginTop}>
+                      <Text variant="body">
+                        SSH connections will be tunneled through <code>{state.codaRelayUrl}</code>.
+                      </Text>
+                    </Alert>
+                  )}
+
+                  {!codaRegistered && hasProvisionedKey && isRegistering && (
+                    <Alert severity="info" title="Registering" className={s.marginTop}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Spinner inline={true} />
+                        <Text variant="body">Registering with Coda...</Text>
+                      </div>
+                    </Alert>
+                  )}
+
+                  {!codaRegistered && (
+                    <Field
+                      label="Enrollment key"
+                      description="Registration key from administrator"
+                      className={s.marginTop}
+                    >
+                      <Input
+                        type="password"
+                        width={60}
+                        value={state.codaEnrollmentKey}
+                        onChange={onChangeCodaEnrollmentKey}
+                        placeholder="Enter enrollment key"
+                        disabled={isSaving}
+                      />
+                    </Field>
+                  )}
+
+                  {registrationError && (
+                    <Alert severity="error" title="Registration failed" className={s.marginTop}>
+                      <Text variant="body">{registrationError}</Text>
+                    </Alert>
+                  )}
+                </div>
+              </>
             )}
 
             {!state.enableCodaTerminal && (
               <Alert severity="info" title="Feature overview" className={s.marginTop}>
                 <Text variant="body">
-                  The Coda terminal provides an interactive sandbox environment directly within the Interactive learning
-                  sidebar. When enabled, a collapsible terminal panel appears at the bottom of the sidebar, allowing you
-                  to run commands while following along with tutorials.
-                  <br />
-                  <br />
-                  <strong>Note:</strong> This feature requires backend infrastructure to function. Enable only if you
-                  have the necessary backend services configured.
+                  Interactive sandbox environment in the sidebar. Requires Coda backend infrastructure.
                 </Text>
               </Alert>
             )}

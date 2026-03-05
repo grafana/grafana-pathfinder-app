@@ -1,0 +1,22 @@
+{
+  "id": "prometheus-advanced-queries",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
+  "category": "querying",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/explore",
+  "recommends": ["prometheus-grafana-101", "loki-grafana-101"],
+  "targeting": {
+    "match": {
+      "urlPrefix": "/explore"
+    }
+  },
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

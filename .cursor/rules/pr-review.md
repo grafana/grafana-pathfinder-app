@@ -84,3 +84,23 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 | **Approve**            | Meets all standards, no blocking issues |
 | **Approve with minor** | Small suggestions, nothing blocking     |
 | **Request changes**    | Blocking issues must be addressed       |
+
+## Go Backend Reviews
+
+For PRs touching `pkg/**/*.go`, also check:
+
+| What to look for                                      | ID  | Sev      |
+| ----------------------------------------------------- | --- | -------- |
+| Missing error handling (unchecked errors)             | G1  | High     |
+| Resource leak (unclosed connections, files, channels) | G2  | Critical |
+| Goroutine leak (no context cancellation)              | G3  | High     |
+| Data race potential (shared state without sync)       | G4  | Critical |
+| Unsafe input handling (unsanitized user input)        | G5  | High     |
+| Missing context propagation in handlers               | G6  | Medium   |
+| Hardcoded secrets or credentials                      | G7  | Critical |
+
+**Verification commands:**
+
+- `npm run lint:go` - Go linter passes
+- `npm run test:go` - Go tests pass
+- `go build ./...` - Compiles successfully

@@ -12,8 +12,8 @@
  * @coupling Zod schema: JsonGuideSchema in json-guide.schema.ts
  */
 export interface JsonGuide {
-  /** Schema version for forward compatibility (e.g., "1.0.0") */
-  schemaVersion?: '1.0.0' | string;
+  /** Schema version for forward compatibility (e.g., "1.0.0", "1.1.0") */
+  schemaVersion?: '1.0.0' | '1.1.0' | string;
   /** Unique identifier for the guide */
   id: string;
   /** Display title for the guide */
@@ -40,7 +40,8 @@ export type JsonBlock =
   | JsonVideoBlock
   | JsonQuizBlock
   | JsonAssistantBlock
-  | JsonInputBlock;
+  | JsonInputBlock
+  | JsonTerminalBlock;
 
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
 
@@ -405,6 +406,31 @@ export interface JsonInputBlock {
   datasourceFilter?: string;
 }
 
+// ============ TERMINAL BLOCK ============
+
+/**
+ * Terminal command block.
+ * Renders a shell command with "Copy" and "Exec" buttons.
+ * Copy copies to clipboard; Exec sends the command to the connected Coda terminal.
+ * Participates in sections and step counting like other interactive blocks.
+ * @coupling Zod schema: JsonTerminalBlockSchema in json-guide.schema.ts
+ */
+export interface JsonTerminalBlock {
+  type: 'terminal';
+  /** The shell command to display and execute */
+  command: string;
+  /** Markdown description shown to the user */
+  content: string;
+  /** Requirements that must be met for this step */
+  requirements?: string[];
+  /** Objectives tracked for this step */
+  objectives?: string[];
+  /** Whether this step can be skipped if requirements fail */
+  skippable?: boolean;
+  /** Hint shown when step cannot be completed */
+  hint?: string;
+}
+
 // ============ TYPE GUARDS ============
 
 /**
@@ -489,6 +515,13 @@ export function isAssistantBlock(block: JsonBlock): block is JsonAssistantBlock 
  */
 export function isInputBlock(block: JsonBlock): block is JsonInputBlock {
   return block.type === 'input';
+}
+
+/**
+ * Type guard for JsonTerminalBlock
+ */
+export function isTerminalBlock(block: JsonBlock): block is JsonTerminalBlock {
+  return block.type === 'terminal';
 }
 
 /**

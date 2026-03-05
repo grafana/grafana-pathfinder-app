@@ -14,7 +14,7 @@ const TIER_2_ENGINES = [
   'interactive-engine',
   'requirements-manager',
   'learning-paths',
-  'validation',
+  'package-engine',
 ];
 const TIER_1_PLUS = [
   'lib',
@@ -22,6 +22,7 @@ const TIER_1_PLUS = [
   'styles',
   'global-state',
   'utils',
+  'validation',
   ...TIER_2_ENGINES,
   'integrations',
   'components',
@@ -185,9 +186,9 @@ export default defineConfig([
     ]
   ),
 
-  // Tier 1 (lib/, security/, styles/, global-state/, utils/) — no imports from Tier 2+
+  // Tier 1 (lib/, security/, styles/, global-state/, utils/, validation/) — no imports from Tier 2+
   tierBoundaryConfig(
-    ['lib', 'security', 'styles', 'global-state', 'utils'],
+    ['lib', 'security', 'styles', 'global-state', 'utils', 'validation'],
     [
       {
         regex: bannedDirRegex(TIER_2_PLUS),

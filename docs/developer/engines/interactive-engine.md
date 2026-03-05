@@ -187,14 +187,14 @@ Located in `src/interactive-engine/auto-completion/`, this optional subsystem au
 ### Components
 
 - **`action-monitor.ts`** - Singleton that registers global DOM event listeners (click, input, change, mouseenter, keydown)
-- **`action-detector.ts`** - Analyzes DOM elements and events to determine action type (highlight, button, formfill, navigate, hover)
+- **`action-detector.ts`** (in `src/lib/dom/`) - Analyzes DOM elements and events to determine action type (highlight, button, formfill, navigate, hover). Shared with devtools and selector generator.
 - **`action-matcher.ts`** - Matches detected user actions against step configurations using CSS selectors, button text, or regex patterns
 - **`useAutoDetection.ts`** - React hook that subscribes to `user-action-detected` events and auto-completes matching steps
 - **`useFormValidation.ts`** - Debounced form validation hook with regex pattern matching support
 
 ### Action Detection Logic
 
-The `action-detector` determines action type based on element characteristics and available selectors:
+The action detector (`src/lib/dom/action-detector.ts`) determines action type based on element characteristics and available selectors:
 
 - **formfill**: Input fields, textareas, selects (except radio/checkbox)
 - **button**: Buttons identified by text content (text matching heuristic when no unique selector is available)
@@ -369,7 +369,7 @@ See: [`docs/developer/E2E_TESTING_CONTRACT.md`](../E2E_TESTING_CONTRACT.md) for 
 ### Internal Dependencies
 
 - **Requirements Manager** (`src/requirements-manager/`) - Pre/post-condition validation
-- **DOM Utilities** (`src/lib/dom/`) - Enhanced selector engine, element visibility checking, button finding
+- **DOM Utilities** (`src/lib/dom/`) - Enhanced selector engine, element visibility checking, button finding, action type detection
 - **Security** (`src/security/`) - HTML sanitization for comment content and URL validation for navigate handler
 - **Interactive Styles** (`src/styles/interactive.styles.ts`) - Global CSS for highlights and overlays
 - **Interactive Config** (`src/constants/interactive-config.ts`) - Timing delays, retry counts, modal detection settings

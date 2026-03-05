@@ -20,6 +20,7 @@ import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
 import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
 import { useGuideOperations } from './hooks/useGuideOperations';
 import { useBackendGuides } from './hooks/useBackendGuides';
+import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
@@ -81,6 +82,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Block selection mode state (for merging blocks)
   const selection = useBlockSelection();
+
+  // Backend availability — read once from boot-time feature toggles
+  const backendAvailable = isBackendApiAvailable();
 
   // Backend guides management
   const backendGuides = useBackendGuides();
@@ -582,6 +586,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onPostToBackend={handlePostToBackend}
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
+        isBackendAvailable={backendAvailable}
       />
 
       {/* Content */}

@@ -8,7 +8,25 @@ This is the phased implementation plan for the [Pathfinder package design](./PAT
 
 This plan is executed phase-by-phase. Each phase is assigned to an agent, and early-phase execution will tend to surface decisions that affect later phases. The plan is a living document: agents completing a phase should update it with findings, key decisions made, and any refinements to later phases that follow from those decisions.
 
-**Agent execution protocol:** Before implementing an assigned phase, always stop and review all completed phases, including any decisions recorded in them. If a prior-phase decision renders a later-phase specification ambiguous or contradictory, ask questions to drive out ambiguity before proceeding with implementation. Do not assume that the original specification for your phase is still correct — validate it against the current state of the codebase and all decisions made in prior phases. When you are finished executing a phase **update this document** with your key decisions, and remove implementation detail, to leave behind a document maximally useful to the next agent.
+**Agent execution protocol:** Before implementing an assigned phase:
+
+1. stop and review all completed phases, including any decisions recorded in them.
+2. If a prior-phase decision renders a later-phase specification ambiguous or contradictory, ask questions to drive out ambiguity before proceeding with implementation.
+3. Do not assume that the original specification for your phase is still correct — validate it against the current state of the codebase and all decisions made in prior phases.
+4. All phases are executed on isolated branches; and a phase cannot be complete until you've
+   run the tidyup skill, committed, pushed branch to remote, and opened a PR with that PR linked back to this epic: https://github.com/grafana/grafana-pathfinder-app/issues/622
+5. When you are finished executing a phase **update this document** with your key decisions, and remove implementation detail, to leave behind a document maximally useful to the next agent.
+
+### Cross-repo implementation plans
+
+This plan spans three repositories. Each has its own detailed implementation documents that are subordinate to this plan but authoritative for repo-internal decisions. Agents working on a phase should read the relevant external documents before starting.
+
+| External repo                                                               | Document                                                                                   | Covers                                                                                                                             | Aligns with phase                                                        |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [`grafana-recommender`](https://github.com/grafana/grafana-recommender)     | `docs/design/RESOLUTION.md`                                                                | Resolution endpoint implementation (5 internal phases): types, repository loading, HTTP handler, tests, docs/deploy                | 4a                                                                       |
+| [`grafana-recommender`](https://github.com/grafana/grafana-recommender)     | `docs/design/V1-RECOMMEND.md`                                                              | Package-aware `POST /api/v1/recommend`: virtual rule construction from targeting, mixed URL+package results, navigation enrichment | 4a, 5                                                                    |
+| [`grafana-recommender`](https://github.com/grafana/grafana-recommender)     | `docs/design/API-VERSIONING.md`                                                            | `/api/v1/` routing convention, legacy `/recommend` coexistence, deprecation strategy (RFC 8594)                                    | 4a, 4d                                                                   |
+| [`interactive-tutorials`](https://github.com/grafana/interactive-tutorials) | `docs/MIGRATION.md` + [PR #142](https://github.com/grafana/interactive-tutorials/pull/142) | Pilot migration (5 internal phases): documentation, migration skill, pilot content, CI integration, deploy pipeline                | 4b. THIS PR CONTAINS A LOT OF CONTENT, focus mostly on docs/MIGRATION.md |
 
 ---
 
@@ -27,11 +45,12 @@ The codebase enforces a layered tier model via ratchet tests (`src/validation/ar
 
 **Key decisions for this plan:**
 
-- **Schemas at Tier 0.** All Zod schemas (`ContentJsonSchema`, `ManifestJsonSchema`, `DependencyClauseSchema`, `RepositoryJsonSchema`, etc.) and shared type definitions (`GraphNode`, `GraphEdge`, `PackageResolution`) live in `src/types/` so they are importable by CLI, runtime engines, validation, and UI code.
+- **Schemas at Tier 0.** All Zod schemas (`ContentJsonSchema`, `ManifestJsonSchema`, `DependencyClauseSchema`, `RepositoryJsonSchema`, etc.) and shared type definitions (`GraphNode`, `GraphEdge`, `DependencyGraph`) live in `src/types/` so they are importable by CLI, runtime engines, validation, and UI code. Resolution types (`PackageResolution`, `PackageResolver`) are defined in the Phase 3 spec but deferred to that phase's implementation.
 - **Validation at Tier 1.** Content validation functions (`validateGuide()` and future `validatePackage()`, `validateManifest()`) live in `src/validation/` at Tier 1. This eliminates the existing lateral violations from `docs-retrieval → validation` and prevents new ones from `package-engine → validation`. The `validation/` directory was moved from Tier 2 to Tier 1 because its production code depends only on Tier 0 (Zod schemas and types). Architecture ratchet tests remain in `validation/` — they are test files, excluded from tier enforcement.
 - **Package engine at Tier 2.** The `PackageResolver`, package loader, dependency resolver, and static catalog fetcher live together in `src/package-engine/` as a new Tier 2 engine with its own barrel export (`index.ts`). Lateral isolation means it cannot import from `docs-retrieval`, `learning-paths`, `context-engine`, or other Tier 2 engines.
 - **Graph types at Tier 0, graph builder in CLI.** `GraphNode` and `GraphEdge` type definitions live in `src/types/` for broad importability. The graph construction logic (`build-graph` command) lives in `src/cli/` (excluded from tier enforcement).
 - **Completion state is a consumer concern.** The package engine provides structural dependency resolution ("which packages provide capability X?") but does not check completion state. Determining whether dependencies are satisfied requires completion data from `learning-paths` — callers at Tier 3+ combine both. This avoids a lateral coupling between `package-engine` and `learning-paths`.
+- **Open-world directory semantics.** Repository package discovery uses the `manifest.json`-presence heuristic: any subdirectory at any depth is a package candidate if and only if it contains `manifest.json`. Discovery skips `assets/` subtrees and ignores unknown files/directories elsewhere — not warned, not errored. This is the directory-level analog of `.passthrough()` in the JSON schemas. See [extension metadata](./PATHFINDER-PACKAGE-DESIGN.md#extension-metadata).
 
 ### Dual registration
 
@@ -60,272 +79,423 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 ### Phase-to-layer mapping
 
-| Phase                                       | Testing layers    |
-| ------------------------------------------- | ----------------- |
-| 0: Schema foundation                        | Layer 1           |
-| 1: CLI package validation                   | Layer 1           |
-| 2: Bundled repository migration             | Layer 1 + Layer 2 |
-| 3: Plugin runtime resolution                | Layer 2           |
-| 4: Pilot migration of interactive-tutorials | Layer 2 + Layer 3 |
-| 5: Path and journey integration             | Layer 1 + Layer 2 |
-| 6: Layer 4 test environment routing         | Layer 4           |
-| 7: Repository registry service              | —                 |
-| 8: SCORM foundation                         | —                 |
-| 9+: SCORM import pipeline                   | —                 |
+| Phase                                        | Testing layers     |
+| -------------------------------------------- | ------------------ |
+| 0: Schema foundation                         | Layer 1            |
+| 1: CLI package validation                    | Layer 1            |
+| 2: Bundled repository migration              | Layer 1 + Layer 2  |
+| 3: Plugin runtime resolution                 | Layer 2            |
+| 3b: Package authoring documentation          | —                  |
+| 4a: Backend resolution + v1 recommend routes | Go tests + Layer 2 |
+| 4b: Pilot migration (interactive-tutorials)  | Layer 1            |
+| 4c: E2E manifest pre-flight                  | Layer 3            |
+| 4d: Frontend remote resolver + v1 migration  | Layer 2            |
+| 4e: Integration verification                 | Layer 2 + Layer 3  |
+| 4f: Path migration tooling                   | Layer 1            |
+| 4g: Docs-retrieval integration               | Layer 2            |
+| 5: Path and journey integration              | Layer 1 + Layer 2  |
+| 6: Layer 4 test environment routing          | Layer 4            |
+| 7: Dynamic repository registry               | —                  |
+| 8: SCORM foundation                          | —                  |
+| 9+: SCORM import pipeline                    | —                  |
+| 10: Implementation cleanup                   | —                  |
 
 ---
 
 ## Phases
 
-### Phase 0: Schema foundation and Layer 1 extension
+### Phase 0: Schema foundation and Layer 1 extension ✅
 
-**Goal:** Define the two-file schema model (`ContentJsonSchema` + `ManifestJsonSchema`) and the repository index (`repository.json`) that resolves package ids to filesystem paths. Zero runtime changes. Full backwards compatibility.
+**Status:** Complete
 
-**Testing layers:** Layer 1
+**Key decisions and artifacts:**
 
-**Deliverables:**
+- `validation` moved to Tier 1 in both `TIER_MAP` and `eslint.config.mjs`; lateral ratchet dropped from 11 → 9
+- Types in `src/types/package.types.ts`: `ContentJson`, `ManifestJson`, `RepositoryJson`, `RepositoryEntry`, `GraphNode`, `GraphEdge`, `DependencyGraph`, and all dependency/author/targeting types. Resolution types (`PackageResolution`, `PackageResolver`) removed — deferred to Phase 3 implementation.
+- Zod schemas in `src/types/package.schema.ts`: `ContentJsonSchema`, `ManifestJsonSchema`, `ManifestJsonObjectSchema`, `RepositoryJsonSchema`, `RepositoryEntrySchema`, `DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`, `TestEnvironmentSchema`, `PackageTypeSchema`, `GraphNodeSchema`, `GraphEdgeSchema`, `DependencyGraphSchema`
+- `ManifestJsonSchema` uses `.refine()` for the conditional `steps` requirement; `ManifestJsonObjectSchema` is the base shape before refinement for composition use
+- `CURRENT_SCHEMA_VERSION` bumped to `"1.1.0"`; `KNOWN_FIELDS._manifest` added with 18 field names
+- `JsonGuideSchemaStrict` retained unchanged for backwards compatibility
+- `build-repository` CLI command implemented in `src/cli/commands/build-repository.ts`
+- 66 Layer 1 tests in `src/validation/package-schema.test.ts` and `src/validation/build-repository.test.ts`
+- Schema-coupling docs updated (`.cursor/rules/schema-coupling.mdc`) with two-file model coverage
+- CI verification for bundled `repository.json` deferred to Phase 2 (when bundled content is migrated to package directories)
+- `testEnvironment` default is `{ tier: 'cloud' }` (indicating Grafana Cloud required)
+- `GuideTargetingSchema.match` is `z.record(z.string(), z.unknown()).optional()` — loosely typed since the recommender owns match semantics
 
-- [ ] **Prerequisite tier changes:**
-  - [ ] Move `validation` from Tier 2 to Tier 1 in `TIER_MAP` (`src/validation/import-graph.ts`) and `TIER_2_ENGINES` / tier constants (`eslint.config.mjs`)
-  - [ ] Remove the 2 `eslint-disable-next-line` comments in `docs-retrieval/content-fetcher.ts` and `docs-retrieval/json-parser.ts` (lateral violations disappear when `validation` becomes Tier 1)
-  - [ ] Remove the corresponding 2 entries from `ALLOWED_LATERAL_VIOLATIONS` in `architecture.test.ts` (`docs-retrieval/json-parser.ts -> validation`, `docs-retrieval/content-fetcher.ts -> validation`)
-  - [ ] Verify `npm run test:ci` and `npm run lint` pass after tier change
-- [ ] **Schema definitions** (all in `src/types/`, Tier 0 — importable by CLI, runtime engines, validation, and UI):
-  - [ ] Define `ContentJsonSchema` for `content.json` (`schemaVersion`, `id`, `title`, `blocks`)
-  - [ ] Define `ManifestJsonSchema` for `manifest.json` (flat metadata fields, flat dependency fields, `targeting`)
-  - [ ] Define `RepositoryJsonSchema` for `repository.json` (bare package id → `{ path, ...metadata }` mapping)
-- [ ] **Package identity model:**
-  - [ ] Package IDs are bare strings, globally unique (e.g., `"welcome-to-grafana"`)
-  - [ ] No repository prefix in IDs (not `"repo/id"`, just `"id"`)
-  - [ ] `repository` field in manifest is provenance metadata, not part of identity or resolution
-  - [ ] Dependencies reference bare IDs: `depends: ["foo"]` not `depends: ["repo/foo"]`
-  - [ ] Allows packages to move between repositories without ID changes
-  - [ ] Resolution handled by PackageResolver (Phase 3), not by parsing ID syntax
-- [ ] **Manifest field requirements and defaults:**
-  - [ ] **Hard requirements (ERROR if missing):** `id`, `type` (valid values: `"guide"`, `"path"`, `"journey"` — no default)
-  - [ ] **Defaults with INFO validation message:**
-    - `repository` → `"interactive-tutorials"`
-    - `language` → `"en"`
-    - `schemaVersion` → `CURRENT_SCHEMA_VERSION` (currently `"1.1.0"`)
-    - `depends` → `[]`
-    - `recommends` → `[]`
-    - `suggests` → `[]`
-    - `provides` → `[]`
-    - `conflicts` → `[]`
-    - `replaces` → `[]`
-  - [ ] **Defaults with WARN validation message:**
-    - `description` → `undefined`
-    - `category` → `undefined`
-    - `targeting` → `undefined`
-    - `startingLocation` → `"/"` (URL path where guide expects to execute before step 1)
-  - [ ] **Defaults with INFO validation message:**
-    - `author` → `undefined`
-    - `testEnvironment` → default structure indicating Grafana Cloud is required
-  - [ ] **Conditional ERROR:** `steps` is required when `type: "path"` or `type: "journey"`
-  - [ ] Schema uses Zod `.default()` chaining to apply defaults during parsing
-  - [ ] CLI validation emits ERROR/WARN/INFO messages based on missing field severity
-- [ ] Include `testEnvironment` field in `ManifestJsonSchema` from day one with default structure
-- [ ] Define shared sub-schemas (`DependencyClauseSchema`, `DependencyListSchema`, `AuthorSchema`, `GuideTargetingSchema`)
-- [ ] Retain merged `JsonGuideSchemaStrict` for backwards compatibility with single-file guides
-- [ ] Add `KNOWN_FIELDS._manifest` for `manifest.json` fields
-- [ ] Bump `CURRENT_SCHEMA_VERSION` to `"1.1.0"`
-- [ ] Define `repository.json` specification (bare package id → `{ path, ...metadata }` mapping, compiled build artifact)
-- [ ] Denormalize manifest metadata into `repository.json` entries: each entry uses bare package ID as key and includes `{ path, title, description, category, type, startingLocation, steps, depends, recommends, suggests, provides, conflicts, replaces }` — enables dependency graph building without re-reading every `manifest.json`
-- [ ] Example structure: `{ "welcome-to-grafana": { "path": "welcome-to-grafana/", "title": "...", "type": "guide", ... } }`
-- [ ] **Forward compatibility:** repository.json format serves both static catalog aggregation (Phase 4) and future repository registry ingestion (Phase 7). Design for dual use: build-time aggregation and runtime discovery.
-- [ ] Implement `pathfinder-cli build-repository` command (scans package tree, reads both `content.json` and `manifest.json` for each package, emits denormalized `repository.json` with bare IDs)
-- [ ] CI verification for plugin repo: rebuild bundled `repository.json` from scratch, diff against committed version, fail on divergence (committed lockfile approach — appropriate for low-velocity bundled content)
-- [ ] Note: `interactive-tutorials` uses CI-generated `repository.json` published to CDN rather than committed lockfile — see Phase 4 for that repository's publication strategy
-- [ ] Add Layer 1 unit tests for content schema, package schema, cross-file ID consistency, and repository index generation — test suites live in `src/validation/` (test files are excluded from tier enforcement), schema definitions live in `src/types/` (Tier 0)
-- [ ] Run `validate:strict` to confirm all existing guides still pass
-- [ ] Update schema-coupling documentation to cover the new two-file model
+### Phase 1: CLI package validation (Layer 1 completion) ✅
 
-**Why first:** Everything downstream depends on the schema accepting these fields, the two-file model being defined, and the identity model being established. Without `repository.json`, package IDs cannot be resolved to filesystem paths — especially for path and journey step packages.
+**Status:** Complete
 
-### Phase 1: CLI package validation (Layer 1 completion)
+**Key decisions and artifacts:**
 
-**Goal:** The CLI can validate a directory as a package (both `content.json` and `manifest.json`) and validate cross-package dependencies. Completes Layer 1 coverage for the package model.
+- `validatePackage()` and `validatePackageTree()` in `src/validation/validate-package.ts` (Tier 1, exported from barrel)
+- `--package <dir>` flag on validate command: validates a single package directory
+- `--packages <dir>` flag on validate command: validates a tree of package directories
+- Cross-file ID consistency enforced: content.json `id` must match manifest.json `id` (error code: `id_mismatch`)
+- Asset reference validation: regex scans content.json for `./assets/*` references, warns if file missing
+- Severity-based validation messages: ERROR for required fields, WARN for recommended fields, INFO for defaulted fields
+- `testEnvironment` validation: warns on unrecognized tier values and invalid semver in minVersion
+- `build-graph` CLI command in `src/cli/commands/build-graph.ts`: reads `name:path` repository entries, outputs D3 JSON
+- Graph lint checks implemented: broken refs, broken steps, cycles (DFS-based), orphans, missing description/category
+- Cycle detection uses DFS with separate checks for depends (error), recommends (warn), steps (error)
+- CNF dependency clauses flattened: all mentioned package IDs get edges regardless of AND/OR semantics (noted as limitation)
+- Virtual capability nodes created for provides targets that don't match real packages (`virtual: true` flag)
+- `ValidationWarning.type` extended with `'missing-asset'` variant
+- 38 Layer 1 tests in `src/validation/validate-package.test.ts` and `src/validation/build-graph.test.ts`
+- All 90 test suites pass (1872 tests, 0 failures)
 
-**Testing layers:** Layer 1
+### Phase 2: Bundled repository migration ✅
 
-**Deliverables:**
+**Status:** Complete
 
-- [ ] `--package` flag: validate a directory (expects `content.json`, optionally `manifest.json`)
-- [ ] Cross-file consistency: `id` match between `content.json` and `manifest.json`
-- [ ] `--packages` flag: validate a tree of package directories
-- [ ] Asset reference validation: warn if `content.json` references assets not in `assets/`
-- [ ] **Dependency graph builder:**
-  - [ ] **Type definitions** (in `src/types/`, Tier 0): `GraphNode` and `GraphEdge` types live alongside other package types so they are importable by CLI, visualization components, the recommender, and any future runtime consumers
-  - [ ] **Graph builder logic** (in `src/cli/`, excluded from tier enforcement): the `build-graph` command constructs the graph; it can import freely from Tier 0 types and Tier 1 validation
-  - [ ] `build-graph` command: iterate over a repository list (e.g., `["bundled-interactives", "interactive-tutorials"]`), read each `repository.json` denormalized index, construct in-memory graph from metadata
-  - [ ] Graph representation: nodes (full manifest metadata from denormalized `repository.json`) + edges (typed relationships)
-  - [ ] Edge types: `depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `steps`
-  - [ ] Output format: D3 JSON with structure `{ nodes: GraphNode[], edges: GraphEdge[], metadata: {...} }`
-  - [ ] `GraphNode` schema: `{ id, repository, title?, description?, category?, type, startingLocation, ...fullManifest }` (includes all manifest fields with defaults applied)
-    - `id`: bare package ID (globally unique, e.g., `"welcome-to-grafana"`)
-    - `repository`: provenance metadata (where package originated, e.g., `"interactive-tutorials"`)
-  - [ ] `GraphEdge` schema: `{ source, target, type }` where `source` and `target` are bare package IDs
-  - [ ] Handles packages with defaulted fields: missing dependency arrays treated as empty (no edges created), undefined metadata fields included in node as `undefined`
-  - [ ] CNF dependency clauses: simplified implementation creates edges to all mentioned packages regardless of AND/OR semantics (note as limitation for future work — OR clauses are imprecise in this representation)
-  - [ ] Virtual capability handling in graph output:
-    - Graph command output (D3 JSON): virtual capabilities appear as virtual nodes (distinguished by a `virtual: true` flag on the node) with `provides` edges from real packages. This preserves the abstraction in visualization.
-    - Runtime structural resolution (Phase 3): virtual nodes are resolved to their providing packages directly (no virtual node in the resolution path). The package engine answers "which packages provide this?" — satisfaction checking ("is any provider completed?") is a consumer concern at Tier 3+.
-  - [ ] **Virtual capability resolution:**
-    - [ ] Build a provides map: scan all packages' `provides` arrays to create a mapping from virtual capability name → set of providing package IDs
-    - [ ] Dependency targets are satisfied if they match a real package ID **or** if any package in the catalog declares `provides: ["that-target"]`
-    - [ ] Virtual capability names declared in `provides` do NOT need to exist as real packages — this follows the Debian virtual package model (e.g., `"datasource-configured"` is a virtual capability provided by multiple real packages)
-  - [ ] Graph lint checks against global catalog (all WARN severity during migration phase, no ERROR):
-    - Dependency target doesn't exist as a real package ID AND is not provided by any package in the catalog (broken reference)
-    - `steps` entries that don't resolve to existing packages in the catalog (broken step reference)
-    - Cycle detection in `depends` chains (error-level semantic issue)
-    - Cycle detection in `recommends` chains (warning-level semantic issue)
-    - Cycle detection in `steps` chains (error-level — a step cannot transitively contain its parent)
-    - Orphaned packages (no incoming or outgoing edges)
-    - Packages with undefined `description` or `category` (quality issue)
-  - [ ] `graph` command: wrapper that invokes `build-graph` and outputs D3 JSON to stdout or file
-- [ ] `testEnvironment` field validation (present in schema since Phase 0)
-- [ ] Integration tests with sample package trees (valid and invalid, with and without `manifest.json`)
+**Key decisions and artifacts:**
 
-**Why second:** Enables CI validation of packages in `interactive-tutorials` before guides are converted. Tooling is ready before content migrates.
+- 10 guides migrated to package directories (`<guide-name>/content.json` + `manifest.json`)
+- `repository.json` generated with 10 packages, committed as lockfile (CI verifies freshness via rebuild + diff)
+- Dependency graph validated: 0 errors, 3 warnings (orphaned test/demo/reference packages — expected)
+- `static-links/` retained as-is — these are recommendation rules consumed by the context engine, not content packages. They use a different schema (`rules` array with `match` expressions) and don't conform to `content.json`/`manifest.json`. Migration deferred: when the recommender adopts package `targeting.match` metadata, static-links become redundant and can be removed.
+- `index.json` retained for backwards compatibility — `filename` fields updated to point to directory paths (e.g., `welcome-to-grafana/content.json`). The content-fetcher and context engine continue to use it unchanged.
+- `repository` field set to `"bundled"` to distinguish from the external `interactive-tutorials` repo (which uses the schema default `"interactive-tutorials"`)
+- `testEnvironment.tier` set per guide: `"local"` for OSS guides, `"cloud"` for cloud-only guides
+- Dependency relationships expressed: `loki-grafana-101` depends on `prometheus-grafana-101`; dashboard and query guides recommend their respective welcome tours; `provides` capabilities declared for downstream resolution
+- `targeting.match` uses the recommender's match expression grammar (`urlPrefix`, `targetPlatform`, `and`/`or` combinators)
+- Pre-commit hook **not implemented** — the project has no pre-commit infrastructure (no `.husky/`, no `.lintstagedrc`). CI freshness check (`repository:check` script) is the enforcement mechanism instead.
+- CI: new `validate-packages` job in `.github/workflows/ci.yml` builds CLI, validates packages, and checks `repository.json` freshness. Added to CI gate.
+- npm scripts added: `validate:packages`, `repository:build`, `repository:check`
+- Layer 1 + Layer 2 tests: 43 tests in `bundled-guides.test.ts` (guide content validation) and `bundled-repository.test.ts` (repository schema, freshness, ID consistency, dependency integrity, cycle detection)
+- `RepositoryEntry` extended to denormalize `author`, `targeting`, and `testEnvironment` from manifests — closes the gap between the design spec's "denormalized manifest metadata" intent and the Phase 2 implementation. `author` added to `PackageMetadataFields` (shared with `GraphNode`); `targeting` and `testEnvironment` added to `RepositoryEntry` only (operational concerns, not graph visualization). `build-repository` and `build-graph` updated to propagate the new fields. Design spec field lists in `identity-and-resolution.md` and Phase 4 catalog format updated to match.
+- `testEnvironment.minVersion` set to `"12.2.0"` across all 10 bundled guides
+- `author` set to `{ name: "Interactive Learning", team: "Grafana Developer Advocacy" }` across all 10 bundled guides
+- `recommends` connections aligned with `paths.json`: `first-dashboard` now recommends `prometheus-grafana-101` (getting-started path); `prometheus-advanced-queries` now recommends `loki-grafana-101` (observability-basics path)
+- CI fix: removed invalid `persist-credentials` parameter from `actions/setup-node` steps in `ci.yml` (valid only on `actions/checkout`)
 
-### Phase 2: Bundled repository migration
+### Phase 3: Plugin runtime resolution ✅
 
-**Goal:** Migrate bundled content (`src/bundled-interactives/`) into the package directory structure, write manifests for each guide, and generate `repository.json` and dependency graph via CLI. Prove the end-to-end pipeline on a small, controlled corpus before migrating external content.
+**Status:** Complete
 
-**Testing layers:** Layer 1 + Layer 2
+**Key decisions and artifacts:**
 
-**Deliverables:**
-
-- [ ] Restructure `src/bundled-interactives/` into package directories:
-  - [ ] Each guide becomes a directory (e.g., `welcome-to-grafana/content.json` instead of `welcome-to-grafana.json`)
-  - [ ] Static link files in `static-links/` migrated to package directories
-  - [ ] Existing `index.json` retained during transition for backwards compatibility
-- [ ] Write `manifest.json` for each bundled guide:
-  - [ ] Seed metadata from current `index.json` entries (`summary` → `description`, `url` → `startingLocation`, `targetPlatform` → `targeting.match`)
-  - [ ] Add dependency fields to express relationships between bundled guides
-  - [ ] Add `targeting` with recommender match expressions
-  - [ ] Set `repository` provenance metadata for the bundled repository
-- [ ] Generate `repository.json` for the bundled repository using `pathfinder-cli build-repository` from Phase 1
-- [ ] Generate dependency graph using `pathfinder-cli build-graph` from Phase 1 (for lint validation — not for plugin runtime consumption)
-- [ ] Validate all bundled packages pass `validate --packages` in CI
-- [ ] Add pre-commit hook for bundled repository that regenerates `repository.json` on commit
-- [ ] CI verification: rebuild `repository.json`, diff against committed version, fail on divergence
-
-**Why third:** Proves the full end-to-end pipeline (schema → CLI → repository index → graph) on a small, controlled corpus that lives inside the plugin repository. By the time external content migrates (Phase 4), the migration pattern is already validated and the tooling is battle-tested.
-
-### Phase 3: Plugin runtime resolution
-
-**Goal:** The plugin can consume packages at runtime using the bundled `repository.json`. Single local resolution tier — no remote content, no static catalog. Architecture designed for forward compatibility with additional resolution tiers in later phases.
-
-**Testing layers:** Layer 2
-
-**Deliverables:**
-
-- [ ] **Package engine setup** (`src/package-engine/`, Tier 2):
-  - [ ] Create `src/package-engine/` directory with `index.ts` barrel export
-  - [ ] Register in `TIER_MAP` (`src/validation/import-graph.ts`) as tier 2 and in `TIER_2_ENGINES` / tier constants (`eslint.config.mjs`)
-  - [ ] Verify `npm run test:ci` passes with new engine registered (tier map completeness test)
-- [ ] **PackageResolver implementation** (in `src/package-engine/`):
-  - [ ] Reads bundled `repository.json` to build in-memory package lookup
-  - [ ] Resolves bare ID → content URL + manifest URL from bundled repository paths
-  - [ ] `resolve()` returns a discriminated union — either package information or a rich error. Resolution can fail due to nonexistent ID, network failure, or other errors. Callers must discriminate before accessing data (works with `noUncheckedIndexedAccess`).
-  - [ ] Resolution interface (type definitions in `src/types/`, Tier 0):
-    ```typescript
-    interface PackageResolutionSuccess {
-      ok: true;
-      id: string;
-      contentUrl: string;
-      manifestUrl: string;
-      repository: string;
-      /** Populated when resolve options request content loading */
-      manifest?: ManifestJson;
-      /** Populated when resolve options request content loading */
-      content?: ContentJson;
-    }
-    interface ResolutionError {
-      code: 'not-found' | 'network-error' | 'parse-error' | 'validation-error';
-      message: string;
-    }
-    interface PackageResolutionFailure {
-      ok: false;
-      id: string;
-      error: ResolutionError;
-    }
-    type PackageResolution = PackageResolutionSuccess | PackageResolutionFailure;
-    interface ResolveOptions {
-      /** When true, fetch and populate manifest and content on the resolution result */
-      loadContent?: boolean;
-    }
-    interface PackageResolver {
-      resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution>;
-    }
-    ```
-  - [ ] Repositories are internal to the resolver — URLs pointing to indexes, not first-class objects
-- [ ] **Package loader** (in `src/package-engine/`):
-  - [ ] Load directory packages (`content.json` + `manifest.json`) from resolved locations
-  - [ ] Fallback to single-file guides for backwards compatibility — the loader recognizes old-format single-file JSON and parses it using schemas from `src/types/` (Tier 0) and validation from `src/validation/` (Tier 1). This is self-contained within the package engine; no import from `docs-retrieval` is needed.
-  - [ ] Handle local (bundled) content sources
-  - [ ] **Transitional duplication note:** During the migration period, content loading logic will exist in both `docs-retrieval` (existing paths) and `package-engine` (new package loading + legacy fallback). The duplication is intentional — it avoids a lateral coupling between the two Tier 2 engines. Full resolution depends on work in the external `grafana-recommender` microservice (outside this plan's scope) to adopt package resolution; until then, both code paths must remain.
-- [ ] **Structural dependency resolution** (in `src/package-engine/`):
-  - [ ] Resolve structural `depends`, `suggests`, and `provides` relationships using metadata from `repository.json` directly (not from CLI-generated graph)
-  - [ ] **Provides-aware resolution (structural only):** given a dependency target, determine which packages provide that capability. Example: `getProviders("datasource-configured")` returns `["configure-prometheus", "configure-loki"]`. The package engine answers "which packages satisfy this?" — not "is it satisfied?"
-  - [ ] **Satisfaction checking is a consumer concern.** Determining whether a dependency is actually satisfied requires completion state from `learning-paths` (Tier 2). The package engine cannot import from `learning-paths` (lateral isolation). Consumers at Tier 3+ (integrations) or Tier 4 (components) combine structural resolution from the package engine with completion data from `learning-paths` to determine satisfaction.
-  - [ ] Support navigation and recommendations based on dependency metadata
-  - [ ] Handle circular dependencies gracefully
-- [ ] Plugin runtime does **not** consume the CLI-generated dependency graph — that artifact is for the recommender service, visualization, and lint tooling. This keeps client memory bounded as the content corpus grows.
-- [ ] **Barrel export surface** (`src/package-engine/index.ts`): export `PackageResolver`, the resolution type union, loader functions, and structural dependency query functions. Design for stability — consumers should not need internal imports.
-- [ ] Layer 2 unit tests for bundled resolution, package loader, and structural dependency resolver
+- Resolution types (`PackageResolutionSuccess`, `PackageResolutionFailure`, `PackageResolution`, `ResolveOptions`, `PackageResolver`, `ResolutionError`) added to `src/types/package.types.ts` at Tier 0; exported from `src/types/index.ts` for broad importability
+- `package-engine` registered as Tier 2 in both `TIER_MAP` (`src/validation/import-graph.ts`) and `TIER_2_ENGINES` (`eslint.config.mjs`); architecture ratchet tests pass with unchanged violation counts (vertical=4, lateral=9, barrel=0)
+- **`BundledPackageResolver`** in `src/package-engine/resolver.ts`: constructor accepts `RepositoryJson`, resolves bare IDs to `bundled:<path>content.json` / `bundled:<path>manifest.json` URLs; `createBundledResolver()` factory loads bundled `repository.json` via webpack `require()`
+- **Package loader** in `src/package-engine/loader.ts`: `loadBundledContent()`, `loadBundledManifest()`, `loadBundledLegacyGuide()` — all return `LoadOutcome<T>` discriminated union reusing `ResolutionError` codes; manifest loading uses `.loose()` (Zod v4 replacement for `.passthrough()`) to tolerate extension metadata; content loading self-contained within package engine (no import from `docs-retrieval`, intentional transitional duplication)
+- **Structural dependency resolver** in `src/package-engine/dependency-resolver.ts`: `getProviders()`, `getPackageDependencies()`, `getTransitiveDependencies()` (DFS with visited set for cycle safety), `getRecommendedBy()`, `getDependedOnBy()`, `flattenDependencyList()`, `buildProvidesIndex()`, `listPackageIds()`, `getRepositoryEntry()` — all pure functions taking `RepositoryJson` as parameter, no state
+- **Barrel export** (`src/package-engine/index.ts`): resolver class + factory, loader functions + types, dependency query functions + types
+- Bundled content URLs use `bundled:` scheme (e.g., `bundled:first-dashboard/content.json`) consistent with existing `bundled:` prefix convention in `docs-retrieval`
+- Manifest loading is optional — resolver returns `manifest: undefined` when manifest fails to load, success when only content loads; this supports future packages that may lack manifests during migration
+- 72 Layer 2 tests across 3 test files: `resolver.test.ts` (mocked loader for content paths, real bundled repo for factory), `loader.test.ts` (real bundled content integration), `dependency-resolver.test.ts` (pure fixture-based unit tests including cycle handling)
 
 **Why fourth:** Completes the local end-to-end cycle: bundled content is migrated (Phase 2), and the plugin can now load and resolve it at runtime. Establishes the `PackageResolver` interface that later tiers (static catalog in Phase 4, registry service in Phase 7) will implement.
 
-### Phase 4: Pilot migration of interactive-tutorials
+### Phase 3b: Package authoring documentation ✅
 
-**Goal:** Migrate 3-5 guides from `interactive-tutorials` to the package format, add static catalog resolution for remote content, and validate the full authoring-to-testing pipeline across both bundled and external repositories.
+**Status:** Complete
 
-**Testing layers:** Layer 2 + Layer 3
+**Key decisions and artifacts:**
 
-> **Re-planning note:** Phase 4 combines multiple distinct work streams (pilot migration, static catalog resolution, CDN publication, path migration tooling, e2e extension, documentation). When Phases 0-3 are complete, decompose Phase 4 into sub-phases based on decisions made during earlier phases. The right decomposition depends on context that does not yet exist.
+- Package authoring guide published at `docs/developer/package-authoring.md`: field reference for `content.json` and `manifest.json`, dependency quick reference (AND/OR syntax, `provides`, `conflicts`, `replaces`), targeting and `testEnvironment` sections, copy-paste templates, worked example converting a bare guide to a package directory
+- CLI tools updated in `docs/developer/CLI_TOOLS.md`: documented `validate --package`, `validate --packages`, `build-repository`, and `build-graph` commands with usage examples and CI workflow snippet
+- Repository index reference included within the package authoring guide: what `repository.json` is, the two publication strategies (committed lockfile vs CI-generated), freshness check setup
+- Authoring hub link added in `docs/developer/interactive-examples/authoring-interactive-journeys.md`
 
-**Deliverables:**
+### Phase 4: Pilot migration, backend resolution, and pipeline completion
 
-- [ ] Convert `welcome-to-grafana`, `prometheus-grafana-101`, `first-dashboard` to directory packages in `interactive-tutorials`
-- [ ] For each, create `manifest.json` with flat metadata (description, language, category, author, startingLocation)
-- [ ] Add dependency fields (depends, provides, suggests) to `manifest.json` to express the "Getting started" learning path
-- [ ] Add `targeting` with recommender match expressions to `manifest.json`
-- [ ] Pilot guides include `testEnvironment` in their manifests
-- [ ] **`interactive-tutorials` repository index publication:**
-  - [ ] `repository.json` generated as a CI build artifact during the `interactive-tutorials` CI pipeline, not committed to git
-  - [ ] Published to CDN alongside guide content — always available to the plugin runtime without being a tracked file in the repository
-  - [ ] Same `pathfinder-cli build-repository` command as Phase 0/2, different publication strategy: CI-generated + CDN-published rather than committed lockfile (appropriate for high-velocity content repository where guides change frequently)
-  - [ ] Dependency graph JSON follows the same CI-generated + CDN-published pattern
-- [ ] **Static catalog resolution** (in `src/package-engine/` — extends the PackageResolver from Phase 3):
-  - [ ] Build process: CLI aggregates all `repository.json` files (bundled committed lockfile + CDN-published remote indexes) into single `packages-catalog.json`, published to CDN
-  - [ ] Catalog format includes denormalized metadata: `{ version: "1.0.0", packages: { [id]: { contentUrl, manifestUrl, repository, title, type, description, category, startingLocation, depends, recommends, suggests, provides, conflicts, replaces } } }` — structurally equivalent to `repository.json` but with URLs instead of paths, enabling dependency resolution from the catalog alone without additional per-package manifest fetches
-  - [ ] Plugin fetch strategy: on startup, fetch catalog from CDN; cache in memory for session; fall back to bundled repository if fetch fails (offline/OSS support)
-  - [ ] Plugin resolution flow: check bundled repository first (baseline content), then static catalog (extended content)
-  - [ ] Same `PackageResolver` interface and `PackageResolution` discriminated union — adds a second resolution tier
-- [ ] Verify plugin loads and renders `content.json` correctly from both bundled and remote sources
-- [ ] Verify `validate --packages` passes in CI (validates both files)
-- [ ] Extend e2e CLI to read `manifest.json` for pre-flight environment checks (Layer 3 enhancement)
-- [ ] Document the two-file package authoring workflow for content authors and metadata managers
-- [ ] **Path migration tooling:**
-  - [ ] `migrate-paths` command: tool-assisted migration of existing learning path metadata
-  - [ ] Reads `website/content/docs/learning-journeys/journeys.yaml` (external repo) for dependency graph data
-  - [ ] Reads markdown front-matter from `website/content/docs/learning-journeys/*.md` for title, description, and metadata
-  - [ ] Generates draft `manifest.json` files (with `type: "path"`) for all `*-lj` directories in `interactive-tutorials`
-  - [ ] Uses bare package IDs throughout (no repository prefix in `id` field or dependency references)
-  - [ ] Sets `repository: "interactive-tutorials"` as provenance metadata (not used for resolution)
-  - [ ] Maps `journeys.yaml` `links.to` relationships → `recommends` field in `manifest.json` using bare IDs (soft dependencies, not hard `depends`)
-  - [ ] Extracts `startingLocation` from existing `index.json` `url` field or `targeting.match` URL rules during migration (first URL from targeting becomes `startingLocation`, falls back to `"/"` if no URL rules present)
-  - [ ] Outputs draft manifests for human review and refinement before committing
+**Goal:** Extend from bundled-only resolution to multi-repository resolution via backend package routes, migrate pilot guides in `interactive-tutorials` to the package format, add manifest-aware e2e pre-flight checks, and provide path migration tooling.
 
-**Why fifth:** By this point, the end-to-end pipeline is already proven on bundled content (Phases 2-3). This phase extends to external content with confidence, adds the remote resolution tier, and validates the full authoring-to-testing pipeline across repositories. Layer 3 e2e integration validates the complete workflow.
+**Testing layers:** Layer 1 + Layer 2 + Layer 3
+
+**Architecture decision: recommender-based resolution, not static catalog.** The original design proposed a static `packages-catalog.json` that aggregated all repository indexes into a single file fetched by the frontend plugin at startup. This was replaced with resolution routes on the recommender microservice ([`grafana-recommender`](https://github.com/grafana/grafana-recommender)) for three reasons: (1) a pre-aggregated catalog suffers from freshness lag — any content repo update requires rebuilding and re-publishing the catalog; (2) the frontend plugin holds the full catalog in memory for the session, which scales poorly as the content corpus grows; (3) the recommender already needs repository index data for targeting and dependency graph analysis anyway — adding resolution routes to the same service that already caches these indexes avoids duplicating infrastructure. Moving resolution to the recommender keeps the frontend thin (it only needs bare IDs and the recommender URL), puts index caching where memory is cheap (server-side), and avoids build-time coupling between the plugin and every content repository's publication cadence. The frontend's `PackageResolver` interface is unchanged — the implementation calls the recommender's resolution endpoint to get CDN URLs, then fetches content directly from CDN. The recommender is a pure lookup service: bare ID in, CDN URLs out. Bundled content continues to resolve locally for offline/OSS support.
+
+Phase 4 is decomposed into seven sub-phases. Sub-phases 4a, 4b, 4c, and 4f can run in parallel (Wave 1). Sub-phase 4d depends on 4a (Wave 2). Sub-phase 4e depends on 4b and 4d (Wave 3). Sub-phase 4g depends on 4e (Wave 4).
+
+```
+Wave 1 (parallel): 4a, 4b, 4c, 4f
+Wave 2:            4d (after 4a)
+Wave 3:            4e (after 4b + 4d)
+Wave 4:            4g (after 4e)
+```
+
+#### Phase 4a: Backend package resolution routes
+
+**Repo:** [`grafana-recommender`](https://github.com/grafana/grafana-recommender) (the Go recommender microservice — **not** the Go plugin backend in `grafana-pathfinder-app/pkg/`). A local clone lives at `../grafana-recommender/` relative to this repo for agent inspection; see `AGENTS.md` there for repo conventions.
+**Testing:** Go unit tests + Layer 2
+**Can start:** Immediately
+
+**Detailed implementation plan:** See `docs/design/RESOLUTION.md` in [`grafana-recommender`](https://github.com/grafana/grafana-recommender) for the full 5-phase implementation plan covering types, repository loading, HTTP handler, tests, and docs/deploy. That document is authoritative for recommender-internal decisions. The summary below captures what the Pathfinder plan needs to track.
+
+Add a package resolution endpoint to the recommender microservice. The recommender already fetches external configuration via URL (see `loadFromURL` and `STATE_RECOMMENDATIONS_URL` in `cmd/recommender/main.go`); the same pattern extends to fetching and caching remote `repository.json` files. The resolution endpoint resolves a bare package ID across repositories in priority order and returns a JSON resolution body containing CDN URLs for the package's content and manifest — the frontend then fetches directly from CDN. The recommender never proxies or redirects to content; it is a pure lookup service.
+
+- [ ] **Resolution endpoint in `cmd/recommender/packages.go`:**
+  - [ ] `GET /api/v1/packages/{id}` — resolves the bare package ID and returns a resolution response:
+    ```json
+    {
+      "id": "prometheus-grafana-101",
+      "contentUrl": "https://interactive-learning.grafana.net/packages/prometheus-grafana-101/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/prometheus-grafana-101/manifest.json",
+      "repository": "interactive-tutorials"
+    }
+    ```
+  - [ ] Returns 404 with a structured `ResolutionError` when the package is not found
+  - [ ] Returns appropriate cache headers for downstream caching (resolution responses are cacheable — they are a pure function of the package ID and the current repository index state)
+- [ ] **Repository index management:**
+  - [ ] Config via `PACKAGE_REPOSITORY_URLS` env var: comma-separated `name|url` pairs (e.g., `interactive-tutorials|https://interactive-learning.grafana.net/packages/repository.json`). Explicit naming avoids fragile hostname derivation. Malformed entries are skipped with warnings; all-invalid entries are non-fatal (retain prior cache).
+  - [ ] SSRF validation via `urlvalidator.ValidateURL()` at parse time (once, not on every refresh cycle). URLs must end with `repository.json`; base URL is derived by stripping that suffix.
+  - [ ] **Shared periodic reload scheduler** (`internal/reload/scheduler.go`): single-flight execution with trigger coalescing and bounded jitter (default 20%). Interval controlled by `CONFIGS_RELOAD_INTERVAL_MINUTES` (default `20`; `0` disables periodic reload). Prior to Phase 4a, config changes required a service restart or manual `GET /reload`.
+  - [ ] Atomic replacement of repository index under write lock; on failure, retain existing cached index (never empty a populated cache on transient failure)
+  - [ ] Repository priority ordering: configuration order (first match wins)
+  - [ ] Graceful degradation: if a remote repository is unreachable, use the last cached version; if no cache exists, skip that repository
+  - [ ] New Prometheus counter: `recommender_package_loading_errors_total` with `repository` label (repository name, not URL)
+- [ ] **Resolution logic:**
+  - [ ] Given a bare package ID, check repositories in priority order until a match is found
+  - [ ] Construct content/manifest CDN URLs from the matched `RepositoryEntry.path` and the repository's base URL
+  - [ ] Return URLs in the resolution response — the recommender does not fetch, proxy, or redirect to the content itself
+- [ ] **Go unit tests** for resolution logic, priority ordering, caching, fallback behavior, ID consistency checks
+- [ ] **Shared repository index** between resolution routes and the recommender — the recommender's existing periodic refresh of content indexes (via `loadAllConfigs`) can be unified with the package resolution index, since both consume the same `repository.json` files
+- [ ] **Update `openapi.yaml`** in `grafana-recommender` with the new resolution endpoints
+
+**Key design decisions:**
+
+- **Resolution response, not proxy or redirect.** The recommender returns a JSON body with CDN URLs for the package's content and manifest. The frontend fetches from CDN directly. This keeps the recommender as a lightweight lookup service — it never proxies content or issues HTTP redirects. One resolution request gives the frontend both URLs, which it can fetch in parallel from CDN. Content is already CDN-hosted (the `interactive-tutorials` CI builds and publishes to CDN), so the recommender only needs to map bare IDs to CDN paths using its cached `repository.json` indexes.
+- **Resolution responses are cacheable.** The response is a pure function of the package ID and the current repository index state. `Cache-Control: public, max-age=<TTL>` on success (configurable via `PACKAGE_REPOSITORY_CACHE_TTL`, default `300`); `Cache-Control: no-cache` on 404 (prevents negative caching of newly published packages).
+- Repository configuration lives in environment variables (consistent with the recommender's existing config pattern) so that different deployments can point to different content repositories without code changes.
+- The recommender and resolution routes share the same cached repository indexes — one refresh cycle, two consumers. The `loadAllConfigs` / `/reload` pattern extends to include repository index refresh.
+- **Scheduled reload must NOT call `configureRecommenders`.** The current `configureRecommenders` creates a new `GCSCohortMapper` (background goroutine + OAuth2 client) on every call without closing the previous one — a latent goroutine leak. The scheduled reload task calls `loadAllConfigs` only. Package resolution uses its own global state (`packageRepositories`) populated directly by `loadAllConfigs`. Only startup and explicit `GET /reload` may call `configureRecommenders`.
+- **Enriched resolution with navigation (Phase 5).** The resolution response is designed to be extended with graph-derived navigation fields (`memberOf` with parent `steps`, `recommends`, `suggests`, `depends`) when path and journey integration lands. The recommender holds the full dependency graph from its cached repository indexes and is the natural place to provide metapackage membership data. See Phase 5 for the navigation enrichment design.
+
+**Phase 4a also delivers `POST /api/v1/recommend` — the package-aware recommendation endpoint.** This is the primary way packages are surfaced to users in context (the standalone `GET /api/v1/packages/{id}` resolution endpoint is for direct by-ID loading, e.g., deep links or `steps` references). The full design is in `docs/design/V1-RECOMMEND.md` in `grafana-recommender`. Key points:
+
+- **Virtual rule construction:** At repository load time, the recommender constructs `Rule` objects from each package's `targeting.match` metadata and evaluates them alongside traditional URL-based rules in the same matching engine. Packages without `targeting` are indexed for standalone resolution but do not produce virtual rules.
+- **Mixed results:** The v1 response contains both package-backed (`type: "package"`, with `contentUrl`/`manifestUrl`/`navigation`) and URL-backed (`type: "docs-page"` or `"learning-journey"`, with `url`) recommendations. The frontend discriminates on `type`.
+- **Inline resolution:** Package recommendations are resolved to CDN URLs inline in the handler — the frontend receives fully-resolved recommendations and fetches content directly from CDN.
+- **Same request schema:** The frontend's existing `RecommendationContext` request body works unchanged with both `/recommend` and `/api/v1/recommend`.
+- **Legacy coexistence:** The unversioned `POST /recommend` continues to serve URL-backed recommendations only. Deprecation follows `API-VERSIONING.md` (RFC 8594 headers, minimum 6 months notice). The frontend migrates to `/api/v1/recommend` in Phase 4d.
+- **Navigation enrichment (Phase 5):** The `navigation` field on package recommendations is `nil` until Phase 5 populates it with `memberOf`, `recommends`, `suggests`, and `depends`.
+
+#### Phase 4b: Pilot migration (interactive-tutorials)
+
+**Repo:** [`interactive-tutorials`](https://github.com/grafana/interactive-tutorials) (external content repository). A local clone lives at `../interactive-tutorials/` relative to this repo for agent inspection.
+**Testing:** Layer 1 (validation passes in that repo's CI)
+**Can start:** Immediately
+
+**Status:** Pilot pipeline complete — [WIP: Package migration](https://github.com/grafana/interactive-tutorials/pull/142) (draft PR). Internal phases 0-4 (documentation, migration skill, pilot content, CI integration, deploy pipeline) are complete. Phase 5 (verification against live dev CDN and downstream consumers) is pending merge and deploy. See `docs/MIGRATION.md` in `interactive-tutorials` for the full decision history.
+
+**Detailed implementation plan:** See `docs/MIGRATION.md` in [`interactive-tutorials`](https://github.com/grafana/interactive-tutorials/pull/142) for the 5-phase migration plan, field derivation rules, and safety invariants. The migration skill (`.cursor/skills/migrate-guide/SKILL.md`) enables mechanical scale-out to the remaining ~20+ guides.
+
+**What's been done:**
+
+- [x] 3 standalone guides migrated: `alerting-101`, `explore-drilldowns-101`, `first-dashboard`
+- [x] 1 learning path migrated: `prometheus-lj` (9-step path with `type: "path"`, `steps` array, path-level cover page `content.json`, step-level manifests with `depends`/`recommends` chains)
+- [x] Each `manifest.json` includes: `type`, `description`, `category`, `author`, `startingLocation`, dependency fields (`depends`, `recommends`, `suggests`, `provides`), `targeting` with match expressions, `testEnvironment`
+- [x] CI pipeline: `validate --packages`, `build-repository`, `build-graph` added to `validate-json.yml` (same job as existing guide validation, reuses CLI checkout)
+- [x] `repository.json` is CI-generated, never committed (added to `.gitignore`). CI builds it from manifest files on every push.
+- [x] Deploy pipeline: dual CDN paths — `guides/` (legacy, unchanged) and `packages/` (new, with `repository.json` co-located as a sibling of package directories)
+- [x] CDN URL: `https://interactive-learning.grafana.net/packages/repository.json` — paths in `repository.json` entries (e.g., `"path": "alerting-101/"`) resolve relative to this URL's directory
+
+**What remains:**
+
+- [ ] Dev deployment via `deploy.yml` workflow dispatch (pending PR merge)
+- [ ] CDN verification: confirm `repository.json` is accessible at the expected URL with correct entries
+- [ ] Recommender integration test: configure `grafana-recommender` with `PACKAGE_REPOSITORY_URLS=interactive-tutorials|https://interactive-learning.grafana.net/packages/repository.json`, verify resolution
+- [ ] Plugin integration test: verify composite resolver (bundled fallback → recommender) loads pilot guides
+
+**Key decisions from the migration:**
+
+- **Dual CDN paths, not a migration.** The `guides/` deploy (driven by `index.json`) continues unchanged. The `packages/` deploy is a parallel step. Neither affects the other during transition.
+- **`packages/` is a full directory tree copy** (all files, not just JSON) — packages may include non-JSON assets referenced by relative path.
+- **Coexistence with `index.json`:** During partial migration, `index.json` continues to serve as the recommendation rules source for all guides. Guides with `manifest.json` carry their own `targeting`, but `index.json` entries are retained until the recommender consumes `repository.json` directly via `POST /api/v1/recommend` virtual rule construction.
+- **Migration skill supports parallel execution:** Each migration operates on a single directory, reads shared resources (`index.json`, website markdown) without modifying them. Multiple agents can migrate different guides simultaneously.
+
+**Future work identified in the migration plan (post-pilot):**
+
+- Full migration: remaining standalone guides and `*-lj` directories (mechanical, skill-based)
+- `index.json` retirement: once the recommender constructs virtual rules from `repository.json` targeting, `index.json` becomes redundant. Requires verifying that aggregated `targeting.match` rules from `repository.json` cover all `index.json` rules.
+- CI enforcement: require `manifest.json` for every `content.json` (gated on full migration completion)
+- Legacy deploy cleanup: remove `guides/` CDN path once all traffic moves to `packages/`
+
+#### Phase 4c: E2E manifest pre-flight
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 3
+**Can start:** Immediately
+
+Extend the e2e CLI to read `manifest.json` for pre-flight environment checks before running guide tests.
+
+- [ ] Extend `src/cli/commands/e2e.ts` to accept `--package <dir>` (loads `content.json` from the package directory instead of a bare JSON file)
+- [ ] When `manifest.json` exists in the package dir, read `testEnvironment` for pre-flight checks:
+  - [ ] `tier`: verify the current test environment matches (e.g., skip cloud-only guides when testing against local Docker)
+  - [ ] `minVersion`: check Grafana version via API before running (fail fast with clear message)
+  - [ ] `plugins`: verify required plugins are installed
+- [ ] Pre-flight failures produce structured skip/fail messages, not silent passes
+- [ ] Layer 3 tests for the pre-flight checking logic
+
+**Scope boundary:** This does NOT add full Layer 4 test environment routing (that's Phase 6). It adds manifest-aware pre-flight checks to the existing e2e runner.
+
+#### Phase 4d: Frontend remote resolver and v1 recommend migration
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 2
+**Depends on:** 4a (backend routes must exist)
+
+Two integration points with the recommender's versioned API:
+
+1. **Recommendation flow** (primary discovery path): migrate from `POST /recommend` to `POST /api/v1/recommend`. The v1 response contains both package-backed and URL-backed recommendations. Package-backed items (`type === "package"`) carry `contentUrl`, `manifestUrl`, `packageId`, `repository`, and (from Phase 5) `navigation`. The frontend discriminates on `type` to determine rendering behavior — no separate resolution call is needed for contextually recommended packages.
+
+2. **Direct resolution flow** (by-ID loading): `RecommenderPackageResolver` calls `GET /api/v1/packages/{id}` for deep links, `steps` references, or any case where the frontend needs a specific package by bare ID outside the recommendation flow.
+
+Both flows are composed with the existing `BundledPackageResolver` for offline/OSS fallback.
+
+- [ ] **Migrate recommendation handling to v1 response schema:**
+  - [ ] Call `POST /api/v1/recommend` (same `RecommendationContext` request body, new endpoint URL)
+  - [ ] Handle `V1Recommendation` objects: discriminate on `type === "package"` vs other types
+  - [ ] For package-backed recommendations: fetch `contentUrl`/`manifestUrl` from CDN directly (URLs are pre-resolved in the response)
+  - [ ] For URL-backed recommendations: existing behavior (open `url` as link)
+  - [ ] Pass through `navigation` field when present (nil until Phase 5)
+- [ ] **`RecommenderPackageResolver`** implementing `PackageResolver` in `src/package-engine/`:
+  - [ ] `resolve()` calls `GET /api/v1/packages/{id}` on the recommender microservice directly (the recommender allows cross-origin requests via `Access-Control-Allow-Origin: *`). The recommender URL is discovered via the same mechanism the frontend already uses for `/recommend` calls (see `configWithDefaults.recommenderServiceUrl` in `src/constants.ts` — defaults to `https://recommender.grafana.com`, configurable via plugin settings).
+  - [ ] The resolution response contains `contentUrl` and `manifestUrl` pointing to CDN. When `loadContent` is requested, the resolver fetches from those CDN URLs directly.
+  - [ ] Handles 404 (`{"error": "package not found", "code": "not-found"}`) as `not-found`, 400 as `invalid-id`, network failures as `network-error`
+- [ ] **`CompositePackageResolver`** (or `createCompositeResolver()` factory):
+  - [ ] Checks `BundledPackageResolver` first (baseline content, works offline/OSS)
+  - [ ] Falls back to `RecommenderPackageResolver` only if the user has enabled the online recommender in plugin settings (the existing setting that gates recommender use for OSS). When this setting is off, the recommender resolver is not instantiated — bundled-miss means the package does not exist.
+  - [ ] Same `PackageResolver` interface — callers don't know which tier resolved
+- [ ] Export from `src/package-engine/index.ts` barrel
+- [ ] Layer 2 tests: composite resolution ordering, bundled-first behavior, fallback to recommender, network failure handling, CDN fetch from resolved URLs, v1 response handling for mixed package+URL results
+
+**Key design decisions:**
+
+- The composite resolver preserves the single `PackageResolver` interface — consumers don't change. The resolution priority (bundled first, recommender second) means bundled content always wins for packages that exist locally, providing offline/OSS baseline support.
+- **Recommender gated by plugin setting.** The `RecommenderPackageResolver` is only instantiated when the user has enabled the online recommender in plugin settings (the existing setting that gates recommender use for OSS). When the setting is off, the composite resolver contains only the bundled resolver — no network calls are attempted, and a bundled-miss means the package does not exist. This eliminates latency and error noise in environments where the recommender is genuinely unavailable. No circuit-breaker is needed: the setting is the gate.
+- The frontend never fetches or stores repository indexes — all multi-repo resolution logic lives in the recommender. The frontend receives CDN URLs from the resolution response (or the v1 recommend response) and fetches content directly.
+- The v1 recommend response will be extended with graph-derived navigation fields in Phase 5 (`memberOf` with parent `steps`, `recommends`, `suggests`, `depends`). Both the recommendation handler and the `RecommenderPackageResolver` should pass through `navigation` when present, even though Phase 4d does not consume it yet.
+
+#### Phase 4e: Integration verification
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 2 + Layer 3
+**Depends on:** 4b (pilot guides exist and are published) + 4d (frontend resolver works)
+
+End-to-end verification that the plugin correctly loads and renders `content.json` from both bundled and remote sources through the composite resolver and backend routes.
+
+- [ ] **Recommender resolution verification:** Configure the recommender with `PACKAGE_REPOSITORY_URLS=interactive-tutorials|https://interactive-learning.grafana.net/packages/repository.json`. Verify:
+  - [ ] `GET /api/v1/packages/alerting-101` returns 200 with correct CDN URLs under `packages/` path
+  - [ ] `GET /api/v1/packages/prometheus-lj` returns 200 (path metapackage)
+  - [ ] `GET /api/v1/packages/nonexistent` returns 404 with structured error
+- [ ] **V1 recommend verification:** Send `POST /api/v1/recommend` with user context matching pilot guide targeting:
+  - [ ] Verify `alerting-101` appears as a package-backed recommendation (with `contentUrl`, `manifestUrl`) when user context includes `/alerting` URL prefix
+  - [ ] Verify URL-backed recommendations (from existing rules) coexist in the response
+- [ ] **Composite resolver verification:** Verify the composite resolver correctly falls through from bundled (miss) to recommender (hit) for remote-only packages
+- [ ] **Rendering parity:** Verify rendered output matches between bundled and remote loading of the same guide
+- [ ] **Schema validation:** Verify `validate --packages` passes against the pilot migration output
+- [ ] Update this document with Phase 4 completion notes and key decisions
+
+#### Phase 4f: Path migration tooling
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 1
+**Can start:** Immediately
+
+A `migrate-paths` CLI command that reads existing learning path metadata from external sources and generates draft `manifest.json` files.
+
+- [ ] `migrate-paths` command in `src/cli/commands/migrate-paths.ts`
+- [ ] Reads `journeys.yaml` from `website/content/docs/learning-journeys/` (path provided as CLI arg)
+- [ ] Reads markdown front-matter from `*.md` files in the same directory for title, description, and metadata
+- [ ] Generates draft `manifest.json` files (with `type: "path"`) for all `*-lj` directories in `interactive-tutorials`
+- [ ] Uses bare package IDs throughout (no repository prefix in `id` field or dependency references)
+- [ ] Sets `repository: "interactive-tutorials"` as provenance metadata (not used for resolution)
+- [ ] Maps `journeys.yaml` `links.to` relationships → `recommends` field in `manifest.json` using bare IDs (soft dependencies, not hard `depends`)
+- [ ] Extracts `startingLocation` from existing `index.json` `url` field or `targeting.match` URL rules during migration (first URL from targeting becomes `startingLocation`, falls back to `"/"` if no URL rules present)
+- [ ] Outputs to a staging directory for human review and refinement before committing
+- [ ] Register in `src/cli/index.ts`
+- [ ] Layer 1 tests with fixture YAML/MD files
+
+**Scope boundary:** This produces draft manifests. The actual migration (committing them to `interactive-tutorials`, validating, rebuilding repository.json) is a follow-up human or agent task.
+
+**Why fifth:** By this point, the end-to-end pipeline is already proven on bundled content (Phases 2-3). Phase 4 extends to external content with confidence via recommender resolution routes. The frontend stays thin — it resolves bundled content locally and delegates remote resolution to the recommender, which shares its repository index cache with the recommendation engine. The sub-phase decomposition enables parallel agent execution across the independent work streams.
+
+#### Phase 4g: Docs-retrieval integration
+
+**Repo:** `grafana-pathfinder-app`
+**Testing:** Layer 2
+**Depends on:** 4e (composite resolver verified end-to-end)
+
+Wire the composite `PackageResolver` into the `docs-retrieval` fetch pipeline so that `docs-retrieval` becomes the single entry point for all content fetching — both static documentation and interactive packages. This resolves the "intentional transitional duplication" from Phase 3 and establishes the fetch architecture that Phase 5's navigation enrichment depends on.
+
+**Architecture decision: docs-retrieval dispatches by content type.** Not all content is interactive guides — some is static documentation from a different CDN that doesn't participate in the package system. `docs-retrieval` must distinguish content type and dispatch accordingly. **The dispatch signal already exists:** the `Recommendation` interface (`src/types/context.types.ts`) carries a `type` field (`'learning-journey' | 'docs-page' | 'interactive'`), and the context engine already discriminates on it (see `context.service.ts`). Phase 4g wires this existing discriminator to route interactive content through the `PackageResolver` — no new dispatch heuristic is needed.
+
+- **Static documentation:** fetched via the existing `docs-retrieval` pipeline, unchanged
+- **Interactive guide, path, or journey:** delegated to the composite `PackageResolver`, which checks the bundled loader first and falls back to the recommender resolver if configured
+
+The composite resolver is injected into `docs-retrieval` via dependency inversion. Both `docs-retrieval` and `package-engine` are Tier 2 engines (laterally isolated — cannot import from each other). The `PackageResolver` interface is defined at Tier 0 (`src/types/package.types.ts`), so `docs-retrieval` can depend on the interface without violating lateral isolation. The concrete wiring — creating the `CompositePackageResolver` and injecting it into the docs-retrieval fetch pipeline — happens at Tier 3+ (`integrations/`), where both Tier 2 engines are accessible.
+
+- [ ] **Content-type dispatch in `docs-retrieval`:**
+  - [ ] Add a code path that identifies interactive content (guide, path, journey) vs. static documentation
+  - [ ] When interactive content is identified, delegate to the injected `PackageResolver` instead of the existing fetch logic
+  - [ ] Static documentation continues through the existing fetch path unchanged
+- [ ] **Dependency injection of `PackageResolver`:**
+  - [ ] `docs-retrieval` accepts a `PackageResolver` (Tier 0 interface) — it does not import from `package-engine` (Tier 2)
+  - [ ] Tier 3+ wiring code creates the `CompositePackageResolver` (bundled-first, recommender-fallback) and passes it into docs-retrieval's fetch pipeline
+- [ ] **Remove transitional duplication:**
+  - [ ] Identify and remove any content-loading code in `package-engine` that duplicated `docs-retrieval` logic (noted as "intentional transitional duplication" in Phase 3)
+  - [ ] Verify that the bundled loader and recommender resolver paths both produce content that the existing renderer can consume without changes
+- [ ] Layer 2 tests: content-type dispatch routing, injected resolver receives interactive content requests, static docs bypass the resolver, fallback behavior when no resolver is injected (e.g., OSS without recommender)
+
+**Why here:** Phase 4e proves the composite resolver works end-to-end. Phase 4g connects it to the rendering pipeline so that resolved content actually reaches the user. This must land before Phase 5 because Phase 5 enriches the resolution response with navigation data (`memberOf`, `recommends`, `suggests`, `depends`) — that data has no path to the UI unless the renderer is consuming content through the package resolver.
 
 ### Phase 5: Path and journey integration
 
-**Goal:** Paths and journeys are working metapackage types at two composition levels. A path (`type: "path"`) composes guides into an ordered sequence; a journey (`type: "journey"`) composes paths (or any packages) into a larger learning arc. The CLI validates both, the dependency graph treats them as first-class nodes, and learning paths can use package dependencies alongside curated `paths.json`. See [learning paths and journeys](./PATHFINDER-PACKAGE-DESIGN.md#learning-journeys) for the full design.
+**Decomposition note:** This phase has significant breadth (CLI validation, recommender enrichment, frontend UI, migration/deprecation) and should be decomposed into sub-phases before execution, in light of decisions made during Phase 4. Defer decomposition until Phase 4 is complete.
+
+**Goal:** Paths and journeys are working metapackage types at two composition levels. A path (`type: "path"`) composes guides into an ordered sequence; a journey (`type: "journey"`) composes paths (or any packages) into a larger learning arc. The CLI validates both, the dependency graph treats them as first-class nodes, and the recommender's resolution response provides graph-derived navigation so the frontend can render "next step" and path progress without client-side graph reasoning. See [learning paths and journeys](./PATHFINDER-PACKAGE-DESIGN.md#learning-journeys) for the full design.
 
 **Testing layers:** Layer 1 + Layer 2
+
+**Early validation from Phase 4b:** The `interactive-tutorials` pilot migration has already produced a real `type: "path"` metapackage (`prometheus-lj`) with a 9-step `steps` array, `recommends` (`drilldown-metrics-lj`), `suggests` (`private-data-source-connect-lj`), and step-level `depends`/`recommends` chains. This validates the path metapackage model against real content before Phase 5 even begins. Cross-repo references (to not-yet-migrated learning paths) are handled gracefully as dangling references.
+
+**Architecture decision: graph navigation lives in the recommender.** The full dependency graph (all repositories, all `steps` arrays, all `depends`/`recommends`/`suggests` edges) lives in the recommender's cached repository indexes. The recommender is the natural place to compute graph-derived navigation because: (1) it already holds the complete topology across every repository; (2) it will eventually consume completion state for smarter recommendations; (3) keeping graph reasoning server-side means the frontend stays a renderer, not a graph engine.
+
+**Navigation enrichment design:** See `docs/design/V1-RECOMMEND.md` Phase 5 in `grafana-recommender` for the full `computeNavigation` implementation design. Both the standalone resolution response (`GET /api/v1/packages/{id}`) and package-backed recommendations in the v1 recommend response (`POST /api/v1/recommend`) carry the same `navigation` field:
+
+```json
+{
+  "id": "prometheus-grafana-101",
+  "contentUrl": "https://interactive-learning.grafana.net/packages/prometheus-grafana-101/content.json",
+  "manifestUrl": "https://interactive-learning.grafana.net/packages/prometheus-grafana-101/manifest.json",
+  "repository": "interactive-tutorials",
+  "navigation": {
+    "memberOf": [
+      {
+        "id": "getting-started",
+        "title": "Getting started with Grafana",
+        "steps": ["welcome-to-grafana", "prometheus-grafana-101", "first-dashboard", "loki-grafana-101"]
+      },
+      {
+        "id": "observability-basics",
+        "title": "Observability basics",
+        "steps": [
+          "welcome-to-grafana",
+          "first-dashboard",
+          "prometheus-grafana-101",
+          "prometheus-advanced-queries",
+          "loki-grafana-101"
+        ]
+      }
+    ],
+    "recommends": ["loki-grafana-101", "prometheus-advanced-queries"],
+    "suggests": ["explore-drilldowns-101"],
+    "depends": []
+  }
+}
+```
+
+- `memberOf`: which paths/journeys this package participates in. Each entry carries the parent's `id`, `title`, and full `steps` array. The frontend derives everything it needs locally: position (`steps.indexOf(currentId)`), total (`steps.length`), next structural step, and completion-aware next (first incomplete step). This avoids baking structural navigation decisions into the recommender response that may conflict with the frontend's completion-aware logic.
+- `recommends`: packages linked via `recommends` edges in the dependency graph — "where else might the user go from here?"
+- `suggests`: packages linked via `suggests` edges — optional or alternative paths, softer than `recommends`
+- `depends`: prerequisite packages from `depends` edges — the frontend can use this to show dependency status
+
+This replaces the earlier "learning path reconciliation at Tier 3+" design. The frontend does not need a Tier 3+ utility to stitch `package-engine` and `learning-paths` together — the recommender provides navigation directly.
+
+**Completion state phasing:** In Phase 5, the recommender computes `navigation` from structural graph data only (array order in `steps`, `recommends`/`suggests`/`depends` edges). The frontend overlays client-side completion state for display (e.g., showing which steps are done, highlighting the next incomplete step). In a future phase beyond this plan's scope, the frontend will send completion data to the recommender alongside context (using the existing `POST /api/v1/recommend` payload pattern), and the recommender will return completion-aware navigation. Server-side completion state is a further future concern. This phasing keeps the resolution response cacheable in Phase 5 while leaving a clean path to personalized navigation later.
 
 **Deliverables:**
 
@@ -349,15 +519,28 @@ This plan is designed to support and further the [content testing strategy](./TE
   - [ ] `steps` array contains bare package IDs (e.g., `["step-1", "step-2"]`), no repository prefix
   - [ ] Graph lint: `steps` references must resolve to existing packages in global catalog
   - [ ] Cycle detection in `steps` chains (error-level — a step cannot transitively contain its parent)
-- [ ] **Learning path reconciliation** (Tier 3+ — `integrations/` or `components/`):
-  - [ ] Utility to compute learning paths from dependency DAG — this logic needs both `package-engine` (structural dependency graph) and `learning-paths` (curated `paths.json`, completion state), so it must live at Tier 3+ where it can import from multiple Tier 2 engines
-  - [ ] Reconciliation: curated `paths.json` takes priority; dependency-derived paths fill gaps
-- [ ] UI: learning path cards use package metadata (description, category) when available
+- [ ] **Recommender navigation enrichment** (in `grafana-recommender` — see `docs/design/V1-RECOMMEND.md` Phase 5 for implementation design):
+  - [ ] Implement `computeNavigation(packageID, repos)` in `cmd/recommender/v1recommend.go`
+  - [ ] Extend `GET /api/v1/packages/{id}` resolution response with `navigation` field
+  - [ ] Extend `POST /api/v1/recommend` package-backed recommendations with `navigation` field
+  - [ ] `memberOf` computed by scanning all metapackages whose `steps` arrays contain this package ID; each entry includes the parent's `id`, `title`, and full `steps` array
+  - [ ] `recommends` copied from the package's `recommends` field in `repository.json`
+  - [ ] `suggests` copied from the package's `suggests` field in `repository.json`
+  - [ ] `depends` copied from the package's `depends` field in `repository.json`
+  - [ ] Go unit tests for navigation computation (single-path membership, multi-path membership, cross-repository path membership, packages with no parent metapackage)
+- [ ] **Frontend navigation display** (in `grafana-pathfinder-app`):
+  - [ ] UI: display path/journey progress computed from `memberOf[].steps` and local completion state (position, total, completed count)
+  - [ ] UI: "next step" navigation computed locally — next incomplete step from `memberOf[].steps` using completion data, not structural array order
+  - [ ] UI: path context selection — when multiple `memberOf` entries exist, select which path to display based on navigation context (e.g., which path the user arrived from), defaulting to the first entry
+  - [ ] UI: recommended content links using `navigation.recommends` and `navigation.suggests`
+  - [ ] UI: learning path cards use package metadata (description, category) from the resolution response when available
+  - [ ] Frontend overlays client-side completion state on the structural navigation for display
+- [ ] **`paths.json` deprecation path:** With navigation provided by the recommender's resolution response, curated `paths.json` becomes redundant once all paths are expressed as metapackages with `steps` arrays. During transition, `paths.json` continues to serve as the fallback for paths not yet migrated to metapackages.
 - [ ] Align with docs partners' YAML format for learning path relationships
 - [ ] Layer 1 unit tests for path and journey schema validation (`type`, `steps`, nested structure)
-- [ ] Layer 2 unit tests for metapackage-specific logic (step resolution, completion tracking, navigation across both levels)
+- [ ] Layer 2 unit tests for frontend navigation display logic (progress computation from `memberOf[].steps`, completion-aware next step, path context selection, `recommends`/`suggests` rendering)
 
-**Why sixth:** First user-visible payoff of the package model. Introduces two-level metapackage composition (paths compose guides, journeys compose paths) that SCORM `"course"` and `"module"` types will later build on. Content authors and docs partners see dependency declarations reflected in the learning experience.
+**Why sixth:** First user-visible payoff of the package model. Introduces two-level metapackage composition (paths compose guides, journeys compose paths) that SCORM `"course"` and `"module"` types will later build on. Content authors and docs partners see dependency declarations reflected in the learning experience. The recommender's enriched resolution response eliminates the need for client-side graph reasoning, keeping the frontend thin.
 
 ### Phase 6: Layer 4 test environment routing
 
@@ -374,57 +557,32 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **Why seventh:** Layer 4 foundation from the testing strategy. Depends on the package format being stable and adopted. Narrower than originally scoped because `testEnvironment` schema (Phase 0) and e2e CLI reading (Phase 4) are already complete.
 
-### Phase 7: Repository registry service
+### Phase 7: Dynamic repository registry
 
-**Goal:** Replace static catalog (Phase 4) with dynamic repository registry service that supports multiple repositories, rapid content updates without plugin releases, and scalable multi-repo ecosystem.
+**Goal:** Evolve the recommender's config-driven repository list (Phase 4a) into a dynamic registry that supports repository discovery and ecosystem-scale package management. Phase 4a establishes the recommender resolution routes and config-driven repository list; Phase 7 makes the registry dynamic and adds operational capabilities.
 
 **Deliverables:**
 
-- [ ] **Registry service architecture:**
-  - [ ] Service endpoint: `GET /registry` returns list of known repositories with their locations
-  - [ ] Service endpoint: `GET /resolve/{packageId}` returns package resolution (same `PackageResolution` format)
-  - [ ] Example registry response:
-    ```json
-    {
-      "repositories": {
-        "interactive-tutorials": "https://cdn.grafana.com/repos/interactive-tutorials/",
-        "partner-integrations": "https://partners.grafana.com/packages/"
-      }
-    }
-    ```
-  - [ ] Example resolution response:
-    ```json
-    {
-      "id": "welcome-to-grafana",
-      "contentUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/content.json",
-      "manifestUrl": "https://cdn.grafana.com/packages/v1/welcome-to-grafana/manifest.json",
-      "repository": "interactive-tutorials"
-    }
-    ```
-- [ ] **Catalog aggregation:**
-  - [ ] Service dynamically aggregates all `repository.json` files from known repositories
-  - [ ] Maintains global catalog in memory/cache (refresh on interval or webhook trigger)
-  - [ ] Detects package ID collisions across repositories — the registry maintains a compound key (repository + package ID) internally, distinguishing the same bare ID published by different repositories. The `PackageResolver` resolves bare IDs using priority-based clobber semantics (first repository in priority order wins). This evolves the identity model: Phases 0-6 assume globally unique bare IDs; Phase 7 introduces registry-scoped uniqueness with deterministic resolution order.
-- [ ] **Repository discovery:**
-  - [ ] Config-driven registry: service reads repository list from configuration file
-  - [ ] Repositories can be added/removed without service code changes
-  - [ ] Each repository publishes `repository.json` at known location
-- [ ] **Plugin integration:**
-  - [ ] Plugin detects registry availability (feature flag or endpoint probe)
-  - [ ] If registry available, use dynamic resolution; otherwise fall back to static catalog (Phase 4)
-  - [ ] Same `PackageResolver` interface — only implementation changes
-  - [ ] Gradual cutover: can run both approaches simultaneously during transition
-- [ ] **Performance and reliability:**
-  - [ ] Resolution result caching (per-session in plugin, TTL-based in service)
-  - [ ] Service monitoring: track resolution failures, catalog staleness, repository availability
-  - [ ] Graceful degradation: if specific repository unavailable, serve from cached catalog
-- [ ] **Use cases that justify registry over static catalog:**
-  - [ ] Rapid content updates: new packages available immediately without plugin release
-  - [ ] Partner/team repositories: independent content publishing without central coordination
-  - [ ] Multi-tenancy: different users/orgs see different package catalogs (future extension)
-  - [ ] Scale: 1000+ packages across many repositories
+- [ ] **Dynamic repository discovery:**
+  - [ ] `GET /api/registry` endpoint returns the live list of known repositories with their locations and priority
+  - [ ] Repositories can be added/removed via API without service restarts (upgrade from Phase 4a's config-driven list)
+  - [ ] Webhook or polling triggers for immediate repository index refresh when content repos publish updates (upgrade from Phase 4a's TTL-based refresh)
+- [ ] **Cross-repository identity evolution:**
+  - [ ] Registry maintains a compound key (repository + package ID) internally, distinguishing the same bare ID published by different repositories
+  - [ ] Resolution continues to use priority-based clobber semantics (first repository in priority order wins), but the registry can report shadowed packages for diagnostics
+  - [ ] This evolves the identity model: Phases 0-6 assume globally unique bare IDs; Phase 7 introduces registry-scoped uniqueness with deterministic resolution order
+- [ ] **Performance and reliability at scale:**
+  - [ ] Resolution result caching with TTL (builds on Phase 4a's in-memory cache)
+  - [ ] Service monitoring: track resolution failures, index staleness, repository availability
+  - [ ] Graceful degradation: if specific repository unavailable, serve from cached index
+  - [ ] Target: 1000+ packages across many repositories
+- [ ] **Recommender evolution:**
+  - [ ] Recommender endpoints evolve to return bare package IDs alongside URLs (the frontend can resolve bare IDs via the `GET /api/v1/packages/{id}` resolution route from Phase 4a)
+  - [ ] Dependency graph data from repository indexes feeds into recommendation quality
 
-**Why eighth:** Addresses scalability limitations of static catalog (Phase 4). Enables rapid content updates, independent repository management, and ecosystem growth. Static catalog remains as fallback for offline/OSS support.
+**Deferred: multi-tenancy.** Multi-tenancy (different users/orgs seeing different package catalogs, per-tenant repository priority ordering) is a future concern beyond Phase 7. It requires tenant identity to be available to the recommender API, which is not currently the case. Multi-tenancy changes the resolution contract from a pure function of package ID to a function of (package ID, tenant context), affecting caching, index structure, and the request model. It will be designed separately when the prerequisite (tenant identity on the recommender API) is in place.
+
+**Why eighth:** Extends Phase 4a's resolution from a config-driven bootstrap to a production registry. Enables rapid content updates (webhook-triggered refresh), independent repository management, and ecosystem growth. The resolution endpoint and frontend resolver from Phase 4 are unchanged — only the recommender's repository discovery and refresh mechanisms evolve.
 
 ### Phase 8: SCORM foundation
 
@@ -444,19 +602,40 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-8 is the foundation it writes to.
 
+### Phase 10: Implementation cleanup
+
+**Goal:** Revisit code committed in earlier phases that may be unnecessary given design decisions made in later phases. This is a scheduled debt reconciliation pass — earlier phases were executed under assumptions that later phases refined or replaced.
+
+**Known candidates:**
+
+- [ ] **`src/package-engine/dependency-resolver.ts`:** Exports 10 structural dependency query functions (`getProviders`, `getTransitiveDependencies`, `getRecommendedBy`, `getDependedOnBy`, etc.) from the package-engine barrel. No consumer outside its own test file. The CLI graph builder (`src/cli/commands/build-graph.ts`) implements equivalent logic independently (`extractDependencyIds`, `buildProvidesMap`, `detectCycles`). The Phase 5 decision (graph navigation lives in the recommender) means the frontend will not need client-side dependency queries. **Action:** verify no runtime or CLI code path imports these functions; if confirmed, delete the module and its tests. If the CLI graph builder should share this logic instead of duplicating it, consolidate into `validation/` (Tier 1) where both CLI and future consumers can reach it.
+- [ ] **`loadBundledLegacyGuide` in `src/package-engine/loader.ts`:** Exported from the barrel but unused outside its own module and tests. Phase 2 migrated all bundled guides to the package directory format. **Action:** verify no import path; if confirmed, remove the function and its tests.
+- [ ] **Functional duplication between `build-graph.ts` and `dependency-resolver.ts`:** `extractDependencyIds` duplicates `flattenDependencyList`/`flattenClause`; `buildProvidesMap` duplicates `buildProvidesIndex`. If both modules survive cleanup, one should consume the other. If `dependency-resolver.ts` is deleted, the CLI's local copies are canonical and no action is needed.
+- [ ] **Resolution type alignment:** The design spec in `identity-and-resolution.md` shows a flat `PackageResolution` interface (success-only shape). The implementation uses a discriminated union (`PackageResolutionSuccess | PackageResolutionFailure` with `ok: true/false`). Reconcile the spec to match the implementation or vice versa — the discriminated union is more expressive and should likely win.
+
+**Process:** For each candidate, confirm the usage analysis, execute the deletion or consolidation, run the tidy-up skill, and verify all tests pass with unchanged violation counts.
+
 ---
 
 ## Summary
 
-| Phase                                       | Unlocks                                                                         | Testing layers    |
-| ------------------------------------------- | ------------------------------------------------------------------------------- | ----------------- |
-| 0: Schema foundation                        | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema   | Layer 1           |
-| 1: CLI package validation                   | CI validation, cross-file checks, dependency graph                              | Layer 1           |
-| 2: Bundled repository migration             | End-to-end proof on local corpus, bundled `repository.json`                     | Layer 1 + Layer 2 |
-| 3: Plugin runtime resolution                | PackageResolver consuming bundled repo, local resolution tier                   | Layer 2           |
-| 4: Pilot migration of interactive-tutorials | Remote content, static catalog, full authoring-to-testing pipeline              | Layer 2 + Layer 3 |
-| 5: Path and journey integration             | Two-level metapackage model (paths + journeys), `steps`, docs partner alignment | Layer 1 + Layer 2 |
-| 6: Layer 4 test environment routing         | Managed environment routing, version matrix, dataset provisioning               | Layer 4           |
-| 7: Repository registry service              | Dynamic multi-repo resolution, rapid content updates, ecosystem scale           | —                 |
-| 8: SCORM foundation                         | SCORM import readiness, extends `type` with course/module                       | —                 |
-| 9+: SCORM import pipeline                   | Full SCORM conversion pipeline                                                  | —                 |
+| Phase                                        | Unlocks                                                                                                                                                                     | Testing layers     |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| 0: Schema foundation                         | Everything — `content.json` + `manifest.json` model, `testEnvironment` schema                                                                                               | Layer 1            |
+| 1: CLI package validation                    | CI validation, cross-file checks, dependency graph                                                                                                                          | Layer 1            |
+| 2: Bundled repository migration              | End-to-end proof on local corpus, bundled `repository.json`                                                                                                                 | Layer 1 + Layer 2  |
+| 3: Plugin runtime resolution                 | PackageResolver consuming bundled repo, local resolution tier                                                                                                               | Layer 2            |
+| 3b: Package authoring documentation          | Practitioner docs for package format and CLI commands                                                                                                                       | —                  |
+| 4a: Backend resolution + v1 recommend routes | Recommender resolves bare IDs via `GET /api/v1/packages/{id}`, surfaces packages as recommendations via `POST /api/v1/recommend` with virtual rules from targeting metadata | Go tests + Layer 2 |
+| 4b: Pilot migration (interactive-tutorials)  | External repo guides in package format, CI-generated repository.json, dual CDN paths (`guides/` + `packages/`), migration skill for scale-out                               | Layer 1            |
+| 4c: E2E manifest pre-flight                  | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                                                                                                            | Layer 3            |
+| 4d: Frontend remote resolver + v1 migration  | Thin frontend resolver calling recommender routes, composite with bundled fallback, `POST /api/v1/recommend` migration                                                      | Layer 2            |
+| 4e: Integration verification                 | Full pipeline verified across bundled and remote sources                                                                                                                    | Layer 2 + Layer 3  |
+| 4f: Path migration tooling                   | `migrate-paths` CLI for draft manifest generation from existing paths                                                                                                       | Layer 1            |
+| 4g: Docs-retrieval integration               | Package resolver wired into rendering pipeline, content-type dispatch, transitional duplication removed                                                                     | Layer 2            |
+| 5: Path and journey integration              | Two-level metapackage model, recommender navigation enrichment (`memberOf`, `recommends`, `suggests`, `depends`), `paths.json` deprecation path                             | Layer 1 + Layer 2  |
+| 6: Layer 4 test environment routing          | Managed environment routing, version matrix, dataset provisioning                                                                                                           | Layer 4            |
+| 7: Dynamic repository registry               | Dynamic registry, webhook refresh, ecosystem scale (multi-tenancy deferred)                                                                                                 | —                  |
+| 8: SCORM foundation                          | SCORM import readiness, extends `type` with course/module                                                                                                                   | —                  |
+| 9+: SCORM import pipeline                    | Full SCORM conversion pipeline                                                                                                                                              | —                  |
+| 10: Implementation cleanup                   | Dead code removal, duplication consolidation, spec-implementation alignment                                                                                                 | —                  |

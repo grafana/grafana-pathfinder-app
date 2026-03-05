@@ -1,0 +1,23 @@
+{
+  "id": "prometheus-grafana-101",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
+  "category": "data-sources",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/connections",
+  "recommends": ["welcome-to-grafana"],
+  "provides": ["prometheus-configured"],
+  "targeting": {
+    "match": {
+      "and": [{ "urlPrefix": "/connections" }, { "targetPlatform": "oss" }]
+    }
+  },
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

@@ -18,12 +18,13 @@ Beginners and intermediate users who need to quickly learn Grafana products. Not
 
 ## Project architecture
 
-This is a **React + TypeScript + Grafana Scenes** application built as a Grafana extension plugin. The architecture follows these key patterns:
+This is a **React + TypeScript + Grafana Scenes** frontend with a **Go backend** built as a Grafana extension plugin. The architecture follows these key patterns:
 
 - **Modular, Scene-Based Architecture**: Uses Grafana Scenes for state management
 - **Hook-Based Business Logic**: Business logic extracted into focused React hooks
 - **Interactive Tutorial System**: Sophisticated requirement checking and automated action execution
 - **Functional-First Code Style**: Pragmatic functional programming approach with immutable data and pure functions
+- **Go Backend**: Plugin backend using `grafana-plugin-sdk-go` for streaming, terminal connections, and resource handling
 
 ## Code style and conventions
 
@@ -104,19 +105,51 @@ npm run prettier
 
 # Check formatting
 npm run prettier-test
+
+# Lint Go code
+npm run lint:go
 ```
 
 ### Building and testing
 
 ```bash
-# Production build
+# Production build (frontend only)
 npm run build
+
+# Build Go backend (Linux)
+npm run build:backend
+
+# Build everything (frontend + backend for Linux/ARM64)
+npm run build:all
+
+# Run frontend tests
+npm run test:ci
+
+# Run Go tests
+npm run test:go
 
 # Run end-to-end tests
 npm run e2e
 
 # Sign plugin for distribution
 npm run sign
+```
+
+### Go backend development
+
+```bash
+# Build backend for current platform
+mage build:darwin      # macOS Intel
+mage build:darwinARM64 # macOS Apple Silicon
+mage build:linux       # Linux x64
+mage build:linuxARM64  # Linux ARM64
+mage build:windows     # Windows
+
+# Run Go tests
+mage test
+
+# Lint Go code
+mage lint
 ```
 
 ### Development server
@@ -127,6 +160,8 @@ The development server runs Grafana OSS in Docker with the plugin mounted. After
 - **Default credentials**: admin/admin
 
 ## Code organization
+
+### Frontend (src/)
 
 ```
 src/
@@ -151,6 +186,21 @@ src/
 ├── types/                 # TypeScript type definitions
 ├── utils/                 # Business logic hooks and utility functions
 └── validation/            # Guide and condition validation logic
+```
+
+### Backend (pkg/)
+
+```
+pkg/
+├── main.go                # Plugin entrypoint
+└── plugin/
+    ├── app.go             # Plugin app instance and lifecycle
+    ├── resources.go       # HTTP resource handlers
+    ├── settings.go        # Plugin settings/configuration
+    ├── stream.go          # Grafana Live streaming channels
+    ├── terminal.go        # Terminal/SSH connection handling
+    ├── coda.go            # Coda VM integration
+    └── wsconn.go          # WebSocket connection wrapper
 ```
 
 ## On-demand context
@@ -186,6 +236,8 @@ Load these files **only when working in the relevant domain**. Do not preload al
 | `constants/README.md`                  | Selector constants, interactive config, z-index management                                                                                                                                                                       | `src/constants/*`                                                                |
 | `learning-paths/README.md`             | Learning paths, badges, streaks, progress tracking                                                                                                                                                                               | `src/learning-paths/*`                                                           |
 | ESLint config + `architecture.test.ts` | Refactoring or reducing technical debt. The repo mechanically enforces rules via ESLint and `src/validation/architecture.test.ts`; their exclusions (`// eslint-disable`, test exceptions) serve as a map to existing tech debt. | --                                                                               |
+| `go.mod`, `go.sum`                     | Go backend dependencies, version updates                                                                                                                                                                                         | `pkg/**/*.go`                                                                    |
+| `magefile.go`                          | Go build tasks (mage targets)                                                                                                                                                                                                    | `pkg/**/*.go`                                                                    |
 
 All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/pr-review.md`. `E2E_TESTING_CONTRACT.md`, `RELEASE_PROCESS.md`, `FEATURE_FLAGS.md`, `CLI_TOOLS.md`, `ASSISTANT_INTEGRATION.md`, `E2E_TESTING.md`, `DEV_MODE.md`, `LOCAL_DEV.md`, `LIVE_SESSIONS.md`, `KNOWN_ISSUES.md`, `SCALE_TESTING.md`, `integrations/workshop.md`, `utils/README.md`, `constants/README.md`, and `learning-paths/README.md` are at `docs/developer/`. The `interactive-examples/` and `engines/` directories are also under `docs/developer/`.
 
@@ -198,3 +250,12 @@ Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. I
 - **Tier 1 (glob-triggered on `*.ts`/`*.tsx`/`*.js`/`*.jsx`)**: `frontend-security.mdc` -- security rules F1-F6
 - **Tier 1 (on `/review`)**: `pr-review.md` -- compact orchestrator with unified detection table
 - **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` -- detailed Do/Don't for R1-R21 (includes hooks, state, performance, and SRE reliability patterns; also used by `/attack`)
+
+**Go backend PRs:**
+
+For PRs touching `pkg/**/*.go`, also verify:
+
+- `npm run lint:go` passes
+- `npm run test:go` passes
+- `go build ./...` succeeds
+- No new security issues (input validation, error handling, resource cleanup)

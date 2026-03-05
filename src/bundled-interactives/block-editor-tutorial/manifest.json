@@ -1,0 +1,16 @@
+{
+  "id": "block-editor-tutorial",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Learn how to use the guide editor to create and edit interactive guides.",
+  "category": "authoring",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

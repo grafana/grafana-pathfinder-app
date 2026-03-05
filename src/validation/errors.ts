@@ -16,7 +16,7 @@ export interface ValidationError {
 export interface ValidationWarning {
   message: string;
   path: Array<string | number>;
-  type: 'unknown-field' | 'deprecation' | 'suggestion' | 'invalid-condition';
+  type: 'unknown-field' | 'deprecation' | 'suggestion' | 'invalid-condition' | 'missing-asset';
 }
 
 export function formatPath(path: Array<string | number>): string {

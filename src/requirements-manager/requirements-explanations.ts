@@ -35,6 +35,9 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
     // Form requirements
     'form-valid': 'Please fill out all required form fields correctly.',
     'exists-reftarget': 'The target element must be visible and available on the page.',
+
+    // Terminal requirements
+    'is-terminal-active': 'A terminal connection is required. Click "Connect" below to start a terminal session.',
   };
 
   // Enhanced requirement type handling
