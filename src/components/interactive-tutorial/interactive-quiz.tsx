@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -108,12 +108,30 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     explanation,
     canSkip,
     markSkipped,
+    resetStep,
   } = useStepChecker({
     requirements,
     stepId,
     isEligibleForChecking,
     skippable,
   });
+
+  // Handle reset trigger from parent section
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset quiz state when parent section triggers a reset */
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      setSelectedIds(new Set());
+      setAttempts(0);
+      setIsLocallyCompleted(false);
+      setLastResult('none');
+      setShowHint(null);
+      setIsRevealed(false);
+      if (resetStep) {
+        resetStep();
+      }
+    }
+  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Compute effective completion state
   const isCompleted = parentCompleted || stepCompleted || isLocallyCompleted;
