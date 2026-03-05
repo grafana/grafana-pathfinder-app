@@ -490,7 +490,7 @@ export function InteractiveSection({
           targetValue: undefined,
           requirements: props.requirements,
           skippable: props.skippable,
-          isMultiStep: false,
+          isMultiStep: true,
           isGuided: false,
         });
         stepIndex++;
@@ -1533,11 +1533,15 @@ export function InteractiveSection({
           disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting),
           resetTrigger,
           key: stepInfo.stepId,
-          ref: (ref: { executeStep: () => Promise<boolean>; markSkipped?: () => void } | null) => {
+          ref: (
+            ref: {
+              executeStep: () => Promise<boolean>;
+            } | null
+          ) => {
             if (ref) {
-              stepRefs.current.set(stepInfo.stepId, ref);
+              multiStepRefs.current.set(stepInfo.stepId, ref);
             } else {
-              stepRefs.current.delete(stepInfo.stepId);
+              multiStepRefs.current.delete(stepInfo.stepId);
             }
           },
         });
