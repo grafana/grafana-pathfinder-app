@@ -49,16 +49,15 @@ describe('Security: XSS Prevention with DOMPurify', () => {
     expect(result).not.toContain('javascript:');
   });
 
-  it('should sandbox data: URLs in iframes', () => {
+  it('should strip iframes with data: URLs entirely', () => {
     const malicious = '<iframe src="data:text/html,<script>alert(\'XSS\')</script>"></iframe>';
     const result = sanitizeDocumentationHTML(malicious);
 
-    // DOMPurify with ALLOW_UNKNOWN_PROTOCOLS preserves data: URLs
-    // BUT our afterSanitizeAttributes hook adds sandbox="" which prevents script execution
-    expect(result).toContain('sandbox=""'); // Most restrictive sandbox
-    expect(result).toContain('referrerpolicy="no-referrer"');
-
-    // Even though alert() might be in the src, it can't execute due to sandbox
+    // DOMPurify 3.3.2+ strips iframes with data: URLs entirely (stricter _isValidAttribute)
+    // This is more secure than the previous sandbox approach
+    expect(result).not.toContain('<iframe');
+    expect(result).not.toContain('data:text/html');
+    expect(result).not.toContain('alert(');
   });
 
   it('should allow safe HTML with data attributes', () => {
