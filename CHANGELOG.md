@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.1
+
+### Added
+
+- **Draft/publish lifecycle**: Introduced draft and publish workflow for library guides in the block editor, allowing content creators to iterate on guides before making them available (#657)
+
+### Fixed
+
+- **Guided popup themes**: Guided popup now correctly respects light/dark mode settings (#656)
+
+### Changed
+
+- **Reduced module size**: Optimized plugin bundle size for improved initial load performance (#659)
+
+### Chore
+
+- Updated grafana/plugin-actions digest to b82357e (#658)
+
 ## 2.2.0
 
 ### Added
