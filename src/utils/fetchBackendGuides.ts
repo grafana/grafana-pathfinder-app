@@ -23,9 +23,11 @@ const UNAVAILABLE_STATUSES = new Set([400, 403, 404, 405, 501, 503]);
 
 /**
  * Fetch guides from the backend API
- * Returns empty array if endpoint is unavailable or on error
+ * Returns empty array if endpoint is unavailable or on error.
+ * When publishedOnly is true, only guides with spec.status === 'published' are returned;
+ * guides with missing/undefined status are treated as draft and excluded.
  */
-export async function fetchBackendGuides(namespace: string): Promise<any[]> {
+export async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): Promise<any[]> {
   if (!isBackendApiAvailable()) {
     return [];
   }
@@ -41,7 +43,13 @@ export async function fetchBackendGuides(namespace: string): Promise<any[]> {
       })
     );
 
-    return response.data?.items || [];
+    const items = response.data?.items || [];
+
+    if (publishedOnly) {
+      return items.filter((item: any) => item.spec?.status === 'published');
+    }
+
+    return items;
   } catch (err) {
     const status =
       (err as { status?: number; statusCode?: number; data?: { statusCode?: number } })?.status ??
