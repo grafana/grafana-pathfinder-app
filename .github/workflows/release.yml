@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
-      - uses: grafana/plugin-actions/build-plugin@ad81bca30a8f98102741e1e6b0b6898a265ad691
+      - uses: grafana/plugin-actions/build-plugin@b82357e85d512c678416146ca4e9f8672bd108da
         # Uncomment to enable plugin signing
         # (For more info on how to generate the access policy token see https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token)
         #with:
