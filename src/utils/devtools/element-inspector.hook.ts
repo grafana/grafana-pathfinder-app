@@ -141,9 +141,7 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
     }
 
     // Ensure global interactive styles (including hover highlight CSS) are injected
-    // and theme colors are updated to match current light/dark mode
     addGlobalInteractiveStyles();
-    updateInteractiveThemeColors(theme);
 
     const handleMouseMove = (event: MouseEvent) => {
       // Cancel previous RAF if still pending
@@ -250,8 +248,15 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
     // Use excludeSelectorsKey (serialized) instead of excludeSelectors (array reference)
     // to prevent effect re-runs when callers pass inline arrays with same values.
     // onHover is accessed via ref so it's not needed in deps.
-    // theme is included to update CSS custom properties when theme changes.
-  }, [isActive, excludeSelectorsKey, cleanupDOM, theme]);
+  }, [isActive, excludeSelectorsKey, cleanupDOM]);
+
+  // Separate effect for theme updates — intentionally decoupled from the listener lifecycle
+  // so that light/dark mode switches do not trigger a full mousemove listener teardown.
+  useEffect(() => {
+    if (isActive) {
+      updateInteractiveThemeColors(theme);
+    }
+  }, [theme, isActive]);
 
   // Memoize return value to prevent causing re-renders in parent
   return useMemo(

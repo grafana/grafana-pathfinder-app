@@ -9,6 +9,10 @@ import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
  * box popups (which are rendered outside the React tree as global DOM elements) respect
  * the user's light/dark mode preference.
  *
+ * The custom properties are written to :root (document.documentElement) and intentionally
+ * persist — no cleanup is required. They are namespaced under --pathfinder-* to avoid
+ * collisions with Grafana's own CSS variables.
+ *
  * @param theme - The current Grafana theme
  */
 export const updateInteractiveThemeColors = (theme: GrafanaTheme2): void => {
@@ -1844,7 +1848,10 @@ export const addGlobalInteractiveStyles = () => {
         0 4px 20px rgba(0, 0, 0, 0.25),
         0 1px 3px rgba(0, 0, 0, 0.1);
       position: relative;
-      /* Essential styling that uses CSS custom properties set by updateInteractiveThemeColors() */
+      /* Essential styling that uses CSS custom properties set by updateInteractiveThemeColors().
+         Fallback values (#1f1f23, #d9d9d9) are dark-mode defaults — they apply only in the
+         brief window before the first React effect fires. updateInteractiveThemeColors() must
+         have run before a popup is shown to guarantee correct colors in light mode. */
       background: var(--pathfinder-comment-bg, #1f1f23);
       border: 1px solid rgba(255, 152, 0, 0.3);
       color: var(--pathfinder-comment-text, #d9d9d9);

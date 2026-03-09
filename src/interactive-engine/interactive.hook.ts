@@ -88,10 +88,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [stateManager, navigationManager]
   );
 
-  // Initialize global interactive styles and update theme colors
-  // The theme colors update whenever the theme changes (light/dark mode switch)
+  // Inject the global style tag once on mount — idempotent, no cleanup needed.
   useEffect(() => {
     addGlobalInteractiveStyles();
+  }, []);
+
+  // Update CSS custom properties whenever the theme changes (light/dark mode switch).
+  // Separate from the style injection above so addGlobalInteractiveStyles() is not
+  // re-called on every theme toggle.
+  useEffect(() => {
     updateInteractiveThemeColors(theme);
   }, [theme]);
 
