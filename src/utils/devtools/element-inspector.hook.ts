@@ -4,8 +4,9 @@
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useTheme2 } from '@grafana/ui';
 import { createHoverHighlight, updateHoverHighlight, removeHoverHighlight } from './hover-highlight.util';
-import { addGlobalInteractiveStyles } from '../../styles/interactive.styles';
+import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 
 export interface UseElementInspectorOptions {
   isActive: boolean;
@@ -92,6 +93,9 @@ export function generateFullDomPath(element: HTMLElement): string {
 export function useElementInspector(options: UseElementInspectorOptions): UseElementInspectorReturn {
   const { isActive, excludeSelectors = [], onHover } = options;
 
+  // Get current theme for CSS custom property updates
+  const theme = useTheme2();
+
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
   const [domPath, setDomPath] = useState<string | null>(null);
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
@@ -137,7 +141,9 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
     }
 
     // Ensure global interactive styles (including hover highlight CSS) are injected
+    // and theme colors are updated to match current light/dark mode
     addGlobalInteractiveStyles();
+    updateInteractiveThemeColors(theme);
 
     const handleMouseMove = (event: MouseEvent) => {
       // Cancel previous RAF if still pending
@@ -244,7 +250,8 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
     // Use excludeSelectorsKey (serialized) instead of excludeSelectors (array reference)
     // to prevent effect re-runs when callers pass inline arrays with same values.
     // onHover is accessed via ref so it's not needed in deps.
-  }, [isActive, excludeSelectorsKey, cleanupDOM]);
+    // theme is included to update CSS custom properties when theme changes.
+  }, [isActive, excludeSelectorsKey, cleanupDOM, theme]);
 
   // Memoize return value to prevent causing re-renders in parent
   return useMemo(

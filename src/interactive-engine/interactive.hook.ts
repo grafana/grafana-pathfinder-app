@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useMemo } from 'react';
-import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
+import { useTheme2 } from '@grafana/ui';
+import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
 import { waitForReactUpdates } from '../lib/async-utils';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
@@ -50,6 +51,9 @@ function isValidInteractiveElement(data: InteractiveElementData): boolean {
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
 
+  // Get current theme for CSS custom property updates
+  const theme = useTheme2();
+
   // Initialize state manager
   const stateManager = useMemo(() => new InteractiveStateManager(), []);
 
@@ -84,10 +88,12 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [stateManager, navigationManager]
   );
 
-  // Initialize global interactive styles
+  // Initialize global interactive styles and update theme colors
+  // The theme colors update whenever the theme changes (light/dark mode switch)
   useEffect(() => {
     addGlobalInteractiveStyles();
-  }, []);
+    updateInteractiveThemeColors(theme);
+  }, [theme]);
 
   const interactiveFocus = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
