@@ -23,7 +23,10 @@ export const updateInteractiveThemeColors = (theme: GrafanaTheme2): void => {
 
   // UI element colors (buttons, close icons, etc.)
   // These need different opacities for light vs dark mode to maintain contrast
-  root.style.setProperty('--pathfinder-comment-close-color', isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)');
+  root.style.setProperty(
+    '--pathfinder-comment-close-color',
+    isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)'
+  );
   root.style.setProperty(
     '--pathfinder-comment-close-hover-bg',
     isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'
@@ -72,24 +75,15 @@ export const updateInteractiveThemeColors = (theme: GrafanaTheme2): void => {
   );
 
   // Border top for button container
-  root.style.setProperty(
-    '--pathfinder-comment-divider',
-    isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'
-  );
+  root.style.setProperty('--pathfinder-comment-divider', isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)');
 
   // Form validation status colors
-  root.style.setProperty(
-    '--pathfinder-form-checking-bg',
-    isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'
-  );
+  root.style.setProperty('--pathfinder-form-checking-bg', isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)');
   root.style.setProperty(
     '--pathfinder-form-checking-border',
     isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)'
   );
-  root.style.setProperty(
-    '--pathfinder-form-checking-text',
-    isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)'
-  );
+  root.style.setProperty('--pathfinder-form-checking-text', isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)');
 };
 
 // Base interactive element styles
