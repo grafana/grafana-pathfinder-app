@@ -3,7 +3,7 @@
  * Shows element highlights and DOM paths during watch/record mode
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { createHoverHighlight, updateHoverHighlight, removeHoverHighlight } from './hover-highlight.util';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
@@ -252,7 +252,9 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
 
   // Separate effect for theme updates — intentionally decoupled from the listener lifecycle
   // so that light/dark mode switches do not trigger a full mousemove listener teardown.
-  useEffect(() => {
+  // useLayoutEffect runs before paint so CSS variables are set before the browser renders
+  // any inspector highlight overlays.
+  useLayoutEffect(() => {
     if (isActive) {
       updateInteractiveThemeColors(theme);
     }

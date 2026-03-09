@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
 import { waitForReactUpdates } from '../lib/async-utils';
@@ -94,9 +94,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }, []);
 
   // Update CSS custom properties whenever the theme changes (light/dark mode switch).
-  // Separate from the style injection above so addGlobalInteractiveStyles() is not
-  // re-called on every theme toggle.
-  useEffect(() => {
+  // useLayoutEffect runs before paint, eliminating any flash of dark fallback colors on
+  // light-mode Grafana. Separate from the style injection above so addGlobalInteractiveStyles()
+  // is not re-called on every theme toggle.
+  useLayoutEffect(() => {
     updateInteractiveThemeColors(theme);
   }, [theme]);
 
