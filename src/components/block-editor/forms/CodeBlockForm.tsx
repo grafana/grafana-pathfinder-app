@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, TextArea, Checkbox, Select, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, TextArea, Checkbox, Combobox, useStyles2, type ComboboxOption } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
@@ -114,10 +114,10 @@ export function CodeBlockForm({
 
       {/* Language */}
       <Field label="Language" description="Syntax highlighting language">
-        <Select
+        <Combobox
           options={LANGUAGE_OPTIONS}
-          value={LANGUAGE_OPTIONS.find((opt) => opt.value === language)}
-          onChange={(opt) => setLanguage(opt?.value ?? 'javascript')}
+          value={language}
+          onChange={(opt: ComboboxOption<string>) => setLanguage(opt.value)}
         />
       </Field>
 

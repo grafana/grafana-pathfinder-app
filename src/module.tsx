@@ -13,18 +13,6 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { suggestionState } from './global-state/suggestion';
 import { validateRedirectPath } from './security';
-import { initializeOpenFeature } from './utils/openfeature';
-import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
-import {
-  initializeExperiments,
-  shouldMountSidebar,
-  setupMainExperimentAutoOpen,
-  attemptAutoOpen,
-  getAutoOpenFeatureFlag,
-  getCurrentPath,
-  createExperimentDebugger,
-} from './utils/experiments';
-import { usePendingGuideLaunch } from './hooks';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -37,18 +25,31 @@ import { usePendingGuideLaunch } from './hooks';
 
 // Initialize OpenFeature provider for dynamic feature flag evaluation
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
-// Uses top-level await to ensure flags are ready before evaluation
+// Uses dynamic import so the SDK stays out of the entry-point bundle
 try {
+  const { initializeOpenFeature, getExperimentConfig } = await import('./utils/openfeature');
   await initializeOpenFeature();
+
+  // Late-bind experiment config to analytics (breaks the static import chain)
+  const { bindExperimentConfig } = await import('./lib/analytics');
+  bindExperimentConfig(getExperimentConfig);
 } catch (e) {
   console.error('[OpenFeature] Error initializing feature flags:', e);
 }
 
-// Initialize experiments and get state
+// Initialize experiments and get state (dynamic import keeps zod/user-storage out of module.js)
+const {
+  initializeExperiments,
+  shouldMountSidebar,
+  setupMainExperimentAutoOpen,
+  attemptAutoOpen,
+  getAutoOpenFeatureFlag,
+  getCurrentPath,
+  createExperimentDebugger,
+} = await import('./utils/experiments');
 const experimentState = initializeExperiments();
 const { mainConfig, mainVariant, after24hVariant } = experimentState;
 
-// Expose experiment debugging utilities on window.__pathfinderExperiment
 createExperimentDebugger(mainConfig);
 
 // Check if Pathfinder was already docked (browser restore scenario)
@@ -219,9 +220,6 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
         (window as any).__pathfinderPluginConfig = config;
       }, [config]);
 
-      // Poll for pending guide launches queued by the MCP launch_guide tool
-      usePendingGuideLaunch();
-
       // Process queued docs links when sidebar mounts
       useEffect(() => {
         sidebarState.setIsSidebarMounted(true);
@@ -255,11 +253,9 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
       }, []);
 
       return (
-        <PathfinderFeatureProvider>
-          <Suspense fallback={<LoadingPlaceholder text="" />}>
-            <LazyContextPanel />
-          </Suspense>
-        </PathfinderFeatureProvider>
+        <Suspense fallback={<LoadingPlaceholder text="" />}>
+          <LazyContextPanel />
+        </Suspense>
       );
     },
   });

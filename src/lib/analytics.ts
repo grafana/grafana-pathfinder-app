@@ -8,7 +8,19 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security';
-import { getExperimentConfig, type ExperimentConfig } from '../utils/openfeature';
+import type { ExperimentConfig } from '../utils/openfeature';
+
+type GetExperimentConfigFn = (flag: string) => ExperimentConfig;
+let _getExperimentConfig: GetExperimentConfigFn | null = null;
+
+/**
+ * Late-binds the getExperimentConfig function after OpenFeature initializes.
+ * Called from module.tsx to break the static import chain that would otherwise
+ * pull the entire OpenFeature SDK into the entry-point bundle.
+ */
+export function bindExperimentConfig(fn: GetExperimentConfigFn): void {
+  _getExperimentConfig = fn;
+}
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -96,9 +108,12 @@ interface ExperimentAnalyticsEntry {
  * otherwise 'excluded'.
  */
 function getExperimentVariant(): ExperimentConfig['variant'] | null {
+  if (!_getExperimentConfig) {
+    return null;
+  }
   try {
-    const mainVariant = getExperimentConfig('pathfinder.experiment-variant').variant;
-    const after24hVariant = getExperimentConfig('pathfinder.after-24h-experiment').variant;
+    const mainVariant = _getExperimentConfig('pathfinder.experiment-variant').variant;
+    const after24hVariant = _getExperimentConfig('pathfinder.after-24h-experiment').variant;
 
     if (mainVariant === 'treatment' || after24hVariant === 'treatment') {
       return 'treatment';
@@ -124,18 +139,19 @@ function getExperimentVariant(): ExperimentConfig['variant'] | null {
  * @returns Array of experiment configs, or null if experiments cannot be retrieved
  */
 function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
+  if (!_getExperimentConfig) {
+    return null;
+  }
   try {
     const experiments: ExperimentAnalyticsEntry[] = [];
 
-    // Add experiment variant config
-    // Structure comes directly from GOFF - allows any experiment configuration
-    const experimentVariantConfig = getExperimentConfig('pathfinder.experiment-variant');
+    const experimentVariantConfig = _getExperimentConfig('pathfinder.experiment-variant');
     experiments.push({
       flag: 'pathfinder.experiment-variant',
       ...experimentVariantConfig,
     });
 
-    const after24hConfig = getExperimentConfig('pathfinder.after-24h-experiment');
+    const after24hConfig = _getExperimentConfig('pathfinder.after-24h-experiment');
     experiments.push({
       flag: 'pathfinder.after-24h-experiment',
       ...after24hConfig,
@@ -143,7 +159,6 @@ function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
 
     return experiments;
   } catch (error) {
-    // Silently fail - feature flags may not be initialized yet
     return null;
   }
 }

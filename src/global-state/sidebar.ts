@@ -1,6 +1,6 @@
 import { getAppEvents } from '@grafana/runtime';
 import { BusEventWithPayload } from '@grafana/data';
-import { reportAppInteraction, UserInteraction } from 'lib';
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import pluginJson from '../plugin.json';
 
 interface OpenExtensionSidebarPayload {
