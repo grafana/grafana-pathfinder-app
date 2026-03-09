@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { Modal, Button, Icon, useStyles2, Spinner, Alert } from '@grafana/ui';
+import { Modal, Button, Badge, Icon, Tooltip, useStyles2, Spinner, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { JsonGuide } from './types';
@@ -17,12 +17,14 @@ interface BackendGuide {
     namespace: string;
     creationTimestamp?: string;
     uid?: string;
+    resourceVersion?: string;
   };
   spec: {
     id: string;
     title: string;
     schemaVersion?: string;
     blocks: any[];
+    status?: 'draft' | 'published';
   };
 }
 
@@ -32,8 +34,10 @@ export interface GuideLibraryModalProps {
   guides: BackendGuide[];
   isLoading: boolean;
   error: string | null;
-  onLoadGuide: (guide: JsonGuide, resourceName: string, metadata: any) => void;
+  onLoadGuide: (guide: JsonGuide, resourceName: string, metadata: any, backendStatus: 'draft' | 'published') => void;
   onDeleteGuide: (resourceName: string) => Promise<void>;
+  onPublishGuide: (resourceName: string, metadata: any) => Promise<void>;
+  onUnpublishGuide: (resourceName: string, metadata: any) => Promise<void>;
   onRefresh: () => void;
 }
 
@@ -117,11 +121,15 @@ export function GuideLibraryModal({
   error,
   onLoadGuide,
   onDeleteGuide,
+  onPublishGuide,
+  onUnpublishGuide,
   onRefresh,
 }: GuideLibraryModalProps) {
   const styles = useStyles2(getStyles);
   const [deletingGuide, setDeletingGuide] = useState<string | null>(null);
+  const [publishingGuide, setPublishingGuide] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
@@ -156,8 +164,33 @@ export function GuideLibraryModal({
       schemaVersion: backendGuide.spec.schemaVersion || '1.0',
       blocks: backendGuide.spec.blocks,
     };
-    onLoadGuide(guide, backendGuide.metadata.name, backendGuide.metadata);
+    const backendStatus: 'draft' | 'published' = backendGuide.spec.status === 'published' ? 'published' : 'draft';
+    onLoadGuide(guide, backendGuide.metadata.name, backendGuide.metadata, backendStatus);
     onClose();
+  };
+
+  const handlePublishGuide = async (guide: BackendGuide) => {
+    setPublishingGuide(guide.metadata.name);
+    try {
+      await onPublishGuide(guide.metadata.name, guide.metadata);
+      onRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setPublishingGuide(null);
+    }
+  };
+
+  const handleUnpublishGuide = async (guide: BackendGuide) => {
+    setPublishingGuide(guide.metadata.name);
+    try {
+      await onUnpublishGuide(guide.metadata.name, guide.metadata);
+      onRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setPublishingGuide(null);
+    }
   };
 
   const handleDeleteGuide = async (guide: BackendGuide) => {
@@ -223,49 +256,87 @@ export function GuideLibraryModal({
           ) : guides.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyStateIcon}>📚</div>
-              <p>No guides found in the backend.</p>
-              <p>Create and publish a guide to see it here.</p>
+              <p>No guides in library.</p>
+              <p>Use &ldquo;Save to library&rdquo; in the editor to save your first guide.</p>
             </div>
           ) : (
-            guides.map((guide) => (
-              <div key={guide.metadata.uid || guide.metadata.name} className={styles.guideItem}>
-                <div className={styles.guideInfo}>
-                  <div className={styles.guideTitle}>{guide.spec.title}</div>
-                  <div className={styles.guideMeta}>
-                    <span>
-                      <Icon name="cube" /> {guide.metadata.name}
-                    </span>
-                    <span>
-                      <Icon name="clock-nine" /> {formatDate(guide.metadata.creationTimestamp)}
-                    </span>
-                    <span>
-                      <Icon name="apps" /> {guide.spec.blocks.length} blocks
-                    </span>
+            guides.map((guide) => {
+              const guideStatus: 'draft' | 'published' = guide.spec.status === 'published' ? 'published' : 'draft';
+              const isActioning = publishingGuide === guide.metadata.name || deletingGuide === guide.metadata.name;
+              return (
+                <div key={guide.metadata.uid || guide.metadata.name} className={styles.guideItem}>
+                  <div className={styles.guideInfo}>
+                    <div className={styles.guideTitle}>
+                      {guide.spec.title}{' '}
+                      {guideStatus === 'published' ? (
+                        <Tooltip content="Published and visible to users">
+                          <Badge text="Published" color="blue" icon="cloud-upload" />
+                        </Tooltip>
+                      ) : (
+                        <Tooltip content="Saved to library but not published to users">
+                          <Badge text="Draft" color="purple" icon="circle" />
+                        </Tooltip>
+                      )}
+                    </div>
+                    <div className={styles.guideMeta}>
+                      <span>
+                        <Icon name="cube" /> {guide.metadata.name}
+                      </span>
+                      <span>
+                        <Icon name="clock-nine" /> {formatDate(guide.metadata.creationTimestamp)}
+                      </span>
+                      <span>
+                        <Icon name="apps" /> {guide.spec.blocks.length} blocks
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.guideActions}>
+                    {guideStatus === 'draft' ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon="cloud-upload"
+                        onClick={() => handlePublishGuide(guide)}
+                        disabled={isActioning}
+                        tooltip="Publish and make visible to users"
+                      >
+                        {publishingGuide === guide.metadata.name ? <Spinner size="sm" /> : 'Publish'}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon="times-circle"
+                        onClick={() => handleUnpublishGuide(guide)}
+                        disabled={isActioning}
+                        tooltip="Remove from docs panel; guide stays in library"
+                      >
+                        {publishingGuide === guide.metadata.name ? <Spinner size="sm" /> : 'Unpublish'}
+                      </Button>
+                    )}
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon="pen"
+                      onClick={() => handleLoadGuide(guide)}
+                      tooltip="Load guide for editing"
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      icon="trash-alt"
+                      onClick={() => handleDeleteGuide(guide)}
+                      disabled={isActioning}
+                      tooltip="Delete guide"
+                    >
+                      {deletingGuide === guide.metadata.name ? <Spinner size="sm" /> : null}
+                    </Button>
                   </div>
                 </div>
-                <div className={styles.guideActions}>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon="pen"
-                    onClick={() => handleLoadGuide(guide)}
-                    tooltip="Load guide for editing"
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    icon="trash-alt"
-                    onClick={() => handleDeleteGuide(guide)}
-                    disabled={deletingGuide === guide.metadata.name}
-                    tooltip="Delete guide"
-                  >
-                    {deletingGuide === guide.metadata.name ? <Spinner size="sm" /> : null}
-                  </Button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -295,6 +366,15 @@ export function GuideLibraryModal({
         message={deleteError ?? ''}
         severity="error"
         onClose={() => setDeleteError(null)}
+      />
+
+      {/* Publish/Unpublish Error Modal */}
+      <AlertModal
+        isOpen={actionError !== null}
+        title="Action failed"
+        message={actionError ?? ''}
+        severity="error"
+        onClose={() => setActionError(null)}
       />
 
       {/* Load Error Modal */}

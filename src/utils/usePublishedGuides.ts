@@ -12,6 +12,7 @@ export interface PublishedGuide {
     title: string;
     schemaVersion?: string;
     blocks?: unknown[];
+    status?: 'draft' | 'published';
   };
 }
 
@@ -44,7 +45,7 @@ export function usePublishedGuides(): UsePublishedGuidesResult {
     }
 
     try {
-      const fetchedGuides = await fetchBackendGuides(namespace);
+      const fetchedGuides = await fetchBackendGuides(namespace, true);
       if (isMountedRef.current) {
         setGuides(fetchedGuides);
       }
