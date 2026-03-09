@@ -1,8 +1,8 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
 import { locationService } from '@grafana/runtime';
-import React, { lazy, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo } from 'react';
+import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
-import AppComponent from './components/App/App';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // import { initializeFaroMetrics } from './lib/faro';
@@ -12,20 +12,7 @@ import { getConfigWithDefaults, DocsPluginConfig, PLUGIN_BASE_URL } from './cons
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { suggestionState } from './global-state/suggestion';
-import { isGrafanaDocsUrl, isInteractiveLearningUrl, validateRedirectPath } from './security';
-import { initializeOpenFeature } from './utils/openfeature';
-import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
-import {
-  initializeExperiments,
-  shouldMountSidebar,
-  setupMainExperimentAutoOpen,
-  attemptAutoOpen,
-  getAutoOpenFeatureFlag,
-  getCurrentPath,
-  createExperimentDebugger,
-} from './utils/experiments';
-import MemoizedContextPanel from './components/App/ContextPanel';
-import { usePendingGuideLaunch } from './hooks';
+import { validateRedirectPath } from './security';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -38,18 +25,31 @@ import { usePendingGuideLaunch } from './hooks';
 
 // Initialize OpenFeature provider for dynamic feature flag evaluation
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
-// Uses top-level await to ensure flags are ready before evaluation
+// Uses dynamic import so the SDK stays out of the entry-point bundle
 try {
+  const { initializeOpenFeature, getExperimentConfig } = await import('./utils/openfeature');
   await initializeOpenFeature();
+
+  // Late-bind experiment config to analytics (breaks the static import chain)
+  const { bindExperimentConfig } = await import('./lib/analytics');
+  bindExperimentConfig(getExperimentConfig);
 } catch (e) {
   console.error('[OpenFeature] Error initializing feature flags:', e);
 }
 
-// Initialize experiments and get state
+// Initialize experiments and get state (dynamic import keeps zod/user-storage out of module.js)
+const {
+  initializeExperiments,
+  shouldMountSidebar,
+  setupMainExperimentAutoOpen,
+  attemptAutoOpen,
+  getAutoOpenFeatureFlag,
+  getCurrentPath,
+  createExperimentDebugger,
+} = await import('./utils/experiments');
 const experimentState = initializeExperiments();
 const { mainConfig, mainVariant, after24hVariant } = experimentState;
 
-// Expose experiment debugging utilities on window.__pathfinderExperiment
 createExperimentDebugger(mainConfig);
 
 // Check if Pathfinder was already docked (browser restore scenario)
@@ -76,11 +76,17 @@ try {
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
 
+const LazyApp = lazy(() => import('./components/App/App'));
+const LazyContextPanel = lazy(() => import('./components/App/ContextPanel'));
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
 const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/InteractiveFeatures'));
 
-const App = (props: AppRootProps) => <AppComponent {...props} />;
+const App = (props: AppRootProps) => (
+  <Suspense fallback={<LoadingPlaceholder text="" />}>
+    <LazyApp {...props} />
+  </Suspense>
+);
 
 const plugin = new AppPlugin<{}>()
   .setRootPage(App)
@@ -109,98 +115,94 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
-  // Check for doc query parameter to auto-open specific docs page
+  // Check for doc query parameter to auto-open specific docs page.
+  // Dynamically imports findDocPage so the bundled JSON data stays out of module.js.
   const urlParams = new URLSearchParams(window.location.search);
   const docsParam = urlParams.get('doc');
   const pageParam = urlParams.get('page');
-  const docsPage = docsParam ? findDocPage(docsParam) : null;
 
-  // Determine redirect target (only when doc param is present)
-  // Priority: explicit page param > bundled guide target > /
-  // SECURITY: page is only processed when doc is also present,
-  // preventing the plugin page from becoming a general-purpose redirector
-  const redirectTarget = docsParam ? validateRedirectPath(pageParam || docsPage?.targetPage || PLUGIN_BASE_URL) : null;
+  if (docsParam) {
+    import('./utils/find-doc-page')
+      .then(({ findDocPage }) => {
+        const docsPage = findDocPage(docsParam);
 
-  // Warn if docsParam is present but no docsPage is found
-  // This can happen for malformed params or unsupported URL formats
-  if (docsParam && !docsPage) {
-    console.warn(
-      'Could not parse doc param:',
-      docsParam,
-      '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
-    );
-    // Redirect to home and open sidebar to Recommendations
-    // This gives the user a useful landing instead of a dead plugin page
-    sidebarState.setPendingOpenSource('url_param', 'auto-open');
-    attemptAutoOpen(200);
-    // Navigate away from the dead plugin page
-    setTimeout(() => {
-      locationService.replace('/');
-    }, 300);
+        // Determine redirect target (only when doc param is present)
+        // Priority: explicit page param > bundled guide target > /
+        // SECURITY: page is only processed when doc is also present,
+        // preventing the plugin page from becoming a general-purpose redirector
+        const redirectTarget = validateRedirectPath(pageParam || docsPage?.targetPage || PLUGIN_BASE_URL);
+
+        // Warn if docsParam is present but no docsPage is found
+        if (!docsPage) {
+          console.warn(
+            'Could not parse doc param:',
+            docsParam,
+            '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
+          );
+          sidebarState.setPendingOpenSource('url_param', 'auto-open');
+          attemptAutoOpen(200);
+          setTimeout(() => {
+            locationService.replace('/');
+          }, 300);
+          return;
+        }
+
+        const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
+
+        sidebarState.setPendingOpenSource('url_param', 'auto-open');
+
+        if (needsRedirect) {
+          locationService.replace(redirectTarget);
+          attemptAutoOpen(500);
+        } else {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('doc');
+          url.searchParams.delete('page');
+          window.history.replaceState({}, '', url.toString());
+          attemptAutoOpen(200);
+        }
+
+        const dispatchAutoLaunch = () => {
+          setTimeout(() => {
+            const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+              detail: {
+                url: docsPage.url,
+                title: docsPage.title,
+                type: docsPage.type,
+              },
+            });
+            document.dispatchEvent(autoLaunchEvent);
+          }, 500);
+        };
+
+        window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
+
+        if (sidebarState.getIsSidebarMounted()) {
+          window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
+          dispatchAutoLaunch();
+        }
+      })
+      .catch((err) => {
+        console.error('[Pathfinder] Failed to load find-doc-page chunk:', err);
+        sidebarState.setPendingOpenSource('url_param', 'auto-open');
+        attemptAutoOpen(200);
+        setTimeout(() => {
+          locationService.replace('/');
+        }, 300);
+      });
   }
 
-  if (docsPage) {
-    const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
-
-    // Set source for analytics before opening (auto-open from URL param)
-    sidebarState.setPendingOpenSource('url_param', 'auto-open');
-
-    if (needsRedirect) {
-      // Redirect FIRST so the center console renders the target page
-      // before the sidebar opens and the guide content fetch begins.
-      // Using replace() avoids a back-button loop.
-      locationService.replace(redirectTarget);
-      // Longer delay: let the new page render before opening sidebar
-      attemptAutoOpen(500);
-    } else {
-      // No redirect needed -- strip doc/page params and open sidebar normally
-      const url = new URL(window.location.href);
-      url.searchParams.delete('doc');
-      url.searchParams.delete('page');
-      window.history.replaceState({}, '', url.toString());
-      attemptAutoOpen(200);
-    }
-
-    // Dispatch auto-launch-tutorial so docs-panel opens the guide.
-    // Wrapped in a helper so it can fire from the mount listener OR immediately.
-    const dispatchAutoLaunch = () => {
-      setTimeout(() => {
-        const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-          detail: {
-            url: docsPage.url,
-            title: docsPage.title,
-            type: docsPage.type,
-          },
-        });
-        document.dispatchEvent(autoLaunchEvent);
-      }, 500);
-    };
-
-    // Launch the guide once the sidebar is mounted on the (possibly new) page.
-    // Window event listeners survive client-side route changes, so this works
-    // regardless of whether a redirect occurred above.
-    window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
-
-    // Race-condition guard: if the sidebar was already docked from a previous
-    // session, its component mounts before init() runs, so the mount event
-    // fires before the listener above is registered.  Detect this by checking
-    // the global sidebar state and dispatch immediately.
-    if (sidebarState.getIsSidebarMounted()) {
-      // Remove the listener we just added — we don't need it.
-      window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
-      dispatchAutoLaunch();
-    }
+  // Skip experiment auto-open when a ?doc= param is present — the doc-param
+  // handler (async import above) owns sidebar opening and may redirect first.
+  // Running the experiment here would evaluate against the pre-redirect path.
+  if (!docsParam) {
+    const currentPath = getCurrentPath();
+    setupMainExperimentAutoOpen(experimentState, {
+      currentPath,
+      featureFlagEnabled: getAutoOpenFeatureFlag(),
+      pluginConfig: config,
+    });
   }
-
-  // Get current path for auto-open logic
-  const currentPath = getCurrentPath();
-
-  // Setup main experiment auto-open logic
-  setupMainExperimentAutoOpen(experimentState, {
-    currentPath,
-    featureFlagEnabled: getAutoOpenFeatureFlag(),
-    pluginConfig: config,
-  });
 };
 
 export { plugin };
@@ -228,9 +230,6 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
       useEffect(() => {
         (window as any).__pathfinderPluginConfig = config;
       }, [config]);
-
-      // Poll for pending guide launches queued by the MCP launch_guide tool
-      usePendingGuideLaunch();
 
       // Process queued docs links when sidebar mounts
       useEffect(() => {
@@ -265,9 +264,9 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
       }, []);
 
       return (
-        <PathfinderFeatureProvider>
-          <MemoizedContextPanel />
-        </PathfinderFeatureProvider>
+        <Suspense fallback={<LoadingPlaceholder text="" />}>
+          <LazyContextPanel />
+        </Suspense>
       );
     },
   });
@@ -410,143 +409,3 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
     detail.status = 'accepted';
   }) as EventListener);
 }
-
-interface DocPage {
-  type: 'docs-page' | 'learning-journey';
-  url: string;
-  title: string;
-  /** Optional target page path for deep link redirect (e.g., /explore) */
-  targetPage?: string;
-}
-
-/**
- * Finds a docs page or learning-journey rule matching the param (url)
- */
-const findDocPage = function (param: string): DocPage | null {
-  if (!param || param.trim() === '') {
-    return null;
-  }
-
-  // Case 1: Bundled interactive
-  if (param.startsWith('bundled:')) {
-    try {
-      const indexData = require('./bundled-interactives/index.json');
-      const interactiveId = param.replace('bundled:', '');
-      const interactive = indexData?.interactives?.find((item: any) => item.id === interactiveId);
-
-      if (interactive) {
-        return {
-          type: 'docs-page', // Bundled interactives are essentially learning journeys
-          url: param,
-          title: interactive.title || interactive.id,
-          targetPage: Array.isArray(interactive.url) ? interactive.url[0] : undefined,
-        };
-      }
-    } catch (e) {
-      console.warn('Failed to load bundled interactives index', e);
-    }
-  }
-
-  // Case 2: Interactive Learning URL
-  if (param.includes('interactive-learning.grafana')) {
-    // Ensure protocol
-    let url = param;
-    if (!url.startsWith('http')) {
-      url = 'https://' + url;
-    }
-
-    // SECURITY: Use validated interactive learning URL check
-    if (!isInteractiveLearningUrl(url)) {
-      console.warn('Security: Rejected non-interactive-learning URL:', url);
-      return null;
-    }
-
-    // Basic title extraction from last path segment
-    const parts = url.split('/');
-    const title = parts[parts.length - 1] || 'Interactive tutorial';
-
-    return {
-      type: 'docs-page',
-      url: url,
-      title: title,
-    };
-  }
-
-  // Case 3: Check Static Links for curated content (Grafana.com docs)
-  // Dynamically load all JSON files from static-links directory
-  try {
-    const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
-    const allFilePaths = staticLinksContext.keys();
-
-    for (const filePath of allFilePaths) {
-      const staticData = staticLinksContext(filePath);
-      if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
-        // Find doc-page or learning-journey that matches the URL exactly
-        const rule = staticData.rules.find(
-          (r: { type: string; url: string; title: string }) =>
-            (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
-        );
-        if (rule) {
-          return rule;
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load static links:', error);
-  }
-
-  // Case 4: Any Grafana docs URL (fallback for non-curated content)
-  // Supports paths like /docs/grafana/latest/... or full URLs like https://grafana.com/docs/...
-  // Also supports /tutorials/, /docs/learning-journeys/ (legacy), and /docs/learning-paths/ paths
-  const isPathOnly =
-    param.startsWith('/docs/') ||
-    param.startsWith('/tutorials/') ||
-    param.startsWith('/docs/learning-journeys/') ||
-    param.startsWith('/docs/learning-paths/');
-  const isFullGrafanaUrl = param.startsWith('https://grafana.com/') || param.startsWith('https://docs.grafana.com/');
-
-  if (isPathOnly || isFullGrafanaUrl) {
-    // Construct full URL for validation
-    const fullUrl = param.startsWith('https://') ? param : `https://grafana.com${param}`;
-
-    // SECURITY: Validate using isGrafanaDocsUrl which checks:
-    // 1. Hostname is in ALLOWED_GRAFANA_DOCS_HOSTNAMES (prevents subdomain hijacking)
-    // 2. Protocol is https (prevents protocol injection)
-    // 3. Path contains valid docs paths (prevents arbitrary URL injection)
-    if (!isGrafanaDocsUrl(fullUrl)) {
-      console.warn('Security: Rejected non-Grafana docs URL:', fullUrl);
-      return null;
-    }
-
-    // Extract a human-readable title from the URL path
-    // e.g., /docs/loki/latest/configure/storage/ -> "Storage - Loki"
-    const pathSegments = param
-      .replace(/^https:\/\/[^/]+/, '')
-      .split('/')
-      .filter(Boolean);
-    const titleSegments = pathSegments.slice(1); // Remove 'docs'/'tutorials' prefix
-
-    // Find the product name (usually second segment after 'docs')
-    const product = titleSegments[0] || 'Grafana';
-
-    // Get the last meaningful segment as the page title
-    // Filter out version segments like 'latest', 'next', 'v10.0', etc.
-    const meaningfulSegments = titleSegments.filter(
-      (seg) => !['latest', 'next'].includes(seg) && !/^v?\d+(\.\d+)*$/.test(seg)
-    );
-    const pageTitle = meaningfulSegments[meaningfulSegments.length - 1] || 'Documentation';
-
-    // Format title: capitalize and replace hyphens with spaces
-    const formatTitle = (str: string): string => str.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-    const title = `${formatTitle(pageTitle)} - ${formatTitle(product)} Docs`;
-
-    return {
-      type: 'docs-page',
-      url: fullUrl,
-      title: title,
-    };
-  }
-
-  return null;
-};
