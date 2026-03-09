@@ -374,9 +374,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       await backendGuides.saveGuide(guide, resourceName, metadata, status);
 
       // Track the content that was last synced to the backend
-      if (status === 'published') {
-        setLastPublishedJson(JSON.stringify(guide));
-      }
+      setLastPublishedJson(JSON.stringify(guide));
 
       // Refresh to get the latest metadata (including updated resourceVersion)
       const updatedGuides = await backendGuides.refreshGuides();
@@ -409,80 +407,91 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     [backendGuides]
   );
 
-  /** Save the current guide as a draft — not visible to users */
-  const performSaveDraft = useCallback(async () => {
-    try {
-      const guide = editor.getGuide();
-      const isUpdate = !!currentGuideResourceName;
+  /**
+   * Orchestrates the save flow: validates, checks for conflicts, and calls performBackendSave.
+   * Shared by both draft and published save operations.
+   */
+  const orchestrateSave = useCallback(
+    async (status: 'draft' | 'published') => {
+      try {
+        const guide = editor.getGuide();
+        const isUpdate = !!currentGuideResourceName;
 
-      const resourceName =
-        currentGuideResourceName ||
-        (guide.id || guide.title)
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
+        const resourceName =
+          currentGuideResourceName ||
+          (guide.id || guide.title)
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
 
-      if (!resourceName || resourceName.length === 0) {
+        if (!resourceName || resourceName.length === 0) {
+          setAlertModal({
+            isOpen: true,
+            title: 'Invalid guide name',
+            message: 'Guide title or ID must contain at least one alphanumeric character',
+            severity: 'error',
+          });
+          return;
+        }
+
+        if (!isUpdate) {
+          const existingGuide = backendGuides.guides.find((g) => g.metadata.name === resourceName);
+          if (existingGuide) {
+            return new Promise<void>((resolve) => {
+              setConfirmModal({
+                isOpen: true,
+                title: 'Overwrite existing guide?',
+                message: (
+                  <>
+                    <p>
+                      A guide named <strong>&quot;{existingGuide.spec.title}&quot;</strong> ({resourceName}) already
+                      exists.
+                    </p>
+                    <p>Do you want to overwrite it?</p>
+                    <p style={{ marginTop: '16px', fontSize: '0.9em', color: '#888' }}>
+                      Click Cancel to change your guide&apos;s title or ID to create a new guide instead.
+                    </p>
+                  </>
+                ),
+                variant: 'destructive',
+                onConfirm: async () => {
+                  setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+                  setCurrentGuideResourceName(existingGuide.metadata.name);
+                  setCurrentGuideMetadata(existingGuide.metadata);
+                  await performBackendSave(guide, existingGuide.metadata.name, existingGuide.metadata, true, status);
+                  resolve();
+                },
+                onCancel: resolve,
+              });
+            });
+          }
+        }
+
+        await performBackendSave(
+          guide,
+          currentGuideResourceName || undefined,
+          currentGuideMetadata || undefined,
+          isUpdate,
+          status
+        );
+      } catch (error) {
+        console.error('[BlockEditor] Failed to save guide:', error);
         setAlertModal({
           isOpen: true,
-          title: 'Invalid guide name',
-          message: 'Guide title or ID must contain at least one alphanumeric character',
+          title: 'Save failed',
+          message: `Failed to save guide: ${error instanceof Error ? error.message : 'Unknown error'}`,
           severity: 'error',
         });
-        return;
       }
+    },
+    [editor, backendGuides, currentGuideResourceName, currentGuideMetadata, performBackendSave]
+  );
 
-      if (!isUpdate) {
-        const existingGuide = backendGuides.guides.find((g) => g.metadata.name === resourceName);
-        if (existingGuide) {
-          return new Promise<void>((resolve) => {
-            setConfirmModal({
-              isOpen: true,
-              title: 'Overwrite existing guide?',
-              message: (
-                <>
-                  <p>
-                    A guide named <strong>&quot;{existingGuide.spec.title}&quot;</strong> ({resourceName}) already
-                    exists.
-                  </p>
-                  <p>Do you want to overwrite it?</p>
-                  <p style={{ marginTop: '16px', fontSize: '0.9em', color: '#888' }}>
-                    Click Cancel to change your guide&apos;s title or ID to create a new guide instead.
-                  </p>
-                </>
-              ),
-              variant: 'destructive',
-              onConfirm: async () => {
-                setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                setCurrentGuideResourceName(existingGuide.metadata.name);
-                setCurrentGuideMetadata(existingGuide.metadata);
-                await performBackendSave(guide, existingGuide.metadata.name, existingGuide.metadata, true, 'draft');
-                resolve();
-              },
-              onCancel: resolve,
-            });
-          });
-        }
-      }
-
-      await performBackendSave(
-        guide,
-        currentGuideResourceName || undefined,
-        currentGuideMetadata || undefined,
-        isUpdate,
-        'draft'
-      );
-    } catch (error) {
-      console.error('[BlockEditor] Failed to save draft:', error);
-      setAlertModal({
-        isOpen: true,
-        title: 'Save failed',
-        message: `Failed to save draft: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error',
-      });
-    }
-  }, [editor, backendGuides, currentGuideResourceName, currentGuideMetadata, performBackendSave]);
+  /** Save the current guide as a draft — not visible to users */
+  const performSaveDraft = useCallback(async () => {
+    await orchestrateSave('draft');
+  }, [orchestrateSave]);
 
   /** Unpublish a published guide — sets it back to draft, removing it from the docs panel */
   const performUnpublish = useCallback(async () => {
@@ -522,81 +531,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Publish/update guide to backend handler
   const handlePostToBackend = useCallback(async () => {
-    try {
-      const guide = editor.getGuide();
-      const isUpdate = !!currentGuideResourceName;
-
-      // Generate resource name
-      const resourceName =
-        currentGuideResourceName ||
-        (guide.id || guide.title)
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-
-      // Validate resource name is not empty
-      if (!resourceName || resourceName.length === 0) {
-        setAlertModal({
-          isOpen: true,
-          title: 'Invalid guide name',
-          message: 'Guide title or ID must contain at least one alphanumeric character',
-          severity: 'error',
-        });
-        return;
-      }
-
-      // If this is a new guide (not an update), check if a guide with this name already exists
-      if (!isUpdate) {
-        const existingGuide = backendGuides.guides.find((g) => g.metadata.name === resourceName);
-        if (existingGuide) {
-          return new Promise<void>((resolve) => {
-            setConfirmModal({
-              isOpen: true,
-              title: 'Overwrite existing guide?',
-              message: (
-                <>
-                  <p>
-                    A guide named <strong>&quot;{existingGuide.spec.title}&quot;</strong> ({resourceName}) already
-                    exists.
-                  </p>
-                  <p>Do you want to overwrite it?</p>
-                  <p style={{ marginTop: '16px', fontSize: '0.9em', color: '#888' }}>
-                    Click Cancel to change your guide&apos;s title or ID to create a new guide instead.
-                  </p>
-                </>
-              ),
-              variant: 'destructive',
-              onConfirm: async () => {
-                setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                setCurrentGuideResourceName(existingGuide.metadata.name);
-                setCurrentGuideMetadata(existingGuide.metadata);
-                await performBackendSave(guide, existingGuide.metadata.name, existingGuide.metadata, true, 'published');
-                resolve();
-              },
-              onCancel: resolve,
-            });
-          });
-        }
-      }
-
-      await performBackendSave(
-        guide,
-        currentGuideResourceName || undefined,
-        currentGuideMetadata || undefined,
-        isUpdate,
-        'published'
-      );
-    } catch (error) {
-      console.error('[BlockEditor] Failed to publish guide:', error);
-      setAlertModal({
-        isOpen: true,
-        title: 'Publish failed',
-        message: `Failed to publish guide: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error',
-      });
-    }
-  }, [editor, backendGuides, currentGuideResourceName, currentGuideMetadata, performBackendSave]);
+    await orchestrateSave('published');
+  }, [orchestrateSave]);
 
   // Load guide from backend
   const handleLoadGuideFromBackend = useCallback(
@@ -605,8 +541,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       setCurrentGuideResourceName(resourceName);
       setCurrentGuideMetadata(metadata);
       setCurrentGuideBackendStatus(backendStatus);
-      // Track published JSON only when the guide is published, so hasUnpublishedChanges is accurate
-      setLastPublishedJson(backendStatus === 'published' ? JSON.stringify(guide) : null);
+      // Track the backend JSON for both drafts and published guides to detect changes
+      setLastPublishedJson(JSON.stringify(guide));
       editor.markSaved();
     },
     [editor]
@@ -626,7 +562,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     const hasChanges =
       currentBlocks && // Has content
       (publishedStatus === 'not-saved' || // Either not saved to backend
-        (lastPublishedJson !== null && currentGuideJson !== lastPublishedJson)); // Or has unpublished changes vs published
+        (publishedStatus === 'draft' && lastPublishedJson !== null && currentGuideJson !== lastPublishedJson) || // Or draft with changes
+        (publishedStatus === 'published' && lastPublishedJson !== null && currentGuideJson !== lastPublishedJson)); // Or published with changes
 
     if (hasChanges) {
       // Show warning modal

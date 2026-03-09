@@ -188,38 +188,43 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         throw new Error('No namespace available');
       }
 
-      const existing = guides.find((g) => g.metadata.name === resourceName);
-      if (!existing) {
-        throw new Error(`Guide "${resourceName}" not found in local list`);
+      setIsSaving(true);
+      try {
+        const existing = guides.find((g) => g.metadata.name === resourceName);
+        if (!existing) {
+          throw new Error(`Guide "${resourceName}" not found in local list`);
+        }
+
+        const metadata: any = {
+          name: resourceName,
+          namespace,
+          resourceVersion: currentMetadata.resourceVersion,
+        };
+
+        const k8sResource = {
+          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
+          kind: 'InteractiveGuide',
+          metadata,
+          spec: {
+            ...existing.spec,
+            status: 'published' as const,
+          },
+        };
+
+        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url,
+            method: 'PUT',
+            data: k8sResource,
+            showErrorAlert: false,
+          })
+        );
+
+        await refreshGuides();
+      } finally {
+        setIsSaving(false);
       }
-
-      const metadata: any = {
-        name: resourceName,
-        namespace,
-        resourceVersion: currentMetadata.resourceVersion,
-      };
-
-      const k8sResource = {
-        apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-        kind: 'InteractiveGuide',
-        metadata,
-        spec: {
-          ...existing.spec,
-          status: 'published' as const,
-        },
-      };
-
-      const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-      await lastValueFrom(
-        getBackendSrv().fetch({
-          url,
-          method: 'PUT',
-          data: k8sResource,
-          showErrorAlert: false,
-        })
-      );
-
-      await refreshGuides();
     },
     [namespace, guides, refreshGuides]
   );
@@ -233,38 +238,43 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         throw new Error('No namespace available');
       }
 
-      const existing = guides.find((g) => g.metadata.name === resourceName);
-      if (!existing) {
-        throw new Error(`Guide "${resourceName}" not found in local list`);
+      setIsSaving(true);
+      try {
+        const existing = guides.find((g) => g.metadata.name === resourceName);
+        if (!existing) {
+          throw new Error(`Guide "${resourceName}" not found in local list`);
+        }
+
+        const metadata: any = {
+          name: resourceName,
+          namespace,
+          resourceVersion: currentMetadata.resourceVersion,
+        };
+
+        const k8sResource = {
+          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
+          kind: 'InteractiveGuide',
+          metadata,
+          spec: {
+            ...existing.spec,
+            status: 'draft' as const,
+          },
+        };
+
+        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url,
+            method: 'PUT',
+            data: k8sResource,
+            showErrorAlert: false,
+          })
+        );
+
+        await refreshGuides();
+      } finally {
+        setIsSaving(false);
       }
-
-      const metadata: any = {
-        name: resourceName,
-        namespace,
-        resourceVersion: currentMetadata.resourceVersion,
-      };
-
-      const k8sResource = {
-        apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-        kind: 'InteractiveGuide',
-        metadata,
-        spec: {
-          ...existing.spec,
-          status: 'draft' as const,
-        },
-      };
-
-      const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-      await lastValueFrom(
-        getBackendSrv().fetch({
-          url,
-          method: 'PUT',
-          data: k8sResource,
-          showErrorAlert: false,
-        })
-      );
-
-      await refreshGuides();
     },
     [namespace, guides, refreshGuides]
   );
