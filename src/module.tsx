@@ -122,76 +122,87 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const pageParam = urlParams.get('page');
 
   if (docsParam) {
-    import('./utils/find-doc-page').then(({ findDocPage }) => {
-      const docsPage = findDocPage(docsParam);
+    import('./utils/find-doc-page')
+      .then(({ findDocPage }) => {
+        const docsPage = findDocPage(docsParam);
 
-      // Determine redirect target (only when doc param is present)
-      // Priority: explicit page param > bundled guide target > /
-      // SECURITY: page is only processed when doc is also present,
-      // preventing the plugin page from becoming a general-purpose redirector
-      const redirectTarget = validateRedirectPath(pageParam || docsPage?.targetPage || PLUGIN_BASE_URL);
+        // Determine redirect target (only when doc param is present)
+        // Priority: explicit page param > bundled guide target > /
+        // SECURITY: page is only processed when doc is also present,
+        // preventing the plugin page from becoming a general-purpose redirector
+        const redirectTarget = validateRedirectPath(pageParam || docsPage?.targetPage || PLUGIN_BASE_URL);
 
-      // Warn if docsParam is present but no docsPage is found
-      if (!docsPage) {
-        console.warn(
-          'Could not parse doc param:',
-          docsParam,
-          '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
-        );
+        // Warn if docsParam is present but no docsPage is found
+        if (!docsPage) {
+          console.warn(
+            'Could not parse doc param:',
+            docsParam,
+            '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
+          );
+          sidebarState.setPendingOpenSource('url_param', 'auto-open');
+          attemptAutoOpen(200);
+          setTimeout(() => {
+            locationService.replace('/');
+          }, 300);
+          return;
+        }
+
+        const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
+
+        sidebarState.setPendingOpenSource('url_param', 'auto-open');
+
+        if (needsRedirect) {
+          locationService.replace(redirectTarget);
+          attemptAutoOpen(500);
+        } else {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('doc');
+          url.searchParams.delete('page');
+          window.history.replaceState({}, '', url.toString());
+          attemptAutoOpen(200);
+        }
+
+        const dispatchAutoLaunch = () => {
+          setTimeout(() => {
+            const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+              detail: {
+                url: docsPage.url,
+                title: docsPage.title,
+                type: docsPage.type,
+              },
+            });
+            document.dispatchEvent(autoLaunchEvent);
+          }, 500);
+        };
+
+        window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
+
+        if (sidebarState.getIsSidebarMounted()) {
+          window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
+          dispatchAutoLaunch();
+        }
+      })
+      .catch((err) => {
+        console.error('[Pathfinder] Failed to load find-doc-page chunk:', err);
         sidebarState.setPendingOpenSource('url_param', 'auto-open');
         attemptAutoOpen(200);
         setTimeout(() => {
           locationService.replace('/');
         }, 300);
-        return;
-      }
-
-      const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
-
-      sidebarState.setPendingOpenSource('url_param', 'auto-open');
-
-      if (needsRedirect) {
-        locationService.replace(redirectTarget);
-        attemptAutoOpen(500);
-      } else {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('doc');
-        url.searchParams.delete('page');
-        window.history.replaceState({}, '', url.toString());
-        attemptAutoOpen(200);
-      }
-
-      const dispatchAutoLaunch = () => {
-        setTimeout(() => {
-          const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-            detail: {
-              url: docsPage.url,
-              title: docsPage.title,
-              type: docsPage.type,
-            },
-          });
-          document.dispatchEvent(autoLaunchEvent);
-        }, 500);
-      };
-
-      window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
-
-      if (sidebarState.getIsSidebarMounted()) {
-        window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
-        dispatchAutoLaunch();
-      }
-    });
+      });
   }
 
-  // Get current path for auto-open logic
-  const currentPath = getCurrentPath();
-
-  // Setup main experiment auto-open logic
-  setupMainExperimentAutoOpen(experimentState, {
-    currentPath,
-    featureFlagEnabled: getAutoOpenFeatureFlag(),
-    pluginConfig: config,
-  });
+  // Skip experiment auto-open when a ?doc= param is present — the doc-param
+  // handler (async import above) owns sidebar opening and may redirect first.
+  // Running the experiment here would evaluate against the pre-redirect path.
+  if (!docsParam) {
+    const currentPath = getCurrentPath();
+    setupMainExperimentAutoOpen(experimentState, {
+      currentPath,
+      featureFlagEnabled: getAutoOpenFeatureFlag(),
+      pluginConfig: config,
+    });
+  }
 };
 
 export { plugin };
