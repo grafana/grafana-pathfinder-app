@@ -21,9 +21,14 @@ export interface BlockEditorHeaderProps {
   guideId: string;
   /** Whether there are unsaved local changes */
   isDirty: boolean;
-  /** Whether the guide has been published to backend */
-  isPublished: boolean;
-  /** Whether published version is outdated (local changes not published) */
+  /**
+   * Backend publish status:
+   * - 'not-saved': guide exists only in localStorage
+   * - 'draft': saved to library but not visible to users
+   * - 'published': visible in docs panel Custom guides section
+   */
+  publishedStatus: 'not-saved' | 'draft' | 'published';
+  /** Whether a published guide has local changes not yet sent to the backend */
   hasUnpublishedChanges: boolean;
   /** Current view mode */
   viewMode: ViewMode;
@@ -43,9 +48,13 @@ export interface BlockEditorHeaderProps {
   onDownload: () => void;
   /** Callback to open GitHub PR modal */
   onOpenGitHubPR: () => void;
-  /** Callback to POST guide to backend */
+  /** Callback to save guide as draft (not visible to users) */
+  onSaveDraft: () => void;
+  /** Callback to publish/update the guide (makes it visible to users) */
   onPostToBackend: () => void;
-  /** Whether POST request is in progress */
+  /** Callback to unpublish a published guide (sets back to draft) */
+  onUnpublish: () => void;
+  /** Whether a backend operation is in progress */
   isPostingToBackend?: boolean;
   /** Callback to start new guide */
   onNewGuide: () => void;
@@ -141,7 +150,7 @@ export function BlockEditorHeader({
   guideTitle,
   guideId,
   isDirty,
-  isPublished,
+  publishedStatus,
   hasUnpublishedChanges,
   viewMode,
   onSetViewMode,
@@ -152,7 +161,9 @@ export function BlockEditorHeader({
   onCopy,
   onDownload,
   onOpenGitHubPR,
+  onSaveDraft,
   onPostToBackend,
+  onUnpublish,
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
@@ -169,6 +180,126 @@ export function BlockEditorHeader({
       <Menu.Item label="Take tour" icon="question-circle" onClick={onOpenTour} />
     </Menu>
   );
+
+  // Derive backend status badge
+  const backendBadge = () => {
+    if (publishedStatus === 'not-saved') {
+      return (
+        <Tooltip content="Not yet saved to library">
+          <Badge text="Draft" color="purple" icon="circle" />
+        </Tooltip>
+      );
+    }
+    if (publishedStatus === 'draft') {
+      return (
+        <Tooltip content="Saved to library but not published to users">
+          <Badge text="Draft" color="purple" icon="circle" />
+        </Tooltip>
+      );
+    }
+    // published
+    if (hasUnpublishedChanges) {
+      return (
+        <Tooltip content="Unpublished changes">
+          <Badge text="Modified" color="orange" icon="exclamation-triangle" />
+        </Tooltip>
+      );
+    }
+    return (
+      <Tooltip content="Published and visible to users">
+        <Badge text="Published" color="blue" icon="cloud-upload" />
+      </Tooltip>
+    );
+  };
+
+  // Derive backend action buttons based on publishedStatus
+  const backendButtons = () => {
+    if (publishedStatus === 'not-saved') {
+      return (
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="save"
+            onClick={onSaveDraft}
+            disabled={isPostingToBackend}
+            tooltip="Save to library without publishing"
+            data-testid="save-draft-button"
+          >
+            Save to library
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon="cloud-upload"
+            onClick={onPostToBackend}
+            disabled={isPostingToBackend}
+            tooltip="Publish and make visible to users"
+            data-testid="post-to-backend-button"
+          >
+            {isPostingToBackend ? 'Publishing...' : 'Publish'}
+          </Button>
+        </>
+      );
+    }
+
+    if (publishedStatus === 'draft') {
+      return (
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="save"
+            onClick={onSaveDraft}
+            disabled={isPostingToBackend}
+            tooltip="Save current changes to library draft"
+            data-testid="save-draft-button"
+          >
+            Update draft
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon="cloud-upload"
+            onClick={onPostToBackend}
+            disabled={isPostingToBackend}
+            tooltip="Publish and make visible to users"
+            data-testid="post-to-backend-button"
+          >
+            {isPostingToBackend ? 'Publishing...' : 'Publish'}
+          </Button>
+        </>
+      );
+    }
+
+    // published (with or without local changes)
+    return (
+      <>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="times-circle"
+          onClick={onUnpublish}
+          disabled={isPostingToBackend}
+          tooltip="Remove from docs panel; guide stays in library"
+          data-testid="unpublish-button"
+        >
+          Unpublish
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          icon="cloud-upload"
+          onClick={onPostToBackend}
+          disabled={isPostingToBackend}
+          tooltip="Save changes and keep published"
+          data-testid="post-to-backend-button"
+        >
+          {isPostingToBackend ? 'Saving...' : 'Update'}
+        </Button>
+      </>
+    );
+  };
 
   return (
     <div className={styles.header}>
@@ -204,21 +335,8 @@ export function BlockEditorHeader({
             </Tooltip>
           )}
 
-          {/* Publish status — only meaningful when backend is available */}
-          {isBackendAvailable &&
-            (!isPublished ? (
-              <Tooltip content="Not yet published to backend">
-                <Badge text="Draft" color="purple" icon="circle" />
-              </Tooltip>
-            ) : hasUnpublishedChanges ? (
-              <Tooltip content="You have unpublished changes">
-                <Badge text="Modified" color="orange" icon="exclamation-triangle" />
-              </Tooltip>
-            ) : (
-              <Tooltip content="Published and up to date">
-                <Badge text="Published" color="blue" icon="cloud-upload" />
-              </Tooltip>
-            ))}
+          {/* Backend publish status — only meaningful when backend is available */}
+          {isBackendAvailable && backendBadge()}
         </div>
       </div>
 
@@ -268,17 +386,7 @@ export function BlockEditorHeader({
           {isBackendAvailable && (
             <>
               <div className={styles.divider} />
-              <Button
-                variant="primary"
-                size="sm"
-                icon="cloud-upload"
-                onClick={onPostToBackend}
-                disabled={isPostingToBackend}
-                tooltip={isPublished ? 'Update published guide' : 'Publish to backend'}
-                data-testid="post-to-backend-button"
-              >
-                {isPostingToBackend ? 'Publishing...' : isPublished ? 'Update' : 'Publish'}
-              </Button>
+              {backendButtons()}
             </>
           )}
 

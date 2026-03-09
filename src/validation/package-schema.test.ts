@@ -189,6 +189,46 @@ describe('ManifestJsonSchema', () => {
     const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'guide' });
     expect(result.success).toBe(true);
   });
+
+  it('should reject guide with milestones set (Rule 2)', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test',
+      type: 'guide',
+      milestones: ['step-1'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject journey without milestones (Rule 1)', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'journey' });
+    expect(result.success).toBe(false);
+  });
+
+  it('should report error on milestones field path when path type is missing milestones (Rule 1)', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'path' });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const milestonesIssue = result.error.issues.find(
+      (issue) => issue.path.length > 0 && issue.path[0] === 'milestones'
+    );
+    expect(milestonesIssue).toBeDefined();
+  });
+
+  it('should report error on type field path when guide has milestones (Rule 2)', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test',
+      type: 'guide',
+      milestones: ['step-1'],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const typeIssue = result.error.issues.find((issue) => issue.path.length > 0 && issue.path[0] === 'type');
+    expect(typeIssue).toBeDefined();
+  });
 });
 
 // ============ DependencyClauseSchema ============

@@ -3,9 +3,10 @@
  * Shows element highlights and DOM paths during watch/record mode
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { useTheme2 } from '@grafana/ui';
 import { createHoverHighlight, updateHoverHighlight, removeHoverHighlight } from './hover-highlight.util';
-import { addGlobalInteractiveStyles } from '../../styles/interactive.styles';
+import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 
 export interface UseElementInspectorOptions {
   isActive: boolean;
@@ -91,6 +92,9 @@ export function generateFullDomPath(element: HTMLElement): string {
  */
 export function useElementInspector(options: UseElementInspectorOptions): UseElementInspectorReturn {
   const { isActive, excludeSelectors = [], onHover } = options;
+
+  // Get current theme for CSS custom property updates
+  const theme = useTheme2();
 
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
   const [domPath, setDomPath] = useState<string | null>(null);
@@ -245,6 +249,16 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
     // to prevent effect re-runs when callers pass inline arrays with same values.
     // onHover is accessed via ref so it's not needed in deps.
   }, [isActive, excludeSelectorsKey, cleanupDOM]);
+
+  // Separate effect for theme updates — intentionally decoupled from the listener lifecycle
+  // so that light/dark mode switches do not trigger a full mousemove listener teardown.
+  // useLayoutEffect runs before paint so CSS variables are set before the browser renders
+  // any inspector highlight overlays.
+  useLayoutEffect(() => {
+    if (isActive) {
+      updateInteractiveThemeColors(theme);
+    }
+  }, [theme, isActive]);
 
   // Memoize return value to prevent causing re-renders in parent
   return useMemo(

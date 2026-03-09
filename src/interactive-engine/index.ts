@@ -7,6 +7,9 @@
 export { useInteractiveElements } from './interactive.hook';
 export type { InteractiveRequirementsCheck, CheckResult } from './interactive.hook';
 
+// Theme utilities for interactive elements
+export { updateInteractiveThemeColors } from '../styles/interactive.styles';
+
 // Navigation manager
 export { NavigationManager } from './navigation-manager';
 export type { NavigationOptions } from './navigation-manager';

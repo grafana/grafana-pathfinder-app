@@ -142,19 +142,33 @@ export const ManifestJsonObjectSchema = z.object({
  * - ERROR: id, type (hard requirements)
  * - WARN: description, category, targeting, startingLocation (missing but recommended)
  * - INFO: repository, language, schemaVersion, dependency fields, author, testEnvironment (defaults applied)
- * - Conditional ERROR: milestones required when type is "path" or "journey"
+ * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
+ * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
  *
  * @coupling Type: ManifestJson
  */
-export const ManifestJsonSchema = ManifestJsonObjectSchema.refine(
-  (manifest) => {
-    if (manifest.type === 'path' || manifest.type === 'journey') {
-      return manifest.milestones !== undefined && manifest.milestones.length > 0;
-    }
-    return true;
-  },
-  { message: "'milestones' is required when type is 'path' or 'journey'" }
-);
+export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest, ctx) => {
+  const isMetapackage = manifest.type === 'path' || manifest.type === 'journey';
+  const hasMilestones = manifest.milestones !== undefined && manifest.milestones.length > 0;
+
+  // Rule 1: path/journey requires milestones
+  if (isMetapackage && !hasMilestones) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `"milestones" must be a non-empty array when type is "${manifest.type}" — ${manifest.type}s require an ordered sequence of packages`,
+      path: ['milestones'],
+    });
+  }
+
+  // Rule 2: milestones requires path/journey type
+  if (hasMilestones && !isMetapackage) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `"milestones" is only valid when type is "path" or "journey", but type is "${manifest.type}" — either change type to "path" or "journey", or remove the milestones array`,
+      path: ['type'],
+    });
+  }
+});
 
 // ============ SHARED METADATA SCHEMA FIELDS ============
 

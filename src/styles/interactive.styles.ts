@@ -3,6 +3,93 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
 
+/**
+ * Updates CSS custom properties for interactive comment boxes based on the current theme.
+ * This function should be called whenever the theme might change to ensure the comment
+ * box popups (which are rendered outside the React tree as global DOM elements) respect
+ * the user's light/dark mode preference.
+ *
+ * The custom properties are written to :root (document.documentElement) and intentionally
+ * persist — no cleanup is required. They are namespaced under --pathfinder-* to avoid
+ * collisions with Grafana's own CSS variables.
+ *
+ * @param theme - The current Grafana theme
+ */
+export const updateInteractiveThemeColors = (theme: GrafanaTheme2): void => {
+  const root = document.documentElement;
+  const isDark = theme.isDark;
+
+  // Background and text colors
+  root.style.setProperty('--pathfinder-comment-bg', theme.colors.background.primary);
+  root.style.setProperty('--pathfinder-comment-text', theme.colors.text.primary);
+  root.style.setProperty('--pathfinder-comment-text-secondary', theme.colors.text.secondary);
+  root.style.setProperty('--pathfinder-comment-border-weak', theme.colors.border.weak);
+
+  // UI element colors (buttons, close icons, etc.)
+  // These need different opacities for light vs dark mode to maintain contrast
+  root.style.setProperty(
+    '--pathfinder-comment-close-color',
+    isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)'
+  );
+  root.style.setProperty(
+    '--pathfinder-comment-close-hover-bg',
+    isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'
+  );
+  root.style.setProperty(
+    '--pathfinder-comment-close-hover-color',
+    isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.8)'
+  );
+
+  // Button and input borders
+  root.style.setProperty(
+    '--pathfinder-comment-btn-border',
+    isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)'
+  );
+  root.style.setProperty('--pathfinder-comment-btn-text', isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)');
+  root.style.setProperty(
+    '--pathfinder-comment-btn-hover-bg',
+    isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.06)'
+  );
+  root.style.setProperty(
+    '--pathfinder-comment-btn-hover-border',
+    isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.25)'
+  );
+  root.style.setProperty('--pathfinder-comment-btn-hover-text', isDark ? '#ffffff' : '#000000');
+
+  // Progress and indicator colors
+  root.style.setProperty(
+    '--pathfinder-comment-progress-bg',
+    isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'
+  );
+  root.style.setProperty('--pathfinder-comment-dot-bg', isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)');
+
+  // Code element colors
+  root.style.setProperty('--pathfinder-comment-code-bg', isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.06)');
+  root.style.setProperty(
+    '--pathfinder-comment-code-border',
+    isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)'
+  );
+
+  // Keyboard hints
+  root.style.setProperty('--pathfinder-comment-kbd-text', isDark ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.35)');
+  root.style.setProperty('--pathfinder-comment-kbd-bg', isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)');
+  root.style.setProperty(
+    '--pathfinder-comment-kbd-border',
+    isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.1)'
+  );
+
+  // Border top for button container
+  root.style.setProperty('--pathfinder-comment-divider', isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)');
+
+  // Form validation status colors
+  root.style.setProperty('--pathfinder-form-checking-bg', isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)');
+  root.style.setProperty(
+    '--pathfinder-form-checking-border',
+    isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)'
+  );
+  root.style.setProperty('--pathfinder-form-checking-text', isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)');
+};
+
 // Base interactive element styles
 const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
   // Base interactive element
@@ -1761,10 +1848,13 @@ export const addGlobalInteractiveStyles = () => {
         0 4px 20px rgba(0, 0, 0, 0.25),
         0 1px 3px rgba(0, 0, 0, 0.1);
       position: relative;
-      /* Essential styling that needs to be global to avoid theme override conflicts */
-      background: var(--grafana-colors-background-primary, #1f1f23);
+      /* Essential styling that uses CSS custom properties set by updateInteractiveThemeColors().
+         Fallback values (#1f1f23, #d9d9d9) are dark-mode defaults — they apply only in the
+         brief window before the first React effect fires. updateInteractiveThemeColors() must
+         have run before a popup is shown to guarantee correct colors in light mode. */
+      background: var(--pathfinder-comment-bg, #1f1f23);
       border: 1px solid rgba(255, 152, 0, 0.3);
-      color: var(--grafana-colors-text-primary, #d9d9d9);
+      color: var(--pathfinder-comment-text, #d9d9d9);
       /* Ensure content fits within container bounds */
       overflow: hidden;
       word-wrap: break-word;
@@ -1782,7 +1872,7 @@ export const addGlobalInteractiveStyles = () => {
       height: 24px;
       border: none;
       background: transparent;
-      color: rgba(255, 255, 255, 0.5);
+      color: var(--pathfinder-comment-close-color, rgba(255, 255, 255, 0.5));
       border-radius: 4px;
       cursor: pointer;
       display: flex;
@@ -1798,8 +1888,8 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-comment-close:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.9);
+      background: var(--pathfinder-comment-close-hover-bg, rgba(255, 255, 255, 0.1));
+      color: var(--pathfinder-comment-close-hover-color, rgba(255, 255, 255, 0.9));
     }
 
     .interactive-comment-close:active {
@@ -1812,9 +1902,9 @@ export const addGlobalInteractiveStyles = () => {
       align-items: center;
       justify-content: center;
       padding: 8px 16px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid var(--pathfinder-comment-btn-border, rgba(255, 255, 255, 0.2));
       background: transparent;
-      color: rgba(255, 255, 255, 0.8);
+      color: var(--pathfinder-comment-btn-text, rgba(255, 255, 255, 0.8));
       border-radius: 6px;
       cursor: pointer;
       font-size: 13px;
@@ -1825,9 +1915,9 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-comment-skip-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.3);
-      color: #ffffff;
+      background: var(--pathfinder-comment-btn-hover-bg, rgba(255, 255, 255, 0.1));
+      border-color: var(--pathfinder-comment-btn-hover-border, rgba(255, 255, 255, 0.3));
+      color: var(--pathfinder-comment-btn-hover-text, #ffffff);
     }
 
     .interactive-comment-skip-btn:active {
@@ -1841,7 +1931,7 @@ export const addGlobalInteractiveStyles = () => {
       gap: 8px;
       margin-top: 16px;
       padding-top: 12px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid var(--pathfinder-comment-divider, rgba(255, 255, 255, 0.08));
     }
 
     /* Form validation status when inline with buttons */
@@ -1913,8 +2003,8 @@ export const addGlobalInteractiveStyles = () => {
     .interactive-comment-text code,
     .interactive-comment-description code {
       display: inline-block;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: var(--pathfinder-comment-code-bg, rgba(255, 255, 255, 0.1));
+      border: 1px solid var(--pathfinder-comment-code-border, rgba(255, 255, 255, 0.2));
       border-radius: 3px;
       padding: 1px 4px;
       font-size: 0.85em;
@@ -1951,7 +2041,7 @@ export const addGlobalInteractiveStyles = () => {
       transform: translateY(-50%);
       border-top: 8px solid transparent;
       border-bottom: 8px solid transparent;
-      border-right: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+      border-right: 8px solid var(--pathfinder-comment-bg, #1f1f23);
     }
 
     /* Arrow pointing RIGHT (comment is to the left of highlight) */
@@ -1962,7 +2052,7 @@ export const addGlobalInteractiveStyles = () => {
       transform: translateY(-50%);
       border-top: 8px solid transparent;
       border-bottom: 8px solid transparent;
-      border-left: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+      border-left: 8px solid var(--pathfinder-comment-bg, #1f1f23);
     }
 
     /* Arrow pointing UP (comment is below highlight) */
@@ -1972,7 +2062,7 @@ export const addGlobalInteractiveStyles = () => {
       transform: translateX(-50%);
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
-      border-bottom: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+      border-bottom: 8px solid var(--pathfinder-comment-bg, #1f1f23);
     }
 
     /* Arrow pointing DOWN (comment is above highlight) */
@@ -1983,7 +2073,7 @@ export const addGlobalInteractiveStyles = () => {
       transform: translateX(-50%);
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
-      border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+      border-top: 8px solid var(--pathfinder-comment-bg, #1f1f23);
     }
 
     /* Step checklist in guided comment tooltips (legacy - kept for compatibility) */
@@ -1993,13 +2083,13 @@ export const addGlobalInteractiveStyles = () => {
       gap: 4px;
       margin-bottom: 14px;
       padding-bottom: 12px;
-      border-bottom: 1px solid var(--grafana-colors-border-weak, #404040);
+      border-bottom: 1px solid var(--pathfinder-comment-border-weak, #404040);
     }
 
     .interactive-comment-step-item {
       font-size: 13px;
       line-height: 1.4;
-      color: var(--grafana-colors-text-secondary, #999999);
+      color: var(--pathfinder-comment-text-secondary, #999999);
       padding: 2px 0;
       display: flex;
       align-items: center;
@@ -2007,7 +2097,7 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-comment-step-item.interactive-comment-step-current {
-      color: var(--grafana-colors-text-primary, #d9d9d9);
+      color: var(--pathfinder-comment-text, #d9d9d9);
       font-weight: 500;
       background: rgba(255, 193, 7, 0.15);
       padding: 4px 6px;
@@ -2040,7 +2130,7 @@ export const addGlobalInteractiveStyles = () => {
     .interactive-comment-progress-container {
       position: relative;
       height: 4px;
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--pathfinder-comment-progress-bg, rgba(255, 255, 255, 0.1));
       border-radius: 4px;
       overflow: hidden;
       margin-bottom: 16px;
@@ -2069,7 +2159,7 @@ export const addGlobalInteractiveStyles = () => {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.2);
+      background: var(--pathfinder-comment-dot-bg, rgba(255, 255, 255, 0.2));
       transition: all 0.2s ease;
     }
 
@@ -2096,7 +2186,7 @@ export const addGlobalInteractiveStyles = () => {
     .interactive-comment-title {
       font-size: 16px;
       font-weight: 600;
-      color: var(--grafana-colors-text-primary, #ffffff);
+      color: var(--pathfinder-comment-text, #ffffff);
       margin: 0 0 6px 0;
       line-height: 1.3;
     }
@@ -2104,7 +2194,7 @@ export const addGlobalInteractiveStyles = () => {
     /* Description - secondary text */
     .interactive-comment-description {
       font-size: 14px;
-      color: var(--grafana-colors-text-secondary, rgba(255, 255, 255, 0.75));
+      color: var(--pathfinder-comment-text-secondary, rgba(255, 255, 255, 0.75));
       margin: 0;
       line-height: 1.5;
     }
@@ -2116,10 +2206,10 @@ export const addGlobalInteractiveStyles = () => {
       justify-content: center;
       gap: 4px;
       padding: 8px 16px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid var(--pathfinder-comment-btn-border, rgba(255, 255, 255, 0.2));
       border-radius: 6px;
       background: transparent;
-      color: rgba(255, 255, 255, 0.8);
+      color: var(--pathfinder-comment-btn-text, rgba(255, 255, 255, 0.8));
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
@@ -2129,9 +2219,9 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-comment-nav-btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.3);
-      color: #ffffff;
+      background: var(--pathfinder-comment-btn-hover-bg, rgba(255, 255, 255, 0.1));
+      border-color: var(--pathfinder-comment-btn-hover-border, rgba(255, 255, 255, 0.3));
+      color: var(--pathfinder-comment-btn-hover-text, #ffffff);
     }
 
     .interactive-comment-nav-btn:disabled {
@@ -2177,7 +2267,7 @@ export const addGlobalInteractiveStyles = () => {
       gap: 6px;
       margin-top: 12px;
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.35);
+      color: var(--pathfinder-comment-kbd-text, rgba(255, 255, 255, 0.35));
     }
 
     .interactive-comment-kbd {
@@ -2186,8 +2276,8 @@ export const addGlobalInteractiveStyles = () => {
       justify-content: center;
       min-width: 20px;
       padding: 2px 6px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: var(--pathfinder-comment-kbd-bg, rgba(255, 255, 255, 0.08));
+      border: 1px solid var(--pathfinder-comment-kbd-border, rgba(255, 255, 255, 0.12));
       border-radius: 4px;
       font-size: 10px;
       font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -2216,9 +2306,9 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-form-validation-status.form-checking {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: rgba(255, 255, 255, 0.8);
+      background: var(--pathfinder-form-checking-bg, rgba(255, 255, 255, 0.1));
+      border: 1px solid var(--pathfinder-form-checking-border, rgba(255, 255, 255, 0.2));
+      color: var(--pathfinder-form-checking-text, rgba(255, 255, 255, 0.8));
     }
 
     .interactive-form-validation-status.form-hint-warning {

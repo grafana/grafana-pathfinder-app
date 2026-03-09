@@ -1,5 +1,6 @@
-import { useEffect, useCallback, useRef, useMemo } from 'react';
-import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
+import { useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { useTheme2 } from '@grafana/ui';
+import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
 import { waitForReactUpdates } from '../lib/async-utils';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
@@ -50,6 +51,9 @@ function isValidInteractiveElement(data: InteractiveElementData): boolean {
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
 
+  // Get current theme for CSS custom property updates
+  const theme = useTheme2();
+
   // Initialize state manager
   const stateManager = useMemo(() => new InteractiveStateManager(), []);
 
@@ -84,10 +88,18 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [stateManager, navigationManager]
   );
 
-  // Initialize global interactive styles
+  // Inject the global style tag once on mount — idempotent, no cleanup needed.
   useEffect(() => {
     addGlobalInteractiveStyles();
   }, []);
+
+  // Update CSS custom properties whenever the theme changes (light/dark mode switch).
+  // useLayoutEffect runs before paint, eliminating any flash of dark fallback colors on
+  // light-mode Grafana. Separate from the style injection above so addGlobalInteractiveStyles()
+  // is not re-called on every theme toggle.
+  useLayoutEffect(() => {
+    updateInteractiveThemeColors(theme);
+  }, [theme]);
 
   const interactiveFocus = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
