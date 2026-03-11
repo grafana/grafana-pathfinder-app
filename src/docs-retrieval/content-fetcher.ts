@@ -174,9 +174,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Determine if this is native JSON content (content.json) that doesn't need wrapping
     const isNativeJson = fetchResult.isNativeJson || false;
 
-    // Extract basic metadata without DOM processing
-    // For native JSON, we still need to extract metadata from the content
-    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType);
+    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, isNativeJson);
 
     let jsonContent: string;
 
@@ -200,7 +198,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
             };
           }
 
-          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType);
+          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType, false);
           let processedHtml = htmlFetchResult.html;
 
           if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
@@ -1030,8 +1028,13 @@ function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string } {
  * Extract metadata from HTML without DOM processing
  * Uses simple string parsing instead of DOM manipulation
  */
-async function extractMetadata(html: string, url: string, contentType: ContentType): Promise<ContentMetadata> {
-  const title = extractTitle(html);
+async function extractMetadata(
+  html: string,
+  url: string,
+  contentType: ContentType,
+  isNativeJson: boolean
+): Promise<ContentMetadata> {
+  const title = isNativeJson ? extractTitleFromJson(html) : extractTitleFromHtml(html);
 
   if (contentType === 'learning-journey') {
     const learningJourney = await extractLearningJourneyMetadata(html, url);
@@ -1042,11 +1045,20 @@ async function extractMetadata(html: string, url: string, contentType: ContentTy
   }
 }
 
-/**
- * Extract page title using simple string parsing
- */
-function extractTitle(html: string): string {
-  // Try multiple title extraction strategies
+function extractTitleFromJson(json: string): string {
+  const parsed: unknown = JSON.parse(json);
+  if (
+    parsed !== null &&
+    typeof parsed === 'object' &&
+    'title' in parsed &&
+    typeof (parsed as { title: unknown }).title === 'string'
+  ) {
+    return (parsed as { title: string }).title || 'Documentation';
+  }
+  return 'Documentation';
+}
+
+function extractTitleFromHtml(html: string): string {
   const titlePatterns = [
     /<title[^>]*>([^<]+)<\/title>/i,
     /<h1[^>]*>([^<]+)<\/h1>/i,
