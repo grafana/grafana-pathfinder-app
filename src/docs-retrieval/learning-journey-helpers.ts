@@ -13,6 +13,19 @@ import {
 import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
+const GRAFANA_BASE = new URL('https://grafana.com');
+
+function toAbsoluteGrafanaUrl(url: string): string {
+  if (!url) {
+    return url;
+  }
+  try {
+    return new URL(url, GRAFANA_BASE).href;
+  } catch {
+    return url;
+  }
+}
+
 /**
  * Navigation helpers - these work with metadata, not DOM
  */
@@ -204,7 +217,7 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
           .map(
             (item) => `
           <li class="journey-side-journey-item">
-            <a href="${sanitizeHtmlUrl(item.link)}" 
+            <a href="${sanitizeHtmlUrl(toAbsoluteGrafanaUrl(item.link))}" 
                target="_blank" 
                rel="noopener noreferrer"
                data-side-journey-link="true"
@@ -235,7 +248,7 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
           .map(
             (item) => `
           <li class="journey-related-journey-item">
-            <a href="${sanitizeHtmlUrl(item.link)}"
+            <a href="${sanitizeHtmlUrl(toAbsoluteGrafanaUrl(item.link))}"
                data-related-journey-link="true"
                class="journey-related-journey-link">
               ${escapeHtml(item.title)}

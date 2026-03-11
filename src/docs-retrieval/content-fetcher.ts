@@ -25,6 +25,7 @@ import {
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
+import { resolveRelativeUrls } from './resolve-relative-urls';
 import { validateGuide } from '../validation';
 
 // Internal error structure for detailed error handling
@@ -201,7 +202,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
           }
 
           const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType);
-          let processedHtml = htmlFetchResult.html;
+          let processedHtml = resolveRelativeUrls(htmlFetchResult.html, htmlUrl);
 
           if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
             processedHtml = generateJourneyContentWithExtras(
@@ -246,7 +247,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       }
     } else {
       // HTML content - apply learning journey extras then wrap
-      let processedHtml = fetchResult.html;
+      let processedHtml = resolveRelativeUrls(fetchResult.html, finalUrl);
       if (contentType === 'learning-journey' && metadata.learningJourney) {
         processedHtml = generateJourneyContentWithExtras(
           processedHtml,
