@@ -915,7 +915,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                   errorType: 'other',
                 };
               } else {
-                const redirectResponse = await fetch(redirectUrl.href, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
+                const redirectResponse = await fetch(redirectUrl.href, {
+                  ...baseFetchOptions,
+                  signal: AbortSignal.timeout(timeout),
+                });
                 if (redirectResponse.ok) {
                   const html = await redirectResponse.text();
                   if (html && html.trim()) {
