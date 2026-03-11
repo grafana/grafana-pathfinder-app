@@ -230,6 +230,10 @@ export function BlockEditorHeader({
       // Primary = "Update draft" → offer "Publish" as shortcut
       return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPostingToBackend} />;
     }
+    if (publishedStatus === 'draft' && !hasUnsyncedChanges) {
+      // Draft with no changes — nothing extra to show
+      return null;
+    }
     // published
     return (
       <Menu.Item

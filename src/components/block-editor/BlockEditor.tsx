@@ -337,7 +337,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       // ignore malformed data
     }
     setCurrentGuideResourceName(null); // nothing to restore — mark as initialised
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist backend tracking state to localStorage whenever it changes.
@@ -562,7 +561,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
       }
     },
-    [editor, backendGuides, currentGuideResourceName, currentGuideMetadata, performBackendSave]
+    [
+      editor,
+      backendGuides,
+      currentGuideResourceName,
+      currentGuideMetadata,
+      currentGuideBackendStatus,
+      performBackendSave,
+    ]
   );
 
   /** Save the current guide as a draft — not visible to users */
@@ -595,7 +601,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       console.error('[BlockEditor] Failed to unpublish guide:', error);
       notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [backendGuides, currentGuideResourceName, currentGuideMetadata]);
+  }, [backendGuides, currentGuideResourceName, currentGuideMetadata, editor]);
 
   // Publish/update guide to backend handler
   const handlePostToBackend = useCallback(async () => {
