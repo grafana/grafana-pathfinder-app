@@ -220,7 +220,7 @@ function convertBlockByType(
 ): ConversionResult {
   switch (block.type) {
     case 'markdown':
-      return convertMarkdownBlock(block, path);
+      return convertMarkdownBlock(block, path, baseUrl);
     case 'html':
       return convertHtmlBlock(block, path, baseUrl);
     case 'section':
@@ -311,7 +311,7 @@ function convertBlockToParsedElement(
  *
  * @public Exported for use in AssistantBlockWrapper to render customized content
  */
-export function parseMarkdownToElements(content: string): ParsedElement[] {
+export function parseMarkdownToElements(content: string, baseUrl?: string): ParsedElement[] {
   // SECURITY: Sanitize with a safe allowlist so basic HTML content survives while stripping dangerous markup
   const sanitizedContent = DOMPurify.sanitize(content, {
     ALLOWED_TAGS: MARKDOWN_ALLOWED_TAGS,
@@ -325,7 +325,8 @@ export function parseMarkdownToElements(content: string): ParsedElement[] {
   const sanitizedHtml = sanitizeDocumentationHTML(html);
 
   // Parse HTML to ParsedElement[] using existing HTML parser
-  const htmlResult = parseHTMLToComponents(sanitizedHtml);
+  // Pass baseUrl so images in markdown can be resolved correctly
+  const htmlResult = parseHTMLToComponents(sanitizedHtml, baseUrl);
 
   if (!htmlResult.isValid || !htmlResult.data?.elements?.length) {
     // Fallback: return empty array or single paragraph with text
@@ -362,8 +363,8 @@ function markdownToHtml(text: string): string {
   return sanitizeDocumentationHTML(html);
 }
 
-function convertMarkdownBlock(block: JsonMarkdownBlock, path: string): ConversionResult {
-  const elements = parseMarkdownToElements(block.content);
+function convertMarkdownBlock(block: JsonMarkdownBlock, path: string, baseUrl?: string): ConversionResult {
+  const elements = parseMarkdownToElements(block.content, baseUrl);
 
   // If only one element, return it directly
   if (elements.length === 1) {

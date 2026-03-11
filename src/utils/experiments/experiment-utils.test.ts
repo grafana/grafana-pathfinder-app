@@ -177,11 +177,11 @@ describe('experiment-utils', () => {
   });
 
   describe('markGlobalAutoOpened', () => {
-    it('should mark global auto-open in sessionStorage', () => {
+    it('should mark global auto-open in localStorage', () => {
       markGlobalAutoOpened(hostname);
 
       const keys = getStorageKeys(hostname);
-      expect(sessionStorage.getItem(keys.autoOpened)).toBe('true');
+      expect(localStorage.getItem(keys.autoOpened)).toBe('true');
     });
 
     it('should call user storage to persist', () => {
@@ -274,7 +274,7 @@ describe('experiment-utils', () => {
   });
 
   describe('syncExperimentStateFromUserStorage', () => {
-    it('should sync global auto-open state', async () => {
+    it('should sync global auto-open state to localStorage', async () => {
       const { experimentAutoOpenStorage } = require('../../lib/user-storage');
       experimentAutoOpenStorage.get.mockResolvedValue({
         pagesAutoOpened: [],
@@ -284,10 +284,10 @@ describe('experiment-utils', () => {
       await syncExperimentStateFromUserStorage(hostname, []);
 
       const keys = getStorageKeys(hostname);
-      expect(sessionStorage.getItem(keys.autoOpened)).toBe('true');
+      expect(localStorage.getItem(keys.autoOpened)).toBe('true');
     });
 
-    it('should sync per-page auto-open state', async () => {
+    it('should sync per-page auto-open state to sessionStorage', async () => {
       const { experimentAutoOpenStorage } = require('../../lib/user-storage');
       experimentAutoOpenStorage.get.mockResolvedValue({
         pagesAutoOpened: ['/a/grafana-irm-app'],
@@ -301,19 +301,66 @@ describe('experiment-utils', () => {
   });
 
   describe('resetExperimentState', () => {
-    it('should clear sessionStorage and user storage', async () => {
+    it('should clear localStorage, sessionStorage, and user storage', async () => {
       const { experimentAutoOpenStorage } = require('../../lib/user-storage');
 
       markGlobalAutoOpened(hostname);
       markParentAutoOpened(hostname, '/a/grafana-irm-app');
 
       const keys = getStorageKeys(hostname);
-      expect(sessionStorage.getItem(keys.autoOpened)).toBe('true');
+      expect(localStorage.getItem(keys.autoOpened)).toBe('true');
 
       await resetExperimentState(hostname);
 
-      expect(sessionStorage.getItem(keys.autoOpened)).toBeNull();
+      expect(localStorage.getItem(keys.autoOpened)).toBeNull();
       expect(experimentAutoOpenStorage.reset).toHaveBeenCalled();
+    });
+  });
+
+  describe('external app trigger guard (24h experiment)', () => {
+    // These tests verify the storage pattern used by the pathfinder-suggest event handler
+    // in module.tsx for the 24h experiment treatment guard.
+    // The handler uses localStorage (persists across browser sessions) with the autoOpened key pattern.
+
+    it('should allow first external trigger when autoOpened key is not set', () => {
+      const keys = getStorageKeys(hostname);
+      const alreadyOpened = localStorage.getItem(keys.autoOpened) === 'true';
+
+      expect(alreadyOpened).toBe(false);
+    });
+
+    it('should block subsequent triggers after markGlobalAutoOpened is called', () => {
+      markGlobalAutoOpened(hostname);
+
+      const keys = getStorageKeys(hostname);
+      const alreadyOpened = localStorage.getItem(keys.autoOpened) === 'true';
+
+      expect(alreadyOpened).toBe(true);
+    });
+
+    it('should persist across sync check after state is synced from user storage', async () => {
+      const { experimentAutoOpenStorage } = require('../../lib/user-storage');
+      experimentAutoOpenStorage.get.mockResolvedValue({
+        pagesAutoOpened: [],
+        globalAutoOpened: true,
+      });
+
+      // Simulate app init - sync from user storage to localStorage
+      await syncExperimentStateFromUserStorage(hostname, []);
+
+      // The guard check pattern used in module.tsx
+      const keys = getStorageKeys(hostname);
+      const alreadyOpened = localStorage.getItem(keys.autoOpened) === 'true';
+
+      expect(alreadyOpened).toBe(true);
+    });
+
+    it('should use consistent key pattern with hostname', () => {
+      const keys = getStorageKeys(hostname);
+
+      // Verify the key matches the pattern used in module.tsx:
+      // `grafana-interactive-learning-panel-auto-opened-${hostname}`
+      expect(keys.autoOpened).toBe(`grafana-interactive-learning-panel-auto-opened-${hostname}`);
     });
   });
 });

@@ -396,6 +396,40 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
       return;
     }
 
+    // For 24h experiment treatment: only auto-open once, but always store suggestions
+    // Uses localStorage (persists across browser sessions) as cache, with Grafana user storage as cross-device source of truth
+    if (after24hVariant === 'treatment') {
+      const hostname = window.location.hostname;
+      const autoOpenedKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
+      const alreadyOpened = localStorage.getItem(autoOpenedKey) === 'true';
+
+      if (alreadyOpened) {
+        // Suggestions are already stored above - user will see them when they manually open
+        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+          action: 'suggest',
+          source: 'external_app',
+          suggestion_count: valid.length,
+          suggested_titles: suggestedTitles,
+          suggested_urls: suggestedUrls,
+          sidebar_already_opened_by_experiment: true,
+        });
+        detail.status = 'accepted';
+        detail.reason = 'suggestions_stored_no_reopen';
+        return;
+      }
+
+      // First trigger - mark as opened in localStorage (sync, persists across sessions)
+      localStorage.setItem(autoOpenedKey, 'true');
+
+      // Also persist to Grafana user storage for cross-device durability (async, fire-and-forget)
+      // Uses dynamic import to keep user-storage.ts out of module.js
+      import('./lib/user-storage').then(({ experimentAutoOpenStorage }) => {
+        experimentAutoOpenStorage.markGlobalAutoOpened().catch(() => {
+          // Silently fail - localStorage is the primary guard
+        });
+      });
+    }
+
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'suggest',
       source: 'external_app',

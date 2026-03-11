@@ -36,14 +36,29 @@ export function ImageRenderer({
       });
       return undefined;
     }
+
+    // Skip if already absolute URL or data URI
+    if (
+      imgSrc.startsWith('http://') ||
+      imgSrc.startsWith('https://') ||
+      imgSrc.startsWith('//') ||
+      imgSrc.startsWith('data:')
+    ) {
+      return imgSrc;
+    }
+
+    // No baseUrl provided, return as-is
     if (!baseUrl) {
       return imgSrc;
     }
-    if (imgSrc.startsWith('/') && !imgSrc.startsWith('//')) {
-      const resolved = new URL(imgSrc, baseUrl).href;
-      return resolved;
-    }
-    return imgSrc;
+
+    // Fallback to https://grafana.com/ for synthetic URLs (like block-editor://)
+    const effectiveBaseUrl =
+      baseUrl.startsWith('http://') || baseUrl.startsWith('https://') ? baseUrl : 'https://grafana.com/';
+
+    // Resolve path against effective baseUrl
+    const resolved = new URL(imgSrc, effectiveBaseUrl).href;
+    return resolved;
   }, [src, dataSrc, baseUrl, props]);
 
   return (

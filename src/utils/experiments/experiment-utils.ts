@@ -112,35 +112,35 @@ export function markParentAutoOpened(hostname: string, parentPath: string): void
 }
 
 /**
- * Mark global auto-open as having occurred (excluded variant)
- * Writes to both sessionStorage (sync) and Grafana user storage (async)
+ * Mark global auto-open as having occurred (excluded variant and 24h experiment treatment)
+ * Writes to both localStorage (sync, persists across browser sessions) and Grafana user storage (async, cross-device)
  */
 export function markGlobalAutoOpened(hostname: string): void {
   const keys = getStorageKeys(hostname);
-  sessionStorage.setItem(keys.autoOpened, 'true');
+  localStorage.setItem(keys.autoOpened, 'true');
 
-  // Also write to Grafana user storage for cross-browser persistence
+  // Also write to Grafana user storage for cross-device persistence
   experimentAutoOpenStorage.markGlobalAutoOpened().catch((error: unknown) => {
     console.warn('[Pathfinder] Failed to persist global auto-open to user storage:', error);
   });
 }
 
 /**
- * Sync experiment auto-open state from Grafana user storage to sessionStorage
- * This should be called on app initialization to restore state from previous sessions
+ * Sync experiment auto-open state from Grafana user storage to local storage
+ * This should be called on app initialization to restore state from previous sessions/devices
  * Returns a promise that resolves when sync is complete
  */
 export async function syncExperimentStateFromUserStorage(hostname: string, targetPages: string[]): Promise<void> {
   try {
     const state = await experimentAutoOpenStorage.get();
 
-    // Sync global auto-open state
+    // Sync global auto-open state to localStorage (persists across browser sessions)
     if (state.globalAutoOpened) {
       const keys = getStorageKeys(hostname);
-      sessionStorage.setItem(keys.autoOpened, 'true');
+      localStorage.setItem(keys.autoOpened, 'true');
     }
 
-    // Sync per-page auto-open state
+    // Sync per-page auto-open state to sessionStorage (per-session tracking)
     for (const pagePattern of state.pagesAutoOpened) {
       const key = getTreatmentPageKey(hostname, pagePattern);
       sessionStorage.setItem(key, 'true');
@@ -157,8 +157,10 @@ export async function syncExperimentStateFromUserStorage(hostname: string, targe
 export async function resetExperimentState(hostname: string): Promise<void> {
   const keys = getStorageKeys(hostname);
 
-  // Clear sessionStorage
-  sessionStorage.removeItem(keys.autoOpened);
+  // Clear localStorage (global auto-open persists across sessions)
+  localStorage.removeItem(keys.autoOpened);
+
+  // Clear sessionStorage (per-page and legacy keys)
   sessionStorage.removeItem(keys.treatmentOpened);
 
   // Clear per-page keys from sessionStorage
