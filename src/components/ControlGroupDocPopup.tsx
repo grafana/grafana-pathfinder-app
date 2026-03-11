@@ -10,6 +10,7 @@ import { Modal, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import grotDiscouragedSvg from '../img/Grot-Emotions-Discouraged.svg';
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   content: css({
@@ -78,4 +79,8 @@ export function showControlGroupDocPopup(): void {
   };
 
   root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
+
+  reportAppInteraction(UserInteraction.PathfinderNoAccess, {
+    source: 'url_param',
+  });
 }

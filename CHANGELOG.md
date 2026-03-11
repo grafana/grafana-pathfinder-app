@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.2
+
+### Added
+
+- **Control group popup**: Added a popup notification for users in the control group who cannot access Pathfinder
+
+### Fixed
+
+- **Image rendering**: Fixed image rendering in docs and markdown image parsing in the JSON parser
+- **Feature flag protection**: Added safeguards around new feature flag evaluation in experiment utilities
+
+### Changed
+
+- **Reduced module size**: Further optimizations to plugin bundle size
+
 ## 2.2.1
 
 ### Added
