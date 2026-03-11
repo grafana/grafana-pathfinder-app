@@ -135,6 +135,12 @@ export const BLOCK_EDITOR_STORAGE_KEY = 'pathfinder-block-editor-state';
 export const RECORDING_STATE_STORAGE_KEY = 'pathfinder-block-editor-recording-state';
 
 /**
+ * Local storage key for persisting backend tracking state (resource name, status).
+ * Ensures the correct save/update button is shown after a page refresh.
+ */
+export const BACKEND_TRACKING_STORAGE_KEY = 'pathfinder-block-editor-backend-tracking';
+
+/**
  * Default guide metadata for new guides
  */
 export const DEFAULT_GUIDE_METADATA = {
