@@ -7,7 +7,7 @@
 
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
-import { isInteractiveLearningUrl } from '../security';
+import { isInteractiveLearningUrl } from '../security/url-validator';
 import type { ExperimentConfig } from '../utils/openfeature';
 
 type GetExperimentConfigFn = (flag: string) => ExperimentConfig;

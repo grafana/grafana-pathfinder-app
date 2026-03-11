@@ -12,7 +12,7 @@ import { getConfigWithDefaults, DocsPluginConfig, PLUGIN_BASE_URL } from './cons
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { suggestionState } from './global-state/suggestion';
-import { validateRedirectPath } from './security';
+import { validateRedirectPath } from './security/url-validator';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
