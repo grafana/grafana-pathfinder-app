@@ -6,6 +6,7 @@ import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 import { RawContent, ContentParseResult } from '../types/content.types';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
 import { parseJsonGuide, isJsonGuideContent } from './json-parser';
+import { resolveRelativeUrls } from './resolve-relative-urls';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
 import {
   InteractiveSection,
@@ -45,59 +46,6 @@ import { GuideResponseProvider, useGuideResponses } from './GuideResponseContext
 import { substituteVariables } from '../utils/variable-substitution';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
 import { STANDALONE_SECTION_ID } from '../components/interactive-tutorial/use-standalone-persistence';
-
-function resolveRelativeUrls(html: string, baseUrl: string): string {
-  try {
-    if (!baseUrl) {
-      return html;
-    }
-
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const baseUrlObj = new URL(baseUrl);
-
-    // List of attributes that can contain URLs (excluding img attributes)
-    const urlAttributes = ['href', 'action', 'poster', 'background'];
-
-    urlAttributes.forEach((attr) => {
-      const elements = doc.querySelectorAll(`[${attr}]:not(img)`);
-      elements.forEach((element) => {
-        const attrValue = element.getAttribute(attr);
-        if (attrValue) {
-          // Skip external URLs (http://, https://, //, mailto:, tel:, javascript:, etc.)
-          if (
-            attrValue.startsWith('http://') ||
-            attrValue.startsWith('https://') ||
-            attrValue.startsWith('//') ||
-            attrValue.startsWith('mailto:') ||
-            attrValue.startsWith('tel:') ||
-            attrValue.startsWith('javascript:') ||
-            attrValue.startsWith('#')
-          ) {
-            return; // Skip external/special URLs
-          }
-
-          // Resolve relative URLs (starting with ./, ../, or just a path without /)
-          // and absolute paths (starting with /)
-          try {
-            const resolvedUrl = new URL(attrValue, baseUrlObj).href;
-            element.setAttribute(attr, resolvedUrl);
-          } catch (urlError) {
-            console.warn(`Failed to resolve URL: ${attrValue}`, urlError);
-          }
-        }
-      });
-    });
-
-    // Prefer the body content for React rendering. Fallback to full HTML if not present.
-    if (doc.body && doc.body.innerHTML && doc.body.innerHTML.trim()) {
-      return doc.body.innerHTML;
-    }
-    return doc.documentElement.outerHTML;
-  } catch (error) {
-    console.warn('Failed to resolve relative URLs in content:', error);
-    return html; // Return original HTML if processing fails
-  }
-}
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -428,6 +376,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         contentType={content.type}
         baseUrl={content.url}
         title={content.metadata.title}
+        isNativeJson={content.isNativeJson ?? false}
         onContentReady={onContentReady}
         activeRef={activeRef}
         className={className}
@@ -444,6 +393,7 @@ interface ContentWithVariablesProps {
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
   title: string;
+  isNativeJson: boolean;
   onContentReady?: () => void;
   activeRef: React.RefObject<HTMLDivElement>;
   className?: string;
@@ -456,6 +406,7 @@ function ContentWithVariables({
   contentType,
   baseUrl,
   title,
+  isNativeJson,
   onContentReady,
   activeRef,
   className,
@@ -466,7 +417,6 @@ function ContentWithVariables({
   // This avoids breaking JSON structure when user values contain special characters
   const { responses } = useGuideResponses();
 
-  // Style for the title heading
   const titleStyle = css`
     font-size: 28px;
     font-weight: 500;
@@ -489,7 +439,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && contentType === 'single-doc' && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
       <ContentProcessor
         html={processedContent}
         contentType={contentType}
