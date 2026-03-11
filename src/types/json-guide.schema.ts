@@ -283,6 +283,18 @@ export const JsonTerminalBlockSchema = z.object({
   hint: z.string().optional(),
 });
 
+// ============ TERMINAL CONNECT BLOCK SCHEMA ============
+
+/**
+ * Schema for terminal connect block.
+ * @coupling Type: JsonTerminalConnectBlock
+ */
+export const JsonTerminalConnectBlockSchema = z.object({
+  type: z.literal('terminal-connect'),
+  content: z.string().min(1, 'Terminal connect content is required'),
+  buttonText: z.string().optional(),
+});
+
 // ============ CODE BLOCK SCHEMA ============
 
 /**
@@ -318,6 +330,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonQuizBlockSchema,
   JsonInputBlockSchema,
   JsonTerminalBlockSchema,
+  JsonTerminalConnectBlockSchema,
   JsonCodeBlockBlockSchema,
 ]);
 
@@ -562,6 +575,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
   terminal: new Set(['type', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
+  'terminal-connect': new Set(['type', 'content', 'buttonText']),
   'code-block': new Set([
     'type',
     'reftarget',
@@ -613,5 +627,6 @@ export const VALID_BLOCK_TYPES = new Set([
   'input',
   'assistant',
   'terminal',
+  'terminal-connect',
   'code-block',
 ]);

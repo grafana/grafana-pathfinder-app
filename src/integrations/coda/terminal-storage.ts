@@ -1,8 +1,8 @@
 /**
- * Terminal panel localStorage persistence utilities
+ * Terminal panel storage utilities
  *
- * Stores UI state (open/closed, height) for the terminal panel.
- * No sensitive data is stored - only visual preferences.
+ * localStorage: UI state (open/closed, height) - persists across sessions
+ * sessionStorage: Connection state and scrollback - tab-scoped, cleared on close
  */
 
 const STORAGE_PREFIX = 'pathfinder-coda-terminal';
@@ -11,6 +11,13 @@ const KEYS = {
   isOpen: `${STORAGE_PREFIX}-is-open`,
   height: `${STORAGE_PREFIX}-height`,
 } as const;
+
+const SESSION_KEYS = {
+  wasConnected: `${STORAGE_PREFIX}-was-connected`,
+  scrollback: `${STORAGE_PREFIX}-scrollback`,
+} as const;
+
+const MAX_SCROLLBACK_SIZE = 100_000; // ~100KB limit for sessionStorage
 
 // Default values
 const DEFAULT_HEIGHT = 200; // pixels
@@ -78,6 +85,86 @@ export const clearTerminalStorage = (): void => {
   try {
     localStorage.removeItem(KEYS.isOpen);
     localStorage.removeItem(KEYS.height);
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+/**
+ * Get whether the terminal was connected before page refresh.
+ * Uses sessionStorage so it's tab-scoped and cleared when browser closes.
+ */
+export const getWasConnected = (): boolean => {
+  try {
+    return sessionStorage.getItem(SESSION_KEYS.wasConnected) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Set whether the terminal is currently connected.
+ * Called on successful connection and cleared on explicit disconnect.
+ */
+export const setWasConnected = (connected: boolean): void => {
+  try {
+    if (connected) {
+      sessionStorage.setItem(SESSION_KEYS.wasConnected, 'true');
+    } else {
+      sessionStorage.removeItem(SESSION_KEYS.wasConnected);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+/**
+ * Get saved terminal scrollback content for restoration after reconnect.
+ */
+export const getScrollback = (): string | null => {
+  try {
+    return sessionStorage.getItem(SESSION_KEYS.scrollback);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Save terminal scrollback content (serialized via xterm serialize addon).
+ * Truncates if content exceeds size limit.
+ */
+export const setScrollback = (content: string): void => {
+  try {
+    if (content.length > MAX_SCROLLBACK_SIZE) {
+      // Truncate from the beginning (keep most recent output)
+      const truncated = content.slice(-MAX_SCROLLBACK_SIZE);
+      sessionStorage.setItem(SESSION_KEYS.scrollback, truncated);
+    } else {
+      sessionStorage.setItem(SESSION_KEYS.scrollback, content);
+    }
+  } catch {
+    // Ignore storage errors (quota exceeded, etc.)
+  }
+};
+
+/**
+ * Clear saved scrollback content.
+ */
+export const clearScrollback = (): void => {
+  try {
+    sessionStorage.removeItem(SESSION_KEYS.scrollback);
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+/**
+ * Clear all session-scoped terminal storage (connection state, scrollback).
+ */
+export const clearSessionStorage = (): void => {
+  try {
+    sessionStorage.removeItem(SESSION_KEYS.wasConnected);
+    sessionStorage.removeItem(SESSION_KEYS.scrollback);
   } catch {
     // Ignore storage errors
   }

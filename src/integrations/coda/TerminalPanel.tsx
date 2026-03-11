@@ -9,16 +9,30 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { useStyles2, Spinner, Icon, IconButton, Button } from '@grafana/ui';
+import { useStyles2, Spinner, Icon, IconButton, Button, Input } from '@grafana/ui';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { SerializeAddon } from '@xterm/addon-serialize';
+import { SearchAddon } from '@xterm/addon-search';
+import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
 
 import { useTerminalLive, ConnectionStatus } from './useTerminalLive.hook';
 import { useTerminalContext } from './TerminalContext';
 import { getTerminalPanelStyles } from './terminal-panel.styles';
-import { setTerminalOpen, getTerminalHeight, setTerminalHeight, MIN_HEIGHT, MAX_HEIGHT } from './terminal-storage';
+import {
+  setTerminalOpen,
+  getTerminalHeight,
+  setTerminalHeight,
+  MIN_HEIGHT,
+  MAX_HEIGHT,
+  getWasConnected,
+  setWasConnected,
+  getScrollback,
+  setScrollback,
+  clearScrollback,
+} from './terminal-storage';
 
 interface TerminalPanelProps {
   /** Callback when panel is closed via X button */
@@ -30,13 +44,19 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstanceRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const serializeAddonRef = useRef<SerializeAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const webglAddonRef = useRef<WebglAddon | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const autoReconnectAttemptedRef = useRef(false);
 
-  // UI state - default to expanded so terminal initializes on first render
+  // UI state - default to collapsed to save vertical space
   // User preference is saved when they collapse/expand
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [height, setHeight] = useState(() => getTerminalHeight());
   const [isResizing, setIsResizing] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
   const { status, connect, disconnect, resize, sendCommand, error } = useTerminalLive({
@@ -49,6 +69,33 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     terminalCtx?._register({ status, connect, disconnect, sendCommand });
   }, [terminalCtx, status, connect, disconnect, sendCommand]);
 
+  // Track connection state for auto-reconnect
+  useEffect(() => {
+    if (status === 'connected') {
+      setWasConnected(true);
+    } else if (status === 'error') {
+      // Clear flag on error to prevent infinite reconnect loops
+      setWasConnected(false);
+    }
+  }, [status]);
+
+  // Auto-reconnect on mount if user was previously connected (page refresh)
+  useEffect(() => {
+    if (
+      !autoReconnectAttemptedRef.current &&
+      getWasConnected() &&
+      terminalInstanceRef.current &&
+      status === 'disconnected'
+    ) {
+      autoReconnectAttemptedRef.current = true;
+      const timer = setTimeout(() => {
+        connect();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [connect, status]);
+
   // Initialize terminal once on mount - keep alive across collapse/expand
   useEffect(() => {
     // Only initialize once when DOM element exists
@@ -60,6 +107,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       cursorBlink: true,
       fontSize: 13,
       fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
+      allowProposedApi: true,
       theme: {
         background: '#1e1e1e',
         foreground: '#d4d4d4',
@@ -85,12 +133,30 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       },
     });
 
+    // Core addons
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
+    const serializeAddon = new SerializeAddon();
+    const searchAddon = new SearchAddon();
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(webLinksAddon);
+    terminal.loadAddon(serializeAddon);
+    terminal.loadAddon(searchAddon);
     terminal.open(terminalRef.current);
+
+    // WebGL addon for GPU-accelerated rendering (with fallback)
+    try {
+      const webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => {
+        webglAddon.dispose();
+        webglAddonRef.current = null;
+      });
+      terminal.loadAddon(webglAddon);
+      webglAddonRef.current = webglAddon;
+    } catch {
+      // WebGL not available, falls back to canvas renderer
+    }
 
     // Initial fit
     setTimeout(() => {
@@ -99,20 +165,45 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
     terminalInstanceRef.current = terminal;
     fitAddonRef.current = fitAddon;
+    serializeAddonRef.current = serializeAddon;
+    searchAddonRef.current = searchAddon;
 
-    // Welcome message
-    terminal.writeln('\x1b[36m╔════════════════════════════════════════╗\x1b[0m');
-    terminal.writeln('\x1b[36m║\x1b[0m        \x1b[1;33mCoda Terminal\x1b[0m                 \x1b[36m║\x1b[0m');
-    terminal.writeln('\x1b[36m╚════════════════════════════════════════╝\x1b[0m');
-    terminal.writeln('');
-    terminal.writeln('\x1b[90mClick "Connect" to start your session...\x1b[0m');
-    terminal.writeln('');
+    // Check for saved scrollback and restore if present (after page refresh)
+    const savedScrollback = getScrollback();
+    if (savedScrollback) {
+      terminal.write(savedScrollback);
+      terminal.writeln('\r\n\x1b[90m--- Session restored ---\x1b[0m\r\n');
+      clearScrollback();
+    } else {
+      // Welcome message (only shown on fresh start)
+      terminal.writeln('\x1b[36m╔════════════════════════════════════════╗\x1b[0m');
+      terminal.writeln('\x1b[36m║\x1b[0m        \x1b[1;33mCoda Terminal\x1b[0m                 \x1b[36m║\x1b[0m');
+      terminal.writeln('\x1b[36m╚════════════════════════════════════════╝\x1b[0m');
+      terminal.writeln('');
+      terminal.writeln('\x1b[90mClick "Connect" to start your session...\x1b[0m');
+      terminal.writeln('');
+    }
 
     // REACT: cleanup terminal on unmount only (R1)
     return () => {
+      // Save scrollback before unmounting if connected
+      if (serializeAddonRef.current) {
+        try {
+          const serialized = serializeAddonRef.current.serialize();
+          setScrollback(serialized);
+        } catch {
+          // Ignore serialization errors
+        }
+      }
       terminal.dispose();
       terminalInstanceRef.current = null;
       fitAddonRef.current = null;
+      serializeAddonRef.current = null;
+      searchAddonRef.current = null;
+      if (webglAddonRef.current) {
+        webglAddonRef.current.dispose();
+        webglAddonRef.current = null;
+      }
     };
   }, []);
 
@@ -200,11 +291,53 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
   // Disconnect handler
   const handleDisconnect = useCallback(() => {
+    // Clear auto-reconnect flag on explicit disconnect
+    setWasConnected(false);
+    clearScrollback();
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.writeln('\r\n\x1b[31mDisconnected.\x1b[0m');
     }
     disconnect();
   }, [disconnect]);
+
+  // Search handlers
+  const handleSearchToggle = useCallback(() => {
+    setShowSearch((prev) => !prev);
+    if (showSearch) {
+      setSearchQuery('');
+    }
+  }, [showSearch]);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!searchAddonRef.current) {
+        return;
+      }
+      if (e.key === 'Enter') {
+        if (e.shiftKey) {
+          searchAddonRef.current.findPrevious(searchQuery);
+        } else {
+          searchAddonRef.current.findNext(searchQuery);
+        }
+      } else if (e.key === 'Escape') {
+        setShowSearch(false);
+        setSearchQuery('');
+      }
+    },
+    [searchQuery]
+  );
+
+  const handleSearchNext = useCallback(() => {
+    searchAddonRef.current?.findNext(searchQuery);
+  }, [searchQuery]);
+
+  const handleSearchPrev = useCallback(() => {
+    searchAddonRef.current?.findPrevious(searchQuery);
+  }, [searchQuery]);
 
   // Status helpers
   const getStatusDotClass = (s: ConnectionStatus) => {
@@ -333,6 +466,14 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             )}
 
             <IconButton
+              name="search"
+              size="sm"
+              aria-label="Search"
+              tooltip="Search in terminal (Ctrl+F)"
+              onClick={handleSearchToggle}
+            />
+
+            <IconButton
               name="angle-down"
               size="sm"
               aria-label="Collapse"
@@ -351,6 +492,29 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             )}
           </div>
         </div>
+
+        {/* Search bar */}
+        {showSearch && (
+          <div className={styles.searchBar}>
+            <Input
+              value={searchQuery}
+              onChange={handleSearchChange}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search... (Enter=next, Shift+Enter=prev, Esc=close)"
+              autoFocus
+              width={30}
+            />
+            <IconButton
+              name="arrow-up"
+              size="sm"
+              aria-label="Previous"
+              tooltip="Previous match"
+              onClick={handleSearchPrev}
+            />
+            <IconButton name="arrow-down" size="sm" aria-label="Next" tooltip="Next match" onClick={handleSearchNext} />
+            <IconButton name="times" size="sm" aria-label="Close search" tooltip="Close" onClick={handleSearchToggle} />
+          </div>
+        )}
 
         {/* Terminal - always mounted to preserve connection */}
         <div className={styles.terminalWrapper} ref={terminalRef} />

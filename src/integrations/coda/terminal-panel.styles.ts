@@ -151,4 +151,16 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     label: 'coda-terminal-header-button',
     marginLeft: theme.spacing(0.5),
   }),
+
+  // Search bar
+  searchBar: css({
+    label: 'coda-terminal-search-bar',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(0.5, 1),
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    flexShrink: 0,
+  }),
 });

@@ -50,17 +50,6 @@ export function resetTerminalStepCounter(): void {
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  container: css({
-    padding: theme.spacing(1.5),
-    borderLeft: `3px solid ${theme.colors.info.border}`,
-    marginBottom: theme.spacing(1),
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.secondary,
-  }),
-  completed: css({
-    borderLeftColor: theme.colors.success.border,
-    opacity: 0.8,
-  }),
   disabled: css({
     opacity: 0.5,
     pointerEvents: 'none' as const,
@@ -95,17 +84,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     color: theme.colors.success.text,
     fontSize: theme.typography.bodySmall.fontSize,
-  }),
-  stepHeader: css({
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(0.5),
-  }),
-  stepLabel: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    fontWeight: theme.typography.fontWeightMedium,
   }),
   requirementMessage: css({
     padding: theme.spacing(1),
@@ -263,8 +241,9 @@ export const TerminalStep = forwardRef<
     }
 
     const containerClasses = [
-      styles.container,
-      isCompleted && styles.completed,
+      'interactive-step',
+      isCompleted && 'completed',
+      (isExecRunning || isCurrentlyExecuting) && 'executing',
       !isEnabled && styles.disabled,
       className,
     ]
@@ -277,15 +256,6 @@ export const TerminalStep = forwardRef<
         data-test-step-state={stepState}
         data-testid={`terminal-step-${renderedStepId}`}
       >
-        {/* Step header */}
-        {stepIndex !== undefined && totalSteps !== undefined && (
-          <div className={styles.stepHeader}>
-            <span className={styles.stepLabel}>
-              Step {stepIndex + 1} of {totalSteps}
-            </span>
-          </div>
-        )}
-
         {/* Description content */}
         {children && <div className={styles.content}>{children}</div>}
 

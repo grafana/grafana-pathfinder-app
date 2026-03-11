@@ -15,15 +15,11 @@ jest.mock('@grafana/ui', () => ({
   ),
   Icon: ({ name }: any) => <span data-testid={`icon-${name}`} />,
   useStyles2: () => ({
-    container: '',
-    completed: '',
     disabled: '',
     content: '',
     commandBlock: '',
     actions: '',
     completedBadge: '',
-    stepHeader: '',
-    stepLabel: '',
     requirementMessage: '',
     copyFeedback: '',
   }),
@@ -127,9 +123,9 @@ describe('TerminalStep', () => {
     expect(mockOpenTerminal).toHaveBeenCalled();
   });
 
-  it('displays step position when stepIndex and totalSteps are provided', () => {
+  it('does not render inline step position (numbering handled by CSS counter)', () => {
     render(<TerminalStep command="ls" stepIndex={0} totalSteps={3} />);
 
-    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+    expect(screen.queryByText('Step 1 of 3')).not.toBeInTheDocument();
   });
 });

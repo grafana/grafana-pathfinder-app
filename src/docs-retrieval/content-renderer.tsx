@@ -17,6 +17,7 @@ import {
   InteractiveConditional,
   InputBlock,
   TerminalStep,
+  TerminalConnectStep,
   CodeBlockStep,
   resetInteractiveCounters,
   registerSectionSteps,
@@ -802,6 +803,7 @@ const INTERACTIVE_STEP_TYPES = new Set([
   'interactive-guided',
   'quiz-block',
   'terminal-step',
+  'terminal-connect-step',
   'code-block-step',
 ]);
 
@@ -833,6 +835,7 @@ const SECTION_TRACKED_STEP_TYPES = new Set([
   'interactive-guided',
   'quiz-block',
   'terminal-step',
+  'terminal-connect-step',
   'code-block-step',
 ]);
 
@@ -1059,6 +1062,17 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </TerminalStep>
+      );
+    case 'terminal-connect-step':
+      return (
+        <TerminalConnectStep
+          key={key}
+          buttonText={element.props.buttonText}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </TerminalConnectStep>
       );
     case 'code-block-step':
       return (
