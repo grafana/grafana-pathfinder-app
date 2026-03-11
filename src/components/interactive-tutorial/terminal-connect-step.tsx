@@ -5,7 +5,7 @@
  * Use this as a guided entry point for users to start using the terminal feature.
  */
 
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -133,26 +133,34 @@ export const TerminalConnectStep = forwardRef<
 
       setIsConnecting(true);
       terminalCtx.openTerminal();
+    }, [terminalCtx]);
 
-      const checkConnection = setInterval(() => {
-        if (terminalCtx.status === 'connected') {
-          clearInterval(checkConnection);
-          setIsConnecting(false);
-          markComplete();
-        } else if (terminalCtx.status === 'error') {
-          clearInterval(checkConnection);
-          setIsConnecting(false);
-        }
-      }, 200);
+    // React to terminal status changes while waiting for connection
+    useEffect(() => {
+      if (!isConnecting) {
+        return;
+      }
 
-      setTimeout(() => {
-        clearInterval(checkConnection);
+      if (terminalCtx?.status === 'connected') {
         setIsConnecting(false);
-        if (terminalCtx.status === 'connected') {
-          markComplete();
-        }
-      }, 10000);
-    }, [terminalCtx, markComplete]);
+        markComplete();
+      } else if (terminalCtx?.status === 'error') {
+        setIsConnecting(false);
+      }
+    }, [isConnecting, terminalCtx?.status, markComplete]);
+
+    // Safety timeout: give up waiting after 10 seconds
+    useEffect(() => {
+      if (!isConnecting) {
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        setIsConnecting(false);
+      }, 10_000);
+
+      return () => clearTimeout(timeout);
+    }, [isConnecting]);
 
     useImperativeHandle(
       ref,
