@@ -80,7 +80,7 @@ export function showControlGroupDocPopup(): void {
 
   root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
 
-  reportAppInteraction(UserInteraction.PathfinderNoAccess, {
+  reportAppInteraction(UserInteraction.NoAccess, {
     source: 'url_param',
   });
 }

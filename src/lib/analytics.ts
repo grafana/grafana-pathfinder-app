@@ -80,7 +80,7 @@ export enum UserInteraction {
   InputBlockSubmit = 'input_block_submit',
 
   // Access Control
-  PathfinderNoAccess = 'pathfinder_no_access',
+  NoAccess = 'no_access',
 }
 
 // ============================================================================
