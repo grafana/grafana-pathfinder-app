@@ -375,6 +375,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         contentType={content.type}
         baseUrl={content.url}
         title={content.metadata.title}
+        isNativeJson={content.isNativeJson ?? false}
         onContentReady={onContentReady}
         activeRef={activeRef}
         className={className}
@@ -391,6 +392,7 @@ interface ContentWithVariablesProps {
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
   title: string;
+  isNativeJson: boolean;
   onContentReady?: () => void;
   activeRef: React.RefObject<HTMLDivElement>;
   className?: string;
@@ -403,6 +405,7 @@ function ContentWithVariables({
   contentType,
   baseUrl,
   title,
+  isNativeJson,
   onContentReady,
   activeRef,
   className,
@@ -413,7 +416,6 @@ function ContentWithVariables({
   // This avoids breaking JSON structure when user values contain special characters
   const { responses } = useGuideResponses();
 
-  // Style for the title heading
   const titleStyle = css`
     font-size: 28px;
     font-weight: 500;
@@ -436,7 +438,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && contentType === 'single-doc' && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
       <ContentProcessor
         html={processedContent}
         contentType={contentType}

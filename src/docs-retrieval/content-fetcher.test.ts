@@ -150,24 +150,43 @@ describe('null content handling for learning journeys', () => {
     const mockGuide = {
       id: 'drilldown-logs-milestone-1',
       title: 'Milestone 1: Getting Started with Logs',
-      description: 'Learn how to explore logs in Grafana',
       blocks: [
-        { type: 'text', content: 'Welcome to the first milestone' },
-        { type: 'text', content: 'In this guide, you will learn...' },
+        { type: 'markdown', content: 'Welcome to the first milestone.' },
+        { type: 'markdown', content: 'In this guide, you will learn...' },
       ],
     };
     const journeyUrl = 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-1/';
 
-    // Mock fetch to return valid JSON for learning journey milestone
+    const jsonHeaders = new Headers();
+    jsonHeaders.set('Content-Type', 'application/json');
+    const htmlHeaders = new Headers();
+    htmlHeaders.set('Content-Type', 'text/html');
+    const notFoundHeaders = new Headers();
+    notFoundHeaders.set('Content-Type', 'text/html');
+
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
-      const headers = new Headers();
-      headers.set('Content-Type', 'application/json');
-      // Return valid JSON for any request to this milestone
+      if (url.endsWith('content.json')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => JSON.stringify(mockGuide),
+          url,
+          headers: jsonHeaders,
+        });
+      }
+      if (url.endsWith('/milestone-1/') || url.endsWith('/milestone-1')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => '<html><body></body></html>',
+          url,
+          headers: htmlHeaders,
+        });
+      }
       return Promise.resolve({
-        ok: true,
-        text: async () => JSON.stringify(mockGuide),
-        url: url.endsWith('content.json') ? url : url + 'content.json',
-        headers,
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        url,
+        headers: notFoundHeaders,
       });
     });
 
@@ -188,6 +207,9 @@ describe('null content handling for learning journeys', () => {
       // The key test: verify the original guide structure is preserved
       // (whether native JSON or wrapped, the blocks should be there)
       expect(parsedContent.blocks.length).toBeGreaterThan(0);
+
+      // Verify metadata.title is taken from the JSON guide title, not defaulting to 'Documentation'
+      expect(result.content.metadata.title).toBe('Milestone 1: Getting Started with Logs');
     }
 
     // Verify fetch was called

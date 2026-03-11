@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useStyles2 } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
@@ -32,7 +33,53 @@ import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
 import { BlockEditorModals } from './BlockEditorModals';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
-import { ConfirmModal, AlertModal } from './NotificationModals';
+import { ConfirmModal } from './NotificationModals';
+import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
+
+/** Converts a guide title to a URL-safe kebab-case slug */
+function slugifyTitle(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'guide'
+  );
+}
+
+/** Generates a unique guide ID from a title, avoiding collisions with existing resource names */
+function generateUniqueId(title: string, existingNames: string[]): string {
+  const base = slugifyTitle(title);
+  for (let i = 0; i < 20; i++) {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const candidate = `${base}-${suffix}`;
+    if (!existingNames.includes(candidate)) {
+      return candidate;
+    }
+  }
+  return `${base}-${Date.now().toString(36).slice(-6)}`;
+}
+
+function notify(type: 'success' | 'error' | 'info', title: string, message?: string) {
+  const eventType = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
+  getAppEvents().publish({ type: eventType, payload: [title, ...(message ? [message] : [])] });
+}
+
+/** Reads persisted backend tracking state from localStorage. Returns null values when nothing is stored. */
+function readBackendTracking(): { resourceName: string | null; lastPublishedJson: string | null } {
+  try {
+    const stored = localStorage.getItem(BACKEND_TRACKING_STORAGE_KEY);
+    if (stored) {
+      const { resourceName, lastPublishedJson } = JSON.parse(stored);
+      if (resourceName) {
+        return { resourceName, lastPublishedJson: lastPublishedJson ?? null };
+      }
+    }
+  } catch {
+    // ignore malformed data
+  }
+  return { resourceName: null, lastPublishedJson: null };
+}
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -88,11 +135,27 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Backend guides management
   const backendGuides = useBackendGuides();
-  const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(null);
-  const [currentGuideMetadata, setCurrentGuideMetadata] = useState<any>(null);
-  const [currentGuideBackendStatus, setCurrentGuideBackendStatus] = useState<'draft' | 'published' | null>(null);
+  const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
+    () => readBackendTracking().resourceName
+  );
+  const currentGuideMetadata = useMemo(
+    () =>
+      currentGuideResourceName
+        ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.metadata ?? null)
+        : null,
+    [currentGuideResourceName, backendGuides.guides]
+  );
+  const currentGuideBackendStatus = useMemo(
+    () =>
+      currentGuideResourceName
+        ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.spec.status ?? null)
+        : null,
+    [currentGuideResourceName, backendGuides.guides]
+  );
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
-  const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(null);
+  const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(
+    () => readBackendTracking().lastPublishedJson
+  );
 
   // Derived unified backend publish status — available throughout the component
   const publishedStatus: 'not-saved' | 'draft' | 'published' = !currentGuideResourceName
@@ -114,17 +177,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     title: '',
     message: '',
     onConfirm: () => {},
-  });
-
-  const [alertModal, setAlertModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string | React.ReactNode;
-    severity?: 'info' | 'success' | 'warning' | 'error';
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
   });
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -292,10 +344,28 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Clear backend tracking when starting a new guide
   const handleClearBackendTracking = useCallback(() => {
     setCurrentGuideResourceName(null);
-    setCurrentGuideMetadata(null);
-    setCurrentGuideBackendStatus(null);
     setLastPublishedJson(null);
   }, []);
+
+  // Persist backend tracking state to localStorage whenever it changes.
+  useEffect(() => {
+    if (currentGuideResourceName) {
+      try {
+        localStorage.setItem(
+          BACKEND_TRACKING_STORAGE_KEY,
+          JSON.stringify({
+            resourceName: currentGuideResourceName,
+            backendStatus: currentGuideBackendStatus,
+            lastPublishedJson,
+          })
+        );
+      } catch {
+        // ignore
+      }
+    } else {
+      localStorage.removeItem(BACKEND_TRACKING_STORAGE_KEY);
+    }
+  }, [currentGuideResourceName, currentGuideBackendStatus, lastPublishedJson]);
 
   // Guide operations - extracted hook for copy/download/new/import/template
   const guideOps = useGuideOperations({
@@ -356,7 +426,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       resourceName: string | undefined,
       metadata: any,
       isUpdate: boolean,
-      status: 'draft' | 'published'
+      status: 'draft' | 'published',
+      previousStatus: 'draft' | 'published' | null
     ) => {
       // Generate resource name if not provided
       const generatedResourceName =
@@ -380,29 +451,13 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       const updatedGuides = await backendGuides.refreshGuides();
 
       const savedGuide = updatedGuides.find((g) => g.metadata.name === generatedResourceName);
-      if (savedGuide) {
-        setCurrentGuideResourceName(savedGuide.metadata.name);
-        setCurrentGuideMetadata(savedGuide.metadata);
-        setCurrentGuideBackendStatus(savedGuide.spec.status ?? 'draft');
-      } else {
-        setCurrentGuideResourceName(generatedResourceName);
-        setCurrentGuideMetadata(metadata);
-        setCurrentGuideBackendStatus(status);
-      }
+      setCurrentGuideResourceName(savedGuide ? savedGuide.metadata.name : generatedResourceName);
 
-      const successMessages: Record<string, string> = {
-        'draft-create': 'Guide saved to library as draft.',
-        'draft-update': 'Draft updated successfully.',
-        'published-create': 'Guide published successfully!',
-        'published-update': 'Guide updated successfully!',
-      };
-      const key = `${status}-${isUpdate ? 'update' : 'create'}`;
-      setAlertModal({
-        isOpen: true,
-        title: 'Success',
-        message: successMessages[key] ?? 'Guide saved.',
-        severity: 'success',
-      });
+      if (status === 'published') {
+        notify('success', previousStatus === 'published' ? 'Guide updated.' : 'Guide published.');
+      } else {
+        notify('success', isUpdate ? 'Draft updated.' : 'Guide saved as draft.');
+      }
     },
     [backendGuides]
   );
@@ -415,6 +470,12 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     async (status: 'draft' | 'published') => {
       try {
         const guide = editor.getGuide();
+
+        if (!guide.blocks || guide.blocks.length === 0) {
+          notify('error', 'Cannot save guide', 'Add at least one block before saving.');
+          return;
+        }
+
         const isUpdate = !!currentGuideResourceName;
 
         const resourceName =
@@ -426,12 +487,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
             .replace(/^-|-$/g, '');
 
         if (!resourceName || resourceName.length === 0) {
-          setAlertModal({
-            isOpen: true,
-            title: 'Invalid guide name',
-            message: 'Guide title or ID must contain at least one alphanumeric character',
-            severity: 'error',
-          });
+          notify('error', 'Invalid guide name', 'Guide title or ID must contain at least one alphanumeric character');
           return;
         }
 
@@ -458,8 +514,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
                 onConfirm: async () => {
                   setConfirmModal((prev) => ({ ...prev, isOpen: false }));
                   setCurrentGuideResourceName(existingGuide.metadata.name);
-                  setCurrentGuideMetadata(existingGuide.metadata);
-                  await performBackendSave(guide, existingGuide.metadata.name, existingGuide.metadata, true, status);
+                  await performBackendSave(
+                    guide,
+                    existingGuide.metadata.name,
+                    existingGuide.metadata,
+                    true,
+                    status,
+                    existingGuide.spec.status ?? 'draft'
+                  );
                   resolve();
                 },
                 onCancel: resolve,
@@ -473,19 +535,22 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           currentGuideResourceName || undefined,
           currentGuideMetadata || undefined,
           isUpdate,
-          status
+          status,
+          currentGuideBackendStatus
         );
       } catch (error) {
         console.error('[BlockEditor] Failed to save guide:', error);
-        setAlertModal({
-          isOpen: true,
-          title: 'Save failed',
-          message: `Failed to save guide: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          severity: 'error',
-        });
+        notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
       }
     },
-    [editor, backendGuides, currentGuideResourceName, currentGuideMetadata, performBackendSave]
+    [
+      editor,
+      backendGuides,
+      currentGuideResourceName,
+      currentGuideMetadata,
+      currentGuideBackendStatus,
+      performBackendSave,
+    ]
   );
 
   /** Save the current guide as a draft — not visible to users */
@@ -501,33 +566,16 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     try {
       await backendGuides.unpublishGuide(currentGuideResourceName, currentGuideMetadata);
 
-      // Refresh metadata to get the latest resourceVersion
-      const updatedGuides = await backendGuides.refreshGuides();
-      const updatedGuide = updatedGuides.find((g) => g.metadata.name === currentGuideResourceName);
-      if (updatedGuide) {
-        setCurrentGuideMetadata(updatedGuide.metadata);
-        setCurrentGuideBackendStatus('draft');
-      } else {
-        setCurrentGuideBackendStatus('draft');
-      }
-      setLastPublishedJson(null);
-
-      setAlertModal({
-        isOpen: true,
-        title: 'Unpublished',
-        message: 'Guide removed from docs panel. It remains in your library as a draft.',
-        severity: 'info',
-      });
+      await backendGuides.refreshGuides();
+      // Keep lastPublishedJson set — guide content is unchanged, only status changed.
+      // This allows change detection to work correctly for the guide now in draft state.
+      setLastPublishedJson(JSON.stringify(editor.getGuide()));
+      notify('success', 'Guide unpublished.');
     } catch (error) {
       console.error('[BlockEditor] Failed to unpublish guide:', error);
-      setAlertModal({
-        isOpen: true,
-        title: 'Unpublish failed',
-        message: `Failed to unpublish guide: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error',
-      });
+      notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [backendGuides, currentGuideResourceName, currentGuideMetadata]);
+  }, [backendGuides, currentGuideResourceName, currentGuideMetadata, editor]);
 
   // Publish/update guide to backend handler
   const handlePostToBackend = useCallback(async () => {
@@ -536,13 +584,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Load guide from backend
   const handleLoadGuideFromBackend = useCallback(
-    (guide: JsonGuide, resourceName: string, metadata: any, backendStatus: 'draft' | 'published') => {
+    (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
       setCurrentGuideResourceName(resourceName);
-      setCurrentGuideMetadata(metadata);
-      setCurrentGuideBackendStatus(backendStatus);
-      // Track the backend JSON for both drafts and published guides to detect changes
-      setLastPublishedJson(JSON.stringify(guide));
+      // Normalize to match getGuide() output (id, title, blocks — no schemaVersion or extra fields)
+      setLastPublishedJson(JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks }));
       editor.markSaved();
     },
     [editor]
@@ -581,10 +627,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       setTimeout(() => callback?.(), 0);
       return { ...prev, isOpen: false };
     });
-  }, []);
-
-  const closeAlertModal = useCallback(() => {
-    setAlertModal((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
@@ -634,23 +676,38 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const { state } = editor;
   const hasBlocks = state.blocks.length > 0;
 
-  // hasUnpublishedChanges: published guide has local edits not yet sent to backend
+  // hasUnsyncedChanges: local content differs from last backend save (draft or published)
   const currentJson = JSON.stringify(editor.getGuide());
-  const hasUnpublishedChanges =
-    publishedStatus === 'published' && lastPublishedJson !== null && currentJson !== lastPublishedJson;
+  const hasUnsyncedChanges =
+    publishedStatus !== 'not-saved' && lastPublishedJson !== null && currentJson !== lastPublishedJson;
+
+  // ID is locked once it has been set (i.e. diverged from the default placeholder)
+  const isIdLocked = state.guide.id !== DEFAULT_GUIDE_METADATA.id;
+
+  const handleTitleCommit = useCallback(
+    (title: string) => {
+      editor.updateGuideMetadata({ title });
+      if (!isIdLocked) {
+        const existingNames = backendGuides.guides.map((g) => g.metadata.name);
+        const newId = generateUniqueId(title, existingNames);
+        editor.updateGuideMetadata({ id: newId });
+      }
+    },
+    [editor, isIdLocked, backendGuides.guides]
+  );
 
   return (
     <div className={styles.container} data-testid="block-editor">
       {/* Header */}
       <BlockEditorHeader
         guideTitle={state.guide.title}
-        guideId={state.guide.id}
+        guideId={isIdLocked ? state.guide.id : null}
         isDirty={state.isDirty}
         publishedStatus={publishedStatus}
-        hasUnpublishedChanges={hasUnpublishedChanges}
+        hasUnsyncedChanges={hasUnsyncedChanges}
         viewMode={state.viewMode}
         onSetViewMode={jsonMode.handleViewModeChange}
-        onOpenMetadata={() => modals.open('metadata')}
+        onTitleCommit={handleTitleCommit}
         onOpenTour={() => modals.open('tour')}
         onOpenGuideLibrary={handleOpenGuideLibrary}
         onOpenImport={() => modals.open('import')}
@@ -719,8 +776,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         error={backendGuides.error}
         onLoadGuide={handleLoadGuideFromBackend}
         onDeleteGuide={backendGuides.deleteGuide}
-        onPublishGuide={backendGuides.publishGuide}
-        onUnpublishGuide={backendGuides.unpublishGuide}
         onRefresh={backendGuides.refreshGuides}
       />
 
@@ -783,14 +838,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         variant={confirmModal.variant}
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirmModal}
-      />
-
-      <AlertModal
-        isOpen={alertModal.isOpen}
-        title={alertModal.title}
-        message={alertModal.message}
-        severity={alertModal.severity}
-        onClose={closeAlertModal}
       />
     </div>
   );
