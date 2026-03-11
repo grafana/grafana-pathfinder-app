@@ -65,6 +65,22 @@ function notify(type: 'success' | 'error' | 'info', title: string, message?: str
   getAppEvents().publish({ type: eventType, payload: [title, ...(message ? [message] : [])] });
 }
 
+/** Reads persisted backend tracking state from localStorage. Returns null values when nothing is stored. */
+function readBackendTracking(): { resourceName: string | null; lastPublishedJson: string | null } {
+  try {
+    const stored = localStorage.getItem(BACKEND_TRACKING_STORAGE_KEY);
+    if (stored) {
+      const { resourceName, lastPublishedJson } = JSON.parse(stored);
+      if (resourceName) {
+        return { resourceName, lastPublishedJson: lastPublishedJson ?? null };
+      }
+    }
+  } catch {
+    // ignore malformed data
+  }
+  return { resourceName: null, lastPublishedJson: null };
+}
+
 export interface BlockEditorProps {
   /** Initial guide to load */
   initialGuide?: JsonGuide;
@@ -119,12 +135,27 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Backend guides management
   const backendGuides = useBackendGuides();
-  // undefined = not yet initialised (waiting for localStorage restore); null = no linked guide
-  const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null | undefined>(undefined);
-  const [currentGuideMetadata, setCurrentGuideMetadata] = useState<any>(null);
-  const [currentGuideBackendStatus, setCurrentGuideBackendStatus] = useState<'draft' | 'published' | null>(null);
+  const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
+    () => readBackendTracking().resourceName
+  );
+  const currentGuideMetadata = useMemo(
+    () =>
+      currentGuideResourceName
+        ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.metadata ?? null)
+        : null,
+    [currentGuideResourceName, backendGuides.guides]
+  );
+  const currentGuideBackendStatus = useMemo(
+    () =>
+      currentGuideResourceName
+        ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.spec.status ?? null)
+        : null,
+    [currentGuideResourceName, backendGuides.guides]
+  );
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
-  const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(null);
+  const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(
+    () => readBackendTracking().lastPublishedJson
+  );
 
   // Derived unified backend publish status — available throughout the component
   const publishedStatus: 'not-saved' | 'draft' | 'published' = !currentGuideResourceName
@@ -313,38 +344,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Clear backend tracking when starting a new guide
   const handleClearBackendTracking = useCallback(() => {
     setCurrentGuideResourceName(null);
-    setCurrentGuideMetadata(null);
-    setCurrentGuideBackendStatus(null);
     setLastPublishedJson(null);
   }, []);
 
-  // Restore backend tracking state from localStorage on mount.
-  // Always transitions currentGuideResourceName out of undefined (to string or null) so the
-  // persist effect knows initialisation is complete and won't accidentally delete the stored key.
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(BACKEND_TRACKING_STORAGE_KEY);
-      if (stored) {
-        const { resourceName, backendStatus, lastPublishedJson: storedJson } = JSON.parse(stored);
-        if (resourceName) {
-          setCurrentGuideResourceName(resourceName);
-          setCurrentGuideBackendStatus(backendStatus ?? 'draft');
-          setLastPublishedJson(storedJson ?? null);
-          return;
-        }
-      }
-    } catch {
-      // ignore malformed data
-    }
-    setCurrentGuideResourceName(null); // nothing to restore — mark as initialised
-  }, []);
-
   // Persist backend tracking state to localStorage whenever it changes.
-  // Skip while undefined (restore hasn't run yet) to avoid deleting the stored key on mount.
   useEffect(() => {
-    if (currentGuideResourceName === undefined) {
-      return;
-    }
     if (currentGuideResourceName) {
       try {
         localStorage.setItem(
@@ -362,19 +366,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       localStorage.removeItem(BACKEND_TRACKING_STORAGE_KEY);
     }
   }, [currentGuideResourceName, currentGuideBackendStatus, lastPublishedJson]);
-
-  // When backend guides load and we have a tracked resource name but no metadata yet
-  // (e.g. after a page refresh), populate currentGuideMetadata from the fetched list.
-  // metadata.resourceVersion can't be persisted since it changes on every save.
-  useEffect(() => {
-    if (currentGuideResourceName && !currentGuideMetadata && backendGuides.guides.length > 0) {
-      const match = backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName);
-      if (match) {
-        setCurrentGuideMetadata(match.metadata);
-        setCurrentGuideBackendStatus(match.spec.status ?? 'draft');
-      }
-    }
-  }, [backendGuides.guides, currentGuideResourceName, currentGuideMetadata]);
 
   // Guide operations - extracted hook for copy/download/new/import/template
   const guideOps = useGuideOperations({
@@ -460,15 +451,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       const updatedGuides = await backendGuides.refreshGuides();
 
       const savedGuide = updatedGuides.find((g) => g.metadata.name === generatedResourceName);
-      if (savedGuide) {
-        setCurrentGuideResourceName(savedGuide.metadata.name);
-        setCurrentGuideMetadata(savedGuide.metadata);
-        setCurrentGuideBackendStatus(savedGuide.spec.status ?? 'draft');
-      } else {
-        setCurrentGuideResourceName(generatedResourceName);
-        setCurrentGuideMetadata(metadata);
-        setCurrentGuideBackendStatus(status);
-      }
+      setCurrentGuideResourceName(savedGuide ? savedGuide.metadata.name : generatedResourceName);
 
       if (status === 'published') {
         notify('success', previousStatus === 'published' ? 'Guide updated.' : 'Guide published.');
@@ -531,7 +514,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
                 onConfirm: async () => {
                   setConfirmModal((prev) => ({ ...prev, isOpen: false }));
                   setCurrentGuideResourceName(existingGuide.metadata.name);
-                  setCurrentGuideMetadata(existingGuide.metadata);
                   await performBackendSave(
                     guide,
                     existingGuide.metadata.name,
@@ -584,15 +566,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     try {
       await backendGuides.unpublishGuide(currentGuideResourceName, currentGuideMetadata);
 
-      // Refresh metadata to get the latest resourceVersion
-      const updatedGuides = await backendGuides.refreshGuides();
-      const updatedGuide = updatedGuides.find((g) => g.metadata.name === currentGuideResourceName);
-      if (updatedGuide) {
-        setCurrentGuideMetadata(updatedGuide.metadata);
-        setCurrentGuideBackendStatus('draft');
-      } else {
-        setCurrentGuideBackendStatus('draft');
-      }
+      await backendGuides.refreshGuides();
       // Keep lastPublishedJson set — guide content is unchanged, only status changed.
       // This allows change detection to work correctly for the guide now in draft state.
       setLastPublishedJson(JSON.stringify(editor.getGuide()));
@@ -610,11 +584,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Load guide from backend
   const handleLoadGuideFromBackend = useCallback(
-    (guide: JsonGuide, resourceName: string, metadata: any, backendStatus: 'draft' | 'published') => {
+    (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
       setCurrentGuideResourceName(resourceName);
-      setCurrentGuideMetadata(metadata);
-      setCurrentGuideBackendStatus(backendStatus);
       // Normalize to match getGuide() output (id, title, blocks — no schemaVersion or extra fields)
       setLastPublishedJson(JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks }));
       editor.markSaved();

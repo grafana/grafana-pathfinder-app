@@ -34,7 +34,7 @@ export interface GuideLibraryModalProps {
   guides: BackendGuide[];
   isLoading: boolean;
   error: string | null;
-  onLoadGuide: (guide: JsonGuide, resourceName: string, metadata: any, backendStatus: 'draft' | 'published') => void;
+  onLoadGuide: (guide: JsonGuide, resourceName: string) => void;
   onDeleteGuide: (resourceName: string) => Promise<void>;
   onRefresh: () => void;
 }
@@ -154,8 +154,7 @@ export function GuideLibraryModal({
       schemaVersion: backendGuide.spec.schemaVersion || '1.0',
       blocks: backendGuide.spec.blocks,
     };
-    const backendStatus: 'draft' | 'published' = backendGuide.spec.status === 'published' ? 'published' : 'draft';
-    onLoadGuide(guide, backendGuide.metadata.name, backendGuide.metadata, backendStatus);
+    onLoadGuide(guide, backendGuide.metadata.name);
     onClose();
   };
 
