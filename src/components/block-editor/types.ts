@@ -28,6 +28,7 @@ export type BlockType =
   | 'quiz'
   | 'input'
   | 'terminal'
+  | 'terminal-connect'
   | 'code-block';
 
 /**

@@ -230,10 +230,32 @@ class GlobalInteractionBlocker {
     const handleBlockedInteraction = (e: Event) => {
       const target = e.target as HTMLElement;
 
+      // For mouse events, use elementFromPoint to check what's actually at the click position
+      // This respects z-index ordering properly
+      if (e instanceof MouseEvent) {
+        const elementAtPoint = document.elementFromPoint(e.clientX, e.clientY);
+
+        // Allow clicks on comment box buttons (Cancel/Skip in guided mode)
+        if (elementAtPoint?.closest('.interactive-comment-box')) {
+          return; // Don't block - let the event proceed to the comment box
+        }
+
+        // Allow interactions within the WYSIWYG editor
+        if (elementAtPoint?.closest('.wysiwyg-editor-container') || elementAtPoint?.closest('.ProseMirror')) {
+          return;
+        }
+      }
+
+      // Fallback checks using event target (for non-mouse events)
       // Allow interactions within the WYSIWYG editor container
       // This prevents blocking editor buttons and controls
       if (target.closest('.wysiwyg-editor-container') || target.closest('.ProseMirror')) {
         return; // Don't block - let the event proceed
+      }
+
+      // Allow interactions with comment box (fallback for non-mouse events)
+      if (target.closest('.interactive-comment-box')) {
+        return;
       }
 
       e.preventDefault();
@@ -342,6 +364,28 @@ class GlobalInteractionBlocker {
     const handleBlockedInteraction = (e: Event) => {
       const target = e.target as HTMLElement;
 
+      // For mouse events, use elementFromPoint to check what element is actually at the click position
+      // This respects z-index ordering, so comment box with higher z-index will be properly detected
+      if (e instanceof MouseEvent) {
+        const elementAtPoint = document.elementFromPoint(e.clientX, e.clientY);
+
+        // Allow clicks on comment box buttons (Cancel/Skip in guided mode)
+        if (elementAtPoint?.closest('.interactive-comment-box')) {
+          return; // Don't block - let the event proceed to the comment box
+        }
+
+        // Allow clicks on the cancel button (status indicator)
+        if (elementAtPoint?.id === 'cancel-section-btn' || elementAtPoint?.closest('#cancel-section-btn')) {
+          return;
+        }
+
+        // Allow interactions within the WYSIWYG editor
+        if (elementAtPoint?.closest('.wysiwyg-editor-container') || elementAtPoint?.closest('.ProseMirror')) {
+          return;
+        }
+      }
+
+      // Fallback checks using event target (for non-mouse events like keyboard)
       // Allow clicks on the cancel button
       const isCancelButton = target.id === 'cancel-section-btn' || target.closest('#cancel-section-btn');
       if (isCancelButton) {
@@ -353,6 +397,11 @@ class GlobalInteractionBlocker {
       // This prevents blocking editor buttons and controls
       if (target.closest('.wysiwyg-editor-container') || target.closest('.ProseMirror')) {
         return; // Don't block - let the event proceed
+      }
+
+      // Allow interactions with comment box (fallback for non-mouse events)
+      if (target.closest('.interactive-comment-box')) {
+        return;
       }
 
       e.preventDefault();

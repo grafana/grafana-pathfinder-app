@@ -33,6 +33,7 @@ const CONVERTIBLE_TYPES: readonly BlockType[] = [
   'quiz',
   'input',
   'terminal',
+  'terminal-connect',
   'code-block',
 ];
 
@@ -54,6 +55,7 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
   quiz: 'question',
   input: 'prompt',
   terminal: 'content',
+  'terminal-connect': 'content',
   'code-block': 'content',
 };
 

@@ -28,6 +28,7 @@ import {
   type JsonAssistantBlock,
   type JsonInputBlock,
   type JsonTerminalBlock,
+  type JsonTerminalConnectBlock,
   type JsonCodeBlockBlock,
   type JsonStep,
   type AssistantProps,
@@ -243,6 +244,8 @@ function convertBlockByType(
       return convertInputBlock(block, path);
     case 'terminal':
       return convertTerminalBlock(block, path);
+    case 'terminal-connect':
+      return convertTerminalConnectBlock(block, path);
     case 'code-block':
       return convertCodeBlockBlock(block, path);
     case 'assistant':
@@ -770,6 +773,21 @@ function convertTerminalBlock(block: JsonTerminalBlock, _path: string): Conversi
         objectives,
         skippable: block.skippable ?? false,
         hints: block.hint,
+      },
+      children,
+    },
+    hasInteractive: true,
+  };
+}
+
+function convertTerminalConnectBlock(block: JsonTerminalConnectBlock, _path: string): ConversionResult {
+  const children = parseMarkdownToElements(block.content);
+
+  return {
+    element: {
+      type: 'terminal-connect-step',
+      props: {
+        buttonText: block.buttonText,
       },
       children,
     },

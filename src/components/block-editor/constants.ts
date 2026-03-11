@@ -95,6 +95,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Terminal',
     description: 'Shell command with copy and execute buttons',
   },
+  'terminal-connect': {
+    type: 'terminal-connect',
+    icon: '🔌',
+    grafanaIcon: 'link',
+    name: 'Terminal connect',
+    description: 'Button to open and connect to the terminal',
+  },
   'code-block': {
     type: 'code-block',
     icon: '📋',
@@ -118,6 +125,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'multistep',
   'guided',
   'terminal',
+  'terminal-connect',
   'code-block',
   'quiz',
   'input',

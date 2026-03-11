@@ -42,6 +42,7 @@ export type JsonBlock =
   | JsonAssistantBlock
   | JsonInputBlock
   | JsonTerminalBlock
+  | JsonTerminalConnectBlock
   | JsonCodeBlockBlock;
 
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
@@ -434,6 +435,22 @@ export interface JsonTerminalBlock {
   hint?: string;
 }
 
+// ============ TERMINAL CONNECT BLOCK ============
+
+/**
+ * Terminal connect block.
+ * Renders a "Try in terminal" button that opens and connects to the Coda terminal.
+ * Use this to provide a guided entry point for users to start using the terminal feature.
+ * @coupling Zod schema: JsonTerminalConnectBlockSchema in json-guide.schema.ts
+ */
+export interface JsonTerminalConnectBlock {
+  type: 'terminal-connect';
+  /** Markdown description shown above the button */
+  content: string;
+  /** Custom button text (defaults to "Try in terminal") */
+  buttonText?: string;
+}
+
 // ============ CODE BLOCK ============
 
 /**
@@ -554,6 +571,13 @@ export function isInputBlock(block: JsonBlock): block is JsonInputBlock {
  */
 export function isTerminalBlock(block: JsonBlock): block is JsonTerminalBlock {
   return block.type === 'terminal';
+}
+
+/**
+ * Type guard for JsonTerminalConnectBlock
+ */
+export function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalConnectBlock {
+  return block.type === 'terminal-connect';
 }
 
 /**

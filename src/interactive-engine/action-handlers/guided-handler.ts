@@ -96,12 +96,27 @@ export class GuidedHandler {
       }
 
       // Find target element using action-specific logic with retry
-      const targetElement = await this.findTargetElementWithRetry(
-        refTarget,
-        targetAction,
-        timeout,
-        INTERACTIVE_CONFIG.guided.retryInterval
-      );
+      // For skippable steps, skip retries to fail fast and auto-skip
+      let targetElement: HTMLElement;
+      try {
+        targetElement = await this.findTargetElementWithRetry(
+          refTarget,
+          targetAction,
+          timeout,
+          INTERACTIVE_CONFIG.guided.retryInterval,
+          action.isSkippable === true // Skip retries for skippable steps - fail fast
+        );
+      } catch (elementNotFoundError) {
+        // Element not found - if step is skippable, auto-skip without showing UI
+        // This handles cases where the DOM state has changed (e.g., second run after reset)
+        if (action.isSkippable) {
+          // Track as completed (skipped counts as done for progress)
+          this.completedSteps.push(stepIndex);
+          return 'skipped';
+        }
+        // Not skippable - re-throw to be handled by outer catch
+        throw elementNotFoundError;
+      }
 
       // Prepare element (scroll into view, open navigation if needed)
       await this.prepareElement(targetElement);
@@ -136,20 +151,16 @@ export class GuidedHandler {
       // Wait for user to complete the action, skip, cancel, or timeout
       const result = await Promise.race([completionPromise, skipPromise, cancelPromise]);
 
-      // CRITICAL: Always clean up listeners after step completes (any outcome)
-      // This prevents stale listeners from interfering with subsequent guided sessions
-      this.cleanupListeners();
+      // CRITICAL: Always clean up listeners AND highlights after step completes (any outcome)
+      // This prevents:
+      // 1. Stale listeners from interfering with subsequent guided sessions
+      // 2. Stale comment boxes from dispatching events to non-existent listeners
+      this.cleanupListeners(true);
 
       // Track completion for progress display (both completed and skipped count as done)
       if (result === 'completed' || result === 'skipped') {
         this.completedSteps.push(stepIndex);
       }
-
-      // Don't remove highlight after completion - let it persist until next action
-      // Highlights will be cleared when:
-      // 1. Next guided step starts (highlightTarget calls navigationManager.highlightWithComment which clears all)
-      // 2. User clicks close button on comment box
-      // 3. Section execution completes
 
       return result;
     } catch (error) {
@@ -322,12 +333,14 @@ export class GuidedHandler {
 
   /**
    * Find target element with retry logic - keeps trying every retryInterval until timeout
+   * @param skipRetryOnFailure - If true, throw immediately on first failure (for skippable steps)
    */
   private async findTargetElementWithRetry(
     selector: string,
     actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     timeout: number,
-    retryInterval: number
+    retryInterval: number,
+    skipRetryOnFailure = false
   ): Promise<HTMLElement> {
     const startTime = Date.now();
     let attemptCount = 0;
@@ -340,6 +353,11 @@ export class GuidedHandler {
       } catch (error) {
         const elapsed = Date.now() - startTime;
         const remaining = timeout - elapsed;
+
+        // For skippable steps, fail immediately on first attempt - don't retry
+        if (skipRetryOnFailure) {
+          throw error;
+        }
 
         if (remaining <= 0) {
           console.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
@@ -1092,8 +1110,10 @@ export class GuidedHandler {
 
   /**
    * Clean up all active event listeners
+   * @param clearHighlights - If true, also clears the comment box UI. Default false.
+   *                          Should be true when step completes, false when starting a new step.
    */
-  private cleanupListeners(): void {
+  private cleanupListeners(clearHighlights = false): void {
     this.activeListeners.forEach(({ target, type, handler, options }) => {
       // Use stored options if available, otherwise no options
       if (options) {
@@ -1103,6 +1123,11 @@ export class GuidedHandler {
       }
     });
     this.activeListeners = [];
+
+    // Only clear highlights when explicitly requested (after step completes, not at step start)
+    if (clearHighlights) {
+      this.navigationManager.clearAllHighlights();
+    }
   }
 
   /**
@@ -1113,6 +1138,6 @@ export class GuidedHandler {
       this.currentAbortController.abort();
       this.currentAbortController = null;
     }
-    this.cleanupListeners();
+    this.cleanupListeners(true);
   }
 }
