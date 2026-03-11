@@ -121,6 +121,18 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const docsParam = urlParams.get('doc');
   const pageParam = urlParams.get('page');
 
+  if (docsParam && !shouldMountSidebar(mainVariant, after24hVariant)) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('doc');
+    url.searchParams.delete('page');
+    window.history.replaceState({}, '', url.toString());
+
+    import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
+      showControlGroupDocPopup();
+    });
+    return;
+  }
+
   if (docsParam) {
     import('./utils/find-doc-page')
       .then(({ findDocPage }) => {
