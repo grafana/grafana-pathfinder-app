@@ -36,8 +36,6 @@ export interface GuideLibraryModalProps {
   error: string | null;
   onLoadGuide: (guide: JsonGuide, resourceName: string, metadata: any, backendStatus: 'draft' | 'published') => void;
   onDeleteGuide: (resourceName: string) => Promise<void>;
-  onPublishGuide: (resourceName: string, metadata: any) => Promise<void>;
-  onUnpublishGuide: (resourceName: string, metadata: any) => Promise<void>;
   onRefresh: () => void;
 }
 
@@ -121,15 +119,11 @@ export function GuideLibraryModal({
   error,
   onLoadGuide,
   onDeleteGuide,
-  onPublishGuide,
-  onUnpublishGuide,
   onRefresh,
 }: GuideLibraryModalProps) {
   const styles = useStyles2(getStyles);
   const [deletingGuide, setDeletingGuide] = useState<string | null>(null);
-  const [publishingGuide, setPublishingGuide] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
@@ -145,12 +139,8 @@ export function GuideLibraryModal({
 
   const handleLoadGuide = (backendGuide: BackendGuide) => {
     // Validate guide has required fields
-    if (
-      !backendGuide.spec.blocks ||
-      !Array.isArray(backendGuide.spec.blocks) ||
-      backendGuide.spec.blocks.length === 0
-    ) {
-      setLoadError('Cannot load guide: missing or empty blocks array');
+    if (!backendGuide.spec.blocks || !Array.isArray(backendGuide.spec.blocks)) {
+      setLoadError('Cannot load guide: missing or invalid blocks array');
       return;
     }
     if (!backendGuide.spec.title) {
@@ -167,30 +157,6 @@ export function GuideLibraryModal({
     const backendStatus: 'draft' | 'published' = backendGuide.spec.status === 'published' ? 'published' : 'draft';
     onLoadGuide(guide, backendGuide.metadata.name, backendGuide.metadata, backendStatus);
     onClose();
-  };
-
-  const handlePublishGuide = async (guide: BackendGuide) => {
-    setPublishingGuide(guide.metadata.name);
-    try {
-      await onPublishGuide(guide.metadata.name, guide.metadata);
-      onRefresh();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Unknown error');
-    } finally {
-      setPublishingGuide(null);
-    }
-  };
-
-  const handleUnpublishGuide = async (guide: BackendGuide) => {
-    setPublishingGuide(guide.metadata.name);
-    try {
-      await onUnpublishGuide(guide.metadata.name, guide.metadata);
-      onRefresh();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Unknown error');
-    } finally {
-      setPublishingGuide(null);
-    }
   };
 
   const handleDeleteGuide = async (guide: BackendGuide) => {
@@ -234,7 +200,10 @@ export function GuideLibraryModal({
     <Modal title="Guide library" isOpen={isOpen} onDismiss={onClose}>
       <div className={styles.content}>
         <div className={styles.header}>
-          <span>Load a guide from the backend</span>
+          <span>
+            These guides are stored privately in your Grafana instance. Published guides are visible to users in the
+            interactive learning side panel.
+          </span>
           <Button variant="secondary" size="sm" icon="sync" onClick={onRefresh}>
             Refresh
           </Button>
@@ -257,12 +226,12 @@ export function GuideLibraryModal({
             <div className={styles.emptyState}>
               <div className={styles.emptyStateIcon}>📚</div>
               <p>No guides in library.</p>
-              <p>Use &ldquo;Save to library&rdquo; in the editor to save your first guide.</p>
+              <p>Use &ldquo;Save as draft&rdquo; in the editor to save your first guide.</p>
             </div>
           ) : (
             guides.map((guide) => {
               const guideStatus: 'draft' | 'published' = guide.spec.status === 'published' ? 'published' : 'draft';
-              const isActioning = publishingGuide === guide.metadata.name || deletingGuide === guide.metadata.name;
+              const isActioning = deletingGuide === guide.metadata.name;
               return (
                 <div key={guide.metadata.uid || guide.metadata.name} className={styles.guideItem}>
                   <div className={styles.guideInfo}>
@@ -291,29 +260,6 @@ export function GuideLibraryModal({
                     </div>
                   </div>
                   <div className={styles.guideActions}>
-                    {guideStatus === 'draft' ? (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon="cloud-upload"
-                        onClick={() => handlePublishGuide(guide)}
-                        disabled={isActioning}
-                        tooltip="Publish and make visible to users"
-                      >
-                        {publishingGuide === guide.metadata.name ? <Spinner size="sm" /> : 'Publish'}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon="times-circle"
-                        onClick={() => handleUnpublishGuide(guide)}
-                        disabled={isActioning}
-                        tooltip="Remove from docs panel; guide stays in library"
-                      >
-                        {publishingGuide === guide.metadata.name ? <Spinner size="sm" /> : 'Unpublish'}
-                      </Button>
-                    )}
                     <Button
                       variant="primary"
                       size="sm"
@@ -321,7 +267,7 @@ export function GuideLibraryModal({
                       onClick={() => handleLoadGuide(guide)}
                       tooltip="Load guide for editing"
                     >
-                      Edit
+                      Load
                     </Button>
                     <Button
                       variant="destructive"
@@ -366,15 +312,6 @@ export function GuideLibraryModal({
         message={deleteError ?? ''}
         severity="error"
         onClose={() => setDeleteError(null)}
-      />
-
-      {/* Publish/Unpublish Error Modal */}
-      <AlertModal
-        isOpen={actionError !== null}
-        title="Action failed"
-        message={actionError ?? ''}
-        severity="error"
-        onClose={() => setActionError(null)}
       />
 
       {/* Load Error Modal */}

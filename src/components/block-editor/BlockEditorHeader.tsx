@@ -8,7 +8,7 @@
  * - Publishing controls
  */
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Badge, ButtonGroup, Tooltip, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -17,8 +17,8 @@ import type { ViewMode } from './types';
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
   guideTitle: string;
-  /** Guide ID */
-  guideId: string;
+  /** Guide ID — null means not yet assigned (hides the ID display) */
+  guideId: string | null;
   /** Whether there are unsaved local changes */
   isDirty: boolean;
   /**
@@ -28,14 +28,14 @@ export interface BlockEditorHeaderProps {
    * - 'published': visible in docs panel Custom guides section
    */
   publishedStatus: 'not-saved' | 'draft' | 'published';
-  /** Whether a published guide has local changes not yet sent to the backend */
-  hasUnpublishedChanges: boolean;
+  /** Whether the guide (draft or published) has local changes not yet sent to the backend */
+  hasUnsyncedChanges: boolean;
   /** Current view mode */
   viewMode: ViewMode;
   /** Callback to set view mode */
   onSetViewMode: (mode: ViewMode) => void;
-  /** Callback to open metadata modal */
-  onOpenMetadata: () => void;
+  /** Callback when the guide title is committed (blur or Enter) */
+  onTitleCommit: (title: string) => void;
   /** Callback to open tour */
   onOpenTour: () => void;
   /** Callback to open guide library */
@@ -90,20 +90,39 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     minWidth: 0,
     flex: 1,
+    '&:hover .guide-id': {
+      opacity: 1,
+    },
   }),
-  guideTitle: css({
+  guideTitleInput: css({
+    background: 'transparent',
+    border: 'none',
+    borderBottom: `1px solid transparent`,
+    borderRadius: 0,
+    color: theme.colors.text.primary,
     fontSize: theme.typography.h5.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
+    fontFamily: theme.typography.fontFamily,
+    padding: '0 2px',
     margin: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    outline: 'none',
+    width: '100%',
+    minWidth: 0,
+    '&:hover': {
+      borderBottomColor: theme.colors.border.medium,
+    },
+    '&:focus': {
+      borderBottomColor: theme.colors.primary.main,
+      background: theme.colors.background.secondary,
+    },
   }),
   guideId: css({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
     fontFamily: theme.typography.fontFamilyMonospace,
     flexShrink: 0,
+    opacity: 0,
+    transition: 'opacity 0.15s',
   }),
   statusBadges: css({
     display: 'flex',
@@ -151,10 +170,10 @@ export function BlockEditorHeader({
   guideId,
   isDirty,
   publishedStatus,
-  hasUnpublishedChanges,
+  hasUnsyncedChanges,
   viewMode,
   onSetViewMode,
-  onOpenMetadata,
+  onTitleCommit,
   onOpenTour,
   onOpenGuideLibrary,
   onOpenImport,
@@ -170,9 +189,66 @@ export function BlockEditorHeader({
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
+  // Inline title editing
+  const [titleDraft, setTitleDraft] = useState(guideTitle);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Keep draft in sync when title changes externally (e.g. guide loaded from library)
+  useEffect(() => {
+    setTitleDraft(guideTitle);
+  }, [guideTitle]);
+
+  const commitTitle = () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed) {
+      setTitleDraft(guideTitle); // revert if cleared
+      return;
+    }
+    if (trimmed !== guideTitle) {
+      onTitleCommit(trimmed);
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      titleInputRef.current?.blur();
+    } else if (e.key === 'Escape') {
+      setTitleDraft(guideTitle);
+      titleInputRef.current?.blur();
+    }
+  };
+
+  // Context-sensitive item at the top of the more menu
+  const moreMenuContextItem = () => {
+    if (!isBackendAvailable) {
+      return null;
+    }
+    if (publishedStatus === 'not-saved') {
+      return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPostingToBackend} />;
+    }
+    if (publishedStatus === 'draft' && hasUnsyncedChanges) {
+      // Primary = "Update draft" → offer "Publish" as shortcut
+      return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPostingToBackend} />;
+    }
+    // published
+    return (
+      <Menu.Item
+        label="Unpublish"
+        icon="times-circle"
+        onClick={onUnpublish}
+        disabled={isPostingToBackend}
+        data-testid="unpublish-button"
+      />
+    );
+  };
+
   // More menu for less-used actions
   const moreMenu = (
     <Menu>
+      {moreMenuContextItem()}
+      {isBackendAvailable && <Menu.Divider />}
+      <Menu.Item label="Import" icon="upload" onClick={onOpenImport} />
+      <Menu.Divider />
       <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid="copy-json-button" />
       <Menu.Item label="Download JSON" icon="download-alt" onClick={onDownload} />
       <Menu.Item label="Create GitHub PR" icon="github" onClick={onOpenGitHubPR} />
@@ -191,6 +267,13 @@ export function BlockEditorHeader({
       );
     }
     if (publishedStatus === 'draft') {
+      if (hasUnsyncedChanges) {
+        return (
+          <Tooltip content="Draft has unsaved changes">
+            <Badge text="Draft (modified)" color="orange" icon="exclamation-triangle" />
+          </Tooltip>
+        );
+      }
       return (
         <Tooltip content="Saved to library but not published to users">
           <Badge text="Draft" color="purple" icon="circle" />
@@ -198,10 +281,10 @@ export function BlockEditorHeader({
       );
     }
     // published
-    if (hasUnpublishedChanges) {
+    if (hasUnsyncedChanges) {
       return (
-        <Tooltip content="Unpublished changes">
-          <Badge text="Modified" color="orange" icon="exclamation-triangle" />
+        <Tooltip content="Published guide has unsaved changes">
+          <Badge text="Published (modified)" color="orange" icon="exclamation-triangle" />
         </Tooltip>
       );
     }
@@ -212,40 +295,27 @@ export function BlockEditorHeader({
     );
   };
 
-  // Derive backend action buttons based on publishedStatus
-  const backendButtons = () => {
+  // Single smart primary action button based on publishedStatus and hasUnsyncedChanges
+  const renderBackendButton = () => {
     if (publishedStatus === 'not-saved') {
       return (
-        <>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="save"
-            onClick={onSaveDraft}
-            disabled={isPostingToBackend}
-            tooltip="Save to library without publishing"
-            data-testid="save-draft-button"
-          >
-            Save to library
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon="cloud-upload"
-            onClick={onPostToBackend}
-            disabled={isPostingToBackend}
-            tooltip="Publish and make visible to users"
-            data-testid="post-to-backend-button"
-          >
-            {isPostingToBackend ? 'Publishing...' : 'Publish'}
-          </Button>
-        </>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="save"
+          onClick={onSaveDraft}
+          disabled={isPostingToBackend}
+          tooltip="Save as draft without publishing"
+          data-testid="save-draft-button"
+        >
+          Save as draft
+        </Button>
       );
     }
 
     if (publishedStatus === 'draft') {
-      return (
-        <>
+      if (hasUnsyncedChanges) {
+        return (
           <Button
             variant="secondary"
             size="sm"
@@ -257,47 +327,36 @@ export function BlockEditorHeader({
           >
             Update draft
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon="cloud-upload"
-            onClick={onPostToBackend}
-            disabled={isPostingToBackend}
-            tooltip="Publish and make visible to users"
-            data-testid="post-to-backend-button"
-          >
-            {isPostingToBackend ? 'Publishing...' : 'Publish'}
-          </Button>
-        </>
-      );
-    }
-
-    // published (with or without local changes)
-    return (
-      <>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="times-circle"
-          onClick={onUnpublish}
-          disabled={isPostingToBackend}
-          tooltip="Remove from docs panel; guide stays in library"
-          data-testid="unpublish-button"
-        >
-          Unpublish
-        </Button>
+        );
+      }
+      return (
         <Button
           variant="primary"
           size="sm"
           icon="cloud-upload"
           onClick={onPostToBackend}
           disabled={isPostingToBackend}
-          tooltip="Save changes and keep published"
+          tooltip="Publish and make visible to users"
           data-testid="post-to-backend-button"
         >
-          {isPostingToBackend ? 'Saving...' : 'Update'}
+          Publish
         </Button>
-      </>
+      );
+    }
+
+    // published
+    return (
+      <Button
+        variant="primary"
+        size="sm"
+        icon="cloud-upload"
+        onClick={onPostToBackend}
+        disabled={isPostingToBackend}
+        tooltip="Save changes and keep published"
+        data-testid="post-to-backend-button"
+      >
+        Update
+      </Button>
     );
   };
 
@@ -307,42 +366,40 @@ export function BlockEditorHeader({
       <div className={styles.topRow}>
         <div className={styles.guideInfo}>
           <div className={styles.guideTitleContainer}>
-            <h3 className={styles.guideTitle} title={guideTitle}>
-              {guideTitle}
-            </h3>
-            <div className={styles.guideId}>({guideId})</div>
+            <input
+              ref={titleInputRef}
+              className={styles.guideTitleInput}
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={handleTitleKeyDown}
+              aria-label="Guide title"
+            />
+            {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
           </div>
-          <Button
-            variant="secondary"
-            fill="text"
-            size="sm"
-            icon="cog"
-            onClick={onOpenMetadata}
-            tooltip="Guide settings"
-            data-testid="guide-metadata-button"
-          />
         </div>
 
         <div className={styles.statusBadges}>
-          {/* Local save status */}
-          {isDirty ? (
-            <Tooltip content="Saving changes to local storage">
-              <Badge text="Saving..." color="orange" icon="fa fa-spinner" />
-            </Tooltip>
-          ) : (
-            <Tooltip content="All changes saved to local storage">
-              <Badge text="Saved" color="green" icon="check" />
-            </Tooltip>
-          )}
+          {/* Local save status — only shown when backend is unavailable */}
+          {!isBackendAvailable &&
+            (isDirty ? (
+              <Tooltip content="Saving changes to local storage">
+                <Badge text="Saving..." color="orange" icon="fa fa-spinner" />
+              </Tooltip>
+            ) : (
+              <Tooltip content="All changes saved to local storage">
+                <Badge text="Saved" color="green" icon="check" />
+              </Tooltip>
+            ))}
 
-          {/* Backend publish status — only meaningful when backend is available */}
+          {/* Backend publish status */}
           {isBackendAvailable && backendBadge()}
         </div>
       </div>
 
       {/* Toolbar Row: Tools and actions */}
       <div className={styles.toolbarRow}>
-        {/* Left: File operations */}
+        {/* Left: New + Library */}
         <div className={styles.leftSection}>
           <Button variant="secondary" size="sm" icon="file-blank" onClick={onNewGuide}>
             New
@@ -352,9 +409,6 @@ export function BlockEditorHeader({
               Library
             </Button>
           )}
-          <Button variant="secondary" size="sm" icon="upload" onClick={onOpenImport}>
-            Import
-          </Button>
         </div>
 
         {/* Right: View mode, publish, and more */}
@@ -386,7 +440,7 @@ export function BlockEditorHeader({
           {isBackendAvailable && (
             <>
               <div className={styles.divider} />
-              {backendButtons()}
+              {renderBackendButton()}
             </>
           )}
 
