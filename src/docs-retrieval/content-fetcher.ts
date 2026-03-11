@@ -661,16 +661,14 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
   let lastError: FetchError | undefined;
 
-  const fetchOptions: RequestInit = {
-    method: 'GET',
-    headers: { ...headers },
-    signal: AbortSignal.timeout(timeout),
-    redirect: 'follow',
-  };
-
   for (const urlVariation of urls) {
     try {
-      const response = await fetch(urlVariation, fetchOptions);
+      const response = await fetch(urlVariation, {
+        method: 'GET',
+        headers: { ...headers },
+        signal: AbortSignal.timeout(timeout),
+        redirect: 'follow',
+      });
 
       if (response.ok) {
         const content = await response.text();
@@ -742,7 +740,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
     }
   }
 
-  const fetchOptions: RequestInit = {
+  const baseFetchOptions = {
     method: 'GET',
     headers: {
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -750,14 +748,13 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       'User-Agent': 'Grafana-Docs-Plugin/1.0',
       ...headers,
     },
-    signal: AbortSignal.timeout(timeout),
-    redirect: 'follow',
+    redirect: 'follow' as RequestRedirect,
   };
 
   let lastError: FetchError | undefined;
 
   try {
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(url, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
 
     if (response.ok) {
       const html = await response.text();
@@ -822,7 +819,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           // Try content.json first only for URLs that support it
           if (hasContentJson && jsonUrl !== finalUrl) {
             try {
-              const jsonResponse = await fetch(jsonUrl, fetchOptions);
+              const jsonResponse = await fetch(jsonUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
               if (jsonResponse.ok) {
                 const jsonContent = await jsonResponse.text();
                 if (jsonContent && jsonContent.trim()) {
@@ -845,7 +842,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           // Fetch unstyled.html (fallback for learning journeys, primary for regular docs)
           if (htmlUrl !== finalUrl) {
             try {
-              const htmlResponse = await fetch(htmlUrl, fetchOptions);
+              const htmlResponse = await fetch(htmlUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
               if (htmlResponse.ok) {
                 const htmlContent = await htmlResponse.text();
                 if (htmlContent && htmlContent.trim()) {
@@ -916,7 +913,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                   errorType: 'other',
                 };
               } else {
-                const redirectResponse = await fetch(redirectUrl.href, fetchOptions);
+                const redirectResponse = await fetch(redirectUrl.href, {
+                  ...baseFetchOptions,
+                  signal: AbortSignal.timeout(timeout),
+                });
                 if (redirectResponse.ok) {
                   const html = await redirectResponse.text();
                   if (html && html.trim()) {
