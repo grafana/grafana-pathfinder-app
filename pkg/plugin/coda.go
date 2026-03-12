@@ -417,19 +417,43 @@ func (c *CodaClient) ListVMs(ctx context.Context, opts *ListVMsOptions) ([]VM, e
 }
 
 // FindActiveVMForUser queries the API for VMs owned by the given user and
-// returns the first one in a usable state (active/pending/provisioning).
-// Returns (nil, nil) when no usable VM exists.
-func (c *CodaClient) FindActiveVMForUser(ctx context.Context, owner string) (*VM, error) {
+// returns the most recently created VM in a usable state (active/pending/provisioning).
+// If multiple usable VMs exist, the surplus ones are returned in the second
+// slice so the caller can clean them up (users should only have one active VM).
+// Returns (nil, nil, nil) when no usable VM exists.
+func (c *CodaClient) FindActiveVMForUser(ctx context.Context, owner string) (*VM, []VM, error) {
 	vms, err := c.ListVMs(ctx, &ListVMsOptions{Owner: owner})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	var usable []VM
 	for i := range vms {
 		if isUsableState(vms[i].State) {
-			return &vms[i], nil
+			usable = append(usable, vms[i])
 		}
 	}
-	return nil, nil
+	if len(usable) == 0 {
+		return nil, nil, nil
+	}
+
+	// Pick the most recently created VM as the primary
+	best := 0
+	for i := 1; i < len(usable); i++ {
+		if usable[i].CreatedAt.After(usable[best].CreatedAt) {
+			best = i
+		}
+	}
+
+	primary := usable[best]
+	var surplus []VM
+	for i := range usable {
+		if i != best {
+			surplus = append(surplus, usable[i])
+		}
+	}
+
+	return &primary, surplus, nil
 }
 
 // CountVMsForUser returns the number of non-terminal VMs owned by the given user.

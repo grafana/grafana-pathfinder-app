@@ -368,15 +368,27 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 	ctxLogger.Info("Querying Coda for existing VMs", "userLogin", userLogin)
 	sendStreamStatusWithVmId(sender, "checking", "Looking for your existing VM...", "")
 
-	existingVM, err := a.coda.FindActiveVMForUser(ctx, userLogin)
+	existingVM, surplusVMs, err := a.coda.FindActiveVMForUser(ctx, userLogin)
 	if err != nil {
 		ctxLogger.Warn("FindActiveVMForUser failed, proceeding to create", "error", err)
 	}
 	if existingVM != nil {
-		ctxLogger.Info("Found existing VM via ListVMs", "vmID", existingVM.ID, "state", existingVM.State)
+		ctxLogger.Info("Found existing VM via ListVMs", "vmID", existingVM.ID, "state", existingVM.State, "surplusCount", len(surplusVMs))
 		a.userVMsMu.Lock()
 		a.userVMs[userLogin] = existingVM.ID
 		a.userVMsMu.Unlock()
+
+		// Clean up surplus VMs so the user doesn't waste quota slots.
+		// Users should only have one active VM at a time.
+		if len(surplusVMs) > 0 {
+			ctxLogger.Info("Destroying surplus VMs for user", "userLogin", userLogin, "count", len(surplusVMs))
+			for _, s := range surplusVMs {
+				vmToDelete := s.ID
+				ctxLogger.Info("Destroying surplus VM", "vmID", vmToDelete)
+				go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+			}
+		}
+
 		sendStreamStatusWithVmId(sender, existingVM.State, "Reconnecting to your existing VM...", existingVM.ID)
 		return existingVM, existingVM.ID, nil
 	}
