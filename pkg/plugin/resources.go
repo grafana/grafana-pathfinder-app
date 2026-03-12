@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -195,6 +196,14 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctxLogger := a.ctxLogger(r.Context())
+
+	// Quota guard: prevent creation when user already has the maximum number of VMs
+	count, countErr := a.coda.CountVMsForUser(r.Context(), user)
+	if countErr == nil && count >= maxUserVMs {
+		a.writeError(w, fmt.Sprintf("VM quota exceeded: you already have %d VMs (max %d), please wait for existing VMs to expire", count, maxUserVMs), http.StatusTooManyRequests)
+		return
+	}
+
 	ctxLogger.Info("Creating VM", "template", req.Template, "user", user)
 
 	vm, err := a.coda.CreateVM(r.Context(), req.Template, user)
@@ -248,7 +257,8 @@ func (a *App) handleDeleteVM(w http.ResponseWriter, r *http.Request, vmID string
 	user := r.Header.Get("X-Grafana-User")
 	ctxLogger.Info("Deleting VM", "vmID", vmID, "user", user)
 
-	if err := a.coda.DeleteVM(r.Context(), vmID); err != nil {
+	force := r.URL.Query().Get("force") == "true"
+	if err := a.coda.DeleteVM(r.Context(), vmID, force); err != nil {
 		ctxLogger.Error("Failed to delete VM", "vmID", vmID, "error", err)
 		// Check if this is an auth error
 		if strings.Contains(err.Error(), "authentication failed") {
@@ -270,7 +280,7 @@ func (a *App) handleListVMs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctxLogger := a.ctxLogger(r.Context())
-	vms, err := a.coda.ListVMs(r.Context())
+	vms, err := a.coda.ListVMs(r.Context(), nil)
 	if err != nil {
 		ctxLogger.Error("Failed to list VMs", "error", err)
 		// Check if this is an auth error

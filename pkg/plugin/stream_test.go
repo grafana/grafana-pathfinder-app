@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -86,5 +87,51 @@ func TestStatusMessageForState(t *testing.T) {
 				t.Errorf("statusMessageForState(%q) = %q, want %q", tt.state, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestClearUserVM(t *testing.T) {
+	app := &App{
+		userVMs: map[string]string{
+			"alice": "vm-1",
+			"bob":   "vm-2",
+		},
+		userVMsMu: sync.RWMutex{},
+	}
+
+	// Clearing with matching ID should remove the entry
+	app.clearUserVM("alice", "vm-1")
+	app.userVMsMu.RLock()
+	_, exists := app.userVMs["alice"]
+	app.userVMsMu.RUnlock()
+	if exists {
+		t.Error("clearUserVM should have removed alice's VM")
+	}
+
+	// Clearing with non-matching ID should be a no-op
+	app.clearUserVM("bob", "vm-wrong")
+	app.userVMsMu.RLock()
+	bobVM := app.userVMs["bob"]
+	app.userVMsMu.RUnlock()
+	if bobVM != "vm-2" {
+		t.Errorf("clearUserVM should not remove bob's VM when ID doesn't match, got %q", bobVM)
+	}
+
+	// Clearing a non-existent user should be safe
+	app.clearUserVM("charlie", "vm-3")
+}
+
+func TestMaxUserVMsConstant(t *testing.T) {
+	if maxUserVMs != 3 {
+		t.Errorf("maxUserVMs should be 3, got %d", maxUserVMs)
+	}
+}
+
+func TestSSHRetryConstants(t *testing.T) {
+	if maxSSHRetries < 1 {
+		t.Errorf("maxSSHRetries should be >= 1, got %d", maxSSHRetries)
+	}
+	if maxCredentialRefreshes < 1 {
+		t.Errorf("maxCredentialRefreshes should be >= 1, got %d", maxCredentialRefreshes)
 	}
 }
