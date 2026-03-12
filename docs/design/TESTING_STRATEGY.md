@@ -100,7 +100,8 @@ content.
   - Does the "Happy Path" complete successfully?
 - **Tooling:** Playwright-based CLI Runner (`pathfinder-cli e2e`)
 - **Design Documentation:**
-  - [E2E Test Runner Design](./e2e-test-runner-design.md) - Full architecture and design rationale
+  - [E2E Test Runner Design](./e2e-test-runner-design.md) - Architecture rationale, design decisions, and package-aware testing design
+  - [E2E Testing Reference](../developer/E2E_TESTING.md) - CLI quick start, options, and troubleshooting
 
 ### Layer 4: Live Environment Validation
 
@@ -276,7 +277,8 @@ The following concerns are explicitly **out of scope** for this initiative:
 
 The E2E testing layer is the most complex component. Detailed design and implementation planning:
 
-- **[E2E Test Runner Design](./e2e-test-runner-design.md)** - Complete architecture, CLI interface, step execution logic, error classification, and timing considerations
+- **[E2E Test Runner Design](./e2e-test-runner-design.md)** - Architecture, design rationale, assumptions, complexity analysis, and package-aware testing design
+- **[E2E Testing Reference](../developer/E2E_TESTING.md)** - User-facing CLI reference: quick start, options, troubleshooting, error classification
 
 ### Static Analysis (Layer 1)
 
@@ -294,11 +296,12 @@ The E2E testing layer is the most complex component. Detailed design and impleme
 
 This section establishes the authority hierarchy for E2E testing documentation, preventing duplication and ensuring single sources of truth.
 
-| Document                     | Purpose                                   | Authority                                         |
-| ---------------------------- | ----------------------------------------- | ------------------------------------------------- |
-| TESTING_STRATEGY.md          | Vision, failure taxonomy, testing pyramid | Immutable principles                              |
-| e2e-test-runner-design.md    | Architecture, interfaces, specifications  | Single source of truth for E2E specs              |
-| PATHFINDER-PACKAGE-DESIGN.md | Package model, metadata, dependencies     | Source of truth for guide-level metadata and deps |
+| Document                     | Purpose                                                                          | Authority                                         |
+| ---------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------- |
+| TESTING_STRATEGY.md          | Vision, failure taxonomy, testing pyramid                                        | Immutable principles                              |
+| e2e-test-runner-design.md    | Architecture rationale, design decisions, assumptions, package-aware testing     | Single source of truth for E2E design             |
+| E2E_TESTING.md               | CLI reference, quick start, options, troubleshooting, error classification table | User-facing operational reference                 |
+| PATHFINDER-PACKAGE-DESIGN.md | Package model, metadata, dependencies                                            | Source of truth for guide-level metadata and deps |
 
 ### Guide failure ownership model
 

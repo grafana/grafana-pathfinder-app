@@ -2,6 +2,8 @@
 
 This document describes the design for a CLI utility that runs end-to-end tests on JSON block files, verifying that all interactive elements function correctly in a live Grafana instance.
 
+For the user-facing CLI reference (options, quick start, exit codes, troubleshooting), see [`docs/developer/E2E_TESTING.md`](../developer/E2E_TESTING.md).
+
 ## Overview
 
 The CLI takes a JSON guide file as input and dynamically generates and executes Playwright E2E tests against a running Grafana instance. It tests that:
@@ -20,79 +22,6 @@ This document serves as an architecture overview for decomposition into implemen
 - **Modular authentication**: Auth module can be swapped for different Grafana instances
 - **Dynamic test generation**: No static test files, tests generated at runtime
 
-## CLI Interface
-
-```bash
-# Basic usage - run E2E tests on a guide
-npx pathfinder-cli e2e ./path/to/guide.json
-
-# Test all bundled guides
-npx pathfinder-cli e2e --bundled
-
-# Run the framework test guide (validates the E2E runner itself)
-npx pathfinder-cli e2e bundled:e2e-framework-test
-
-# Custom Grafana URL
-npx pathfinder-cli e2e ./guide.json --grafana-url http://localhost:3000
-
-# Output options
-npx pathfinder-cli e2e ./guide.json --output ./results.json
-npx pathfinder-cli e2e ./guide.json --artifacts ./artifacts/  # Failure screenshots/DOM
-npx pathfinder-cli e2e ./guide.json --verbose
-
-# Debugging
-npx pathfinder-cli e2e ./guide.json --trace        # Generate Playwright trace file
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         CLI Entry Point                              │
-│                    src/cli/commands/e2e.ts                          │
-├─────────────────────────────────────────────────────────────────────┤
-│  1. Parse CLI arguments                                             │
-│  2. Load and validate JSON guide                                    │
-│  3. Run pre-flight checks (Grafana health, auth, plugin installed)  │
-│  4. Set environment variables (GUIDE_JSON_PATH, etc.)               │
-│  5. Spawn Playwright: npx playwright test tests/guide-runner.spec.ts│
-│  6. Collect results and generate reports                            │
-└─────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Guide Runner Test                                 │
-│                 tests/guide-runner.spec.ts                          │
-├─────────────────────────────────────────────────────────────────────┤
-│  1. Read JSON from GUIDE_JSON_PATH env var                          │
-│  2. Inject JSON into localStorage                                   │
-│  3. Open guide via bundled:e2e-test                                 │
-│  4. Iterate through rendered steps in DOM order                     │
-│  5. For each step: click "Do it" → verify completion                │
-│  6. Report results via custom reporter                              │
-└─────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Test Utilities                                    │
-│              tests/utils/guide-test-runner.ts                       │
-├─────────────────────────────────────────────────────────────────────┤
-│  - discoverStepsFromDOM(page): TestableStep[]                       │
-│  - executeStep(page, step): StepTestResult                          │
-│  - handleRequirements(page, step): RequirementResult                │
-│  - captureStepDiagnostics(page, step): DiagnosticInfo               │
-└─────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Authentication Module                             │
-│                   tests/auth/grafana-auth.ts                        │
-├─────────────────────────────────────────────────────────────────────┤
-│  MVP: Uses existing @grafana/plugin-e2e auth (admin.json)           │
-│  Future: Swappable auth strategies for different environments       │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
 ## Pre-flight Checks
 
 Before running any guide tests, the CLI performs validation to fail fast with clear error messages:
@@ -104,47 +33,6 @@ Before running any guide tests, the CLI performs validation to fail fast with cl
 3. **Plugin installed**: Verify `grafana-pathfinder-app` appears in plugin list
 4. **Dev mode enabled**: Attempt test injection, verify plugin accepts
 
-### Implementation
-
-```typescript
-async function runPreFlightChecks(page: Page, grafanaUrl: string): Promise<PreFlightResult> {
-  const checks: PreFlightCheck[] = [];
-
-  // 1. Grafana health
-  const healthResponse = await fetch(`${grafanaUrl}/api/health`);
-  checks.push({
-    name: 'grafana-reachable',
-    passed: healthResponse.ok && (await healthResponse.json()).database === 'ok',
-    error: healthResponse.ok ? undefined : `Grafana not reachable at ${grafanaUrl}`,
-  });
-
-  // 2. Auth valid (after Playwright auth setup)
-  await page.goto(`${grafanaUrl}/dashboards`);
-  const isLoginPage = page.url().includes('/login');
-  checks.push({
-    name: 'auth-valid',
-    passed: !isLoginPage,
-    error: isLoginPage ? 'Authentication failed - redirected to login' : undefined,
-  });
-
-  // 3. Plugin installed
-  const pluginResponse = await fetch(`${grafanaUrl}/api/plugins/grafana-pathfinder-app/settings`);
-  checks.push({
-    name: 'plugin-installed',
-    passed: pluginResponse.ok,
-    error: pluginResponse.ok ? undefined : 'Pathfinder plugin not installed',
-  });
-
-  // Abort if any check failed
-  const failed = checks.filter((c) => !c.passed);
-  if (failed.length > 0) {
-    return { success: false, checks, abortReason: failed[0].error };
-  }
-
-  return { success: true, checks };
-}
-```
-
 ### Exit codes
 
 | Code | Meaning                          |
@@ -154,37 +42,6 @@ async function runPreFlightChecks(page: Page, grafanaUrl: string): Promise<PreFl
 | 2    | Configuration/setup error        |
 | 3    | Grafana unreachable (pre-flight) |
 | 4    | Auth failure (pre-flight)        |
-
-## File Structure
-
-```
-src/cli/
-├── commands/
-│   ├── validate.ts          # Existing validation command
-│   └── e2e.ts               # NEW: E2E test runner command
-├── utils/
-│   ├── file-loader.ts       # Existing file utilities
-│   └── e2e-reporter.ts      # NEW: JSON report generator
-└── index.ts                 # Add e2e command
-
-src/lib/
-└── user-storage.ts          # ADD: E2E_TEST_GUIDE storage key
-
-src/docs-retrieval/
-└── content-fetcher.ts       # ADD: bundled:e2e-test handler
-
-tests/
-├── e2e-runner/                  # NEW: E2E test runner directory
-│   ├── guide-runner.spec.ts     # Dynamic guide test runner
-│   ├── utils/
-│   │   └── guide-test-runner.ts # Test execution utilities
-│   └── auth/
-│       └── grafana-auth.ts      # Authentication module
-├── fixtures.ts                  # Existing
-├── constants.ts                 # Existing
-└── helpers/
-    └── block-editor.helpers.ts  # Existing
-```
 
 ## Raw JSON Loading Mechanism
 
@@ -197,56 +54,11 @@ The pathfinder UI currently supports loading guides from:
 
 For E2E testing, we need to load arbitrary JSON files. We'll extend the existing `bundled:wysiwyg-preview` pattern.
 
-### Existing Pattern: WYSIWYG Preview
-
-The WYSIWYG editor already uses localStorage-based loading:
-
-```typescript
-// src/lib/user-storage.ts
-WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json';
-
-// src/docs-retrieval/content-fetcher.ts
-if (contentId === 'wysiwyg-preview') {
-  const previewContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW_JSON);
-  // ... returns as RawContent
-}
-```
-
-### New Pattern: E2E Test Loading
-
-We'll add a similar mechanism for E2E tests:
-
-```typescript
-// src/lib/user-storage.ts - ADD:
-E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide';
-
-// src/docs-retrieval/content-fetcher.ts - ADD handler:
-if (contentId === 'e2e-test') {
-  const testContent = localStorage.getItem(StorageKeys.E2E_TEST_GUIDE);
-  // ... same pattern as wysiwyg-preview
-}
-```
-
 ### Test Flow
 
 1. **CLI reads JSON file** from disk
-2. **Playwright injects JSON** into localStorage:
-   ```typescript
-   await page.evaluate((jsonContent) => {
-     localStorage.setItem('grafana-pathfinder-app-e2e-test-guide', jsonContent);
-   }, guideJson);
-   ```
-3. **Open guide via panel API**:
-   ```typescript
-   await page.evaluate(() => {
-     // Trigger the docs panel to open bundled:e2e-test
-     document.dispatchEvent(
-       new CustomEvent('pathfinder-auto-open-docs', {
-         detail: { url: 'bundled:e2e-test', title: 'E2E Test Guide' },
-       })
-     );
-   });
-   ```
+2. **Playwright injects JSON** into localStorage
+3. **Open guide via panel API** by dispatching a `pathfinder-auto-open-docs` custom event with `{ url: 'bundled:e2e-test', title: 'E2E Test Guide' }`
 4. **Guide renders** in the docs panel
 5. **Tests execute** against the rendered interactive steps
 
@@ -269,71 +81,9 @@ testIds.interactive.stepCompleted(stepId); // data-testid="interactive-step-comp
 
 **Note**: The plugin handles conditional branches based on app state. The E2E runner simply iterates through whatever steps are rendered in the DOM - it does not need to evaluate or choose conditional paths.
 
-### Step Discovery Function
-
-```typescript
-async function discoverStepsFromDOM(page: Page): Promise<TestableStep[]> {
-  // Query all rendered step elements in DOM order
-  const stepElements = await page.locator('[data-testid^="interactive-step-"]').all();
-
-  const steps: TestableStep[] = [];
-  for (const element of stepElements) {
-    const testId = await element.getAttribute('data-testid');
-    const stepId = testId?.replace('interactive-step-', '') ?? '';
-    steps.push({ stepId, element });
-  }
-
-  return steps;
-}
-```
-
 ### Scrolling the Guide Panel
 
-Before interacting with a step, the test runner must ensure the step is visible in the docs panel viewport:
-
-```typescript
-async function scrollStepIntoView(page: Page, stepId: string): Promise<void> {
-  const stepElement = page.getByTestId(testIds.interactive.step(stepId));
-
-  // Scroll within the docs panel container, not the main page
-  await stepElement.scrollIntoViewIfNeeded();
-
-  // Wait for scroll animation to complete
-  await page.waitForTimeout(300);
-}
-```
-
-### Step Iteration Pattern
-
-```typescript
-async function iterateSteps(page: Page): Promise<StepTestResult[]> {
-  const results: StepTestResult[] = [];
-  const steps = await discoverStepsFromDOM(page);
-
-  for (const step of steps) {
-    // 1. Scroll step into view in the docs panel
-    await scrollStepIntoView(page, step.stepId);
-
-    // 2. Handle requirements (click Fix buttons if needed)
-    await handleRequirements(page, step);
-
-    // 3. Click "Do it" button and capture diagnostics
-    const result = await executeStep(page, step);
-    results.push(result);
-
-    // 4. If failed and not skippable, abort remaining steps
-    if (result.status === 'failed' && !step.skippable) {
-      // Mark remaining steps as "not_reached"
-      break;
-    }
-
-    // 5. Wait for step completion before moving to next
-    await waitForStepCompletion(page, step, result);
-  }
-
-  return results;
-}
-```
+Before interacting with a step, the test runner must ensure the step is visible in the docs panel viewport. `scrollIntoViewIfNeeded()` is used on the step element before each interaction, with a short settling wait after scroll animation.
 
 ## Timing Considerations
 
@@ -375,29 +125,13 @@ INTERACTIVE_CONFIG = {
 
 ### Dynamic Wait Strategy
 
-Since the test runner uses DOM-based discovery, it doesn't know the step type or action count from the JSON. Instead, we use a generous default timeout and rely on completion detection:
-
-```typescript
-function calculateStepTimeout(): number {
-  // Generous default that accommodates multisteps
-  // Completion detection will return early for faster steps
-  const DEFAULT_TIMEOUT = 30000; // 30 seconds
-  return DEFAULT_TIMEOUT;
-}
-```
+Since the test runner uses DOM-based discovery, it doesn't know the step type or action count from the JSON. Instead, we use a generous default timeout and rely on completion detection (30s base, +5s per multistep action).
 
 **Note**: The completion indicator (`data-testid="interactive-step-completed-{stepId}"`) appearing is the primary signal for step completion. The timeout is a safety net, not the expected completion mechanism.
 
 ### Completion Detection
 
 **MVP approach**: DOM polling only.
-
-```typescript
-async function waitForStepCompletion(page: Page, step: TestableStep, timeout: number): Promise<void> {
-  const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(step.stepId));
-  await expect(completedIndicator).toBeVisible({ timeout });
-}
-```
 
 **Document & Test Assumption**: DOM polling will be reliable enough for E2E tests.
 
@@ -418,53 +152,6 @@ async function waitForStepCompletion(page: Page, step: TestableStep, timeout: nu
 
 The test runner executes steps as a user would experience them, clicking the "Do it" button for each step.
 
-### Step Execution Flow
-
-```typescript
-async function executeStep(page: Page, step: TestableStep): Promise<StepTestResult> {
-  const startTime = Date.now();
-  const consoleErrors: string[] = [];
-
-  // Capture console.error() calls during step execution
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      consoleErrors.push(msg.text());
-    }
-  });
-
-  try {
-    // 1. Handle requirements (click Fix buttons if needed)
-    await handleRequirements(page, step);
-
-    // 2. Click "Do it" button
-    const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
-    await doItButton.click();
-
-    // 3. Wait for step completion indicator
-    const timeout = calculateStepTimeout();
-    await waitForStepCompletion(page, step, timeout);
-
-    // 4. Return success result with diagnostics
-    return {
-      stepId: step.stepId,
-      status: 'passed',
-      duration: Date.now() - startTime,
-      currentUrl: page.url(),
-      consoleErrors,
-    };
-  } catch (error) {
-    return {
-      stepId: step.stepId,
-      status: 'failed',
-      duration: Date.now() - startTime,
-      currentUrl: page.url(),
-      consoleErrors,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-```
-
 ### What Gets Tested
 
 For each step, the runner verifies:
@@ -476,31 +163,7 @@ For each step, the runner verifies:
 
 ### Session Validation During Execution
 
-For long-running tests, the session may expire mid-execution. The runner performs lightweight auth validation periodically:
-
-```typescript
-async function validateSession(page: Page): Promise<boolean> {
-  // Quick check: can we access a protected API endpoint?
-  const response = await page.evaluate(async () => {
-    const res = await fetch('/api/user');
-    return res.ok;
-  });
-
-  return response;
-}
-
-// In the step loop:
-if (stepIndex % 5 === 0) {
-  const sessionValid = await validateSession(page);
-  if (!sessionValid) {
-    return {
-      aborted: true,
-      reason: 'AUTH_EXPIRED',
-      message: 'Session expired mid-test',
-    };
-  }
-}
-```
+For long-running tests, the session may expire mid-execution. The runner performs lightweight auth validation every 5 steps by checking `/api/user`.
 
 If session validation fails:
 
@@ -574,83 +237,6 @@ These requirements are checked but not auto-fixed in MVP:
 
 ## Output Format
 
-### Console Output
-
-```
-╔══════════════════════════════════════════════════════════════════╗
-║  E2E Test: Welcome to Grafana                                    ║
-╚══════════════════════════════════════════════════════════════════╝
-
-  ✓ step-1                                                  [1.2s]
-  ✓ step-2                                                  [0.8s]
-  ✓ step-3                                                  [0.9s]
-  ⊘ step-4 - SKIPPED                                        [0.1s]
-    Reason: is-admin requirement not met (skippable step)
-  ✓ step-5                                                  [0.7s]
-
-────────────────────────────────────────────────────────────────────
-Summary: 4 passed, 0 failed, 1 skipped                    [3.7s]
-────────────────────────────────────────────────────────────────────
-```
-
-### JSON Output
-
-```json
-{
-  "guide": {
-    "id": "welcome-to-grafana",
-    "title": "Welcome to Grafana",
-    "path": "./welcome-to-grafana.json"
-  },
-  "config": {
-    "grafanaUrl": "http://localhost:3000",
-    "grafanaVersion": "11.3.0",
-    "timestamp": "2026-01-31T10:30:00.000Z"
-  },
-  "summary": {
-    "total": 6,
-    "passed": 5,
-    "failed": 0,
-    "skipped": 1,
-    "notReached": 0,
-    "duration": 4823
-  },
-  "steps": [
-    {
-      "stepId": "step-1",
-      "index": 0,
-      "status": "passed",
-      "duration": 1234,
-      "currentUrl": "http://localhost:3000/",
-      "consoleErrors": []
-    },
-    {
-      "stepId": "step-4",
-      "index": 3,
-      "status": "skipped",
-      "duration": 100,
-      "currentUrl": "http://localhost:3000/dashboards",
-      "consoleErrors": [],
-      "skipReason": "is-admin requirement not met"
-    },
-    {
-      "stepId": "step-5",
-      "index": 4,
-      "status": "failed",
-      "duration": 5200,
-      "currentUrl": "http://localhost:3000/dashboards",
-      "consoleErrors": ["TypeError: Cannot read property 'x' of undefined"],
-      "error": "Timeout waiting for step completion indicator",
-      "classification": "content-drift",
-      "artifacts": {
-        "screenshot": "./artifacts/step-5-failure.png",
-        "dom": "./artifacts/step-5-dom.html"
-      }
-    }
-  ]
-}
-```
-
 ### Error Classification
 
 **Document & Test Assumption**: We assume failures can be automatically classified into actionable categories. This assumption needs validation.
@@ -689,21 +275,7 @@ When a step fails, the CLI captures diagnostic artifacts for debugging:
 | Console log  | JSON   | JavaScript errors since last step        |
 | Network log  | HAR    | API failures (optional, with `--trace`)  |
 
-Artifacts are written to `./artifacts/` by default (configurable via `--output`):
-
-```typescript
-async function captureFailureArtifacts(page: Page, stepId: string, outputDir: string): Promise<ArtifactPaths> {
-  const screenshotPath = path.join(outputDir, `${stepId}-failure.png`);
-  const domPath = path.join(outputDir, `${stepId}-dom.html`);
-
-  await page.screenshot({ path: screenshotPath, fullPage: false });
-
-  const html = await page.content();
-  await fs.writeFile(domPath, html);
-
-  return { screenshot: screenshotPath, dom: domPath };
-}
-```
+Artifacts are written to `./artifacts/` by default (configurable via `--output`).
 
 ## Key Types
 
@@ -779,26 +351,6 @@ interface E2ECommandOptions {
 | `E2E_OUTPUT_PATH` | Path for JSON report           | `./e2e-results.json`    |
 | `E2E_VERBOSE`     | Enable verbose logging         | `false`                 |
 | `E2E_TRACE`       | Generate Playwright trace file | `false`                 |
-
-## Reusing Existing Code
-
-The implementation should reuse:
-
-1. **File loading** (`src/cli/utils/file-loader.ts`)
-   - `loadGuideFiles()`, `loadBundledGuides()`
-
-2. **JSON validation** (`src/validation/`)
-   - Validate guide before testing
-
-3. **Test helpers** (`tests/helpers/block-editor.helpers.ts`, `tests/welcome-journey.spec.ts`)
-   - `handleFixMeButtons()`, `completeStep()` patterns
-   - `waitForGrafanaReady()`
-
-4. **Test IDs** (`src/components/testIds.ts`)
-   - Consistent selectors for interactive elements
-
-5. **Fixtures** (`tests/fixtures.ts`)
-   - Grafana plugin e2e authentication
 
 ## Design Decisions (Resolved)
 
@@ -1035,53 +587,7 @@ The following questions were identified during design and have been resolved:
 - **Parallel guide testing**: Run `--bundled` tests concurrently
 - **Multiple user contexts**: Test with admin, editor, viewer roles
 - **Pre-flight setup scripts**: Provision data sources, install plugins before test
-- **CI integration**: GitHub Actions workflow template (see example below)
-
-#### CI workflow example (Medium-term)
-
-```yaml
-name: E2E Tests
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    services:
-      grafana:
-        image: grafana/grafana:11.3.0
-        ports:
-          - 3000:3000
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright
-        run: npx playwright install --with-deps chromium
-
-      - name: Wait for Grafana
-        run: |
-          timeout 60 bash -c 'until curl -sf http://localhost:3000/api/health; do sleep 2; done'
-
-      - name: Run E2E tests
-        run: npx pathfinder-cli e2e --bundled --grafana-url http://localhost:3000
-
-      - name: Upload artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-artifacts
-          path: artifacts/
-```
+- **CI integration**: GitHub Actions workflow template
 
 #### CI test policies
 
@@ -1144,20 +650,546 @@ A special guide validates the E2E framework itself. This guide should **always p
 2. We have timing data from 100+ test runs
 3. We've observed 3+ distinct failure patterns that need coverage
 
-### Running the framework test
+## Package-Aware Testing
+
+The sections above describe the core E2E runner: loading a `content.json` from disk or bundled guides and testing it against a single Grafana instance. This section extends the runner to be **package-aware** — it can resolve packages from a remote repository, read manifest metadata to determine the correct test target, authenticate against that target, and run the same Playwright-based guide execution.
+
+This extension can be framed as either "Layer 3 becomes package-aware" or as a new Layer 4 in the [testing strategy](./TESTING_STRATEGY.md) pyramid. If framed as Layer 4, the current "Live Environment Validation" vision (nightly runs, managed environment pools, observability dashboards) would become Layer 5.
+
+### Design goals
+
+- **Package-first**: The CLI can test any package by bare ID, resolving content and metadata from the repository ecosystem.
+- **Manifest-driven routing**: The guide's `manifest.json` declares where it should be tested via `testEnvironment`. The CLI obeys the manifest.
+- **Ephemeral auth isolation**: Each guide test authenticates independently with its own session state. No session reuse across guides.
+- **Path and journey expansion**: Paths and journeys are first-class test inputs. Testing a path means sequentially testing its milestone guides.
+- **Graceful degradation**: Guides that cannot be tested (no auth, content fetch failure) are logged and skipped without failing the batch.
+
+### Package resolution
+
+The CLI supports two resolution modes depending on the input:
+
+| Input            | Resolution strategy                                                     | Source                                              |
+| ---------------- | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| `--package <id>` | **Resolution service** — `GET /api/v1/packages/{id}` on the recommender | `https://recommender.grafana.com`                   |
+| `--repository`   | **Repository index** — fetch `repository.json` from CDN                 | `https://interactive-learning.grafana.net/packages` |
+
+#### Resolution service (`--package`)
+
+The [grafana-recommender](https://github.com/grafana/grafana-recommender) exposes a package resolution endpoint (`GET /api/v1/packages/{id}`) that resolves a bare package ID to CDN URLs for `content.json` and `manifest.json`. The CLI uses this as the primary resolution mechanism for `--package` mode.
+
+Flow for `--package <id>`:
+
+```
+GET {resolverUrl}/api/v1/packages/{id}
+  → { id, contentUrl, manifestUrl, repository }
+    │
+    ▼
+Fetch manifestUrl → parse manifest.json
+  → { type, testEnvironment, milestones?, ... }
+    │
+    ├── type: "guide" → fetch contentUrl, determine target, run test
+    │
+    └── type: "path" or "journey" → read milestones[], resolve each
+        → if ANY milestone returns 404 → FAIL the entire path
+        → each resolved guide is tested sequentially (see below)
+```
+
+On resolution service 404: the guide is reported as `resolution_failed` and skipped.
+
+#### Repository index (`--repository`)
+
+For batch testing, the CLI fetches the full `repository.json` from the CDN. This index contains denormalized manifest metadata for every package, including `testEnvironment`, `type`, and `milestones`. No individual manifest fetches are needed — the index has everything.
+
+Flow for `--repository`:
+
+```
+GET {repoUrl}/repository.json
+  → { [id]: { path, type, testEnvironment, milestones?, ... } }
+    │
+    ▼
+Filter by --tier (if provided)
+Expand paths/journeys via milestones (all in the same index)
+  → if a milestone ID is missing from the index → FAIL that path
+Deduplicate guides
+    │
+    ▼
+For each guide: construct contentUrl as {repoUrl}/{entry.path}content.json
+  → fetch, validate, determine target, run test
+```
+
+The repository index is fetched fresh on every invocation (it is served from CDN). No local caching.
+
+### Path and journey expansion
+
+Paths (`type: "path"`) and journeys (`type: "journey"`) are treated uniformly: they are packages whose `milestones` array names other packages. Testing a path or journey means testing its constituent guides.
+
+**Sequential milestone execution**: Milestones within a path are tested in order. If milestone N fails, milestones N+1 through the end are **not tested** — they are marked `not_reached`. This is because later milestones may depend on earlier milestones having been executed. A single milestone failure fails the entire path.
+
+**Recursive expansion**: If a journey's milestone is itself a path, that path is expanded to its own milestones. Expansion is recursive until only `type: "guide"` packages remain.
+
+**Missing milestones**: If any milestone ID cannot be resolved (404 from the resolution service, or absent from the repository index), the entire path is reported as `path_incomplete`. No milestone guides are tested.
+
+**Deduplication**: In `--repository` mode, a guide that appears as a milestone in multiple paths is tested once. Its result is shared across all paths that reference it.
+
+Example: `--package prometheus-lj` where the path has `milestones: ["guide-a", "guide-b", "guide-c"]`:
+
+1. Resolve `prometheus-lj` → manifest says `type: "path"`, `milestones: ["guide-a", "guide-b", "guide-c"]`
+2. Resolve each milestone via the resolution service
+3. If all resolve: test `guide-a`, then `guide-b`, then `guide-c` sequentially
+4. If `guide-b` fails: `guide-c` is marked `not_reached`, the path fails
+5. If `guide-b` returns 404: the path is `path_incomplete`, nothing is tested
+
+### Test target resolution
+
+Each guide declares where it should be tested via `testEnvironment` in its manifest. The CLI resolves this to a concrete Grafana URL and credentials.
+
+#### Resolution rules
+
+| `testEnvironment`                                               | Resolved target                                                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `tier: "local"` (or absent)                                     | `--grafana-server` value (default: `http://localhost:3000`). Uses `admin`/`admin` credentials via `@grafana/plugin-e2e`.             |
+| `tier: "cloud"`, no `instance`                                  | `--cloud-url` value (default: `https://learn.grafana.net/`). Uses `--user`/`--password` credentials.                                 |
+| `tier: "cloud"`, `instance` matches `--cloud-url` hostname      | Same as above.                                                                                                                       |
+| `tier: "cloud"`, `instance` differs from `--cloud-url` hostname | Target is `https://{instance}/`. Uses `--user`/`--password` credentials. If auth fails at preflight, the guide reports auth failure. |
+| `tier: "cloud"`, no credentials provided                        | Guide is skipped with `skipped_no_auth`.                                                                                             |
+
+#### CLI target override vs manifest conflict
+
+The manifest's `testEnvironment` is authoritative. If the user provides a CLI target (e.g., `--grafana-server http://localhost:3000`) but the guide's manifest says `tier: "cloud"`, the guide is **skipped** — not tested against the wrong environment. The CLI logs a message explaining the mismatch.
+
+This design anticipates a future pool executor that distributes guides to environment-specific testers. The CLI is a single-environment tool; it tests what it can and skips what it cannot.
+
+### Authentication
+
+#### Credentials
+
+Credentials are resolved in priority order (highest wins):
+
+1. `--user` / `--password` CLI flags
+2. `GRAFANA_USER` / `GRAFANA_PASSWORD` environment variables
+3. No credentials available → cloud guides are skipped with `skipped_no_auth`
+
+For `tier: "local"`, the existing `@grafana/plugin-e2e` authentication is used, which defaults to `admin`/`admin` via the `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` environment variables.
+
+#### Ephemeral auth isolation
+
+Each guide test gets its own auth state. No session reuse between guides.
+
+1. Create a temp directory: `/tmp/pathfinder-e2e-{uuid}/`
+2. Playwright auth project logs in → writes cookies to `{tempDir}/auth.json`
+3. Test project loads auth state from that file
+4. After the test completes → entire temp directory is deleted
+
+This means testing 10 guides against the same instance authenticates 10 times. This is intentional — repeatability and isolation over performance. Each test is fully independent, with no state leaking between guides.
+
+The Playwright config reads the auth state path from an environment variable:
+
+```typescript
+storageState: process.env.AUTH_STATE_FILE
+  ? process.env.AUTH_STATE_FILE
+  : join(projectRoot, 'playwright/.auth/admin.json'),
+```
+
+The CLI passes per-guide values via environment variables to the spawned Playwright process:
+
+```typescript
+env: {
+  ...process.env,
+  GRAFANA_URL: target.grafanaUrl,
+  GRAFANA_ADMIN_USER: target.username ?? 'admin',
+  GRAFANA_ADMIN_PASSWORD: target.password ?? 'admin',
+  AUTH_STATE_FILE: tempAuthFile,
+  GUIDE_JSON_PATH: guidePath,
+  // ... existing env vars
+},
+```
+
+### CLI interface (extended)
+
+Existing options are unchanged. New options are additive:
 
 ```bash
-# Standard run
+# ── Existing (unchanged) ──
+npx pathfinder-cli e2e ./guide.json
+npx pathfinder-cli e2e --bundled
 npx pathfinder-cli e2e bundled:e2e-framework-test
 
-# Verbose debugging
-npx pathfinder-cli e2e bundled:e2e-framework-test --verbose --trace
+# ── New: package-aware ──
+npx pathfinder-cli e2e --package alerting-101
+npx pathfinder-cli e2e --package prometheus-lj          # path → expands milestones
+npx pathfinder-cli e2e --repository                     # all packages from repo
+npx pathfinder-cli e2e --repository --tier local        # filter by tier
+npx pathfinder-cli e2e --repository --tier cloud        # filter by tier
+
+# ── New: cloud auth and target options ──
+npx pathfinder-cli e2e --package alerting-101 \
+  --user myuser --password mypass
+
+npx pathfinder-cli e2e --repository --tier cloud \
+  --user myuser --password mypass \
+  --cloud-url https://learn.grafana.net/
 ```
+
+#### New CLI options
+
+| Option                   | Type    | Default                                             | Env var fallback   | Description                                                          |
+| ------------------------ | ------- | --------------------------------------------------- | ------------------ | -------------------------------------------------------------------- |
+| `--package <id>`         | string  | —                                                   | —                  | Resolve and test a package by bare ID (guide, path, or journey)      |
+| `--repository`           | boolean | false                                               | —                  | Fetch full repository index and test all packages                    |
+| `--tier <tier>`          | string  | —                                                   | —                  | Filter packages by `testEnvironment.tier` (used with `--repository`) |
+| `--grafana-server <url>` | string  | `http://localhost:3000`                             | `GRAFANA_SERVER`   | Grafana URL for `tier: "local"` guides                               |
+| `--user <user>`          | string  | —                                                   | `GRAFANA_USER`     | Username for cloud instance authentication                           |
+| `--password <pw>`        | string  | —                                                   | `GRAFANA_PASSWORD` | Password for cloud instance authentication                           |
+| `--cloud-url <url>`      | string  | `https://learn.grafana.net/`                        | —                  | Default cloud instance URL (for `tier: "cloud"` with no `instance`)  |
+| `--resolver-url <url>`   | string  | `https://recommender.grafana.com`                   | —                  | Package resolution service URL                                       |
+| `--repo-url <url>`       | string  | `https://interactive-learning.grafana.net/packages` | —                  | Repository CDN base URL (for `--repository` mode)                    |
+
+**Note on `--grafana-server`**: This replaces the original `--grafana-url` name for consistency. The old `--grafana-url` name should be kept as an alias for backwards compatibility.
+
+#### Ignored manifest fields
+
+The E2E runner ignores the following manifest fields. They exist for other consumers (recommender, learning path engine) but are not relevant to test execution:
+
+- `startingLocation` — the runner does not navigate to a starting page before testing
+- `depends` — every guide is tested standalone, pass/fail, with no dependency chains
+- `targeting` — recommendation rules are irrelevant to test execution
+- `provides`, `conflicts`, `replaces` — dependency graph metadata, not test metadata
+
+### Guide outcome taxonomy
+
+A guide in a batch run can end in one of these states:
+
+| Outcome                 | Meaning                                                      | Counts as test failure? |
+| ----------------------- | ------------------------------------------------------------ | ----------------------- |
+| `passed`                | All mandatory steps passed                                   | No                      |
+| `failed`                | One or more mandatory steps failed                           | **Yes**                 |
+| `skipped_no_auth`       | No credentials available for the target instance             | No (logged)             |
+| `skipped_tier_mismatch` | Guide requires a tier/instance the CLI is not configured for | No (logged)             |
+| `fetch_failed`          | Could not fetch `content.json` from CDN                      | No (logged)             |
+| `resolution_failed`     | Resolution service returned 404 or network error             | No (logged)             |
+| `validation_failed`     | Fetched `content.json` failed schema validation              | **Yes**                 |
+| `path_incomplete`       | Path or journey has unresolvable milestones                  | **Yes**                 |
+
+The CLI exit code is `1` (TEST_FAILURE) if any guide has a "counts as test failure" outcome. Exit `0` only when all guides either passed or were skipped/unfetchable.
+
+### Architecture (extended)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      CLI Entry Point (extended)                      │
+│                    src/cli/commands/e2e.ts                           │
+├─────────────────────────────────────────────────────────────────────┤
+│  Existing: file paths, --bundled, bundled:name                       │
+│  NEW: --package, --repository, --tier, --user, --password            │
+│  NEW: resolvePackages() → fetches manifest, resolves to guide list   │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  Package Resolver    │  NEW
+                    │  (e2e-package.ts)    │
+                    ├─────────────────────┤
+                    │  --package mode:     │
+                    │    Call resolution   │
+                    │    service, fetch    │
+                    │    manifest          │
+                    │  --repository mode:  │
+                    │    Fetch repo index  │
+                    │  Both:              │
+                    │    Expand paths/     │
+                    │    journeys          │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  Target Resolver     │  NEW
+                    │  (e2e-targets.ts)    │
+                    ├─────────────────────┤
+                    │  testEnvironment →   │
+                    │  { grafanaUrl,       │
+                    │    user, password,   │
+                    │    skipReason? }     │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  Existing Runner     │  UNCHANGED
+                    │  guide-runner.spec   │
+                    │  + Playwright config │
+                    │  (ephemeral auth)    │
+                    └─────────────────────┘
+```
+
+### File structure (new files)
+
+```
+src/cli/
+├── commands/
+│   └── e2e.ts               # Extended: --package, --repository, --tier
+└── utils/
+    ├── e2e-package.ts        # NEW: package resolver (resolution service + repo index)
+    ├── e2e-targets.ts        # NEW: target resolver (testEnvironment → Grafana URL)
+    ├── e2e-reporter.ts       # Extended: package metadata in reports
+    └── file-loader.ts        # Existing (unchanged)
+```
+
+### Execution flow
+
+#### Single package (`--package alerting-101`)
+
+```
+1. Resolve via resolution service
+   GET https://recommender.grafana.com/api/v1/packages/alerting-101
+   → { contentUrl, manifestUrl }
+
+2. Fetch manifest
+   GET {manifestUrl}
+   → { type: "guide", testEnvironment: { tier: "cloud" } }
+
+3. Resolve target
+   tier: "cloud", no instance → https://learn.grafana.net/
+   credentials: --user/--password or GRAFANA_USER/GRAFANA_PASSWORD
+
+4. Fetch content
+   GET {contentUrl}
+   → raw content.json string
+
+5. Validate content (schema check)
+
+6. Create ephemeral auth state (temp dir + auth file)
+
+7. Spawn Playwright with:
+   GRAFANA_URL=https://learn.grafana.net/
+   GRAFANA_ADMIN_USER={user}
+   GRAFANA_ADMIN_PASSWORD={password}
+   AUTH_STATE_FILE={tempDir}/auth.json
+   GUIDE_JSON_PATH={tempDir}/guide.json
+
+8. Playwright authenticates, injects guide, runs steps
+
+9. Collect results, clean up temp dir
+
+10. Report outcome
+```
+
+#### Path (`--package prometheus-lj`)
+
+```
+1. Resolve prometheus-lj via resolution service
+   → { contentUrl, manifestUrl }
+
+2. Fetch manifest
+   → { type: "path", milestones: ["guide-a", "guide-b", "guide-c"] }
+
+3. Resolve each milestone via resolution service
+   → guide-a: { contentUrl, manifestUrl }
+   → guide-b: { contentUrl, manifestUrl }
+   → guide-c: 404 → FAIL path as path_incomplete, stop
+
+   OR if all resolve:
+
+4. Fetch each milestone's manifest (for testEnvironment)
+5. Test guide-a (full flow: target, auth, Playwright)
+   → passed
+6. Test guide-b
+   → failed → mark guide-c as not_reached, path fails
+```
+
+#### Repository batch (`--repository --tier cloud`)
+
+```
+1. Fetch repository.json
+   GET https://interactive-learning.grafana.net/packages/repository.json
+
+2. Filter: keep entries where testEnvironment.tier === "cloud"
+   Expand paths/journeys to constituent guides
+   Deduplicate
+
+3. For each guide:
+   Construct contentUrl from {repoUrl}/{entry.path}content.json
+   testEnvironment is in the index entry (no manifest fetch needed)
+   Resolve target, run test (same as single package flow)
+
+4. Aggregate results across all guides
+```
+
+### Console output (package mode)
+
+#### Single package
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  E2E Package Test: alerting-101                                   ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📦 Source: recommender.grafana.com
+🎯 Target: learn.grafana.net (cloud)
+
+  ✓ step-1                                                  [1.2s]
+  ✓ step-2                                                  [0.8s]
+  ✓ step-3                                                  [2.1s]
+
+────────────────────────────────────────────────────────────────────
+Summary: 3 passed, 0 failed, 0 skipped                    [4.1s]
+────────────────────────────────────────────────────────────────────
+```
+
+#### Path with sequential milestones
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  E2E Package Test: prometheus-lj (path, 3 milestones)            ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📦 Milestone 1/3: guide-a
+🎯 Target: learn.grafana.net (cloud)
+  ✓ step-1                                                  [1.0s]
+  ✓ step-2                                                  [0.9s]
+  ✅ guide-a passed                                          [1.9s]
+
+📦 Milestone 2/3: guide-b
+🎯 Target: learn.grafana.net (cloud)
+  ✓ step-1                                                  [1.1s]
+  ✗ step-2 - FAILED                                         [5.2s]
+  ○ step-3 - NOT_REACHED
+  ❌ guide-b failed                                          [6.3s]
+
+📦 Milestone 3/3: guide-c
+  ○ NOT_REACHED (previous milestone failed)
+
+────────────────────────────────────────────────────────────────────
+Path: prometheus-lj — FAILED (milestone 2/3 failed)
+  ✅ guide-a: passed
+  ❌ guide-b: failed
+  ○  guide-c: not reached
+────────────────────────────────────────────────────────────────────
+```
+
+#### Repository batch
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  E2E Repository Test: 15 packages (12 guides, 3 paths)           ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📦 Repository: https://interactive-learning.grafana.net/packages
+   Tier filter: cloud
+
+🎯 learn.grafana.net:
+  ✅ alerting-101                                           [4.2s]
+  ✅ logql-101                                              [3.8s]
+  ✅ connect-prometheus-metrics                             [5.1s]
+  ⊘  sm-setting-up-your-first-check (skipped_no_auth)
+
+🎯 play.grafana.org:
+  ✅ k8s-cpu                                                [5.1s]
+  ❌ k8s-mem                                                [timeout]
+  ✅ tour-of-visualizations                                 [3.2s]
+
+────────────────────────────────────────────────────────────────────
+Summary: 10 passed, 1 failed, 1 skipped, 0 fetch errors   [42.3s]
+────────────────────────────────────────────────────────────────────
+```
+
+### JSON report (extended)
+
+The JSON report gains package metadata fields:
+
+```json
+{
+  "guide": {
+    "id": "alerting-101",
+    "title": "Grafana Alerting 101",
+    "path": "https://interactive-learning.grafana.net/packages/alerting-101/content.json",
+    "packageId": "alerting-101",
+    "sourcePackageId": "prometheus-lj",
+    "tier": "cloud",
+    "instance": null,
+    "targetUrl": "https://learn.grafana.net/"
+  },
+  "config": {
+    "grafanaUrl": "https://learn.grafana.net/",
+    "timestamp": "2026-03-12T10:30:00.000Z"
+  },
+  "outcome": "passed",
+  "summary": { "...": "..." },
+  "steps": ["..."]
+}
+```
+
+For multi-guide reports (batch or path), each guide entry includes these package fields. The `sourcePackageId` records which path or journey the guide was expanded from, if any.
+
+### Environment variables (extended)
+
+| Variable                 | Description                                                  | Default                 |
+| ------------------------ | ------------------------------------------------------------ | ----------------------- |
+| `GRAFANA_SERVER`         | Grafana URL for local testing (alias for `--grafana-server`) | `http://localhost:3000` |
+| `GRAFANA_USER`           | Username for cloud auth (alias for `--user`)                 | —                       |
+| `GRAFANA_PASSWORD`       | Password for cloud auth (alias for `--password`)             | —                       |
+| `GRAFANA_URL`            | **Internal**: passed to Playwright process per-guide         | Set by CLI              |
+| `GRAFANA_ADMIN_USER`     | **Internal**: passed to `@grafana/plugin-e2e` auth           | Set by CLI              |
+| `GRAFANA_ADMIN_PASSWORD` | **Internal**: passed to `@grafana/plugin-e2e` auth           | Set by CLI              |
+| `AUTH_STATE_FILE`        | **Internal**: ephemeral auth cookie file path                | Set by CLI              |
+| `GUIDE_JSON_PATH`        | **Internal**: path to guide JSON temp file                   | Set by CLI              |
+
+"Internal" variables are set by the CLI when spawning Playwright — they are not intended for direct user configuration.
+
+### Design decisions (package-aware)
+
+| Decision                        | Value                                                                   | Rationale                                                                             |
+| ------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Resolution mechanism            | Recommender service for `--package`; repository.json for `--repository` | Resolution service is canonical for bare IDs; repository index is efficient for batch |
+| Auth state                      | Ephemeral per-guide, deleted after test                                 | Repeatability and isolation over performance                                          |
+| Path milestone execution        | Sequential, stop on failure                                             | Later milestones may depend on earlier ones                                           |
+| Missing milestones              | Fail entire path                                                        | Incomplete paths cannot be meaningfully tested                                        |
+| Content fetch failure           | Skip guide, log as `fetch_failed`                                       | Does not count as test failure; CDN issue, not content issue                          |
+| Manifest authority              | Manifest `testEnvironment` is authoritative                             | Guides speak for themselves; CLI respects the manifest                                |
+| CLI target vs manifest conflict | Skip guide with `skipped_tier_mismatch`                                 | Prevents testing a guide against an incompatible environment                          |
+| Credential env vars             | `GRAFANA_USER` / `GRAFANA_PASSWORD`                                     | Standard practice for CI where secrets should not appear in command lines             |
+| `startingLocation`              | Ignored by E2E runner                                                   | The plugin may use it at runtime; the runner tests wherever it lands                  |
+| `depends` chains                | Ignored; every guide is standalone                                      | Simplicity; no topological ordering needed                                            |
+| Repository caching              | None; always fetch fresh                                                | Repository index is on CDN; no benefit to local caching                               |
+
+### Risks and dependencies (package-aware)
+
+| Risk                              | Mitigation                                                                        |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| Resolution service unavailable    | Fail fast with clear error; `--repository` mode as fallback                       |
+| Cloud instance auth incompatible  | Pre-flight check validates auth; guide reports auth failure, does not crash batch |
+| CDN content stale or missing      | `fetch_failed` outcome; does not block other guides                               |
+| Path with many milestones is slow | Sequential execution is intentional; future pool executor will parallelize        |
+| Credentials in process env        | Standard Playwright pattern; env vars are not logged                              |
+
+### Implementation milestones
+
+| #   | Milestone                     | Delivers                                                                                                                                                   | Dependencies |
+| --- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| P1  | **Resolution service client** | `e2e-package.ts`: call `GET /api/v1/packages/{id}`, parse response, handle 404/errors. Fetch `manifestUrl`, parse `testEnvironment`, `type`, `milestones`. | None         |
+| P2  | **Target resolver**           | `e2e-targets.ts`: `(testEnvironment, cliOptions) → TestTarget`. Credential resolution with env var fallback. Tier mismatch detection.                      | P1           |
+| P3  | **Ephemeral auth plumbing**   | Temp auth state file per guide, pass `AUTH_STATE_FILE` + credential env vars to Playwright, cleanup after test. Update Playwright config.                  | P2           |
+| P4  | **`--package` CLI path**      | Wire up: resolve → fetch manifest → determine target → fetch content → validate → run test. Handle `type: "guide"` only.                                   | P1, P2, P3   |
+| P5  | **Path/journey expansion**    | Recursive milestone resolution via service. Sequential execution with stop-on-failure. `path_incomplete` for missing milestones.                           | P4           |
+| P6  | **`--repository` CLI path**   | Fetch `repository.json`, filter by `--tier`, expand paths/journeys from index, construct content URLs, batch execute.                                      | P4, P5       |
+| P7  | **Reporting**                 | Extended `GuideMetadata` with package fields. New outcome types. Multi-target and path summary in console output.                                          | P4, P5, P6   |
+| P8  | **CLI polish**                | `--grafana-server` alias for `--grafana-url`. Env var fallbacks (`GRAFANA_SERVER`, `GRAFANA_USER`, `GRAFANA_PASSWORD`). Help text updates.                 | P4           |
+
+### Future: pool executor (deferred)
+
+The CLI as designed is a **single-environment tool** — it runs guides that match its configured target and skips the rest. A future pool executor will:
+
+1. Read all packages from the repository
+2. Group guides by `testEnvironment` requirements
+3. Dispatch guides to environment-specific test runners (each running this CLI)
+4. Aggregate results across all environments
+5. Feed results into the Enablement Observability Dashboard
+
+This is explicitly deferred. The CLI's tier-mismatch skip behavior is designed to compose cleanly with a future pool executor that invokes the CLI per-environment.
 
 ## Related Documentation
 
+- [E2E Testing Reference](../developer/E2E_TESTING.md) - User-facing CLI reference, quick start, troubleshooting
 - [Interactive Requirements System](../developer/interactive-examples/requirements-reference.md)
 - [JSON Guide Schema](../../src/types/json-guide.types.ts)
 - [Existing E2E Tests](../../tests/welcome-journey.spec.ts)
 - [CLI Validation Command](../../src/cli/commands/validate.ts)
 - [Testing Strategy](./TESTING_STRATEGY.md) - Higher-level testing vision and failure classification
+- [Pathfinder Package Design](./PATHFINDER-PACKAGE-DESIGN.md) - Two-file package model, manifest schema, `testEnvironment`
+- [Package Standards Alignment](./package/standards-alignment.md) - `testEnvironment` metadata specification
+- [Recommender OpenAPI](https://github.com/grafana/grafana-recommender) - `/api/v1/packages/{id}` resolution endpoint
