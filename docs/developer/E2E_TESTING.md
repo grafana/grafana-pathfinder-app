@@ -331,8 +331,42 @@ jobs:
           path: /tmp/pathfinder-e2e-*
 ```
 
+## Environment variables
+
+These variables are passed to the spawned Playwright process. You generally do not need to set them directly — the CLI sets them from its own flags and defaults.
+
+| Variable          | Description                    | Default                 |
+| ----------------- | ------------------------------ | ----------------------- |
+| `GUIDE_JSON_PATH` | Path to JSON guide file        | Required                |
+| `GRAFANA_URL`     | Grafana instance URL           | `http://localhost:3000` |
+| `E2E_OUTPUT_PATH` | Path for JSON report           | `./e2e-results.json`    |
+| `E2E_VERBOSE`     | Enable verbose logging         | `false`                 |
+| `E2E_TRACE`       | Generate Playwright trace file | `false`                 |
+
+## Error classification
+
+When a step fails, the runner assigns an error classification to help with triage:
+
+| Code                 | Classification   | Notes                                        |
+| -------------------- | ---------------- | -------------------------------------------- |
+| `SELECTOR_NOT_FOUND` | `unknown`        | Could be content-drift OR product-regression |
+| `ACTION_FAILED`      | `unknown`        | Needs human triage                           |
+| `REQUIREMENT_FAILED` | `unknown`        | Could be content-drift OR missing setup      |
+| `TIMEOUT`            | `infrastructure` | Likely environmental                         |
+| `NETWORK_ERROR`      | `infrastructure` | Definitely environmental                     |
+| `AUTH_EXPIRED`       | `infrastructure` | Definitely environmental                     |
+
+Only `infrastructure` failures are auto-classified. `SELECTOR_NOT_FOUND`, `ACTION_FAILED`, and `REQUIREMENT_FAILED` default to `unknown` and require human triage — they could indicate content drift, a product regression, or a missing test environment setup.
+
+For the full rationale and validation plan behind this classification approach, see [Error Classification](../design/e2e-test-runner-design.md#error-classification) in the design doc.
+
+## Package-aware testing (upcoming)
+
+A future `--package <id>` and `--repository` mode will allow the CLI to resolve guides from the package repository, route them to the correct Grafana instance based on `manifest.json` metadata, and authenticate independently per guide. This is currently in design. See [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) in the design doc for the full specification.
+
 ## Related documentation
 
 - [E2E Testing Contract](./E2E_TESTING_CONTRACT.md) - data-test-\* attributes for reliable E2E selectors
 - [CLI tools](./CLI_TOOLS.md) - Guide validation commands
 - [Local development](./LOCAL_DEV.md) - Setting up the development environment
+- [E2E test runner design](../design/e2e-test-runner-design.md) - Architecture, design rationale, and package-aware testing design
