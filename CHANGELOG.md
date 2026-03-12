@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.3.0
+
+### Added
+
+- **Terminal connect block type**: New `terminal-connect` block type for interactive guides, enabling embedded terminal session setup within tutorials (#666)
+  - Block editor support with terminal connect form
+  - Guided handler support for terminal connect actions
+  - Global interaction blocker integration for terminal steps
+- **Block editor inline title editing**: Guide title is now editable inline in the header; guide ID is auto-derived from the title on first commit (slug + random suffix), locked after first set (#662)
+
+### Changed
+
+- **Block editor lifecycle redesign**: Replaced two-button publish flow with a single smart primary action button that follows the guide lifecycle: Save as draft → Update draft → Publish → Update. Context-sensitive menu for Publish shortcut, Unpublish, New guide, and Import (#662)
+- **Terminal panel improvements**: Enhanced Coda terminal panel with improved storage and connection handling (#666)
+
+### Fixed
+
+- **Title rendering**: Docs pages now render only one title extracted from the content's first heading; learning path milestones with content JSON use the title from the JSON itself (#663)
+- **Request timeouts**: Each content fetch request now uses its own timeout instead of sharing a single timeout across multiple requests, fixing intermittent "signal timed out" errors (#664)
+- **Relative URL resolution**: Relative URLs in unstyled.html learning path content (e.g., `/sign-up/`) now resolve against `https://grafana.com` instead of the Grafana instance origin (#665)
+- **Block editor race condition**: Fixed backend link lost after page refresh due to undefined sentinel value (#662)
+- **Block editor stale closures**: Fixed stale closure bugs causing incorrect toast messages and breaking change detection after unpublish (#662)
+- **Empty guide loading**: Fixed empty guide failing to load from library; blocked saving guides with no blocks (#662)
+
 ## 2.2.2
 
 ### Added
