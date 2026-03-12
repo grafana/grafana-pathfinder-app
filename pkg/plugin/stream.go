@@ -274,9 +274,10 @@ func isSSHRetryableError(err error) bool {
 
 // SSH retry constants
 const (
-	maxVMAttempts      = 3                    // Maximum new VMs to provision per connection attempt
-	maxSSHRetriesPerVM = 3                    // SSH connection retries per VM
-	sshRetryDelay      = 5 * time.Second      // Delay between same-VM retries
+	maxSSHRetries         = 3                // SSH connection retries on the same VM
+	maxCredentialRefreshes = 2               // Times to re-fetch credentials on auth failure before giving up
+	sshRetryDelay         = 5 * time.Second  // Delay between same-VM retries
+	maxUserVMs            = 3                // Hard limit on non-terminal VMs per user
 )
 
 // waitForVMActive polls until VM is active and returns it, sending status updates
@@ -324,6 +325,122 @@ func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender,
 	return nil, errors.New(errMsg)
 }
 
+// resolveVMForUser finds or creates a VM for the given user.
+//
+// Priority:
+//  1. In-memory fast path -- check userVMs cache, validate with GetVM (retry transient errors once).
+//  2. ListVMs fallback   -- if cache miss or 404, query the Coda API for active VMs owned by user.
+//  3. Create last resort  -- if no usable VM exists, check quota then CreateVM.
+//
+// Terminal-state VMs found during resolution are destroyed (best-effort).
+func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender, userLogin string) (*VM, string, error) {
+	ctxLogger := a.ctxLogger(ctx)
+
+	// Step 1: In-memory fast path
+	a.userVMsMu.RLock()
+	cachedID, hasCached := a.userVMs[userLogin]
+	a.userVMsMu.RUnlock()
+
+	if hasCached {
+		ctxLogger.Info("Found cached VM for user", "userLogin", userLogin, "vmID", cachedID)
+		vm, err := a.getVMWithRetry(ctx, cachedID)
+
+		if err != nil && !isVMNotFoundError(err) {
+			// Transient error even after retry -- still try ListVMs fallback
+			ctxLogger.Warn("Cached VM fetch failed (transient), falling back to ListVMs", "vmID", cachedID, "error", err)
+		} else if err != nil {
+			// 404 -- VM is gone, clean up cache
+			ctxLogger.Info("Cached VM no longer exists, clearing", "vmID", cachedID)
+			a.clearUserVM(userLogin, cachedID)
+		} else if isUsableState(vm.State) {
+			ctxLogger.Info("Reusing cached VM", "userLogin", userLogin, "vmID", cachedID, "state", vm.State)
+			sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", cachedID)
+			return vm, cachedID, nil
+		} else {
+			// Terminal state -- destroy best-effort and clear cache
+			ctxLogger.Info("Cached VM in terminal state, destroying", "vmID", cachedID, "state", vm.State)
+			a.clearUserVM(userLogin, cachedID)
+			go func() { _ = a.coda.DeleteVM(context.Background(), cachedID, true) }()
+		}
+	}
+
+	// Step 2: ListVMs fallback -- ask Coda for the user's VMs
+	ctxLogger.Info("Querying Coda for existing VMs", "userLogin", userLogin)
+	sendStreamStatusWithVmId(sender, "checking", "Looking for your existing VM...", "")
+
+	existingVM, surplusVMs, err := a.coda.FindActiveVMForUser(ctx, userLogin)
+	if err != nil {
+		ctxLogger.Warn("FindActiveVMForUser failed, proceeding to create", "error", err)
+	}
+	if existingVM != nil {
+		ctxLogger.Info("Found existing VM via ListVMs", "vmID", existingVM.ID, "state", existingVM.State, "surplusCount", len(surplusVMs))
+		a.userVMsMu.Lock()
+		a.userVMs[userLogin] = existingVM.ID
+		a.userVMsMu.Unlock()
+
+		// Clean up surplus VMs so the user doesn't waste quota slots.
+		// Users should only have one active VM at a time.
+		if len(surplusVMs) > 0 {
+			ctxLogger.Info("Destroying surplus VMs for user", "userLogin", userLogin, "count", len(surplusVMs))
+			for _, s := range surplusVMs {
+				vmToDelete := s.ID
+				ctxLogger.Info("Destroying surplus VM", "vmID", vmToDelete)
+				go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+			}
+		}
+
+		sendStreamStatusWithVmId(sender, existingVM.State, "Reconnecting to your existing VM...", existingVM.ID)
+		return existingVM, existingVM.ID, nil
+	}
+
+	// Step 3: No usable VM -- check quota then create
+	ctxLogger.Info("No existing VM found, checking quota", "userLogin", userLogin)
+	count, countErr := a.coda.CountVMsForUser(ctx, userLogin)
+	if countErr == nil && count >= maxUserVMs {
+		errMsg := fmt.Sprintf("VM quota exceeded: you already have %d VMs (max %d), please wait for existing VMs to expire", count, maxUserVMs)
+		sendStreamError(sender, errMsg)
+		return nil, "", errors.New(errMsg)
+	}
+
+	ctxLogger.Info("Provisioning new VM", "userLogin", userLogin)
+	sendStreamStatusWithVmId(sender, "provisioning", "Provisioning new VM...", "")
+
+	vm, createErr := a.coda.CreateVM(ctx, "vm-aws", userLogin)
+	if createErr != nil {
+		errMsg := fmt.Sprintf("Failed to create VM: %v", createErr)
+		sendStreamError(sender, errMsg)
+		return nil, "", fmt.Errorf("failed to create VM: %w", createErr)
+	}
+
+	a.userVMsMu.Lock()
+	a.userVMs[userLogin] = vm.ID
+	a.userVMsMu.Unlock()
+
+	ctxLogger.Info("New VM created", "userLogin", userLogin, "vmID", vm.ID, "state", vm.State)
+	sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vm.ID)
+	return vm, vm.ID, nil
+}
+
+// getVMWithRetry calls GetVM and retries once on transient (non-404) errors.
+func (a *App) getVMWithRetry(ctx context.Context, vmID string) (*VM, error) {
+	vm, err := a.coda.GetVM(ctx, vmID)
+	if err == nil || isVMNotFoundError(err) {
+		return vm, err
+	}
+	// Retry once for transient errors
+	time.Sleep(500 * time.Millisecond)
+	return a.coda.GetVM(ctx, vmID)
+}
+
+// clearUserVM removes a VM from the in-memory cache if it matches the expected ID.
+func (a *App) clearUserVM(userLogin, vmID string) {
+	a.userVMsMu.Lock()
+	if a.userVMs[userLogin] == vmID {
+		delete(a.userVMs, userLogin)
+	}
+	a.userVMsMu.Unlock()
+}
+
 // RunStream is called once for each active stream subscription.
 // It runs for the lifetime of the stream, sending data to the client.
 func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
@@ -349,62 +466,10 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	userLogin := getUserLogin(req)
 	ctxLogger.Info("User identified for VM tracking", "userLogin", userLogin)
 
-	var vm *VM
-	var err error
-	var vmID string
-
-	// Check if user already has an active VM
-	a.userVMsMu.RLock()
-	existingVmID, hasExisting := a.userVMs[userLogin]
-	a.userVMsMu.RUnlock()
-
-	if hasExisting {
-		// User has a tracked VM - try to reuse it
-		ctxLogger.Info("Found existing VM for user", "userLogin", userLogin, "vmID", existingVmID)
-		vm, err = a.coda.GetVM(ctx, existingVmID)
-
-		if err != nil {
-			// VM doesn't exist anymore - remove from tracking and provision new
-			ctxLogger.Info("Tracked VM not found, will provision new", "userLogin", userLogin, "vmID", existingVmID, "error", err)
-			a.userVMsMu.Lock()
-			delete(a.userVMs, userLogin)
-			a.userVMsMu.Unlock()
-			hasExisting = false
-		} else if vm.State == "destroyed" || vm.State == "destroying" || vm.State == "error" {
-			// VM is in terminal state - remove from tracking and provision new
-			ctxLogger.Info("Tracked VM in terminal state, will provision new", "userLogin", userLogin, "vmID", existingVmID, "state", vm.State)
-			a.userVMsMu.Lock()
-			delete(a.userVMs, userLogin)
-			a.userVMsMu.Unlock()
-			hasExisting = false
-		} else {
-			// VM exists and is valid - reuse it
-			vmID = existingVmID
-			ctxLogger.Info("Reusing existing VM for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
-			sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", vmID)
-		}
-	}
-
-	// If no existing valid VM, provision a new one
-	if !hasExisting {
-		ctxLogger.Info("Provisioning new VM for user", "userLogin", userLogin)
-		sendStreamStatusWithVmId(sender, "provisioning", "Provisioning new VM...", "")
-
-		vm, err = a.coda.CreateVM(ctx, "vm-aws", userLogin)
-		if err != nil {
-			errMsg := fmt.Sprintf("failed to create VM: %v", err)
-			sendStreamError(sender, errMsg)
-			return fmt.Errorf("failed to create VM: %w", err)
-		}
-		vmID = vm.ID
-
-		// Store the user -> VM mapping
-		a.userVMsMu.Lock()
-		a.userVMs[userLogin] = vmID
-		a.userVMsMu.Unlock()
-
-		ctxLogger.Info("New VM created and tracked for user", "userLogin", userLogin, "vmID", vmID, "state", vm.State)
-		sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vmID)
+	// Resolve a VM: reuse existing or create new (with quota check)
+	vm, vmID, err := a.resolveVMForUser(ctx, sender, userLogin)
+	if err != nil {
+		return err
 	}
 
 	// If VM is not active, poll and push status updates until it's ready
@@ -452,162 +517,113 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		_ = sender.SendFrame(frame, data.IncludeAll)
 	}
 
-	// Two-level SSH retry logic:
-	// - Outer loop: VM attempts (max 3 VMs to prevent resource waste)
-	// - Inner loop: SSH retries per VM (max 3 retries with delay for slow SSH startup)
+	// SSH retry loop: retries on the SAME VM only (no replacement VMs).
+	// On auth failures, re-fetches credentials from GetVM before retrying.
+	// On retryable errors (timeout, connection refused), retries with a delay.
 	var session *TerminalSession
 	var lastErr error
+	credentialRefreshCount := 0
 
-	for vmAttempt := 1; vmAttempt <= maxVMAttempts; vmAttempt++ {
-		ctxLogger.Info("Starting SSH connection attempts for VM",
+	// Relay URL checks (invariant for the loop)
+	if a.settings.CodaRelayURL == "" {
+		sendStreamError(sender, "Relay URL not configured - SSH connections require the WebSocket relay")
+		return errors.New("relay URL not configured")
+	}
+	if !IsAllowedRelayURL(a.settings.CodaRelayURL) {
+		ctxLogger.Error("Relay URL not in allowlist", "relayURL", a.settings.CodaRelayURL)
+		sendStreamError(sender, "Relay URL is not a trusted host")
+		return errors.New("relay URL not in allowlist")
+	}
+
+	for sshRetry := 1; sshRetry <= maxSSHRetries; sshRetry++ {
+		select {
+		case <-ctx.Done():
+			ctxLogger.Info("Connection cancelled by user", "vmID", vmID)
+			return ctx.Err()
+		default:
+		}
+
+		ctxLogger.Info("Creating SSH session via relay",
 			"vmID", vmID,
-			"vmAttempt", vmAttempt,
-			"maxVMAttempts", maxVMAttempts,
+			"host", vm.Credentials.PublicIP,
+			"port", vm.Credentials.SSHPort,
+			"user", vm.Credentials.SSHUser,
+			"hasPrivateKey", vm.Credentials.SSHPrivateKey != "",
+			"keyLength", len(vm.Credentials.SSHPrivateKey),
+			"relayURL", a.settings.CodaRelayURL,
+			"sshRetry", sshRetry,
 		)
 
-		// Inner loop: retry same VM multiple times (handles slow SSH daemon startup)
-		for sshRetry := 1; sshRetry <= maxSSHRetriesPerVM; sshRetry++ {
-			// Check context cancellation
-			select {
-			case <-ctx.Done():
-				ctxLogger.Info("Connection cancelled by user", "vmID", vmID)
-				return ctx.Err()
-			default:
-			}
+		accessToken, err := a.coda.GetAccessToken(ctx)
+		if err != nil {
+			ctxLogger.Error("Failed to get access token for relay", "error", err)
+			sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
+			return fmt.Errorf("failed to get access token: %w", err)
+		}
 
-			// Relay URL is mandatory - fail if not configured
-			if a.settings.CodaRelayURL == "" {
-				sendStreamError(sender, "Relay URL not configured - SSH connections require the WebSocket relay")
-				return errors.New("relay URL not configured")
-			}
+		sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
+		if err != nil {
+			lastErr = err
+			ctxLogger.Warn("Relay connection failed", "vmID", vmID, "error", err, "sshRetry", sshRetry)
 
-			// Validate relay URL against allowlist to prevent token exfiltration
-			if !IsAllowedRelayURL(a.settings.CodaRelayURL) {
-				ctxLogger.Error("Relay URL not in allowlist", "relayURL", a.settings.CodaRelayURL)
-				sendStreamError(sender, "Relay URL is not a trusted host")
-				return errors.New("relay URL not in allowlist")
-			}
+			if isSSHAuthError(err) && credentialRefreshCount < maxCredentialRefreshes {
+				credentialRefreshCount++
+				ctxLogger.Info("SSH auth failed, refreshing credentials from GetVM",
+					"vmID", vmID, "refreshCount", credentialRefreshCount)
+				sendStreamStatusWithVmId(sender, "retrying",
+					fmt.Sprintf("Refreshing credentials (%d/%d)...", credentialRefreshCount, maxCredentialRefreshes), vmID)
 
-			// Log credentials info (without sensitive data)
-			ctxLogger.Info("Creating SSH session via relay",
-				"vmID", vmID,
-				"host", vm.Credentials.PublicIP,
-				"port", vm.Credentials.SSHPort,
-				"user", vm.Credentials.SSHUser,
-				"hasPrivateKey", vm.Credentials.SSHPrivateKey != "",
-				"keyLength", len(vm.Credentials.SSHPrivateKey),
-				"relayURL", a.settings.CodaRelayURL,
-				"vmAttempt", vmAttempt,
-				"sshRetry", sshRetry,
-			)
-
-			// Get a fresh access token for the relay connection
-			if a.coda == nil {
-				errMsg := "Coda client not initialized - cannot connect to relay"
-				sendStreamError(sender, errMsg)
-				return fmt.Errorf("coda client not initialized")
-			}
-			accessToken, err := a.coda.GetAccessToken(ctx)
-			if err != nil {
-				ctxLogger.Error("Failed to get access token for relay", "error", err)
-				sendStreamError(sender, fmt.Sprintf("Authentication failed: %v", err))
-				return fmt.Errorf("failed to get access token: %w", err)
-			}
-
-			sshClient, err := ConnectSSHViaRelay(a.settings.CodaRelayURL, vmID, vm.Credentials, accessToken)
-			if err != nil {
-				lastErr = err
-				ctxLogger.Warn("Relay connection failed",
-					"vmID", vmID,
-					"error", err,
-					"vmAttempt", vmAttempt,
-					"sshRetry", sshRetry,
-				)
-
-				// Check if error is retryable and we have same-VM retries left
-				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
-					ctxLogger.Info("SSH not ready, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
-					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
+				refreshedVM, refreshErr := a.coda.GetVM(ctx, vmID)
+				if refreshErr == nil && refreshedVM.State == "active" && refreshedVM.Credentials != nil {
+					vm = refreshedVM
 					time.Sleep(sshRetryDelay)
 					continue
 				}
-
-				// All same-VM retries exhausted, break to try new VM
+				ctxLogger.Warn("Credential refresh failed or VM not active", "vmID", vmID, "error", refreshErr)
 				break
 			}
 
-			ctxLogger.Info("Relay connection established, creating terminal session", "vmID", vmID)
-			session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
-			if err != nil {
-				_ = sshClient.Close()
-				lastErr = err
-				ctxLogger.Warn("Failed to create terminal session with relay client",
-					"vmID", vmID,
-					"error", err,
-					"vmAttempt", vmAttempt,
-					"sshRetry", sshRetry,
-				)
-
-				// Check if error is retryable and we have same-VM retries left
-				if isSSHRetryableError(err) && sshRetry < maxSSHRetriesPerVM {
-					ctxLogger.Info("Session creation failed, will retry same VM", "vmID", vmID, "sshRetry", sshRetry)
-					sendStreamStatusWithVmId(sender, "retrying", fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetriesPerVM), vmID)
-					time.Sleep(sshRetryDelay)
-					continue
-				}
-
-				// All same-VM retries exhausted, break to try new VM
-				break
+			if isSSHRetryableError(err) && sshRetry < maxSSHRetries {
+				ctxLogger.Info("SSH not ready, will retry", "vmID", vmID, "sshRetry", sshRetry)
+				sendStreamStatusWithVmId(sender, "retrying",
+					fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetries), vmID)
+				time.Sleep(sshRetryDelay)
+				continue
 			}
-			// Success!
+
 			break
 		}
 
-		// If we got a session, we're done
-		if session != nil {
-			ctxLogger.Info("SSH connection successful", "vmID", vmID, "vmAttempt", vmAttempt)
+		ctxLogger.Info("Relay connection established, creating terminal session", "vmID", vmID)
+		session, err = NewTerminalSessionWithClient(vmID, sshClient, onOutput, onError)
+		if err != nil {
+			_ = sshClient.Close()
+			lastErr = err
+			ctxLogger.Warn("Failed to create terminal session", "vmID", vmID, "error", err, "sshRetry", sshRetry)
+
+			if isSSHRetryableError(err) && sshRetry < maxSSHRetries {
+				sendStreamStatusWithVmId(sender, "retrying",
+					fmt.Sprintf("SSH not ready, retrying (%d/%d)...", sshRetry, maxSSHRetries), vmID)
+				time.Sleep(sshRetryDelay)
+				continue
+			}
 			break
 		}
 
-		// All same-VM retries failed - provision new VM if under limit
-		if vmAttempt < maxVMAttempts {
-			ctxLogger.Info("All SSH retries failed for VM, provisioning new one",
-				"failedVmID", vmID,
-				"vmAttempt", vmAttempt,
-				"lastError", lastErr,
-				"userLogin", userLogin,
-			)
-			sendStreamStatusWithVmId(sender, "provisioning", fmt.Sprintf("VM %d failed, provisioning VM %d/%d...", vmAttempt, vmAttempt+1, maxVMAttempts), vmID)
-
-			// Provision a fresh VM for the user
-			newVM, createErr := a.coda.CreateVM(ctx, "vm-aws", userLogin)
-			if createErr != nil {
-				ctxLogger.Error("Failed to provision fresh VM for retry", "error", createErr)
-				sendStreamError(sender, fmt.Sprintf("Failed to provision replacement VM: %v", createErr))
-				return fmt.Errorf("failed to provision replacement VM: %w", createErr)
-			}
-			vmID = newVM.ID
-
-			// Update user -> VM mapping with new VM
-			a.userVMsMu.Lock()
-			a.userVMs[userLogin] = vmID
-			a.userVMsMu.Unlock()
-
-			ctxLogger.Info("Fresh VM provisioned for retry", "newVmID", vmID, "state", newVM.State, "vmAttempt", vmAttempt+1, "userLogin", userLogin)
-			sendStreamStatusWithVmId(sender, newVM.State, fmt.Sprintf("VM %d allocated, waiting for boot...", vmAttempt+1), vmID)
-
-			// Wait for new VM to be active
-			vm, err = a.waitForVMActive(ctx, sender, vmID)
-			if err != nil {
-				return err
-			}
-		}
+		ctxLogger.Info("SSH connection successful", "vmID", vmID)
+		break
 	}
 
 	if session == nil {
-		errMsg := fmt.Sprintf("SSH connection failed after %d VMs (last error: %v)", maxVMAttempts, lastErr)
-		ctxLogger.Error("All VM attempts exhausted", "lastError", lastErr)
+		errMsg := fmt.Sprintf("SSH connection failed (last error: %v). Press Connect to try again.", lastErr)
+		ctxLogger.Error("All SSH retries exhausted", "vmID", vmID, "lastError", lastErr)
 		sendStreamError(sender, errMsg)
+
+		// Best-effort destroy so the broken VM doesn't consume a quota slot
+		ctxLogger.Info("Destroying failed VM to free quota", "vmID", vmID, "userLogin", userLogin)
+		a.clearUserVM(userLogin, vmID)
+		go func() { _ = a.coda.DeleteVM(context.Background(), vmID, true) }()
+
 		return errors.New(errMsg)
 	}
 	defer func() { _ = session.Close() }()
@@ -697,13 +713,8 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 				if polledVM.State == "destroying" || polledVM.State == "destroyed" || polledVM.State == "error" {
 					ctxLogger.Info("VM no longer active, ending stream", "vmID", pollVmID, "state", polledVM.State, "userLogin", pollUserLogin)
 
-					// Remove VM from user tracking since it's no longer valid
-					a.userVMsMu.Lock()
-					if a.userVMs[pollUserLogin] == pollVmID {
-						delete(a.userVMs, pollUserLogin)
-						ctxLogger.Info("Removed expired VM from user tracking", "userLogin", pollUserLogin, "vmID", pollVmID)
-					}
-					a.userVMsMu.Unlock()
+					a.clearUserVM(pollUserLogin, pollVmID)
+					ctxLogger.Info("Removed expired VM from user tracking", "userLogin", pollUserLogin, "vmID", pollVmID)
 
 					msg := "VM lifetime expired"
 					if polledVM.State == "error" {

@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,6 +38,23 @@ type Credentials struct {
 // VMListResponse represents the response from listing VMs.
 type VMListResponse struct {
 	VMs []VM `json:"vms"`
+}
+
+// ListVMsOptions controls server-side filtering for ListVMs.
+type ListVMsOptions struct {
+	Owner string
+	State string
+	Limit int
+}
+
+// isUsableState returns true for VM states that can still serve a connection.
+func isUsableState(state string) bool {
+	return state == "active" || state == "pending" || state == "provisioning"
+}
+
+// isVMNotFoundError returns true when the error indicates the VM no longer exists (HTTP 404).
+func isVMNotFoundError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "VM not found")
 }
 
 // RegisterRequest represents the request body for registering with Coda.
@@ -250,6 +270,14 @@ func (c *CodaClient) CreateVM(ctx context.Context, template, owner string) (*VM,
 		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
 	}
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf("VM quota exceeded: you have reached the maximum number of VMs, please wait for existing VMs to expire")
+	}
+
+	if resp.StatusCode == http.StatusConflict {
+		return nil, fmt.Errorf("VM conflict: a VM may already exist for this user")
+	}
+
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
@@ -301,9 +329,15 @@ func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
 	return &vm, nil
 }
 
-// DeleteVM initiates the destruction of a VM.
-func (c *CodaClient) DeleteVM(ctx context.Context, vmID string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.apiURL+"/api/v1/vms/"+vmID, nil)
+// DeleteVM initiates the destruction of a VM. When force is true the
+// server-side ?force=true flag is set, useful for cleaning up stuck VMs.
+func (c *CodaClient) DeleteVM(ctx context.Context, vmID string, force bool) error {
+	endpoint := c.apiURL + "/api/v1/vms/" + vmID
+	if force {
+		endpoint += "?force=true"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -330,9 +364,27 @@ func (c *CodaClient) DeleteVM(ctx context.Context, vmID string) error {
 	return nil
 }
 
-// ListVMs returns all VMs.
-func (c *CodaClient) ListVMs(ctx context.Context) ([]VM, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL+"/api/v1/vms", nil)
+// ListVMs returns VMs, optionally filtered server-side by owner/state/limit.
+// Pass nil to list all VMs without filtering.
+func (c *CodaClient) ListVMs(ctx context.Context, opts *ListVMsOptions) ([]VM, error) {
+	endpoint := c.apiURL + "/api/v1/vms"
+	if opts != nil {
+		q := url.Values{}
+		if opts.Owner != "" {
+			q.Set("owner", opts.Owner)
+		}
+		if opts.State != "" {
+			q.Set("state", opts.State)
+		}
+		if opts.Limit > 0 {
+			q.Set("limit", strconv.Itoa(opts.Limit))
+		}
+		if encoded := q.Encode(); encoded != "" {
+			endpoint += "?" + encoded
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -362,5 +414,60 @@ func (c *CodaClient) ListVMs(ctx context.Context) ([]VM, error) {
 	}
 
 	return listResp.VMs, nil
+}
+
+// FindActiveVMForUser queries the API for VMs owned by the given user and
+// returns the most recently created VM in a usable state (active/pending/provisioning).
+// If multiple usable VMs exist, the surplus ones are returned in the second
+// slice so the caller can clean them up (users should only have one active VM).
+// Returns (nil, nil, nil) when no usable VM exists.
+func (c *CodaClient) FindActiveVMForUser(ctx context.Context, owner string) (*VM, []VM, error) {
+	vms, err := c.ListVMs(ctx, &ListVMsOptions{Owner: owner})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var usable []VM
+	for i := range vms {
+		if isUsableState(vms[i].State) {
+			usable = append(usable, vms[i])
+		}
+	}
+	if len(usable) == 0 {
+		return nil, nil, nil
+	}
+
+	// Pick the most recently created VM as the primary
+	best := 0
+	for i := 1; i < len(usable); i++ {
+		if usable[i].CreatedAt.After(usable[best].CreatedAt) {
+			best = i
+		}
+	}
+
+	primary := usable[best]
+	var surplus []VM
+	for i := range usable {
+		if i != best {
+			surplus = append(surplus, usable[i])
+		}
+	}
+
+	return &primary, surplus, nil
+}
+
+// CountVMsForUser returns the number of non-terminal VMs owned by the given user.
+func (c *CodaClient) CountVMsForUser(ctx context.Context, owner string) (int, error) {
+	vms, err := c.ListVMs(ctx, &ListVMsOptions{Owner: owner})
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for i := range vms {
+		if isUsableState(vms[i].State) {
+			count++
+		}
+	}
+	return count, nil
 }
 

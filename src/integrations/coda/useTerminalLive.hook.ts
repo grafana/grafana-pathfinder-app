@@ -313,23 +313,29 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       liveSrvRef.current = liveSrv;
       addressRef.current = address;
 
-      // Safety-net timeout: if the backend never sends "connected" (e.g. SSH
-      // dial blocks or RunStream fails silently), surface an error instead of
-      // hanging forever. 35 s > the 30 s SSH dial timeout on the backend.
+      // Safety-net timeout: if the backend stops sending messages, surface an
+      // error instead of hanging forever. Reset on every backend status message
+      // so that VM provisioning (which can take 1-3 min) doesn't trip the timer.
       const SSH_HANDSHAKE_TIMEOUT_MS = 35_000;
-      handshakeTimeoutRef.current = setTimeout(() => {
-        handshakeTimeoutRef.current = null;
-        connectionLogRef.current.error('SSH handshake timeout', null, {
-          vmId: id,
-          timeoutMs: SSH_HANDSHAKE_TIMEOUT_MS,
-          category: 'ssh_handshake_timeout',
-        });
-        cleanup();
-        setError('SSH handshake timed out');
-        setStatus('error');
-        terminal.writeln('\r\n\x1b[31m✖ SSH handshake timed out — the VM may be unreachable.\x1b[0m');
-        terminal.writeln('\x1b[90m  Press "Connect" to try again.\x1b[0m');
-      }, SSH_HANDSHAKE_TIMEOUT_MS);
+      const startHandshakeTimeout = () => {
+        if (handshakeTimeoutRef.current) {
+          clearTimeout(handshakeTimeoutRef.current);
+        }
+        handshakeTimeoutRef.current = setTimeout(() => {
+          handshakeTimeoutRef.current = null;
+          connectionLogRef.current.error('SSH handshake timeout', null, {
+            vmId: id,
+            timeoutMs: SSH_HANDSHAKE_TIMEOUT_MS,
+            category: 'ssh_handshake_timeout',
+          });
+          cleanup();
+          setError('SSH handshake timed out');
+          setStatus('error');
+          terminal.writeln('\r\n\x1b[31m✖ SSH handshake timed out — the VM may be unreachable.\x1b[0m');
+          terminal.writeln('\x1b[90m  Press "Connect" to try again.\x1b[0m');
+        }, SSH_HANDSHAKE_TIMEOUT_MS);
+      };
+      startHandshakeTimeout();
 
       const stream = liveSrv.getStream<unknown>(address);
       subscriptionRef.current = stream.subscribe({
@@ -339,7 +345,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             if (msg) {
               switch (msg.type) {
                 case 'status':
-                  // VM provisioning status updates from backend
+                  // Backend is alive and making progress -- reset the safety-net
+                  // timeout so VM provisioning (1-3 min) doesn't trip the timer.
+                  startHandshakeTimeout();
+
                   // Update current VM ID ref if backend sends it (needed for input routing)
                   if (msg.vmId && msg.vmId !== currentVmIdRef.current) {
                     connectionLogRef.current.info('Received VM ID from backend', {
