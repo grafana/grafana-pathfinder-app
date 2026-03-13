@@ -7,8 +7,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Button, Field, Input, Select, TextArea, useStyles2 } from '@grafana/ui';
-import { SelectableValue } from '@grafana/data';
+import { Button, Field, Input, Combobox, TextArea, useStyles2, type ComboboxOption } from '@grafana/ui';
 import { getBackendSrv } from '@grafana/runtime';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
@@ -16,7 +15,7 @@ import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonTerminalConnectBlock } from '../../../types/json-guide.types';
 import { PLUGIN_BACKEND_URL } from '../../../constants';
 
-const VM_TEMPLATE_OPTIONS: Array<SelectableValue<string>> = [
+const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Default (vm-aws)', value: '' },
   { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
 ];
@@ -29,15 +28,21 @@ interface SampleApp {
 }
 
 function useSampleApps(enabled: boolean) {
-  const [options, setOptions] = useState<Array<SelectableValue<string>>>([]);
+  const [options, setOptions] = useState<Array<ComboboxOption<string>>>([]);
   const [done, setDone] = useState(false);
+  const [prevEnabled, setPrevEnabled] = useState(enabled);
+
+  if (enabled !== prevEnabled) {
+    setPrevEnabled(enabled);
+    if (enabled) {
+      setDone(false);
+    }
+  }
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
-
-    setDone(false);
 
     const sub = getBackendSrv()
       .fetch<{ apps: SampleApp[] }>({ url: `${PLUGIN_BACKEND_URL}/sample-apps` })
@@ -127,12 +132,12 @@ export function TerminalConnectBlockForm({
       </Field>
 
       <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
-        <Select
+        <Combobox
           options={VM_TEMPLATE_OPTIONS}
-          value={VM_TEMPLATE_OPTIONS.find((o) => o.value === vmTemplate) ?? VM_TEMPLATE_OPTIONS[0]}
-          onChange={(v) => {
-            setVmTemplate(v.value ?? '');
-            if (!v.value) {
+          value={vmTemplate}
+          onChange={(opt) => {
+            setVmTemplate(opt.value);
+            if (!opt.value) {
               setVmApp('');
             }
           }}
@@ -141,16 +146,14 @@ export function TerminalConnectBlockForm({
 
       {isSampleApp && (
         <Field label="App name" description="Sample app to deploy on the VM">
-          <Select
+          <Combobox
             options={sampleAppOptions}
-            value={
-              sampleAppOptions.find((o) => o.value === vmApp) ?? (vmApp ? { label: vmApp, value: vmApp } : undefined)
-            }
-            onChange={(v) => setVmApp(v.value ?? '')}
-            isLoading={isLoadingApps}
-            allowCustomValue
+            value={vmApp || null}
+            onChange={(opt) => setVmApp(opt?.value ?? '')}
+            loading={isLoadingApps}
+            createCustomValue
             placeholder="Select a sample app..."
-            noOptionsMessage="No apps available — check Coda registration"
+            isClearable
           />
         </Field>
       )}
