@@ -22,6 +22,7 @@ import {
   interactiveCompletionStorage,
 } from '../../lib/user-storage';
 import type { EarnedBadge } from '../../types';
+import { LearningGraphSection } from '../LearningGraph';
 
 // Badge utilities extracted for testability
 import { getBadgeProgress, getBadgeRequirementText, type BadgeProgressInfo } from './badge-utils';
@@ -545,6 +546,13 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           ))}
         </div>
       </div>
+
+      {/* Learning Map Section */}
+      <LearningGraphSection
+        graphUrl="https://interactive-learning.grafana.net/packages/graph.json"
+        completedGuides={progress.completedGuides}
+        onOpenGuide={onOpenGuide}
+      />
 
       {/* Preview Notice - at bottom to not distract from main content */}
       <div className={styles.previewNotice}>
