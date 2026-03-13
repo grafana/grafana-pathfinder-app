@@ -37,6 +37,9 @@ function useSampleApps(enabled: boolean) {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading state when re-entering sample app mode
+    setDone(false);
+
     const sub = getBackendSrv()
       .fetch<{ apps: SampleApp[] }>({ url: `${PLUGIN_BACKEND_URL}/sample-apps` })
       .subscribe({

@@ -274,10 +274,10 @@ func isSSHRetryableError(err error) bool {
 
 // SSH retry constants
 const (
-	maxSSHRetries         = 3                // SSH connection retries on the same VM
+	maxSSHRetries          = 3               // SSH connection retries on the same VM
 	maxCredentialRefreshes = 2               // Times to re-fetch credentials on auth failure before giving up
-	sshRetryDelay         = 5 * time.Second  // Delay between same-VM retries
-	maxUserVMs            = 3                // Hard limit on non-terminal VMs per user
+	sshRetryDelay          = 5 * time.Second // Delay between same-VM retries
+	maxUserVMs             = 3               // Hard limit on non-terminal VMs per user
 )
 
 // waitForVMActive polls until VM is active and returns it, sending status updates
@@ -392,7 +392,9 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 					"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
 				a.clearUserVM(userLogin, cachedID)
 				sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", cachedID)
-				go func() { _ = a.coda.DeleteVM(context.Background(), cachedID, true) }()
+				if delErr := a.coda.DeleteVM(ctx, cachedID, true); delErr != nil {
+					ctxLogger.Warn("Failed to destroy mismatched cached VM", "vmID", cachedID, "error", delErr)
+				}
 			} else {
 				ctxLogger.Info("Reusing cached VM", "userLogin", userLogin, "vmID", cachedID, "state", vm.State)
 				sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", cachedID)
@@ -441,10 +443,14 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 			"vmID", existingVM.ID, "existingTemplate", existingVM.Template, "existingApp", existingVM.AppName(),
 			"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
 		sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", "")
-		go func() { _ = a.coda.DeleteVM(context.Background(), existingVM.ID, true) }()
+		if delErr := a.coda.DeleteVM(ctx, existingVM.ID, true); delErr != nil {
+			ctxLogger.Warn("Failed to destroy mismatched existing VM", "vmID", existingVM.ID, "error", delErr)
+		}
 		for _, s := range surplusVMs {
 			vmToDelete := s.ID
-			go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+			if delErr := a.coda.DeleteVM(ctx, vmToDelete, true); delErr != nil {
+				ctxLogger.Warn("Failed to destroy surplus VM during replacement", "vmID", vmToDelete, "error", delErr)
+			}
 		}
 	}
 

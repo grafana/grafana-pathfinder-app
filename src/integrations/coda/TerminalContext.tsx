@@ -67,6 +67,7 @@ interface TerminalProviderProps {
 
 export function TerminalProvider({ children }: TerminalProviderProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const activeVMOptsRef = useRef<TerminalVMOptions>({});
 
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
@@ -95,10 +96,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   );
 
   const connect = useCallback((vmOpts?: TerminalVMOptions) => {
+    activeVMOptsRef.current = vmOpts ?? {};
     registeredConnectRef.current?.(vmOpts);
   }, []);
 
   const disconnect = useCallback(() => {
+    activeVMOptsRef.current = {};
     registeredDisconnectRef.current?.();
   }, []);
 
@@ -115,14 +118,23 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       setIsExpanded(true);
 
       const needsConnect = registeredStatus === 'disconnected' || registeredStatus === 'error';
-      const needsReconnect = !needsConnect && Boolean(vmOpts?.template || vmOpts?.app);
+      const hasRequestedVMOpts = Boolean(vmOpts?.template || vmOpts?.app);
+      const requestedTemplate = vmOpts?.template ?? 'vm-aws';
+      const requestedApp = vmOpts?.app ?? '';
+      const activeTemplate = activeVMOptsRef.current.template ?? 'vm-aws';
+      const activeApp = activeVMOptsRef.current.app ?? '';
+      const templateChanged = requestedTemplate !== activeTemplate;
+      const appChanged = requestedApp !== '' && requestedApp !== activeApp;
+      const needsReconnect = !needsConnect && hasRequestedVMOpts && (templateChanged || appChanged);
 
       if (needsReconnect) {
+        activeVMOptsRef.current = {};
         registeredDisconnectRef.current?.();
       }
 
       if (needsConnect || needsReconnect) {
         setTimeout(() => {
+          activeVMOptsRef.current = vmOpts ?? {};
           registeredConnectRef.current?.(vmOpts);
         }, 100);
       }
