@@ -10,7 +10,9 @@
  */
 
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
-import type { ConnectionStatus } from './useTerminalLive.hook';
+import type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
+
+export type { TerminalVMOptions };
 
 // Module-level status for requirement checker access (outside React tree)
 let _moduleTerminalStatus: ConnectionStatus = 'disconnected';
@@ -24,12 +26,12 @@ export function getTerminalConnectionStatus(): ConnectionStatus {
 
 export interface TerminalContextValue {
   status: ConnectionStatus;
-  connect: () => void;
+  connect: (vmOpts?: TerminalVMOptions) => void;
   disconnect: () => void;
   /** Send a command string to the terminal (appends newline to execute) */
   sendCommand: (command: string) => Promise<void>;
   /** Expand the terminal panel and connect if not already connected */
-  openTerminal: () => void;
+  openTerminal: (vmOpts?: TerminalVMOptions) => void;
   /** Whether the terminal panel is expanded */
   isExpanded: boolean;
   /** Set terminal panel expanded state */
@@ -37,7 +39,7 @@ export interface TerminalContextValue {
   /** Register the underlying useTerminalLive hook values */
   _register: (opts: {
     status: ConnectionStatus;
-    connect: () => void;
+    connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
     sendCommand: (command: string) => Promise<void>;
   }) => void;
@@ -62,9 +64,17 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
-  const registeredConnectRef = useRef<(() => void) | null>(null);
+  const registeredConnectRef = useRef<((vmOpts?: TerminalVMOptions) => void) | null>(null);
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
   const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
+
+  // Track VM options for the active session so openTerminal can skip redundant reconnects
+  const activeVmOptsRef = useRef<TerminalVMOptions | undefined>(undefined);
+
+  // Guard flag: true while openTerminal is executing a disconnect→reconnect cycle.
+  // Prevents the register callback from clearing activeVmOptsRef during the brief
+  // 'disconnected' status that occurs between the old session teardown and the new connect.
+  const reconnectingRef = useRef(false);
 
   // Sync module-level status whenever it changes
   useEffect(() => {
@@ -74,7 +84,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const register = useCallback(
     (opts: {
       status: ConnectionStatus;
-      connect: () => void;
+      connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
       sendCommand: (command: string) => Promise<void>;
     }) => {
@@ -82,15 +92,24 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
+
+      // When a disconnect/error originates outside openTerminal (e.g. panel button,
+      // network drop, VM expiry), clear stale VM options so subsequent openTerminal
+      // calls correctly detect that a reconnect is needed.
+      if ((opts.status === 'disconnected' || opts.status === 'error') && !reconnectingRef.current) {
+        activeVmOptsRef.current = undefined;
+      }
     },
     []
   );
 
-  const connect = useCallback(() => {
-    registeredConnectRef.current?.();
+  const connect = useCallback((vmOpts?: TerminalVMOptions) => {
+    activeVmOptsRef.current = vmOpts;
+    registeredConnectRef.current?.(vmOpts);
   }, []);
 
   const disconnect = useCallback(() => {
+    activeVmOptsRef.current = undefined;
     registeredDisconnectRef.current?.();
   }, []);
 
@@ -102,15 +121,33 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     await registeredSendCommandRef.current(command);
   }, []);
 
-  const openTerminal = useCallback(() => {
-    setIsExpanded(true);
-    if (registeredStatus === 'disconnected' || registeredStatus === 'error') {
-      // Small delay to ensure panel mounts before connect
-      setTimeout(() => {
-        registeredConnectRef.current?.();
-      }, 100);
-    }
-  }, [registeredStatus]);
+  const openTerminal = useCallback(
+    (vmOpts?: TerminalVMOptions) => {
+      setIsExpanded(true);
+
+      const needsConnect = registeredStatus === 'disconnected' || registeredStatus === 'error';
+
+      const requestedTemplate = vmOpts?.template || '';
+      const requestedApp = vmOpts?.app || '';
+      const activeTemplate = activeVmOptsRef.current?.template || '';
+      const activeApp = activeVmOptsRef.current?.app || '';
+      const needsReconnect = !needsConnect && (requestedTemplate !== activeTemplate || requestedApp !== activeApp);
+
+      if (needsReconnect) {
+        reconnectingRef.current = true;
+        registeredDisconnectRef.current?.();
+      }
+
+      if (needsConnect || needsReconnect) {
+        activeVmOptsRef.current = vmOpts;
+        setTimeout(() => {
+          reconnectingRef.current = false;
+          registeredConnectRef.current?.(vmOpts);
+        }, 100);
+      }
+    },
+    [registeredStatus]
+  );
 
   const value: TerminalContextValue = {
     status: registeredStatus,

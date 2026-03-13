@@ -728,22 +728,26 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     </Alert>
                   )}
 
-                  {!codaRegistered && (
-                    <Field
-                      label="Enrollment key"
-                      description="Registration key from administrator"
-                      className={s.marginTop}
-                    >
-                      <Input
-                        type="password"
-                        width={60}
-                        value={state.codaEnrollmentKey}
-                        onChange={onChangeCodaEnrollmentKey}
-                        placeholder="Enter enrollment key"
-                        disabled={isSaving}
-                      />
-                    </Field>
-                  )}
+                  <Field
+                    label="Enrollment key"
+                    description={
+                      codaRegistered
+                        ? 'Already registered — enter a new key to re-register'
+                        : 'Registration key from administrator'
+                    }
+                    className={s.marginTop}
+                  >
+                    <Input
+                      type="password"
+                      width={60}
+                      value={state.codaEnrollmentKey}
+                      onChange={onChangeCodaEnrollmentKey}
+                      placeholder={
+                        hasProvisionedKey ? 'Key provisioned — enter new key to update' : 'Enter enrollment key'
+                      }
+                      disabled={isSaving}
+                    />
+                  </Field>
 
                   {registrationError && (
                     <Alert severity="error" title="Registration failed" className={s.marginTop}>

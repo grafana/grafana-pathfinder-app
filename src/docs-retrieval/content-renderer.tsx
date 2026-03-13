@@ -1068,6 +1068,8 @@ function renderParsedElement(
         <TerminalConnectStep
           key={key}
           buttonText={element.props.buttonText}
+          vmTemplate={element.props.vmTemplate}
+          vmApp={element.props.vmApp}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         >

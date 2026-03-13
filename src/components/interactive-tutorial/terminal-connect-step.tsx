@@ -20,6 +20,10 @@ export interface TerminalConnectStepProps {
   onComplete?: () => void;
   disabled?: boolean;
   className?: string;
+  /** VM template override (defaults to "vm-aws") */
+  vmTemplate?: string;
+  /** App name for sample-app template */
+  vmApp?: string;
 
   stepId?: string;
   isEligibleForChecking?: boolean;
@@ -84,6 +88,8 @@ export const TerminalConnectStep = forwardRef<
       onComplete,
       disabled = false,
       className,
+      vmTemplate,
+      vmApp,
       stepId,
       isEligibleForChecking = true,
       isCompleted: parentCompleted = false,
@@ -132,8 +138,9 @@ export const TerminalConnectStep = forwardRef<
       }
 
       setIsConnecting(true);
-      terminalCtx.openTerminal();
-    }, [terminalCtx]);
+      const vmOpts = vmTemplate ? { template: vmTemplate, app: vmApp } : undefined;
+      terminalCtx.openTerminal(vmOpts);
+    }, [terminalCtx, vmTemplate, vmApp]);
 
     // React to terminal status changes while waiting for connection
     useEffect(() => {

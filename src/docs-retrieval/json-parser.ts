@@ -788,6 +788,8 @@ function convertTerminalConnectBlock(block: JsonTerminalConnectBlock, _path: str
       type: 'terminal-connect-step',
       props: {
         buttonText: block.buttonText,
+        vmTemplate: block.vmTemplate,
+        vmApp: block.vmApp,
       },
       children,
     },
