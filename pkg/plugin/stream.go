@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -368,6 +369,11 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 
 	ctxLogger.Info("Resolving VM for user", "userLogin", userLogin, "template", requestedTemplate, "app", requestedApp)
 
+	// VMs queued for deletion due to template/app mismatch. We must wait for
+	// these to complete before the quota check so CountVMsForUser sees accurate
+	// counts and doesn't spuriously reject creation.
+	var mismatchVMsToDelete []string
+
 	// Step 1: In-memory fast path
 	a.userVMsMu.RLock()
 	cachedID, hasCached := a.userVMs[userLogin]
@@ -392,7 +398,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 					"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
 				a.clearUserVM(userLogin, cachedID)
 				sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", cachedID)
-				go func() { _ = a.coda.DeleteVM(context.Background(), cachedID, true) }()
+				mismatchVMsToDelete = append(mismatchVMsToDelete, cachedID)
 			} else {
 				ctxLogger.Info("Reusing cached VM", "userLogin", userLogin, "vmID", cachedID, "state", vm.State)
 				sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", cachedID)
@@ -436,16 +442,34 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 			return existingVM, existingVM.ID, nil
 		}
 
-		// Template or app mismatch — destroy the old VM and all surplus
+		// Template or app mismatch — queue the old VM and all surplus for deletion
 		ctxLogger.Info("Existing VM doesn't match request, destroying",
 			"vmID", existingVM.ID, "existingTemplate", existingVM.Template, "existingApp", existingVM.AppName(),
 			"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
 		sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", "")
-		go func() { _ = a.coda.DeleteVM(context.Background(), existingVM.ID, true) }()
+		mismatchVMsToDelete = append(mismatchVMsToDelete, existingVM.ID)
 		for _, s := range surplusVMs {
-			vmToDelete := s.ID
-			go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+			mismatchVMsToDelete = append(mismatchVMsToDelete, s.ID)
 		}
+	}
+
+	// Delete all mismatch VMs concurrently and wait for completion so that
+	// CountVMsForUser (which counts non-terminal VMs) returns an accurate count.
+	if len(mismatchVMsToDelete) > 0 {
+		ctxLogger.Info("Waiting for mismatch VM deletions before quota check", "count", len(mismatchVMsToDelete))
+		var wg sync.WaitGroup
+		for _, id := range mismatchVMsToDelete {
+			wg.Add(1)
+			vmToDelete := id
+			go func() {
+				defer wg.Done()
+				if delErr := a.coda.DeleteVM(context.Background(), vmToDelete, true); delErr != nil {
+					ctxLogger.Warn("Failed to delete mismatch VM", "vmID", vmToDelete, "error", delErr)
+				}
+			}()
+		}
+		wg.Wait()
+		ctxLogger.Info("Mismatch VM deletions completed", "count", len(mismatchVMsToDelete))
 	}
 
 	// Step 3: No usable VM -- check quota then create

@@ -76,6 +76,7 @@ Load these docs **only when working in the relevant domain**:
 | `docs/developer/KNOWN_ISSUES.md`            | Known bugs and workarounds             |
 | `docs/developer/interactive-examples/*.md`  | Authoring interactive JSON guides      |
 | `docs/developer/engines/*.md`               | Engine subsystem internals             |
+| `docs/developer/CODA.md`                    | Coda VM system, terminal integration   |
 
 ## PR reviews
 
