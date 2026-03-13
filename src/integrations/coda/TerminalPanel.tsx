@@ -286,8 +286,12 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       console.warn('[CodaTerminal] Terminal not initialized yet');
       return;
     }
+    if (terminalCtx) {
+      terminalCtx.connect();
+      return;
+    }
     connect();
-  }, [connect]);
+  }, [connect, terminalCtx]);
 
   // Disconnect handler
   const handleDisconnect = useCallback(() => {
@@ -297,8 +301,12 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.writeln('\r\n\x1b[31mDisconnected.\x1b[0m');
     }
+    if (terminalCtx) {
+      terminalCtx.disconnect();
+      return;
+    }
     disconnect();
-  }, [disconnect]);
+  }, [disconnect, terminalCtx]);
 
   // Search handlers
   const handleSearchToggle = useCallback(() => {
