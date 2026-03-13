@@ -30,6 +30,24 @@ export interface TerminalVMOptions {
   app?: string;
 }
 
+interface NormalizedTerminalVMOptions {
+  template: string;
+  app: string;
+}
+
+const DEFAULT_TEMPLATE = 'vm-aws';
+
+function normalizeVmOptions(vmOpts?: TerminalVMOptions): NormalizedTerminalVMOptions {
+  return {
+    template: vmOpts?.template || DEFAULT_TEMPLATE,
+    app: vmOpts?.app || '',
+  };
+}
+
+function hasDifferentVmOptions(current: NormalizedTerminalVMOptions, requested: NormalizedTerminalVMOptions): boolean {
+  return current.template !== requested.template || current.app !== requested.app;
+}
+
 export interface TerminalContextValue {
   status: ConnectionStatus;
   connect: (vmOpts?: TerminalVMOptions) => void;
@@ -73,6 +91,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const registeredConnectRef = useRef<((vmOpts?: TerminalVMOptions) => void) | null>(null);
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
   const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
+  const currentVmOptionsRef = useRef<NormalizedTerminalVMOptions>(normalizeVmOptions());
 
   // Sync module-level status whenever it changes
   useEffect(() => {
@@ -95,10 +114,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   );
 
   const connect = useCallback((vmOpts?: TerminalVMOptions) => {
+    currentVmOptionsRef.current = normalizeVmOptions(vmOpts);
     registeredConnectRef.current?.(vmOpts);
   }, []);
 
   const disconnect = useCallback(() => {
+    currentVmOptionsRef.current = normalizeVmOptions();
     registeredDisconnectRef.current?.();
   }, []);
 
@@ -113,8 +134,22 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const openTerminal = useCallback(
     (vmOpts?: TerminalVMOptions) => {
       setIsExpanded(true);
+      const requestedVmOptions = normalizeVmOptions(vmOpts);
+
+      if (registeredStatus === 'connected') {
+        if (hasDifferentVmOptions(currentVmOptionsRef.current, requestedVmOptions)) {
+          currentVmOptionsRef.current = requestedVmOptions;
+          registeredDisconnectRef.current?.();
+          setTimeout(() => {
+            registeredConnectRef.current?.(vmOpts);
+          }, 100);
+        }
+        return;
+      }
+
       if (registeredStatus === 'disconnected' || registeredStatus === 'error') {
         setTimeout(() => {
+          currentVmOptionsRef.current = requestedVmOptions;
           registeredConnectRef.current?.(vmOpts);
         }, 100);
       }

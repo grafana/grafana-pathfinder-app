@@ -274,10 +274,10 @@ func isSSHRetryableError(err error) bool {
 
 // SSH retry constants
 const (
-	maxSSHRetries         = 3                // SSH connection retries on the same VM
+	maxSSHRetries          = 3               // SSH connection retries on the same VM
 	maxCredentialRefreshes = 2               // Times to re-fetch credentials on auth failure before giving up
-	sshRetryDelay         = 5 * time.Second  // Delay between same-VM retries
-	maxUserVMs            = 3                // Hard limit on non-terminal VMs per user
+	sshRetryDelay          = 5 * time.Second // Delay between same-VM retries
+	maxUserVMs             = 3               // Hard limit on non-terminal VMs per user
 )
 
 // waitForVMActive polls until VM is active and returns it, sending status updates
@@ -349,8 +349,8 @@ func (o vmRequestOpts) appName() string {
 //  2. ListVMs fallback   -- if cache miss or 404, query the Coda API for active VMs owned by user.
 //  3. Create last resort  -- if no usable VM exists, check quota then CreateVM.
 //
-// When opts specifies a non-default template, cached and existing VMs with a
-// different template are skipped so the user gets the right VM type.
+// Cached and existing VMs must match the requested template and app (if set),
+// otherwise they are replaced so the user gets the right VM type.
 //
 // Terminal-state VMs found during resolution are destroyed (best-effort).
 func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender, userLogin string, opts ...vmRequestOpts) (*VM, string, error) {
@@ -365,8 +365,6 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		vmConfig = opts[0].config
 		requestedApp = opts[0].appName()
 	}
-	isNonDefault := requestedTemplate != "vm-aws"
-
 	ctxLogger.Info("Resolving VM for user", "userLogin", userLogin, "template", requestedTemplate, "app", requestedApp)
 
 	// Step 1: In-memory fast path
@@ -385,7 +383,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 			a.clearUserVM(userLogin, cachedID)
 		} else if isUsableState(vm.State) {
 			// Check template and app match for reuse
-			templateMismatch := isNonDefault && vm.Template != requestedTemplate
+			templateMismatch := vm.Template != requestedTemplate
 			appMismatch := requestedApp != "" && vm.AppName() != requestedApp
 
 			if templateMismatch || appMismatch {
@@ -416,7 +414,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		ctxLogger.Warn("FindActiveVMForUser failed, proceeding to create", "error", err)
 	}
 	if existingVM != nil {
-		templateMatch := !isNonDefault || existingVM.Template == requestedTemplate
+		templateMatch := existingVM.Template == requestedTemplate
 		appMatch := requestedApp == "" || existingVM.AppName() == requestedApp
 
 		if templateMatch && appMatch {
