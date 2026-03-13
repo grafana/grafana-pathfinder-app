@@ -275,10 +275,10 @@ func isSSHRetryableError(err error) bool {
 
 // SSH retry constants
 const (
-	maxSSHRetries         = 3                // SSH connection retries on the same VM
+	maxSSHRetries          = 3               // SSH connection retries on the same VM
 	maxCredentialRefreshes = 2               // Times to re-fetch credentials on auth failure before giving up
-	sshRetryDelay         = 5 * time.Second  // Delay between same-VM retries
-	maxUserVMs            = 3                // Hard limit on non-terminal VMs per user
+	sshRetryDelay          = 5 * time.Second // Delay between same-VM retries
+	maxUserVMs             = 3               // Hard limit on non-terminal VMs per user
 )
 
 // waitForVMActive polls until VM is active and returns it, sending status updates
@@ -373,6 +373,14 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 	// these to complete before the quota check so CountVMsForUser sees accurate
 	// counts and doesn't spuriously reject creation.
 	var mismatchVMsToDelete []string
+	mismatchVMsToDeleteSet := make(map[string]struct{})
+	queueMismatchVMForDeletion := func(vmID string) {
+		if _, exists := mismatchVMsToDeleteSet[vmID]; exists {
+			return
+		}
+		mismatchVMsToDeleteSet[vmID] = struct{}{}
+		mismatchVMsToDelete = append(mismatchVMsToDelete, vmID)
+	}
 
 	// Step 1: In-memory fast path
 	a.userVMsMu.RLock()
@@ -398,7 +406,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 					"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
 				a.clearUserVM(userLogin, cachedID)
 				sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", cachedID)
-				mismatchVMsToDelete = append(mismatchVMsToDelete, cachedID)
+				queueMismatchVMForDeletion(cachedID)
 			} else {
 				ctxLogger.Info("Reusing cached VM", "userLogin", userLogin, "vmID", cachedID, "state", vm.State)
 				sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", cachedID)
@@ -447,9 +455,9 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 			"vmID", existingVM.ID, "existingTemplate", existingVM.Template, "existingApp", existingVM.AppName(),
 			"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
 		sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", "")
-		mismatchVMsToDelete = append(mismatchVMsToDelete, existingVM.ID)
+		queueMismatchVMForDeletion(existingVM.ID)
 		for _, s := range surplusVMs {
-			mismatchVMsToDelete = append(mismatchVMsToDelete, s.ID)
+			queueMismatchVMForDeletion(s.ID)
 		}
 	}
 
