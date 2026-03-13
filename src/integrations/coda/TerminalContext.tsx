@@ -71,6 +71,11 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   // Track VM options for the active session so openTerminal can skip redundant reconnects
   const activeVmOptsRef = useRef<TerminalVMOptions | undefined>(undefined);
 
+  // Guard flag: true while openTerminal is executing a disconnect→reconnect cycle.
+  // Prevents the register callback from clearing activeVmOptsRef during the brief
+  // 'disconnected' status that occurs between the old session teardown and the new connect.
+  const reconnectingRef = useRef(false);
+
   // Sync module-level status whenever it changes
   useEffect(() => {
     _moduleTerminalStatus = registeredStatus;
@@ -87,6 +92,13 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
+
+      // When a disconnect/error originates outside openTerminal (e.g. panel button,
+      // network drop, VM expiry), clear stale VM options so subsequent openTerminal
+      // calls correctly detect that a reconnect is needed.
+      if ((opts.status === 'disconnected' || opts.status === 'error') && !reconnectingRef.current) {
+        activeVmOptsRef.current = undefined;
+      }
     },
     []
   );
@@ -122,12 +134,14 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       const needsReconnect = !needsConnect && (requestedTemplate !== activeTemplate || requestedApp !== activeApp);
 
       if (needsReconnect) {
+        reconnectingRef.current = true;
         registeredDisconnectRef.current?.();
       }
 
       if (needsConnect || needsReconnect) {
         activeVmOptsRef.current = vmOpts;
         setTimeout(() => {
+          reconnectingRef.current = false;
           registeredConnectRef.current?.(vmOpts);
         }, 100);
       }
