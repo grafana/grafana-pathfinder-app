@@ -74,6 +74,9 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
   const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
 
+  // Track VM options for the active session so openTerminal can skip redundant reconnects
+  const activeVmOptsRef = useRef<TerminalVMOptions | undefined>(undefined);
+
   // Sync module-level status whenever it changes
   useEffect(() => {
     _moduleTerminalStatus = registeredStatus;
@@ -95,10 +98,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   );
 
   const connect = useCallback((vmOpts?: TerminalVMOptions) => {
+    activeVmOptsRef.current = vmOpts;
     registeredConnectRef.current?.(vmOpts);
   }, []);
 
   const disconnect = useCallback(() => {
+    activeVmOptsRef.current = undefined;
     registeredDisconnectRef.current?.();
   }, []);
 
@@ -115,13 +120,19 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       setIsExpanded(true);
 
       const needsConnect = registeredStatus === 'disconnected' || registeredStatus === 'error';
-      const needsReconnect = !needsConnect && Boolean(vmOpts?.template || vmOpts?.app);
+
+      const requestedTemplate = vmOpts?.template || '';
+      const requestedApp = vmOpts?.app || '';
+      const activeTemplate = activeVmOptsRef.current?.template || '';
+      const activeApp = activeVmOptsRef.current?.app || '';
+      const needsReconnect = !needsConnect && (requestedTemplate !== activeTemplate || requestedApp !== activeApp);
 
       if (needsReconnect) {
         registeredDisconnectRef.current?.();
       }
 
       if (needsConnect || needsReconnect) {
+        activeVmOptsRef.current = vmOpts;
         setTimeout(() => {
           registeredConnectRef.current?.(vmOpts);
         }, 100);

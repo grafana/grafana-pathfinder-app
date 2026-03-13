@@ -37,6 +37,8 @@ function useSampleApps(enabled: boolean) {
       return;
     }
 
+    setDone(false);
+
     const sub = getBackendSrv()
       .fetch<{ apps: SampleApp[] }>({ url: `${PLUGIN_BACKEND_URL}/sample-apps` })
       .subscribe({
