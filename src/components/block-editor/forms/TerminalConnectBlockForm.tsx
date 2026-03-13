@@ -6,12 +6,62 @@
  * and connects to the Coda terminal.
  */
 
-import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, TextArea, useStyles2 } from '@grafana/ui';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Button, Field, Input, Select, TextArea, useStyles2 } from '@grafana/ui';
+import { SelectableValue } from '@grafana/data';
+import { getBackendSrv } from '@grafana/runtime';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonTerminalConnectBlock } from '../../../types/json-guide.types';
+import { PLUGIN_BACKEND_URL } from '../../../constants';
+
+const VM_TEMPLATE_OPTIONS: Array<SelectableValue<string>> = [
+  { label: 'Default (vm-aws)', value: '' },
+  { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
+];
+
+interface SampleApp {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+}
+
+function useSampleApps(enabled: boolean) {
+  const [options, setOptions] = useState<Array<SelectableValue<string>>>([]);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const sub = getBackendSrv()
+      .fetch<{ apps: SampleApp[] }>({ url: `${PLUGIN_BACKEND_URL}/sample-apps` })
+      .subscribe({
+        next(resp) {
+          if (resp?.data?.apps) {
+            setOptions(
+              resp.data.apps.map((app) => ({
+                label: app.name,
+                value: app.id,
+                description: app.description,
+              }))
+            );
+          }
+          setDone(true);
+        },
+        error() {
+          setDone(true);
+        },
+      });
+
+    return () => sub.unsubscribe();
+  }, [enabled]);
+
+  return { options, isLoading: enabled && !done };
+}
 
 function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalConnectBlock {
   return block.type === 'terminal-connect';
@@ -30,6 +80,11 @@ export function TerminalConnectBlockForm({
 
   const [content, setContent] = useState(initial?.content ?? '');
   const [buttonText, setButtonText] = useState(initial?.buttonText ?? '');
+  const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
+  const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
+
+  const isSampleApp = vmTemplate === 'vm-aws-sample-app';
+  const { options: sampleAppOptions, isLoading: isLoadingApps } = useSampleApps(isSampleApp);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -39,18 +94,19 @@ export function TerminalConnectBlockForm({
         type: 'terminal-connect',
         content: content.trim(),
         ...(buttonText.trim() && { buttonText: buttonText.trim() }),
+        ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
+        ...(vmApp.trim() && { vmApp: vmApp.trim() }),
       };
 
       onSubmit(block as JsonBlock);
     },
-    [content, buttonText, onSubmit]
+    [content, buttonText, vmTemplate, vmApp, onSubmit]
   );
 
   const isValid = content.trim().length > 0;
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
-      {/* Content / description */}
       <Field label="Description" description="Markdown description shown above the connect button" required>
         <TextArea
           value={content}
@@ -60,7 +116,6 @@ export function TerminalConnectBlockForm({
         />
       </Field>
 
-      {/* Custom button text */}
       <Field label="Button text" description="Custom button label (defaults to 'Try in terminal')">
         <Input
           value={buttonText}
@@ -69,7 +124,35 @@ export function TerminalConnectBlockForm({
         />
       </Field>
 
-      {/* Actions */}
+      <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
+        <Select
+          options={VM_TEMPLATE_OPTIONS}
+          value={VM_TEMPLATE_OPTIONS.find((o) => o.value === vmTemplate) ?? VM_TEMPLATE_OPTIONS[0]}
+          onChange={(v) => {
+            setVmTemplate(v.value ?? '');
+            if (!v.value) {
+              setVmApp('');
+            }
+          }}
+        />
+      </Field>
+
+      {isSampleApp && (
+        <Field label="App name" description="Sample app to deploy on the VM">
+          <Select
+            options={sampleAppOptions}
+            value={
+              sampleAppOptions.find((o) => o.value === vmApp) ?? (vmApp ? { label: vmApp, value: vmApp } : undefined)
+            }
+            onChange={(v) => setVmApp(v.value ?? '')}
+            isLoading={isLoadingApps}
+            allowCustomValue
+            placeholder="Select a sample app..."
+            noOptionsMessage="No apps available — check Coda registration"
+          />
+        </Field>
+      )}
+
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
           <div className={styles.footerLeft}>

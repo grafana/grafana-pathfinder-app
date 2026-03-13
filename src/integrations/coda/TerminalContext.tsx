@@ -22,14 +22,22 @@ export function getTerminalConnectionStatus(): ConnectionStatus {
   return _moduleTerminalStatus;
 }
 
+/** Options for connecting to a specific VM template */
+export interface TerminalVMOptions {
+  /** VM template (defaults to "vm-aws") */
+  template?: string;
+  /** App name for sample-app templates */
+  app?: string;
+}
+
 export interface TerminalContextValue {
   status: ConnectionStatus;
-  connect: () => void;
+  connect: (vmOpts?: TerminalVMOptions) => void;
   disconnect: () => void;
   /** Send a command string to the terminal (appends newline to execute) */
   sendCommand: (command: string) => Promise<void>;
   /** Expand the terminal panel and connect if not already connected */
-  openTerminal: () => void;
+  openTerminal: (vmOpts?: TerminalVMOptions) => void;
   /** Whether the terminal panel is expanded */
   isExpanded: boolean;
   /** Set terminal panel expanded state */
@@ -37,7 +45,7 @@ export interface TerminalContextValue {
   /** Register the underlying useTerminalLive hook values */
   _register: (opts: {
     status: ConnectionStatus;
-    connect: () => void;
+    connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
     sendCommand: (command: string) => Promise<void>;
   }) => void;
@@ -62,7 +70,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
-  const registeredConnectRef = useRef<(() => void) | null>(null);
+  const registeredConnectRef = useRef<((vmOpts?: TerminalVMOptions) => void) | null>(null);
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
   const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
 
@@ -74,7 +82,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const register = useCallback(
     (opts: {
       status: ConnectionStatus;
-      connect: () => void;
+      connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
       sendCommand: (command: string) => Promise<void>;
     }) => {
@@ -86,8 +94,8 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     []
   );
 
-  const connect = useCallback(() => {
-    registeredConnectRef.current?.();
+  const connect = useCallback((vmOpts?: TerminalVMOptions) => {
+    registeredConnectRef.current?.(vmOpts);
   }, []);
 
   const disconnect = useCallback(() => {
@@ -102,15 +110,17 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     await registeredSendCommandRef.current(command);
   }, []);
 
-  const openTerminal = useCallback(() => {
-    setIsExpanded(true);
-    if (registeredStatus === 'disconnected' || registeredStatus === 'error') {
-      // Small delay to ensure panel mounts before connect
-      setTimeout(() => {
-        registeredConnectRef.current?.();
-      }, 100);
-    }
-  }, [registeredStatus]);
+  const openTerminal = useCallback(
+    (vmOpts?: TerminalVMOptions) => {
+      setIsExpanded(true);
+      if (registeredStatus === 'disconnected' || registeredStatus === 'error') {
+        setTimeout(() => {
+          registeredConnectRef.current?.(vmOpts);
+        }, 100);
+      }
+    },
+    [registeredStatus]
+  );
 
   const value: TerminalContextValue = {
     status: registeredStatus,

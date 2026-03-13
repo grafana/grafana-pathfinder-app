@@ -99,11 +99,17 @@ interface UseTerminalLiveOptions {
   terminalRef: RefObject<Terminal | null>;
 }
 
+/** Options for connecting to a specific VM template */
+interface VMConnectOptions {
+  template?: string;
+  app?: string;
+}
+
 interface UseTerminalLiveReturn {
   /** Current connection status */
   status: ConnectionStatus;
-  /** Connect to terminal (provisions VM if needed) */
-  connect: () => void;
+  /** Connect to terminal (provisions VM if needed). Pass vmOpts for non-default templates. */
+  connect: (vmOpts?: VMConnectOptions) => void;
   /** Disconnect from terminal */
   disconnect: () => void;
   /** Send resize event to backend */
@@ -277,7 +283,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * Connect to Grafana Live stream for terminal I/O
    */
   const connectLiveStream = useCallback(
-    (id: string, terminal: Terminal) => {
+    (id: string, terminal: Terminal, vmOpts?: VMConnectOptions) => {
       const liveSrv = getGrafanaLiveSrv();
       if (!liveSrv) {
         connectionLogRef.current.error('Grafana Live service not available', null, {
@@ -294,10 +300,20 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       // the same channel path while the old RunStream is tearing down can cause
       // the backend to never invoke a new RunStream, leaving us stuck.
       const nonce = Date.now();
+      // Encode optional template and app as additional path segments:
+      //   terminal/{id}/{nonce}                         → default (vm-aws)
+      //   terminal/{id}/{nonce}/{template}/{app}         → custom template with app
+      let channelPathStr = `terminal/${id}/${nonce}`;
+      if (vmOpts?.template && vmOpts.template !== 'vm-aws') {
+        channelPathStr += `/${vmOpts.template}`;
+        if (vmOpts.app) {
+          channelPathStr += `/${vmOpts.app}`;
+        }
+      }
       const address: LiveChannelAddress = {
         scope: LiveChannelScope.Plugin,
         stream: PLUGIN_ID,
-        path: `terminal/${id}/${nonce}`,
+        path: channelPathStr,
       };
 
       const channelPath = `${address.scope}/${address.stream}/${address.path}`;
@@ -560,46 +576,53 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * - If user has no active VM, backend provisions a fresh one
    * - Backend pushes status updates via the stream
    */
-  const connect = useCallback(async () => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
-      connectionLogRef.current.error('Terminal instance not available', null, {
-        category: 'terminal_not_ready',
+  const connect = useCallback(
+    async (vmOpts?: VMConnectOptions) => {
+      const terminal = terminalRef.current;
+      if (!terminal) {
+        connectionLogRef.current.error('Terminal instance not available', null, {
+          category: 'terminal_not_ready',
+        });
+        setError('Terminal instance not available');
+        return;
+      }
+
+      connectionLogRef.current = createConnectionLog();
+      connectionLogRef.current.startConnection();
+      connectionLogRef.current.info('Starting connection sequence', {
+        template: vmOpts?.template,
+        app: vmOpts?.app,
       });
-      setError('Terminal instance not available');
-      return;
-    }
 
-    // Create a fresh logger for each connection attempt (isolated timing state)
-    connectionLogRef.current = createConnectionLog();
-    connectionLogRef.current.startConnection();
-    connectionLogRef.current.info('Starting connection sequence');
+      setStatus('connecting');
+      setError(null);
+      cleanup();
 
-    setStatus('connecting');
-    setError(null);
-    cleanup();
+      currentVmIdRef.current = null;
 
-    // Clear vmId during reconnect so stray resize/input events are dropped
-    // until the new session sends 'connected' with the real vmId
-    currentVmIdRef.current = null;
+      terminal.clear();
+      terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+      terminal.writeln('\x1b[1;36m  Grafana Pathfinder - Sandbox Terminal\x1b[0m');
+      terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+      terminal.writeln('');
 
-    // Clear terminal and show connection header
-    terminal.clear();
-    terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-    terminal.writeln('\x1b[1;36m  Grafana Pathfinder - Sandbox Terminal\x1b[0m');
-    terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-    terminal.writeln('');
+      if (vmOpts?.app) {
+        terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.app} sandbox...\x1b[0m`);
+      } else {
+        terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
+      }
+      terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
 
-    // Always connect with 'new' - backend tracks VMs per user and reuses automatically
-    terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
-    terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
+      connectionLogRef.current.info('Connecting to Live stream with new', {
+        template: vmOpts?.template,
+        app: vmOpts?.app,
+      });
+      terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
 
-    connectionLogRef.current.info('Connecting to Live stream with new');
-    terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
-
-    // Connect to stream - backend handles VM assignment and reuse
-    connectLiveStream('new', terminal);
-  }, [terminalRef, cleanup, connectLiveStream]);
+      connectLiveStream('new', terminal, vmOpts);
+    },
+    [terminalRef, cleanup, connectLiveStream]
+  );
 
   /**
    * Disconnect from the terminal

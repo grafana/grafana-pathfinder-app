@@ -325,6 +325,23 @@ func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender,
 	return nil, errors.New(errMsg)
 }
 
+// vmRequestOpts holds optional template and config overrides for VM creation.
+// When template is empty, the default "vm-aws" is used.
+type vmRequestOpts struct {
+	template string
+	config   map[string]interface{}
+}
+
+func (o vmRequestOpts) appName() string {
+	if o.config == nil {
+		return ""
+	}
+	if app, ok := o.config["app"].(string); ok {
+		return app
+	}
+	return ""
+}
+
 // resolveVMForUser finds or creates a VM for the given user.
 //
 // Priority:
@@ -332,9 +349,25 @@ func (a *App) waitForVMActive(ctx context.Context, sender *backend.StreamSender,
 //  2. ListVMs fallback   -- if cache miss or 404, query the Coda API for active VMs owned by user.
 //  3. Create last resort  -- if no usable VM exists, check quota then CreateVM.
 //
+// When opts specifies a non-default template, cached and existing VMs with a
+// different template are skipped so the user gets the right VM type.
+//
 // Terminal-state VMs found during resolution are destroyed (best-effort).
-func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender, userLogin string) (*VM, string, error) {
+func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender, userLogin string, opts ...vmRequestOpts) (*VM, string, error) {
 	ctxLogger := a.ctxLogger(ctx)
+
+	// Resolve requested template (default: vm-aws)
+	requestedTemplate := "vm-aws"
+	var vmConfig map[string]interface{}
+	var requestedApp string
+	if len(opts) > 0 && opts[0].template != "" {
+		requestedTemplate = opts[0].template
+		vmConfig = opts[0].config
+		requestedApp = opts[0].appName()
+	}
+	isNonDefault := requestedTemplate != "vm-aws"
+
+	ctxLogger.Info("Resolving VM for user", "userLogin", userLogin, "template", requestedTemplate, "app", requestedApp)
 
 	// Step 1: In-memory fast path
 	a.userVMsMu.RLock()
@@ -346,18 +379,28 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		vm, err := a.getVMWithRetry(ctx, cachedID)
 
 		if err != nil && !isVMNotFoundError(err) {
-			// Transient error even after retry -- still try ListVMs fallback
 			ctxLogger.Warn("Cached VM fetch failed (transient), falling back to ListVMs", "vmID", cachedID, "error", err)
 		} else if err != nil {
-			// 404 -- VM is gone, clean up cache
 			ctxLogger.Info("Cached VM no longer exists, clearing", "vmID", cachedID)
 			a.clearUserVM(userLogin, cachedID)
 		} else if isUsableState(vm.State) {
-			ctxLogger.Info("Reusing cached VM", "userLogin", userLogin, "vmID", cachedID, "state", vm.State)
-			sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", cachedID)
-			return vm, cachedID, nil
+			// Check template and app match for reuse
+			templateMismatch := isNonDefault && vm.Template != requestedTemplate
+			appMismatch := requestedApp != "" && vm.AppName() != requestedApp
+
+			if templateMismatch || appMismatch {
+				ctxLogger.Info("Cached VM doesn't match request, destroying and creating fresh",
+					"vmID", cachedID, "cachedTemplate", vm.Template, "cachedApp", vm.AppName(),
+					"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
+				a.clearUserVM(userLogin, cachedID)
+				sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", cachedID)
+				go func() { _ = a.coda.DeleteVM(context.Background(), cachedID, true) }()
+			} else {
+				ctxLogger.Info("Reusing cached VM", "userLogin", userLogin, "vmID", cachedID, "state", vm.State)
+				sendStreamStatusWithVmId(sender, vm.State, "Reconnecting to your existing VM...", cachedID)
+				return vm, cachedID, nil
+			}
 		} else {
-			// Terminal state -- destroy best-effort and clear cache
 			ctxLogger.Info("Cached VM in terminal state, destroying", "vmID", cachedID, "state", vm.State)
 			a.clearUserVM(userLogin, cachedID)
 			go func() { _ = a.coda.DeleteVM(context.Background(), cachedID, true) }()
@@ -373,24 +416,38 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		ctxLogger.Warn("FindActiveVMForUser failed, proceeding to create", "error", err)
 	}
 	if existingVM != nil {
-		ctxLogger.Info("Found existing VM via ListVMs", "vmID", existingVM.ID, "state", existingVM.State, "surplusCount", len(surplusVMs))
-		a.userVMsMu.Lock()
-		a.userVMs[userLogin] = existingVM.ID
-		a.userVMsMu.Unlock()
+		templateMatch := !isNonDefault || existingVM.Template == requestedTemplate
+		appMatch := requestedApp == "" || existingVM.AppName() == requestedApp
 
-		// Clean up surplus VMs so the user doesn't waste quota slots.
-		// Users should only have one active VM at a time.
-		if len(surplusVMs) > 0 {
-			ctxLogger.Info("Destroying surplus VMs for user", "userLogin", userLogin, "count", len(surplusVMs))
-			for _, s := range surplusVMs {
-				vmToDelete := s.ID
-				ctxLogger.Info("Destroying surplus VM", "vmID", vmToDelete)
-				go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+		if templateMatch && appMatch {
+			ctxLogger.Info("Found existing VM via ListVMs", "vmID", existingVM.ID, "state", existingVM.State, "surplusCount", len(surplusVMs))
+			a.userVMsMu.Lock()
+			a.userVMs[userLogin] = existingVM.ID
+			a.userVMsMu.Unlock()
+
+			if len(surplusVMs) > 0 {
+				ctxLogger.Info("Destroying surplus VMs for user", "userLogin", userLogin, "count", len(surplusVMs))
+				for _, s := range surplusVMs {
+					vmToDelete := s.ID
+					ctxLogger.Info("Destroying surplus VM", "vmID", vmToDelete)
+					go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+				}
 			}
+
+			sendStreamStatusWithVmId(sender, existingVM.State, "Reconnecting to your existing VM...", existingVM.ID)
+			return existingVM, existingVM.ID, nil
 		}
 
-		sendStreamStatusWithVmId(sender, existingVM.State, "Reconnecting to your existing VM...", existingVM.ID)
-		return existingVM, existingVM.ID, nil
+		// Template or app mismatch — destroy the old VM and all surplus
+		ctxLogger.Info("Existing VM doesn't match request, destroying",
+			"vmID", existingVM.ID, "existingTemplate", existingVM.Template, "existingApp", existingVM.AppName(),
+			"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
+		sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", "")
+		go func() { _ = a.coda.DeleteVM(context.Background(), existingVM.ID, true) }()
+		for _, s := range surplusVMs {
+			vmToDelete := s.ID
+			go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+		}
 	}
 
 	// Step 3: No usable VM -- check quota then create
@@ -402,10 +459,10 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		return nil, "", errors.New(errMsg)
 	}
 
-	ctxLogger.Info("Provisioning new VM", "userLogin", userLogin)
+	ctxLogger.Info("Provisioning new VM", "userLogin", userLogin, "template", requestedTemplate)
 	sendStreamStatusWithVmId(sender, "provisioning", "Provisioning new VM...", "")
 
-	vm, createErr := a.coda.CreateVM(ctx, "vm-aws", userLogin)
+	vm, createErr := a.coda.CreateVM(ctx, requestedTemplate, userLogin, vmConfig)
 	if createErr != nil {
 		errMsg := fmt.Sprintf("Failed to create VM: %v", createErr)
 		sendStreamError(sender, errMsg)
@@ -416,7 +473,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 	a.userVMs[userLogin] = vm.ID
 	a.userVMsMu.Unlock()
 
-	ctxLogger.Info("New VM created", "userLogin", userLogin, "vmID", vm.ID, "state", vm.State)
+	ctxLogger.Info("New VM created", "userLogin", userLogin, "vmID", vm.ID, "state", vm.State, "template", requestedTemplate)
 	sendStreamStatusWithVmId(sender, vm.State, "VM allocated, waiting for boot...", vm.ID)
 	return vm, vm.ID, nil
 }
@@ -466,8 +523,23 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	userLogin := getUserLogin(req)
 	ctxLogger.Info("User identified for VM tracking", "userLogin", userLogin)
 
+	// Parse optional template and app from extended path segments:
+	//   terminal/{vmId}/{nonce}                       → default (vm-aws)
+	//   terminal/{vmId}/{nonce}/{template}             → custom template, no app
+	//   terminal/{vmId}/{nonce}/{template}/{app}       → custom template + app name
+	var reqOpts vmRequestOpts
+	if len(parts) >= 4 && parts[3] != "" {
+		reqOpts.template = parts[3]
+		if len(parts) >= 5 && parts[4] != "" {
+			reqOpts.config = map[string]interface{}{
+				"app": parts[4],
+			}
+		}
+		ctxLogger.Info("Custom VM template requested", "template", reqOpts.template, "config", reqOpts.config)
+	}
+
 	// Resolve a VM: reuse existing or create new (with quota check)
-	vm, vmID, err := a.resolveVMForUser(ctx, sender, userLogin)
+	vm, vmID, err := a.resolveVMForUser(ctx, sender, userLogin, reqOpts)
 	if err != nil {
 		return err
 	}

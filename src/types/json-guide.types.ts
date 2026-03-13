@@ -449,6 +449,10 @@ export interface JsonTerminalConnectBlock {
   content: string;
   /** Custom button text (defaults to "Try in terminal") */
   buttonText?: string;
+  /** VM template to use (defaults to "vm-aws"). Set to "vm-aws-sample-app" for sample app VMs. */
+  vmTemplate?: string;
+  /** App name for sample-app template (e.g. "nginx", "mysql"). Only used with vm-aws-sample-app. */
+  vmApp?: string;
 }
 
 // ============ CODE BLOCK ============

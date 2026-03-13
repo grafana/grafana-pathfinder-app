@@ -16,14 +16,26 @@ import (
 
 // VM represents a Coda VM instance.
 type VM struct {
-	ID           string       `json:"id"`
-	Template     string       `json:"template"`
-	State        string       `json:"state"`
-	Credentials  *Credentials `json:"credentials,omitempty"`
-	Owner        string       `json:"owner"`
-	ErrorMessage *string      `json:"errorMessage,omitempty"`
-	ExpiresAt    time.Time    `json:"expiresAt"`
-	CreatedAt    time.Time    `json:"createdAt"`
+	ID           string                 `json:"id"`
+	Template     string                 `json:"template"`
+	State        string                 `json:"state"`
+	Config       map[string]interface{} `json:"config,omitempty"`
+	Credentials  *Credentials           `json:"credentials,omitempty"`
+	Owner        string                 `json:"owner"`
+	ErrorMessage *string                `json:"errorMessage,omitempty"`
+	ExpiresAt    time.Time              `json:"expiresAt"`
+	CreatedAt    time.Time              `json:"createdAt"`
+}
+
+// AppName returns the "app" value from the VM config, or "" if not set.
+func (v *VM) AppName() string {
+	if v.Config == nil {
+		return ""
+	}
+	if app, ok := v.Config["app"].(string); ok {
+		return app
+	}
+	return ""
 }
 
 // Credentials contains SSH connection information for a VM.
@@ -238,11 +250,15 @@ type CreateVMRequest struct {
 }
 
 // CreateVM requests a new VM from Coda.
-func (c *CodaClient) CreateVM(ctx context.Context, template, owner string) (*VM, error) {
+func (c *CodaClient) CreateVM(ctx context.Context, template, owner string, config ...map[string]interface{}) (*VM, error) {
+	vmConfig := map[string]interface{}{}
+	if len(config) > 0 && config[0] != nil {
+		vmConfig = config[0]
+	}
 	payload := CreateVMRequest{
 		Template: template,
 		Owner:    owner,
-		Config:   map[string]interface{}{},
+		Config:   vmConfig,
 	}
 
 	body, err := json.Marshal(payload)
@@ -454,6 +470,49 @@ func (c *CodaClient) FindActiveVMForUser(ctx context.Context, owner string) (*VM
 	}
 
 	return &primary, surplus, nil
+}
+
+// SampleApp represents an available sample app from the Coda API.
+type SampleApp struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+}
+
+// SampleAppsResponse represents the response from the sample-apps endpoint.
+type SampleAppsResponse struct {
+	Apps []SampleApp `json:"apps"`
+}
+
+// ListSampleApps fetches available sample apps from the Coda API.
+func (c *CodaClient) ListSampleApps(ctx context.Context) (*SampleAppsResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL+"/api/v1/sample-apps", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if err := c.setAuthHeader(ctx, req); err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result SampleAppsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
 }
 
 // CountVMsForUser returns the number of non-terminal VMs owned by the given user.

@@ -5,13 +5,16 @@
  * Users click the + Add Block button to add new blocks to their guide.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Icon, Portal, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER } from './constants';
+import { getConfigWithDefaults } from '../../constants';
 import { testIds } from '../../constants/testIds';
 import type { BlockType, OnBlockTypeSelect } from './types';
+
+const CODA_BLOCK_TYPES: BlockType[] = ['terminal', 'terminal-connect'];
 
 // Styles for the palette modal
 const getPaletteModalStyles = (theme: GrafanaTheme2) => ({
@@ -216,6 +219,12 @@ export function BlockPalette({
   const styles = useStyles2(getPaletteModalStyles);
   const [isOpen, setIsOpen] = useState(false);
 
+  const pluginContext = usePluginContext();
+  const pluginConfig = useMemo(
+    () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}),
+    [pluginContext?.meta?.jsonData]
+  );
+
   // Determine which trigger style to use
   const getTriggerClassName = () => {
     if (embedded) {
@@ -224,8 +233,14 @@ export function BlockPalette({
     return compact ? styles.triggerCompact : styles.trigger;
   };
 
-  // Filter out excluded types
-  const availableTypes = BLOCK_TYPE_ORDER.filter((type) => !excludeTypes.includes(type));
+  const effectiveExcludeTypes = useMemo(() => {
+    if (pluginConfig.enableCodaTerminal) {
+      return excludeTypes;
+    }
+    return [...excludeTypes, ...CODA_BLOCK_TYPES];
+  }, [excludeTypes, pluginConfig.enableCodaTerminal]);
+
+  const availableTypes = BLOCK_TYPE_ORDER.filter((type) => !effectiveExcludeTypes.includes(type));
 
   // Handle escape key to close
   useEffect(() => {

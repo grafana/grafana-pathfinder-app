@@ -14,6 +14,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/coda/register", a.handleCodaRegister)
 	mux.HandleFunc("/vms", a.handleVMs)
 	mux.HandleFunc("/vms/", a.handleVMByID)
+	mux.HandleFunc("/sample-apps", a.handleSampleApps)
 	mux.HandleFunc("/mcp", a.handleMCP)
 	mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)
 	mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)
@@ -169,7 +170,8 @@ func (a *App) handleCodaRegister(w http.ResponseWriter, r *http.Request) {
 
 // CreateVMHTTPRequest represents the request body for creating a VM.
 type CreateVMHTTPRequest struct {
-	Template string `json:"template"`
+	Template string                 `json:"template"`
+	Config   map[string]interface{} `json:"config,omitempty"`
 }
 
 // handleCreateVM creates a new VM via Coda.
@@ -204,9 +206,9 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctxLogger.Info("Creating VM", "template", req.Template, "user", user)
+	ctxLogger.Info("Creating VM", "template", req.Template, "user", user, "hasConfig", len(req.Config) > 0)
 
-	vm, err := a.coda.CreateVM(r.Context(), req.Template, user)
+	vm, err := a.coda.CreateVM(r.Context(), req.Template, user, req.Config)
 	if err != nil {
 		ctxLogger.Error("Failed to create VM", "error", err)
 		// Check if this is an auth error
@@ -293,6 +295,33 @@ func (a *App) handleListVMs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.writeJSON(w, map[string]interface{}{"vms": vms}, http.StatusOK)
+}
+
+// handleSampleApps returns available sample apps from Coda.
+func (a *App) handleSampleApps(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if a.coda == nil {
+		a.writeError(w, "Coda not registered - configure enrollment key and register first", http.StatusServiceUnavailable)
+		return
+	}
+
+	ctxLogger := a.ctxLogger(r.Context())
+	apps, err := a.coda.ListSampleApps(r.Context())
+	if err != nil {
+		ctxLogger.Error("Failed to list sample apps", "error", err)
+		if strings.Contains(err.Error(), "authentication failed") {
+			a.writeError(w, err.Error(), http.StatusUnauthorized)
+		} else {
+			a.writeError(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	a.writeJSON(w, apps, http.StatusOK)
 }
 
 // handleHealth returns the plugin health status.
