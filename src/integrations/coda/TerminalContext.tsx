@@ -113,7 +113,15 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const openTerminal = useCallback(
     (vmOpts?: TerminalVMOptions) => {
       setIsExpanded(true);
-      if (registeredStatus === 'disconnected' || registeredStatus === 'error') {
+
+      const needsConnect = registeredStatus === 'disconnected' || registeredStatus === 'error';
+      const needsReconnect = !needsConnect && Boolean(vmOpts?.template || vmOpts?.app);
+
+      if (needsReconnect) {
+        registeredDisconnectRef.current?.();
+      }
+
+      if (needsConnect || needsReconnect) {
         setTimeout(() => {
           registeredConnectRef.current?.(vmOpts);
         }, 100);

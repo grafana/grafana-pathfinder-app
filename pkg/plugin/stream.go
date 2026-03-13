@@ -365,7 +365,6 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		vmConfig = opts[0].config
 		requestedApp = opts[0].appName()
 	}
-	isNonDefault := requestedTemplate != "vm-aws"
 
 	ctxLogger.Info("Resolving VM for user", "userLogin", userLogin, "template", requestedTemplate, "app", requestedApp)
 
@@ -384,8 +383,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 			ctxLogger.Info("Cached VM no longer exists, clearing", "vmID", cachedID)
 			a.clearUserVM(userLogin, cachedID)
 		} else if isUsableState(vm.State) {
-			// Check template and app match for reuse
-			templateMismatch := isNonDefault && vm.Template != requestedTemplate
+			templateMismatch := vm.Template != requestedTemplate
 			appMismatch := requestedApp != "" && vm.AppName() != requestedApp
 
 			if templateMismatch || appMismatch {
@@ -416,7 +414,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		ctxLogger.Warn("FindActiveVMForUser failed, proceeding to create", "error", err)
 	}
 	if existingVM != nil {
-		templateMatch := !isNonDefault || existingVM.Template == requestedTemplate
+		templateMatch := existingVM.Template == requestedTemplate
 		appMatch := requestedApp == "" || existingVM.AppName() == requestedApp
 
 		if templateMatch && appMatch {
