@@ -19,6 +19,7 @@ import {
 import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import type { TerminalVMOptions } from './TerminalContext';
 
 interface ConnectionLog {
   startConnection: () => void;
@@ -99,17 +100,11 @@ interface UseTerminalLiveOptions {
   terminalRef: RefObject<Terminal | null>;
 }
 
-/** Options for connecting to a specific VM template */
-interface VMConnectOptions {
-  template?: string;
-  app?: string;
-}
-
 interface UseTerminalLiveReturn {
   /** Current connection status */
   status: ConnectionStatus;
   /** Connect to terminal (provisions VM if needed). Pass vmOpts for non-default templates. */
-  connect: (vmOpts?: VMConnectOptions) => void;
+  connect: (vmOpts?: TerminalVMOptions) => void;
   /** Disconnect from terminal */
   disconnect: () => void;
   /** Send resize event to backend */
@@ -283,7 +278,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * Connect to Grafana Live stream for terminal I/O
    */
   const connectLiveStream = useCallback(
-    (id: string, terminal: Terminal, vmOpts?: VMConnectOptions) => {
+    (id: string, terminal: Terminal, vmOpts?: TerminalVMOptions) => {
       const liveSrv = getGrafanaLiveSrv();
       if (!liveSrv) {
         connectionLogRef.current.error('Grafana Live service not available', null, {
@@ -577,7 +572,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * - Backend pushes status updates via the stream
    */
   const connect = useCallback(
-    async (vmOpts?: VMConnectOptions) => {
+    async (vmOpts?: TerminalVMOptions) => {
       const terminal = terminalRef.current;
       if (!terminal) {
         connectionLogRef.current.error('Terminal instance not available', null, {

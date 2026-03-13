@@ -275,10 +275,10 @@ func isSSHRetryableError(err error) bool {
 
 // SSH retry constants
 const (
-	maxSSHRetries         = 3                // SSH connection retries on the same VM
+	maxSSHRetries          = 3               // SSH connection retries on the same VM
 	maxCredentialRefreshes = 2               // Times to re-fetch credentials on auth failure before giving up
-	sshRetryDelay         = 5 * time.Second  // Delay between same-VM retries
-	maxUserVMs            = 3                // Hard limit on non-terminal VMs per user
+	sshRetryDelay          = 5 * time.Second // Delay between same-VM retries
+	maxUserVMs             = 3               // Hard limit on non-terminal VMs per user
 )
 
 // waitForVMActive polls until VM is active and returns it, sending status updates
@@ -420,26 +420,53 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		ctxLogger.Warn("FindActiveVMForUser failed, proceeding to create", "error", err)
 	}
 	if existingVM != nil {
-		templateMatch := existingVM.Template == requestedTemplate
-		appMatch := requestedApp == "" || existingVM.AppName() == requestedApp
+		vmMatchesRequest := func(vm *VM) bool {
+			templateMatch := vm.Template == requestedTemplate
+			appMatch := requestedApp == "" || vm.AppName() == requestedApp
+			return templateMatch && appMatch
+		}
 
-		if templateMatch && appMatch {
-			ctxLogger.Info("Found existing VM via ListVMs", "vmID", existingVM.ID, "state", existingVM.State, "surplusCount", len(surplusVMs))
+		selectedVM := existingVM
+		if !vmMatchesRequest(existingVM) {
+			selectedVM = nil
+			for i := range surplusVMs {
+				candidate := &surplusVMs[i]
+				if vmMatchesRequest(candidate) && (selectedVM == nil || candidate.CreatedAt.After(selectedVM.CreatedAt)) {
+					selectedVM = candidate
+				}
+			}
+		}
+
+		if selectedVM != nil {
+			ctxLogger.Info("Found existing VM via ListVMs", "vmID", selectedVM.ID, "state", selectedVM.State, "surplusCount", len(surplusVMs))
 			a.userVMsMu.Lock()
-			a.userVMs[userLogin] = existingVM.ID
+			a.userVMs[userLogin] = selectedVM.ID
 			a.userVMsMu.Unlock()
 
-			if len(surplusVMs) > 0 {
-				ctxLogger.Info("Destroying surplus VMs for user", "userLogin", userLogin, "count", len(surplusVMs))
-				for _, s := range surplusVMs {
-					vmToDelete := s.ID
+			if existingVM.ID != selectedVM.ID {
+				vmToDelete := existingVM.ID
+				ctxLogger.Info("Destroying non-matching primary VM", "vmID", vmToDelete)
+				go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+			}
+
+			var surplusToDelete []string
+			for _, s := range surplusVMs {
+				if s.ID != selectedVM.ID {
+					surplusToDelete = append(surplusToDelete, s.ID)
+				}
+			}
+
+			if len(surplusToDelete) > 0 {
+				ctxLogger.Info("Destroying surplus VMs for user", "userLogin", userLogin, "count", len(surplusToDelete))
+				for _, id := range surplusToDelete {
+					vmToDelete := id
 					ctxLogger.Info("Destroying surplus VM", "vmID", vmToDelete)
 					go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
 				}
 			}
 
-			sendStreamStatusWithVmId(sender, existingVM.State, "Reconnecting to your existing VM...", existingVM.ID)
-			return existingVM, existingVM.ID, nil
+			sendStreamStatusWithVmId(sender, selectedVM.State, "Reconnecting to your existing VM...", selectedVM.ID)
+			return selectedVM, selectedVM.ID, nil
 		}
 
 		// Template or app mismatch — queue the old VM and all surplus for deletion
