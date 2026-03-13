@@ -10,7 +10,9 @@
  */
 
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
-import type { ConnectionStatus } from './useTerminalLive.hook';
+import type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
+
+export type { TerminalVMOptions };
 
 // Module-level status for requirement checker access (outside React tree)
 let _moduleTerminalStatus: ConnectionStatus = 'disconnected';
@@ -20,14 +22,6 @@ let _moduleTerminalStatus: ConnectionStatus = 'disconnected';
  */
 export function getTerminalConnectionStatus(): ConnectionStatus {
   return _moduleTerminalStatus;
-}
-
-/** Options for connecting to a specific VM template */
-export interface TerminalVMOptions {
-  /** VM template (defaults to "vm-aws") */
-  template?: string;
-  /** App name for sample-app templates */
-  app?: string;
 }
 
 export interface TerminalContextValue {

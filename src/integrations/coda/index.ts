@@ -7,9 +7,8 @@
 
 export { TerminalPanel } from './TerminalPanel';
 export { useTerminalLive } from './useTerminalLive.hook';
-export type { ConnectionStatus } from './useTerminalLive.hook';
+export type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
 export { TerminalProvider, useTerminalContext, getTerminalConnectionStatus } from './TerminalContext';
-export type { TerminalVMOptions } from './TerminalContext';
 export {
   getTerminalOpen,
   setTerminalOpen,

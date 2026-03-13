@@ -100,8 +100,10 @@ interface UseTerminalLiveOptions {
 }
 
 /** Options for connecting to a specific VM template */
-interface VMConnectOptions {
+export interface TerminalVMOptions {
+  /** VM template (defaults to "vm-aws") */
   template?: string;
+  /** App name for sample-app templates */
   app?: string;
 }
 
@@ -109,7 +111,7 @@ interface UseTerminalLiveReturn {
   /** Current connection status */
   status: ConnectionStatus;
   /** Connect to terminal (provisions VM if needed). Pass vmOpts for non-default templates. */
-  connect: (vmOpts?: VMConnectOptions) => void;
+  connect: (vmOpts?: TerminalVMOptions) => void;
   /** Disconnect from terminal */
   disconnect: () => void;
   /** Send resize event to backend */
@@ -283,7 +285,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * Connect to Grafana Live stream for terminal I/O
    */
   const connectLiveStream = useCallback(
-    (id: string, terminal: Terminal, vmOpts?: VMConnectOptions) => {
+    (id: string, terminal: Terminal, vmOpts?: TerminalVMOptions) => {
       const liveSrv = getGrafanaLiveSrv();
       if (!liveSrv) {
         connectionLogRef.current.error('Grafana Live service not available', null, {
@@ -577,7 +579,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * - Backend pushes status updates via the stream
    */
   const connect = useCallback(
-    async (vmOpts?: VMConnectOptions) => {
+    async (vmOpts?: TerminalVMOptions) => {
       const terminal = terminalRef.current;
       if (!terminal) {
         connectionLogRef.current.error('Terminal instance not available', null, {

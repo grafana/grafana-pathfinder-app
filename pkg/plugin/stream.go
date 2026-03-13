@@ -442,10 +442,42 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 			return existingVM, existingVM.ID, nil
 		}
 
-		// Template or app mismatch — queue the old VM and all surplus for deletion
-		ctxLogger.Info("Existing VM doesn't match request, destroying",
+		// Primary doesn't match — check surplus for a VM that does before destroying all
+		ctxLogger.Info("Primary VM doesn't match request",
 			"vmID", existingVM.ID, "existingTemplate", existingVM.Template, "existingApp", existingVM.AppName(),
 			"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
+
+		var matchingSurplus *VM
+		for i := range surplusVMs {
+			st := surplusVMs[i].Template == requestedTemplate
+			sa := requestedApp == "" || surplusVMs[i].AppName() == requestedApp
+			if st && sa {
+				matchingSurplus = &surplusVMs[i]
+				break
+			}
+		}
+
+		if matchingSurplus != nil {
+			ctxLogger.Info("Found matching VM in surplus list", "vmID", matchingSurplus.ID, "state", matchingSurplus.State)
+			a.userVMsMu.Lock()
+			a.userVMs[userLogin] = matchingSurplus.ID
+			a.userVMsMu.Unlock()
+
+			// Destroy the non-matching primary and other non-matching surplus in background
+			primaryToDelete := existingVM.ID
+			go func() { _ = a.coda.DeleteVM(context.Background(), primaryToDelete, true) }()
+			for _, s := range surplusVMs {
+				if s.ID != matchingSurplus.ID {
+					vmToDelete := s.ID
+					go func() { _ = a.coda.DeleteVM(context.Background(), vmToDelete, true) }()
+				}
+			}
+
+			sendStreamStatusWithVmId(sender, matchingSurplus.State, "Reconnecting to your existing VM...", matchingSurplus.ID)
+			return matchingSurplus, matchingSurplus.ID, nil
+		}
+
+		// No matching VM anywhere — queue all for deletion before creating new
 		sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", "")
 		mismatchVMsToDelete = append(mismatchVMsToDelete, existingVM.ID)
 		for _, s := range surplusVMs {
