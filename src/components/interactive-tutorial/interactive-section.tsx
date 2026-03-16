@@ -162,8 +162,12 @@ export function InteractiveSection({
   // Detect if we're in preview mode (block editor preview)
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
   const isPreviewMode = useMemo(() => {
+    const activeTabId = (window as any).__DocsPluginActiveTabId as string | undefined;
+    if (activeTabId === 'editor') {
+      return true;
+    }
     const contentKey = getContentKey();
-    return contentKey.indexOf('editor') > -1 || contentKey.startsWith('block-editor://preview/');
+    return contentKey.startsWith('block-editor://preview/');
   }, []);
 
   // Persist completed steps using new user storage system
