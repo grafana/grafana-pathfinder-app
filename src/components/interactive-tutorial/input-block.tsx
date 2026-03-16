@@ -12,6 +12,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { getDataSourceSrv } from '@grafana/runtime';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { testIds } from '../../constants/testIds';
 
 /** Props for the InputBlock component */
 export interface InputBlockProps {
@@ -402,7 +403,12 @@ export function InputBlock({
         return (
           <div className={styles.inputContainer}>
             <Field label="" invalid={!!validationError} error={validationError}>
-              <Input value={textValue} onChange={handleTextChange} placeholder={placeholder} />
+              <Input
+                value={textValue}
+                onChange={handleTextChange}
+                placeholder={placeholder}
+                data-testid={testIds.interactive.inputField(variableName)}
+              />
             </Field>
           </div>
         );
@@ -453,7 +459,12 @@ export function InputBlock({
       {/* Actions - same for all input types */}
       <div className={styles.buttonContainer}>
         {skippable && !required && !isSaved && (
-          <Button variant="secondary" size="sm" onClick={handleSkip}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSkip}
+            data-testid={testIds.interactive.inputSkipButton(variableName)}
+          >
             Skip
           </Button>
         )}
@@ -466,12 +477,22 @@ export function InputBlock({
         )}
 
         {isSaved && (
-          <Button variant="secondary" size="sm" onClick={handleReset}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleReset}
+            data-testid={testIds.interactive.inputResetButton(variableName)}
+          >
             Reset
           </Button>
         )}
 
-        <Button variant="primary" size="sm" onClick={handleSave}>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleSave}
+          data-testid={testIds.interactive.inputSaveButton(variableName)}
+        >
           {isSaved ? 'Update' : 'Save'}
         </Button>
       </div>

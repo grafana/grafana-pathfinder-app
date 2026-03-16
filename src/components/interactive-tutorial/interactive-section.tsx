@@ -163,7 +163,7 @@ export function InteractiveSection({
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
   const isPreviewMode = useMemo(() => {
     const contentKey = getContentKey();
-    return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
+    return contentKey.indexOf('editor') > -1 || contentKey.startsWith('block-editor://preview/');
   }, []);
 
   // Persist completed steps using new user storage system
@@ -1631,6 +1631,7 @@ export function InteractiveSection({
             type="button"
             title={isCollapsed ? 'Expand section' : 'Collapse section'}
             aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
+            data-testid={testIds.interactive.sectionToggle(sectionId)}
           >
             <span className="interactive-section-toggle-icon">{isCollapsed ? '▶' : '▼'}</span>
           </button>

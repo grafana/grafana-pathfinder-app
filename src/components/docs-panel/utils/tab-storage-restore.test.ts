@@ -93,23 +93,43 @@ describe('tab-storage-restore', () => {
       expect(tabs[1]!.type).toBe('learning-journey');
     });
 
-    it('should restore devtools tab without URL validation', async () => {
+    it('should restore editor tab without URL validation', async () => {
       const persistedTabs: PersistedTabData[] = [
         {
-          id: 'devtools',
-          title: 'Dev Tools',
+          id: 'editor',
+          title: 'Guide editor',
           baseUrl: '',
           currentUrl: '',
-          type: 'devtools',
+          type: 'editor',
         },
       ];
 
       const storage = createMockTabStorage(persistedTabs);
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
-      expect(tabs).toHaveLength(2); // recommendations + devtools
-      expect(tabs[1]!.id).toBe('devtools');
-      expect(tabs[1]!.type).toBe('devtools');
+      expect(tabs).toHaveLength(2); // recommendations + editor
+      expect(tabs[1]!.id).toBe('editor');
+      expect(tabs[1]!.type).toBe('editor');
+    });
+
+    it('should migrate old devtools tab type to editor', async () => {
+      const persistedTabs: PersistedTabData[] = [
+        {
+          id: 'devtools',
+          title: 'Dev Tools',
+          baseUrl: '',
+          currentUrl: '',
+          type: 'devtools' as any,
+        },
+      ];
+
+      const storage = createMockTabStorage(persistedTabs);
+      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
+
+      expect(tabs).toHaveLength(2);
+      expect(tabs[1]!.id).toBe('editor');
+      expect(tabs[1]!.type).toBe('editor');
+      expect(tabs[1]!.title).toBe('Guide editor');
     });
 
     it('should reject tabs with invalid base URL', async () => {
@@ -204,11 +224,11 @@ describe('tab-storage-restore', () => {
           type: 'learning-journey',
         },
         {
-          id: 'devtools',
-          title: 'Dev Tools',
+          id: 'editor',
+          title: 'Guide editor',
           baseUrl: '',
           currentUrl: '',
-          type: 'devtools',
+          type: 'editor',
         },
       ];
 
@@ -317,7 +337,35 @@ describe('tab-storage-restore', () => {
       expect(activeTabId).toBe('tab-1');
     });
 
-    it('should restore devtools as active tab if it exists', async () => {
+    it('should restore editor as active tab if it exists', async () => {
+      const storage = createMockTabStorage(null, 'editor');
+      const tabs = [
+        {
+          id: 'recommendations',
+          title: 'Recommendations',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+        },
+        {
+          id: 'editor',
+          title: 'Guide editor',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+          type: 'editor' as const,
+        },
+      ];
+
+      const activeTabId = await restoreActiveTabFromStorage(storage, tabs);
+      expect(activeTabId).toBe('editor');
+    });
+
+    it('should migrate old devtools active tab ID to editor', async () => {
       const storage = createMockTabStorage(null, 'devtools');
       const tabs = [
         {
@@ -330,19 +378,19 @@ describe('tab-storage-restore', () => {
           error: null,
         },
         {
-          id: 'devtools',
-          title: 'Dev Tools',
+          id: 'editor',
+          title: 'Guide editor',
           baseUrl: '',
           currentUrl: '',
           content: null,
           isLoading: false,
           error: null,
-          type: 'devtools' as const,
+          type: 'editor' as const,
         },
       ];
 
       const activeTabId = await restoreActiveTabFromStorage(storage, tabs);
-      expect(activeTabId).toBe('devtools');
+      expect(activeTabId).toBe('editor');
     });
 
     it('should default to recommendations when stored active tab does not exist', async () => {

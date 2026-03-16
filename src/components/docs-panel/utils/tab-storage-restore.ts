@@ -95,17 +95,18 @@ export async function restoreTabsFromStorage(
     const validateUrl = createUrlValidator(options.isDevMode);
 
     parsedData.forEach((data: PersistedTabData) => {
-      // Handle devtools tab specially - it has no URLs to validate
-      if (data.type === 'devtools') {
+      // Handle editor tab specially - it has no URLs to validate.
+      // Accept old 'devtools' type for backward compat and migrate to 'editor'.
+      if (data.type === 'editor' || (data.type as string) === 'devtools') {
         tabs.push({
-          id: 'devtools',
-          title: 'Dev Tools',
+          id: 'editor',
+          title: 'Guide editor',
           baseUrl: '',
           currentUrl: '',
           content: null,
           isLoading: false,
           error: null,
-          type: 'devtools',
+          type: 'editor',
         });
         return;
       }
@@ -166,12 +167,11 @@ export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: 
     const activeTabId = await tabStorage.getActiveTab();
 
     if (activeTabId) {
-      const tabExists = tabs.some((t) => t.id === activeTabId);
+      // Migrate old 'devtools' active tab ID to 'editor'
+      const resolvedTabId = activeTabId === 'devtools' ? 'editor' : activeTabId;
+      const tabExists = tabs.some((t) => t.id === resolvedTabId);
 
-      // Restore the stored tab if it exists (including devtools - it should persist like normal tabs)
-      // The closeTab method ensures that when all tabs are closed, 'recommendations' is saved to storage
-      // So if storage has 'devtools', it means the user was legitimately on devtools when they refreshed
-      return tabExists ? activeTabId : 'recommendations';
+      return tabExists ? resolvedTabId : 'recommendations';
     }
   } catch (error) {
     console.error('Failed to restore active tab from storage:', error);

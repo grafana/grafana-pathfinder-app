@@ -17,7 +17,7 @@ export interface TabVisibilityResult {
 
 /**
  * Computes which tabs fit in the visible area and which move to overflow.
- * Permanent tabs (recommendations, devtools) are always in visibleTabs;
+ * Permanent tabs (recommendations, editor) are always in visibleTabs;
  * guide tabs are split by available width, with the active tab forced visible if it would be overflowed.
  */
 export function computeTabVisibility(
@@ -25,7 +25,7 @@ export function computeTabVisibility(
   containerWidth: number,
   activeTabId: string
 ): TabVisibilityResult {
-  const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools');
+  const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'editor');
 
   const permanentTabs = tabs.filter((t) => t.id === 'recommendations');
 

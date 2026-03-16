@@ -10,6 +10,7 @@ import { Button, Field, Input, TextArea, RadioButtonGroup, Checkbox, Badge, useS
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonInputBlock } from '../../../types/json-guide.types';
 
@@ -329,7 +330,7 @@ export function InputBlockForm({
             <TypeSwitchDropdown currentType="input" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
-        <Button variant="secondary" onClick={onCancel} type="button">
+        <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>

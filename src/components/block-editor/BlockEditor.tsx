@@ -35,6 +35,7 @@ import { BlockEditorModals } from './BlockEditorModals';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
 import { ConfirmModal } from './NotificationModals';
 import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
+import { testIds } from '../../constants/testIds';
 
 /** Converts a guide title to a URL-safe kebab-case slug */
 function slugifyTitle(title: string): string {
@@ -697,7 +698,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   );
 
   return (
-    <div className={styles.container} data-testid="block-editor">
+    <div className={styles.container} data-testid={testIds.blockEditor.container}>
       {/* Header */}
       <BlockEditorHeader
         guideTitle={state.guide.title}
