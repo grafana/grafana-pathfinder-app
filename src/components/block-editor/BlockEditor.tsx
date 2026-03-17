@@ -187,7 +187,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       '.context-container',
       '[data-devtools-panel]',
       '[data-block-editor]',
-      '[data-testid="block-editor"]',
+      `[data-testid="${testIds.blockEditor.container}"]`,
       '[data-record-overlay]', // Stop recording button and overlay elements
     ],
     []

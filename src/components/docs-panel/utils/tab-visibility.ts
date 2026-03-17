@@ -27,7 +27,7 @@ export function computeTabVisibility(
 ): TabVisibilityResult {
   const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'editor');
 
-  const permanentTabs = tabs.filter((t) => t.id === 'recommendations');
+  const permanentTabs = tabs.filter((t) => t.id === 'recommendations' || t.id === 'editor');
 
   if (guideTabs.length === 0) {
     return { visibleTabs: tabs, overflowedTabs: [] };
