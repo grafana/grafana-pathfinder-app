@@ -166,7 +166,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private initializeRestoredActiveTab(): void {
     const activeTab = this.state.tabs.find((t) => t.id === this.state.activeTabId);
-    if (activeTab && activeTab.id !== 'recommendations') {
+    if (activeTab && activeTab.id !== 'recommendations' && activeTab.id !== 'editor') {
       // If we have an active tab but no content, load it
       if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
         if (isDocsLikeTab(activeTab.type)) {

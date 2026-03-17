@@ -93,21 +93,26 @@ export async function restoreTabsFromStorage(
     ];
 
     const validateUrl = createUrlValidator(options.isDevMode);
+    let hasEditorTab = false;
 
     parsedData.forEach((data: PersistedTabData) => {
       // Handle editor tab specially - it has no URLs to validate.
       // Accept old 'devtools' type for backward compat and migrate to 'editor'.
+      // Only add one editor tab even if storage contains both types.
       if (data.type === 'editor' || (data.type as string) === 'devtools') {
-        tabs.push({
-          id: 'editor',
-          title: 'Guide editor',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-          type: 'editor',
-        });
+        if (!hasEditorTab) {
+          hasEditorTab = true;
+          tabs.push({
+            id: 'editor',
+            title: 'Guide editor',
+            baseUrl: '',
+            currentUrl: '',
+            content: null,
+            isLoading: false,
+            error: null,
+            type: 'editor',
+          });
+        }
         return;
       }
 

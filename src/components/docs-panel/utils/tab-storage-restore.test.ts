@@ -271,6 +271,32 @@ describe('tab-storage-restore', () => {
       expect(tabs[1]!.currentUrl).toBe('https://grafana.com/docs/grafana/latest/test/');
     });
 
+    it('should deduplicate when storage contains both editor and devtools entries', async () => {
+      const persistedTabs: PersistedTabData[] = [
+        {
+          id: 'editor',
+          title: 'Guide editor',
+          baseUrl: '',
+          currentUrl: '',
+          type: 'editor',
+        },
+        {
+          id: 'devtools',
+          title: 'Dev Tools',
+          baseUrl: '',
+          currentUrl: '',
+          type: 'devtools' as any,
+        },
+      ];
+
+      const storage = createMockTabStorage(persistedTabs);
+      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
+
+      expect(tabs).toHaveLength(2); // recommendations + single editor tab
+      const editorTabs = tabs.filter((t) => t.id === 'editor');
+      expect(editorTabs).toHaveLength(1);
+    });
+
     it('should default to learning-journey type when type is missing', async () => {
       const persistedTabs: PersistedTabData[] = [
         {
