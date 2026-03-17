@@ -74,31 +74,31 @@ describe('TabBarActions', () => {
   });
 
   describe('right position rendering', () => {
-    it('renders menu button with correct aria-label', () => {
+    it('renders menu button with accessible name', () => {
       render(<TabBarActions {...defaultRightProps} />);
 
-      const menuButton = screen.getByTitle('More options');
+      const menuButton = screen.getByRole('button', { name: 'More options' });
       expect(menuButton).toBeInTheDocument();
     });
 
-    it('renders close button with correct test ID', () => {
+    it('renders close button with accessible name', () => {
       render(<TabBarActions {...defaultRightProps} />);
 
-      const closeButton = screen.getByTestId(testIds.docsPanel.closeButton);
+      const closeButton = screen.getByRole('button', { name: 'Close sidebar' });
       expect(closeButton).toBeInTheDocument();
     });
 
-    it('renders my learning button with correct test ID', () => {
+    it('renders my learning button with accessible name', () => {
       render(<TabBarActions {...defaultRightProps} />);
 
-      const myLearningButton = screen.getByTestId(testIds.docsPanel.myLearningTab);
+      const myLearningButton = screen.getByRole('button', { name: 'My learning' });
       expect(myLearningButton).toBeInTheDocument();
     });
 
-    it('renders editor button with correct test ID', () => {
+    it('renders editor button with accessible name', () => {
       render(<TabBarActions {...defaultRightProps} />);
 
-      const editorButton = screen.getByTestId(testIds.docsPanel.tab('editor'));
+      const editorButton = screen.getByRole('button', { name: 'Guide editor' });
       expect(editorButton).toBeInTheDocument();
     });
 
@@ -125,10 +125,10 @@ describe('TabBarActions', () => {
   });
 
   describe('left position rendering', () => {
-    it('renders recommendations button with correct test ID', () => {
+    it('renders recommendations button with accessible name', () => {
       render(<TabBarActions {...defaultLeftProps} />);
 
-      const recsButton = screen.getByTestId(testIds.docsPanel.recommendationsTab);
+      const recsButton = screen.getByRole('button', { name: 'Recommendations' });
       expect(recsButton).toBeInTheDocument();
     });
 
@@ -217,7 +217,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
       render(<TabBarActions {...defaultRightProps} />);
 
-      const menuButton = screen.getByTitle('More options');
+      const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
 
       const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
@@ -228,7 +228,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole: 'Viewer', isGrafanaAdmin: true };
       render(<TabBarActions {...defaultRightProps} />);
 
-      const menuButton = screen.getByTitle('More options');
+      const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
 
       const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
@@ -239,7 +239,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole: 'Editor', isGrafanaAdmin: false };
       render(<TabBarActions {...defaultRightProps} />);
 
-      const menuButton = screen.getByTitle('More options');
+      const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
 
       const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
@@ -250,7 +250,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole: 'Viewer', isGrafanaAdmin: false };
       render(<TabBarActions {...defaultRightProps} />);
 
-      const menuButton = screen.getByTitle('More options');
+      const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
 
       const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });
@@ -261,7 +261,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
       render(<TabBarActions {...defaultRightProps} />);
 
-      const menuButton = screen.getByTitle('More options');
+      const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
 
       const settingsItem = screen.getByRole('menuitem', { name: 'Settings' });

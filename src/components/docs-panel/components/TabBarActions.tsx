@@ -86,6 +86,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
           className={tabClass(activeTabId === 'recommendations')}
           onClick={() => onSetActiveTab('recommendations')}
           title={t('docsPanel.recommendations', 'Recommendations')}
+          aria-label={t('docsPanel.recommendations', 'Recommendations')}
           data-testid={testIds.docsPanel.recommendationsTab}
         >
           <Icon name="document-info" size="md" />
@@ -100,6 +101,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         className={tabClass(activeTabId === 'editor')}
         onClick={() => onSetActiveTab('editor')}
         title={t('docsPanel.guideEditor', 'Guide editor')}
+        aria-label={t('docsPanel.guideEditor', 'Guide editor')}
         data-testid={testIds.docsPanel.tab('editor')}
       >
         <Icon name="edit" size="md" />
@@ -108,6 +110,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         className={iconTabClass}
         onClick={handleMyLearningClick}
         title={t('docsPanel.myLearning', 'My learning')}
+        aria-label={t('docsPanel.myLearning', 'My learning')}
         data-testid={testIds.docsPanel.myLearningTab}
       >
         <Icon name="book-open" size="md" />
@@ -139,6 +142,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         <button
           className={iconTabClass}
           title={t('docsPanel.menuTooltip', 'More options')}
+          aria-label={t('docsPanel.menuTooltip', 'More options')}
           data-testid={testIds.docsPanel.optionsMenuTrigger}
         >
           <Icon name="ellipsis-v" size="md" />
