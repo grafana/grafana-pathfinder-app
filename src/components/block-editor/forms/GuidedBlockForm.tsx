@@ -10,6 +10,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock, JsonStep } from '../types';
 import type { JsonGuidedBlock } from '../../../types/json-guide.types';
 
@@ -216,7 +217,7 @@ export function GuidedBlockForm({
             )}
           </div>
         )}
-        <Button variant="secondary" onClick={onCancel} type="button">
+        <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>

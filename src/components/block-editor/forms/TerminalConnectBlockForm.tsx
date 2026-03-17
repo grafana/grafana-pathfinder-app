@@ -11,6 +11,7 @@ import { Button, Field, Input, Combobox, TextArea, useStyles2, type ComboboxOpti
 import { getBackendSrv } from '@grafana/runtime';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonTerminalConnectBlock } from '../../../types/json-guide.types';
 import { PLUGIN_BACKEND_URL } from '../../../constants';
@@ -167,7 +168,7 @@ export function TerminalConnectBlockForm({
         <Button type="submit" disabled={!isValid}>
           {isEditing ? 'Update' : 'Add'} block
         </Button>
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel} data-testid={testIds.blockEditor.formCancelButton}>
           Cancel
         </Button>
       </div>

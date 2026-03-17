@@ -5,6 +5,7 @@ import React, { useMemo, useEffect, Component, ReactNode } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
+import { testIds } from '../../constants/testIds';
 import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
@@ -79,10 +80,10 @@ function ErrorFallback({ error, onReset }: { error: Error | null; onReset: () =>
         </p>
         {error && <code className={styles.errorCode}>{error.message}</code>}
         <div className={styles.actions}>
-          <Button variant="primary" onClick={onReset}>
+          <Button variant="primary" onClick={onReset} data-testid={testIds.app.errorTryAgain}>
             Try Again
           </Button>
-          <Button variant="secondary" onClick={() => window.location.reload()}>
+          <Button variant="secondary" onClick={() => window.location.reload()} data-testid={testIds.app.errorRefresh}>
             Refresh Page
           </Button>
         </div>

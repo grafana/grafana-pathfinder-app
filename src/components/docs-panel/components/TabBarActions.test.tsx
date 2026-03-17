@@ -1,11 +1,11 @@
 /**
  * Tests for TabBarActions component.
- * Tests menu rendering and sidebar close functionality.
+ * Tests menu rendering, sidebar close, and tab switching functionality.
  */
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { TabBarActions } from './TabBarActions';
+import { TabBarActions, TabBarActionsProps } from './TabBarActions';
 import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
 
@@ -52,44 +52,114 @@ const {
   __mockConfig: mockConfig,
 } = jest.requireMock('@grafana/runtime');
 
+const defaultRightProps: TabBarActionsProps = {
+  position: 'right',
+  activeTabId: 'recommendations',
+  iconTabClass: 'icon-tab',
+  iconTabActiveClass: 'icon-tab-active',
+  onSetActiveTab: jest.fn(),
+};
+
+const defaultLeftProps: TabBarActionsProps = {
+  position: 'left',
+  activeTabId: 'recommendations',
+  iconTabClass: 'icon-tab',
+  iconTabActiveClass: 'icon-tab-active',
+  onSetActiveTab: jest.fn(),
+};
+
 describe('TabBarActions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('rendering', () => {
-    it('renders menu button with correct aria-label', () => {
-      render(<TabBarActions />);
+  describe('right position rendering', () => {
+    it('renders menu button with accessible name', () => {
+      render(<TabBarActions {...defaultRightProps} />);
 
       const menuButton = screen.getByRole('button', { name: 'More options' });
       expect(menuButton).toBeInTheDocument();
     });
 
-    it('renders close button with correct test ID', () => {
-      render(<TabBarActions />);
+    it('renders close button with accessible name', () => {
+      render(<TabBarActions {...defaultRightProps} />);
 
-      const closeButton = screen.getByTestId(testIds.docsPanel.closeButton);
+      const closeButton = screen.getByRole('button', { name: 'Close sidebar' });
       expect(closeButton).toBeInTheDocument();
     });
 
-    it('renders My learning button with correct test ID', () => {
-      render(<TabBarActions />);
+    it('renders my learning button with accessible name', () => {
+      render(<TabBarActions {...defaultRightProps} />);
 
-      const myLearningButton = screen.getByTestId(testIds.docsPanel.myLearningTab);
+      const myLearningButton = screen.getByRole('button', { name: 'My learning' });
       expect(myLearningButton).toBeInTheDocument();
     });
 
+    it('renders editor button with accessible name', () => {
+      render(<TabBarActions {...defaultRightProps} />);
+
+      const editorButton = screen.getByRole('button', { name: 'Guide editor' });
+      expect(editorButton).toBeInTheDocument();
+    });
+
     it('applies className prop to container', () => {
-      const { container } = render(<TabBarActions className="custom-actions-class" />);
+      const { container } = render(<TabBarActions {...defaultRightProps} className="custom-actions-class" />);
 
       const wrapper = container.firstChild as HTMLElement;
       expect(wrapper).toHaveClass('custom-actions-class');
+    });
+
+    it('applies active class to editor button when editor tab is active', () => {
+      render(<TabBarActions {...defaultRightProps} activeTabId="editor" />);
+
+      const editorButton = screen.getByTestId(testIds.docsPanel.tab('editor'));
+      expect(editorButton).toHaveClass('icon-tab-active');
+    });
+
+    it('does not apply active class to editor button when another tab is active', () => {
+      render(<TabBarActions {...defaultRightProps} activeTabId="recommendations" />);
+
+      const editorButton = screen.getByTestId(testIds.docsPanel.tab('editor'));
+      expect(editorButton).not.toHaveClass('icon-tab-active');
+    });
+  });
+
+  describe('left position rendering', () => {
+    it('renders recommendations button with accessible name', () => {
+      render(<TabBarActions {...defaultLeftProps} />);
+
+      const recsButton = screen.getByRole('button', { name: 'Recommendations' });
+      expect(recsButton).toBeInTheDocument();
+    });
+
+    it('applies active class to recommendations button when active', () => {
+      render(<TabBarActions {...defaultLeftProps} activeTabId="recommendations" />);
+
+      const recsButton = screen.getByTestId(testIds.docsPanel.recommendationsTab);
+      expect(recsButton).toHaveClass('icon-tab-active');
+    });
+
+    it('does not apply active class when another tab is active', () => {
+      render(<TabBarActions {...defaultLeftProps} activeTabId="editor" />);
+
+      const recsButton = screen.getByTestId(testIds.docsPanel.recommendationsTab);
+      expect(recsButton).not.toHaveClass('icon-tab-active');
+    });
+
+    it('calls onSetActiveTab with recommendations when clicked', () => {
+      const onSetActiveTab = jest.fn();
+      render(<TabBarActions {...defaultLeftProps} onSetActiveTab={onSetActiveTab} />);
+
+      const recsButton = screen.getByTestId(testIds.docsPanel.recommendationsTab);
+      fireEvent.click(recsButton);
+
+      expect(onSetActiveTab).toHaveBeenCalledWith('recommendations');
     });
   });
 
   describe('close sidebar functionality', () => {
     it('publishes close-extension-sidebar event when close button is clicked', () => {
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const closeButton = screen.getByTestId(testIds.docsPanel.closeButton);
       fireEvent.click(closeButton);
@@ -103,7 +173,7 @@ describe('TabBarActions', () => {
     it('reports analytics when close button is clicked', () => {
       const { reportAppInteraction, UserInteraction } = require('../../../lib/analytics');
 
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const closeButton = screen.getByTestId(testIds.docsPanel.closeButton);
       fireEvent.click(closeButton);
@@ -115,9 +185,9 @@ describe('TabBarActions', () => {
     });
   });
 
-  describe('My learning button', () => {
+  describe('my learning button', () => {
     it('navigates to my learning home page when clicked', () => {
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const myLearningButton = screen.getByTestId(testIds.docsPanel.myLearningTab);
       fireEvent.click(myLearningButton);
@@ -126,15 +196,26 @@ describe('TabBarActions', () => {
     });
   });
 
-  describe('Settings menu item permissions', () => {
+  describe('editor button', () => {
+    it('calls onSetActiveTab with editor when clicked', () => {
+      const onSetActiveTab = jest.fn();
+      render(<TabBarActions {...defaultRightProps} onSetActiveTab={onSetActiveTab} />);
+
+      const editorButton = screen.getByTestId(testIds.docsPanel.tab('editor'));
+      fireEvent.click(editorButton);
+
+      expect(onSetActiveTab).toHaveBeenCalledWith('editor');
+    });
+  });
+
+  describe('settings menu item permissions', () => {
     beforeEach(() => {
-      // Reset mock config to Admin for each test
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
     });
 
     it('enables Settings menu item for Admin users', () => {
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
@@ -145,7 +226,7 @@ describe('TabBarActions', () => {
 
     it('enables Settings menu item for Grafana Admin users', () => {
       mockConfig.bootData.user = { orgRole: 'Viewer', isGrafanaAdmin: true };
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
@@ -156,7 +237,7 @@ describe('TabBarActions', () => {
 
     it('disables Settings menu item for Editor users', () => {
       mockConfig.bootData.user = { orgRole: 'Editor', isGrafanaAdmin: false };
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
@@ -167,7 +248,7 @@ describe('TabBarActions', () => {
 
     it('disables Settings menu item for Viewer users', () => {
       mockConfig.bootData.user = { orgRole: 'Viewer', isGrafanaAdmin: false };
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);
@@ -178,7 +259,7 @@ describe('TabBarActions', () => {
 
     it('navigates to settings when enabled item is clicked', () => {
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
-      render(<TabBarActions />);
+      render(<TabBarActions {...defaultRightProps} />);
 
       const menuButton = screen.getByRole('button', { name: 'More options' });
       fireEvent.click(menuButton);

@@ -120,7 +120,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
       (url: string, title: string) => this.openDocsPage(url, title),
-      () => this.openDevToolsTab()
+      () => this.openEditorTab()
     );
 
     super({
@@ -166,7 +166,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private initializeRestoredActiveTab(): void {
     const activeTab = this.state.tabs.find((t) => t.id === this.state.activeTabId);
-    if (activeTab && activeTab.id !== 'recommendations') {
+    if (activeTab && activeTab.id !== 'recommendations' && activeTab.id !== 'editor') {
       // If we have an active tab but no content, load it
       if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
         if (isDocsLikeTab(activeTab.type)) {
@@ -180,7 +180,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private async saveTabsToStorage(): Promise<void> {
     try {
-      // Save user-opened tabs and devtools tab (devtools persists across refreshes)
+      // Save user-opened tabs and editor tab (editor persists across refreshes)
       // Recommendations is a permanent tab and doesn't need persistence
       const tabsToSave: PersistedTabData[] = this.state.tabs
         .filter((tab) => tab.id !== 'recommendations')
@@ -343,9 +343,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
     }
 
-    // Check if only default tabs remain (recommendations and possibly devtools)
+    // Check if only default tabs remain (recommendations and possibly editor)
     // If so, always default to recommendations
-    const onlyDefaultTabsRemaining = newTabs.every((t) => t.id === 'recommendations' || t.id === 'devtools');
+    const onlyDefaultTabsRemaining = newTabs.every((t) => t.id === 'recommendations' || t.id === 'editor');
     if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations') {
       newActiveTabId = 'recommendations';
     }
@@ -416,38 +416,33 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   /**
-   * Open the Dev Tools tab (or switch to it if already open)
-   * The devtools tab is now persisted to storage to survive page refreshes.
+   * Open the editor tab (or switch to it if already open)
+   * The editor tab is persisted to storage to survive page refreshes.
    */
-  public openDevToolsTab(): void {
-    // Check if devtools tab already exists
-    const existingTab = this.state.tabs.find((t) => t.id === 'devtools');
+  public openEditorTab(): void {
+    const existingTab = this.state.tabs.find((t) => t.id === 'editor');
     if (existingTab) {
-      // Just switch to it
-      this.setState({ activeTabId: 'devtools' });
-      // Still save to storage to persist the active tab change
+      this.setState({ activeTabId: 'editor' });
       this.saveTabsToStorage();
       return;
     }
 
-    // Create new devtools tab
     const newTab: LearningJourneyTab = {
-      id: 'devtools',
-      title: 'Dev Tools',
+      id: 'editor',
+      title: 'Guide editor',
       baseUrl: '',
       currentUrl: '',
       content: null,
       isLoading: false,
       error: null,
-      type: 'devtools',
+      type: 'editor',
     };
 
     this.setState({
       tabs: [...this.state.tabs, newTab],
-      activeTabId: 'devtools',
+      activeTabId: 'editor',
     });
 
-    // Save tabs to storage so devtools tab persists across page refreshes
     this.saveTabsToStorage();
   }
 
@@ -724,26 +719,23 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once after mount, tabs checked at mount time
 
-  // Ensure devtools tab exists when dev mode is enabled (permanent tab)
+  // Ensure editor tab exists (permanent tab, always visible)
   React.useEffect(() => {
-    if (isDevMode) {
-      const hasDevToolsTab = tabs.some((t) => t.id === 'devtools');
-      if (!hasDevToolsTab) {
-        // Add devtools tab without switching to it
-        const devToolsTab: LearningJourneyTab = {
-          id: 'devtools',
-          title: 'Dev Tools',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-          type: 'devtools',
-        };
-        model.setState({ tabs: [...tabs, devToolsTab] });
-      }
+    const hasEditorTab = tabs.some((t) => t.id === 'editor');
+    if (!hasEditorTab) {
+      const editorTab: LearningJourneyTab = {
+        id: 'editor',
+        title: 'Guide editor',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'editor',
+      };
+      model.setState({ tabs: [...tabs, editorTab] });
     }
-  }, [isDevMode, tabs, model]);
+  }, [tabs, model]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
@@ -1103,6 +1095,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   icon="users-alt"
                   onClick={() => setShowPresenterControls(true)}
                   tooltip="Start a live session to broadcast your actions to attendees"
+                  data-testid={testIds.liveSession.startButton}
                 >
                   Start live session
                 </Button>
@@ -1112,6 +1105,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   icon="user"
                   onClick={() => setShowAttendeeJoin(true)}
                   tooltip="Join an existing live session"
+                  data-testid={testIds.liveSession.joinButton}
                 >
                   Join live session
                 </Button>
@@ -1119,7 +1113,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             )}
             {isSessionActive && sessionRole === 'presenter' && (
               <>
-                <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon="circle"
+                  onClick={() => setShowPresenterControls(true)}
+                  data-testid={testIds.liveSession.sessionActiveButton}
+                >
                   Session active
                 </Button>
                 <div ref={handRaiseIndicatorRef}>
@@ -1163,6 +1163,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           }
                         }}
                         tooltip="Only see highlights when presenter clicks Show Me"
+                        data-testid={testIds.liveSession.guidedButton}
                       >
                         Guided
                       </Button>
@@ -1192,6 +1193,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           }
                         }}
                         tooltip="Execute actions automatically when presenter clicks Do It"
+                        data-testid={testIds.liveSession.followButton}
                       >
                         Follow
                       </Button>
@@ -1207,6 +1209,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         }
                       }}
                       tooltip="Leave the live session"
+                      data-testid={testIds.liveSession.leaveButton}
                     >
                       Leave
                     </Button>
@@ -1220,37 +1223,25 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
       {/* Tab bar - always show permanent tabs, show guide tabs when open */}
       <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
-        {/* Permanent icon-only tabs */}
-        <div className={styles.permanentTabs}>
-          <button
-            className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
-            onClick={() => model.setActiveTab('recommendations')}
-            title={t('docsPanel.recommendations', 'Recommendations')}
-            data-testid={testIds.docsPanel.recommendationsTab}
-          >
-            <Icon name="document-info" size="md" />
-          </button>
-          {isDevMode && (
-            <button
-              className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
-              onClick={() => model.setActiveTab('devtools')}
-              title={t('docsPanel.devTools', 'Dev tools')}
-              data-testid={testIds.docsPanel.tab('devtools')}
-            >
-              <Icon name="bug" size="md" />
-            </button>
-          )}
-        </div>
+        {/* Left actions (recommendations) */}
+        <TabBarActions
+          position="left"
+          className={styles.permanentTabs}
+          activeTabId={activeTabId}
+          iconTabClass={styles.iconTab}
+          iconTabActiveClass={styles.iconTabActive}
+          onSetActiveTab={(tabId) => model.setActiveTab(tabId)}
+        />
 
         {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
+        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'editor').length > 0 && (
           <div className={styles.tabDivider} />
         )}
 
         {/* Guide tabs with titles */}
         <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
           {visibleTabs
-            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
+            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'editor')
             .map((tab) => {
               return (
                 <button
@@ -1261,7 +1252,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   data-testid={testIds.docsPanel.tab(tab.id)}
                 >
                   <div className={styles.tabContent}>
-                    {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.tabIcon} />}
                     <span className={styles.tabTitle}>
                       {tab.isLoading ? (
                         <>
@@ -1306,7 +1296,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             })}
         </div>
 
-        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
+        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'editor').length > 0 && (
           <div className={styles.tabOverflow}>
             <button
               ref={chevronButtonRef}
@@ -1318,92 +1308,97 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 setIsDropdownOpen(!isDropdownOpen);
               }}
               aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
-                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length,
+                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'editor').length,
               })}
               aria-expanded={isDropdownOpen}
               aria-haspopup="true"
               data-testid={testIds.docsPanel.tabOverflowButton}
             >
               <Icon name="angle-down" size="sm" />
-              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length}</span>
+              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'editor').length}</span>
             </button>
           </div>
         )}
 
-        {isDropdownOpen &&
-          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
-            <div
-              ref={dropdownRef}
-              className={styles.tabDropdown}
-              role="menu"
-              aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
-              data-testid={testIds.docsPanel.tabDropdown}
-            >
-              {overflowedTabs
-                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
-                .map((tab) => {
-                  return (
-                    <button
-                      key={tab.id}
-                      className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
-                      onClick={() => {
-                        model.setActiveTab(tab.id);
-                        setIsDropdownOpen(false);
-                      }}
-                      role="menuitem"
-                      aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
-                        title: getTranslatedTitle(tab.title),
-                      })}
-                      data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
-                    >
-                      <div className={styles.dropdownItemContent}>
-                        {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
-                        <span className={styles.dropdownItemTitle}>
-                          {tab.isLoading ? (
-                            <>
-                              <Icon name="sync" size="xs" />
-                              <span>{t('docsPanel.loading', 'Loading...')}</span>
-                            </>
-                          ) : (
-                            getTranslatedTitle(tab.title)
-                          )}
-                        </span>
-                        <IconButton
-                          name="times"
-                          size="sm"
-                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                            title: getTranslatedTitle(tab.title),
-                          })}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reportAppInteraction(UserInteraction.CloseTabClick, {
-                              content_type: getContentTypeForAnalytics(
-                                tab.currentUrl || tab.baseUrl,
-                                tab.type || 'learning-journey'
-                              ),
-                              tab_title: tab.title,
-                              content_url: tab.currentUrl || tab.baseUrl,
-                              close_location: 'dropdown',
-                              ...(tab.type === 'learning-journey' &&
-                                tab.content && {
-                                  completion_percentage: getJourneyProgress(tab.content),
-                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                                }),
-                            });
-                            model.closeTab(tab.id);
-                          }}
-                          className={styles.dropdownItemClose}
-                        />
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-          )}
+        {isDropdownOpen && overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'editor').length > 0 && (
+          <div
+            ref={dropdownRef}
+            className={styles.tabDropdown}
+            role="menu"
+            aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
+            data-testid={testIds.docsPanel.tabDropdown}
+          >
+            {overflowedTabs
+              .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'editor')
+              .map((tab) => {
+                return (
+                  <button
+                    key={tab.id}
+                    className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
+                    onClick={() => {
+                      model.setActiveTab(tab.id);
+                      setIsDropdownOpen(false);
+                    }}
+                    role="menuitem"
+                    aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
+                      title: getTranslatedTitle(tab.title),
+                    })}
+                    data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
+                  >
+                    <div className={styles.dropdownItemContent}>
+                      <span className={styles.dropdownItemTitle}>
+                        {tab.isLoading ? (
+                          <>
+                            <Icon name="sync" size="xs" />
+                            <span>{t('docsPanel.loading', 'Loading...')}</span>
+                          </>
+                        ) : (
+                          getTranslatedTitle(tab.title)
+                        )}
+                      </span>
+                      <IconButton
+                        name="times"
+                        size="sm"
+                        aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                          title: getTranslatedTitle(tab.title),
+                        })}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          reportAppInteraction(UserInteraction.CloseTabClick, {
+                            content_type: getContentTypeForAnalytics(
+                              tab.currentUrl || tab.baseUrl,
+                              tab.type || 'learning-journey'
+                            ),
+                            tab_title: tab.title,
+                            content_url: tab.currentUrl || tab.baseUrl,
+                            close_location: 'dropdown',
+                            ...(tab.type === 'learning-journey' &&
+                              tab.content && {
+                                completion_percentage: getJourneyProgress(tab.content),
+                                current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                                total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                              }),
+                          });
+                          model.closeTab(tab.id);
+                        }}
+                        className={styles.dropdownItemClose}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        )}
 
-        {/* Menu and close actions */}
-        <TabBarActions className={styles.tabBarActions} />
+        {/* Right actions (editor, my learning, menu, close) */}
+        <TabBarActions
+          position="right"
+          className={styles.tabBarActions}
+          activeTabId={activeTabId}
+          iconTabClass={styles.iconTab}
+          iconTabActiveClass={styles.iconTabActive}
+          onSetActiveTab={(tabId) => model.setActiveTab(tabId)}
+        />
       </div>
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -1413,12 +1408,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             return <contextPanel.Component model={contextPanel} />;
           }
 
-          // Show dev tools tab
-          if (activeTabId === 'devtools') {
+          // Show editor tab
+          if (activeTabId === 'editor') {
             return (
-              <div className={styles.devToolsContent} data-testid="devtools-tab-content">
+              <div className={styles.devToolsContent} data-testid={testIds.docsPanel.editorContent}>
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                   <SelectorDebugPanel
+                    isDevMode={isDevMode}
                     onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
                     onOpenLearningJourney={(url: string, title: string) => model.openLearningJourney(url, title)}
                   />
@@ -1468,7 +1464,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     </div>
                     <button
                       className={styles.returnToEditorButton}
-                      onClick={() => model.openDevToolsTab()}
+                      onClick={() => model.openEditorTab()}
                       data-testid={testIds.devTools.returnToEditorButton}
                     >
                       <Icon name="arrow-left" size="sm" />
@@ -1518,6 +1514,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             <button
                               className={styles.secondaryActionButton}
                               aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
+                              data-testid={testIds.docsPanel.openInNewTabButton}
                               onClick={() => {
                                 reportAppInteraction(UserInteraction.OpenExtraResource, {
                                   content_url: cleanUrl,
@@ -1544,6 +1541,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         <IconButton
                           tooltip="Refresh tab (dev mode only)"
                           name="sync"
+                          data-testid={testIds.docsPanel.refreshTabButton}
                           onClick={() => {
                             if (activeTab) {
                               reloadActiveTab(activeTab);
@@ -1556,6 +1554,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           className={styles.secondaryActionButton}
                           aria-label={t('docsPanel.resetGuide', 'Reset guide')}
                           title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                          data-testid={testIds.docsPanel.resetGuideButton}
                           onClick={async () => {
                             if (progressKey && activeTab) {
                               await handleResetGuide(progressKey, activeTab);
@@ -1587,6 +1586,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           name="arrow-left"
                           size="sm"
                           aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
+                          data-testid={testIds.docsPanel.previousMilestone}
                           onClick={() => {
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
                               content_title: activeTab.title,
@@ -1619,6 +1619,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           name="arrow-right"
                           size="sm"
                           aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
+                          data-testid={testIds.docsPanel.nextMilestone}
                           onClick={() => {
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
                               content_title: activeTab.title,
@@ -1765,6 +1766,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       variant="secondary"
                       icon="book-open"
                       size="md"
+                      data-testid={testIds.docsPanel.returnToMyLearning}
                       onClick={() => {
                         window.location.assign(PLUGIN_BASE_URL);
                       }}

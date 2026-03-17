@@ -9,6 +9,7 @@ import { useStyles2, Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
 
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
+import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
 import { ProgressRing } from './ProgressRing';
 
@@ -78,7 +79,10 @@ export function LearningPathCard({
   const completedCount = guides.filter((g) => g.completed).length;
 
   return (
-    <div className={cx(styles.card, isCompleted && styles.cardCompleted)}>
+    <div
+      className={cx(styles.card, isCompleted && styles.cardCompleted)}
+      data-testid={testIds.learningPaths.card(path.id)}
+    >
       {/* Header - clickable to expand */}
       <div
         className={styles.header}
@@ -118,23 +122,39 @@ export function LearningPathCard({
         {/* Actions - fixed position at end */}
         <div className={styles.actions}>
           {!isCompleted && (
-            <button className={styles.actionButton} onClick={handleContinue}>
+            <button
+              className={styles.actionButton}
+              onClick={handleContinue}
+              data-testid={testIds.learningPaths.continueButton(path.id)}
+            >
               <Icon name="play" size="sm" />
               {getButtonText()}
             </button>
           )}
           {isCompleted && onReset && !isConfirmingReset && (
-            <button className={styles.resetButton} onClick={handleResetClick}>
+            <button
+              className={styles.resetButton}
+              onClick={handleResetClick}
+              data-testid={testIds.learningPaths.resetButton(path.id)}
+            >
               <Icon name="history" size="sm" />
               Restart
             </button>
           )}
           {isCompleted && onReset && isConfirmingReset && (
             <>
-              <button className={styles.confirmResetButton} onClick={handleConfirmReset}>
+              <button
+                className={styles.confirmResetButton}
+                onClick={handleConfirmReset}
+                data-testid={testIds.learningPaths.confirmResetButton(path.id)}
+              >
                 Confirm
               </button>
-              <button className={styles.cancelResetButton} onClick={handleCancelReset}>
+              <button
+                className={styles.cancelResetButton}
+                onClick={handleCancelReset}
+                data-testid={testIds.learningPaths.cancelResetButton(path.id)}
+              >
                 Cancel
               </button>
             </>
@@ -146,6 +166,7 @@ export function LearningPathCard({
               handleToggleExpand();
             }}
             aria-label={isExpanded ? 'Collapse' : 'Expand'}
+            data-testid={testIds.learningPaths.expandButton(path.id)}
           >
             <Icon name="angle-down" size="lg" />
           </button>
