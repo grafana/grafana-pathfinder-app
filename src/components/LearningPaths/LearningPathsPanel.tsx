@@ -9,6 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useStyles2, Icon, Modal } from '@grafana/ui';
 
 import { useLearningPaths, getBadgeById } from '../../learning-paths';
+import { testIds } from '../../constants/testIds';
 import { getLearningPathsPanelStyles } from './learning-paths.styles';
 import { LearningPathCard } from './LearningPathCard';
 import { BadgesDisplay } from './BadgesDisplay';
@@ -97,6 +98,7 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
             className={styles.viewBadgesLink}
             onClick={() => setShowBadgesModal(true)}
             aria-label="View all badges"
+            data-testid={testIds.learningPaths.viewBadgesButton}
           >
             <Icon name="star" size="sm" />
             <span>Badges</span>

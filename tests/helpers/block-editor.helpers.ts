@@ -27,7 +27,7 @@ export async function waitForGrafanaReady(page: Page): Promise<void> {
 }
 
 /**
- * Open the block editor via the dev tools tab.
+ * Open the block editor via the editor tab.
  * Assumes dev mode is enabled.
  */
 export async function openBlockEditor(page: Page): Promise<void> {
@@ -38,25 +38,24 @@ export async function openBlockEditor(page: Page): Promise<void> {
   // In Grafana with extension sidebar registered, clicking Help toggles the sidebar
   await page.locator('button[aria-label="Help"]').click();
 
-  // Dismiss any tooltip that appeared on the Help button
-  // This prevents tooltip from intercepting pointer events in Grafana dev/preview versions
-  await page.keyboard.press('Escape');
-
   // Wait for panel container to be visible
   const panelContainer = page.getByTestId(testIds.docsPanel.container);
   await expect(panelContainer).toBeVisible();
 
-  // Wait for devtools tab to be visible (requires dev mode enabled)
-  // Use longer timeout as dev mode settings need to propagate
-  const devToolsTab = page.getByTestId(testIds.docsPanel.tab('devtools'));
-  await expect(devToolsTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
+  // Dismiss any tooltip that appeared on the Help button by pressing Escape
+  // and clicking the panel body to move focus away from the tooltip trigger
+  await page.keyboard.press('Escape');
+  await panelContainer.click({ position: { x: 5, y: 5 } });
 
-  // Hover before click to dismiss any tooltips that may intercept pointer events
-  await devToolsTab.hover();
-  await devToolsTab.click();
+  // Wait for editor tab to be visible
+  const editorTab = page.getByTestId(testIds.docsPanel.tab('editor'));
+  await expect(editorTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
+
+  // Use force click to bypass any lingering tooltip overlays from Grafana's portal
+  await editorTab.click({ force: true });
 
   // Wait for block editor to be visible
-  const blockEditor = page.getByTestId('block-editor');
+  const blockEditor = page.getByTestId(testIds.blockEditor.container);
   await expect(blockEditor).toBeVisible();
 }
 
@@ -65,7 +64,7 @@ export async function openBlockEditor(page: Page): Promise<void> {
  */
 export async function createMarkdownBlock(page: Page, content: string): Promise<void> {
   // Click the Add Block button in the palette (there may be multiple add buttons when blocks exist)
-  await page.getByTestId('block-palette').getByTestId(testIds.blockEditor.addBlockButton).click();
+  await page.getByTestId(testIds.blockEditor.palette).getByTestId(testIds.blockEditor.addBlockButton).click();
 
   // Wait for modal and select Markdown
   const modal = page.getByTestId(testIds.blockEditor.addBlockModal);
@@ -95,7 +94,7 @@ export async function createSectionBlock(
   options?: { startRecording?: boolean }
 ): Promise<void> {
   // Click the Add Block button in the palette (there may be multiple add buttons when blocks exist)
-  await page.getByTestId('block-palette').getByTestId(testIds.blockEditor.addBlockButton).click();
+  await page.getByTestId(testIds.blockEditor.palette).getByTestId(testIds.blockEditor.addBlockButton).click();
 
   // Wait for modal and select Section
   const modal = page.getByTestId(testIds.blockEditor.addBlockModal);
@@ -125,7 +124,7 @@ export async function createSectionBlock(
  */
 export async function copyGuideJson(page: Page): Promise<Record<string, unknown>> {
   // Open the "More actions" dropdown menu first
-  await page.getByTestId('more-actions-button').click();
+  await page.getByTestId(testIds.blockEditor.moreActionsButton).click();
   // Then click the "Copy JSON" menu item by its label text (Menu.Item doesn't forward data-testid)
   await page.getByRole('menuitem', { name: 'Copy JSON' }).click();
 
@@ -217,7 +216,7 @@ export async function confirmDeleteBlock(page: Page): Promise<void> {
  * Uses the section empty state testId to scope the search.
  */
 export async function clickAddBlockInSection(page: Page): Promise<void> {
-  const blockEditor = page.getByTestId('block-editor');
+  const blockEditor = page.getByTestId(testIds.blockEditor.container);
   // Find the section container via the empty state testId
   const sectionEmptyState = blockEditor.getByTestId(testIds.blockEditor.sectionEmptyState);
   // The Add Block button is a sibling of the empty state div inside the same parent

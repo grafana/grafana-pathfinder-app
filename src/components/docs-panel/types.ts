@@ -46,8 +46,8 @@ export interface DocsPanelModelOperations {
   /** Check if navigation to previous milestone is possible */
   canNavigatePrevious(): boolean;
 
-  /** Open the dev tools tab (or switch to it if already open) */
-  openDevToolsTab(): void;
+  /** Open the editor tab (or switch to it if already open) */
+  openEditorTab(): void;
 
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;

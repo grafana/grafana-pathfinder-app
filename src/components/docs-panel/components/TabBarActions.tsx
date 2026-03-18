@@ -1,11 +1,12 @@
 /**
- * Tab bar actions component for docs-panel.
- * Contains the menu dropdown with feedback and settings options,
- * plus the close sidebar button.
+ * Unified tab bar actions component for docs-panel.
+ * Renders icon buttons for left (recommendations) or right (editor, my learning,
+ * options menu, close) positions. All buttons use the same iconTab/iconTabActive
+ * styles for consistent sizing and highlight behavior.
  */
 
 import React from 'react';
-import { IconButton, Dropdown, Menu, Tooltip } from '@grafana/ui';
+import { Icon, Dropdown, Menu, Tooltip } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
@@ -13,15 +14,28 @@ import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 
 export interface TabBarActionsProps {
-  /** CSS class name for the container */
+  /** Which side of the tab bar to render */
+  position: 'left' | 'right';
+  /** CSS class name for the container wrapper */
   className?: string;
+  /** Currently active tab ID (used for highlight) */
+  activeTabId: string;
+  /** iconTab CSS class */
+  iconTabClass: string;
+  /** iconTabActive CSS class (applied alongside iconTabClass when active) */
+  iconTabActiveClass: string;
+  /** Switch to a tab by ID */
+  onSetActiveTab: (tabId: string) => void;
 }
 
-/**
- * Renders the tab bar action buttons: menu dropdown and close sidebar button.
- * Menu contains feedback and settings options.
- */
-export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
+export const TabBarActions: React.FC<TabBarActionsProps> = ({
+  position,
+  className,
+  activeTabId,
+  iconTabClass,
+  iconTabActiveClass,
+  onSetActiveTab,
+}) => {
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 
@@ -52,7 +66,6 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
       action: 'close_sidebar',
       source: 'header_close_button',
     });
-    // Close the extension sidebar
     const appEvents = getAppEvents();
     appEvents.publish({
       type: 'close-extension-sidebar',
@@ -64,16 +77,44 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
     locationService.push(PLUGIN_BASE_URL);
   };
 
+  const tabClass = (isActive: boolean) => `${iconTabClass} ${isActive ? iconTabActiveClass : ''}`;
+
+  if (position === 'left') {
+    return (
+      <div className={className}>
+        <button
+          className={tabClass(activeTabId === 'recommendations')}
+          onClick={() => onSetActiveTab('recommendations')}
+          title={t('docsPanel.recommendations', 'Recommendations')}
+          aria-label={t('docsPanel.recommendations', 'Recommendations')}
+          data-testid={testIds.docsPanel.recommendationsTab}
+        >
+          <Icon name="document-info" size="md" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={className}>
-      <IconButton
-        name="book-open"
-        size="sm"
-        tooltip={t('docsPanel.myLearning', 'My learning')}
+      <button
+        className={tabClass(activeTabId === 'editor')}
+        onClick={() => onSetActiveTab('editor')}
+        title={t('docsPanel.guideEditor', 'Guide editor')}
+        aria-label={t('docsPanel.guideEditor', 'Guide editor')}
+        data-testid={testIds.docsPanel.tab('editor')}
+      >
+        <Icon name="edit" size="md" />
+      </button>
+      <button
+        className={iconTabClass}
         onClick={handleMyLearningClick}
+        title={t('docsPanel.myLearning', 'My learning')}
         aria-label={t('docsPanel.myLearning', 'My learning')}
         data-testid={testIds.docsPanel.myLearningTab}
-      />
+      >
+        <Icon name="book-open" size="md" />
+      </button>
       <Dropdown
         placement="bottom-end"
         overlay={
@@ -98,21 +139,24 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
           </Menu>
         }
       >
-        <IconButton
-          name="ellipsis-v"
-          size="sm"
-          aria-label={t('docsPanel.menuAriaLabel', 'More options')}
-          tooltip={t('docsPanel.menuTooltip', 'More options')}
-        />
+        <button
+          className={iconTabClass}
+          title={t('docsPanel.menuTooltip', 'More options')}
+          aria-label={t('docsPanel.menuTooltip', 'More options')}
+          data-testid={testIds.docsPanel.optionsMenuTrigger}
+        >
+          <Icon name="ellipsis-v" size="md" />
+        </button>
       </Dropdown>
-      <IconButton
-        name="times"
-        size="sm"
-        tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
+      <button
+        className={iconTabClass}
         onClick={handleCloseSidebar}
+        title={t('docsPanel.closeSidebar', 'Close sidebar')}
         aria-label="Close sidebar"
         data-testid={testIds.docsPanel.closeButton}
-      />
+      >
+        <Icon name="times" size="md" />
+      </button>
     </div>
   );
 };

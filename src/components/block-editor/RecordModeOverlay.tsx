@@ -12,6 +12,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { generateFullDomPath } from '../../utils/devtools';
 import { DomPathTooltip } from '../DomPathTooltip';
+import { testIds } from '../../constants/testIds';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   banner: css({
@@ -361,7 +362,12 @@ export function RecordModeOverlay({
             Return to start
           </button>
         )}
-        <button className={styles.bannerButton} onClick={handleStopClick} type="button">
+        <button
+          className={styles.bannerButton}
+          onClick={handleStopClick}
+          type="button"
+          data-testid={testIds.blockEditor.recordStopButton}
+        >
           Stop (Esc)
         </button>
       </div>

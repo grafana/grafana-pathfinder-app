@@ -65,7 +65,7 @@ describe('E2E Contract: Docs panel test IDs', () => {
     });
 
     it('tab(id) pattern', () => {
-      expect(testIds.docsPanel.tab('devtools')).toBe('docs-panel-tab-devtools');
+      expect(testIds.docsPanel.tab('editor')).toBe('docs-panel-tab-editor');
     });
 
     it('tabCloseButton(id) pattern', () => {
@@ -116,12 +116,18 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
       'testIds.docsPanel.tabBar',
       'testIds.docsPanel.tabList',
       'testIds.docsPanel.content',
-      'testIds.docsPanel.recommendationsTab',
       'testIds.docsPanel.tabOverflowButton',
       'testIds.docsPanel.tabDropdown',
       'testIds.docsPanel.tab(',
       'testIds.docsPanel.tabCloseButton(',
       'testIds.docsPanel.tabDropdownItem(',
+      'testIds.docsPanel.editorContent',
+      'testIds.docsPanel.openInNewTabButton',
+      'testIds.docsPanel.refreshTabButton',
+      'testIds.docsPanel.resetGuideButton',
+      'testIds.docsPanel.previousMilestone',
+      'testIds.docsPanel.nextMilestone',
+      'testIds.docsPanel.returnToMyLearning',
       'testIds.devTools.previewBanner',
       'testIds.devTools.previewModeIndicator',
       'testIds.devTools.returnToEditorButton',
@@ -129,10 +135,18 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   },
   {
     file: 'components/TabBarActions.tsx',
-    references: ['testIds.docsPanel.closeButton', 'testIds.docsPanel.myLearningTab'],
+    references: [
+      'testIds.docsPanel.closeButton',
+      'testIds.docsPanel.myLearningTab',
+      'testIds.docsPanel.recommendationsTab',
+      'testIds.docsPanel.optionsMenuTrigger',
+    ],
   },
   { file: 'components/LoadingIndicator.tsx', references: ['testIds.docsPanel.loadingState'] },
-  { file: 'components/ErrorDisplay.tsx', references: ['testIds.docsPanel.errorState'] },
+  {
+    file: 'components/ErrorDisplay.tsx',
+    references: ['testIds.docsPanel.errorState', 'testIds.docsPanel.retryButton'],
+  },
 ];
 
 /**
@@ -253,7 +267,7 @@ describe('E2E Contract: Window globals assigned in docs-panel', () => {
 describe.skip('E2E Contract: Docs panel full render (covered by e2e)', () => {
   it.todo('renders container with docs-panel-container');
   it.todo('renders tab bar, tab list, content area with stable test IDs');
-  it.todo('renders recommendations tab; devtools tab when dev mode');
+  it.todo('renders recommendations tab and editor tab; dev tools visible in editor when dev mode');
   it.todo('default active tab is recommendations');
   it.todo('loading state shows docs-panel-loading-state');
   it.todo('error state shows docs-panel-error-state with retry');
