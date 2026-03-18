@@ -23,6 +23,7 @@ import {
   type TestResultsData,
 } from '../utils/e2e-reporter';
 import {
+  checkTier,
   loadManifestFromDir,
   runManifestPreflight,
   type PreflightOutcome,
@@ -549,6 +550,29 @@ export const e2eCommand = new Command('e2e')
       // Run CLI-level pre-flight checks
       console.log('\n🔍 Running pre-flight checks...');
 
+      // Load manifest early so the tier check can run before any network I/O.
+      // A tier mismatch (e.g. cloud guide on a local env) means the guide should be
+      // skipped — we want that message even when Grafana is not reachable.
+      let packageManifest = null;
+      if (options.package) {
+        try {
+          packageManifest = loadManifestFromDir(options.package);
+        } catch (err) {
+          console.error(`\n❌ Failed to load manifest.json: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          process.exit(ExitCode.CONFIGURATION_ERROR);
+        }
+
+        if (packageManifest) {
+          const tierResult = checkTier(packageManifest.testEnvironment ?? {}, options.tier);
+          if (tierResult.status === 'skip' && tierResult.reason.includes('skipping')) {
+            const tierMsg = packageManifest.testEnvironment?.tier ?? 'unknown';
+            console.log(`\n⊘ Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`);
+            console.log(`   Use --tier ${tierMsg} to run this guide against a matching environment.`);
+            process.exit(ExitCode.SUCCESS);
+          }
+        }
+      }
+
       // 1. Check Grafana health (public endpoint, no auth needed)
       const healthCheck = await checkGrafanaHealth(options.grafanaUrl);
 
@@ -568,19 +592,11 @@ export const e2eCommand = new Command('e2e')
 
       console.log('   ✓ Grafana is reachable');
 
-      // 2. Manifest pre-flight (when --package is used)
+      // 2. Manifest pre-flight — version and plugin checks (when --package is used)
       if (options.package) {
-        let manifest;
-        try {
-          manifest = loadManifestFromDir(options.package);
-        } catch (err) {
-          console.error(`\n❌ Failed to load manifest.json: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          process.exit(ExitCode.CONFIGURATION_ERROR);
-        }
-
-        if (manifest) {
+        if (packageManifest) {
           console.log('   → Running manifest pre-flight checks...');
-          const outcome = await runManifestPreflight(manifest, {
+          const outcome = await runManifestPreflight(packageManifest, {
             grafanaUrl: options.grafanaUrl,
             currentTier: options.tier,
           });
@@ -588,7 +604,8 @@ export const e2eCommand = new Command('e2e')
           printPreflightOutcome(outcome, options.verbose);
 
           if (outcome.skipped) {
-            const tierMsg = manifest.testEnvironment?.tier ?? 'unknown';
+            // Defensive: tier skip was already handled above; shouldn't reach here
+            const tierMsg = packageManifest.testEnvironment?.tier ?? 'unknown';
             console.log(`\n⊘ Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`);
             console.log(`   Use --tier ${tierMsg} to run this guide against a matching environment.`);
             process.exit(ExitCode.SUCCESS);
