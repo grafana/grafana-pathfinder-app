@@ -9,7 +9,6 @@ import { Button, Field, Input, Modal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { BlockEditorState } from './types';
-import { testIds } from '../../constants/testIds';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   form: css({
@@ -67,26 +66,16 @@ export function GuideMetadataForm({ isOpen, guide, onUpdate, onClose }: GuideMet
       <div className={styles.form}>
         <div className={styles.row}>
           <Field label="Guide ID" description="Unique identifier for this guide (kebab-case recommended)" required>
-            <Input
-              value={guide.id}
-              onChange={handleIdChange}
-              placeholder="my-guide-id"
-              data-testid={testIds.blockEditor.metadataIdInput}
-            />
+            <Input value={guide.id} onChange={handleIdChange} placeholder="my-guide-id" />
           </Field>
         </div>
 
         <Field label="Title" description="Display title shown to users" required>
-          <Input
-            value={guide.title}
-            onChange={handleTitleChange}
-            placeholder="My Guide Title"
-            data-testid={testIds.blockEditor.metadataTitleInput}
-          />
+          <Input value={guide.title} onChange={handleTitleChange} placeholder="My Guide Title" />
         </Field>
 
         <div className={styles.footer}>
-          <Button variant="primary" onClick={onClose} data-testid={testIds.blockEditor.metadataSaveButton}>
+          <Button variant="primary" onClick={onClose}>
             Done
           </Button>
         </div>

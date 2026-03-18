@@ -8,7 +8,6 @@ import React, { useState, useCallback } from 'react';
 import { IconButton, ConfirmModal, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { testIds } from '../../constants/testIds';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   deleteButton: css({
@@ -72,7 +71,7 @@ export function ConfirmDeleteButton({
         onClick={handleClick}
         className={className ?? styles.deleteButton}
         tooltip={tooltip}
-        data-testid={testIds.blockEditor.deleteButton}
+        data-testid="block-delete-button"
       />
 
       <ConfirmModal

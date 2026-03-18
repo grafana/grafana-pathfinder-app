@@ -23,7 +23,6 @@ import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
-import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock, JsonInteractiveAction } from '../types';
 import type { JsonInteractiveBlock } from '../../../types/json-guide.types';
 
@@ -469,7 +468,7 @@ export function InteractiveBlockForm({
             <TypeSwitchDropdown currentType="interactive" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
-        <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
+        <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>

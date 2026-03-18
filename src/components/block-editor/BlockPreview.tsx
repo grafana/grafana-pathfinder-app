@@ -15,7 +15,6 @@ import { getPrismStyles } from '../../styles/prism.styles';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import type { JsonGuide } from './types';
 import type { RawContent } from '../../types/content.types';
-import { testIds } from '../../constants/testIds';
 
 export interface BlockPreviewProps {
   /** The guide to preview */
@@ -172,7 +171,6 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
               onClick={handleReset}
               aria-label="Reset guide"
               title="Resets all interactive steps"
-              data-testid={testIds.blockEditor.previewResetButton}
             >
               <Icon name="history-alt" size="sm" />
               <span>Reset guide</span>

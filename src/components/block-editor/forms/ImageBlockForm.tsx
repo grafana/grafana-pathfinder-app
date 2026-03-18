@@ -9,7 +9,6 @@ import { Button, Field, Input, Alert, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { PLACEHOLDER_URL } from '../utils';
-import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonImageBlock } from '../../../types/json-guide.types';
 
@@ -136,7 +135,7 @@ export function ImageBlockForm({
             <TypeSwitchDropdown currentType="image" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
-        <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
+        <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>

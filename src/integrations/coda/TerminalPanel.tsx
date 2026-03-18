@@ -21,7 +21,6 @@ import '@xterm/xterm/css/xterm.css';
 import { useTerminalLive, ConnectionStatus } from './useTerminalLive.hook';
 import { useTerminalContext } from './TerminalContext';
 import { getTerminalPanelStyles } from './terminal-panel.styles';
-import { testIds } from '../../constants/testIds';
 import {
   setTerminalOpen,
   getTerminalHeight,
@@ -384,7 +383,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             onClick={handleToggleExpand}
             role="button"
             tabIndex={0}
-            data-testid={testIds.codaTerminal.collapsedBar}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 handleToggleExpand();
@@ -406,13 +404,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 )}
                 <span>{getStatusText(status)}</span>
               </div>
-              <IconButton
-                name="angle-up"
-                size="sm"
-                aria-label="Expand"
-                tooltip="Expand terminal"
-                data-testid={testIds.codaTerminal.expandButton}
-              />
+              <IconButton name="angle-up" size="sm" aria-label="Expand" tooltip="Expand terminal" />
             </div>
           </div>
         </div>
@@ -427,7 +419,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
           // Hide when collapsed but keep in DOM to preserve terminal instance
           display: isExpanded ? 'flex' : 'none',
         }}
-        data-testid={testIds.codaTerminal.panel}
+        data-testid="coda-terminal-panel"
       >
         {/* Resize handle */}
         <div
@@ -436,7 +428,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
           role="separator"
           aria-orientation="horizontal"
           aria-label="Resize terminal panel"
-          data-testid={testIds.codaTerminal.resizeHandle}
           style={{ cursor: isResizing ? 'ns-resize' : undefined }}
         />
 
@@ -457,37 +448,19 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             </div>
 
             {canConnect && (
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={handleConnect}
-                className={styles.headerButton}
-                data-testid={testIds.codaTerminal.connectButton}
-              >
+              <Button size="sm" variant="primary" onClick={handleConnect} className={styles.headerButton}>
                 Connect
               </Button>
             )}
 
             {canCancel && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleDisconnect}
-                className={styles.headerButton}
-                data-testid={testIds.codaTerminal.cancelButton}
-              >
+              <Button size="sm" variant="secondary" onClick={handleDisconnect} className={styles.headerButton}>
                 Cancel
               </Button>
             )}
 
             {canDisconnect && (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={handleDisconnect}
-                className={styles.headerButton}
-                data-testid={testIds.codaTerminal.disconnectButton}
-              >
+              <Button size="sm" variant="destructive" onClick={handleDisconnect} className={styles.headerButton}>
                 Disconnect
               </Button>
             )}
@@ -498,7 +471,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               aria-label="Search"
               tooltip="Search in terminal (Ctrl+F)"
               onClick={handleSearchToggle}
-              data-testid={testIds.codaTerminal.searchToggle}
             />
 
             <IconButton
@@ -507,7 +479,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               aria-label="Collapse"
               tooltip="Collapse terminal"
               onClick={handleToggleExpand}
-              data-testid={testIds.codaTerminal.collapseButton}
             />
 
             {onClose && (
@@ -517,7 +488,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 aria-label="Close terminal"
                 tooltip="Close terminal"
                 onClick={onClose}
-                data-testid={testIds.codaTerminal.closeButton}
               />
             )}
           </div>
@@ -533,7 +503,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               placeholder="Search... (Enter=next, Shift+Enter=prev, Esc=close)"
               autoFocus
               width={30}
-              data-testid={testIds.codaTerminal.searchInput}
             />
             <IconButton
               name="arrow-up"
@@ -541,24 +510,9 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               aria-label="Previous"
               tooltip="Previous match"
               onClick={handleSearchPrev}
-              data-testid={testIds.codaTerminal.searchPrev}
             />
-            <IconButton
-              name="arrow-down"
-              size="sm"
-              aria-label="Next"
-              tooltip="Next match"
-              onClick={handleSearchNext}
-              data-testid={testIds.codaTerminal.searchNext}
-            />
-            <IconButton
-              name="times"
-              size="sm"
-              aria-label="Close search"
-              tooltip="Close"
-              onClick={handleSearchToggle}
-              data-testid={testIds.codaTerminal.searchClose}
-            />
+            <IconButton name="arrow-down" size="sm" aria-label="Next" tooltip="Next match" onClick={handleSearchNext} />
+            <IconButton name="times" size="sm" aria-label="Close search" tooltip="Close" onClick={handleSearchToggle} />
           </div>
         )}
 

@@ -93,26 +93,20 @@ export async function restoreTabsFromStorage(
     ];
 
     const validateUrl = createUrlValidator(options.isDevMode);
-    let hasEditorTab = false;
 
     parsedData.forEach((data: PersistedTabData) => {
-      // Handle editor tab specially - it has no URLs to validate.
-      // Accept old 'devtools' type for backward compat and migrate to 'editor'.
-      // Only add one editor tab even if storage contains both types.
-      if (data.type === 'editor' || (data.type as string) === 'devtools') {
-        if (!hasEditorTab) {
-          hasEditorTab = true;
-          tabs.push({
-            id: 'editor',
-            title: 'Guide editor',
-            baseUrl: '',
-            currentUrl: '',
-            content: null,
-            isLoading: false,
-            error: null,
-            type: 'editor',
-          });
-        }
+      // Handle devtools tab specially - it has no URLs to validate
+      if (data.type === 'devtools') {
+        tabs.push({
+          id: 'devtools',
+          title: 'Dev Tools',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+          type: 'devtools',
+        });
         return;
       }
 
@@ -172,11 +166,12 @@ export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: 
     const activeTabId = await tabStorage.getActiveTab();
 
     if (activeTabId) {
-      // Migrate old 'devtools' active tab ID to 'editor'
-      const resolvedTabId = activeTabId === 'devtools' ? 'editor' : activeTabId;
-      const tabExists = tabs.some((t) => t.id === resolvedTabId);
+      const tabExists = tabs.some((t) => t.id === activeTabId);
 
-      return tabExists ? resolvedTabId : 'recommendations';
+      // Restore the stored tab if it exists (including devtools - it should persist like normal tabs)
+      // The closeTab method ensures that when all tabs are closed, 'recommendations' is saved to storage
+      // So if storage has 'devtools', it means the user was legitimately on devtools when they refreshed
+      return tabExists ? activeTabId : 'recommendations';
     }
   } catch (error) {
     console.error('Failed to restore active tab from storage:', error);

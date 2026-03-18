@@ -12,7 +12,6 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
-import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonCodeBlockBlock } from '../../../types/json-guide.types';
 
@@ -189,7 +188,7 @@ export function CodeBlockForm({
         <Button type="submit" disabled={!isValid}>
           {isEditing ? 'Update' : 'Add'} block
         </Button>
-        <Button variant="secondary" onClick={onCancel} data-testid={testIds.blockEditor.formCancelButton}>
+        <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
       </div>

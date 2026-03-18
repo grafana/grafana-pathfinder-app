@@ -19,7 +19,6 @@ import {
   isInputBlock,
 } from '../../types/json-guide.types';
 import { getBlockPreview } from './utils';
-import { testIds } from '../../constants/testIds';
 
 export interface BlockItemProps {
   /** The block to render */
@@ -236,7 +235,7 @@ export function BlockItem({
             onClick={handleEdit}
             className={styles.editButton}
             tooltip="Edit block"
-            data-testid={testIds.blockEditor.editButton}
+            data-testid="block-edit-button"
           />
           <IconButton
             name="copy"
@@ -245,7 +244,7 @@ export function BlockItem({
             onClick={handleDuplicate}
             className={styles.actionButton}
             tooltip="Duplicate block"
-            data-testid={testIds.blockEditor.duplicateButton}
+            data-testid="block-duplicate-button"
           />
           <ConfirmDeleteButton
             onConfirm={onDelete}

@@ -89,11 +89,7 @@ export function CustomGuidesSection({
                         </span>
                       </div>
                       <div className={styles.cardActions}>
-                        <button
-                          onClick={() => openCustomGuide(guide)}
-                          className={styles.startButton}
-                          data-testid={testIds.contextPanel.customGuideStartButton(index)}
-                        >
+                        <button onClick={() => openCustomGuide(guide)} className={styles.startButton}>
                           <Icon name="rocket" size="sm" />
                           {t('contextPanel.start', 'Start')}
                         </button>

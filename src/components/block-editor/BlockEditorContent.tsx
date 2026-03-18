@@ -13,7 +13,6 @@ import { BlockJsonEditor } from './BlockJsonEditor';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
 import type { EditorBlock, BlockOperations, JsonGuide, ViewMode, JsonModeState, PositionedError } from './types';
-import { testIds } from '../../constants/testIds';
 
 export interface BlockEditorContentProps {
   /** Current view mode */
@@ -82,7 +81,7 @@ export function BlockEditorContent({
   const selectedCount = selectedBlockIds.size;
 
   return (
-    <div className={styles.content} data-testid={testIds.blockEditor.content}>
+    <div className={styles.content} data-testid="block-editor-content">
       {/* Selection controls - shown in edit mode, above blocks */}
       {viewMode === 'edit' && hasBlocks && (
         <div className={styles.selectionControls}>
@@ -90,52 +89,26 @@ export function BlockEditorContent({
             selectedCount >= 2 ? (
               <>
                 <span className={styles.selectionCount}>{selectedCount} blocks selected</span>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={onMergeToMultistep}
-                  data-testid={testIds.blockEditor.mergeMultistepButton}
-                >
+                <Button variant="primary" size="sm" onClick={onMergeToMultistep}>
                   Create multistep
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={onMergeToGuided}
-                  data-testid={testIds.blockEditor.mergeGuidedButton}
-                >
+                <Button variant="primary" size="sm" onClick={onMergeToGuided}>
                   Create guided
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={onClearSelection}
-                  data-testid={testIds.blockEditor.clearSelectionButton}
-                >
+                <Button variant="secondary" size="sm" onClick={onClearSelection}>
                   Cancel
                 </Button>
               </>
             ) : (
               <>
                 <span style={{ fontSize: '13px', color: '#888' }}>Click blocks to select them for merging</span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={onClearSelection}
-                  data-testid={testIds.blockEditor.clearSelectionButton}
-                >
+                <Button variant="secondary" size="sm" onClick={onClearSelection}>
                   Cancel
                 </Button>
               </>
             )
           ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="check-square"
-              onClick={onToggleSelectionMode}
-              data-testid={testIds.blockEditor.toggleSelectionButton}
-            >
+            <Button variant="secondary" size="sm" icon="check-square" onClick={onToggleSelectionMode}>
               Select blocks
             </Button>
           )}
@@ -160,20 +133,10 @@ export function BlockEditorContent({
           <div className={styles.emptyStateIcon}>📄</div>
           <p className={styles.emptyStateText}>Your guide is empty. Add your first block to get started.</p>
           <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-            <Button
-              variant="secondary"
-              onClick={onLoadTemplate}
-              icon="file-alt"
-              data-testid={testIds.blockEditor.loadTemplateButton}
-            >
+            <Button variant="secondary" onClick={onLoadTemplate} icon="file-alt">
               Load example guide
             </Button>
-            <Button
-              variant="secondary"
-              onClick={onOpenTour}
-              icon="question-circle"
-              data-testid={testIds.blockEditor.openTourButton}
-            >
+            <Button variant="secondary" onClick={onOpenTour} icon="question-circle">
               Take a tour
             </Button>
           </div>

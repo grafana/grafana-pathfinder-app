@@ -10,7 +10,6 @@ import React, { useEffect, useRef } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 
 import type { BadgeUnlockedToastProps } from '../../types/learning-paths.types';
-import { testIds } from '../../constants/testIds';
 import { getBadgeUnlockedToastStyles } from './learning-paths.styles';
 import { BadgeIcon } from './BadgeIcon';
 
@@ -75,12 +74,7 @@ export function BadgeUnlockedToast({ badge, onDismiss, queueCount = 0 }: BadgeUn
 
   return (
     <div className={styles.overlay} onClick={handleOverlayClick}>
-      <div
-        className={styles.toast}
-        role="dialog"
-        aria-labelledby="badge-title"
-        data-testid={testIds.learningPaths.badgeToast}
-      >
+      <div className={styles.toast} role="dialog" aria-labelledby="badge-title">
         {/* Confetti particles - static config, pure CSS animation */}
         <div className={styles.confettiContainer}>
           {CONFETTI_PARTICLES.map((particle, i) => (
@@ -125,11 +119,7 @@ export function BadgeUnlockedToast({ badge, onDismiss, queueCount = 0 }: BadgeUn
         <p className={styles.badgeDescription}>{badge.description}</p>
 
         {/* Dismiss button */}
-        <button
-          className={styles.dismissButton}
-          onClick={onDismiss}
-          data-testid={testIds.learningPaths.badgeToastDismiss}
-        >
+        <button className={styles.dismissButton} onClick={onDismiss}>
           Nice!
         </button>
       </div>

@@ -7,7 +7,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavigationManager } from '../../interactive-engine';
-import { testIds } from '../../constants/testIds';
 
 /**
  * Tour step definition
@@ -19,6 +18,8 @@ interface TourStep {
   title: string;
   /** Explanation text */
   content: string;
+  /** Optional action to describe what happens when clicking the target */
+  action?: 'highlight' | 'click';
 }
 
 /**
@@ -26,36 +27,42 @@ interface TourStep {
  */
 const TOUR_STEPS: TourStep[] = [
   {
-    target: `[data-testid="${testIds.blockEditor.container}"]`,
+    target: '[data-testid="block-editor"]',
     title: 'Welcome to the guide editor',
     content:
       'This is where you create interactive guides for Grafana. Guides combine markdown, interactive elements, and quizzes to help users learn.',
   },
   {
-    target: `[data-testid="${testIds.blockEditor.viewModeToggle}"]`,
+    target: '[data-testid="guide-metadata-button"]',
+    title: 'Guide settings',
+    content:
+      'Click the gear icon to set your guide title and ID. The ID is used to load your guide and should be unique.',
+  },
+  {
+    target: '[data-testid="view-mode-toggle"]',
     title: 'Edit and preview modes',
     content: 'Toggle between Edit mode (to modify blocks) and Preview mode (to see how your guide will look to users).',
   },
   {
-    target: `[data-testid="${testIds.blockEditor.moreActionsButton}"]`,
-    title: 'More actions',
+    target: '[data-testid="copy-json-button"]',
+    title: 'Export your guide',
     content:
-      'This menu contains import, export, and sharing options. Use it to copy or download the guide JSON, create a GitHub PR, or import an existing guide.',
+      'When ready, copy the JSON to clipboard, download it, or create a GitHub PR. The copy button is the quickest way to share your guide.',
   },
   {
-    target: `[data-testid="${testIds.blockEditor.content}"]`,
+    target: '[data-testid="block-editor-content"]',
     title: 'Your blocks appear here',
     content:
       'As you add blocks, they appear in this area. You can drag to reorder, click to edit, and use action buttons to duplicate or delete.',
   },
   {
-    target: `[data-testid="${testIds.blockEditor.palette}"]`,
+    target: '[data-testid="block-palette"]',
     title: 'Add blocks from here',
     content:
       'Click "Add Block" to see all available block types: Markdown for text, Interactive for UI actions, Quiz for knowledge checks, and more.',
   },
   {
-    target: `[data-testid="${testIds.blockEditor.container}"]`,
+    target: '[data-testid="block-editor"]',
     title: "You're ready to create!",
     content:
       "That's the basics! Start by loading the example guide to see how blocks work, or jump straight in and add your first block.",
@@ -85,11 +92,13 @@ export function BlockEditorTour({ onClose, steps = TOUR_STEPS }: BlockEditorTour
 
   // Navigate to next step
   const goToNext = useCallback(() => {
+    // Mark current step as completed
     setCompletedSteps((prev) => (prev.includes(currentStep) ? prev : [...prev, currentStep]));
 
     if (currentStep < totalSteps - 1) {
       setCurrentStep((prev) => prev + 1);
     } else {
+      // Tour complete
       navigationManager.clearAllHighlights();
       onClose();
     }
@@ -114,8 +123,10 @@ export function BlockEditorTour({ onClose, steps = TOUR_STEPS }: BlockEditorTour
       return;
     }
 
+    // Find the target element
     const element = document.querySelector(step.target) as HTMLElement | null;
 
+    // Build step info for progress display
     const stepInfo = {
       current: currentStep,
       total: totalSteps,
@@ -123,22 +134,26 @@ export function BlockEditorTour({ onClose, steps = TOUR_STEPS }: BlockEditorTour
     };
 
     if (element) {
+      // Use the unified NavigationManager highlight system
+      // Pass navigation callbacks for tour mode, and options for visual enhancements
+      // Skip animations after first step for smooth transitions
       await navigationManager.highlightWithComment(
         element,
         step.content,
-        false,
+        false, // Disable auto-cleanup for tour mode
         stepInfo,
-        undefined,
-        handleClose,
-        goToNext,
-        currentStep > 0 ? goToPrevious : undefined,
+        undefined, // No skip callback for tour
+        handleClose, // Cancel callback
+        goToNext, // Next callback (for tour navigation)
+        currentStep > 0 ? goToPrevious : undefined, // Previous callback (disabled on first step)
         {
           showKeyboardHint: true,
-          skipAnimations: currentStep > 0,
+          skipAnimations: currentStep > 0, // Instant transitions after first step
           stepTitle: step.title,
         }
       );
     } else {
+      // If element not found, show a centered comment
       navigationManager.showNoopComment(
         `<strong>${step.title}</strong><br><br>${step.content}<br><br><em style="opacity: 0.7">Target element not visible - it may appear in a different editor state.</em>`
       );
@@ -175,7 +190,9 @@ export function BlockEditorTour({ onClose, steps = TOUR_STEPS }: BlockEditorTour
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [currentStep, handleClose, goToNext, goToPrevious]);
 
+  // No JSX needed - the tour renders via NavigationManager's highlight system
   return null;
 }
 
+// Display name for debugging
 BlockEditorTour.displayName = 'BlockEditorTour';

@@ -15,7 +15,6 @@ import { linkInterceptionState } from '../../global-state/link-interception';
 import { MyLearningTab } from '../LearningPaths';
 import { MyLearningErrorBoundary } from '../docs-panel/components';
 import { getHomePageStyles } from './home.styles';
-import { testIds } from '../../constants/testIds';
 
 // ============================================================================
 // SCENE OBJECT
@@ -51,7 +50,7 @@ export function HomePanelRenderer() {
   }, []);
 
   return (
-    <div className={styles.container} data-testid={testIds.homePage.container}>
+    <div className={styles.container} data-testid="home-page">
       <MyLearningErrorBoundary>
         <MyLearningTab onOpenGuide={handleOpenGuide} />
       </MyLearningErrorBoundary>

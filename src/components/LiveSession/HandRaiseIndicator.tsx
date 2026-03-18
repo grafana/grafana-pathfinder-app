@@ -8,7 +8,6 @@ import React from 'react';
 import { Button, Badge, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { testIds } from '../../constants/testIds';
 
 /**
  * Props for HandRaiseIndicator
@@ -35,13 +34,7 @@ export function HandRaiseIndicator({ count, onClick }: HandRaiseIndicatorProps) 
 
   return (
     <div className={styles.container}>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={onClick}
-        aria-label="View raised hands"
-        data-testid={testIds.liveSession.handRaiseButton}
-      >
+      <Button size="sm" variant="secondary" onClick={onClick} aria-label="View raised hands">
         <span className={styles.buttonContent}>
           <span className={styles.emoji}>✋</span>
           <Badge text={count.toString()} color="orange" className={styles.badge} />

@@ -14,6 +14,15 @@ import { sidebarState } from 'global-state/sidebar';
 import { suggestionState } from './global-state/suggestion';
 import { validateRedirectPath } from './security/url-validator';
 
+// Buffer pathfinder-suggest events that arrive before async init completes.
+// Registered synchronously (before any await) so events from faster-loading
+// apps are never lost. Replayed or discarded after experiment state is known.
+const pendingSuggestEvents: CustomEvent[] = [];
+const earlySuggestListener = ((event: CustomEvent) => {
+  pendingSuggestEvents.push(event);
+}) as EventListener;
+document.addEventListener('pathfinder-suggest', earlySuggestListener);
+
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
 // Wrapped in try-catch to prevent plugin load failure if Faro has issues
@@ -336,122 +345,157 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
     onClick: () => {},
   });
 
-  // Listen for external app suggestion events to open sidebar with featured content.
-  // Sets detail.status ('accepted' | 'rejected') and detail.reason so the caller
-  // can read the result synchronously after dispatchEvent returns.
-  document.addEventListener('pathfinder-suggest', ((event: CustomEvent) => {
-    const detail = event.detail;
-    if (!detail) {
-      console.warn('[Pathfinder] pathfinder-suggest event missing detail');
-      return;
+  // Swap in the real suggest handler and replay any buffered events
+  const realSuggestHandler = ((event: CustomEvent) => {
+    handlePathfinderSuggest(event, after24hVariant);
+  }) as EventListener;
+  document.removeEventListener('pathfinder-suggest', earlySuggestListener);
+  document.addEventListener('pathfinder-suggest', realSuggestHandler);
+
+  for (const buffered of pendingSuggestEvents) {
+    if (buffered.detail) {
+      buffered.detail._buffered = true;
     }
-    if (!Array.isArray(detail.suggestions)) {
-      console.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
-      detail.status = 'rejected';
-      detail.reason = 'invalid_payload';
-      return;
-    }
+    handlePathfinderSuggest(buffered, after24hVariant);
+  }
+  pendingSuggestEvents.length = 0;
+} else {
+  // Control group: discard buffered events and remove early listener
+  document.removeEventListener('pathfinder-suggest', earlySuggestListener);
+  pendingSuggestEvents.length = 0;
+}
 
-    const valid = detail.suggestions.filter(
-      (s: unknown) =>
-        s &&
-        typeof s === 'object' &&
-        typeof (s as Record<string, unknown>).title === 'string' &&
-        typeof (s as Record<string, unknown>).url === 'string'
-    );
+// ============================================================================
+// PATHFINDER-SUGGEST EVENT HANDLER
+// ============================================================================
 
-    if (valid.length === 0) {
-      console.warn('[Pathfinder] pathfinder-suggest event had no valid suggestions (need title + url)');
-      detail.status = 'rejected';
-      detail.reason = 'no_valid_suggestions';
-      return;
-    }
+/**
+ * Handles external app suggestion events to open the sidebar with featured content.
+ * Sets detail.status ('accepted' | 'rejected') and detail.reason so the caller
+ * can read the result synchronously after dispatchEvent returns.
+ *
+ * The "already opened" flag is deferred until the sidebar actually mounts
+ * (via the pathfinder-sidebar-mounted event) so the flag is never burned
+ * if the sidebar fails to open for any reason.
+ */
+function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string): void {
+  const detail = event.detail;
+  if (!detail) {
+    console.warn('[Pathfinder] pathfinder-suggest event missing detail');
+    return;
+  }
+  if (!Array.isArray(detail.suggestions)) {
+    console.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
+    detail.status = 'rejected';
+    detail.reason = 'invalid_payload';
+    return;
+  }
 
-    // Check if another plugin is occupying the sidebar
-    try {
-      const dockedValue = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
-      if (dockedValue) {
-        let dockedPluginId: string | undefined;
-        try {
-          dockedPluginId = JSON.parse(dockedValue)?.pluginId;
-        } catch {
-          // Older Grafana versions may store a plain string
-        }
+  const valid = detail.suggestions.filter(
+    (s: unknown) =>
+      s &&
+      typeof s === 'object' &&
+      typeof (s as Record<string, unknown>).title === 'string' &&
+      typeof (s as Record<string, unknown>).url === 'string'
+  );
 
-        if (dockedPluginId && dockedPluginId !== pluginJson.id) {
-          console.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', dockedPluginId);
-          detail.status = 'rejected';
-          detail.reason = 'sidebar_in_use';
-          return;
-        }
+  if (valid.length === 0) {
+    console.warn('[Pathfinder] pathfinder-suggest event had no valid suggestions (need title + url)');
+    detail.status = 'rejected';
+    detail.reason = 'no_valid_suggestions';
+    return;
+  }
+
+  // Check if another plugin is occupying the sidebar
+  try {
+    const dockedValue = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
+    if (dockedValue) {
+      let dockedPluginId: string | undefined;
+      try {
+        dockedPluginId = JSON.parse(dockedValue)?.pluginId;
+      } catch {
+        // Older Grafana versions may store a plain string
       }
-    } catch {
-      // localStorage unavailable -- proceed optimistically
-    }
 
-    suggestionState.setSuggestions(valid);
-
-    const suggestedTitles = valid.map((s: Record<string, unknown>) => s.title).join(', ');
-    const suggestedUrls = valid.map((s: Record<string, unknown>) => s.url).join(', ');
-
-    // If Pathfinder is already docked, just update the featured zone without re-opening
-    if (sidebarState.getIsSidebarMounted()) {
-      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-        action: 'suggest',
-        source: 'external_app',
-        suggestion_count: valid.length,
-        suggested_titles: suggestedTitles,
-        suggested_urls: suggestedUrls,
-        sidebar_already_open: true,
-      });
-      detail.status = 'accepted';
-      return;
-    }
-
-    // For 24h experiment treatment: only auto-open once, but always store suggestions
-    // Uses localStorage (persists across browser sessions) as cache, with Grafana user storage as cross-device source of truth
-    if (after24hVariant === 'treatment') {
-      const hostname = window.location.hostname;
-      const autoOpenedKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
-      const alreadyOpened = localStorage.getItem(autoOpenedKey) === 'true';
-
-      if (alreadyOpened) {
-        // Suggestions are already stored above - user will see them when they manually open
-        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-          action: 'suggest',
-          source: 'external_app',
-          suggestion_count: valid.length,
-          suggested_titles: suggestedTitles,
-          suggested_urls: suggestedUrls,
-          sidebar_already_opened_by_experiment: true,
-        });
-        detail.status = 'accepted';
-        detail.reason = 'suggestions_stored_no_reopen';
+      if (dockedPluginId && dockedPluginId !== pluginJson.id) {
+        console.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', dockedPluginId);
+        detail.status = 'rejected';
+        detail.reason = 'sidebar_in_use';
         return;
       }
-
-      // First trigger - mark as opened in localStorage (sync, persists across sessions)
-      localStorage.setItem(autoOpenedKey, 'true');
-
-      // Also persist to Grafana user storage for cross-device durability (async, fire-and-forget)
-      // Uses dynamic import to keep user-storage.ts out of module.js
-      import('./lib/user-storage').then(({ experimentAutoOpenStorage }) => {
-        experimentAutoOpenStorage.markGlobalAutoOpened().catch(() => {
-          // Silently fail - localStorage is the primary guard
-        });
-      });
     }
+  } catch {
+    // localStorage unavailable -- proceed optimistically
+  }
 
+  const buffered = detail._buffered === true;
+
+  suggestionState.setSuggestions(valid);
+
+  const suggestedTitles = valid.map((s: Record<string, unknown>) => s.title).join(', ');
+  const suggestedUrls = valid.map((s: Record<string, unknown>) => s.url).join(', ');
+
+  // If Pathfinder is already docked, just update the featured zone without re-opening
+  if (sidebarState.getIsSidebarMounted()) {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'suggest',
       source: 'external_app',
       suggestion_count: valid.length,
       suggested_titles: suggestedTitles,
       suggested_urls: suggestedUrls,
-      sidebar_already_open: false,
+      sidebar_already_open: true,
+      buffered,
     });
-    sidebarState.setPendingOpenSource('external_suggestion', 'auto-open');
-    sidebarState.openSidebar('Interactive learning');
     detail.status = 'accepted';
-  }) as EventListener);
+    return;
+  }
+
+  // For 24h experiment treatment: only auto-open once, but always store suggestions.
+  // Uses localStorage as cache, with Grafana user storage as cross-device source of truth.
+  if (experimentVariant === 'treatment') {
+    const hostname = window.location.hostname;
+    const autoOpenedKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
+    const alreadyOpened = localStorage.getItem(autoOpenedKey) === 'true';
+
+    if (alreadyOpened) {
+      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+        action: 'suggest',
+        source: 'external_app',
+        suggestion_count: valid.length,
+        suggested_titles: suggestedTitles,
+        suggested_urls: suggestedUrls,
+        sidebar_already_opened_by_experiment: true,
+        buffered,
+      });
+      detail.status = 'accepted';
+      detail.reason = 'suggestions_stored_no_reopen';
+      return;
+    }
+
+    // Defer flag write until sidebar actually mounts — if it never opens
+    // the flag stays unset and the next page load can retry.
+    window.addEventListener(
+      'pathfinder-sidebar-mounted',
+      () => {
+        localStorage.setItem(autoOpenedKey, 'true');
+        import('./lib/user-storage').then(({ experimentAutoOpenStorage }) => {
+          experimentAutoOpenStorage.markGlobalAutoOpened().catch(() => {});
+        });
+      },
+      { once: true }
+    );
+  }
+
+  reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+    action: 'suggest',
+    source: 'external_app',
+    suggestion_count: valid.length,
+    suggested_titles: suggestedTitles,
+    suggested_urls: suggestedUrls,
+    sidebar_already_open: false,
+    buffered,
+  });
+  sidebarState.setPendingOpenSource('external_suggestion', 'auto-open');
+  sidebarState.openSidebar('Interactive learning');
+  detail.status = 'accepted';
 }

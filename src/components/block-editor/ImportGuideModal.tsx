@@ -10,7 +10,6 @@ import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css, cx } from '@emotion/css';
 import type { JsonGuide } from './types';
 import { importGuideFromFile, parseAndValidateGuide, type ImportValidationResult } from './utils/block-import';
-import { testIds } from '../../constants/testIds';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -397,7 +396,7 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
 
   return (
     <Modal title="Import guide" isOpen={isOpen} onDismiss={handleClose}>
-      <div className={styles.container} data-testid={testIds.blockEditor.importModal}>
+      <div className={styles.container}>
         {/* Mode selector */}
         <RadioButtonGroup
           options={MODE_OPTIONS}
@@ -420,7 +419,6 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
               role="button"
               tabIndex={0}
               aria-label="Drop zone for JSON file upload"
-              data-testid={testIds.blockEditor.importDropZone}
             >
               {renderDropZoneContent()}
             </div>
@@ -495,24 +493,14 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
         {/* Footer */}
         <div className={styles.footer}>
           {(state.file || state.pastedJson.trim()) && (
-            <Button
-              variant="secondary"
-              onClick={handleReset}
-              className={styles.resetButton}
-              data-testid={testIds.blockEditor.importResetButton}
-            >
+            <Button variant="secondary" onClick={handleReset} className={styles.resetButton}>
               {mode === 'file' ? 'Choose different file' : 'Clear'}
             </Button>
           )}
-          <Button variant="secondary" onClick={handleClose} data-testid={testIds.blockEditor.importCancelButton}>
+          <Button variant="secondary" onClick={handleClose}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            onClick={handleImportClick}
-            disabled={!state.result?.isValid}
-            data-testid={testIds.blockEditor.importButton}
-          >
+          <Button variant="primary" onClick={handleImportClick} disabled={!state.result?.isValid}>
             {showUnsavedWarning ? 'Confirm import' : 'Import'}
           </Button>
         </div>

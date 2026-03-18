@@ -6,7 +6,6 @@
 
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { testIds } from '../constants/testIds';
 import { Modal, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -55,7 +54,7 @@ function ControlGroupDocPopup({ onDismiss }: ControlGroupDocPopupProps) {
           Sadly you do not have access to Interactive learning yet as we are under public preview. If you would like to
           be granted access please reach out to your Grafana representative.
         </p>
-        <Button variant="secondary" onClick={handleDismiss} data-testid={testIds.controlGroupPopup.dismissButton}>
+        <Button variant="secondary" onClick={handleDismiss}>
           Dismiss
         </Button>
       </div>
@@ -69,7 +68,7 @@ function ControlGroupDocPopup({ onDismiss }: ControlGroupDocPopupProps) {
  */
 export function showControlGroupDocPopup(): void {
   const container = document.createElement('div');
-  container.setAttribute('data-testid', testIds.controlGroupPopup.container);
+  container.setAttribute('data-testid', 'control-group-doc-popup-container');
   document.body.appendChild(container);
 
   const root = createRoot(container);
