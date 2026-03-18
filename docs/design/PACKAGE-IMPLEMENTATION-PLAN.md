@@ -101,7 +101,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 4a: Backend resolution + v1 recommend routes  | Go tests + Layer 2 | ✅ (PR)     |
 | 4b: Content migration (interactive-tutorials) | Layer 1            | ✅          |
 | 4c: E2E manifest pre-flight                   | Layer 3            | —           |
-| 4d: Frontend remote resolver + v1 migration   | Layer 2            | **Next**    |
+| 4d: Frontend remote resolver + v1 migration   | Layer 2            | ✅          |
 | 4e: Integration verification                  | Layer 2 + Layer 3  | —           |
 | 4f: Path migration tooling                    | Layer 1            | ⏸️ Optional |
 | 4g: Docs-retrieval integration                | Layer 2            | —           |
@@ -222,8 +222,8 @@ This plan is designed to support and further the [content testing strategy](./TE
 Phase 4 is decomposed into seven sub-phases. Phases 4a and 4b are complete. The remaining critical path is 4d → 4e → 4g. Phase 4c can run in parallel with 4d. Phase 4f has been demoted to optional.
 
 ```
-Complete:          4a ✅, 4b ✅
-Wave 1 (parallel): 4d (after 4a merge+deploy), 4c
+Complete:          4a ✅, 4b ✅, 4d ✅
+Wave 1 (parallel): 4c
 Wave 2:            4e (after 4d)
 Wave 3:            4g (after 4e)
 Optional:          4f (demoted — migration completed without tooling)
@@ -334,88 +334,27 @@ Extend the e2e CLI to read `manifest.json` for pre-flight environment checks bef
 
 **Scope boundary:** This does NOT add full Layer 4 test environment routing (that's Phase 6). It adds manifest-aware pre-flight checks to the existing e2e runner.
 
-#### Phase 4d: Frontend remote resolver and v1 recommend migration
+#### Phase 4d: Frontend remote resolver and v1 recommend migration ✅
 
 **Repo:** `grafana-pathfinder-app`
 **Testing:** Layer 2
-**Depends on:** 4a (backend routes must be deployed)
-**Status:** Not started — **this is the critical path** once the recommender PR merges
+**Status:** Complete
 
-Two integration points with the recommender's versioned API:
+**What was delivered:**
 
-1. **Recommendation flow** (primary discovery path): migrate from `POST /recommend` to `POST /api/v1/recommend`. The v1 response contains both package-backed and URL-backed recommendations. Package-backed items (`type === "package"`) carry `contentUrl`, `manifestUrl`, `packageId`, `repository`, `packageType`, `category`, `author`, `startingLocation`, `milestones`, and `navigation`. The frontend discriminates on `type` to determine rendering behavior — no separate resolution call is needed for contextually recommended packages.
-
-2. **Direct resolution flow** (by-ID loading): `RecommenderPackageResolver` calls `GET /api/v1/packages/{id}` for deep links, `milestones` navigation, or any case where the frontend needs a specific package by bare ID outside the recommendation flow.
-
-Both flows are composed with the existing `BundledPackageResolver` for offline/OSS fallback.
-
-##### Step 1: V1 response types at Tier 0
-
-Define TypeScript types matching the recommender's OpenAPI `V1Recommendation` and `V1RecommenderResponse` schemas. These go in `src/types/` at Tier 0 for broad importability.
-
-- [ ] **`V1Recommendation` interface** — discriminated union on `type`:
-  - Common fields: `type`, `title`, `description?`, `source?`, `matchAccuracy?`, `matchedCriteria?`, `missingCriteria?`
-  - URL-backed fields (when `type !== "package"`): `url`
-  - Package-backed fields (when `type === "package"`): `packageId`, `contentUrl`, `manifestUrl`, `repository`, `packageType?`, `category?`, `author?: { name?: string; team?: string }`, `startingLocation?`, `milestones?: string[]`, `navigation?: PackageNavigation`
-- [ ] **`PackageNavigation` interface**: `recommends?: string[]`, `suggests?: string[]`, `depends?: string[]`
-  - `memberOf` is **not** in this phase — it arrives in Phase 5
-- [ ] **`V1RecommenderResponse` interface**: `recommendations: V1Recommendation[]`, `featured?: V1Recommendation[]`
-- [ ] **Type guard**: `isPackageRecommendation(rec: V1Recommendation): rec is V1Recommendation & { packageId: string }` — discriminates on `type === "package"`
-- [ ] Export from `src/types/index.ts`
-
-**Design note on `Recommendation` evolution:** The existing `Recommendation` interface in `src/types/context.types.ts` has `url: string` as a required field and an index signature (`[key: string]: any`). Rather than widening this legacy type (which would require auditing all consumers), the v1 migration introduces `V1Recommendation` as a parallel type. The `ContextService.getExternalRecommendations()` method will normalize v1 responses into the existing `Recommendation` shape for URL-backed items and a new package-aware shape for package-backed items. Full `Recommendation` type evolution (removing the index signature, making `url` optional) is a Phase 10 cleanup candidate.
-
-##### Step 2: Migrate `getExternalRecommendations()` to v1 endpoint
-
-The migration point is in `src/context-engine/context.service.ts`, method `getExternalRecommendations()`:
-
-- [ ] **Change endpoint URL** from `${configWithDefaults.recommenderServiceUrl}/recommend` to `${configWithDefaults.recommenderServiceUrl}/api/v1/recommend`
-  - Same `ContextPayload` request body — the v1 endpoint accepts the identical `RecommendationContext` schema
-  - Same `AbortController` timeout pattern
-- [ ] **Parse response as `V1RecommenderResponse`** instead of `RecommenderResponse`
-- [ ] **Update `sanitizeRecommendation` allowlist** to include new v1 fields: `packageId`, `contentUrl`, `manifestUrl`, `repository`, `packageType`, `category`, `author`, `startingLocation`, `milestones`, `navigation`
-  - Current sanitization (line ~502 in `context.service.ts`) uses an explicit allowlist to prevent prototype pollution — all new fields must be enumerated
-- [ ] **Discriminate response items by type:**
-  - `type === "package"` → construct a package-aware recommendation with `contentUrl`/`manifestUrl` for content fetching, pass through metadata fields
-  - Any other `type` → existing behavior (URL-backed, `url` field used as link)
-- [ ] **Pass through `navigation`** when present (carries `recommends`, `suggests`, `depends` from Phase 4a; `memberOf` added in Phase 5)
-- [ ] **Merge with bundled interactive recommendations** — existing `getBundledInteractiveRecommendations()` continues to provide offline/local recommendations; v1 package-backed items from the recommender are merged alongside them with appropriate deduplication (same `packageId` or matching `title`)
-
-##### Step 3: `RecommenderPackageResolver`
-
-Implements `PackageResolver` for by-ID loading via the recommender's `GET /api/v1/packages/{id}` endpoint.
-
-- [ ] **`RecommenderPackageResolver`** in `src/package-engine/recommender-resolver.ts`:
-  - [ ] Constructor accepts `recommenderBaseUrl: string` (from `configWithDefaults.recommenderServiceUrl`)
-  - [ ] `resolve(packageId, options?)` calls `GET ${baseUrl}/api/v1/packages/${encodeURIComponent(packageId)}`
-  - [ ] On `200`: parse `PackageResolutionResponse` (`id`, `contentUrl`, `manifestUrl`, `repository`), return `PackageResolutionSuccess`
-  - [ ] On `404`: parse `PackageResolutionError` (`{"error": "package not found", "code": "not-found"}`), return failure with `code: 'not-found'`
-  - [ ] On `400`: parse `PackageResolutionError` (`{"error": "invalid package id", "code": "bad-request"}`), map to `code: 'not-found'` (invalid IDs don't exist)
-  - [ ] On network error: return failure with `code: 'network-error'`
-  - [ ] When `options?.loadContent` is true: fetch `contentUrl` and `manifestUrl` from CDN directly, parse and populate `content` and `manifest` on the resolution result
-  - [ ] URL construction uses `new URL()` (F3 security rule)
-
-##### Step 4: `CompositePackageResolver`
-
-- [ ] **`createCompositeResolver(pluginConfig)`** factory in `src/package-engine/composite-resolver.ts`:
-  - [ ] Always includes `BundledPackageResolver` (baseline content, works offline/OSS)
-  - [ ] Conditionally includes `RecommenderPackageResolver` only when `isRecommenderEnabled(pluginConfig)` is true
-  - [ ] Resolution order: bundled first, recommender second. Bundled content always wins for packages that exist locally.
-  - [ ] Same `PackageResolver` interface — callers don't know which tier resolved
-- [ ] Export from `src/package-engine/index.ts` barrel
-
-##### Step 5: Tests
-
-- [ ] Layer 2 tests for `RecommenderPackageResolver`: successful resolution, 404 handling, 400 handling, network error, CDN content loading
-- [ ] Layer 2 tests for `CompositePackageResolver`: bundled-first ordering, fallback to recommender, recommender-disabled behavior, bundled-miss-recommender-hit
-- [ ] Layer 2 tests for v1 response handling in context service: package-backed discrimination, URL-backed passthrough, mixed results, sanitization of new fields, navigation passthrough, deduplication with bundled items
+- [x] **V1 types** (`src/types/v1-recommender.types.ts`, Tier 0): `V1Recommendation` (discriminated union on `type`), `PackageNavigation` (`recommends`/`suggests`/`depends`; `memberOf` deferred to Phase 5), `V1RecommenderResponse`, `isPackageRecommendation()` type guard. All exported from `src/types/index.ts`.
+- [x] **v1 endpoint migration** (`src/context-engine/context.service.ts`): `getExternalRecommendations()` now calls `POST /api/v1/recommend`. Response parsed as `V1RecommenderResponse`. Sanitization allowlist extended with all new v1 fields (`packageId`, `contentUrl`, `manifestUrl`, `repository`, `packageType`, `category`, `author`, `startingLocation`, `milestones`, `navigation`). Package-backed items (`type === "package"`) produce `Recommendation` objects with `packageId`/`contentUrl`/`manifestUrl`/`navigation` populated; URL-backed items use existing behavior. Bundled interactive recommendations deduplicated against v1 package-backed items (by `packageId` then by `title`).
+- [x] **`RecommenderPackageResolver`** (`src/package-engine/recommender-resolver.ts`): implements `PackageResolver` via `GET /api/v1/packages/{id}`; handles 200/404/400/network-error; supports `loadContent` option (CDN fetch of `contentUrl`/`manifestUrl`); uses `new URL()` per F3 security rule.
+- [x] **`CompositePackageResolver`** (`src/package-engine/composite-resolver.ts`): first-wins ordered resolver. `createCompositeResolver(pluginConfig)` factory wires `BundledPackageResolver` (always) + `RecommenderPackageResolver` (when `isRecommenderEnabled(pluginConfig)` is true). Bundled content wins for packages available locally.
+- [x] Both new classes exported from `src/package-engine/index.ts` barrel.
+- [x] 44 Layer 2 tests across `recommender-resolver.test.ts`, `composite-resolver.test.ts`, and `context.service.v1.test.ts`. All 110 test suites pass.
 
 **Key design decisions:**
 
-- The composite resolver preserves the single `PackageResolver` interface — consumers don't change. Bundled content always wins for packages that exist locally, providing offline/OSS baseline support.
-- **Recommender gated by plugin setting.** No circuit-breaker is needed: `isRecommenderEnabled(pluginConfig)` is the gate.
-- The frontend never fetches or stores repository indexes — all multi-repo resolution logic lives in the recommender.
-- **Navigation passthrough.** Both the v1 recommend handler and the `RecommenderPackageResolver` pass through `navigation` when present. In Phase 4d, `navigation` carries `recommends`/`suggests`/`depends` from the recommender (already implemented in 4a). Phase 5 adds `memberOf`. The frontend does not render navigation in Phase 4d — it passes the data through so Phase 4g/5 can consume it.
+- **`Recommendation` type unchanged.** Rather than widening the legacy `Recommendation` interface (which has `url: string` as required and an index signature), v1 responses are normalized into the existing shape. Package-backed items use `contentUrl` as the `url` field; the extra package fields (`packageId`, `contentUrl`, `manifestUrl`, `navigation`, etc.) flow through the index signature. Full type evolution (removing the index signature, making `url` optional) is a Phase 10 cleanup candidate.
+- **Package-backed items get `type: "interactive"`.** The `processLearningJourneys` pipeline skips bundled items (`bundled:` prefix) but would try to fetch CDN content for non-bundled interactive URLs. Package-backed items currently receive `type: "interactive"` to route them through this path — but they won't be fetched by `processLearningJourneys` since they have a CDN URL. Phase 4g wires the actual content fetch.
+- **Bundled content wins.** Deduplication filters v1 package-backed items whose `packageId` or `title` matches a bundled recommendation. This ensures offline/OSS users always see local content without network calls.
+- **Navigation passthrough.** `navigation` (`recommends`/`suggests`/`depends`) is passed through in both the v1 recommend handler and `RecommenderPackageResolver`. Phase 4d does not render navigation — it preserves the data for Phase 4g/5 consumption. `memberOf` is not present in v1 responses until Phase 5 adds it to the recommender.
 
 #### Phase 4e: Integration verification
 
