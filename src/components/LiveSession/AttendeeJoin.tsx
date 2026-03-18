@@ -9,6 +9,7 @@ import { Modal, Button, Input, Alert, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { parseJoinCode, parseSessionFromUrl, useSession } from '../../integrations/workshop';
+import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { SessionOffer, AttendeeMode } from '../../types/collaboration.types';
 import { testIds } from '../../constants/testIds';
 
@@ -309,26 +310,28 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
               />
             </div>
 
-            <div className={styles.section}>
-              <label className={styles.label}>Select Mode</label>
-              <div className={styles.modeSelector}>
-                {modeOptions.map((option) => (
-                  <div
-                    key={option.value}
-                    className={`${styles.modeOption} ${mode === option.value ? styles.modeOptionSelected : ''}`}
-                    onClick={() => setMode(option.value)}
-                  >
-                    <div className={styles.modeRadio}>
-                      <input type="radio" checked={mode === option.value} onChange={() => setMode(option.value)} />
+            {FOLLOW_MODE_ENABLED && (
+              <div className={styles.section}>
+                <label className={styles.label}>Select Mode</label>
+                <div className={styles.modeSelector}>
+                  {modeOptions.map((option) => (
+                    <div
+                      key={option.value}
+                      className={`${styles.modeOption} ${mode === option.value ? styles.modeOptionSelected : ''}`}
+                      onClick={() => setMode(option.value)}
+                    >
+                      <div className={styles.modeRadio}>
+                        <input type="radio" checked={mode === option.value} onChange={() => setMode(option.value)} />
+                      </div>
+                      <div className={styles.modeContent}>
+                        <div className={styles.modeLabel}>{option.label}</div>
+                        <div className={styles.modeDescription}>{option.description}</div>
+                      </div>
                     </div>
-                    <div className={styles.modeContent}>
-                      <div className={styles.modeLabel}>{option.label}</div>
-                      <div className={styles.modeDescription}>{option.description}</div>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {error !== null && <ErrorAlert error={error} className={styles.alert} />}
 

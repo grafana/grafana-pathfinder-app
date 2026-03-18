@@ -68,6 +68,7 @@ import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents } from '@grafana/runtime';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
+import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../../constants/testIds';
@@ -1135,69 +1136,73 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
-                    <ButtonGroup>
-                      <Button
-                        size="sm"
-                        variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
-                        onClick={() => {
-                          if (attendeeMode !== 'guided') {
-                            const newMode: AttendeeMode = 'guided';
-                            // Update session state
-                            setAttendeeMode(newMode);
-                            // Update ActionReplaySystem
-                            if (actionReplayRef.current) {
-                              actionReplayRef.current.setMode(newMode);
-                            }
-                            // Send mode change to presenter
-                            if (sessionManager) {
-                              sessionManager.sendToPresenter({
-                                type: 'mode_change',
-                                sessionId: sessionInfo?.sessionId || '',
-                                timestamp: Date.now(),
-                                senderId: sessionManager.getRole() || 'attendee',
-                                mode: newMode,
-                              } as any);
-                            }
-                            logSession('[DocsPanel] Switched to Guided mode');
-                          }
-                        }}
-                        tooltip="Only see highlights when presenter clicks Show Me"
-                        data-testid={testIds.liveSession.guidedButton}
-                      >
-                        Guided
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
-                        onClick={() => {
-                          if (attendeeMode !== 'follow') {
-                            const newMode: AttendeeMode = 'follow';
-                            // Update session state
-                            setAttendeeMode(newMode);
-                            // Update ActionReplaySystem
-                            if (actionReplayRef.current) {
-                              actionReplayRef.current.setMode(newMode);
-                            }
-                            // Send mode change to presenter
-                            if (sessionManager) {
-                              sessionManager.sendToPresenter({
-                                type: 'mode_change',
-                                sessionId: sessionInfo?.sessionId || '',
-                                timestamp: Date.now(),
-                                senderId: sessionManager.getRole() || 'attendee',
-                                mode: newMode,
-                              } as any);
-                            }
-                            logSession('[DocsPanel] Switched to Follow mode');
-                          }
-                        }}
-                        tooltip="Execute actions automatically when presenter clicks Do It"
-                        data-testid={testIds.liveSession.followButton}
-                      >
-                        Follow
-                      </Button>
-                    </ButtonGroup>
+                    {FOLLOW_MODE_ENABLED && (
+                      <>
+                        <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
+                        <ButtonGroup>
+                          <Button
+                            size="sm"
+                            variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
+                            onClick={() => {
+                              if (attendeeMode !== 'guided') {
+                                const newMode: AttendeeMode = 'guided';
+                                // Update session state
+                                setAttendeeMode(newMode);
+                                // Update ActionReplaySystem
+                                if (actionReplayRef.current) {
+                                  actionReplayRef.current.setMode(newMode);
+                                }
+                                // Send mode change to presenter
+                                if (sessionManager) {
+                                  sessionManager.sendToPresenter({
+                                    type: 'mode_change',
+                                    sessionId: sessionInfo?.sessionId || '',
+                                    timestamp: Date.now(),
+                                    senderId: sessionManager.getRole() || 'attendee',
+                                    mode: newMode,
+                                  } as any);
+                                }
+                                logSession('[DocsPanel] Switched to Guided mode');
+                              }
+                            }}
+                            tooltip="Only see highlights when presenter clicks Show Me"
+                            data-testid={testIds.liveSession.guidedButton}
+                          >
+                            Guided
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
+                            onClick={() => {
+                              if (attendeeMode !== 'follow') {
+                                const newMode: AttendeeMode = 'follow';
+                                // Update session state
+                                setAttendeeMode(newMode);
+                                // Update ActionReplaySystem
+                                if (actionReplayRef.current) {
+                                  actionReplayRef.current.setMode(newMode);
+                                }
+                                // Send mode change to presenter
+                                if (sessionManager) {
+                                  sessionManager.sendToPresenter({
+                                    type: 'mode_change',
+                                    sessionId: sessionInfo?.sessionId || '',
+                                    timestamp: Date.now(),
+                                    senderId: sessionManager.getRole() || 'attendee',
+                                    mode: newMode,
+                                  } as any);
+                                }
+                                logSession('[DocsPanel] Switched to Follow mode');
+                              }
+                            }}
+                            tooltip="Execute actions automatically when presenter clicks Do It"
+                            data-testid={testIds.liveSession.followButton}
+                          >
+                            Follow
+                          </Button>
+                        </ButtonGroup>
+                      </>
+                    )}
                     <HandRaiseButton isRaised={isHandRaised} onToggle={handleHandRaiseToggle} />
                     <Button
                       size="sm"
