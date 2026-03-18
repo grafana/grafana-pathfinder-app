@@ -37,3 +37,6 @@ export * from './learning-paths.types';
 
 // Re-export content types from docs-retrieval for convenience
 export * from './content.types';
+
+// V1 recommender API types (recommend endpoint + package resolution)
+export * from './v1-recommender.types';

@@ -16,6 +16,12 @@
 // Resolver
 export { BundledPackageResolver, createBundledResolver } from './resolver';
 
+// Remote resolver (recommender-backed)
+export { RecommenderPackageResolver } from './recommender-resolver';
+
+// Composite resolver (bundled-first, recommender-fallback)
+export { CompositePackageResolver, createCompositeResolver } from './composite-resolver';
+
 // Loader
 export {
   loadBundledContent,
