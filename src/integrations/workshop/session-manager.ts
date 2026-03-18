@@ -7,6 +7,7 @@
 import Peer, { DataConnection } from 'peerjs';
 import { ReconnectionManager } from './reconnection-manager';
 import { generateSessionKeyPair, generateNonce, signChallenge, verifyChallenge } from './session-crypto';
+import { generateJoinCode } from './join-code-utils';
 import type {
   SessionConfig,
   SessionInfo,
@@ -17,6 +18,7 @@ import type {
   ConnectionState,
   ConnectionQuality,
   HandRaiseInfo,
+  SessionOffer,
 } from '../../types/collaboration.types';
 
 export interface PeerJSConfig {
@@ -152,13 +154,16 @@ export class SessionManager {
 
       // Create a join code that includes session metadata and the presenter's public key
       // Use this.sessionId (PeerJS-confirmed) rather than the requested peerId
-      const joinCodeData = {
+      const sessionOffer: SessionOffer = {
         id: this.sessionId!,
         name: config.name,
-        url: config.tutorialUrl,
-        pubkey: publicKeyB64,
+        tutorialUrl: config.tutorialUrl,
+        defaultMode: 'guided',
+        offer: {} as RTCSessionDescriptionInit,
+        timestamp: Date.now(),
+        sessionPublicKey: publicKeyB64,
       };
-      const joinCode = btoa(JSON.stringify(joinCodeData));
+      const joinCode = generateJoinCode(sessionOffer);
 
       // Generate join URL with session info (includes pubkey via joinCode)
       const joinUrl = this.generateJoinUrl(joinCode);
@@ -177,10 +182,10 @@ export class SessionManager {
         // Non-fatal - continue without QR code
       }
 
-      console.log(`[SessionManager] Session created: ${peerId}`);
+      console.log(`[SessionManager] Session created: ${this.sessionId}`);
 
       return {
-        sessionId: peerId,
+        sessionId: this.sessionId!,
         joinCode, // Base64 encoded session info
         joinUrl,
         qrCode,
