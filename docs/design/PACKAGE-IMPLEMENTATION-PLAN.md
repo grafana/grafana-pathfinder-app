@@ -100,7 +100,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 3b: Package authoring documentation           | —                  | ✅          |
 | 4a: Backend resolution + v1 recommend routes  | Go tests + Layer 2 | ✅ (PR)     |
 | 4b: Content migration (interactive-tutorials) | Layer 1            | ✅          |
-| 4c: E2E manifest pre-flight                   | Layer 3            | —           |
+| 4c: E2E manifest pre-flight                   | Layer 3            | ✅          |
 | 4d: Frontend remote resolver + v1 migration   | Layer 2            | **Next**    |
 | 4e: Integration verification                  | Layer 2 + Layer 3  | —           |
 | 4f: Path migration tooling                    | Layer 1            | ⏸️ Optional |
@@ -316,23 +316,22 @@ URL-backed items (`type !== "package"`): unchanged from legacy — `url` field p
 - CI enforcement: require `manifest.json` for every `content.json` (gated on confirmation that all guides have been migrated).
 - Legacy deploy cleanup: remove `guides/` CDN path once all traffic moves to `packages/`.
 
-#### Phase 4c: E2E manifest pre-flight
+#### Phase 4c: E2E manifest pre-flight ✅
 
+**Status:** Complete
 **Repo:** `grafana-pathfinder-app`
 **Testing:** Layer 3
-**Can start:** Immediately
 
-Extend the e2e CLI to read `manifest.json` for pre-flight environment checks before running guide tests.
+**Key decisions and artifacts:**
 
-- [ ] Extend `src/cli/commands/e2e.ts` to accept `--package <dir>` (loads `content.json` from the package directory instead of a bare JSON file)
-- [ ] When `manifest.json` exists in the package dir, read `testEnvironment` for pre-flight checks:
-  - [ ] `tier`: verify the current test environment matches (e.g., skip cloud-only guides when testing against local Docker)
-  - [ ] `minVersion`: check Grafana version via API before running (fail fast with clear message)
-  - [ ] `plugins`: verify required plugins are installed
-- [ ] Pre-flight failures produce structured skip/fail messages, not silent passes
-- [ ] Layer 3 tests for the pre-flight checking logic
-
-**Scope boundary:** This does NOT add full Layer 4 test environment routing (that's Phase 6). It adds manifest-aware pre-flight checks to the existing e2e runner.
+- `--package <dir>` flag on e2e command: loads `content.json` from the package directory. Manifest loading is optional — if `manifest.json` is absent, pre-flight is skipped entirely.
+- `--tier <tier>` flag: declares the current test environment tier (default `"local"`). Used by the tier check.
+- Pre-flight logic isolated in `src/cli/utils/manifest-preflight.ts` as pure functions: `checkTier`, `checkMinVersion`, `checkPlugins`, `loadManifestFromDir`, `runManifestPreflight`. No Commander dependency — fully unit-testable without spawning processes.
+- **Tier check:** `cloud` guide against `local` environment → `skip` with exit 0 (not a failure — guide is simply not runnable here). Unknown tiers pass through for forward compatibility.
+- **Version check:** fetches `/api/health` to get the actual Grafana version; compares against `minVersion` using semver prefix comparison (handles pre-release suffixes like `12.2.0-pre`).
+- **Plugin check:** fetches `/api/plugins` and checks each declared plugin ID. Missing plugins produce one `fail` result each; a fetch error produces a single `fail` for the entire check.
+- **Tier mismatch skips immediately** — no network calls are made for version or plugin checks when the tier doesn't match.
+- 36 Layer 3 tests in `src/cli/__tests__/manifest-preflight.test.ts` covering all check functions and the orchestration outcome including tier early-exit.
 
 #### Phase 4d: Frontend remote resolver and v1 recommend migration
 

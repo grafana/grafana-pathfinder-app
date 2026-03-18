@@ -7,10 +7,10 @@
 
 import { spawn } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
 import { join } from 'path';
+import { tmpdir } from 'os';
 
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
@@ -22,6 +22,14 @@ import {
   formatMultiGuideSummary,
   type TestResultsData,
 } from '../utils/e2e-reporter';
+import {
+  checkTier,
+  loadManifestFromDir,
+  runManifestPreflight,
+  type PreflightOutcome,
+  type CurrentTier,
+} from '../utils/manifest-preflight';
+import type { ManifestJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
 
@@ -34,6 +42,8 @@ interface E2ECommandOptions {
   artifacts: string;
   verbose: boolean;
   bundled: boolean;
+  package?: string;
+  tier: CurrentTier;
   trace: boolean;
   headed: boolean;
   alwaysScreenshot: boolean;
@@ -57,6 +67,8 @@ interface CliPreflightResult {
   passed: boolean;
   error?: string;
   durationMs: number;
+  /** Grafana version from /api/health — passed to manifest pre-flight to avoid a duplicate fetch. */
+  version?: string;
 }
 
 /**
@@ -101,6 +113,7 @@ async function checkGrafanaHealth(grafanaUrl: string): Promise<CliPreflightResul
     return {
       passed: true,
       durationMs: Date.now() - startTime,
+      version: data.version,
     };
   } catch (error) {
     const errorMessage =
@@ -382,11 +395,34 @@ function loadBundledGuide(name: string): LoadedGuide | null {
 }
 
 /**
+ * Load a guide from a package directory.
+ * Reads content.json from the directory; the manifest (if present) is handled separately.
+ */
+function loadGuideFromPackageDir(packageDir: string): LoadedGuide | null {
+  const contentPath = join(packageDir, 'content.json');
+  if (!existsSync(contentPath)) {
+    console.error(`❌ No content.json found in package directory: ${packageDir}`);
+    return null;
+  }
+  const loaded = loadGuideFiles([contentPath]);
+  return loaded[0] ?? null;
+}
+
+/**
  * Resolve guide inputs to LoadedGuide array.
- * Supports: file paths, --bundled flag, and bundled:name syntax.
+ * Supports: file paths, --bundled flag, bundled:name syntax, and --package <dir>.
  */
 function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide[] {
   const guides: LoadedGuide[] = [];
+
+  // --package <dir> takes precedence over positional args and --bundled
+  if (options.package) {
+    const guide = loadGuideFromPackageDir(options.package);
+    if (guide) {
+      guides.push(guide);
+    }
+    return guides;
+  }
 
   if (options.bundled) {
     // Load all bundled guides
@@ -412,6 +448,25 @@ function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide
   return guides;
 }
 
+/**
+ * Print the results of a manifest pre-flight check to the console.
+ */
+function printPreflightOutcome(outcome: PreflightOutcome, verbose: boolean): void {
+  for (const result of outcome.results) {
+    if (result.status === 'pass') {
+      if (verbose) {
+        console.log(`   ✓ ${result.check}`);
+      }
+    } else if (result.status === 'skip') {
+      if (verbose) {
+        console.log(`   ⊘ ${result.check}: ${result.reason}`);
+      }
+    } else {
+      console.error(`   ✗ ${result.check}: ${result.message}`);
+    }
+  }
+}
+
 // Generate unique run ID for default artifacts path
 const defaultArtifactsDir = `/tmp/pathfinder-e2e-${randomUUID().slice(0, 8)}`;
 
@@ -423,6 +478,8 @@ export const e2eCommand = new Command('e2e')
   .option('--artifacts <dir>', 'Directory for artifacts', defaultArtifactsDir)
   .option('--verbose', 'Enable verbose logging', false)
   .option('--bundled', 'Test all bundled guides')
+  .option('--package <dir>', 'Load content.json from a package directory; reads manifest.json for pre-flight checks')
+  .addOption(new Option('--tier <tier>', 'Current test environment tier').choices(['local', 'cloud']).default('local'))
   .option('--trace', 'Generate Playwright trace file', false)
   .option('--headed', 'Run browser in headed mode (visible)', false)
   .option('--always-screenshot', 'Capture screenshots on success and failure', false)
@@ -432,13 +489,16 @@ export const e2eCommand = new Command('e2e')
       const guides = resolveGuides(files, options);
 
       if (guides.length === 0) {
-        if (options.bundled) {
+        if (options.package) {
+          // Error already printed by loadGuideFromPackageDir
+        } else if (options.bundled) {
           console.error('❌ No bundled guides found in src/bundled-interactives/');
         } else if (files.length === 0) {
           console.error('❌ Please specify guide files or use --bundled flag');
           console.error('   Usage: pathfinder-cli e2e ./guide.json');
           console.error('          pathfinder-cli e2e --bundled');
           console.error('          pathfinder-cli e2e bundled:welcome-to-grafana');
+          console.error('          pathfinder-cli e2e --package ./my-package/');
         } else {
           console.error('❌ No valid guide files found in the specified paths');
         }
@@ -473,7 +533,11 @@ export const e2eCommand = new Command('e2e')
       console.log(`\n✅ Guide validation passed for ${valid.length} guide(s).`);
       console.log('\n📋 E2E test configuration:');
       console.log(`   Grafana URL: ${options.grafanaUrl}`);
+      console.log(`   Tier:        ${options.tier}`);
       console.log(`   Artifacts:   ${options.artifacts}`);
+      if (options.package) {
+        console.log(`   Package:     ${options.package}`);
+      }
       if (options.output) {
         console.log(`   Output:      ${options.output}`);
       }
@@ -489,6 +553,29 @@ export const e2eCommand = new Command('e2e')
 
       // Run CLI-level pre-flight checks
       console.log('\n🔍 Running pre-flight checks...');
+
+      // Load manifest early so the tier check can run before any network I/O.
+      // A tier mismatch (e.g. cloud guide on a local env) means the guide should be
+      // skipped — we want that message even when Grafana is not reachable.
+      let packageManifest: ManifestJson | null = null;
+      if (options.package) {
+        try {
+          packageManifest = loadManifestFromDir(options.package);
+        } catch (err) {
+          console.error(`\n❌ Failed to load manifest.json: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          process.exit(ExitCode.CONFIGURATION_ERROR);
+        }
+
+        if (packageManifest) {
+          const tierResult = checkTier(packageManifest.testEnvironment ?? {}, options.tier);
+          if (tierResult.status === 'skip' && tierResult.code === 'tier-mismatch') {
+            const tierMsg = packageManifest.testEnvironment?.tier ?? 'unknown';
+            console.log(`\n⊘ Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`);
+            console.log(`   Use --tier ${tierMsg} to run this guide against a matching environment.`);
+            process.exit(ExitCode.SUCCESS);
+          }
+        }
+      }
 
       // 1. Check Grafana health (public endpoint, no auth needed)
       const healthCheck = await checkGrafanaHealth(options.grafanaUrl);
@@ -508,7 +595,47 @@ export const e2eCommand = new Command('e2e')
       }
 
       console.log('   ✓ Grafana is reachable');
-      console.log('   → Auth and plugin checks will run in Playwright context');
+
+      // 2. Manifest pre-flight — version and plugin checks (when --package is used)
+      if (options.package) {
+        if (packageManifest) {
+          console.log('   → Running manifest pre-flight checks...');
+          const outcome = await runManifestPreflight(packageManifest, {
+            grafanaUrl: options.grafanaUrl,
+            currentTier: options.tier,
+            grafanaVersion: healthCheck.version,
+          });
+
+          printPreflightOutcome(outcome, options.verbose);
+
+          if (outcome.skipped) {
+            // Defensive: tier skip was already handled above; shouldn't reach here
+            const tierMsg = packageManifest.testEnvironment?.tier ?? 'unknown';
+            console.log(`\n⊘ Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`);
+            console.log(`   Use --tier ${tierMsg} to run this guide against a matching environment.`);
+            process.exit(ExitCode.SUCCESS);
+          }
+
+          if (!outcome.canRun) {
+            console.error('\n❌ Manifest pre-flight failed — guide cannot run in this environment:');
+            for (const result of outcome.results) {
+              if (result.status === 'fail') {
+                console.error(`   • ${result.check}: ${result.message}`);
+              }
+            }
+            process.exit(ExitCode.CONFIGURATION_ERROR);
+          }
+
+          console.log('   ✓ Manifest pre-flight passed');
+        } else {
+          if (options.verbose) {
+            console.log('   ⊘ No manifest.json found — skipping manifest pre-flight');
+          }
+          console.log('   → Auth and plugin checks will run in Playwright context');
+        }
+      } else {
+        console.log('   → Auth and plugin checks will run in Playwright context');
+      }
 
       // Run Playwright tests for each guide
       console.log('\n🎭 Running Playwright tests...\n');
