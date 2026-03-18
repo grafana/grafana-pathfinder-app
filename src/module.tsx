@@ -353,6 +353,9 @@ if (shouldMountSidebar(mainVariant, after24hVariant)) {
   document.addEventListener('pathfinder-suggest', realSuggestHandler);
 
   for (const buffered of pendingSuggestEvents) {
+    if (buffered.detail) {
+      buffered.detail._buffered = true;
+    }
     handlePathfinderSuggest(buffered, after24hVariant);
   }
   pendingSuggestEvents.length = 0;
@@ -425,6 +428,8 @@ function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string):
     // localStorage unavailable -- proceed optimistically
   }
 
+  const buffered = detail._buffered === true;
+
   suggestionState.setSuggestions(valid);
 
   const suggestedTitles = valid.map((s: Record<string, unknown>) => s.title).join(', ');
@@ -439,6 +444,7 @@ function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string):
       suggested_titles: suggestedTitles,
       suggested_urls: suggestedUrls,
       sidebar_already_open: true,
+      buffered,
     });
     detail.status = 'accepted';
     return;
@@ -459,6 +465,7 @@ function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string):
         suggested_titles: suggestedTitles,
         suggested_urls: suggestedUrls,
         sidebar_already_opened_by_experiment: true,
+        buffered,
       });
       detail.status = 'accepted';
       detail.reason = 'suggestions_stored_no_reopen';
@@ -486,6 +493,7 @@ function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string):
     suggested_titles: suggestedTitles,
     suggested_urls: suggestedUrls,
     sidebar_already_open: false,
+    buffered,
   });
   sidebarState.setPendingOpenSource('external_suggestion', 'auto-open');
   sidebarState.openSidebar('Interactive learning');
