@@ -64,6 +64,11 @@ export class SessionManager {
   // ECDSA private key for presenter authentication (generated at session creation, never transmitted)
   private sessionPrivateKey: CryptoKey | null = null;
 
+  // Connections awaiting attendee_join handshake (not yet in this.connections)
+  private pendingConnections: Map<string, DataConnection> = new Map();
+  // Tracks which connections have already received a challenge (prevents DoS oracle)
+  private challengedConnections: Set<string> = new Set();
+
   /**
    * Check if session is active
    */
@@ -145,8 +150,18 @@ export class SessionManager {
       // Start heartbeat mechanism
       this.startHeartbeat();
 
-      // Generate join URL with session info
-      const joinUrl = this.generateJoinUrl(peerId, config.name, config.tutorialUrl);
+      // Create a join code that includes session metadata and the presenter's public key
+      // Use this.sessionId (PeerJS-confirmed) rather than the requested peerId
+      const joinCodeData = {
+        id: this.sessionId!,
+        name: config.name,
+        url: config.tutorialUrl,
+        pubkey: publicKeyB64,
+      };
+      const joinCode = btoa(JSON.stringify(joinCodeData));
+
+      // Generate join URL with session info (includes pubkey via joinCode)
+      const joinUrl = this.generateJoinUrl(joinCode);
 
       // Generate QR code for the join URL
       let qrCode = '';
@@ -163,15 +178,6 @@ export class SessionManager {
       }
 
       console.log(`[SessionManager] Session created: ${peerId}`);
-
-      // Create a join code that includes session metadata and the presenter's public key
-      const joinCodeData = {
-        id: peerId,
-        name: config.name,
-        url: config.tutorialUrl,
-        pubkey: publicKeyB64,
-      };
-      const joinCode = btoa(JSON.stringify(joinCodeData));
 
       return {
         sessionId: peerId,
@@ -202,21 +208,33 @@ export class SessionManager {
     this.peer.on('connection', (conn: DataConnection) => {
       console.log(`[SessionManager] Attendee connecting: ${conn.peer}`);
 
-      // Wait for connection to open
       conn.on('open', () => {
-        console.log(`[SessionManager] Attendee connected: ${conn.peer}`);
+        console.log(`[SessionManager] Attendee connected (pending handshake): ${conn.peer}`);
 
-        // Store connection
-        this.connections.set(conn.peer, conn);
+        // Store in pending — not yet authenticated (C1)
+        this.pendingConnections.set(conn.peer, conn);
 
-        // Track connection state
-        this.connectionStates.set(conn.peer, 'connected');
-        this.lastHeartbeat.set(conn.peer, Date.now());
+        // Enforce a 30-second handshake timeout (C1)
+        const handshakeTimeout = setTimeout(() => {
+          if (this.pendingConnections.has(conn.peer)) {
+            console.warn(`[SessionManager] Handshake timeout for ${conn.peer} — closing`);
+            this.pendingConnections.delete(conn.peer);
+            this.challengedConnections.delete(conn.peer);
+            conn.close();
+          }
+        }, 30000);
 
-        // Get attendee metadata from first message
         conn.on('data', async (data: any) => {
           if (data.type === 'presenter_challenge') {
-            // Sign the nonce with our private key and return the signature
+            // One challenge per connection lifetime — prevents DoS oracle (C2)
+            if (this.challengedConnections.has(conn.peer)) {
+              return;
+            }
+            // Basic nonce sanity check (C2)
+            if (typeof data.nonce !== 'string' || data.nonce.length === 0 || data.nonce.length > 128) {
+              return;
+            }
+            this.challengedConnections.add(conn.peer);
             if (this.sessionPrivateKey) {
               const signature = await signChallenge(this.sessionPrivateKey, data.nonce);
               conn.send({ type: 'presenter_response', nonce: data.nonce, signature });
@@ -225,6 +243,19 @@ export class SessionManager {
           }
 
           if (data.type === 'attendee_join') {
+            // Move from pending to authenticated connections (C1)
+            if (!this.pendingConnections.has(conn.peer)) {
+              // Already registered or unknown — ignore duplicate
+              return;
+            }
+            clearTimeout(handshakeTimeout);
+            this.pendingConnections.delete(conn.peer);
+            this.connections.set(conn.peer, conn);
+
+            // Track connection state
+            this.connectionStates.set(conn.peer, 'connected');
+            this.lastHeartbeat.set(conn.peer, Date.now());
+
             const attendee: AttendeeInfo = {
               id: conn.peer,
               name: data.name || 'Anonymous',
@@ -248,29 +279,31 @@ export class SessionManager {
               config: this.config,
               timestamp: Date.now(),
             });
-          } else if (data.type === 'mode_change') {
+            return;
+          }
+
+          // Guard: drop all messages from connections that haven't completed handshake (C1, S1)
+          if (!this.connections.has(conn.peer)) {
+            return;
+          }
+
+          if (data.type === 'mode_change') {
             // Handle mode change from attendee
             const attendee = this.attendees.get(conn.peer);
             if (attendee) {
               console.log(`[SessionManager] Attendee ${conn.peer} changed mode to ${data.mode}`);
-              // Create new object to trigger React re-render
               const updatedAttendee: AttendeeInfo = {
                 ...attendee,
                 mode: data.mode,
               };
               this.attendees.set(conn.peer, updatedAttendee);
-
-              // Notify attendee list update
               this.notifyAttendeeListUpdate();
             } else {
               console.warn(`[SessionManager] Received mode_change for unknown attendee: ${conn.peer}`);
             }
-            // Forward event to handlers
             this.eventHandlers.forEach((handler) => handler(data));
           } else if (data.type === 'hand_raise') {
-            // Handle hand raise from attendee
             if (data.isRaised) {
-              // Add to hand raises
               console.log(`[SessionManager] Attendee ${data.attendeeName} raised their hand`);
               this.handRaises.set(conn.peer, {
                 attendeeId: conn.peer,
@@ -278,13 +311,10 @@ export class SessionManager {
                 raisedAt: data.timestamp,
               });
             } else {
-              // Remove from hand raises
               console.log(`[SessionManager] Attendee ${data.attendeeName} lowered their hand`);
               this.handRaises.delete(conn.peer);
             }
-            // Notify hand raise update
             this.notifyHandRaiseUpdate();
-            // Forward event to handlers
             this.eventHandlers.forEach((handler) => handler(data));
           } else if (data.type === 'attendee_leave') {
             // Handle intentional attendee leave - remove immediately (no grace period)
@@ -295,27 +325,20 @@ export class SessionManager {
             this.heartbeatSentTimes.delete(conn.peer);
             this.connections.delete(conn.peer);
 
-            // Clean up hand raise if present
             if (this.handRaises.has(conn.peer)) {
               this.handRaises.delete(conn.peer);
               this.notifyHandRaiseUpdate();
             }
 
-            // Notify UI of immediate attendee removal
             this.notifyAttendeeListUpdate();
-
-            // Forward event to handlers
             this.eventHandlers.forEach((handler) => handler(data));
           } else if (data.type === 'heartbeat') {
-            // Update last heartbeat time
             this.lastHeartbeat.set(conn.peer, Date.now());
 
-            // Calculate latency if we have the sent time
             const sentTime = this.heartbeatSentTimes.get(conn.peer);
             if (sentTime && data.sentAt === sentTime) {
               const latency = Date.now() - sentTime;
 
-              // Update attendee with connection quality
               const attendee = this.attendees.get(conn.peer);
               if (attendee) {
                 const quality: ConnectionQuality = {
@@ -330,23 +353,27 @@ export class SessionManager {
                   connectionQuality: quality,
                 };
                 this.attendees.set(conn.peer, updatedAttendee);
-
-                // Notify attendee list update
                 this.notifyAttendeeListUpdate();
               }
             }
           } else {
-            // Forward other events to handlers
             this.eventHandlers.forEach((handler) => handler(data));
           }
         });
 
-        // Handle disconnection
         conn.on('close', () => {
+          // Clean up pending state if handshake never completed (C1)
+          if (this.pendingConnections.has(conn.peer)) {
+            clearTimeout(handshakeTimeout);
+            this.pendingConnections.delete(conn.peer);
+            this.challengedConnections.delete(conn.peer);
+            return;
+          }
+
           console.log(`[SessionManager] Attendee disconnected: ${conn.peer}`);
           this.connectionStates.set(conn.peer, 'disconnected');
+          this.challengedConnections.delete(conn.peer);
 
-          // Update attendee state
           const attendee = this.attendees.get(conn.peer);
           if (attendee) {
             const updatedAttendee: AttendeeInfo = {
@@ -354,15 +381,12 @@ export class SessionManager {
               connectionState: 'disconnected',
             };
             this.attendees.set(conn.peer, updatedAttendee);
-
-            // Notify attendee list update
             this.notifyAttendeeListUpdate();
           }
 
           this.connections.delete(conn.peer);
           // Don't immediately delete attendee - allow for reconnection
           setTimeout(() => {
-            // Only delete if still disconnected after 30 seconds
             if (this.connectionStates.get(conn.peer) === 'disconnected') {
               console.log(`[SessionManager] Removing attendee after grace period: ${conn.peer}`);
               this.attendees.delete(conn.peer);
@@ -370,13 +394,11 @@ export class SessionManager {
               this.lastHeartbeat.delete(conn.peer);
               this.heartbeatSentTimes.delete(conn.peer);
 
-              // Clean up hand raise if present
               if (this.handRaises.has(conn.peer)) {
                 this.handRaises.delete(conn.peer);
                 this.notifyHandRaiseUpdate();
               }
 
-              // Notify UI of attendee removal
               this.notifyAttendeeListUpdate();
             }
           }, 30000);
@@ -384,9 +406,18 @@ export class SessionManager {
 
         conn.on('error', (err) => {
           console.error(`[SessionManager] Connection error with ${conn.peer}:`, err);
-          this.connectionStates.set(conn.peer, 'failed');
 
-          // Update attendee state
+          // Clean up pending state (C1)
+          if (this.pendingConnections.has(conn.peer)) {
+            clearTimeout(handshakeTimeout);
+            this.pendingConnections.delete(conn.peer);
+            this.challengedConnections.delete(conn.peer);
+            return;
+          }
+
+          this.connectionStates.set(conn.peer, 'failed');
+          this.challengedConnections.delete(conn.peer);
+
           const attendee = this.attendees.get(conn.peer);
           if (attendee) {
             const updatedAttendee: AttendeeInfo = {
@@ -394,8 +425,6 @@ export class SessionManager {
               connectionState: 'failed',
             };
             this.attendees.set(conn.peer, updatedAttendee);
-
-            // Notify attendee list update
             this.notifyAttendeeListUpdate();
           }
         });
@@ -413,13 +442,14 @@ export class SessionManager {
    * @param sessionId - Presenter's peer ID
    * @param mode - Attendee mode (guided or follow)
    * @param name - Optional attendee name
+   * @param sessionPublicKey - Presenter's ECDSA public key from the join code (required)
    * @param peerjsConfig - PeerJS server configuration
    */
   async joinSession(
     sessionId: string,
     mode: 'guided' | 'follow',
-    name?: string,
-    sessionPublicKey?: string,
+    name: string | undefined,
+    sessionPublicKey: string,
     peerjsConfig?: PeerJSConfig
   ): Promise<void> {
     try {
@@ -479,30 +509,29 @@ export class SessionManager {
 
       console.log(`[SessionManager] Connected to presenter: ${sessionId}`);
 
-      // Phase 2: challenge-response (skipped when no session secret — legacy join codes)
+      // Phase 2: challenge-response — verifies the presenter holds the private key matching the join code
       await new Promise<void>((resolve, reject) => {
         let challengeTimeout: ReturnType<typeof setTimeout> | null = null;
-        let verified = !sessionPublicKey;
-        let challengeNonce: string | null = null;
+        let verified = false;
+        let verifying = false; // synchronous guard — prevents concurrent verify calls (C3)
 
-        if (sessionPublicKey) {
-          challengeNonce = generateNonce();
-          conn.send({ type: 'presenter_challenge', nonce: challengeNonce });
+        const challengeNonce = generateNonce();
+        conn.send({ type: 'presenter_challenge', nonce: challengeNonce });
 
-          challengeTimeout = setTimeout(() => {
-            conn.close();
-            reject(new Error('Presenter identity verification timed out'));
-          }, 10000);
-        }
+        challengeTimeout = setTimeout(() => {
+          conn.close();
+          reject(new Error('Presenter identity verification timed out'));
+        }, 10000);
 
         conn.on('data', async (data: any) => {
-          if (!verified && data.type === 'presenter_response') {
+          if (!verified && !verifying && data.type === 'presenter_response') {
+            verifying = true; // synchronous guard set before any await (C3)
             if (challengeTimeout !== null) {
               clearTimeout(challengeTimeout);
               challengeTimeout = null;
             }
 
-            const valid = await verifyChallenge(sessionPublicKey!, challengeNonce!, data.signature);
+            const valid = await verifyChallenge(sessionPublicKey, challengeNonce, data.signature);
             if (!valid) {
               conn.close();
               reject(new Error('Presenter identity verification failed'));
@@ -520,6 +549,11 @@ export class SessionManager {
             });
 
             resolve();
+            return;
+          }
+
+          // S1: drop all events until handshake is complete
+          if (!verified) {
             return;
           }
 
@@ -541,6 +575,15 @@ export class SessionManager {
         });
 
         conn.on('close', () => {
+          // S4: reject immediately if connection drops before handshake completes
+          if (!verified) {
+            if (challengeTimeout !== null) {
+              clearTimeout(challengeTimeout);
+              challengeTimeout = null;
+            }
+            reject(new Error('Connection closed before presenter identity verification completed'));
+            return;
+          }
           console.log('[SessionManager] Disconnected from presenter');
           this.handleError({
             code: 'CONNECTION_FAILED',
@@ -557,17 +600,6 @@ export class SessionManager {
             details: err,
           });
         });
-
-        if (!sessionPublicKey) {
-          // Legacy: send attendee_join immediately and resolve
-          conn.send({
-            type: 'attendee_join',
-            name: name || 'Anonymous',
-            mode,
-            timestamp: Date.now(),
-          });
-          resolve();
-        }
       });
 
       // Store connection after handshake completes
@@ -785,6 +817,8 @@ export class SessionManager {
     }
 
     this.connections.clear();
+    this.pendingConnections.clear();
+    this.challengedConnections.clear();
     this.attendees.clear();
 
     // Destroy peer
@@ -912,29 +946,20 @@ export class SessionManager {
    */
   private generateReadableId(): string {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let id = '';
-    for (let i = 0; i < 6; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return id;
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    // Minor modular bias (256 % 36 = 4) is acceptable for a peer ID
+    return Array.from(bytes, (b) => chars[b % chars.length]).join('');
   }
 
   /**
    * Generate join URL with session information
    */
-  private generateJoinUrl(peerId: string, sessionName?: string, tutorialUrl?: string): string {
+  private generateJoinUrl(joinCode: string): string {
     const base = window.location.origin;
     const params = new URLSearchParams({
-      session: peerId,
+      session: joinCode,
     });
-
-    if (sessionName) {
-      params.set('sessionName', sessionName);
-    }
-
-    if (tutorialUrl) {
-      params.set('tutorialUrl', tutorialUrl);
-    }
 
     return `${base}/a/grafana-grafanadocsplugin-app?${params.toString()}`;
   }

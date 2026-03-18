@@ -44,8 +44,8 @@ interface SessionContextValue {
   joinSession: (
     sessionId: string,
     mode: 'guided' | 'follow',
-    name?: string,
-    sessionPublicKey?: string
+    name: string | undefined,
+    sessionPublicKey: string
   ) => Promise<void>;
   endSession: () => void;
 
@@ -199,7 +199,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
    * Join an existing session as attendee
    */
   const joinSession = useCallback(
-    async (sessionId: string, mode: 'guided' | 'follow', name?: string, sessionPublicKey?: string): Promise<void> => {
+    async (
+      sessionId: string,
+      mode: 'guided' | 'follow',
+      name: string | undefined,
+      sessionPublicKey: string
+    ): Promise<void> => {
       try {
         // Store the attendee's selected mode and name
         setAttendeeMode(mode);

@@ -206,6 +206,12 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
     }
 
     setError(null);
+
+    if (!sessionOffer.sessionPublicKey) {
+      setError('This join code does not contain presenter authentication. Request a new link from your presenter.');
+      return;
+    }
+
     setIsJoining(true);
 
     try {

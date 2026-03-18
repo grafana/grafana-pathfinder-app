@@ -274,7 +274,7 @@ export interface HandRaiseEvent extends SessionEvent {
 
 /**
  * Sent by the attendee immediately after the WebRTC connection opens.
- * The presenter must respond with the HMAC of the nonce before attendee_join is accepted.
+ * The presenter must respond with the ECDSA P-256 signature of the nonce before attendee_join is accepted.
  */
 export interface PresenterChallengeMessage {
   type: 'presenter_challenge';
