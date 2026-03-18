@@ -41,7 +41,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, contentType, 
           <p>{error}</p>
           {isRetryable && onRetry && (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <Button size="sm" variant="secondary" onClick={onRetry} data-testid={testIds.docsPanel.retryButton}>
+              <Button size="sm" variant="secondary" onClick={onRetry}>
                 {t('docsPanel.retry', 'Retry')}
               </Button>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>

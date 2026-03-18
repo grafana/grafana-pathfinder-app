@@ -10,7 +10,6 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { parseJoinCode, parseSessionFromUrl, useSession } from '../../integrations/workshop';
 import type { SessionOffer, AttendeeMode } from '../../types/collaboration.types';
-import { testIds } from '../../constants/testIds';
 
 /**
  * Get user-friendly error guidance based on error type
@@ -268,7 +267,6 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
                     }
                   }}
                   autoFocus
-                  data-testid={testIds.liveSession.attendeeCodeInput}
                 />
                 <Button onClick={handleSubmitCode} variant="primary">
                   Next
@@ -301,12 +299,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
 
             <div className={styles.section}>
               <label className={styles.label}>Your Name (Optional)</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.currentTarget.value)}
-                placeholder="Enter your name..."
-                data-testid={testIds.liveSession.attendeeNameInput}
-              />
+              <Input value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="Enter your name..." />
             </div>
 
             <div className={styles.section}>
@@ -333,19 +326,10 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
             {error !== null && <ErrorAlert error={error} className={styles.alert} />}
 
             <div className={styles.actions}>
-              <Button
-                variant="secondary"
-                onClick={() => setSessionOffer(null)}
-                data-testid={testIds.liveSession.backButton}
-              >
+              <Button variant="secondary" onClick={() => setSessionOffer(null)}>
                 Back
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleJoinSession}
-                disabled={isJoining}
-                data-testid={testIds.liveSession.attendeeJoinButton}
-              >
+              <Button variant="primary" onClick={handleJoinSession} disabled={isJoining}>
                 {isJoining ? 'Joining...' : 'Join session'}
               </Button>
             </div>

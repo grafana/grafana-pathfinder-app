@@ -19,7 +19,7 @@ export interface LearningJourneyTab {
   content: RawContent | null; // Unified content type
   isLoading: boolean;
   error: string | null;
-  type?: 'learning-journey' | 'docs' | 'editor' | 'interactive';
+  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
 }
 
 /**
@@ -31,13 +31,13 @@ export interface PersistedTabData {
   title: string;
   baseUrl: string;
   currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
-  type?: 'learning-journey' | 'docs' | 'editor' | 'interactive';
+  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
 }
 
 export interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
   onOpenDocsPage?: (url: string, title: string) => void;
-  onOpenEditor?: () => void;
+  onOpenDevTools?: () => void;
 }
 
 /**

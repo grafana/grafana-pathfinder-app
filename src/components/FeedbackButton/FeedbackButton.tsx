@@ -3,7 +3,6 @@ import { reportAppInteraction, UserInteraction, calculateJourneyProgress } from 
 import { getFeedbackButtonStyles } from '../../styles/feedback-button.styles';
 import { useTheme2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { testIds } from '../../constants/testIds';
 
 interface FeedbackButtonProps {
   className?: string;
@@ -72,7 +71,6 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
       onClick={handleClick}
       aria-label={t('feedbackButton.ariaLabel', 'Give feedback about this plugin')}
       title={t('feedbackButton.title', 'Give feedback about this plugin')}
-      data-testid={testIds.feedbackButton.trigger}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"

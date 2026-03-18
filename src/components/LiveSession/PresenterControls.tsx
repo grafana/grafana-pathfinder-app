@@ -11,7 +11,6 @@ import { css } from '@emotion/css';
 import { useSession } from '../../integrations/workshop';
 import { ConnectionIndicator } from './ConnectionIndicator';
 import type { SessionConfig, AttendeeInfo } from '../../types/collaboration.types';
-import { testIds } from '../../constants/testIds';
 
 /**
  * Props for PresenterControls
@@ -123,12 +122,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
                     className={styles.codeInput}
                     style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', letterSpacing: '4px' }}
                   />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => copyToClipboard(sessionInfo.joinCode, 'code')}
-                    data-testid={testIds.liveSession.presenterCopyCode}
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(sessionInfo.joinCode, 'code')}>
                     {copied === 'code' ? '✓ Copied' : 'Copy'}
                   </Button>
                 </div>
@@ -138,12 +132,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
                 <label>Join URL</label>
                 <div className={styles.copyGroup}>
                   <Input value={sessionInfo.joinUrl} readOnly className={styles.urlInput} />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => copyToClipboard(sessionInfo.joinUrl, 'url')}
-                    data-testid={testIds.liveSession.presenterCopyUrl}
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(sessionInfo.joinUrl, 'url')}>
                     {copied === 'url' ? '✓ Copied' : 'Copy'}
                   </Button>
                 </div>
@@ -159,11 +148,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
             </div>
 
             <div className={styles.actions}>
-              <Button
-                variant="destructive"
-                onClick={handleEndSession}
-                data-testid={testIds.liveSession.presenterEndButton}
-              >
+              <Button variant="destructive" onClick={handleEndSession}>
                 End Session
               </Button>
             </div>

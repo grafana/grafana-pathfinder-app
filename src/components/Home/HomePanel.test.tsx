@@ -9,7 +9,6 @@ import { render, screen } from '@testing-library/react';
 import { HomePanelRenderer } from './HomePanel';
 import { sidebarState } from '../../global-state/sidebar';
 import { linkInterceptionState } from '../../global-state/link-interception';
-import { testIds } from '../../constants/testIds';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -97,7 +96,7 @@ describe('HomePanelRenderer', () => {
 
     it('renders home-page container', () => {
       render(<HomePanelRenderer />);
-      expect(screen.getByTestId(testIds.homePage.container)).toBeInTheDocument();
+      expect(screen.getByTestId('home-page')).toBeInTheDocument();
     });
   });
 

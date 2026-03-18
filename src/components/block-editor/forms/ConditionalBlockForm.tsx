@@ -13,7 +13,6 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { BranchBlocksEditor } from './BranchBlocksEditor';
-import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type {
   JsonConditionalBlock,
@@ -423,7 +422,7 @@ export function ConditionalBlockForm({
       )}
 
       <div className={styles.footer}>
-        <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
+        <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>

@@ -266,13 +266,7 @@ export const CodeBlockStep = forwardRef<
           <div className={styles.requirementMessage}>
             {checker.explanation}
             {skippable && (
-              <Button
-                size="sm"
-                variant="secondary"
-                fill="text"
-                onClick={markComplete}
-                data-testid={testIds.interactive.skipButton(renderedStepId)}
-              >
+              <Button size="sm" variant="secondary" fill="text" onClick={markComplete}>
                 Skip
               </Button>
             )}

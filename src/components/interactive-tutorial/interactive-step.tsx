@@ -1004,13 +1004,12 @@ export const InteractiveStep = forwardRef<
 
         {/* Lazy scroll failure message with retry */}
         {!isCompletedWithObjectives && lazyScrollError && (
-          <div className="interactive-step-lazy-error">
+          <div className="interactive-step-lazy-error" data-testid={`lazy-scroll-error-${renderedStepId}`}>
             <span className="interactive-lazy-error-text">{lazyScrollError}</span>
             <button
               className="interactive-lazy-retry-btn"
               onClick={handleLazyScrollRetry}
               disabled={isShowRunning || isDoRunning}
-              data-testid={testIds.interactive.lazyScrollRetryButton(renderedStepId)}
             >
               Retry
             </button>

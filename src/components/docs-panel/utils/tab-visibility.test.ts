@@ -20,7 +20,6 @@ function tab(id: string, title: string): LearningJourneyTab {
 
 describe('computeTabVisibility', () => {
   const recs = tab('recommendations', 'Recommendations');
-  const editor = tab('editor', 'Guide editor');
   const guide1 = tab('guide-1', 'Guide 1');
   const guide2 = tab('guide-2', 'Guide 2');
   const guide3 = tab('guide-3', 'Guide 3');
@@ -28,13 +27,6 @@ describe('computeTabVisibility', () => {
   describe('when only permanent tabs exist', () => {
     it('returns all tabs as visible and no overflow', () => {
       const tabs = [recs];
-      const result = computeTabVisibility(tabs, 500, 'recommendations');
-      expect(result.visibleTabs).toEqual(tabs);
-      expect(result.overflowedTabs).toEqual([]);
-    });
-
-    it('returns recommendations and editor as visible', () => {
-      const tabs = [recs, editor];
       const result = computeTabVisibility(tabs, 500, 'recommendations');
       expect(result.visibleTabs).toEqual(tabs);
       expect(result.overflowedTabs).toEqual([]);
@@ -94,24 +86,6 @@ describe('computeTabVisibility', () => {
       const result = computeTabVisibility(tabs, 300, 'guide-1');
       expect(result.visibleTabs[0]).toEqual(recs);
       expect(result.visibleTabs[1]).toEqual(guide1);
-    });
-  });
-
-  describe('editor tab handling', () => {
-    it('includes editor in visible alongside guide tabs', () => {
-      const tabs = [recs, editor, guide1, guide2];
-      const result = computeTabVisibility(tabs, 200, 'guide-1');
-      expect(result.visibleTabs).toContainEqual(editor);
-      expect(result.overflowedTabs).not.toContainEqual(editor);
-    });
-
-    it('never places editor in overflow even when space is tight', () => {
-      const tabs = [recs, editor, guide1, guide2, guide3];
-      const result = computeTabVisibility(tabs, 200, 'guide-3');
-      expect(result.visibleTabs).toContainEqual(recs);
-      expect(result.visibleTabs).toContainEqual(editor);
-      expect(result.overflowedTabs).not.toContainEqual(recs);
-      expect(result.overflowedTabs).not.toContainEqual(editor);
     });
   });
 });
