@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
@@ -29,6 +29,7 @@ import {
   type PreflightOutcome,
   type CurrentTier,
 } from '../utils/manifest-preflight';
+import type { ManifestJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
 
@@ -66,6 +67,8 @@ interface CliPreflightResult {
   passed: boolean;
   error?: string;
   durationMs: number;
+  /** Grafana version from /api/health — passed to manifest pre-flight to avoid a duplicate fetch. */
+  version?: string;
 }
 
 /**
@@ -110,6 +113,7 @@ async function checkGrafanaHealth(grafanaUrl: string): Promise<CliPreflightResul
     return {
       passed: true,
       durationMs: Date.now() - startTime,
+      version: data.version,
     };
   } catch (error) {
     const errorMessage =
@@ -475,7 +479,7 @@ export const e2eCommand = new Command('e2e')
   .option('--verbose', 'Enable verbose logging', false)
   .option('--bundled', 'Test all bundled guides')
   .option('--package <dir>', 'Load content.json from a package directory; reads manifest.json for pre-flight checks')
-  .option('--tier <tier>', 'Current test environment tier (local or cloud)', 'local')
+  .addOption(new Option('--tier <tier>', 'Current test environment tier').choices(['local', 'cloud']).default('local'))
   .option('--trace', 'Generate Playwright trace file', false)
   .option('--headed', 'Run browser in headed mode (visible)', false)
   .option('--always-screenshot', 'Capture screenshots on success and failure', false)
@@ -553,7 +557,7 @@ export const e2eCommand = new Command('e2e')
       // Load manifest early so the tier check can run before any network I/O.
       // A tier mismatch (e.g. cloud guide on a local env) means the guide should be
       // skipped — we want that message even when Grafana is not reachable.
-      let packageManifest = null;
+      let packageManifest: ManifestJson | null = null;
       if (options.package) {
         try {
           packageManifest = loadManifestFromDir(options.package);
@@ -564,7 +568,7 @@ export const e2eCommand = new Command('e2e')
 
         if (packageManifest) {
           const tierResult = checkTier(packageManifest.testEnvironment ?? {}, options.tier);
-          if (tierResult.status === 'skip' && tierResult.reason.includes('skipping')) {
+          if (tierResult.status === 'skip' && tierResult.code === 'tier-mismatch') {
             const tierMsg = packageManifest.testEnvironment?.tier ?? 'unknown';
             console.log(`\n⊘ Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`);
             console.log(`   Use --tier ${tierMsg} to run this guide against a matching environment.`);
@@ -599,6 +603,7 @@ export const e2eCommand = new Command('e2e')
           const outcome = await runManifestPreflight(packageManifest, {
             grafanaUrl: options.grafanaUrl,
             currentTier: options.tier,
+            grafanaVersion: healthCheck.version,
           });
 
           printPreflightOutcome(outcome, options.verbose);

@@ -28,6 +28,10 @@ export interface PreflightSkip {
   status: 'skip';
   check: string;
   reason: string;
+  /** Structured code for programmatic detection. `'tier-mismatch'` when the guide's tier
+   *  doesn't match the current environment; `'no-requirement'` when the manifest doesn't
+   *  declare the checked field at all. */
+  code?: 'tier-mismatch' | 'no-requirement';
 }
 
 /** A pre-flight check that failed — the guide cannot be tested in this environment. */
@@ -80,7 +84,7 @@ export function checkTier(testEnvironment: TestEnvironment, currentTier: Current
   const { tier } = testEnvironment;
 
   if (!tier) {
-    return { status: 'skip', check: 'tier', reason: 'No tier declared in manifest' };
+    return { status: 'skip', check: 'tier', reason: 'No tier declared in manifest', code: 'no-requirement' };
   }
 
   if (tier === 'local') {
@@ -96,6 +100,7 @@ export function checkTier(testEnvironment: TestEnvironment, currentTier: Current
       status: 'skip',
       check: 'tier',
       reason: `Guide requires tier "cloud" but current environment is "${currentTier}" — skipping`,
+      code: 'tier-mismatch',
     };
   }
 
@@ -145,12 +150,19 @@ export function compareVersions(a: [number, number, number], b: [number, number,
 
 /**
  * Check whether the running Grafana instance meets the manifest's minVersion requirement.
- * Fetches /api/health to get the actual version.
+ *
+ * When `grafanaVersion` is provided (from a prior health check), the comparison runs
+ * locally with no network I/O. Otherwise falls back to fetching `/api/health`.
  *
  * @param testEnvironment - The testEnvironment block from manifest.json
  * @param grafanaUrl - The Grafana base URL (e.g. "http://localhost:3000")
+ * @param grafanaVersion - Optional pre-fetched Grafana version string (avoids duplicate /api/health fetch)
  */
-export async function checkMinVersion(testEnvironment: TestEnvironment, grafanaUrl: string): Promise<PreflightResult> {
+export async function checkMinVersion(
+  testEnvironment: TestEnvironment,
+  grafanaUrl: string,
+  grafanaVersion?: string
+): Promise<PreflightResult> {
   const { minVersion } = testEnvironment;
 
   if (!minVersion) {
@@ -167,39 +179,43 @@ export async function checkMinVersion(testEnvironment: TestEnvironment, grafanaU
   }
 
   let actualVersion: string;
-  try {
-    const healthUrl = new URL('/api/health', grafanaUrl).toString();
-    const response = await fetch(healthUrl, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(10000),
-    });
+  if (grafanaVersion) {
+    actualVersion = grafanaVersion;
+  } else {
+    try {
+      const healthUrl = new URL('/api/health', grafanaUrl).toString();
+      const response = await fetch(healthUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
 
-    if (!response.ok) {
-      return {
-        status: 'fail',
-        check: 'minVersion',
-        message: `Could not fetch Grafana version: HTTP ${response.status} ${response.statusText}`,
-      };
-    }
+      if (!response.ok) {
+        return {
+          status: 'fail',
+          check: 'minVersion',
+          message: `Could not fetch Grafana version: HTTP ${response.status} ${response.statusText}`,
+        };
+      }
 
-    const data = (await response.json()) as GrafanaHealthResponse;
-    if (!data.version) {
-      return {
-        status: 'fail',
-        check: 'minVersion',
-        message: 'Grafana /api/health did not return a version field',
-      };
+      const data = (await response.json()) as GrafanaHealthResponse;
+      if (!data.version) {
+        return {
+          status: 'fail',
+          check: 'minVersion',
+          message: 'Grafana /api/health did not return a version field',
+        };
+      }
+      actualVersion = data.version;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.name === 'TimeoutError'
+            ? 'Connection timeout fetching Grafana version'
+            : error.message
+          : 'Unknown error fetching Grafana version';
+      return { status: 'fail', check: 'minVersion', message };
     }
-    actualVersion = data.version;
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.name === 'TimeoutError'
-          ? 'Connection timeout fetching Grafana version'
-          : error.message
-        : 'Unknown error fetching Grafana version';
-    return { status: 'fail', check: 'minVersion', message };
   }
 
   const actualParsed = parseVersion(actualVersion);
@@ -325,6 +341,9 @@ export function loadManifestFromDir(packageDir: string): ManifestJson | null {
 export interface ManifestPreflightOptions {
   grafanaUrl: string;
   currentTier: CurrentTier;
+  /** Pre-fetched Grafana version from a prior health check. When provided,
+   *  `checkMinVersion` skips its own `/api/health` fetch. */
+  grafanaVersion?: string;
 }
 
 /**
@@ -349,13 +368,13 @@ export async function runManifestPreflight(
   const tierResult = checkTier(testEnvironment, options.currentTier);
   results.push(tierResult);
 
-  if (tierResult.status === 'skip' && tierResult.reason.includes('skipping')) {
+  if (tierResult.status === 'skip' && tierResult.code === 'tier-mismatch') {
     // Tier mismatch — guide is not runnable in this environment
     return { canRun: false, skipped: true, results };
   }
 
-  // 2. Version check
-  const versionResult = await checkMinVersion(testEnvironment, options.grafanaUrl);
+  // 2. Version check (uses pre-fetched version when available to avoid duplicate /api/health)
+  const versionResult = await checkMinVersion(testEnvironment, options.grafanaUrl, options.grafanaVersion);
   results.push(versionResult);
 
   // 3. Plugin checks

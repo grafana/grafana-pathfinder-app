@@ -90,7 +90,15 @@ describe('checkTier', () => {
     const result = checkTier({ tier: 'cloud' }, 'local');
     expect(result.status).toBe('skip');
     if (result.status === 'skip') {
-      expect(result.reason).toContain('skipping');
+      expect(result.code).toBe('tier-mismatch');
+    }
+  });
+
+  it('returns code no-requirement when no tier declared', () => {
+    const result = checkTier({} as TestEnvironment, 'local');
+    expect(result.status).toBe('skip');
+    if (result.status === 'skip') {
+      expect(result.code).toBe('no-requirement');
     }
   });
 
