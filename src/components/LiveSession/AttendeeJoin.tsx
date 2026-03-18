@@ -210,7 +210,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
 
     try {
       // Join session through context (handles state management)
-      await joinSession(sessionOffer.id, mode, name || undefined);
+      await joinSession(sessionOffer.id, mode, name || undefined, sessionOffer.sessionPublicKey);
 
       // Close modal and notify parent
       onJoined();

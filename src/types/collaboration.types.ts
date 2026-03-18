@@ -57,6 +57,8 @@ export interface SessionOffer {
   offer: RTCSessionDescriptionInit;
   /** Creation timestamp */
   timestamp: number;
+  /** Presenter's ECDSA public key (base64url SPKI). Present in all newly-created sessions. */
+  sessionPublicKey?: string;
 }
 
 /**
@@ -264,6 +266,31 @@ export interface HandRaiseEvent extends SessionEvent {
   attendeeName: string;
   /** True if raising hand, false if lowering */
   isRaised: boolean;
+}
+
+// ============================================================================
+// Presenter Authentication (pre-join handshake)
+// ============================================================================
+
+/**
+ * Sent by the attendee immediately after the WebRTC connection opens.
+ * The presenter must respond with the HMAC of the nonce before attendee_join is accepted.
+ */
+export interface PresenterChallengeMessage {
+  type: 'presenter_challenge';
+  /** Random nonce, base64url */
+  nonce: string;
+}
+
+/**
+ * Sent by the presenter in response to a PresenterChallengeMessage.
+ */
+export interface PresenterResponseMessage {
+  type: 'presenter_response';
+  /** Echoed nonce from the challenge */
+  nonce: string;
+  /** ECDSA P-256 signature of the nonce, base64url */
+  signature: string;
 }
 
 /**

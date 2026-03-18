@@ -49,6 +49,7 @@ export function parseJoinCode(code: string): SessionOffer {
           defaultMode: 'guided',
           offer: {} as RTCSessionDescriptionInit,
           timestamp: Date.now(),
+          sessionPublicKey: sessionData.pubkey,
         };
       }
     } catch (decodeError) {

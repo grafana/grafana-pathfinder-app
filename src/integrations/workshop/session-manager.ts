@@ -6,6 +6,7 @@
 
 import Peer, { DataConnection } from 'peerjs';
 import { ReconnectionManager } from './reconnection-manager';
+import { generateSessionKeyPair, generateNonce, signChallenge, verifyChallenge } from './session-crypto';
 import type {
   SessionConfig,
   SessionInfo,
@@ -59,6 +60,9 @@ export class SessionManager {
   private reconnectionManager = new ReconnectionManager();
   // @ts-expect-error - Stored for potential reconnection scenarios
   private peerjsConfig: PeerJSConfig | null = null;
+
+  // ECDSA private key for presenter authentication (generated at session creation, never transmitted)
+  private sessionPrivateKey: CryptoKey | null = null;
 
   /**
    * Check if session is active
@@ -131,6 +135,10 @@ export class SessionManager {
         setTimeout(() => reject(new Error('Peer connection timeout')), 10000);
       });
 
+      // Generate ECDSA key pair for presenter authentication
+      const { publicKeyB64, privateKey } = await generateSessionKeyPair();
+      this.sessionPrivateKey = privateKey;
+
       // Set up connection handler for incoming attendees
       this.setupPresenterConnectionHandler();
 
@@ -156,11 +164,12 @@ export class SessionManager {
 
       console.log(`[SessionManager] Session created: ${peerId}`);
 
-      // Create a join code that includes session metadata
+      // Create a join code that includes session metadata and the presenter's public key
       const joinCodeData = {
         id: peerId,
         name: config.name,
         url: config.tutorialUrl,
+        pubkey: publicKeyB64,
       };
       const joinCode = btoa(JSON.stringify(joinCodeData));
 
@@ -205,7 +214,16 @@ export class SessionManager {
         this.lastHeartbeat.set(conn.peer, Date.now());
 
         // Get attendee metadata from first message
-        conn.on('data', (data: any) => {
+        conn.on('data', async (data: any) => {
+          if (data.type === 'presenter_challenge') {
+            // Sign the nonce with our private key and return the signature
+            if (this.sessionPrivateKey) {
+              const signature = await signChallenge(this.sessionPrivateKey, data.nonce);
+              conn.send({ type: 'presenter_response', nonce: data.nonce, signature });
+            }
+            return;
+          }
+
           if (data.type === 'attendee_join') {
             const attendee: AttendeeInfo = {
               id: conn.peer,
@@ -401,6 +419,7 @@ export class SessionManager {
     sessionId: string,
     mode: 'guided' | 'follow',
     name?: string,
+    sessionPublicKey?: string,
     peerjsConfig?: PeerJSConfig
   ): Promise<void> {
     try {
@@ -448,73 +467,111 @@ export class SessionManager {
         reliable: true,
       });
 
-      // Wait for connection to open
+      // Phase 1: wait for the WebRTC data channel to open
       await new Promise<void>((resolve, reject) => {
-        conn.on('open', () => {
-          console.log(`[SessionManager] Connected to presenter: ${sessionId}`);
+        conn.on('open', resolve);
+        conn.on('error', (err) => {
+          console.error('[SessionManager] Failed to connect:', err);
+          reject(err);
+        });
+        setTimeout(() => reject(new Error('Connection timeout')), 10000);
+      });
 
-          // Send join message
+      console.log(`[SessionManager] Connected to presenter: ${sessionId}`);
+
+      // Phase 2: challenge-response (skipped when no session secret — legacy join codes)
+      await new Promise<void>((resolve, reject) => {
+        let challengeTimeout: ReturnType<typeof setTimeout> | null = null;
+        let verified = !sessionPublicKey;
+        let challengeNonce: string | null = null;
+
+        if (sessionPublicKey) {
+          challengeNonce = generateNonce();
+          conn.send({ type: 'presenter_challenge', nonce: challengeNonce });
+
+          challengeTimeout = setTimeout(() => {
+            conn.close();
+            reject(new Error('Presenter identity verification timed out'));
+          }, 10000);
+        }
+
+        conn.on('data', async (data: any) => {
+          if (!verified && data.type === 'presenter_response') {
+            if (challengeTimeout !== null) {
+              clearTimeout(challengeTimeout);
+              challengeTimeout = null;
+            }
+
+            const valid = await verifyChallenge(sessionPublicKey!, challengeNonce!, data.signature);
+            if (!valid) {
+              conn.close();
+              reject(new Error('Presenter identity verification failed'));
+              return;
+            }
+
+            verified = true;
+
+            // Send join message now that the presenter's identity is confirmed
+            conn.send({
+              type: 'attendee_join',
+              name: name || 'Anonymous',
+              mode,
+              timestamp: Date.now(),
+            });
+
+            resolve();
+            return;
+          }
+
+          // Regular event handling (post-verification)
+          console.log('[SessionManager] Received event from presenter:', data);
+
+          if (data.type === 'heartbeat') {
+            conn.send({
+              type: 'heartbeat',
+              sessionId: this.sessionId || '',
+              timestamp: Date.now(),
+              senderId: 'attendee',
+              sentAt: data.sentAt,
+            });
+            this.lastHeartbeat.set(sessionId, Date.now());
+          }
+
+          this.eventHandlers.forEach((handler) => handler(data));
+        });
+
+        conn.on('close', () => {
+          console.log('[SessionManager] Disconnected from presenter');
+          this.handleError({
+            code: 'CONNECTION_FAILED',
+            message: 'Connection to presenter lost',
+            details: null,
+          });
+        });
+
+        conn.on('error', (err) => {
+          console.error('[SessionManager] Connection error:', err);
+          this.handleError({
+            code: 'CONNECTION_FAILED',
+            message: 'Connection error',
+            details: err,
+          });
+        });
+
+        if (!sessionPublicKey) {
+          // Legacy: send attendee_join immediately and resolve
           conn.send({
             type: 'attendee_join',
             name: name || 'Anonymous',
             mode,
             timestamp: Date.now(),
           });
-
-          // Store connection
-          this.connections.set(sessionId, conn);
-
-          // Set up event handler
-          conn.on('data', (data: any) => {
-            console.log('[SessionManager] Received event from presenter:', data);
-
-            // Respond to heartbeats
-            if (data.type === 'heartbeat') {
-              // Echo back the heartbeat with the same timestamp
-              conn.send({
-                type: 'heartbeat',
-                sessionId: this.sessionId || '',
-                timestamp: Date.now(),
-                senderId: 'attendee',
-                sentAt: data.sentAt, // Echo back the sent time for latency calculation
-              });
-
-              // Update last heartbeat time
-              this.lastHeartbeat.set(sessionId, Date.now());
-            }
-
-            // Forward all events to handlers
-            this.eventHandlers.forEach((handler) => handler(data));
-          });
-
-          conn.on('close', () => {
-            console.log('[SessionManager] Disconnected from presenter');
-            this.handleError({
-              code: 'CONNECTION_FAILED',
-              message: 'Connection to presenter lost',
-              details: null,
-            });
-          });
-
-          conn.on('error', (err) => {
-            console.error('[SessionManager] Connection error:', err);
-            this.handleError({
-              code: 'CONNECTION_FAILED',
-              message: 'Connection error',
-              details: err,
-            });
-          });
-
           resolve();
-        });
-
-        conn.on('error', (err) => {
-          console.error('[SessionManager] Failed to connect:', err);
-          reject(err);
-        });
-
-        setTimeout(() => reject(new Error('Connection timeout')), 10000);
+        }
       });
+
+      // Store connection after handshake completes
+      this.connections.set(sessionId, conn);
 
       console.log(`[SessionManager] Successfully joined session`);
     } catch (error) {
@@ -739,6 +796,7 @@ export class SessionManager {
     this.sessionId = null;
     this.role = null;
     this.config = null;
+    this.sessionPrivateKey = null;
 
     // Clear handlers
     this.eventHandlers.clear();
