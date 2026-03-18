@@ -97,6 +97,7 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       console.log('[Pathfinder] Current state:');
       console.log('  localStorage:', {
         [storageKeys.resetProcessed]: localStorage.getItem(storageKeys.resetProcessed),
+        [storageKeys.autoOpened]: localStorage.getItem(storageKeys.autoOpened),
       });
       console.log('  sessionStorage (global):', {
         [storageKeys.autoOpened]: sessionStorage.getItem(storageKeys.autoOpened),
@@ -111,6 +112,7 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
 
       // Clear localStorage
       localStorage.removeItem(storageKeys.resetProcessed);
+      localStorage.removeItem(storageKeys.autoOpened);
 
       // Clear sessionStorage (global keys)
       sessionStorage.removeItem(storageKeys.autoOpened);
@@ -155,6 +157,7 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       const state = {
         localStorage: {
           resetProcessed: localStorage.getItem(storageKeys.resetProcessed),
+          autoOpened: localStorage.getItem(storageKeys.autoOpened),
         },
         sessionStorage: {
           autoOpened: sessionStorage.getItem(storageKeys.autoOpened),
