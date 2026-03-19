@@ -41,7 +41,12 @@ interface SessionContextValue {
 
   // Actions
   createSession: (config: SessionConfig) => Promise<SessionInfo>;
-  joinSession: (sessionId: string, mode: 'guided' | 'follow', name?: string) => Promise<void>;
+  joinSession: (
+    sessionId: string,
+    mode: 'guided' | 'follow',
+    name: string | undefined,
+    sessionPublicKey: string
+  ) => Promise<void>;
   endSession: () => void;
 
   // Event handling
@@ -194,7 +199,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
    * Join an existing session as attendee
    */
   const joinSession = useCallback(
-    async (sessionId: string, mode: 'guided' | 'follow', name?: string): Promise<void> => {
+    async (
+      sessionId: string,
+      mode: 'guided' | 'follow',
+      name: string | undefined,
+      sessionPublicKey: string
+    ): Promise<void> => {
       try {
         // Store the attendee's selected mode and name
         setAttendeeMode(mode);
@@ -202,7 +212,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setAttendeeName(attendeeName);
 
         const peerjsConfig = getPeerjsConfig();
-        await sessionManager.joinSession(sessionId, mode, attendeeName, peerjsConfig);
+        await sessionManager.joinSession(sessionId, mode, attendeeName, sessionPublicKey, peerjsConfig);
 
         // Wait for session_start event to get full session info
         const sessionStartPromise = new Promise<SessionInfo>((resolve) => {
