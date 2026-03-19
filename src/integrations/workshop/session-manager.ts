@@ -103,7 +103,7 @@ export class SessionManager {
       this.config = config;
 
       // Use provided config or defaults
-      const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder' };
+      const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder', secure: false };
       this.peerjsConfig = peerConfig;
 
       // Create a new peer with a simple readable ID
@@ -464,7 +464,7 @@ export class SessionManager {
       this.sessionId = sessionId;
 
       // Use provided config or defaults
-      const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder' };
+      const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder', secure: false };
       this.peerjsConfig = peerConfig;
 
       console.log(`[SessionManager] Joining session: ${sessionId}`);
