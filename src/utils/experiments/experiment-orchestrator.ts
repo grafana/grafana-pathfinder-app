@@ -31,6 +31,7 @@ import {
 // ============================================================================
 
 export interface ExperimentState {
+  pathfinderEnabled: boolean;
   mainConfig: ExperimentConfig;
   mainVariant: string;
   after24hConfig: ExperimentConfig;
@@ -58,6 +59,10 @@ export interface AutoOpenContext {
 export function initializeExperiments(): ExperimentState {
   const hostname = window.location.hostname;
 
+  // Evaluate the global pathfinder-enabled rollout flag (separate from experiments)
+  const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
+  console.warn(`[Pathfinder] pathfinder.enabled flag: ${pathfinderEnabled}`);
+
   // Evaluate main experiment config
   const mainConfig: ExperimentConfig = getExperimentConfig('pathfinder.experiment-variant');
   const mainVariant = mainConfig.variant;
@@ -84,6 +89,7 @@ export function initializeExperiments(): ExperimentState {
   console.warn(`[Pathfinder] After-24h experiment config loaded: variant="${after24hVariant}"`);
 
   return {
+    pathfinderEnabled,
     mainConfig,
     mainVariant,
     after24hConfig,
@@ -121,15 +127,19 @@ function handleMainExperimentResetCache(hostname: string, config: ExperimentConf
 // ============================================================================
 
 /**
- * Determines if the sidebar component should be mounted based on experiment variants.
- * The sidebar is NOT mounted for control groups in either experiment.
+ * Determines if the sidebar component should be mounted.
  *
+ * The sidebar is NOT mounted when:
+ * - pathfinder.enabled is false (cloud-wide rollout kill-switch)
+ * - Either experiment variant is 'control'
+ *
+ * @param pathfinderEnabled - Value of the pathfinder.enabled feature flag
  * @param mainVariant - Variant from main experiment
  * @param after24hVariant - Variant from after-24h experiment
  * @returns true if sidebar should be mounted
  */
-export function shouldMountSidebar(mainVariant: string, after24hVariant: string): boolean {
-  return mainVariant !== 'control' && after24hVariant !== 'control';
+export function shouldMountSidebar(pathfinderEnabled: boolean, mainVariant: string, after24hVariant: string): boolean {
+  return pathfinderEnabled && mainVariant !== 'control' && after24hVariant !== 'control';
 }
 
 // ============================================================================

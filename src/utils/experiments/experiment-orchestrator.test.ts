@@ -104,9 +104,23 @@ describe('experiment-orchestrator', () => {
 
       const state = initializeExperiments();
 
+      expect(state.pathfinderEnabled).toBe(false); // mockGetFeatureFlagValue defaults to false
       expect(state.mainVariant).toBe('treatment');
       expect(state.targetPages).toEqual(['/a/grafana-irm-app*']);
       expect(state.after24hVariant).toBe('excluded');
+    });
+
+    it('should return pathfinderEnabled true when flag is true', () => {
+      mockGetFeatureFlagValue.mockReturnValue(true);
+      mockGetExperimentConfig.mockReturnValue({
+        variant: 'excluded',
+        pages: [],
+        resetCache: false,
+      });
+
+      const state = initializeExperiments();
+
+      expect(state.pathfinderEnabled).toBe(true);
     });
 
     it('should handle resetCache for main experiment', () => {
@@ -160,31 +174,37 @@ describe('experiment-orchestrator', () => {
   });
 
   describe('shouldMountSidebar', () => {
-    it('should return true when both variants are excluded', () => {
-      expect(shouldMountSidebar('excluded', 'excluded')).toBe(true);
+    it('should return true when enabled and both variants are excluded', () => {
+      expect(shouldMountSidebar(true, 'excluded', 'excluded')).toBe(true);
     });
 
-    it('should return true when both variants are treatment', () => {
-      expect(shouldMountSidebar('treatment', 'treatment')).toBe(true);
+    it('should return true when enabled and both variants are treatment', () => {
+      expect(shouldMountSidebar(true, 'treatment', 'treatment')).toBe(true);
     });
 
-    it('should return false when main variant is control', () => {
-      expect(shouldMountSidebar('control', 'excluded')).toBe(false);
-      expect(shouldMountSidebar('control', 'treatment')).toBe(false);
+    it('should return false when enabled and main variant is control', () => {
+      expect(shouldMountSidebar(true, 'control', 'excluded')).toBe(false);
+      expect(shouldMountSidebar(true, 'control', 'treatment')).toBe(false);
     });
 
-    it('should return false when after24h variant is control', () => {
-      expect(shouldMountSidebar('excluded', 'control')).toBe(false);
-      expect(shouldMountSidebar('treatment', 'control')).toBe(false);
+    it('should return false when enabled and after24h variant is control', () => {
+      expect(shouldMountSidebar(true, 'excluded', 'control')).toBe(false);
+      expect(shouldMountSidebar(true, 'treatment', 'control')).toBe(false);
     });
 
-    it('should return false when both variants are control', () => {
-      expect(shouldMountSidebar('control', 'control')).toBe(false);
+    it('should return false when enabled and both variants are control', () => {
+      expect(shouldMountSidebar(true, 'control', 'control')).toBe(false);
     });
 
-    it('should return true for mixed treatment/excluded', () => {
-      expect(shouldMountSidebar('treatment', 'excluded')).toBe(true);
-      expect(shouldMountSidebar('excluded', 'treatment')).toBe(true);
+    it('should return true when enabled for mixed treatment/excluded', () => {
+      expect(shouldMountSidebar(true, 'treatment', 'excluded')).toBe(true);
+      expect(shouldMountSidebar(true, 'excluded', 'treatment')).toBe(true);
+    });
+
+    it('should return false when pathfinder is disabled regardless of variants', () => {
+      expect(shouldMountSidebar(false, 'excluded', 'excluded')).toBe(false);
+      expect(shouldMountSidebar(false, 'treatment', 'treatment')).toBe(false);
+      expect(shouldMountSidebar(false, 'treatment', 'excluded')).toBe(false);
     });
   });
 
