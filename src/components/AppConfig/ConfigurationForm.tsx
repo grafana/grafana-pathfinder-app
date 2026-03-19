@@ -636,7 +636,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     <Input value={state.peerjsKey} onChange={onChangePeerjsKey} placeholder={DEFAULT_PEERJS_KEY} />
                   </Field>
 
-                  <Field label="Use TLS (wss://)" description="Enable for servers using HTTPS/WSS, including Cloud Run">
+                  <Field label="Use TLS (wss://)" description="Enable for servers using HTTPS/WSS">
                     <Switch id="peerjs-secure" value={state.peerjsSecure} onChange={onTogglePeerjsSecure} />
                   </Field>
                 </div>
