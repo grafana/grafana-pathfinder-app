@@ -14,6 +14,25 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ## Current feature flags
 
+### `pathfinder.enabled`
+
+**Type**: Boolean
+
+**Purpose**: Global kill-switch for the Pathfinder plugin during cloud-wide rollout. This is separate from the A/B experiments — it controls whether Pathfinder is available at all for a given stack.
+
+**Default**: `true` (Pathfinder loads normally if the flag is not set)
+
+**Behavior**:
+
+- **`true`**: Pathfinder loads normally — sidebar is available, experiments run as configured
+- **`false`**: Plugin is dismounted, the native Grafana help menu takes over (same behavior as being in an experiment control group)
+
+**Important**: This flag is evaluated independently of the experiment flags. Even if a user is in the `excluded` variant for both experiments, setting `pathfinder.enabled` to `false` will dismount the plugin. Conversely, if `pathfinder.enabled` is `true`, the experiment variants still apply as normal.
+
+**Tracking key**: `pathfinder_enabled`
+
+---
+
 ### `pathfinder.auto-open-sidebar`
 
 **Type**: Boolean

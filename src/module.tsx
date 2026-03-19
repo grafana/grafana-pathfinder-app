@@ -57,7 +57,7 @@ const {
   createExperimentDebugger,
 } = await import('./utils/experiments');
 const experimentState = initializeExperiments();
-const { mainConfig, mainVariant, after24hVariant } = experimentState;
+const { pathfinderEnabled, mainConfig, mainVariant, after24hVariant } = experimentState;
 
 createExperimentDebugger(mainConfig);
 
@@ -130,7 +130,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const docsParam = urlParams.get('doc');
   const pageParam = urlParams.get('page');
 
-  if (docsParam && !shouldMountSidebar(mainVariant, after24hVariant)) {
+  if (docsParam && !shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     const url = new URL(window.location.href);
     url.searchParams.delete('doc');
     url.searchParams.delete('page');
@@ -232,7 +232,7 @@ export { plugin };
 // - excluded: normal behavior (sidebar available)
 // - control: no sidebar (native Grafana help only)
 // - treatment: sidebar + auto-open (on target pages for main experiment, for 24h+ users for after-24h experiment)
-if (shouldMountSidebar(mainVariant, after24hVariant)) {
+if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
   plugin.addComponent({
     targets: `grafana/extension-sidebar/v0-alpha`,
     title: 'Interactive learning',
