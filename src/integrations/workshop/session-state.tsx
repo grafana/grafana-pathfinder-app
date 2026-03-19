@@ -5,9 +5,10 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { config } from '@grafana/runtime';
 import { SessionManager } from './session-manager';
-import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
+import pluginJson from '../../plugin.json';
 import type {
   SessionConfig,
   SessionInfo,
@@ -71,7 +72,6 @@ interface SessionProviderProps {
  * Wrap your app with this to enable session management
  */
 export function SessionProvider({ children }: SessionProviderProps) {
-  const pluginProps = useContext(PluginPropsContext);
   const [sessionManager] = useState(() => new SessionManager());
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionRole, setSessionRole] = useState<SessionRole>(null);
@@ -83,16 +83,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Get PeerJS config from plugin settings
   const getPeerjsConfig = useCallback(() => {
-    if (!pluginProps) {
-      return { host: 'localhost', port: 9000, key: 'pathfinder' };
-    }
-    const config = getConfigWithDefaults(pluginProps.meta.jsonData || {});
+    const jsonData = config.apps?.[pluginJson.id]?.jsonData ?? {};
+    const pluginConfig = getConfigWithDefaults(jsonData);
     return {
-      host: config.peerjsHost,
-      port: config.peerjsPort,
-      key: config.peerjsKey,
+      host: pluginConfig.peerjsHost,
+      port: pluginConfig.peerjsPort,
+      key: pluginConfig.peerjsKey,
     };
-  }, [pluginProps]);
+  }, []);
 
   // Subscribe to real-time attendee list updates (presenter only)
   useEffect(() => {
