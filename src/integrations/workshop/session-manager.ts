@@ -117,6 +117,7 @@ export class SessionManager {
         port: peerConfig.port,
         path: '/pathfinder',
         key: peerConfig.key,
+        secure: peerConfig.port === 443,
         debug: 2, // Enable debug logging
       });
 
@@ -474,6 +475,7 @@ export class SessionManager {
         port: peerConfig.port,
         path: '/pathfinder',
         key: peerConfig.key,
+        secure: peerConfig.port === 443,
         debug: 2,
       });
 

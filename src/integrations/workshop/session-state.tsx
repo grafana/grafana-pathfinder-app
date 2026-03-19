@@ -5,10 +5,9 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { config } from '@grafana/runtime';
+import { usePluginContext } from '@grafana/data';
 import { SessionManager } from './session-manager';
 import { getConfigWithDefaults } from '../../constants';
-import pluginJson from '../../plugin.json';
 import type {
   SessionConfig,
   SessionInfo,
@@ -72,6 +71,7 @@ interface SessionProviderProps {
  * Wrap your app with this to enable session management
  */
 export function SessionProvider({ children }: SessionProviderProps) {
+  const pluginContext = usePluginContext();
   const [sessionManager] = useState(() => new SessionManager());
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionRole, setSessionRole] = useState<SessionRole>(null);
@@ -83,14 +83,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Get PeerJS config from plugin settings
   const getPeerjsConfig = useCallback(() => {
-    const jsonData = config.apps?.[pluginJson.id]?.jsonData ?? {};
+    const jsonData = pluginContext?.meta?.jsonData ?? {};
     const pluginConfig = getConfigWithDefaults(jsonData);
     return {
       host: pluginConfig.peerjsHost,
       port: pluginConfig.peerjsPort,
       key: pluginConfig.peerjsKey,
     };
-  }, []);
+  }, [pluginContext]);
 
   // Subscribe to real-time attendee list updates (presenter only)
   useEffect(() => {
