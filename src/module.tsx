@@ -216,7 +216,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Skip experiment auto-open when a ?doc= param is present — the doc-param
   // handler (async import above) owns sidebar opening and may redirect first.
   // Running the experiment here would evaluate against the pre-redirect path.
-  if (!docsParam) {
+  if (!docsParam && pathfinderEnabled) {
     const currentPath = getCurrentPath();
     setupMainExperimentAutoOpen(experimentState, {
       currentPath,
