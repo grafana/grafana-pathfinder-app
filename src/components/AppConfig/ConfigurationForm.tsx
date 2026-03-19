@@ -13,6 +13,7 @@ import {
   DEFAULT_PEERJS_HOST,
   DEFAULT_PEERJS_PORT,
   DEFAULT_PEERJS_KEY,
+  DEFAULT_PEERJS_SECURE,
   DEFAULT_ENABLE_CODA_TERMINAL,
   PLUGIN_BACKEND_URL,
 } from '../../constants';
@@ -31,6 +32,7 @@ type State = {
   peerjsHost: string;
   peerjsPort: number;
   peerjsKey: string;
+  peerjsSecure: boolean;
   enableCodaTerminal: boolean;
   codaEnrollmentKey: string;
   codaApiUrl: string;
@@ -56,6 +58,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
     peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
+    peerjsSecure: jsonData?.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
     enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
     codaEnrollmentKey: '',
     codaApiUrl: jsonData?.codaApiUrl || '',
@@ -321,6 +324,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onTogglePeerjsSecure = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      peerjsSecure: event.target.checked,
+    });
+  };
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
@@ -356,6 +366,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsHost: state.peerjsHost,
         peerjsPort: state.peerjsPort,
         peerjsKey: state.peerjsKey,
+        peerjsSecure: state.peerjsSecure,
         enableCodaTerminal: state.enableCodaTerminal,
         codaApiUrl: state.codaApiUrl,
         codaRelayUrl: state.codaRelayUrl,
@@ -623,6 +634,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
                   <Field label="API Key" description="Authentication key">
                     <Input value={state.peerjsKey} onChange={onChangePeerjsKey} placeholder={DEFAULT_PEERJS_KEY} />
+                  </Field>
+
+                  <Field label="Use TLS (wss://)" description="Enable for servers using HTTPS/WSS, including Cloud Run">
+                    <Switch id="peerjs-secure" value={state.peerjsSecure} onChange={onTogglePeerjsSecure} />
                   </Field>
                 </div>
               </>

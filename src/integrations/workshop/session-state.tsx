@@ -89,6 +89,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       host: pluginConfig.peerjsHost,
       port: pluginConfig.peerjsPort,
       key: pluginConfig.peerjsKey,
+      secure: pluginConfig.peerjsSecure,
     };
   }, [pluginContext]);
 

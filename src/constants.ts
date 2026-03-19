@@ -37,6 +37,7 @@ export const DEFAULT_ENABLE_CODA_TERMINAL = false;
 export const DEFAULT_PEERJS_HOST = 'localhost';
 export const DEFAULT_PEERJS_PORT = 9000;
 export const DEFAULT_PEERJS_KEY = 'pathfinder';
+export const DEFAULT_PEERJS_SECURE = false;
 
 // Network timeout defaults
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
@@ -89,6 +90,7 @@ export interface DocsPluginConfig {
   peerjsHost?: string;
   peerjsPort?: number;
   peerjsKey?: string;
+  peerjsSecure?: boolean;
   // Coda Terminal (Experimental dev feature for interactive sandbox)
   enableCodaTerminal?: boolean;
   // Coda registration status
@@ -127,6 +129,7 @@ export const getConfigWithDefaults = (
   peerjsHost: config.peerjsHost || DEFAULT_PEERJS_HOST,
   peerjsPort: config.peerjsPort ?? DEFAULT_PEERJS_PORT,
   peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
+  peerjsSecure: config.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
   // Coda Terminal
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
   // Coda registration

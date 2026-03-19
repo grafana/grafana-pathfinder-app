@@ -25,6 +25,7 @@ export interface PeerJSConfig {
   host: string;
   port: number;
   key: string;
+  secure: boolean;
 }
 
 /**
@@ -117,7 +118,7 @@ export class SessionManager {
         port: peerConfig.port,
         path: '/pathfinder',
         key: peerConfig.key,
-        secure: peerConfig.port === 443,
+        secure: peerConfig.secure,
         debug: 2, // Enable debug logging
       });
 
@@ -475,7 +476,7 @@ export class SessionManager {
         port: peerConfig.port,
         path: '/pathfinder',
         key: peerConfig.key,
-        secure: peerConfig.port === 443,
+        secure: peerConfig.secure,
         debug: 2,
       });
 
