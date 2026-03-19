@@ -21,8 +21,8 @@ describe('isDocsLikeTab', () => {
       expect(isDocsLikeTab('learning-journey')).toBe(false);
     });
 
-    it('returns false for "devtools" type', () => {
-      expect(isDocsLikeTab('devtools')).toBe(false);
+    it('returns false for "editor" type', () => {
+      expect(isDocsLikeTab('editor')).toBe(false);
     });
 
     it('returns false for undefined', () => {

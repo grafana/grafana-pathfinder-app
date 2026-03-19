@@ -93,12 +93,12 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public constructor(
     onOpenLearningJourney?: (url: string, title: string) => void,
     onOpenDocsPage?: (url: string, title: string) => void,
-    onOpenDevTools?: () => void
+    onOpenEditor?: () => void
   ) {
     super({
       onOpenLearningJourney,
       onOpenDocsPage,
-      onOpenDevTools,
+      onOpenEditor,
     });
   }
 
@@ -116,9 +116,9 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
-  public openDevTools() {
-    if (this.state.onOpenDevTools) {
-      this.state.onOpenDevTools();
+  public openEditor() {
+    if (this.state.onOpenEditor) {
+      this.state.onOpenEditor();
     }
   }
 
@@ -213,6 +213,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           <Button
             icon="book-open"
             variant="secondary"
+            data-testid={testIds.contextPanel.emptyStateMyLearningButton}
             onClick={() => {
               // Close the extension sidebar
               const appEvents = getAppEvents();
@@ -278,7 +279,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
         {/* Featured Recommendations Section - Time-based featured content */}
         {suggestedGuidesExpanded && featuredRecommendations.length > 0 && (
-          <div className={styles.featuredSection} data-testid="featured-section">
+          <div className={styles.featuredSection} data-testid={testIds.contextPanel.featuredSection}>
             <div className={styles.featuredHeader}>
               <Icon name="star" className={styles.featuredIcon} />
               <h3 className={styles.featuredTitle}>{t('contextPanel.featured', 'Featured')}</h3>
@@ -290,7 +291,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                   className={`${styles.recommendationCard} ${styles.featuredCard} ${
                     recommendation.type === 'docs-page' ? styles.compactCard : ''
                   }`}
-                  data-testid={`featured-recommendation-card-${index}`}
+                  data-testid={testIds.contextPanel.featuredCard(index)}
                 >
                   <div
                     className={`${styles.recommendationCardContent} ${
@@ -337,6 +338,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             }
                           }}
                           className={styles.startButton}
+                          data-testid={testIds.contextPanel.featuredStartButton(index)}
                         >
                           <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
                           {getRecommendationButtonText(recommendation.type, recommendation.completionPercentage)}
@@ -369,6 +371,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 toggleSummaryExpansion(recommendation.url);
                               }}
                               className={styles.summaryButton}
+                              data-testid={testIds.contextPanel.featuredSummaryButton(index)}
                             >
                               <Icon name="info-circle" size="sm" />
                               <span>{t('contextPanel.summary', 'Summary')}</span>

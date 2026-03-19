@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
@@ -254,7 +255,7 @@ export const TerminalStep = forwardRef<
       <div
         className={containerClasses}
         data-test-step-state={stepState}
-        data-testid={`terminal-step-${renderedStepId}`}
+        data-testid={testIds.interactive.terminalStep(renderedStepId)}
       >
         {/* Description content */}
         {children && <div className={styles.content}>{children}</div>}
@@ -269,7 +270,13 @@ export const TerminalStep = forwardRef<
           <div className={styles.requirementMessage}>
             {checker.explanation}
             {skippable && (
-              <Button size="sm" variant="secondary" fill="text" onClick={markComplete}>
+              <Button
+                size="sm"
+                variant="secondary"
+                fill="text"
+                onClick={markComplete}
+                data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
+              >
                 Skip
               </Button>
             )}
@@ -279,7 +286,14 @@ export const TerminalStep = forwardRef<
         {/* Actions */}
         {isEnabled && !isCompleted && (
           <div className={styles.actions}>
-            <Button size="sm" variant="secondary" icon="copy" onClick={handleCopy} tooltip="Copy command to clipboard">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="copy"
+              onClick={handleCopy}
+              tooltip="Copy command to clipboard"
+              data-testid={testIds.interactive.terminalCopyButton(renderedStepId)}
+            >
               Copy
             </Button>
 

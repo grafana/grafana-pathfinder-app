@@ -10,6 +10,7 @@ import React, { useRef, useEffect } from 'react';
 import { Alert, Button, CodeEditor, useStyles2 } from '@grafana/ui';
 import type { BlockJsonEditorProps } from './types';
 import { getStyles } from './block-json-editor.styles';
+import { testIds } from '../../constants/testIds';
 
 // Monaco types (imported dynamically via onEditorDidMount)
 type MonacoEditor = Parameters<NonNullable<React.ComponentProps<typeof CodeEditor>['onEditorDidMount']>>[0];
@@ -84,7 +85,7 @@ export function BlockJsonEditor({
   });
 
   return (
-    <div className={styles.container} data-testid="block-json-editor">
+    <div className={styles.container} data-testid={testIds.blockEditor.jsonEditor}>
       {/* Toolbar with undo button */}
       {canUndo && onUndo && (
         <div className={styles.toolbar}>
