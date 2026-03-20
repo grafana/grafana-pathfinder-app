@@ -18,73 +18,23 @@ import {
 } from '@grafana/data';
 import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
-import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 
 interface ConnectionLog {
-  startConnection: () => void;
-  elapsed: () => number;
-  info: (message: string, data?: Record<string, unknown>) => void;
-  warn: (message: string, data?: Record<string, unknown>) => void;
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
-  liveStream: (event: string, data?: Record<string, unknown>) => void;
+  warn: (message: string, data?: Record<string, unknown>) => void;
 }
 
-/**
- * Creates a connection logger with its own timing state.
- * Logs are gated behind dev mode (except errors, which always log).
- */
 function createConnectionLog(): ConnectionLog {
-  let connectionStartTime = 0;
-
-  const elapsed = () => Math.round(performance.now() - connectionStartTime);
-
-  const devLog = (fn: (...args: unknown[]) => void, ...args: unknown[]) => {
-    if (isDevModeEnabledGlobal()) {
-      fn(...args);
-    }
-  };
-
   return {
-    startConnection: () => {
-      connectionStartTime = performance.now();
-      devLog(console.log, '[Terminal] Connection sequence started', {
-        timestamp: new Date().toISOString(),
-      });
-    },
-
-    elapsed,
-
-    info: (message: string, data?: Record<string, unknown>) => {
-      devLog(console.log, `[Terminal] ${message}`, {
-        elapsedMs: elapsed(),
-        ...data,
-      });
-    },
-
-    warn: (message: string, data?: Record<string, unknown>) => {
-      devLog(console.warn, `[Terminal] ${message}`, {
-        elapsedMs: elapsed(),
-        ...data,
-      });
-    },
-
     error: (message: string, error?: unknown, data?: Record<string, unknown>) => {
       const errorDetails =
         error instanceof Error
           ? { errorName: error.name, errorMessage: error.message, errorStack: error.stack }
           : { rawError: error };
-      console.error(`[Terminal] ${message}`, {
-        elapsedMs: elapsed(),
-        ...errorDetails,
-        ...data,
-      });
+      console.error(`[Terminal] ${message}`, { ...errorDetails, ...data });
     },
-
-    liveStream: (event: string, data?: Record<string, unknown>) => {
-      devLog(console.log, `[Terminal] LiveStream: ${event}`, {
-        elapsedMs: elapsed(),
-        ...data,
-      });
+    warn: (message: string, data?: Record<string, unknown>) => {
+      console.warn(`[Terminal] ${message}`, data);
     },
   };
 }
@@ -105,6 +55,8 @@ export interface TerminalVMOptions {
   template?: string;
   /** App name for sample-app templates */
   app?: string;
+  /** Scenario name for alloy-scenario templates */
+  scenario?: string;
 }
 
 interface UseTerminalLiveReturn {
@@ -132,6 +84,26 @@ interface TerminalStreamOutput {
   vmId?: string; // Actual VM ID being used (sent by backend with 'connected' and 'status')
 }
 
+// ─── Provision progress bar ──────────────────────────────────────────────────
+// Rendered inline in xterm via \r to overwrite the current line every 500ms.
+// Uses an asymptotic ease-out curve so the bar never freezes: it reaches ~38%
+// at 10 s, ~82% at 45 s, and caps at 95% until "active" arrives.
+
+const PROVISION_ESTIMATED_MS = 55_000;
+const PROGRESS_BAR_WIDTH = 20;
+const PROGRESS_UPDATE_INTERVAL_MS = 500;
+
+function renderProvisionProgress(label: string, elapsedMs: number, complete = false): string {
+  const ratio = complete ? 1 : 0.95 * (1 - Math.exp((-3 * elapsedMs) / PROVISION_ESTIMATED_MS));
+  const filled = Math.round(ratio * PROGRESS_BAR_WIDTH);
+  const empty = PROGRESS_BAR_WIDTH - filled;
+  const pct = Math.round(ratio * 100);
+  const secs = Math.round(elapsedMs / 1000);
+  const icon = complete ? '✓' : '⏳';
+  const color = complete ? '32' : '90';
+  return `\x1b[${color}m   │  ${icon} ${label.padEnd(16)} [${'█'.repeat(filled)}${'░'.repeat(empty)}] ${String(pct).padStart(3)}% (${secs}s)\x1b[0m`;
+}
+
 /**
  * Terminal connection hook using Grafana Live streaming
  *
@@ -150,8 +122,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
 
-  // Per-instance connection logger (each connection gets its own timing state).
-  // Always read via connectionLogRef.current to avoid stale closure captures.
   const connectionLogRef = useRef<ConnectionLog>(createConnectionLog());
 
   // REACT: refs for subscriptions and cleanup (R1)
@@ -164,6 +134,15 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   // Grafana Live publish refs: populated in connectLiveStream, read by sendInput/sendResize
   const liveSrvRef = useRef<GrafanaLiveSrv | undefined>(undefined);
   const addressRef = useRef<LiveChannelAddress | null>(null);
+
+  // Provision progress bar state (animated bar during pending/provisioning)
+  const provisionProgressRef = useRef<{
+    intervalId: ReturnType<typeof setInterval>;
+    startTime: number;
+    stateLabel: string;
+  } | null>(null);
+  // Dedup guard for non-progress-bar status lines
+  const lastStatusLineRef = useRef('');
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -179,6 +158,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       clearTimeout(handshakeTimeoutRef.current);
       handshakeTimeoutRef.current = null;
     }
+    if (provisionProgressRef.current) {
+      clearInterval(provisionProgressRef.current.intervalId);
+      provisionProgressRef.current = null;
+    }
+    lastStatusLineRef.current = '';
     liveSrvRef.current = undefined;
     addressRef.current = null;
   }, []);
@@ -217,10 +201,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       try {
         await publishOverSocket(address, { type: 'input', data: inputData });
-      } catch (err: unknown) {
-        connectionLogRef.current.error('Failed to publish input', err, {
-          category: 'input_failure',
-        });
+      } catch {
+        // Input publish failures are transient; ignore silently
       }
     },
     [publishOverSocket]
@@ -238,12 +220,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       try {
         await publishOverSocket(address, { type: 'resize', rows, cols });
-      } catch (err: unknown) {
-        connectionLogRef.current.error('Failed to publish resize', err, {
-          rows,
-          cols,
-          category: 'resize_failure',
-        });
+      } catch {
+        // Resize publish failures are transient; ignore silently
       }
     },
     [publishOverSocket]
@@ -288,10 +266,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     (id: string, terminal: Terminal, vmOpts?: TerminalVMOptions) => {
       const liveSrv = getGrafanaLiveSrv();
       if (!liveSrv) {
-        connectionLogRef.current.error('Grafana Live service not available', null, {
-          vmId: id,
-          category: 'live_service_unavailable',
-        });
         setError('Grafana Live service not available');
         setStatus('error');
         return;
@@ -308,7 +282,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       let channelPathStr = `terminal/${id}/${nonce}`;
       if (vmOpts?.template && vmOpts.template !== 'vm-aws') {
         channelPathStr += `/${vmOpts.template}`;
-        if (vmOpts.app) {
+        if (vmOpts.template === 'vm-aws-alloy-scenario' && vmOpts.scenario) {
+          channelPathStr += `/${vmOpts.scenario}`;
+        } else if (vmOpts.app) {
           channelPathStr += `/${vmOpts.app}`;
         }
       }
@@ -317,13 +293,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         stream: PLUGIN_ID,
         path: channelPathStr,
       };
-
-      const channelPath = `${address.scope}/${address.stream}/${address.path}`;
-      connectionLogRef.current.info('Subscribing to LiveStream', {
-        vmId: id,
-        channel: channelPath,
-        nonce,
-      });
 
       currentVmIdRef.current = id;
 
@@ -341,11 +310,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         }
         handshakeTimeoutRef.current = setTimeout(() => {
           handshakeTimeoutRef.current = null;
-          connectionLogRef.current.error('SSH handshake timeout', null, {
-            vmId: id,
-            timeoutMs: SSH_HANDSHAKE_TIMEOUT_MS,
-            category: 'ssh_handshake_timeout',
-          });
           cleanup();
           setError('SSH handshake timed out');
           setStatus('error');
@@ -367,31 +331,57 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   // timeout so VM provisioning (1-3 min) doesn't trip the timer.
                   startHandshakeTimeout();
 
-                  // Update current VM ID ref if backend sends it (needed for input routing)
                   if (msg.vmId && msg.vmId !== currentVmIdRef.current) {
-                    connectionLogRef.current.info('Received VM ID from backend', {
-                      vmId: msg.vmId,
-                      previousId: currentVmIdRef.current,
-                    });
                     currentVmIdRef.current = msg.vmId;
                   }
 
-                  connectionLogRef.current.info('VM status update', {
-                    vmId: msg.vmId || id,
-                    state: msg.state,
-                    message: msg.message,
-                  });
-
-                  if (msg.state === 'pending') {
-                    terminal.writeln(`\x1b[90m   │  ⏳ ${msg.message || 'Waiting in queue...'}\x1b[0m`);
-                  } else if (msg.state === 'provisioning') {
-                    terminal.writeln(`\x1b[90m   │  ⏳ ${msg.message || 'VM is booting...'}\x1b[0m`);
-                  } else if (msg.state === 'active') {
-                    terminal.writeln(`\x1b[90m   │  ✓ ${msg.message || 'VM is ready'}\x1b[0m`);
-                  } else if (msg.state === 'retrying') {
-                    terminal.writeln(`\x1b[33m   │  ⚠ ${msg.message || 'Retrying...'}\x1b[0m`);
+                  if (msg.state === 'pending' || msg.state === 'provisioning') {
+                    const label = msg.state === 'pending' ? 'Waiting in queue' : 'Booting VM';
+                    if (!provisionProgressRef.current) {
+                      const startTime = Date.now();
+                      terminal.write(renderProvisionProgress(label, 0));
+                      const intervalId = setInterval(() => {
+                        const cur = provisionProgressRef.current;
+                        if (!cur) {
+                          return;
+                        }
+                        const elapsed = Date.now() - cur.startTime;
+                        terminal.write('\r' + renderProvisionProgress(cur.stateLabel, elapsed));
+                      }, PROGRESS_UPDATE_INTERVAL_MS);
+                      provisionProgressRef.current = { intervalId, startTime, stateLabel: label };
+                    } else {
+                      provisionProgressRef.current.stateLabel = label;
+                    }
                   } else {
-                    terminal.writeln(`\x1b[90m   │  ${msg.message || `Status: ${msg.state}`}\x1b[0m`);
+                    // Finish progress bar when leaving pending/provisioning
+                    const hadProgressBar = provisionProgressRef.current !== null;
+                    if (provisionProgressRef.current) {
+                      const elapsed = Date.now() - provisionProgressRef.current.startTime;
+                      clearInterval(provisionProgressRef.current.intervalId);
+                      if (msg.state === 'active') {
+                        terminal.write('\r' + renderProvisionProgress('VM is ready', elapsed, true));
+                      }
+                      terminal.writeln('');
+                      provisionProgressRef.current = null;
+                    }
+
+                    if (msg.state === 'active') {
+                      if (!hadProgressBar) {
+                        const line = `\x1b[90m   │  ✓ ${msg.message || 'VM is ready'}\x1b[0m`;
+                        if (line !== lastStatusLineRef.current) {
+                          lastStatusLineRef.current = line;
+                          terminal.writeln(line);
+                        }
+                      }
+                    } else if (msg.state === 'retrying') {
+                      terminal.writeln(`\x1b[33m   │  ⚠ ${msg.message || 'Retrying...'}\x1b[0m`);
+                    } else {
+                      const line = `\x1b[90m   │  ${msg.message || `Status: ${msg.state}`}\x1b[0m`;
+                      if (line !== lastStatusLineRef.current) {
+                        lastStatusLineRef.current = line;
+                        terminal.writeln(line);
+                      }
+                    }
                   }
                   break;
 
@@ -402,18 +392,16 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   break;
 
                 case 'error':
-                  if (handshakeTimeoutRef.current) {
-                    clearTimeout(handshakeTimeoutRef.current);
-                    handshakeTimeoutRef.current = null;
-                  }
                   connectionLogRef.current.error('Backend error received', null, {
                     vmId: id,
                     backendError: msg.error,
                     category: 'backend_error',
                   });
 
-                  // Backend handles SSH auth retries with fresh VM provisioning
-                  // If we receive an error here, it's a final failure after all retries
+                  // Tear down the subscription immediately so Grafana Live
+                  // doesn't auto-reconnect and create a retry loop.
+                  cleanup();
+
                   terminal.writeln('\r\n');
                   terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
 
@@ -429,14 +417,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
                   // Update current VM ID ref from backend
                   if (msg.vmId) {
-                    connectionLogRef.current.info('VM ID from backend', { vmId: msg.vmId });
                     currentVmIdRef.current = msg.vmId;
                   }
 
-                  connectionLogRef.current.info('SSH connection SUCCESSFUL', {
-                    vmId: msg.vmId || id,
-                    category: 'connected',
-                  });
                   setStatus('connected');
                   terminal.writeln('');
                   terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
@@ -465,17 +448,16 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   });
 
                   sendResize(terminal.rows, terminal.cols);
+
+                  // Send a blank newline after a short delay to force the shell
+                  // to print a fresh prompt. Without this, broadcast messages
+                  // (e.g. shutdown warnings) or SSH reconnections can leave the
+                  // terminal on a blank line with no visible prompt.
+                  setTimeout(() => sendInput('\n'), 300);
                   break;
 
                 case 'disconnected':
-                  if (handshakeTimeoutRef.current) {
-                    clearTimeout(handshakeTimeoutRef.current);
-                    handshakeTimeoutRef.current = null;
-                  }
-                  connectionLogRef.current.info('VM disconnected', {
-                    vmId: id,
-                    category: 'disconnected',
-                  });
+                  cleanup();
                   setStatus('disconnected');
                   terminal.writeln('\r\n');
                   terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
@@ -491,22 +473,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           }
 
           if (isLiveChannelStatusEvent(event)) {
-            const stateNames: Record<LiveChannelConnectionState, string> = {
-              [LiveChannelConnectionState.Pending]: 'Pending',
-              [LiveChannelConnectionState.Connected]: 'Connected',
-              [LiveChannelConnectionState.Connecting]: 'Connecting',
-              [LiveChannelConnectionState.Disconnected]: 'Disconnected',
-              [LiveChannelConnectionState.Shutdown]: 'Shutdown',
-              [LiveChannelConnectionState.Invalid]: 'Invalid',
-            };
-            connectionLogRef.current.liveStream('Status change', {
-              vmId: id,
-              state: stateNames[event.state] ?? `Unknown(${event.state})`,
-              stateCode: event.state,
-            });
-
             if (event.state === LiveChannelConnectionState.Connected) {
-              connectionLogRef.current.info('LiveStream connected, awaiting SSH handshake', { vmId: id });
               terminal.writeln('\x1b[90m       Waiting for SSH handshake...\x1b[0m');
             } else if (event.state === LiveChannelConnectionState.Disconnected) {
               connectionLogRef.current.warn('LiveStream disconnected', {
@@ -553,10 +520,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             inputDisposerRef.current.dispose();
             inputDisposerRef.current = null;
           }
-          connectionLogRef.current.info('LiveStream completed', {
-            vmId: id,
-            category: 'stream_complete',
-          });
           setStatus((prev) => {
             if (prev === 'connected') {
               terminal.writeln('\r\n\x1b[33mStream ended\x1b[0m');
@@ -589,12 +552,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         return;
       }
 
-      connectionLogRef.current = createConnectionLog();
-      connectionLogRef.current.startConnection();
-      connectionLogRef.current.info('Starting connection sequence', {
-        template: vmOpts?.template,
-        app: vmOpts?.app,
-      });
+      lastStatusLineRef.current = '';
 
       setStatus('connecting');
       setError(null);
@@ -608,17 +566,14 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
       terminal.writeln('');
 
-      if (vmOpts?.app) {
+      if (vmOpts?.scenario) {
+        terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.scenario} scenario sandbox...\x1b[0m`);
+      } else if (vmOpts?.app) {
         terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.app} sandbox...\x1b[0m`);
       } else {
         terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
       }
       terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
-
-      connectionLogRef.current.info('Connecting to Live stream with new', {
-        template: vmOpts?.template,
-        app: vmOpts?.app,
-      });
       terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
 
       connectLiveStream('new', terminal, vmOpts);

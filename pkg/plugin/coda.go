@@ -38,6 +38,17 @@ func (v *VM) AppName() string {
 	return ""
 }
 
+// ScenarioName returns the "scenario" value from the VM config, or "" if not set.
+func (v *VM) ScenarioName() string {
+	if v.Config == nil {
+		return ""
+	}
+	if scenario, ok := v.Config["scenario"].(string); ok {
+		return scenario
+	}
+	return ""
+}
+
 // Credentials contains SSH connection information for a VM.
 type Credentials struct {
 	PublicIP      string `json:"publicIp"`
@@ -483,6 +494,49 @@ type SampleApp struct {
 // SampleAppsResponse represents the response from the sample-apps endpoint.
 type SampleAppsResponse struct {
 	Apps []SampleApp `json:"apps"`
+}
+
+// AlloyScenario represents an available alloy scenario from the Coda API.
+type AlloyScenario struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+}
+
+// AlloyScenariosResponse represents the response from the alloy-scenarios endpoint.
+type AlloyScenariosResponse struct {
+	Scenarios []AlloyScenario `json:"scenarios"`
+}
+
+// ListAlloyScenarios fetches available alloy scenarios from the Coda API.
+func (c *CodaClient) ListAlloyScenarios(ctx context.Context) (*AlloyScenariosResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL+"/api/v1/alloy-scenarios", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if err := c.setAuthHeader(ctx, req); err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result AlloyScenariosResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
 }
 
 // ListSampleApps fetches available sample apps from the Coda API.

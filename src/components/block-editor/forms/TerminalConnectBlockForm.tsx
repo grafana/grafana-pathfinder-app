@@ -18,16 +18,23 @@ import { PLUGIN_BACKEND_URL } from '../../../constants';
 const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Default (vm-aws)', value: '' },
   { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
+  { label: 'Alloy scenario (vm-aws-alloy-scenario)', value: 'vm-aws-alloy-scenario' },
 ];
 
-interface SampleApp {
+interface CodaListItem {
   id: string;
   name: string;
   description: string;
   status: string;
 }
 
-function useSampleApps(enabled: boolean) {
+/**
+ * Generic hook for fetching Coda list endpoints (sample apps, alloy scenarios, etc.).
+ * @param enabled  Whether the fetch should be active
+ * @param url      Backend URL to fetch from
+ * @param key      Response key that holds the array (e.g. "apps", "scenarios")
+ */
+function useCodaOptions(enabled: boolean, url: string, key: string) {
   const [options, setOptions] = useState<Array<ComboboxOption<string>>>([]);
   const [done, setDone] = useState(false);
   const [prevEnabled, setPrevEnabled] = useState(enabled);
@@ -45,15 +52,16 @@ function useSampleApps(enabled: boolean) {
     }
 
     const sub = getBackendSrv()
-      .fetch<{ apps: SampleApp[] }>({ url: `${PLUGIN_BACKEND_URL}/sample-apps` })
+      .fetch<Record<string, CodaListItem[]>>({ url })
       .subscribe({
         next(resp) {
-          if (resp?.data?.apps) {
+          const items = resp?.data?.[key];
+          if (items) {
             setOptions(
-              resp.data.apps.map((app) => ({
-                label: app.name,
-                value: app.id,
-                description: app.description,
+              items.map((item) => ({
+                label: item.name,
+                value: item.id,
+                description: item.description,
               }))
             );
           }
@@ -65,7 +73,7 @@ function useSampleApps(enabled: boolean) {
       });
 
     return () => sub.unsubscribe();
-  }, [enabled]);
+  }, [enabled, url, key]);
 
   return { options, isLoading: enabled && !done };
 }
@@ -89,9 +97,20 @@ export function TerminalConnectBlockForm({
   const [buttonText, setButtonText] = useState(initial?.buttonText ?? '');
   const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
   const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
+  const [vmScenario, setVmScenario] = useState(initial?.vmScenario ?? '');
 
   const isSampleApp = vmTemplate === 'vm-aws-sample-app';
-  const { options: sampleAppOptions, isLoading: isLoadingApps } = useSampleApps(isSampleApp);
+  const isAlloyScenario = vmTemplate === 'vm-aws-alloy-scenario';
+  const { options: sampleAppOptions, isLoading: isLoadingApps } = useCodaOptions(
+    isSampleApp,
+    `${PLUGIN_BACKEND_URL}/sample-apps`,
+    'apps'
+  );
+  const { options: scenarioOptions, isLoading: isLoadingScenarios } = useCodaOptions(
+    isAlloyScenario,
+    `${PLUGIN_BACKEND_URL}/alloy-scenarios`,
+    'scenarios'
+  );
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -103,11 +122,12 @@ export function TerminalConnectBlockForm({
         ...(buttonText.trim() && { buttonText: buttonText.trim() }),
         ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
         ...(vmApp.trim() && { vmApp: vmApp.trim() }),
+        ...(vmScenario.trim() && { vmScenario: vmScenario.trim() }),
       };
 
       onSubmit(block as JsonBlock);
     },
-    [content, buttonText, vmTemplate, vmApp, onSubmit]
+    [content, buttonText, vmTemplate, vmApp, vmScenario, onSubmit]
   );
 
   const isValid = content.trim().length > 0;
@@ -137,8 +157,11 @@ export function TerminalConnectBlockForm({
           value={vmTemplate}
           onChange={(opt) => {
             setVmTemplate(opt.value);
-            if (!opt.value) {
+            if (!opt.value || opt.value === 'vm-aws-alloy-scenario') {
               setVmApp('');
+            }
+            if (!opt.value || opt.value !== 'vm-aws-alloy-scenario') {
+              setVmScenario('');
             }
           }}
         />
@@ -153,6 +176,20 @@ export function TerminalConnectBlockForm({
             loading={isLoadingApps}
             createCustomValue
             placeholder="Select a sample app..."
+            isClearable
+          />
+        </Field>
+      )}
+
+      {isAlloyScenario && (
+        <Field label="Scenario" description="Alloy scenario to run on the VM">
+          <Combobox
+            options={scenarioOptions}
+            value={vmScenario || null}
+            onChange={(opt) => setVmScenario(opt?.value ?? '')}
+            loading={isLoadingScenarios}
+            createCustomValue
+            placeholder="Select a scenario..."
             isClearable
           />
         </Field>
