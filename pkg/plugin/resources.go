@@ -15,6 +15,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/vms", a.handleVMs)
 	mux.HandleFunc("/vms/", a.handleVMByID)
 	mux.HandleFunc("/sample-apps", a.handleSampleApps)
+	mux.HandleFunc("/alloy-scenarios", a.handleAlloyScenarios)
 	mux.HandleFunc("/mcp", a.handleMCP)
 	mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)
 	mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)
@@ -322,6 +323,33 @@ func (a *App) handleSampleApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.writeJSON(w, apps, http.StatusOK)
+}
+
+// handleAlloyScenarios returns available alloy scenarios from Coda.
+func (a *App) handleAlloyScenarios(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if a.coda == nil {
+		a.writeError(w, "Coda not registered - configure enrollment key and register first", http.StatusServiceUnavailable)
+		return
+	}
+
+	ctxLogger := a.ctxLogger(r.Context())
+	scenarios, err := a.coda.ListAlloyScenarios(r.Context())
+	if err != nil {
+		ctxLogger.Error("Failed to list alloy scenarios", "error", err)
+		if strings.Contains(err.Error(), "authentication failed") {
+			a.writeError(w, err.Error(), http.StatusUnauthorized)
+		} else {
+			a.writeError(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	a.writeJSON(w, scenarios, http.StatusOK)
 }
 
 // handleHealth returns the plugin health status.

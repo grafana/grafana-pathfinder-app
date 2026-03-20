@@ -105,6 +105,8 @@ export interface TerminalVMOptions {
   template?: string;
   /** App name for sample-app templates */
   app?: string;
+  /** Scenario name for alloy-scenario templates */
+  scenario?: string;
 }
 
 interface UseTerminalLiveReturn {
@@ -308,7 +310,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       let channelPathStr = `terminal/${id}/${nonce}`;
       if (vmOpts?.template && vmOpts.template !== 'vm-aws') {
         channelPathStr += `/${vmOpts.template}`;
-        if (vmOpts.app) {
+        if (vmOpts.template === 'vm-aws-alloy-scenario' && vmOpts.scenario) {
+          channelPathStr += `/${vmOpts.scenario}`;
+        } else if (vmOpts.app) {
           channelPathStr += `/${vmOpts.app}`;
         }
       }
@@ -594,6 +598,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       connectionLogRef.current.info('Starting connection sequence', {
         template: vmOpts?.template,
         app: vmOpts?.app,
+        scenario: vmOpts?.scenario,
       });
 
       setStatus('connecting');
@@ -608,7 +613,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
       terminal.writeln('');
 
-      if (vmOpts?.app) {
+      if (vmOpts?.scenario) {
+        terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.scenario} scenario sandbox...\x1b[0m`);
+      } else if (vmOpts?.app) {
         terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.app} sandbox...\x1b[0m`);
       } else {
         terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
@@ -618,6 +625,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       connectionLogRef.current.info('Connecting to Live stream with new', {
         template: vmOpts?.template,
         app: vmOpts?.app,
+        scenario: vmOpts?.scenario,
       });
       terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
 

@@ -790,6 +790,7 @@ function convertTerminalConnectBlock(block: JsonTerminalConnectBlock, _path: str
         buttonText: block.buttonText,
         vmTemplate: block.vmTemplate,
         vmApp: block.vmApp,
+        vmScenario: block.vmScenario,
       },
       children,
     },

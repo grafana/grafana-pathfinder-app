@@ -18,6 +18,7 @@ import { PLUGIN_BACKEND_URL } from '../../../constants';
 const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Default (vm-aws)', value: '' },
   { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
+  { label: 'Alloy scenario (vm-aws-alloy-scenario)', value: 'vm-aws-alloy-scenario' },
 ];
 
 interface SampleApp {
@@ -70,6 +71,56 @@ function useSampleApps(enabled: boolean) {
   return { options, isLoading: enabled && !done };
 }
 
+interface AlloyScenario {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+}
+
+function useAlloyScenarios(enabled: boolean) {
+  const [options, setOptions] = useState<Array<ComboboxOption<string>>>([]);
+  const [done, setDone] = useState(false);
+  const [prevEnabled, setPrevEnabled] = useState(enabled);
+
+  if (enabled !== prevEnabled) {
+    setPrevEnabled(enabled);
+    if (enabled) {
+      setDone(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const sub = getBackendSrv()
+      .fetch<{ scenarios: AlloyScenario[] }>({ url: `${PLUGIN_BACKEND_URL}/alloy-scenarios` })
+      .subscribe({
+        next(resp) {
+          if (resp?.data?.scenarios) {
+            setOptions(
+              resp.data.scenarios.map((scenario) => ({
+                label: scenario.name,
+                value: scenario.id,
+                description: scenario.description,
+              }))
+            );
+          }
+          setDone(true);
+        },
+        error() {
+          setDone(true);
+        },
+      });
+
+    return () => sub.unsubscribe();
+  }, [enabled]);
+
+  return { options, isLoading: enabled && !done };
+}
+
 function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalConnectBlock {
   return block.type === 'terminal-connect';
 }
@@ -89,9 +140,12 @@ export function TerminalConnectBlockForm({
   const [buttonText, setButtonText] = useState(initial?.buttonText ?? '');
   const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
   const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
+  const [vmScenario, setVmScenario] = useState(initial?.vmScenario ?? '');
 
   const isSampleApp = vmTemplate === 'vm-aws-sample-app';
+  const isAlloyScenario = vmTemplate === 'vm-aws-alloy-scenario';
   const { options: sampleAppOptions, isLoading: isLoadingApps } = useSampleApps(isSampleApp);
+  const { options: scenarioOptions, isLoading: isLoadingScenarios } = useAlloyScenarios(isAlloyScenario);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -103,11 +157,12 @@ export function TerminalConnectBlockForm({
         ...(buttonText.trim() && { buttonText: buttonText.trim() }),
         ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
         ...(vmApp.trim() && { vmApp: vmApp.trim() }),
+        ...(vmScenario.trim() && { vmScenario: vmScenario.trim() }),
       };
 
       onSubmit(block as JsonBlock);
     },
-    [content, buttonText, vmTemplate, vmApp, onSubmit]
+    [content, buttonText, vmTemplate, vmApp, vmScenario, onSubmit]
   );
 
   const isValid = content.trim().length > 0;
@@ -137,8 +192,11 @@ export function TerminalConnectBlockForm({
           value={vmTemplate}
           onChange={(opt) => {
             setVmTemplate(opt.value);
-            if (!opt.value) {
+            if (!opt.value || opt.value === 'vm-aws-alloy-scenario') {
               setVmApp('');
+            }
+            if (!opt.value || opt.value !== 'vm-aws-alloy-scenario') {
+              setVmScenario('');
             }
           }}
         />
@@ -153,6 +211,20 @@ export function TerminalConnectBlockForm({
             loading={isLoadingApps}
             createCustomValue
             placeholder="Select a sample app..."
+            isClearable
+          />
+        </Field>
+      )}
+
+      {isAlloyScenario && (
+        <Field label="Scenario" description="Alloy scenario to run on the VM">
+          <Combobox
+            options={scenarioOptions}
+            value={vmScenario || null}
+            onChange={(opt) => setVmScenario(opt?.value ?? '')}
+            loading={isLoadingScenarios}
+            createCustomValue
+            placeholder="Select a scenario..."
             isClearable
           />
         </Field>

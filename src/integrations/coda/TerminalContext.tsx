@@ -129,9 +129,13 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
       const requestedTemplate = vmOpts?.template || '';
       const requestedApp = vmOpts?.app || '';
+      const requestedScenario = vmOpts?.scenario || '';
       const activeTemplate = activeVmOptsRef.current?.template || '';
       const activeApp = activeVmOptsRef.current?.app || '';
-      const needsReconnect = !needsConnect && (requestedTemplate !== activeTemplate || requestedApp !== activeApp);
+      const activeScenario = activeVmOptsRef.current?.scenario || '';
+      const needsReconnect =
+        !needsConnect &&
+        (requestedTemplate !== activeTemplate || requestedApp !== activeApp || requestedScenario !== activeScenario);
 
       if (needsReconnect) {
         reconnectingRef.current = true;

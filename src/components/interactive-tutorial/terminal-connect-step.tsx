@@ -24,6 +24,8 @@ export interface TerminalConnectStepProps {
   vmTemplate?: string;
   /** App name for sample-app template */
   vmApp?: string;
+  /** Scenario name for alloy-scenario template */
+  vmScenario?: string;
 
   stepId?: string;
   isEligibleForChecking?: boolean;
@@ -90,6 +92,7 @@ export const TerminalConnectStep = forwardRef<
       className,
       vmTemplate,
       vmApp,
+      vmScenario,
       stepId,
       isEligibleForChecking = true,
       isCompleted: parentCompleted = false,
@@ -138,9 +141,9 @@ export const TerminalConnectStep = forwardRef<
       }
 
       setIsConnecting(true);
-      const vmOpts = vmTemplate ? { template: vmTemplate, app: vmApp } : undefined;
+      const vmOpts = vmTemplate ? { template: vmTemplate, app: vmApp, scenario: vmScenario } : undefined;
       terminalCtx.openTerminal(vmOpts);
-    }, [terminalCtx, vmTemplate, vmApp]);
+    }, [terminalCtx, vmTemplate, vmApp, vmScenario]);
 
     // React to terminal status changes while waiting for connection
     useEffect(() => {

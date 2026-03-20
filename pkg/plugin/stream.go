@@ -343,6 +343,16 @@ func (o vmRequestOpts) appName() string {
 	return ""
 }
 
+func (o vmRequestOpts) scenarioName() string {
+	if o.config == nil {
+		return ""
+	}
+	if scenario, ok := o.config["scenario"].(string); ok {
+		return scenario
+	}
+	return ""
+}
+
 // resolveVMForUser finds or creates a VM for the given user.
 //
 // Priority:
@@ -361,13 +371,15 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 	requestedTemplate := "vm-aws"
 	var vmConfig map[string]interface{}
 	var requestedApp string
+	var requestedScenario string
 	if len(opts) > 0 && opts[0].template != "" {
 		requestedTemplate = opts[0].template
 		vmConfig = opts[0].config
 		requestedApp = opts[0].appName()
+		requestedScenario = opts[0].scenarioName()
 	}
 
-	ctxLogger.Info("Resolving VM for user", "userLogin", userLogin, "template", requestedTemplate, "app", requestedApp)
+	ctxLogger.Info("Resolving VM for user", "userLogin", userLogin, "template", requestedTemplate, "app", requestedApp, "scenario", requestedScenario)
 
 	// VMs queued for deletion due to template/app mismatch. We must wait for
 	// these to complete before the quota check so CountVMsForUser sees accurate
@@ -391,11 +403,12 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		} else if isUsableState(vm.State) {
 			templateMismatch := vm.Template != requestedTemplate
 			appMismatch := requestedApp != "" && vm.AppName() != requestedApp
+			scenarioMismatch := requestedScenario != "" && vm.ScenarioName() != requestedScenario
 
-			if templateMismatch || appMismatch {
+			if templateMismatch || appMismatch || scenarioMismatch {
 				ctxLogger.Info("Cached VM doesn't match request, destroying and creating fresh",
-					"vmID", cachedID, "cachedTemplate", vm.Template, "cachedApp", vm.AppName(),
-					"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
+					"vmID", cachedID, "cachedTemplate", vm.Template, "cachedApp", vm.AppName(), "cachedScenario", vm.ScenarioName(),
+					"requestedTemplate", requestedTemplate, "requestedApp", requestedApp, "requestedScenario", requestedScenario)
 				a.clearUserVM(userLogin, cachedID)
 				sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", cachedID)
 				mismatchVMsToDelete = append(mismatchVMsToDelete, cachedID)
@@ -422,8 +435,9 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 	if existingVM != nil {
 		templateMatch := existingVM.Template == requestedTemplate
 		appMatch := requestedApp == "" || existingVM.AppName() == requestedApp
+		scenarioMatch := requestedScenario == "" || existingVM.ScenarioName() == requestedScenario
 
-		if templateMatch && appMatch {
+		if templateMatch && appMatch && scenarioMatch {
 			ctxLogger.Info("Found existing VM via ListVMs", "vmID", existingVM.ID, "state", existingVM.State, "surplusCount", len(surplusVMs))
 			a.userVMsMu.Lock()
 			a.userVMs[userLogin] = existingVM.ID
@@ -444,14 +458,15 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 
 		// Primary doesn't match — check surplus for a VM that does before destroying all
 		ctxLogger.Info("Primary VM doesn't match request",
-			"vmID", existingVM.ID, "existingTemplate", existingVM.Template, "existingApp", existingVM.AppName(),
-			"requestedTemplate", requestedTemplate, "requestedApp", requestedApp)
+			"vmID", existingVM.ID, "existingTemplate", existingVM.Template, "existingApp", existingVM.AppName(), "existingScenario", existingVM.ScenarioName(),
+			"requestedTemplate", requestedTemplate, "requestedApp", requestedApp, "requestedScenario", requestedScenario)
 
 		var matchingSurplus *VM
 		for i := range surplusVMs {
 			st := surplusVMs[i].Template == requestedTemplate
 			sa := requestedApp == "" || surplusVMs[i].AppName() == requestedApp
-			if st && sa {
+			ss := requestedScenario == "" || surplusVMs[i].ScenarioName() == requestedScenario
+			if st && sa && ss {
 				matchingSurplus = &surplusVMs[i]
 				break
 			}
@@ -585,8 +600,12 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 	if len(parts) >= 4 && parts[3] != "" {
 		reqOpts.template = parts[3]
 		if len(parts) >= 5 && parts[4] != "" {
+			configKey := "app"
+			if reqOpts.template == "vm-aws-alloy-scenario" {
+				configKey = "scenario"
+			}
 			reqOpts.config = map[string]interface{}{
-				"app": parts[4],
+				configKey: parts[4],
 			}
 		}
 		ctxLogger.Info("Custom VM template requested", "template", reqOpts.template, "config", reqOpts.config)
