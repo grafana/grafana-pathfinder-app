@@ -318,7 +318,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     }
   }, [connect, terminalCtx]);
 
-  // Disconnect handler
+  // Disconnect handler — routes through context so pending reconnect timers
+  // are cancelled, matching how handleConnect routes through context.
   const handleDisconnect = useCallback(() => {
     setWasConnected(false);
     everConnectedRef.current = false;
@@ -326,8 +327,12 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.writeln('\r\n\x1b[31mDisconnected.\x1b[0m');
     }
-    disconnect();
-  }, [disconnect]);
+    if (terminalCtx) {
+      terminalCtx.disconnect();
+    } else {
+      disconnect();
+    }
+  }, [disconnect, terminalCtx]);
 
   // Search handlers
   const handleSearchToggle = useCallback(() => {

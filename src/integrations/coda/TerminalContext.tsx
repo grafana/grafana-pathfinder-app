@@ -158,6 +158,9 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       if (needsConnect || needsReconnect) {
         activeVmOptsRef.current = vmOpts;
         setLastVmOpts(vmOpts);
+        if (pendingConnectTimerRef.current) {
+          clearTimeout(pendingConnectTimerRef.current);
+        }
         pendingConnectTimerRef.current = setTimeout(() => {
           pendingConnectTimerRef.current = null;
           reconnectingRef.current = false;
