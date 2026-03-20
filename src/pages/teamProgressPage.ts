@@ -17,7 +17,7 @@ function teamProgressScene() {
         new SceneFlexItem({
           width: '100%',
           height: '100%',
-          body: new TeamProgressPanel({}),
+          body: new TeamProgressPanel(),
         }),
       ],
     }),

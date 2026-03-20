@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   EmbeddedScene,
   SceneDataNode,
@@ -13,17 +13,27 @@ import { config } from '@grafana/runtime';
 import { createDataFrame, FieldType, LoadingState } from '@grafana/data';
 
 import { GuideCompletionResource } from '../../types/guide-completion.types';
+import { fetchGuideCompletions } from '../../lib/fetchGuideCompletions';
 import { getTeamProgressStyles } from './team-progress.styles';
-import { MOCK_COMPLETIONS } from './mock-data';
 
 // ============================================================================
 // SCENE OBJECT
 // ============================================================================
 
-interface TeamProgressPanelState extends SceneObjectState {}
+interface TeamProgressPanelState extends SceneObjectState {
+  /** Bumped on each activation to trigger a data re-fetch */
+  fetchEpoch?: number;
+}
 
 export class TeamProgressPanel extends SceneObjectBase<TeamProgressPanelState> {
   public static Component = TeamProgressPanelRenderer;
+
+  constructor() {
+    super({ fetchEpoch: 0 });
+    this.addActivationHandler(() => {
+      this.setState({ fetchEpoch: Date.now() });
+    });
+  }
 }
 
 // ============================================================================
@@ -42,7 +52,8 @@ function isAdmin(): boolean {
 interface GuideRow {
   id: string;
   guideTitle: string;
-  totalCompletions: number;
+  completed: number;
+  inProgress: number;
   uniqueUsers: number;
   avgDuration: string;
   avgCompletionPercent: number;
@@ -51,52 +62,68 @@ interface GuideRow {
 interface UserRow {
   id: string;
   userDisplayName: string;
-  completions: number;
+  completed: number;
+  inProgress: number;
+}
+
+function isCompleted(item: GuideCompletionResource): boolean {
+  return item.spec.completionPercent >= 100;
 }
 
 function aggregateByGuide(items: GuideCompletionResource[]): GuideRow[] {
-  const map = new Map<string, { completions: GuideCompletionResource[]; users: Set<string> }>();
+  const map = new Map<string, { records: GuideCompletionResource[]; users: Set<string> }>();
 
   for (const item of items) {
     const key = item.spec.guideId;
     if (!map.has(key)) {
-      map.set(key, { completions: [], users: new Set() });
+      map.set(key, { records: [], users: new Set() });
     }
     const entry = map.get(key)!;
-    entry.completions.push(item);
+    entry.records.push(item);
     entry.users.add(item.spec.userLogin);
   }
 
   return Array.from(map.entries())
-    .map(([id, { completions, users }]) => {
-      const totalDuration = completions.reduce((sum, c) => sum + c.spec.durationSeconds, 0);
-      const totalPercent = completions.reduce((sum, c) => sum + c.spec.completionPercent, 0);
+    .map(([id, { records, users }]) => {
+      const totalDuration = records.reduce((sum, c) => sum + c.spec.durationSeconds, 0);
+      const totalPercent = records.reduce((sum, c) => sum + c.spec.completionPercent, 0);
       return {
         id,
-        guideTitle: completions[0]!.spec.guideTitle,
-        totalCompletions: completions.length,
+        guideTitle: records[0]!.spec.guideTitle,
+        completed: records.filter(isCompleted).length,
+        inProgress: records.filter((r) => !isCompleted(r)).length,
         uniqueUsers: users.size,
-        avgDuration: formatDuration(Math.round(totalDuration / completions.length)),
-        avgCompletionPercent: Math.round(totalPercent / completions.length),
+        avgDuration: formatDuration(Math.round(totalDuration / records.length)),
+        avgCompletionPercent: Math.round(totalPercent / records.length),
       };
     })
-    .sort((a, b) => b.totalCompletions - a.totalCompletions);
+    .sort((a, b) => b.completed - a.completed || b.avgCompletionPercent - a.avgCompletionPercent);
 }
 
 function aggregateByUser(items: GuideCompletionResource[]): UserRow[] {
-  const map = new Map<string, { displayName: string; count: number }>();
+  const map = new Map<string, { displayName: string; completed: number; inProgress: number }>();
 
   for (const item of items) {
     const key = item.spec.userLogin;
     if (!map.has(key)) {
-      map.set(key, { displayName: item.spec.userDisplayName, count: 0 });
+      map.set(key, { displayName: item.spec.userDisplayName, completed: 0, inProgress: 0 });
     }
-    map.get(key)!.count++;
+    const entry = map.get(key)!;
+    if (isCompleted(item)) {
+      entry.completed++;
+    } else {
+      entry.inProgress++;
+    }
   }
 
   return Array.from(map.values())
-    .map((v) => ({ id: v.displayName, userDisplayName: v.displayName, completions: v.count }))
-    .sort((a, b) => b.completions - a.completions);
+    .map((v) => ({
+      id: v.displayName,
+      userDisplayName: v.displayName,
+      completed: v.completed,
+      inProgress: v.inProgress,
+    }))
+    .sort((a, b) => b.completed - a.completed || b.inProgress - a.inProgress);
 }
 
 function buildStatPanel(title: string, value: number | string, unit?: string): SceneFlexItem {
@@ -147,7 +174,7 @@ function buildChartScene(items: GuideCompletionResource[], referenceNow: number)
   const now = new Date(referenceNow);
   const countMap = new Map<string, number>();
 
-  for (const item of items) {
+  for (const item of items.filter(isCompleted)) {
     const d = new Date(item.spec.completedAt);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     countMap.set(key, (countMap.get(key) ?? 0) + 1);
@@ -217,7 +244,8 @@ function buildChartScene(items: GuideCompletionResource[], referenceNow: number)
 
 const GUIDE_COLUMNS: Array<Column<GuideRow>> = [
   { id: 'guideTitle', header: 'Guide title', sortType: 'alphanumeric' },
-  { id: 'totalCompletions', header: 'Total completions', sortType: 'number' },
+  { id: 'completed', header: 'Completed', sortType: 'number' },
+  { id: 'inProgress', header: 'In progress', sortType: 'number' },
   { id: 'uniqueUsers', header: 'Unique users', sortType: 'number' },
   { id: 'avgDuration', header: 'Avg duration', sortType: 'alphanumeric' },
   {
@@ -230,42 +258,60 @@ const GUIDE_COLUMNS: Array<Column<GuideRow>> = [
 
 const USER_COLUMNS: Array<Column<UserRow>> = [
   { id: 'userDisplayName', header: 'User', sortType: 'alphanumeric' },
-  { id: 'completions', header: 'Completions', sortType: 'number' },
+  { id: 'completed', header: 'Completed', sortType: 'number' },
+  { id: 'inProgress', header: 'In progress', sortType: 'number' },
 ];
 
 // ============================================================================
 // RENDERER
 // ============================================================================
 
-function TeamProgressPanelRenderer() {
+function TeamProgressPanelRenderer({ model }: { model: TeamProgressPanel }) {
   const styles = useStyles2(getTeamProgressStyles);
-  // TODO: Replace with CRD API fetch when available
-  const [completions] = useState<GuideCompletionResource[]>(MOCK_COMPLETIONS);
+  const { fetchEpoch } = model.useState();
+  const [completions, setCompletions] = useState<GuideCompletionResource[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    fetchGuideCompletions().then((items) => {
+      if (cancelled) {
+        return;
+      }
+      setCompletions(items);
+      setIsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchEpoch]);
 
   const admin = isAdmin();
 
   const [now] = useState(() => Date.now());
 
   const statsScene = useMemo(() => {
-    let total = 0;
-    let activeUsers = 0;
+    const completed = completions.filter(isCompleted);
+    const inProgress = completions.filter((c) => !isCompleted(c));
     let avgSeconds = 0;
     let topGuide = '-';
 
-    if (completions.length > 0) {
-      total = completions.length;
-      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-      activeUsers = new Set(
-        completions.filter((c) => new Date(c.spec.completedAt).getTime() > sevenDaysAgo).map((c) => c.spec.userLogin)
-      ).size;
-      avgSeconds = completions.reduce((s, c) => s + c.spec.durationSeconds, 0) / completions.length;
-      topGuide = aggregateByGuide(completions)[0]?.guideTitle ?? '-';
+    if (completed.length > 0) {
+      avgSeconds = completed.reduce((s, c) => s + c.spec.durationSeconds, 0) / completed.length;
+      topGuide = aggregateByGuide(completed)[0]?.guideTitle ?? '-';
     }
+
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const activeUsers = new Set(
+      completions.filter((c) => new Date(c.spec.completedAt).getTime() > sevenDaysAgo).map((c) => c.spec.userLogin)
+    ).size;
 
     return new SceneFlexLayout({
       direction: 'row',
       children: [
-        buildStatPanel('Total completions', total),
+        buildStatPanel('Completed', completed.length),
+        buildStatPanel('In progress', inProgress.length),
         buildStatPanel('Active learners this week', activeUsers),
         buildStatPanel('Avg completion time', Math.round(avgSeconds), 's'),
         buildStatPanel('Most popular guide', topGuide),
@@ -277,10 +323,26 @@ function TeamProgressPanelRenderer() {
   const userRows = useMemo(() => aggregateByUser(completions), [completions]);
   const chartScene = useMemo(() => buildChartScene(completions, now), [completions, now]);
 
+  if (isLoading) {
+    return (
+      <div className={styles.emptyState}>
+        <p>Loading team progress data...</p>
+      </div>
+    );
+  }
+
   if (!admin) {
     return (
-      <div className={styles.accessDenied} data-testid="team-progress-access-denied">
+      <div className={styles.emptyState} data-testid="team-progress-access-denied">
         <p>Team progress requires admin access.</p>
+      </div>
+    );
+  }
+
+  if (completions.length === 0) {
+    return (
+      <div className={styles.emptyState} data-testid="team-progress-empty">
+        <p>No completion data yet. Completions will appear here as users complete guides.</p>
       </div>
     );
   }

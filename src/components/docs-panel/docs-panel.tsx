@@ -42,6 +42,7 @@ import {
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
 import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/user-storage';
+import { useGuideCompletionTracking } from '../../lib/useGuideCompletionTracking';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -789,6 +790,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
+
+  // Track guide session duration and partial progress for backend CRD
+  useGuideCompletionTracking({
+    guideUrl: activeTab?.baseUrl,
+    guideTitle: activeTab?.title,
+    guideType: stableContent?.type,
+  });
 
   // Check for interactive progress when content changes to show reset button
   // MUST use currentUrl || baseUrl (not content.url) to match getContentKey() in interactive sections.
@@ -1746,6 +1754,24 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         // Mark bundled guides as 100% complete when all interactive steps finish
                         if (baseUrl?.startsWith('bundled:')) {
                           setJourneyCompletionPercentage(baseUrl, 100);
+                        }
+
+                        // Record 100% completion to backend CRD
+                        if (baseUrl) {
+                          const guideId = baseUrl.startsWith('bundled:')
+                            ? baseUrl.slice('bundled:'.length)
+                            : baseUrl.replace(/\/+$/, '').split('/').pop() || baseUrl;
+                          const category =
+                            stableContent.type === 'learning-journey' ? 'learning-journey' : 'interactive';
+                          import('../../lib/guide-completion-tracker').then(({ recordGuideCompletion }) => {
+                            recordGuideCompletion({
+                              guideId,
+                              guideTitle: activeTab?.title || guideId,
+                              guideCategory: category,
+                              pathId: '',
+                              completionPercent: 100,
+                            });
+                          });
                         }
 
                         // Mark learning journey milestones as done when all interactive steps finish

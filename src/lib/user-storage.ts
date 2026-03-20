@@ -1455,6 +1455,25 @@ export const learningProgressStorage = {
       if (!progress.completedGuides.includes(guideId)) {
         progress.completedGuides.push(guideId);
 
+        // Record completion to backend CRD (fire-and-forget, duration computed from session)
+        const { recordGuideCompletion } = await import('./guide-completion-tracker');
+        const { guideMetadata } = getPathsData();
+        const meta = guideMetadata[guideId];
+        const parentPath = paths.find((p) => p.guides.includes(guideId));
+        // URL-based paths are learning journeys, known guides (in a path or with metadata)
+        // are interactive, everything else is documentation
+        const guideCategory = parentPath?.url
+          ? 'learning-journey'
+          : parentPath || meta
+            ? 'interactive'
+            : 'documentation';
+        recordGuideCompletion({
+          guideId,
+          guideTitle: meta?.title || guideId,
+          guideCategory,
+          pathId: parentPath?.id || '',
+        });
+
         // Calculate and update streak before changing lastActivityDate
         const { calculateUpdatedStreak } = await import('../learning-paths');
         const today = new Date().toISOString().split('T')[0]!;

@@ -11,7 +11,7 @@ export const getTeamProgressStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     gap: theme.spacing(3),
   }),
-  accessDenied: css({
+  emptyState: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
