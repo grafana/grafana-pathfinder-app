@@ -6,10 +6,14 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Structural issues requiring dedicated effort. Format: date, description, rationale. Remove when resolved. -->
 
+- **2026-03-20**: `docs/developer/integrations/workshop.md` staleness — new files `flags.ts` (follow-mode feature flag) and `session-crypto.ts` (ECDSA presenter verification) added to `src/integrations/workshop/` since last modification (2025-11-25). The doc only covers action capture/replay and does not mention security/crypto or feature flags. Deferred from this run due to budget; heavy fix (3 pts) needed.
+
 ## Validated docs
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-03-20**: `docs/developer/interactive-examples/json-guide-format.md` — Updated "Bundling a JSON Guide" section to reflect new package directory structure (`my-guide/content.json` instead of flat `my-guide.json`, and cross-reference to `package-authoring.md` added).
+- **2026-03-20**: `docs/developer/CUSTOM_GUIDES.md` — Validated against `src/components/block-editor/` and custom guide backend. Indexed in `AGENTS.md`.
 - **2026-03-05**: `docs/developer/constants/README.md` — Re-validated against `src/constants/`. Added documentation for `testIds.ts` (e2e test identifiers).
 - **2026-02-25**: `docs/developer/utils/README.md` — Re-validated against `src/utils/`. Removed deleted files (keyboard-shortcuts.hook.ts, link-handler.hook.ts), added new files (fetchBackendGuides.ts, usePublishedGuides.ts).
 - **2026-02-20**: `docs/developer/learning-paths/README.md` — Created and validated against `src/learning-paths/`. Covers path types, platform selection, badge system, streak tracking, progress management, hooks, and integration points.
@@ -47,3 +51,4 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 - `docs/developer/components/FeedbackButton/README.md` — Local component README for feedback button.
 - `docs/developer/pages/README.md` — Pages directory README. Very narrow scope (single page definition).
 - `docs/developer/styles/README.md` — Styles directory README. Useful for style work but no agent-level constraints.
+- `.cursor/skills/plugin-bundle-size/SKILL.md` — Discovered automatically by IDE via `.cursor/skills/` glob pattern. No AGENTS.md entry needed.
