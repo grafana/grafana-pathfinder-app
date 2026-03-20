@@ -13,8 +13,10 @@
  * in src/types/package.types.ts at Tier 0 for broad importability.
  */
 
-// Resolver
+// Resolvers
 export { BundledPackageResolver, createBundledResolver } from './resolver';
+export { RecommenderPackageResolver } from './recommender-resolver';
+export { CompositePackageResolver, createCompositeResolver } from './composite-resolver';
 
 // Loader
 export {

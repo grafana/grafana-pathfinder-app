@@ -31,14 +31,16 @@ This plan spans three repositories. Each has its own detailed implementation doc
 
 ### Canonical URLs
 
-| Resource                  | URL                                                                 | Notes                                                 |
-| ------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------- |
-| Package repository (live) | `https://interactive-learning.grafana.net/packages/repository.json` | 31 packages, CI-generated on every push               |
-| Recommender (production)  | `https://recommender.grafana.com`                                   | Configured via `recommenderServiceUrl` plugin setting |
-| Recommender v1 recommend  | `POST https://recommender.grafana.com/api/v1/recommend`             | Package-aware recommendations (pending deploy)        |
-| Recommender v1 packages   | `GET https://recommender.grafana.com/api/v1/packages/{id}`          | Bare ID → CDN URL resolution (pending deploy)         |
-| CDN content base          | `https://interactive-learning.grafana.net/packages/`                | Package directories co-located with repository.json   |
-| Legacy recommend endpoint | `POST https://recommender.grafana.com/recommend`                    | URL-backed only; deprecation per RFC 8594             |
+| Resource                  | URL                                                                                     | Notes                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Package repository (live) | `https://interactive-learning.grafana.net/packages/repository.json`                     | 31 packages, CI-generated on every push                                          |
+| Recommender (production)  | `https://recommender.grafana.com`                                                       | Configured via `recommenderServiceUrl` plugin setting                            |
+| Recommender (dev)         | `https://grafana-recommender-93209135917.us-central1.run.app`                           | Temporary Cloud Run deploy for Phase 4d dev. **Never check in.** Local use only. |
+| Recommender v1 recommend  | `POST {recommenderBaseUrl}/api/v1/recommend`                                            | Package-aware recommendations                                                    |
+| Recommender v1 packages   | `GET {recommenderBaseUrl}/api/v1/packages/{id}`                                         | Bare ID → CDN URL resolution                                                     |
+| Recommender OpenAPI spec  | [`openapi.yaml`](https://github.com/grafana/grafana-recommender/blob/main/openapi.yaml) | Private repo — use `gh` CLI. Source of truth for v1 types.                       |
+| CDN content base          | `https://interactive-learning.grafana.net/packages/`                                    | Package directories co-located with repository.json                              |
+| Legacy recommend endpoint | `POST {recommenderBaseUrl}/recommend`                                                   | URL-backed only; deprecation per RFC 8594                                        |
 
 ---
 
@@ -101,7 +103,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 4a: Backend resolution + v1 recommend routes  | Go tests + Layer 2 | ✅ (PR)     |
 | 4b: Content migration (interactive-tutorials) | Layer 1            | ✅          |
 | 4c: E2E manifest pre-flight                   | Layer 3            | ✅          |
-| 4d: Frontend remote resolver + v1 migration   | Layer 2            | **Next**    |
+| 4d: Frontend remote resolver + v1 migration   | Layer 2            | **Active**  |
 | 4e: Integration verification                  | Layer 2 + Layer 3  | —           |
 | 4f: Path migration tooling                    | Layer 1            | ⏸️ Optional |
 | 4g: Docs-retrieval integration                | Layer 2            | —           |
@@ -267,23 +269,28 @@ Package-backed items (`type === "package"`):
 {
   "type": "package",
   "title": "Grafana Alerting 101",
-  "description": "Hands-on guide...",
+  "description": "Hands-on guide: Learn how to create and test alerts in Grafana.",
   "source": "package",
   "matchAccuracy": 1.0,
   "matchedCriteria": ["urlPrefixIn:/alerting"],
-  "packageId": "alerting-101",
   "contentUrl": "https://interactive-learning.grafana.net/packages/alerting-101/content.json",
   "manifestUrl": "https://interactive-learning.grafana.net/packages/alerting-101/manifest.json",
   "repository": "interactive-tutorials",
-  "packageType": "guide",
-  "category": "general",
-  "author": { "name": "...", "team": "interactive-learning" },
-  "startingLocation": "/alerting",
-  "navigation": { "recommends": [...], "suggests": [...], "depends": [...] }
+  "manifest": {
+    "id": "alerting-101",
+    "type": "guide",
+    "description": "Hands-on guide: Learn how to create and test alerts in Grafana.",
+    "category": "general",
+    "author": { "team": "interactive-learning" },
+    "startingLocation": "/alerting",
+    "recommends": ["alerting-notifications"]
+  }
 }
 ```
 
-URL-backed items (`type !== "package"`): unchanged from legacy — `url` field present, no package fields.
+URL-backed items (`type !== "package"`): unchanged from legacy — `url` field present, no package/manifest fields.
+
+**Note:** `contentUrl`/`manifestUrl` may be empty strings when the package ID was not found in the cached repository index at response time. The recommendation is still surfaced so the client can degrade gracefully until the next index refresh.
 
 #### Phase 4b: Content migration (interactive-tutorials) ✅
 
@@ -338,7 +345,31 @@ URL-backed items (`type !== "package"`): unchanged from legacy — `url` field p
 **Repo:** `grafana-pathfinder-app`
 **Testing:** Layer 2
 **Depends on:** 4a (backend routes must be deployed)
-**Status:** Not started — **this is the critical path** once the recommender PR merges
+**Status:** In progress — **this is the critical path**
+
+##### Development environment and constraints
+
+**Temporary recommender deployment.** A dev instance of the recommender is available at:
+
+```
+https://grafana-recommender-93209135917.us-central1.run.app
+```
+
+This is a temporary Cloud Run deployment for development only. It exposes the same v1 endpoints as the production recommender (`POST /api/v1/recommend`, `GET /api/v1/packages/{id}`). The production URL (`https://recommender.grafana.com`) remains the checked-in default.
+
+**OpenAPI spec reference.** The canonical API contract is [`openapi.yaml`](https://github.com/grafana/grafana-recommender/blob/main/openapi.yaml) in the `grafana-recommender` repo (private — use `gh` CLI to access). The relevant schemas are `V1Recommendation`, `V1RecommenderResponse`, `V1PackageManifest`, `PackageResolutionResponse`, and `PackageResolutionError`.
+
+**`constants.ts` constraint — DO NOT CHECK IN.** To point the frontend at the temporary recommender deployment, change `DEFAULT_RECOMMENDER_SERVICE_URL` in `src/constants.ts` to the Cloud Run URL above. **Under no circumstances may a change to `constants.ts` be committed or pushed without explicit prior instructions from the developer.** This is a hard constraint for the duration of Phase 4d. The dev URL must remain a local-only override; all committed code must work against the production default.
+
+**Branch isolation.** All Phase 4d implementation must live on a feature branch and remain separate from the main execution code path of the plugin. New code (types, resolvers, response handling) should be additive and behind clear integration seams so that the existing recommendation flow is unaffected until a later phase explicitly switches over.
+
+**Schema reconciliation note (plan vs OpenAPI spec).** The Phase 4a description in this plan and the Phase 4d Step 1 spec below describe package-backed fields as flat top-level properties on `V1Recommendation` (e.g., `packageId`, `packageType`, `category`, `author`, `navigation: { recommends, suggests, depends }`). The actual OpenAPI spec nests package metadata under a `manifest` object (`V1PackageManifest`), with navigation fields (`recommends`, `suggests`, `depends`) as flat arrays inside `manifest` rather than a `navigation` wrapper. Specifically:
+
+- **Plan says** flat: `packageId`, `packageType`, `category`, `author`, `startingLocation`, `milestones`, `navigation`
+- **OpenAPI says** nested: `manifest: { id, type, description, category, author, startingLocation, milestones, depends, recommends, suggests, provides, conflicts, replaces }`
+- Top-level package fields in the actual spec: `contentUrl`, `manifestUrl`, `repository`, `manifest`
+
+The TypeScript types in Step 1 must match the OpenAPI spec (the source of truth), not the earlier plan text. The Step 1 checklist below has been updated to reflect the actual schema shape.
 
 Two integration points with the recommender's versioned API:
 
@@ -350,19 +381,23 @@ Both flows are composed with the existing `BundledPackageResolver` for offline/O
 
 ##### Step 1: V1 response types at Tier 0
 
-Define TypeScript types matching the recommender's OpenAPI `V1Recommendation` and `V1RecommenderResponse` schemas. These go in `src/types/` at Tier 0 for broad importability.
+Define TypeScript types matching the recommender's OpenAPI `V1Recommendation`, `V1PackageManifest`, and `V1RecommenderResponse` schemas. These go in `src/types/` at Tier 0 for broad importability. **The OpenAPI spec (`openapi.yaml`) is the source of truth for field names and nesting.**
 
-- [ ] **`V1Recommendation` interface** — discriminated union on `type`:
+- [ ] **`V1PackageManifest` interface** — nested metadata object on package-backed recommendations:
+  - Required fields: `id`, `type`
+  - Optional fields: `description?`, `category?`, `author?: { name?: string; team?: string }`, `startingLocation?`, `milestones?: string[]`, `depends?: string[]`, `recommends?: string[]`, `suggests?: string[]`, `provides?: string[]`, `conflicts?: string[]`, `replaces?: string[]`
+- [ ] **`V1Recommendation` interface** — discriminated on `type`:
   - Common fields: `type`, `title`, `description?`, `source?`, `matchAccuracy?`, `matchedCriteria?`, `missingCriteria?`
   - URL-backed fields (when `type !== "package"`): `url`
-  - Package-backed fields (when `type === "package"`): `packageId`, `contentUrl`, `manifestUrl`, `repository`, `packageType?`, `category?`, `author?: { name?: string; team?: string }`, `startingLocation?`, `milestones?: string[]`, `navigation?: PackageNavigation`
-- [ ] **`PackageNavigation` interface**: `recommends?: string[]`, `suggests?: string[]`, `depends?: string[]`
-  - `memberOf` is **not** in this phase — it arrives in Phase 5
+  - Package-backed fields (when `type === "package"`): `contentUrl`, `manifestUrl`, `repository`, `manifest?: V1PackageManifest`
+  - Note: `contentUrl`/`manifestUrl` may be empty strings when the package was not found in the cached index at response time (the recommendation is still surfaced for graceful degradation)
 - [ ] **`V1RecommenderResponse` interface**: `recommendations: V1Recommendation[]`, `featured?: V1Recommendation[]`
-- [ ] **Type guard**: `isPackageRecommendation(rec: V1Recommendation): rec is V1Recommendation & { packageId: string }` — discriminates on `type === "package"`
+- [ ] **Type guard**: `isPackageRecommendation(rec: V1Recommendation): rec is V1Recommendation & { manifest: V1PackageManifest }` — discriminates on `type === "package"` and presence of `manifest`
 - [ ] Export from `src/types/index.ts`
 
 **Design note on `Recommendation` evolution:** The existing `Recommendation` interface in `src/types/context.types.ts` has `url: string` as a required field and an index signature (`[key: string]: any`). Rather than widening this legacy type (which would require auditing all consumers), the v1 migration introduces `V1Recommendation` as a parallel type. The `ContextService.getExternalRecommendations()` method will normalize v1 responses into the existing `Recommendation` shape for URL-backed items and a new package-aware shape for package-backed items. Full `Recommendation` type evolution (removing the index signature, making `url` optional) is a Phase 10 cleanup candidate.
+
+**Design note on `navigation` vs flat manifest fields:** The Phase 4a plan text and Phase 5 spec describe a `navigation: { recommends, suggests, depends }` wrapper object. The implemented OpenAPI spec places these as flat arrays (`recommends`, `suggests`, `depends`) directly on `V1PackageManifest`, alongside other metadata. Phase 5's `memberOf` enrichment will extend `V1PackageManifest` (not a separate `PackageNavigation` wrapper). The frontend can derive a `PackageNavigation`-like view locally if needed for UI consumption, but the wire format follows the OpenAPI spec.
 
 ##### Step 2: Migrate `getExternalRecommendations()` to v1 endpoint
 
@@ -372,12 +407,13 @@ The migration point is in `src/context-engine/context.service.ts`, method `getEx
   - Same `ContextPayload` request body — the v1 endpoint accepts the identical `RecommendationContext` schema
   - Same `AbortController` timeout pattern
 - [ ] **Parse response as `V1RecommenderResponse`** instead of `RecommenderResponse`
-- [ ] **Update `sanitizeRecommendation` allowlist** to include new v1 fields: `packageId`, `contentUrl`, `manifestUrl`, `repository`, `packageType`, `category`, `author`, `startingLocation`, `milestones`, `navigation`
+- [ ] **Update `sanitizeRecommendation` allowlist** to include new v1 fields: `contentUrl`, `manifestUrl`, `repository`, `manifest` (nested object containing `id`, `type`, `description`, `category`, `author`, `startingLocation`, `milestones`, `depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`)
   - Current sanitization (line ~502 in `context.service.ts`) uses an explicit allowlist to prevent prototype pollution — all new fields must be enumerated
+  - The `manifest` field is a nested object — sanitization must recurse into it or allowlist its sub-fields
 - [ ] **Discriminate response items by type:**
-  - `type === "package"` → construct a package-aware recommendation with `contentUrl`/`manifestUrl` for content fetching, pass through metadata fields
+  - `type === "package"` → construct a package-aware recommendation with `contentUrl`/`manifestUrl` for content fetching, pass through `manifest` metadata
   - Any other `type` → existing behavior (URL-backed, `url` field used as link)
-- [ ] **Pass through `navigation`** when present (carries `recommends`, `suggests`, `depends` from Phase 4a; `memberOf` added in Phase 5)
+- [ ] **Pass through `manifest` metadata** when present (carries `recommends`, `suggests`, `depends` from Phase 4a; `memberOf` will be added to `manifest` in Phase 5)
 - [ ] **Merge with bundled interactive recommendations** — existing `getBundledInteractiveRecommendations()` continues to provide offline/local recommendations; v1 package-backed items from the recommender are merged alongside them with appropriate deduplication (same `packageId` or matching `title`)
 
 ##### Step 3: `RecommenderPackageResolver`
@@ -414,7 +450,10 @@ Implements `PackageResolver` for by-ID loading via the recommender's `GET /api/v
 - The composite resolver preserves the single `PackageResolver` interface — consumers don't change. Bundled content always wins for packages that exist locally, providing offline/OSS baseline support.
 - **Recommender gated by plugin setting.** No circuit-breaker is needed: `isRecommenderEnabled(pluginConfig)` is the gate.
 - The frontend never fetches or stores repository indexes — all multi-repo resolution logic lives in the recommender.
-- **Navigation passthrough.** Both the v1 recommend handler and the `RecommenderPackageResolver` pass through `navigation` when present. In Phase 4d, `navigation` carries `recommends`/`suggests`/`depends` from the recommender (already implemented in 4a). Phase 5 adds `memberOf`. The frontend does not render navigation in Phase 4d — it passes the data through so Phase 4g/5 can consume it.
+- **Manifest metadata passthrough.** Both the v1 recommend handler and the `RecommenderPackageResolver` pass through the `manifest` object when present. In Phase 4d, `manifest` carries `recommends`/`suggests`/`depends` (already implemented in 4a). Phase 5 adds `memberOf` to the manifest. The frontend does not render navigation in Phase 4d — it passes the data through so Phase 4g/5 can consume it.
+- **Branch isolation and code path separation.** All Phase 4d code is additive — new types, new resolver implementations, new response handling — with clear integration seams. The existing recommendation flow (`POST /recommend`) is not modified in-place. The v1 code path can be activated by changing the endpoint URL; the switch-over to the main code path happens in a later phase after integration verification (4e).
+- **Dev deployment security.** The Cloud Run dev URL (`grafana-recommender-93209135917.us-central1.run.app`) is not in `ALLOWED_RECOMMENDER_DOMAINS` in `constants.ts`. For local testing, this domain must be temporarily added or the allowlist check bypassed. These changes are strictly local — see the `constants.ts` constraint above. Tests must mock the recommender, not hit the dev deployment.
+- **Wire types match OpenAPI, not earlier plan text.** Where the plan text (written before the OpenAPI spec was finalized) conflicts with `openapi.yaml`, the OpenAPI spec wins. The key difference is the `manifest` nesting — see the schema reconciliation note above.
 
 #### Phase 4e: Integration verification
 
@@ -639,7 +678,7 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | 4a: Backend resolution + v1 recommend routes  | ✅ (PR)     | Recommender resolves bare IDs via `GET /api/v1/packages/{id}`, surfaces packages via `POST /api/v1/recommend` with virtual rules, full metadata carry-through | Go tests + Layer 2 |
 | 4b: Content migration (interactive-tutorials) | ✅          | 31 packages live on CDN, CI-generated `repository.json`, dual CDN paths, migration skill                                                                      | Layer 1            |
 | 4c: E2E manifest pre-flight                   | —           | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                                                                                              | Layer 3            |
-| 4d: Frontend remote resolver + v1 migration   | **Next**    | V1 response types, `RecommenderPackageResolver`, `CompositePackageResolver`, `POST /api/v1/recommend` migration                                               | Layer 2            |
+| 4d: Frontend remote resolver + v1 migration   | **Active**  | V1 response types, `RecommenderPackageResolver`, `CompositePackageResolver`, `POST /api/v1/recommend` migration                                               | Layer 2            |
 | 4e: Integration verification                  | —           | Full pipeline verified across bundled and remote sources                                                                                                      | Layer 2 + Layer 3  |
 | 4f: Path migration tooling                    | ⏸️ Optional | `migrate-paths` CLI — demoted; migration completed without tooling                                                                                            | Layer 1            |
 | 4g: Docs-retrieval integration                | —           | Package resolver wired into rendering pipeline, content-type dispatch, metadata + navigation passthrough                                                      | Layer 2            |

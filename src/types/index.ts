@@ -32,6 +32,9 @@ export * from './json-guide.types';
 // Package types (two-file model, resolution, dependencies)
 export * from './package.types';
 
+// V1 recommender API response types
+export * from './v1-recommender.types';
+
 // Learning paths and badges types
 export * from './learning-paths.types';
 

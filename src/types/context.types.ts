@@ -54,7 +54,7 @@ export interface DashboardInfo {
 export interface Recommendation {
   title: string;
   url: string;
-  type?: 'learning-journey' | 'docs-page' | 'interactive';
+  type?: 'learning-journey' | 'docs-page' | 'interactive' | 'package';
   matchAccuracy?: number; // Scale of 0 to 1, where 1 = 100% accurate match
   milestones?: any[]; // Import from docs-fetcher if needed
   totalSteps?: number;
@@ -63,6 +63,16 @@ export interface Recommendation {
   summary?: string;
   summaryExpanded?: boolean;
   completionPercentage?: number;
+
+  /** CDN URL for the package's content.json (package-backed recommendations only) */
+  contentUrl?: string;
+  /** CDN URL for the package's manifest.json (package-backed recommendations only) */
+  manifestUrl?: string;
+  /** Repository that provided the package resolution (package-backed only) */
+  repository?: string;
+  /** Package manifest metadata from v1 response (package-backed only) */
+  manifest?: Record<string, unknown>;
+
   [key: string]: any;
 }
 
