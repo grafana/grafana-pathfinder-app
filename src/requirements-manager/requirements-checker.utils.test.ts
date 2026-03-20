@@ -636,9 +636,9 @@ describe('requirements-checker.utils', () => {
     });
 
     it('should pass when section is completed', async () => {
-      // Create a completed section
+      // Create a completed section (DOM ids are prefixed with section- by InteractiveSection)
       document.body.innerHTML = `
-        <div id="setup-datasource" class="completed">
+        <div id="section-setup-datasource" class="completed">
           <h2>Setup Data Source</h2>
         </div>
       `;
@@ -652,9 +652,9 @@ describe('requirements-checker.utils', () => {
     });
 
     it('should fail when section exists but is not completed', async () => {
-      // Create a section without completed class
+      // Create a section without completed class (DOM ids are prefixed with section- by InteractiveSection)
       document.body.innerHTML = `
-        <div id="setup-datasource">
+        <div id="section-setup-datasource">
           <h2>Setup Data Source</h2>
         </div>
       `;
