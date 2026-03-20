@@ -6,14 +6,15 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Structural issues requiring dedicated effort. Format: date, description, rationale. Remove when resolved. -->
 
-- **2026-03-20**: `docs/developer/integrations/workshop.md` staleness — new files `flags.ts` (follow-mode feature flag) and `session-crypto.ts` (ECDSA presenter verification) added to `src/integrations/workshop/` since last modification (2025-11-25). The doc only covers action capture/replay and does not mention security/crypto or feature flags. Deferred from this run due to budget; heavy fix (3 pts) needed.
-
 ## Validated docs
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
 - **2026-03-20**: `docs/developer/interactive-examples/json-guide-format.md` — Updated "Bundling a JSON Guide" section to reflect new package directory structure (`my-guide/content.json` instead of flat `my-guide.json`, and cross-reference to `package-authoring.md` added).
 - **2026-03-20**: `docs/developer/CUSTOM_GUIDES.md` — Validated against `src/components/block-editor/` and custom guide backend. Indexed in `AGENTS.md`.
+- **2026-03-20**: `docs/developer/integrations/workshop.md` — Updated for `flags.ts` (follow-mode feature flag), `session-crypto.ts` (ECDSA P-256 presenter authentication), `session-manager.ts` and `session-state.tsx` (P2P session management). Added Session Manager, Session State, Session Crypto, and Feature Flags sections.
+- **2026-03-20**: `docs/developer/CODA.md` — Updated for alloy-scenario VM template (`vm-aws-alloy-scenario`), `ListAlloyScenarios`/`handleAlloyScenarios` endpoints, `useCodaOptions` hook, `vmScenario` field, quota cleanup with polling, animated provision progress bar, and last VM opts sessionStorage key. Cross-reference to `coda.mdc` added.
+- **2026-03-20**: `.cursor/rules/coda.mdc` — Updated for alloy-scenario VM template, `useCodaOptions` hook, `/alloy-scenarios` endpoint, `vmScenario` field, quota cleanup. Cross-reference to `CODA.md` added.
 - **2026-03-05**: `docs/developer/constants/README.md` — Re-validated against `src/constants/`. Added documentation for `testIds.ts` (e2e test identifiers).
 - **2026-02-25**: `docs/developer/utils/README.md` — Re-validated against `src/utils/`. Removed deleted files (keyboard-shortcuts.hook.ts, link-handler.hook.ts), added new files (fetchBackendGuides.ts, usePublishedGuides.ts).
 - **2026-02-20**: `docs/developer/learning-paths/README.md` — Created and validated against `src/learning-paths/`. Covers path types, platform selection, badge system, streak tracking, progress management, hooks, and integration points.
