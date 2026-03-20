@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
@@ -242,6 +243,21 @@ func statusMessageForState(state string) string {
 	}
 }
 
+// vmReplacementReason returns a user-facing message explaining why the VM is
+// being replaced, based on which dimensions mismatched.
+func vmReplacementReason(templateMismatch, appMismatch, scenarioMismatch bool) string {
+	switch {
+	case scenarioMismatch:
+		return "Switching to a different scenario, replacing VM..."
+	case appMismatch:
+		return "Switching to a different app, replacing VM..."
+	case templateMismatch:
+		return "Switching to a different VM template, replacing VM..."
+	default:
+		return "Configuration changed, replacing VM..."
+	}
+}
+
 // isSSHAuthError checks if an error is an SSH authentication failure
 func isSSHAuthError(err error) bool {
 	if err == nil {
@@ -410,7 +426,7 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 					"vmID", cachedID, "cachedTemplate", vm.Template, "cachedApp", vm.AppName(), "cachedScenario", vm.ScenarioName(),
 					"requestedTemplate", requestedTemplate, "requestedApp", requestedApp, "requestedScenario", requestedScenario)
 				a.clearUserVM(userLogin, cachedID)
-				sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", cachedID)
+				sendStreamStatusWithVmId(sender, "replacing", vmReplacementReason(templateMismatch, appMismatch, scenarioMismatch), cachedID)
 				mismatchVMsToDelete = append(mismatchVMsToDelete, cachedID)
 			} else {
 				ctxLogger.Info("Reusing cached VM", "userLogin", userLogin, "vmID", cachedID, "state", vm.State)
@@ -493,7 +509,10 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		}
 
 		// No matching VM anywhere — queue all for deletion before creating new
-		sendStreamStatusWithVmId(sender, "replacing", "Switching to a different app, replacing VM...", "")
+		templateMismatch := existingVM.Template != requestedTemplate
+		appMismatch := requestedApp != "" && existingVM.AppName() != requestedApp
+		scenarioMismatch := requestedScenario != "" && existingVM.ScenarioName() != requestedScenario
+		sendStreamStatusWithVmId(sender, "replacing", vmReplacementReason(templateMismatch, appMismatch, scenarioMismatch), "")
 		mismatchVMsToDelete = append(mismatchVMsToDelete, existingVM.ID)
 		for _, s := range surplusVMs {
 			mismatchVMsToDelete = append(mismatchVMsToDelete, s.ID)
@@ -519,13 +538,18 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 		ctxLogger.Info("Mismatch VM deletions completed", "count", len(mismatchVMsToDelete))
 	}
 
-	// Step 3: No usable VM -- check quota then create
+	// Step 3: No usable VM -- check quota then create.
+	// If quota is full, force-destroy all the user's non-matching VMs and retry
+	// once, since the user clearly needs a different VM type.
 	ctxLogger.Info("No existing VM found, checking quota", "userLogin", userLogin)
 	count, countErr := a.coda.CountVMsForUser(ctx, userLogin)
 	if countErr == nil && count >= maxUserVMs {
-		errMsg := fmt.Sprintf("VM quota exceeded: you already have %d VMs (max %d), please wait for existing VMs to expire", count, maxUserVMs)
-		sendStreamError(sender, errMsg)
-		return nil, "", errors.New(errMsg)
+		ctxLogger.Info("Quota full, cleaning up stale VMs before creating", "userLogin", userLogin, "count", count)
+		if cleaned := a.cleanupUserVMsForQuota(ctx, sender, userLogin, ctxLogger); !cleaned {
+			errMsg := fmt.Sprintf("VM quota exceeded: you already have %d VMs (max %d), please wait for existing VMs to expire", count, maxUserVMs)
+			sendStreamError(sender, errMsg)
+			return nil, "", errors.New(errMsg)
+		}
 	}
 
 	ctxLogger.Info("Provisioning new VM", "userLogin", userLogin, "template", requestedTemplate)
@@ -533,9 +557,20 @@ func (a *App) resolveVMForUser(ctx context.Context, sender *backend.StreamSender
 
 	vm, createErr := a.coda.CreateVM(ctx, requestedTemplate, userLogin, vmConfig)
 	if createErr != nil {
-		errMsg := fmt.Sprintf("Failed to create VM: %v", createErr)
-		sendStreamError(sender, errMsg)
-		return nil, "", fmt.Errorf("failed to create VM: %w", createErr)
+		// If Coda rejected with quota despite our local check passing, try
+		// one more cleanup pass (VMs may have been in a transitional state).
+		if strings.Contains(createErr.Error(), "quota") || strings.Contains(createErr.Error(), "maximum number") {
+			ctxLogger.Info("CreateVM quota error, attempting cleanup and retry", "userLogin", userLogin, "error", createErr)
+			if cleaned := a.cleanupUserVMsForQuota(ctx, sender, userLogin, ctxLogger); cleaned {
+				sendStreamStatusWithVmId(sender, "provisioning", "Retrying VM creation...", "")
+				vm, createErr = a.coda.CreateVM(ctx, requestedTemplate, userLogin, vmConfig)
+			}
+		}
+		if createErr != nil {
+			errMsg := fmt.Sprintf("Failed to create VM: %v", createErr)
+			sendStreamError(sender, errMsg)
+			return nil, "", fmt.Errorf("failed to create VM: %w", createErr)
+		}
 	}
 
 	a.userVMsMu.Lock()
@@ -565,6 +600,74 @@ func (a *App) clearUserVM(userLogin, vmID string) {
 		delete(a.userVMs, userLogin)
 	}
 	a.userVMsMu.Unlock()
+}
+
+// cleanupUserVMsForQuota force-destroys all of a user's VMs and waits for
+// the usable count to drop to zero before returning. Returns true if quota
+// was freed (caller should retry creation).
+func (a *App) cleanupUserVMsForQuota(ctx context.Context, sender *backend.StreamSender, userLogin string, ctxLogger log.Logger) bool {
+	vms, err := a.coda.ListVMs(ctx, &ListVMsOptions{Owner: userLogin})
+	if err != nil {
+		ctxLogger.Warn("Failed to list VMs for quota cleanup", "error", err)
+		return false
+	}
+
+	var toDelete []string
+	for i := range vms {
+		if isUsableState(vms[i].State) {
+			toDelete = append(toDelete, vms[i].ID)
+		}
+	}
+	if len(toDelete) == 0 {
+		return false
+	}
+
+	ctxLogger.Info("Cleaning up stale VMs to free quota", "userLogin", userLogin, "count", len(toDelete))
+	sendStreamStatusWithVmId(sender, "replacing", fmt.Sprintf("Cleaning up %d existing VM(s) to free quota...", len(toDelete)), "")
+
+	var wg sync.WaitGroup
+	for _, id := range toDelete {
+		wg.Add(1)
+		vmToDelete := id
+		go func() {
+			defer wg.Done()
+			if delErr := a.coda.DeleteVM(context.Background(), vmToDelete, true); delErr != nil {
+				ctxLogger.Warn("Failed to delete VM during quota cleanup", "vmID", vmToDelete, "error", delErr)
+			}
+		}()
+	}
+	wg.Wait()
+
+	a.userVMsMu.Lock()
+	delete(a.userVMs, userLogin)
+	a.userVMsMu.Unlock()
+
+	// Poll until Coda's count drops below the limit. VMs transition through
+	// "destroying" before disappearing, and Coda's server-side quota counts
+	// them until fully gone.
+	const maxPollAttempts = 20 // ~30s max wait (20 * 1.5s)
+	const pollInterval = 1500 * time.Millisecond
+	for attempt := 1; attempt <= maxPollAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(pollInterval):
+		}
+		count, countErr := a.coda.CountVMsForUser(ctx, userLogin)
+		if countErr != nil {
+			ctxLogger.Warn("Failed to poll VM count after cleanup", "error", countErr, "attempt", attempt)
+			continue
+		}
+		if count < maxUserVMs {
+			ctxLogger.Info("Quota freed after cleanup", "userLogin", userLogin, "count", count, "attempts", attempt)
+			return true
+		}
+		sendStreamStatusWithVmId(sender, "replacing",
+			fmt.Sprintf("Waiting for VMs to terminate (%d still active)...", count), "")
+	}
+
+	ctxLogger.Warn("Quota cleanup timed out, VMs may still be destroying", "userLogin", userLogin)
+	return true // still return true so caller attempts creation (Coda may accept by now)
 }
 
 // RunStream is called once for each active stream subscription.
@@ -601,11 +704,16 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		reqOpts.template = parts[3]
 		if len(parts) >= 5 && parts[4] != "" {
 			configKey := "app"
+			configValue := parts[4]
 			if reqOpts.template == "vm-aws-alloy-scenario" {
 				configKey = "scenario"
+				// Scenario IDs may contain slashes (e.g. "otel-examples/cost-control")
+				// which split across multiple path segments. Rejoin everything from
+				// position 4 onward to reconstruct the full ID.
+				configValue = strings.Join(parts[4:], "/")
 			}
 			reqOpts.config = map[string]interface{}{
-				configKey: parts[4],
+				configKey: configValue,
 			}
 		}
 		ctxLogger.Info("Custom VM template requested", "template", reqOpts.template, "config", reqOpts.config)
@@ -679,6 +787,8 @@ func (a *App) RunStream(ctx context.Context, req *backend.RunStreamRequest, send
 		sendStreamError(sender, "Relay URL is not a trusted host")
 		return errors.New("relay URL not in allowlist")
 	}
+
+	sendStreamStatusWithVmId(sender, "ssh_connecting", "Establishing SSH connection...", vmID)
 
 	for sshRetry := 1; sshRetry <= maxSSHRetries; sshRetry++ {
 		select {

@@ -145,7 +145,8 @@ export const TerminalConnectStep = forwardRef<
       terminalCtx.openTerminal(vmOpts);
     }, [terminalCtx, vmTemplate, vmApp, vmScenario]);
 
-    // React to terminal status changes while waiting for connection
+    // React to terminal status changes while waiting for connection.
+    // Handles: success (connected), failure (error), and cancellation (disconnected).
     useEffect(() => {
       if (!isConnecting) {
         return;
@@ -154,23 +155,10 @@ export const TerminalConnectStep = forwardRef<
       if (terminalCtx?.status === 'connected') {
         setIsConnecting(false);
         markComplete();
-      } else if (terminalCtx?.status === 'error') {
+      } else if (terminalCtx?.status === 'error' || terminalCtx?.status === 'disconnected') {
         setIsConnecting(false);
       }
     }, [isConnecting, terminalCtx?.status, markComplete]);
-
-    // Safety timeout: give up waiting after 10 seconds
-    useEffect(() => {
-      if (!isConnecting) {
-        return;
-      }
-
-      const timeout = setTimeout(() => {
-        setIsConnecting(false);
-      }, 10_000);
-
-      return () => clearTimeout(timeout);
-    }, [isConnecting]);
 
     useImperativeHandle(
       ref,
@@ -194,12 +182,13 @@ export const TerminalConnectStep = forwardRef<
     );
 
     const isTerminalConnected = terminalCtx?.status === 'connected';
+    const isTerminalConnecting = isConnecting || terminalCtx?.status === 'connecting';
     const isEnabled = !disabled && terminalCtx !== null;
 
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
       stepState = STEP_STATES.COMPLETED;
-    } else if (isConnecting || isCurrentlyExecuting) {
+    } else if (isTerminalConnecting || isCurrentlyExecuting) {
       stepState = STEP_STATES.EXECUTING;
     } else if (!isEnabled) {
       stepState = STEP_STATES.REQUIREMENTS_UNMET;
@@ -208,7 +197,7 @@ export const TerminalConnectStep = forwardRef<
     const containerClasses = [
       'interactive-step',
       isCompleted && 'completed',
-      (isConnecting || isCurrentlyExecuting) && 'executing',
+      (isTerminalConnecting || isCurrentlyExecuting) && 'executing',
       !isEnabled && styles.disabled,
       className,
     ]
@@ -238,12 +227,12 @@ export const TerminalConnectStep = forwardRef<
               <Button
                 size="sm"
                 variant="primary"
-                icon={isConnecting ? 'fa fa-spinner' : 'link'}
+                icon={isTerminalConnecting ? 'fa fa-spinner' : 'link'}
                 onClick={handleConnect}
-                disabled={isConnecting}
+                disabled={isTerminalConnecting}
                 tooltip="Open terminal panel and connect"
               >
-                {isConnecting ? 'Connecting...' : buttonText}
+                {isTerminalConnecting ? 'Connecting...' : buttonText}
               </Button>
             )}
           </div>
