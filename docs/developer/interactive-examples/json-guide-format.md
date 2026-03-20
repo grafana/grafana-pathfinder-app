@@ -936,30 +936,32 @@ Use the `var-` prefix in requirements to gate content based on user responses:
 
 To add a JSON guide to the plugin:
 
-1. Create your `.json` file in `src/bundled-interactives/`
-2. Add an entry to `src/bundled-interactives/index.json`:
+1. Create a package directory in `src/bundled-interactives/` (e.g., `src/bundled-interactives/my-guide/`) and place the guide content in `content.json` inside it.
+2. Add an entry to `src/bundled-interactives/index.json` with the `filename` pointing to `<dir>/content.json`:
 
 ```json
 {
   "id": "my-guide",
   "title": "My Guide Title",
   "summary": "A brief description of what this guide covers.",
-  "filename": "my-guide.json",
+  "filename": "my-guide/content.json",
   "url": ["/"],
   "targetPlatform": "oss"
 }
 ```
 
-| Field            | Required | Description                                  |
-| ---------------- | -------- | -------------------------------------------- |
-| `id`             | ✅       | Unique identifier, matches `bundled:id` URL  |
-| `title`          | ✅       | Display title in the guide list              |
-| `summary`        | ✅       | Brief description shown in the guide list    |
-| `filename`       | ✅       | JSON filename in `src/bundled-interactives/` |
-| `url`            | ❌       | URL patterns where this guide is recommended |
-| `targetPlatform` | ❌       | `"oss"` or `"cloud"` to filter by platform   |
+| Field            | Required | Description                                                    |
+| ---------------- | -------- | -------------------------------------------------------------- |
+| `id`             | ✅       | Unique identifier, matches `bundled:id` URL                    |
+| `title`          | ✅       | Display title in the guide list                                |
+| `summary`        | ✅       | Brief description shown in the guide list                      |
+| `filename`       | ✅       | Path to `content.json` relative to `src/bundled-interactives/` |
+| `url`            | ❌       | URL patterns where this guide is recommended                   |
+| `targetPlatform` | ❌       | `"oss"` or `"cloud"` to filter by platform                     |
 
 The guide will appear in the homepage list and can be opened via `bundled:my-guide`.
+
+> **Package metadata**: For a richer package with metadata, dependencies, and targeting, add a `manifest.json` alongside `content.json`. See [package authoring](../package-authoring.md) for the full two-file model.
 
 ---
 
