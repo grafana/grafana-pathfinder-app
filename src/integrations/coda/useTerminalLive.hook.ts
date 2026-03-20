@@ -18,73 +18,23 @@ import {
 } from '@grafana/data';
 import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
-import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 
 interface ConnectionLog {
-  startConnection: () => void;
-  elapsed: () => number;
-  info: (message: string, data?: Record<string, unknown>) => void;
-  warn: (message: string, data?: Record<string, unknown>) => void;
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
-  liveStream: (event: string, data?: Record<string, unknown>) => void;
+  warn: (message: string, data?: Record<string, unknown>) => void;
 }
 
-/**
- * Creates a connection logger with its own timing state.
- * Logs are gated behind dev mode (except errors, which always log).
- */
 function createConnectionLog(): ConnectionLog {
-  let connectionStartTime = 0;
-
-  const elapsed = () => Math.round(performance.now() - connectionStartTime);
-
-  const devLog = (fn: (...args: unknown[]) => void, ...args: unknown[]) => {
-    if (isDevModeEnabledGlobal()) {
-      fn(...args);
-    }
-  };
-
   return {
-    startConnection: () => {
-      connectionStartTime = performance.now();
-      devLog(console.log, '[Terminal] Connection sequence started', {
-        timestamp: new Date().toISOString(),
-      });
-    },
-
-    elapsed,
-
-    info: (message: string, data?: Record<string, unknown>) => {
-      devLog(console.log, `[Terminal] ${message}`, {
-        elapsedMs: elapsed(),
-        ...data,
-      });
-    },
-
-    warn: (message: string, data?: Record<string, unknown>) => {
-      devLog(console.warn, `[Terminal] ${message}`, {
-        elapsedMs: elapsed(),
-        ...data,
-      });
-    },
-
     error: (message: string, error?: unknown, data?: Record<string, unknown>) => {
       const errorDetails =
         error instanceof Error
           ? { errorName: error.name, errorMessage: error.message, errorStack: error.stack }
           : { rawError: error };
-      console.error(`[Terminal] ${message}`, {
-        elapsedMs: elapsed(),
-        ...errorDetails,
-        ...data,
-      });
+      console.error(`[Terminal] ${message}`, { ...errorDetails, ...data });
     },
-
-    liveStream: (event: string, data?: Record<string, unknown>) => {
-      devLog(console.log, `[Terminal] LiveStream: ${event}`, {
-        elapsedMs: elapsed(),
-        ...data,
-      });
+    warn: (message: string, data?: Record<string, unknown>) => {
+      console.warn(`[Terminal] ${message}`, data);
     },
   };
 }
@@ -172,8 +122,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
 
-  // Per-instance connection logger (each connection gets its own timing state).
-  // Always read via connectionLogRef.current to avoid stale closure captures.
   const connectionLogRef = useRef<ConnectionLog>(createConnectionLog());
 
   // REACT: refs for subscriptions and cleanup (R1)
@@ -253,10 +201,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       try {
         await publishOverSocket(address, { type: 'input', data: inputData });
-      } catch (err: unknown) {
-        connectionLogRef.current.error('Failed to publish input', err, {
-          category: 'input_failure',
-        });
+      } catch {
+        // Input publish failures are transient; ignore silently
       }
     },
     [publishOverSocket]
@@ -274,12 +220,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       try {
         await publishOverSocket(address, { type: 'resize', rows, cols });
-      } catch (err: unknown) {
-        connectionLogRef.current.error('Failed to publish resize', err, {
-          rows,
-          cols,
-          category: 'resize_failure',
-        });
+      } catch {
+        // Resize publish failures are transient; ignore silently
       }
     },
     [publishOverSocket]
@@ -324,10 +266,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     (id: string, terminal: Terminal, vmOpts?: TerminalVMOptions) => {
       const liveSrv = getGrafanaLiveSrv();
       if (!liveSrv) {
-        connectionLogRef.current.error('Grafana Live service not available', null, {
-          vmId: id,
-          category: 'live_service_unavailable',
-        });
         setError('Grafana Live service not available');
         setStatus('error');
         return;
@@ -356,13 +294,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         path: channelPathStr,
       };
 
-      const channelPath = `${address.scope}/${address.stream}/${address.path}`;
-      connectionLogRef.current.info('Subscribing to LiveStream', {
-        vmId: id,
-        channel: channelPath,
-        nonce,
-      });
-
       currentVmIdRef.current = id;
 
       // Store refs so sendInput/sendResize can publish to this channel
@@ -379,11 +310,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         }
         handshakeTimeoutRef.current = setTimeout(() => {
           handshakeTimeoutRef.current = null;
-          connectionLogRef.current.error('SSH handshake timeout', null, {
-            vmId: id,
-            timeoutMs: SSH_HANDSHAKE_TIMEOUT_MS,
-            category: 'ssh_handshake_timeout',
-          });
           cleanup();
           setError('SSH handshake timed out');
           setStatus('error');
@@ -405,20 +331,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   // timeout so VM provisioning (1-3 min) doesn't trip the timer.
                   startHandshakeTimeout();
 
-                  // Update current VM ID ref if backend sends it (needed for input routing)
                   if (msg.vmId && msg.vmId !== currentVmIdRef.current) {
-                    connectionLogRef.current.info('Received VM ID from backend', {
-                      vmId: msg.vmId,
-                      previousId: currentVmIdRef.current,
-                    });
                     currentVmIdRef.current = msg.vmId;
                   }
-
-                  connectionLogRef.current.info('VM status update', {
-                    vmId: msg.vmId || id,
-                    state: msg.state,
-                    message: msg.message,
-                  });
 
                   if (msg.state === 'pending' || msg.state === 'provisioning') {
                     const label = msg.state === 'pending' ? 'Waiting in queue' : 'Booting VM';
@@ -502,14 +417,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
                   // Update current VM ID ref from backend
                   if (msg.vmId) {
-                    connectionLogRef.current.info('VM ID from backend', { vmId: msg.vmId });
                     currentVmIdRef.current = msg.vmId;
                   }
 
-                  connectionLogRef.current.info('SSH connection SUCCESSFUL', {
-                    vmId: msg.vmId || id,
-                    category: 'connected',
-                  });
                   setStatus('connected');
                   terminal.writeln('');
                   terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
@@ -547,10 +457,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   break;
 
                 case 'disconnected':
-                  connectionLogRef.current.info('VM disconnected', {
-                    vmId: id,
-                    category: 'disconnected',
-                  });
                   cleanup();
                   setStatus('disconnected');
                   terminal.writeln('\r\n');
@@ -567,22 +473,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           }
 
           if (isLiveChannelStatusEvent(event)) {
-            const stateNames: Record<LiveChannelConnectionState, string> = {
-              [LiveChannelConnectionState.Pending]: 'Pending',
-              [LiveChannelConnectionState.Connected]: 'Connected',
-              [LiveChannelConnectionState.Connecting]: 'Connecting',
-              [LiveChannelConnectionState.Disconnected]: 'Disconnected',
-              [LiveChannelConnectionState.Shutdown]: 'Shutdown',
-              [LiveChannelConnectionState.Invalid]: 'Invalid',
-            };
-            connectionLogRef.current.liveStream('Status change', {
-              vmId: id,
-              state: stateNames[event.state] ?? `Unknown(${event.state})`,
-              stateCode: event.state,
-            });
-
             if (event.state === LiveChannelConnectionState.Connected) {
-              connectionLogRef.current.info('LiveStream connected, awaiting SSH handshake', { vmId: id });
               terminal.writeln('\x1b[90m       Waiting for SSH handshake...\x1b[0m');
             } else if (event.state === LiveChannelConnectionState.Disconnected) {
               connectionLogRef.current.warn('LiveStream disconnected', {
@@ -629,10 +520,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             inputDisposerRef.current.dispose();
             inputDisposerRef.current = null;
           }
-          connectionLogRef.current.info('LiveStream completed', {
-            vmId: id,
-            category: 'stream_complete',
-          });
           setStatus((prev) => {
             if (prev === 'connected') {
               terminal.writeln('\r\n\x1b[33mStream ended\x1b[0m');
@@ -665,14 +552,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         return;
       }
 
-      connectionLogRef.current = createConnectionLog();
-      connectionLogRef.current.startConnection();
       lastStatusLineRef.current = '';
-      connectionLogRef.current.info('Starting connection sequence', {
-        template: vmOpts?.template,
-        app: vmOpts?.app,
-        scenario: vmOpts?.scenario,
-      });
 
       setStatus('connecting');
       setError(null);
@@ -694,12 +574,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
       }
       terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
-
-      connectionLogRef.current.info('Connecting to Live stream with new', {
-        template: vmOpts?.template,
-        app: vmOpts?.app,
-        scenario: vmOpts?.scenario,
-      });
       terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
 
       connectLiveStream('new', terminal, vmOpts);
