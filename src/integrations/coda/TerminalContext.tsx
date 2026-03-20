@@ -11,6 +11,7 @@
 
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
 import type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
+import { setLastVmOpts } from './terminal-storage';
 
 export type { TerminalVMOptions };
 
@@ -76,6 +77,9 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   // 'disconnected' status that occurs between the old session teardown and the new connect.
   const reconnectingRef = useRef(false);
 
+  // Pending reconnect timer — stored so disconnect() can cancel it
+  const pendingConnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Sync module-level status whenever it changes
   useEffect(() => {
     _moduleTerminalStatus = registeredStatus;
@@ -105,11 +109,20 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   const connect = useCallback((vmOpts?: TerminalVMOptions) => {
     activeVmOptsRef.current = vmOpts;
+    setLastVmOpts(vmOpts);
     registeredConnectRef.current?.(vmOpts);
   }, []);
 
   const disconnect = useCallback(() => {
+    if (pendingConnectTimerRef.current) {
+      clearTimeout(pendingConnectTimerRef.current);
+      pendingConnectTimerRef.current = null;
+    }
+    reconnectingRef.current = false;
     activeVmOptsRef.current = undefined;
+    // Keep lastVmOpts in storage so the Connect button and auto-reconnect
+    // can restore the same VM type. Only openTerminal with different opts
+    // (or an explicit storage clear) should overwrite the persisted value.
     registeredDisconnectRef.current?.();
   }, []);
 
@@ -129,9 +142,13 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
       const requestedTemplate = vmOpts?.template || '';
       const requestedApp = vmOpts?.app || '';
+      const requestedScenario = vmOpts?.scenario || '';
       const activeTemplate = activeVmOptsRef.current?.template || '';
       const activeApp = activeVmOptsRef.current?.app || '';
-      const needsReconnect = !needsConnect && (requestedTemplate !== activeTemplate || requestedApp !== activeApp);
+      const activeScenario = activeVmOptsRef.current?.scenario || '';
+      const needsReconnect =
+        !needsConnect &&
+        (requestedTemplate !== activeTemplate || requestedApp !== activeApp || requestedScenario !== activeScenario);
 
       if (needsReconnect) {
         reconnectingRef.current = true;
@@ -140,7 +157,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
       if (needsConnect || needsReconnect) {
         activeVmOptsRef.current = vmOpts;
-        setTimeout(() => {
+        setLastVmOpts(vmOpts);
+        if (pendingConnectTimerRef.current) {
+          clearTimeout(pendingConnectTimerRef.current);
+        }
+        pendingConnectTimerRef.current = setTimeout(() => {
+          pendingConnectTimerRef.current = null;
           reconnectingRef.current = false;
           registeredConnectRef.current?.(vmOpts);
         }, 100);

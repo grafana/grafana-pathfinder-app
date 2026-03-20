@@ -453,6 +453,8 @@ export interface JsonTerminalConnectBlock {
   vmTemplate?: string;
   /** App name for sample-app template (e.g. "nginx", "mysql"). Only used with vm-aws-sample-app. */
   vmApp?: string;
+  /** Scenario name for alloy-scenario template. Only used with vm-aws-alloy-scenario. */
+  vmScenario?: string;
 }
 
 // ============ CODE BLOCK ============

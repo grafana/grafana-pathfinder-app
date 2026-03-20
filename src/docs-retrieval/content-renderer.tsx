@@ -1070,6 +1070,7 @@ function renderParsedElement(
           buttonText={element.props.buttonText}
           vmTemplate={element.props.vmTemplate}
           vmApp={element.props.vmApp}
+          vmScenario={element.props.vmScenario}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         >

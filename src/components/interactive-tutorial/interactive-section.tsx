@@ -362,6 +362,10 @@ export function InteractiveSection({
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
 
+    // Re-check when a section completes (for section-completed: dependencies)
+    const handleSectionCompleted = () => checkSectionRequirements();
+    document.addEventListener('section-completed', handleSectionCompleted);
+
     // Re-check periodically to catch other state changes
     const intervalId = setInterval(checkSectionRequirements, 5000);
 
@@ -370,6 +374,7 @@ export function InteractiveSection({
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
+      document.removeEventListener('section-completed', handleSectionCompleted);
       clearInterval(intervalId);
     };
   }, [requirements, checkSectionRequirements]);

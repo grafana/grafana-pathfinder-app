@@ -32,6 +32,7 @@ import {
   getScrollback,
   setScrollback,
   clearScrollback,
+  getLastVmOpts,
 } from './terminal-storage';
 
 interface TerminalPanelProps {
@@ -69,32 +70,52 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     terminalCtx?._register({ status, connect, disconnect, sendCommand });
   }, [terminalCtx, status, connect, disconnect, sendCommand]);
 
-  // Track connection state for auto-reconnect
+  // Sync: when something calls context.openTerminal, the context sets its
+  // isExpanded flag. Mirror that into the panel's local state so we actually
+  // show the expanded terminal.
+  useEffect(() => {
+    if (terminalCtx?.isExpanded && !isExpanded) {
+      setIsExpanded(true);
+      setTerminalOpen(true);
+    }
+  }, [terminalCtx?.isExpanded, isExpanded]);
+
+  // Track connection state for auto-reconnect.
+  // Only set wasConnected(true) on successful connection. Clear it on error
+  // only during the initial connect attempt (autoReconnectAttemptedRef gates
+  // this) — NOT when an established session hits a transient error — so that
+  // page refresh still triggers auto-reconnect for a VM that was working.
+  const everConnectedRef = useRef(false);
   useEffect(() => {
     if (status === 'connected') {
+      everConnectedRef.current = true;
       setWasConnected(true);
-    } else if (status === 'error') {
-      // Clear flag on error to prevent infinite reconnect loops
+    } else if (status === 'error' && !everConnectedRef.current) {
       setWasConnected(false);
     }
   }, [status]);
 
-  // Auto-reconnect on mount if user was previously connected (page refresh)
+  // Auto-reconnect on mount if user was previously connected (page refresh).
+  // Restores the previous VM template/app/scenario so the correct VM type is used.
+  // Routes through context so activeVmOptsRef stays in sync.
   useEffect(() => {
-    if (
-      !autoReconnectAttemptedRef.current &&
-      getWasConnected() &&
-      terminalInstanceRef.current &&
-      status === 'disconnected'
-    ) {
+    const wasConn = getWasConnected();
+    const hasTerminal = !!terminalInstanceRef.current;
+    const alreadyAttempted = autoReconnectAttemptedRef.current;
+    const savedOpts = getLastVmOpts();
+    if (!alreadyAttempted && wasConn && hasTerminal && status === 'disconnected') {
       autoReconnectAttemptedRef.current = true;
       const timer = setTimeout(() => {
-        connect();
+        if (terminalCtx) {
+          terminalCtx.connect(savedOpts);
+        } else {
+          connect(savedOpts);
+        }
       }, 100);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [connect, status]);
+  }, [connect, status, terminalCtx]);
 
   // Initialize terminal once on mount - keep alive across collapse/expand
   useEffect(() => {
@@ -278,27 +299,40 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     const newExpanded = !isExpanded;
     setIsExpanded(newExpanded);
     setTerminalOpen(newExpanded);
-  }, [isExpanded]);
+    terminalCtx?.setIsExpanded(newExpanded);
+  }, [isExpanded, terminalCtx]);
 
-  // Connect handler
+  // Connect handler — restores the last VM template/app/scenario so the
+  // panel's Connect button reconnects to the same VM type the user had.
+  // Routes through the context so activeVmOptsRef and storage stay in sync.
   const handleConnect = useCallback(() => {
     if (!terminalInstanceRef.current) {
       console.warn('[CodaTerminal] Terminal not initialized yet');
       return;
     }
-    connect();
-  }, [connect]);
+    const savedOpts = getLastVmOpts();
+    if (terminalCtx) {
+      terminalCtx.connect(savedOpts);
+    } else {
+      connect(savedOpts);
+    }
+  }, [connect, terminalCtx]);
 
-  // Disconnect handler
+  // Disconnect handler — routes through context so pending reconnect timers
+  // are cancelled, matching how handleConnect routes through context.
   const handleDisconnect = useCallback(() => {
-    // Clear auto-reconnect flag on explicit disconnect
     setWasConnected(false);
+    everConnectedRef.current = false;
     clearScrollback();
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.writeln('\r\n\x1b[31mDisconnected.\x1b[0m');
     }
-    disconnect();
-  }, [disconnect]);
+    if (terminalCtx) {
+      terminalCtx.disconnect();
+    } else {
+      disconnect();
+    }
+  }, [disconnect, terminalCtx]);
 
   // Search handlers
   const handleSearchToggle = useCallback(() => {

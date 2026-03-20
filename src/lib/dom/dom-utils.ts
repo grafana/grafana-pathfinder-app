@@ -530,7 +530,8 @@ export async function sectionCompletedCheck(check: string): Promise<{
   context?: Record<string, unknown> | null;
 }> {
   try {
-    const sectionId = check.replace('section-completed:', '');
+    const rawId = check.replace('section-completed:', '');
+    const sectionId = rawId.startsWith('section-') ? rawId : `section-${rawId}`;
 
     // Check if the section exists in DOM and has completed class
     const sectionElement = document.getElementById(sectionId);

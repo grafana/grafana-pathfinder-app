@@ -61,6 +61,20 @@ export const DEFAULT_EXPERIMENT_CONFIG: ExperimentConfig = {
  */
 const pathfinderFeatureFlags = {
   /**
+   * Global kill-switch for the Pathfinder plugin in Grafana Cloud.
+   * When true: Pathfinder loads normally (sidebar available)
+   * When false: plugin is dismounted, the native Grafana help menu takes over
+   *
+   * This is separate from the A/B experiments — it controls the cloud-wide rollout.
+   * Defaults to true so existing instances keep working if the flag is not set.
+   */
+  'pathfinder.enabled': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'pathfinder_enabled',
+  },
+  /**
    * Controls whether the sidebar automatically opens on first Grafana load per session
    * When true: sidebar opens automatically on first page load
    * When false: sidebar only opens when user explicitly requests it

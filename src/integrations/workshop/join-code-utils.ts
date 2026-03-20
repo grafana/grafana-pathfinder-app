@@ -15,8 +15,15 @@ import type { SessionOffer, SessionAnswer, SessionError } from '../../types/coll
  */
 export function generateJoinCode(offer: SessionOffer): string {
   try {
-    const json = JSON.stringify(offer);
-    return btoa(json);
+    const compact: Record<string, unknown> = {
+      id: offer.id,
+      name: offer.name,
+      url: offer.tutorialUrl,
+    };
+    if (offer.sessionPublicKey) {
+      compact.pubkey = offer.sessionPublicKey;
+    }
+    return btoa(JSON.stringify(compact));
   } catch (error) {
     console.error('Failed to generate join code:', error);
     throw error;
@@ -45,10 +52,13 @@ export function parseJoinCode(code: string): SessionOffer {
         return {
           id: sessionData.id,
           name: sessionData.name || 'Live Session',
-          tutorialUrl: sessionData.url || '',
+          // Support both compact key (url) and legacy full-object key (tutorialUrl)
+          tutorialUrl: sessionData.url || sessionData.tutorialUrl || '',
           defaultMode: 'guided',
           offer: {} as RTCSessionDescriptionInit,
           timestamp: Date.now(),
+          // Support both compact key (pubkey) and legacy full-object key (sessionPublicKey)
+          sessionPublicKey: sessionData.pubkey || sessionData.sessionPublicKey,
         };
       }
     } catch (decodeError) {
@@ -230,11 +240,18 @@ export function generateAttendeeId(): string {
  * @returns True if code appears valid
  */
 export function isValidJoinCode(code: string): boolean {
+  if (!code || typeof code !== 'string') {
+    return false;
+  }
+  const trimmed = code.trim();
+  // Legacy: 6-char alphanumeric peer ID
+  if (/^[a-z0-9]{6}$/.test(trimmed.toLowerCase())) {
+    return true;
+  }
+  // New format: base64-encoded JSON with at minimum an `id` field
   try {
-    // Basic validation: must be base64
-    const decoded = atob(code);
-    const parsed = JSON.parse(decoded);
-    return !!(parsed && parsed.id && parsed.offer);
+    const parsed = JSON.parse(atob(trimmed));
+    return !!(parsed && typeof parsed.id === 'string' && parsed.id.length > 0);
   } catch {
     return false;
   }

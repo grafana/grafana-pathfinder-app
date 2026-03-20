@@ -15,6 +15,7 @@ const KEYS = {
 const SESSION_KEYS = {
   wasConnected: `${STORAGE_PREFIX}-was-connected`,
   scrollback: `${STORAGE_PREFIX}-scrollback`,
+  lastVmOpts: `${STORAGE_PREFIX}-last-vm-opts`,
 } as const;
 
 const MAX_SCROLLBACK_SIZE = 100_000; // ~100KB limit for sessionStorage
@@ -119,6 +120,40 @@ export const setWasConnected = (connected: boolean): void => {
 };
 
 /**
+ * Persisted VM connection options so auto-reconnect can restore the same
+ * template / app / scenario after a page refresh.
+ */
+interface StoredVmOpts {
+  template?: string;
+  app?: string;
+  scenario?: string;
+}
+
+export const getLastVmOpts = (): StoredVmOpts | undefined => {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEYS.lastVmOpts);
+    if (raw) {
+      return JSON.parse(raw) as StoredVmOpts;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return undefined;
+};
+
+export const setLastVmOpts = (opts: StoredVmOpts | undefined): void => {
+  try {
+    if (opts && (opts.template || opts.app || opts.scenario)) {
+      sessionStorage.setItem(SESSION_KEYS.lastVmOpts, JSON.stringify(opts));
+    } else {
+      sessionStorage.removeItem(SESSION_KEYS.lastVmOpts);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+/**
  * Get saved terminal scrollback content for restoration after reconnect.
  */
 export const getScrollback = (): string | null => {
@@ -165,6 +200,7 @@ export const clearSessionStorage = (): void => {
   try {
     sessionStorage.removeItem(SESSION_KEYS.wasConnected);
     sessionStorage.removeItem(SESSION_KEYS.scrollback);
+    sessionStorage.removeItem(SESSION_KEYS.lastVmOpts);
   } catch {
     // Ignore storage errors
   }

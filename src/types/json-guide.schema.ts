@@ -295,6 +295,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
   buttonText: z.string().optional(),
   vmTemplate: z.string().optional(),
   vmApp: z.string().optional(),
+  vmScenario: z.string().optional(),
 });
 
 // ============ CODE BLOCK SCHEMA ============
@@ -577,7 +578,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
   terminal: new Set(['type', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
-  'terminal-connect': new Set(['type', 'content', 'buttonText', 'vmTemplate', 'vmApp']),
+  'terminal-connect': new Set(['type', 'content', 'buttonText', 'vmTemplate', 'vmApp', 'vmScenario']),
   'code-block': new Set([
     'type',
     'reftarget',

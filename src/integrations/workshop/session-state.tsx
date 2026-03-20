@@ -5,8 +5,8 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { usePluginContext } from '@grafana/data';
 import { SessionManager } from './session-manager';
-import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import type {
   SessionConfig,
@@ -41,7 +41,12 @@ interface SessionContextValue {
 
   // Actions
   createSession: (config: SessionConfig) => Promise<SessionInfo>;
-  joinSession: (sessionId: string, mode: 'guided' | 'follow', name?: string) => Promise<void>;
+  joinSession: (
+    sessionId: string,
+    mode: 'guided' | 'follow',
+    name: string | undefined,
+    sessionPublicKey: string
+  ) => Promise<void>;
   endSession: () => void;
 
   // Event handling
@@ -66,7 +71,7 @@ interface SessionProviderProps {
  * Wrap your app with this to enable session management
  */
 export function SessionProvider({ children }: SessionProviderProps) {
-  const pluginProps = useContext(PluginPropsContext);
+  const pluginContext = usePluginContext();
   const [sessionManager] = useState(() => new SessionManager());
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionRole, setSessionRole] = useState<SessionRole>(null);
@@ -78,16 +83,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Get PeerJS config from plugin settings
   const getPeerjsConfig = useCallback(() => {
-    if (!pluginProps) {
-      return { host: 'localhost', port: 9000, key: 'pathfinder' };
-    }
-    const config = getConfigWithDefaults(pluginProps.meta.jsonData || {});
+    const jsonData = pluginContext?.meta?.jsonData ?? {};
+    const pluginConfig = getConfigWithDefaults(jsonData);
     return {
-      host: config.peerjsHost,
-      port: config.peerjsPort,
-      key: config.peerjsKey,
+      host: pluginConfig.peerjsHost,
+      port: pluginConfig.peerjsPort,
+      key: pluginConfig.peerjsKey,
+      secure: pluginConfig.peerjsSecure,
     };
-  }, [pluginProps]);
+  }, [pluginContext]);
 
   // Subscribe to real-time attendee list updates (presenter only)
   useEffect(() => {
@@ -194,7 +198,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
    * Join an existing session as attendee
    */
   const joinSession = useCallback(
-    async (sessionId: string, mode: 'guided' | 'follow', name?: string): Promise<void> => {
+    async (
+      sessionId: string,
+      mode: 'guided' | 'follow',
+      name: string | undefined,
+      sessionPublicKey: string
+    ): Promise<void> => {
       try {
         // Store the attendee's selected mode and name
         setAttendeeMode(mode);
@@ -202,7 +211,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setAttendeeName(attendeeName);
 
         const peerjsConfig = getPeerjsConfig();
-        await sessionManager.joinSession(sessionId, mode, attendeeName, peerjsConfig);
+        await sessionManager.joinSession(sessionId, mode, attendeeName, sessionPublicKey, peerjsConfig);
 
         // Wait for session_start event to get full session info
         const sessionStartPromise = new Promise<SessionInfo>((resolve) => {
