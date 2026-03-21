@@ -112,7 +112,7 @@ export class RecommenderPackageResolver implements PackageResolver {
           const manifestResponse = await fetch(resolutionData.manifestUrl);
           if (manifestResponse.ok) {
             const rawManifest = await manifestResponse.json();
-            const manifestResult = ManifestJsonObjectSchema.safeParse(rawManifest);
+            const manifestResult = ManifestJsonObjectSchema.loose().safeParse(rawManifest);
             if (manifestResult.success) {
               manifest = manifestResult.data as ManifestJson;
             }

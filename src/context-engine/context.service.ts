@@ -23,7 +23,7 @@ import {
   BundledInteractive,
   BundledInteractivesIndex,
 } from '../types/context.types';
-import type { V1Recommendation, V1RecommenderResponse, V1PackageManifest } from '../types/v1-recommender.types';
+import type { V1Recommendation, V1PackageManifest } from '../types/v1-recommender.types';
 
 export class ContextService {
   private static echoLoggingInitialized = false;
@@ -496,20 +496,18 @@ export class ContextService {
           );
         }
 
-        const data: V1RecommenderResponse = await response.json();
+        const data = await response.json();
 
-        const mappedExternalRecommendations = (data.recommendations || []).map((rec) =>
-          this.sanitizeV1Recommendation(rec)
+        const mappedExternalRecommendations = (data.recommendations || []).map((rec: Recommendation) =>
+          this.sanitizeLegacyRecommendation(rec)
         );
 
         // SECURITY: Sanitize featured recommendations using same logic
-        const mappedFeaturedRecommendations = (data.featured || []).map((rec) => this.sanitizeV1Recommendation(rec));
-
-        const deduplicatedRecommendations = this.deduplicateRecommendations(
-          mappedExternalRecommendations,
-          bundledRecommendations
+        const mappedFeaturedRecommendations = (data.featured || []).map((rec: Recommendation) =>
+          this.sanitizeLegacyRecommendation(rec)
         );
-        const allRecommendations = [...deduplicatedRecommendations, ...bundledRecommendations];
+
+        const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
         // Process featured recommendations separately
@@ -640,11 +638,25 @@ export class ContextService {
   }
 
   /**
+   * SECURITY: Sanitize a legacy recommendation to prevent XSS and prototype pollution.
+   * Uses an explicit allowlist and preserves the current /recommend wire contract.
+   */
+  private static sanitizeLegacyRecommendation(rec: Recommendation): Recommendation {
+    return {
+      title: sanitizeTextForDisplay(rec.title || ''),
+      url: typeof rec.url === 'string' ? rec.url : '',
+      summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
+      type: ['docs-page', 'learning-journey', 'interactive'].includes(rec.type ?? '') ? rec.type : 'docs-page',
+      matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
+    };
+  }
+
+  /**
    * SECURITY: Sanitize a V1 recommendation to prevent XSS and prototype pollution.
    * Uses an explicit allowlist — no spread operator. Handles both URL-backed and
    * package-backed items based on `type`.
    */
-  private static sanitizeV1Recommendation(rec: V1Recommendation): Recommendation {
+  static sanitizeV1Recommendation(rec: V1Recommendation): Recommendation {
     const validTypes = ['docs-page', 'learning-journey', 'interactive', 'package'];
     const sanitizedType = validTypes.includes(rec.type) ? rec.type : 'docs-page';
 
@@ -724,7 +736,7 @@ export class ContextService {
    * External recommendations that duplicate a bundled one are dropped —
    * bundled content always wins.
    */
-  private static deduplicateRecommendations(
+  static deduplicateRecommendations(
     externalRecs: Recommendation[],
     bundledRecs: Recommendation[]
   ): Recommendation[] {
