@@ -19,7 +19,7 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
 import { CustomGuidesSection } from './CustomGuidesSection';
 import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuides';
-import { ContextPanelState } from '../../types/content-panel.types';
+import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 
 /** Get icon name based on recommendation type */
 const getRecommendationIcon = (type?: string): IconName => {
@@ -101,6 +101,21 @@ const getRecommendationContentUrl = (recommendation: Recommendation): string => 
   return recommendation.url;
 };
 
+const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
+  if (recommendation.type !== 'package') {
+    return undefined;
+  }
+
+  const manifest = recommendation.manifest;
+  const packageId =
+    manifest && typeof manifest === 'object' && typeof manifest.id === 'string' ? manifest.id : undefined;
+
+  return {
+    packageId,
+    packageManifest: recommendation.manifest,
+  };
+};
+
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public static Component = ContextPanelRenderer;
 
@@ -110,7 +125,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 
   public constructor(
     onOpenLearningJourney?: (url: string, title: string) => void,
-    onOpenDocsPage?: (url: string, title: string) => void,
+    onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void,
     onOpenDevTools?: () => void
   ) {
     super({
@@ -126,9 +141,9 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
-  public openDocsPage(url: string, title: string) {
+  public openDocsPage(url: string, title: string, packageInfo?: PackageOpenInfo) {
     if (this.state.onOpenDocsPage) {
-      this.state.onOpenDocsPage(url, title);
+      this.state.onOpenDocsPage(url, title, packageInfo);
     } else {
       console.warn('No onOpenDocsPage callback available');
     }
@@ -159,7 +174,7 @@ interface RecommendationsSectionProps {
   otherDocsExpanded: boolean;
   showEnableRecommenderBanner: boolean;
   openLearningJourney: (url: string, title: string) => void;
-  openDocsPage: (url: string, title: string) => void;
+  openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
   toggleCustomGuidesExpansion: () => void;
   toggleSuggestedGuidesExpansion: () => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
@@ -304,6 +319,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             <div className={styles.featuredGrid}>
               {featuredRecommendations.map((recommendation, index) => {
                 const contentUrl = getRecommendationContentUrl(recommendation);
+                const packageInfo = getRecommendationPackageInfo(recommendation);
                 return (
                 <Card
                   key={`featured-${index}`}
@@ -351,7 +367,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                             // Open the appropriate content type
                             if (shouldUseDocsPageOpener(recommendation.type)) {
-                              openDocsPage(contentUrl, recommendation.title);
+                              openDocsPage(contentUrl, recommendation.title, packageInfo);
                             } else {
                               openLearningJourney(contentUrl, recommendation.title);
                             }
@@ -482,7 +498,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                                   // Open the appropriate content type
                                   if (shouldUseDocsPageOpener(recommendation.type)) {
-                                    openDocsPage(contentUrl, recommendation.title);
+                                    openDocsPage(contentUrl, recommendation.title, packageInfo);
                                   } else {
                                     openLearningJourney(contentUrl, recommendation.title);
                                   }
@@ -510,6 +526,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
             {finalPrimaryRecommendations.map((recommendation, index) => {
               const contentUrl = getRecommendationContentUrl(recommendation);
+              const packageInfo = getRecommendationPackageInfo(recommendation);
               return (
               <Card
                 key={contentUrl || `rec-${index}`}
@@ -562,7 +579,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                           // Open the appropriate content type
                           if (shouldUseDocsPageOpener(recommendation.type)) {
-                            openDocsPage(contentUrl, recommendation.title);
+                            openDocsPage(contentUrl, recommendation.title, packageInfo);
                           } else {
                             openLearningJourney(contentUrl, recommendation.title);
                           }
@@ -705,7 +722,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                                 // Open the appropriate content type
                                 if (shouldUseDocsPageOpener(recommendation.type)) {
-                                  openDocsPage(contentUrl, recommendation.title);
+                                  openDocsPage(contentUrl, recommendation.title, packageInfo);
                                 } else {
                                   openLearningJourney(contentUrl, recommendation.title);
                                 }
@@ -751,6 +768,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                 <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
                   {secondaryDocs.map((item, index) => {
                     const contentUrl = getRecommendationContentUrl(item);
+                    const packageInfo = getRecommendationPackageInfo(item);
                     return (
                     <div
                       key={contentUrl || `other-${index}`}
@@ -785,7 +803,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                             // Open the appropriate content type
                             if (shouldUseDocsPageOpener(item.type)) {
-                              openDocsPage(contentUrl, item.title);
+                              openDocsPage(contentUrl, item.title, packageInfo);
                             } else {
                               openLearningJourney(contentUrl, item.title);
                             }

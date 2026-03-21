@@ -134,6 +134,7 @@ export async function restoreTabsFromStorage(
         isLoading: false,
         error: null,
         type: data.type || 'learning-journey',
+        packageInfo: data.packageInfo,
       });
     });
 
