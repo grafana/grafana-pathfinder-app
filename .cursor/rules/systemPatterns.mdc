@@ -31,7 +31,8 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 - **Interactive Engine** → Business logic in `src/interactive-engine/`
 - **Context Engine** → Context analysis in `src/context-engine/`
 - **Requirements Manager** → Requirements validation in `src/requirements-manager/`
-- **Utils** → General utilities in `src/utils/` (keyboard shortcuts, link handling)
+- **Utils** → General utilities in `src/utils/` (routing, plugin helpers, variable substitution, feature flag tracking, timeout management, experiments)
+- **Package Engine** → Package resolution, loading, and dependency queries in `src/package-engine/`
 - **Styles** → Theme-aware functions in `src/styles/*.styles.ts`
 
 ## Critical Implementation Paths
@@ -69,7 +70,7 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 - `streak` → Consecutive days of activity (3-day, 7-day milestones)
 
 **Learning Paths Critical Path**:
-1. `learning-paths/paths.json` → Define learning paths with ordered guide sequences
+1. `learning-paths/paths.json` / `learning-paths/paths-cloud.json` → OSS and Cloud path definitions; `learning-paths/paths-data.ts:getPathsData()` selects the correct set at runtime based on Grafana edition
 2. `learning-paths/badges.ts` → Badge definitions and trigger conditions
 3. `learning-paths/streak-tracker.ts` → Daily streak calculation logic
 4. `learning-paths/learning-paths.hook.ts` → Main React hook for state management
