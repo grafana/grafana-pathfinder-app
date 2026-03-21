@@ -27,77 +27,13 @@ At minimum, consider:
 - `docs-only`
 - `mixed`
 
-Classification exists to improve routing efficiency, not to reduce safety.
-
-- If uncertain, classify as `mixed`
-- If the change touches workflows, release, publish, Docker, schemas, storage, telemetry payloads, permissions, tokens, or stateful external effects, fail open
-- Do not use classification as a hard excuse to suppress likely reviewers on risky or ambiguous PRs
-- For `infra-build-ci`, prefer promoting the `build-and-ci` concern before suppressing any other likely reviewer
-
-Produce:
-
-- `change_classes`
-- `classification_confidence`
-- `classification_reason`
-- `review_suppression_decisions`
-- `fail_open_signals`
-
-`review_suppression_decisions` should be rare and justified explicitly.
+Classification exists to improve routing efficiency, not to reduce safety. If uncertain, classify as `mixed`.
 
 ## 3. Route the review
 
-Create a lightweight branch-context summary from:
+Route using `trigger_paths` and `trigger_keywords` from the routing table in `docs/design/CONCERNS.md`. Apply the routing defaults defined there. Never route on paths alone.
 
-- PR description
-- linked issues
-- changed file list
-- branch diff
-- commit range
-
-Use both:
-
-- path-based triggers from `docs/design/CONCERNS.md`
-- semantic triggers from `docs/design/CONCERNS.md`
-
-Never route based on paths alone.
-
-Apply the routing defaults and activation rules defined in `docs/design/CONCERNS.md`.
-
-In particular:
-
-- respect `activation_mode`
-- respect `min_signals`
-- respect `max_context_files`
-- treat repeated low-value keyword hits in the same hunk as one signal, not many
-
-Conditional concerns should only activate when the registry's signal threshold is met.
-
-Produce:
-
-- `activated_concerns`
-- `activation_reason`
-- `risk_signals`
-- `likely_one_way_doors`
-- `reviewers_to_run`
-- `owned_change_areas`
-- `weakly_owned_change_areas`
-- `unowned_change_areas`
-- `coverage_gap_reason`
-- `coverage_confidence`
-- `candidate_new_concerns`
-
-Keep the router output terse and structured so the review can explain why a concern ran or did not run.
-
-Detect whether the PR has a center of gravity that is not strongly covered by `docs/design/CONCERNS.md`.
-
-Use simple heuristics:
-
-- clustered changed files in an unmapped area
-- repeated symbols or APIs not represented in concern triggers
-- mostly always-on coverage for a clearly non-trivial PR
-- a new subsystem path or namespace with no strong owning concern
-
-Coverage-gap detection is a disclosure mechanism, not a gate. If uncertain, fail open and review more rather than less.
+Produce: `activated_concerns`, `activation_reason`, `risk_signals`, `likely_one_way_doors`, `reviewers_to_run`, `coverage_confidence`.
 
 ## 4. Run reviewers
 
@@ -124,24 +60,7 @@ Do not suppress `testing-and-verification` for executable changes, including CI 
 
 ### Conditional reviewers
 
-Run additional reviewers only when activated by the concern registry.
-
-Examples:
-
-- `context-engine`
-- `docs-retrieval-and-rendering`
-- `interactive-engine`
-- `requirements-manager`
-- `guide-schema-and-contracts`
-- `e2e-contract`
-- `analytics-and-telemetry`
-- `feature-flags-and-rollout`
-- `state-persistence-and-progress`
-- `grafana-plugin-integration`
-- `performance-and-bundle`
-- `build-and-ci`
-- `ai-subsystem`
-- `go-backend`
+Run additional reviewers when activated by the routing table in `docs/design/CONCERNS.md`.
 
 Prefer a small reviewer set over speculative breadth.
 
