@@ -66,7 +66,7 @@ const getCategoryLabel = (type?: string): string => {
 
 /** Get category tag style class name based on recommendation type */
 const getCategoryTagStyle = (styles: ReturnType<typeof getStyles>, type?: string): string => {
-  if (type === 'interactive') {
+  if (type === 'interactive' || type === 'package') {
     return styles.categoryTagInteractive;
   }
   if (type === 'docs-page') {
@@ -93,7 +93,11 @@ const shouldUseDocsPageOpener = (type?: string): boolean =>
  */
 const getRecommendationContentUrl = (recommendation: Recommendation): string => {
   if (recommendation.type === 'package') {
-    return recommendation.contentUrl ?? '';
+    const url = recommendation.contentUrl ?? '';
+    if (!url && process.env.NODE_ENV !== 'production') {
+      console.warn('[context-panel] Package recommendation missing contentUrl:', recommendation.title);
+    }
+    return url;
   }
   return recommendation.url;
 };
@@ -333,9 +337,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             // Track analytics - unified event for opening any resource
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
                               content_title: recommendation.title,
-                              content_url: recommendation.url,
+                              content_url: getRecommendationContentUrl(recommendation),
                               content_type: getContentTypeForAnalytics(
-                                recommendation.url,
+                                getRecommendationContentUrl(recommendation),
                                 recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                               ),
                               interaction_location: 'featured_card_button',
@@ -371,9 +375,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 // Track summary click analytics
                                 reportAppInteraction(UserInteraction.SummaryClick, {
                                   content_title: recommendation.title,
-                                  content_url: recommendation.url,
+                                  content_url: getRecommendationContentUrl(recommendation),
                                   content_type: getContentTypeForAnalytics(
-                                    recommendation.url,
+                                    getRecommendationContentUrl(recommendation),
                                     recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                   ),
                                   action: recommendation.summaryExpanded ? 'collapse' : 'expand',
@@ -383,7 +387,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   }),
                                 });
 
-                                toggleSummaryExpansion(recommendation.url);
+                                toggleSummaryExpansion(getRecommendationContentUrl(recommendation));
                               }}
                               className={styles.summaryButton}
                             >
@@ -437,7 +441,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             milestone_title: milestone.title,
                                             milestone_number: milestone.number,
                                             milestone_url: milestone.url,
-                                            content_url: recommendation.url,
+                                            content_url: getRecommendationContentUrl(recommendation),
                                             interaction_location: 'featured_milestone_list',
                                           });
                                           openLearningJourney(
@@ -464,9 +468,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   // Track analytics - unified event for opening any resource
                                   reportAppInteraction(UserInteraction.OpenResourceClick, {
                                     content_title: recommendation.title,
-                                    content_url: recommendation.url,
+                                    content_url: getRecommendationContentUrl(recommendation),
                                     content_type: getContentTypeForAnalytics(
-                                      recommendation.url,
+                                      getRecommendationContentUrl(recommendation),
                                       recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                     ),
                                     interaction_location: 'featured_summary_cta_button',
@@ -544,9 +548,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                           // Track analytics - unified event for opening any resource
                           reportAppInteraction(UserInteraction.OpenResourceClick, {
                             content_title: recommendation.title,
-                            content_url: recommendation.url,
+                            content_url: getRecommendationContentUrl(recommendation),
                             content_type: getContentTypeForAnalytics(
-                              recommendation.url,
+                              getRecommendationContentUrl(recommendation),
                               recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                             ),
                             interaction_location: 'main_card_button',
@@ -583,9 +587,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                               // Track summary click analytics (for both LJ and docs)
                               reportAppInteraction(UserInteraction.SummaryClick, {
                                 content_title: recommendation.title,
-                                content_url: recommendation.url,
+                                content_url: getRecommendationContentUrl(recommendation),
                                 content_type: getContentTypeForAnalytics(
-                                  recommendation.url,
+                                  getRecommendationContentUrl(recommendation),
                                   recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                 ),
                                 action: recommendation.summaryExpanded ? 'collapse' : 'expand',
@@ -656,7 +660,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                           milestone_title: milestone.title,
                                           milestone_number: milestone.number,
                                           milestone_url: milestone.url,
-                                          content_url: recommendation.url,
+                                          content_url: getRecommendationContentUrl(recommendation),
                                           interaction_location: 'milestone_list',
                                         });
                                         openLearningJourney(
@@ -687,9 +691,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 // Track analytics - unified event for opening any resource
                                 reportAppInteraction(UserInteraction.OpenResourceClick, {
                                   content_title: recommendation.title,
-                                  content_url: recommendation.url,
+                                  content_url: getRecommendationContentUrl(recommendation),
                                   content_type: getContentTypeForAnalytics(
-                                    recommendation.url,
+                                    getRecommendationContentUrl(recommendation),
                                     recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                   ),
                                   interaction_location: 'summary_cta_button',
@@ -763,9 +767,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             // Track analytics - unified event for opening any resource
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
                               content_title: item.title,
-                              content_url: item.url,
+                              content_url: getRecommendationContentUrl(item),
                               content_type: getContentTypeForAnalytics(
-                                item.url,
+                                getRecommendationContentUrl(item),
                                 item.type === 'docs-page'
                                   ? 'docs'
                                   : item.type === 'interactive'

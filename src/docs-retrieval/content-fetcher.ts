@@ -541,15 +541,12 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
         };
       }
 
-      let title: string = contentId.split('/')[0] ?? contentId;
-      try {
-        const parsed = JSON.parse(jsonContent);
-        if (parsed.title && typeof parsed.title === 'string') {
-          title = parsed.title;
-        }
-      } catch {
-        // use directory name as title fallback
-      }
+      // Webpack imports JSON as objects — read title directly to avoid a round-trip
+      const moduleTitle =
+        typeof jsonModule === 'object' && jsonModule !== null && typeof jsonModule.title === 'string'
+          ? jsonModule.title
+          : undefined;
+      const title: string = moduleTitle ?? contentId.split('/')[0] ?? contentId;
 
       const rawContent: RawContent = {
         content: jsonContent,
@@ -561,7 +558,8 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       };
 
       return { content: rawContent };
-    } catch {
+    } catch (err) {
+      console.warn(`[docs-retrieval] Failed to load bundled package file: ${contentId}`, err);
       return {
         content: null,
         error: `Bundled package file not found: ${contentId}`,
