@@ -9,7 +9,7 @@ export const PLUGIN_BACKEND_URL = `/api/plugins/${pluginJson.id}/resources`;
 
 // Default configuration values
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
-export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana.com';
+export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://grafana-recommender-93209135917.us-central1.run.app';
 export const DEFAULT_TERMS_ACCEPTED = false;
 export const DEFAULT_TUTORIAL_URL = '';
 export const TERMS_VERSION = '1.0.0';
