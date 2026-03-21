@@ -146,6 +146,37 @@ Do not give each reviewer the full repository or unrelated subsystem docs.
 
 Prefer changed functions, nearby symbols, and directly related tests over whole-file or whole-directory reads.
 
+### Subsystem reviewer operating instructions
+
+When launching a subsystem reviewer, instruct it to follow this exact reasoning order:
+
+1. Restate the concern invariant in one sentence using the concern's `purpose` and `review_questions`.
+2. Determine whether the diff changes any high-value surface for that concern:
+   - endpoint or URL path
+   - request or response shape
+   - schema or contract
+   - persisted state or storage shape
+   - public DOM or API contract
+   - sanitization or validation logic
+   - gating, fallback, rollback, or cleanup behavior
+3. Compare implementation to stated intent in the PR summary, tests, and nearby design docs.
+4. Check rollback and one-way-door risk: if this breaks after merge, would revert actually restore the system?
+5. Check whether tests cover the changed semantics, not just nearby behavior.
+6. Report only:
+   - invariant mismatches
+   - rollback hazards
+   - contract drift
+   - missing verification tied directly to the changed semantics
+7. If nothing crosses that bar, return `reviewed_clean` or `not_applicable`.
+
+Additional instructions for subsystem reviewers:
+
+- Prefer one precise finding over multiple speculative findings
+- Treat documented rollback strategy as positive evidence unless the code contradicts it
+- If behavior appears broader or narrower than the PR claims, raise a question even if the code may still be valid
+- Do not spend tokens on generic maintainability, style, or broad "consider edge cases" advice
+- Do not duplicate a finding that is better owned by another concern
+
 ### Shared reviewer output schema
 
 Every reviewer must emit the same schema.
@@ -174,6 +205,13 @@ Confidence guidance:
 - `high`: clear invariant violation or likely regression with concrete evidence
 - `medium`: credible concern with partial evidence
 - `low`: plausible but uncertain risk that should usually be phrased as a question, not a defect
+
+Severity guidance:
+
+- `critical`: security issue, severe rollback hazard, or clear production-breaking regression
+- `high`: likely correctness bug, contract break, or missing verification on a high-risk semantic change
+- `medium`: meaningful risk or ambiguity that should be resolved before merge if the PR is high leverage
+- `low`: useful question or non-blocking improvement with concrete evidence
 
 Allowed `reversibility` values:
 

@@ -157,6 +157,103 @@ Concern reviewers should optimize for signal, not coverage theater.
 - Use `not_applicable` when the concern activated weakly but deeper inspection showed it was not truly relevant
 - Avoid filing duplicate findings that are better owned by a different concern
 
+## Fast-model reviewer checklist
+
+Subsystem reviewers should follow this checklist in order. This ordering is designed to be robust even for faster or lower-reasoning models.
+
+### Step 1: State the concern invariant
+
+Before looking for problems, restate the concern's core invariant in one sentence using the concern's `purpose` and `review_questions`.
+
+Examples:
+
+- "This concern exists to preserve context-engine privacy, fallback behavior, and recommendation semantics."
+- "This concern exists to preserve the E2E DOM contract and avoid breaking test-visible attribute semantics."
+
+### Step 2: Confirm the PR changed the right kind of thing
+
+Look for whether the diff changes one or more of these high-value surfaces:
+
+- endpoint or URL path
+- request or response shape
+- schema or contract
+- persisted state or storage shape
+- public DOM or API contract
+- sanitization or validation logic
+- gating, fallback, rollback, or cleanup behavior
+
+If none of these changed for the concern, prefer `reviewed_clean` or `not_applicable`.
+
+### Step 3: Compare stated intent to implementation
+
+Compare the PR summary, design notes, tests, and code.
+
+Raise a finding when implementation appears to:
+
+- broaden behavior beyond the stated invariant
+- narrow behavior in a way the PR text does not acknowledge
+- silently change semantics
+- rely on an implicit contract that is not stated anywhere
+
+If the change looks plausible but you cannot point to a concrete mismatch, prefer a low-confidence question or `reviewed_clean`.
+
+### Step 4: Check rollback and one-way-door risk
+
+Ask:
+
+- If this breaks after merge, can a revert restore the system?
+- Does the PR preserve a rollback path where one is needed?
+- Does it write state that would survive a revert?
+
+If rollback strategy is explicitly documented, treat that as positive evidence unless the implementation contradicts it.
+
+### Step 5: Check tests against changed semantics
+
+Do not ask only "are there tests?"
+
+Ask whether tests cover the semantics that actually changed:
+
+- new endpoint or path
+- new mapping behavior
+- new sanitization path
+- new deduplication or filtering rule
+- new storage or rollback behavior
+
+If tests exist but only cover the happy path while the risky semantic change is untested, that can be a finding.
+
+### Step 6: Decide whether to report
+
+Report a finding only if at least one of these is true:
+
+- invariant mismatch
+- rollback hazard
+- contract drift
+- missing verification tied directly to the changed semantics
+
+Do not report findings for:
+
+- generic maintainability advice
+- style preferences
+- broad "consider edge cases" feedback without a concrete edge case in the changed code
+- duplicate concerns already better owned elsewhere
+
+When in doubt:
+
+- prefer one precise question over several speculative findings
+- prefer `reviewed_clean` over low-signal commentary
+
+## Reviewer prompt snippet
+
+When a subsystem reviewer is launched, it should effectively be told:
+
+1. Restate this concern's invariant in one sentence.
+2. Identify whether the diff changes endpoint, schema, storage, contract, sanitization, fallback, rollback, or cleanup behavior.
+3. Compare the implementation to the stated intent in the PR, tests, and nearby docs.
+4. Check whether rollback would actually restore the system.
+5. Check whether tests cover the changed semantics, not just adjacent behavior.
+6. Report only invariant mismatches, rollback hazards, contract drift, or missing verification tied to the changed semantics.
+7. If nothing crosses that bar, return `reviewed_clean` or `not_applicable`.
+
 ## Concern authoring norms
 
 Add or evolve concerns conservatively.
@@ -1378,6 +1475,88 @@ Protect the build pipeline, CI behavior, release automation, and workflow safety
 - `security`
 - `testing-and-verification`
 - `reversibility-and-one-way-door`
+
+---
+
+## Concern: `cli-and-e2e-runner`
+
+- `id`: `cli-and-e2e-runner`
+- `name`: CLI behavior and E2E runner semantics
+- `category`: subsystem
+- `always_on`: false
+- `activation_mode`: strong_signal
+- `min_signals`: 1
+- `max_context_files`: 8
+
+### Purpose
+
+Protect command-line semantics, manifest-aware preflight behavior, structured exit outcomes, and E2E runner correctness so developer tooling remains predictable, scriptable, and operationally efficient.
+
+### Trigger paths
+
+- `src/cli/commands/e2e.ts`
+- `src/cli/utils/manifest-preflight.ts`
+- `src/cli/utils/e2e-reporter.ts`
+- `src/cli/__tests__/manifest-preflight.test.ts`
+- `docs/developer/E2E_TESTING.md`
+- `docs/design/e2e-test-runner-design.md`
+
+### Trigger keywords
+
+- `ExitCode`
+- `CONFIGURATION_ERROR`
+- `runManifestPreflight`
+- `checkTier`
+- `checkMinVersion`
+- `checkPlugins`
+- `loadManifestFromDir`
+- `--package`
+- `--tier`
+- `.choices([`
+- `process.exit(`
+- `skip`
+- `Playwright`
+
+### Load docs
+
+- `docs/developer/E2E_TESTING.md`
+- `docs/design/e2e-test-runner-design.md`
+- `.cursor/rules/testingStrategy.mdc`
+
+### Load code areas
+
+- changed CLI command files
+- changed CLI utility files
+- directly related CLI tests
+
+### Review questions
+
+- Do CLI flags parse and validate in a way that fails fast for bad input?
+- Are skip, fail, and pass outcomes clearly distinguished and machine-usable?
+- Are expensive checks ordered correctly so obviously unrunnable guides short-circuit early?
+- Are exit codes and error messages consistent with the command's contract?
+- Do preflight checks avoid unnecessary network or browser startup work?
+- Are tests covering the changed command semantics, not just helper internals?
+
+### One-way door signals
+
+- Changed exit-code semantics that would break automation
+- Changed skip-vs-fail behavior that downstream tooling depends on
+- Structured output changes that would break scripts or CI parsing
+- New preflight network calls or side effects before an expected early exit
+
+### Expected verification
+
+- CLI unit tests for changed semantics
+- behavior tests for skip, fail, and success outcomes
+- targeted smoke coverage when flag parsing or orchestration changes
+
+### Related concerns
+
+- `testing-and-verification`
+- `guide-schema-and-contracts`
+- `reversibility-and-one-way-door`
+- `build-and-ci`
 
 ---
 
