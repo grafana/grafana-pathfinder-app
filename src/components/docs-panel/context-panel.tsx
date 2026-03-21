@@ -19,6 +19,7 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
 import { CustomGuidesSection } from './CustomGuidesSection';
 import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuides';
+import { ContextPanelState } from '../../types/content-panel.types';
 
 /** Get icon name based on recommendation type */
 const getRecommendationIcon = (type?: string): IconName => {
@@ -34,11 +35,9 @@ const getRecommendationButtonText = (type?: string, completionPercentage?: numbe
   if (type === 'docs-page') {
     return t('contextPanel.view', 'View');
   }
-  // Show "Resume" if user has started but not completed
   if (completionPercentage && completionPercentage > 0 && completionPercentage < 100) {
     return t('contextPanel.resume', 'Resume');
   }
-  // Both learning paths and interactive guides use "Start"
   return t('contextPanel.start', 'Start');
 };
 
@@ -47,7 +46,7 @@ const getRecommendationCtaText = (type?: string): string => {
   if (type === 'docs-page') {
     return t('contextPanel.viewDocumentation', 'View documentation');
   }
-  if (type === 'interactive') {
+  if (type === 'interactive' || type === 'package') {
     return t('contextPanel.startInteractiveGuide', 'Start interactive guide');
   }
   return t('contextPanel.startLearningJourney', 'Start learning path');
@@ -101,8 +100,6 @@ const getRecommendationContentUrl = (recommendation: Recommendation): string => 
   }
   return recommendation.url;
 };
-
-import { ContextPanelState } from '../../types/content-panel.types';
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public static Component = ContextPanelRenderer;
@@ -305,7 +302,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               <h3 className={styles.featuredTitle}>{t('contextPanel.featured', 'Featured')}</h3>
             </div>
             <div className={styles.featuredGrid}>
-              {featuredRecommendations.map((recommendation, index) => (
+              {featuredRecommendations.map((recommendation, index) => {
+                const contentUrl = getRecommendationContentUrl(recommendation);
+                return (
                 <Card
                   key={`featured-${index}`}
                   className={`${styles.recommendationCard} ${styles.featuredCard} ${
@@ -337,9 +336,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             // Track analytics - unified event for opening any resource
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
                               content_title: recommendation.title,
-                              content_url: getRecommendationContentUrl(recommendation),
+                              content_url: contentUrl,
                               content_type: getContentTypeForAnalytics(
-                                getRecommendationContentUrl(recommendation),
+                                contentUrl,
                                 recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                               ),
                               interaction_location: 'featured_card_button',
@@ -352,9 +351,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                             // Open the appropriate content type
                             if (shouldUseDocsPageOpener(recommendation.type)) {
-                              openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
+                              openDocsPage(contentUrl, recommendation.title);
                             } else {
-                              openLearningJourney(getRecommendationContentUrl(recommendation), recommendation.title);
+                              openLearningJourney(contentUrl, recommendation.title);
                             }
                           }}
                           className={styles.startButton}
@@ -375,9 +374,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 // Track summary click analytics
                                 reportAppInteraction(UserInteraction.SummaryClick, {
                                   content_title: recommendation.title,
-                                  content_url: getRecommendationContentUrl(recommendation),
+                                  content_url: contentUrl,
                                   content_type: getContentTypeForAnalytics(
-                                    getRecommendationContentUrl(recommendation),
+                                    contentUrl,
                                     recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                   ),
                                   action: recommendation.summaryExpanded ? 'collapse' : 'expand',
@@ -387,7 +386,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   }),
                                 });
 
-                                toggleSummaryExpansion(getRecommendationContentUrl(recommendation));
+                                toggleSummaryExpansion(contentUrl);
                               }}
                               className={styles.summaryButton}
                             >
@@ -441,7 +440,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             milestone_title: milestone.title,
                                             milestone_number: milestone.number,
                                             milestone_url: milestone.url,
-                                            content_url: getRecommendationContentUrl(recommendation),
+                                            content_url: contentUrl,
                                             interaction_location: 'featured_milestone_list',
                                           });
                                           openLearningJourney(
@@ -468,9 +467,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   // Track analytics - unified event for opening any resource
                                   reportAppInteraction(UserInteraction.OpenResourceClick, {
                                     content_title: recommendation.title,
-                                    content_url: getRecommendationContentUrl(recommendation),
+                                    content_url: contentUrl,
                                     content_type: getContentTypeForAnalytics(
-                                      getRecommendationContentUrl(recommendation),
+                                      contentUrl,
                                       recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                     ),
                                     interaction_location: 'featured_summary_cta_button',
@@ -483,12 +482,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                                   // Open the appropriate content type
                                   if (shouldUseDocsPageOpener(recommendation.type)) {
-                                    openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
+                                    openDocsPage(contentUrl, recommendation.title);
                                   } else {
-                                    openLearningJourney(
-                                      getRecommendationContentUrl(recommendation),
-                                      recommendation.title
-                                    );
+                                    openLearningJourney(contentUrl, recommendation.title);
                                   }
                                 }}
                                 className={styles.summaryCtaButton}
@@ -503,7 +499,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                     )}
                   </div>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -511,9 +508,11 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
         {suggestedGuidesExpanded && finalPrimaryRecommendations.length > 0 && (
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
-            {finalPrimaryRecommendations.map((recommendation, index) => (
+            {finalPrimaryRecommendations.map((recommendation, index) => {
+              const contentUrl = getRecommendationContentUrl(recommendation);
+              return (
               <Card
-                key={getRecommendationContentUrl(recommendation) || `rec-${index}`}
+                key={contentUrl || `rec-${index}`}
                 className={`${styles.recommendationCard} ${
                   isDocsOnlyRecommendation(recommendation.type) ? styles.compactCard : ''
                 }`}
@@ -548,9 +547,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                           // Track analytics - unified event for opening any resource
                           reportAppInteraction(UserInteraction.OpenResourceClick, {
                             content_title: recommendation.title,
-                            content_url: getRecommendationContentUrl(recommendation),
+                            content_url: contentUrl,
                             content_type: getContentTypeForAnalytics(
-                              getRecommendationContentUrl(recommendation),
+                              contentUrl,
                               recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                             ),
                             interaction_location: 'main_card_button',
@@ -563,9 +562,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                           // Open the appropriate content type
                           if (shouldUseDocsPageOpener(recommendation.type)) {
-                            openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
+                            openDocsPage(contentUrl, recommendation.title);
                           } else {
-                            openLearningJourney(getRecommendationContentUrl(recommendation), recommendation.title);
+                            openLearningJourney(contentUrl, recommendation.title);
                           }
                         }}
                         className={styles.startButton}
@@ -587,9 +586,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                               // Track summary click analytics (for both LJ and docs)
                               reportAppInteraction(UserInteraction.SummaryClick, {
                                 content_title: recommendation.title,
-                                content_url: getRecommendationContentUrl(recommendation),
+                                content_url: contentUrl,
                                 content_type: getContentTypeForAnalytics(
-                                  getRecommendationContentUrl(recommendation),
+                                  contentUrl,
                                   recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                 ),
                                 action: recommendation.summaryExpanded ? 'collapse' : 'expand',
@@ -599,7 +598,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 }),
                               });
 
-                              toggleSummaryExpansion(getRecommendationContentUrl(recommendation));
+                              toggleSummaryExpansion(contentUrl);
                             }}
                             className={styles.summaryButton}
                             data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
@@ -660,7 +659,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                           milestone_title: milestone.title,
                                           milestone_number: milestone.number,
                                           milestone_url: milestone.url,
-                                          content_url: getRecommendationContentUrl(recommendation),
+                                          content_url: contentUrl,
                                           interaction_location: 'milestone_list',
                                         });
                                         openLearningJourney(
@@ -691,9 +690,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 // Track analytics - unified event for opening any resource
                                 reportAppInteraction(UserInteraction.OpenResourceClick, {
                                   content_title: recommendation.title,
-                                  content_url: getRecommendationContentUrl(recommendation),
+                                  content_url: contentUrl,
                                   content_type: getContentTypeForAnalytics(
-                                    getRecommendationContentUrl(recommendation),
+                                    contentUrl,
                                     recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
                                   ),
                                   interaction_location: 'summary_cta_button',
@@ -706,12 +705,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                                 // Open the appropriate content type
                                 if (shouldUseDocsPageOpener(recommendation.type)) {
-                                  openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
+                                  openDocsPage(contentUrl, recommendation.title);
                                 } else {
-                                  openLearningJourney(
-                                    getRecommendationContentUrl(recommendation),
-                                    recommendation.title
-                                  );
+                                  openLearningJourney(contentUrl, recommendation.title);
                                 }
                               }}
                               className={styles.summaryCtaButton}
@@ -726,7 +722,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                   )}
                 </div>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -752,9 +749,11 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             {otherDocsExpanded && (
               <div className={styles.otherDocsExpansion}>
                 <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
-                  {secondaryDocs.map((item, index) => (
+                  {secondaryDocs.map((item, index) => {
+                    const contentUrl = getRecommendationContentUrl(item);
+                    return (
                     <div
-                      key={getRecommendationContentUrl(item) || `other-${index}`}
+                      key={contentUrl || `other-${index}`}
                       className={styles.otherDocItem}
                       data-testid={testIds.contextPanel.otherDocItem(index)}
                     >
@@ -767,9 +766,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             // Track analytics - unified event for opening any resource
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
                               content_title: item.title,
-                              content_url: getRecommendationContentUrl(item),
+                              content_url: contentUrl,
                               content_type: getContentTypeForAnalytics(
-                                getRecommendationContentUrl(item),
+                                contentUrl,
                                 item.type === 'docs-page'
                                   ? 'docs'
                                   : item.type === 'interactive'
@@ -786,9 +785,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                             // Open the appropriate content type
                             if (shouldUseDocsPageOpener(item.type)) {
-                              openDocsPage(getRecommendationContentUrl(item), item.title);
+                              openDocsPage(contentUrl, item.title);
                             } else {
-                              openLearningJourney(getRecommendationContentUrl(item), item.title);
+                              openLearningJourney(contentUrl, item.title);
                             }
                           }}
                           className={styles.docLink}
@@ -797,7 +796,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
