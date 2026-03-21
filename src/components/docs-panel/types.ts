@@ -4,7 +4,7 @@
 
 import { RefObject } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
-import { LearningJourneyTab } from '../../types/content-panel.types';
+import { LearningJourneyTab, PackageOpenInfo } from '../../types/content-panel.types';
 import { RawContent } from '../../types/content.types';
 
 /**
@@ -20,13 +20,13 @@ export interface DocsPanelModelOperations {
   openLearningJourney(url: string, title?: string): Promise<string>;
 
   /** Open a docs page in a new tab */
-  openDocsPage(url: string, title?: string, skipReadyToBegin?: boolean): Promise<string>;
+  openDocsPage(url: string, title?: string, skipReadyToBegin?: boolean, packageInfo?: PackageOpenInfo): Promise<string>;
 
   /** Load content for a learning path tab */
   loadTabContent(tabId: string, url: string): Promise<void>;
 
   /** Load content for a docs-like tab */
-  loadDocsTabContent(tabId: string, url: string, skipReadyToBegin?: boolean): Promise<void>;
+  loadDocsTabContent(tabId: string, url: string, skipReadyToBegin?: boolean, packageInfo?: PackageOpenInfo): Promise<void>;
 
   /** Close a tab by ID */
   closeTab(tabId: string): void;

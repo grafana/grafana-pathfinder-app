@@ -107,7 +107,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 4d2: Endpoint switch and v1 activation        | Layer 2            | ✅          |
 | 4e: Integration verification                  | Layer 2 + Layer 3  | ✅          |
 | 4f: Path migration tooling                    | Layer 1            | ⏸️ Optional |
-| 4g: Docs-retrieval integration                | Layer 2            | —           |
+| 4g: Docs-retrieval integration                | Layer 2            | ✅          |
 | 5: Path and journey integration               | Layer 1 + Layer 2  | —           |
 | 6: Layer 4 test environment routing           | Layer 4            | —           |
 | 7: Dynamic repository registry                | —                  | —           |
@@ -220,11 +220,10 @@ This plan is designed to support and further the [content testing strategy](./TE
 
 **Architecture decision: recommender-based resolution, not static catalog.** The original design proposed a static `packages-catalog.json` that aggregated all repository indexes into a single file fetched by the frontend plugin at startup. This was replaced with resolution routes on the recommender microservice ([`grafana-recommender`](https://github.com/grafana/grafana-recommender)) for three reasons: (1) a pre-aggregated catalog suffers from freshness lag — any content repo update requires rebuilding and re-publishing the catalog; (2) the frontend plugin holds the full catalog in memory for the session, which scales poorly as the content corpus grows; (3) the recommender already needs repository index data for targeting and dependency graph analysis anyway — adding resolution routes to the same service that already caches these indexes avoids duplicating infrastructure. Moving resolution to the recommender keeps the frontend thin (it only needs bare IDs and the recommender URL), puts index caching where memory is cheap (server-side), and avoids build-time coupling between the plugin and every content repository's publication cadence. The frontend's `PackageResolver` interface is unchanged — the implementation calls the recommender's resolution endpoint to get CDN URLs, then fetches content directly from CDN. The recommender is a pure lookup service: bare ID in, CDN URLs out. Bundled content continues to resolve locally for offline/OSS support.
 
-Phase 4 is decomposed into eight sub-phases. Phases 4a, 4b, 4c, and 4d1 are complete. The remaining critical path is 4d2 → 4e → 4g. Phase 4f has been demoted to optional.
+Phase 4 is decomposed into eight sub-phases, all now complete. Phase 4f was demoted to optional as the migration was completed without tooling.
 
 ```
-Complete:          4a ✅, 4b ✅, 4c ✅, 4d1 ✅, 4d2 ✅, 4e ✅
-Next:              4g (after 4e)
+Complete:          4a ✅, 4b ✅, 4c ✅, 4d1 ✅, 4d2 ✅, 4e ✅, 4g ✅
 Optional:          4f (demoted — migration completed without tooling)
 ```
 
@@ -524,39 +523,30 @@ This phase originally proposed a `migrate-paths` CLI command to read `journeys.y
 
 **When to revisit:** If a large batch of learning paths needs migration simultaneously and the migration skill proves too slow for the volume. Otherwise, this tooling adds maintenance burden without clear payoff.
 
-#### Phase 4g: Docs-retrieval integration
+#### Phase 4g: Docs-retrieval integration ✅
 
+**Status:** Complete
 **Repo:** `grafana-pathfinder-app`
 **Testing:** Layer 2
-**Depends on:** 4e (composite resolver verified end-to-end)
 
-Wire the composite `PackageResolver` into the `docs-retrieval` fetch pipeline so that `docs-retrieval` becomes the single entry point for all content fetching — both static documentation and interactive packages. This resolves the "intentional transitional duplication" from Phase 3 and establishes the fetch architecture that Phase 5's navigation enrichment depends on.
+**What was delivered:**
 
-**Scope refinement (post-4a).** The recommender's v1 response already carries full package metadata inline under `manifest` (`type`, `category`, `author`, `startingLocation`, `milestones`, `recommends`, `suggests`, `depends`). This means the docs-retrieval integration is specifically about _rendering_ package content after the recommendation flow delivers it — not about fetching metadata separately. The metadata is available from the moment a v1 recommendation is received. Phase 4g wires the content fetch (from `contentUrl`/`manifestUrl`) into the existing renderer, and ensures the v1 metadata fields propagate through to the UI components that need them.
+- [x] **`fetchBundledInteractive()` extended** to handle the two-file package URL format (`bundled:<path>/content.json`). Paths containing `/` and ending in `.json` are resolved directly via `require('../bundled-interactives/<path>')`, bypassing the legacy `index.json` lookup.
+- [x] **`fetchPackageContent(contentUrl, packageManifest?)`** added to `docs-retrieval/content-fetcher.ts` — the primary fetch path for package-backed recommendations. Calls `fetchContent(contentUrl)` and overrides `type` to `'interactive'` (package content is always interactive regardless of URL shape). Attaches manifest metadata to `RawContent.metadata.packageManifest` when provided.
+- [x] **`fetchPackageById(packageId, packageManifest?)`** added — by-ID fetch using the injected `PackageResolver`. Used for deep links and milestone navigation where only a bare package ID is available.
+- [x] **`setPackageResolver(resolver)` module-level injection** in `docs-retrieval`. `docs-retrieval` imports only the `PackageResolver` Tier 0 interface — never from `package-engine` (Tier 2). Concrete wiring happens at Tier 4 (see below).
+- [x] **`ContentMetadata.packageManifest?: Record<string, unknown>`** added to `src/types/content.types.ts` — carries `manifest.category`, `manifest.author`, `manifest.recommends`, `manifest.suggests`, `manifest.depends`, `manifest.milestones` from the v1 response through the rendering pipeline.
+- [x] **`context-panel.tsx` click handlers fixed** — `getRecommendationContentUrl(rec)` helper uses `contentUrl` for `type === 'package'` and `url` for all other types. `shouldUseDocsPageOpener` updated to include `'package'` (routes through `loadDocsTabContent` which auto-upgrades tabs to `'interactive'`). All 4 open call sites and `toggleSummaryExpansion` updated. React `key` props use content URL with index fallback (package recommendations have `url === ''`).
+- [x] **Resolver wired in `CombinedLearningJourneyPanel` constructor** — `setPackageResolver(createCompositeResolver(pluginConfig))` called at Tier 4. This is the concrete injection point that keeps `docs-retrieval` isolated from `package-engine`.
+- [x] **Transitional duplication resolved** — `package-engine/loader.ts` comment updated to document the intentional architectural separation: `loader.ts` provides typed domain objects (`ContentJson`, `ManifestJson`) for the resolution pipeline; `docs-retrieval` handles the rendering pipeline fetch. Both serve different contracts.
+- [x] **18 Layer 2 tests** in `src/docs-retrieval/package-content.test.ts`: bundled package URL format, `fetchPackageContent` manifest attachment, type override, `fetchPackageById` resolver delegation and error handling, `setPackageResolver` injection replacement, static docs bypass.
 
-**Architecture decision: docs-retrieval dispatches by content type.** The dispatch signal already exists: the `Recommendation` interface carries a `type` field, and after Phase 4d2's v1 activation, package-backed items have `type === "package"`. Phase 4g wires this discriminator to route package content through the `PackageResolver` for rendering. Additionally, v1 package-backed recommendations arrive with `contentUrl`/`manifestUrl` pre-resolved — the primary fetch path uses these URLs directly rather than requiring a separate `resolve()` call. The `CompositePackageResolver.resolve()` path is used for secondary loading (deep links, milestone navigation, step expansion).
+**Key decisions:**
 
-- **Static documentation / URL-backed recommendations:** fetched via the existing `docs-retrieval` pipeline, unchanged
-- **Package-backed recommendations:** content fetched from `contentUrl` CDN URL (pre-resolved in the v1 response), rendered through the existing content renderer
-
-The composite resolver is injected into `docs-retrieval` via dependency inversion. Both `docs-retrieval` and `package-engine` are Tier 2 engines (laterally isolated). The `PackageResolver` interface is at Tier 0. Concrete wiring happens at Tier 3+ (`integrations/`).
-
-- [ ] **Content-type dispatch in `docs-retrieval`:**
-  - [ ] Add a code path that identifies package-backed content (from v1 response `type === "package"`) vs. static documentation
-  - [ ] For package-backed content: fetch from pre-resolved `contentUrl` CDN URL, pass through `manifest` metadata for UI consumption
-  - [ ] For by-ID loading (deep links, milestone steps): delegate to the injected `CompositePackageResolver`
-  - [ ] Static documentation continues through the existing fetch path unchanged
-- [ ] **Dependency injection of `PackageResolver`:**
-  - [ ] `docs-retrieval` accepts a `PackageResolver` (Tier 0 interface) — it does not import from `package-engine` (Tier 2)
-  - [ ] Tier 3+ wiring code creates the `CompositePackageResolver` (bundled-first, recommender-fallback) and passes it into docs-retrieval's fetch pipeline
-- [ ] **Remove transitional duplication:**
-  - [ ] Identify and remove any content-loading code in `package-engine` that duplicated `docs-retrieval` logic (noted as "intentional transitional duplication" in Phase 3)
-  - [ ] Verify that the bundled loader and recommender resolver paths both produce content that the existing renderer can consume without changes
-- [ ] **Surface navigation and metadata to UI:**
-  - [ ] Pass through `manifest.recommends` / `manifest.suggests` / `manifest.depends` from the v1 response to the content display components
-  - [ ] Pass through package metadata from `manifest` (`category`, `author`, `startingLocation`) for richer UI cards
-  - [ ] `manifest.milestones` on path-type packages available for path progress display (full rendering deferred to Phase 5)
-- [ ] Layer 2 tests: content-type dispatch routing, pre-resolved CDN URL fetch, by-ID fallback to composite resolver, static docs bypass, manifest passthrough, metadata passthrough
+- **`fetchContent(contentUrl)` already works for CDN URLs.** Package CDN URLs (`https://interactive-learning.grafana.net/packages/*/content.json`) are trusted HTTPS domains that pass the existing security validation. `content.json` is native JSON and is returned without wrapping. The only new dispatch is the `bundled:<path>/content.json` format for bundled packages.
+- **Type override to `'interactive'`.** `determineContentType(url)` returns `'single-doc'` for CDN content.json URLs (no learning journey path patterns). `fetchPackageContent` overrides this to `'interactive'` so that `loadDocsTabContent` correctly upgrades the tab type.
+- **Wiring is Tier 4, not Tier 3.** `CombinedLearningJourneyPanel` in `components/` (Tier 4) calls `setPackageResolver(createCompositeResolver(pluginConfig))` in its constructor. No separate `integrations/` file was needed — the docs-panel already has access to `pluginConfig` and imports from both Tier 2 engines.
+- **`package-engine/loader.ts` intentionally retained.** Its typed domain objects (`ContentJson`, `ManifestJson`) are needed by `BundledPackageResolver.resolve(id, {loadContent: true})` and are a different contract from `RawContent`. The module comment was updated to document this.
 
 **Why here:** Phase 4e proves the composite resolver works end-to-end. Phase 4g connects it to the rendering pipeline so that resolved content actually reaches the user. This must land before Phase 5 because Phase 5 extends navigation with `memberOf` path membership — that data has no path to the UI unless the renderer is consuming content through the package resolver and passing navigation through to display components.
 
@@ -704,7 +694,7 @@ The remaining work is specifically about `memberOf` path membership enrichment a
 | 4d2: Endpoint switch and v1 activation        | ✅          | `POST /api/v1/recommend` activated in `ContextService`, package-backed recommendations reach the live frontend seam                                           | Layer 2            |
 | 4e: Integration verification                  | ✅          | 16 Layer 2 integration tests; composite resolver fallthrough, deduplication, CDN URL shape, mixed v1 response, schema validation (10/10 bundled packages)     | Layer 2 + Layer 3  |
 | 4f: Path migration tooling                    | ⏸️ Optional | `migrate-paths` CLI — demoted; migration completed without tooling                                                                                            | Layer 1            |
-| 4g: Docs-retrieval integration                | —           | Package resolver wired into rendering pipeline, content-type dispatch, metadata + navigation passthrough                                                      | Layer 2            |
+| 4g: Docs-retrieval integration                | ✅          | Package resolver wired into rendering pipeline, content-type dispatch, metadata + navigation passthrough                                                      | Layer 2            |
 | 5: Path and journey integration               | —           | `memberOf` path membership enrichment, frontend path progress UI, journey metapackages, `paths.json` deprecation                                              | Layer 1 + Layer 2  |
 | 6: Layer 4 test environment routing           | —           | Managed environment routing, version matrix, dataset provisioning                                                                                             | Layer 4            |
 | 7: Dynamic repository registry                | —           | Dynamic registry, webhook refresh, ecosystem scale (multi-tenancy deferred)                                                                                   | —                  |

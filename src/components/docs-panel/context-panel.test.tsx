@@ -61,4 +61,50 @@ describe('RecommendationsSection', () => {
     });
     expect(mockPush).toHaveBeenCalledWith(PLUGIN_BASE_URL);
   });
+
+  it('passes package metadata to openDocsPage for package-backed recommendations', () => {
+    const openDocsPage = jest.fn();
+
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            manifest: { id: 'alerting-101', type: 'guide' },
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={openDocsPage}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+    expect(openDocsPage).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+      'Alerting 101',
+      {
+        packageId: 'alerting-101',
+        packageManifest: { id: 'alerting-101', type: 'guide' },
+      }
+    );
+  });
 });

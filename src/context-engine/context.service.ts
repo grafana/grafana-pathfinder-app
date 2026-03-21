@@ -510,12 +510,16 @@ export class ContextService {
           mappedExternalRecommendations,
           bundledRecommendations
         );
+        const deduplicatedFeatured = this.deduplicateRecommendations(
+          mappedFeaturedRecommendations,
+          bundledRecommendations
+        );
         const allRecommendations = [...deduplicatedExternal, ...bundledRecommendations];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
-        // Process featured recommendations separately
+        // Process featured recommendations separately (deduplicated against bundled)
         const processedFeaturedRecommendations = await this.processLearningJourneys(
-          mappedFeaturedRecommendations,
+          deduplicatedFeatured,
           pluginConfig
         );
 

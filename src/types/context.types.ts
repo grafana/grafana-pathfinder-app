@@ -5,6 +5,8 @@
  * Re-exported from src/context-engine/context.types.ts for centralized access
  */
 
+import type { PackageOpenInfo } from './content-panel.types';
+
 export interface DataSource {
   id: number;
   uid: string;
@@ -131,7 +133,7 @@ export interface BundledInteractivesIndex {
 // Hook types (re-exported from hooks.types.ts for convenience)
 export interface UseContextPanelOptions {
   onOpenLearningJourney?: (url: string, title: string) => void;
-  onOpenDocsPage?: (url: string, title: string) => void;
+  onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
 }
 
 export interface UseContextPanelReturn {
@@ -143,7 +145,7 @@ export interface UseContextPanelReturn {
   refreshContext: () => void;
   refreshRecommendations: () => void;
   openLearningJourney: (url: string, title: string) => void;
-  openDocsPage: (url: string, title: string) => void;
+  openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   navigateToPath: (path: string) => void;
   toggleOtherDocsExpansion: () => void;

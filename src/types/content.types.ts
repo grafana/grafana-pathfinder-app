@@ -35,6 +35,13 @@ export interface ContentMetadata {
 
   /** Single doc specific metadata (only present for single docs) */
   singleDoc?: SingleDocMetadata;
+
+  /**
+   * Package manifest metadata — present when content was fetched via fetchPackageContent().
+   * Carries through manifest fields (category, author, recommends, suggests, depends, milestones, etc.)
+   * so the content display layer can render richer UI without needing a separate manifest fetch.
+   */
+  packageManifest?: Record<string, unknown>;
 }
 
 export interface LearningJourneyMetadata {

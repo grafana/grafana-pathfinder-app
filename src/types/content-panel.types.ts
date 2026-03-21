@@ -20,6 +20,7 @@ export interface LearningJourneyTab {
   isLoading: boolean;
   error: string | null;
   type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
+  packageInfo?: PackageOpenInfo;
 }
 
 /**
@@ -32,11 +33,17 @@ export interface PersistedTabData {
   baseUrl: string;
   currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
   type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
+  packageInfo?: PackageOpenInfo;
+}
+
+export interface PackageOpenInfo {
+  packageId?: string;
+  packageManifest?: Record<string, unknown>;
 }
 
 export interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
-  onOpenDocsPage?: (url: string, title: string) => void;
+  onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
   onOpenDevTools?: () => void;
 }
 

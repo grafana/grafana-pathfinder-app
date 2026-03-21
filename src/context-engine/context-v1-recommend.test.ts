@@ -9,6 +9,18 @@ import { ContextService } from './context.service';
 import type { V1RecommenderResponse } from '../types/v1-recommender.types';
 import type { ContextData, Recommendation } from '../types/context.types';
 
+jest.mock('../bundled-interactives/index.json', () => ({
+  interactives: [
+    {
+      id: 'welcome-to-grafana',
+      title: 'Welcome to Grafana',
+      filename: 'welcome-to-grafana/content.json',
+      url: ['/'],
+      summary: 'Bundled version',
+    },
+  ],
+}));
+
 jest.mock('../utils/dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
   isDevModeEnabledGlobal: jest.fn(() => false),
@@ -216,19 +228,7 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
       json: () => Promise.resolve(v1Response),
     });
 
-    // Simulate bundled resolving welcome-to-grafana — so the external copy should be dropped
-    jest.mock('../bundled-interactives/index.json', () => ({
-      interactives: [
-        {
-          id: 'welcome-to-grafana',
-          title: 'Welcome to Grafana',
-          filename: 'welcome-to-grafana/content.json',
-          url: ['/'],
-          summary: 'Bundled version',
-        },
-      ],
-    }));
-
+    // welcome-to-grafana is mocked in the top-level jest.mock for index.json
     const result = await ContextService.fetchRecommendations(makeContextData({ currentPath: '/' }), PLUGIN_CONFIG);
 
     // alerting-101 should be present (remote-only)

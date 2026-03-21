@@ -4,9 +4,12 @@
  * Loads package content (content.json, manifest.json) from bundled sources.
  * Supports both the two-file package model and legacy single-file guides.
  *
- * Transitional duplication note: content loading logic intentionally exists
- * in both docs-retrieval (existing paths) and package-engine (this file).
- * This avoids a lateral coupling between two Tier 2 engines.
+ * Separation of concerns from docs-retrieval (Phase 4g):
+ * - This module returns typed domain objects (ContentJson, ManifestJson) for
+ *   the resolution pipeline (PackageResolver.resolve with loadContent: true).
+ * - docs-retrieval/content-fetcher.ts handles the rendering pipeline fetch
+ *   (fetchPackageContent, fetchPackageById) which returns RawContent for the renderer.
+ * Both serve different contracts and remain intentionally separate.
  *
  * @coupling Types: package.types.ts, Schemas: package.schema.ts
  */
