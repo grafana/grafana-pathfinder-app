@@ -11,6 +11,8 @@ globs:
 
 # Coda integration
 
+> For full reference, see [`docs/developer/CODA.md`](../../docs/developer/CODA.md).
+
 ## Overview
 
 **Coda** is a separate backend service (`grafana-coda-app`) that provisions ephemeral 30-minute VMs on AWS. Pathfinder's Go backend is the sole consumer of Coda's REST API — the React frontend never calls Coda directly.
@@ -41,24 +43,25 @@ Coda itself has four components: **Server** (Node.js/Express/PostgreSQL), **Job 
 ## Grafana Live stream path
 
 ```
-terminal/{vmId}/{nonce}                          → default (vm-aws)
-terminal/{vmId}/{nonce}/{template}               → custom template
-terminal/{vmId}/{nonce}/{template}/{app}          → custom template + app
+terminal/{vmId}/{nonce}                                → default (vm-aws)
+terminal/{vmId}/{nonce}/{template}                     → custom template
+terminal/{vmId}/{nonce}/{template}/{app}               → custom template + app (sample-app)
+terminal/{vmId}/{nonce}/vm-aws-alloy-scenario/{id}     → alloy scenario (id may contain slashes)
 ```
 
-`vmId` is `"new"` on first connect; backend resolves the real VM.
+`vmId` is `"new"` on first connect; backend resolves the real VM. For `vm-aws-alloy-scenario`, all remaining path segments are joined as the scenario ID.
 
 ## VM resolution (`resolveVMForUser`)
 
-Priority: in-memory cache → `FindActiveVMForUser` (ListVMs) → `CreateVM`.
+Priority: in-memory cache → `FindActiveVMForUser` (ListVMs) → quota cleanup if needed → `CreateVM`.
 
-Reuse is scoped by **template + app**:
+Reuse is scoped by **template + app/scenario**:
 
-- Same template, same app → reuse existing VM.
-- Same template, different app → **destroy** old VM, create new.
+- Same template, same app/scenario → reuse existing VM.
+- Same template, different app/scenario → **destroy** old VM, create new.
 - Different template → skip old, create new.
 
-Quota: max 3 non-terminal VMs per user (`maxUserVMs`).
+Quota: max 3 non-terminal VMs per user (`maxUserVMs`). When quota is full, `cleanupUserVMsForQuota` force-destroys all stale usable VMs and polls until count drops before retrying.
 
 ## VM state machine
 
@@ -79,11 +82,11 @@ Terminal states: `destroyed`, `destroying`, `error`.
 
 | File | Purpose |
 |------|---------|
-| `pkg/plugin/coda.go` | `CodaClient` — REST calls to Coda (CreateVM, GetVM, DeleteVM, ListVMs, ListSampleApps), JWT auth refresh |
+| `pkg/plugin/coda.go` | `CodaClient` — REST calls to Coda (CreateVM, GetVM, DeleteVM, ListVMs, ListSampleApps, ListAlloyScenarios), JWT auth refresh |
 | `pkg/plugin/stream.go` | `RunStream`, `resolveVMForUser`, `waitForVMActive`, `vmRequestOpts`, heartbeat, VM expiry poll |
 | `pkg/plugin/terminal.go` | `ConnectSSHViaRelay`, `NewTerminalSessionWithClient`, PTY management, SSH retry logic |
 | `pkg/plugin/wsconn.go` | `WSConn` — `net.Conn` adapter over WebSocket for SSH transport |
-| `pkg/plugin/resources.go` | HTTP handlers: `/coda/register`, `/vms`, `/vms/{id}`, `/sample-apps`, `/health` |
+| `pkg/plugin/resources.go` | HTTP handlers: `/coda/register`, `/vms`, `/vms/{id}`, `/sample-apps`, `/alloy-scenarios`, `/health` |
 | `pkg/plugin/app.go` | Plugin lifecycle, `CodaClient` creation from settings, `streamSessions` map |
 | `pkg/plugin/settings.go` | Plugin settings: `CodaRegistered`, `CodaAPIURL`, `CodaRelayURL`, secure `RefreshToken`/`EnrollmentKey` |
 
@@ -92,12 +95,12 @@ Terminal states: `destroyed`, `destroying`, `error`.
 | File | Purpose |
 |------|---------|
 | `src/integrations/coda/TerminalContext.tsx` | Shared React context: `connect(vmOpts?)`, `openTerminal(vmOpts?)`, `sendCommand`, module-level status |
-| `src/integrations/coda/useTerminalLive.hook.ts` | Grafana Live subscription, `connect(vmOpts?)`, input/output/resize handling, handshake timeout |
+| `src/integrations/coda/useTerminalLive.hook.ts` | Grafana Live subscription, `connect(vmOpts?)` with `TerminalVMOptions` (`template`/`app`/`scenario`), animated provision progress bar, handshake timeout |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
-| `src/integrations/coda/terminal-storage.ts` | localStorage/sessionStorage keys for panel state and scrollback |
-| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button in guides, accepts `vmTemplate`/`vmApp` props |
-| `src/components/block-editor/forms/TerminalConnectBlockForm.tsx` | Guide authoring form for terminal-connect blocks, fetches sample apps |
-| `src/types/json-guide.types.ts` | `JsonTerminalConnectBlock` type with `vmTemplate`/`vmApp` fields |
+| `src/integrations/coda/terminal-storage.ts` | localStorage/sessionStorage keys for panel state, scrollback, and last VM opts (template/app/scenario for auto-reconnect) |
+| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button in guides, accepts `vmTemplate`/`vmApp`/`vmScenario` props |
+| `src/components/block-editor/forms/TerminalConnectBlockForm.tsx` | Guide authoring form for terminal-connect blocks; uses `useCodaOptions` hook to fetch sample apps or alloy scenarios |
+| `src/types/json-guide.types.ts` | `JsonTerminalConnectBlock` type with `vmTemplate`/`vmApp`/`vmScenario` fields |
 | `src/types/json-guide.schema.ts` | Zod schema for terminal-connect blocks |
 
 ## Configuration
@@ -133,6 +136,7 @@ The terminal panel is shown when `isDevMode && pluginConfig.enableCodaTerminal`.
 | `DELETE` | `/api/v1/vms/:id` | Destroy VM (`?force=true` for stuck VMs) |
 | `GET` | `/api/v1/vms` | List VMs (query: `owner`, `state`, `limit`) |
 | `GET` | `/api/v1/sample-apps` | List available sample apps |
+| `GET` | `/api/v1/alloy-scenarios` | List available Alloy scenarios |
 
 Auth: `Authorization: Bearer {accessToken}` — auto-refreshed by `CodaClient`.
 
@@ -158,16 +162,17 @@ Auth: `Authorization: Bearer {accessToken}` — auto-refreshed by `CodaClient`.
 
 After all SSH retries fail, the backend destroys the VM and frees the quota slot.
 
-## Sample apps
-
-Two VM templates exist:
+## VM templates
 
 | Template | Instance | AMI | Pool | Use |
 |----------|----------|-----|------|-----|
 | `vm-aws` | t3.micro | `coda-vm` | Hot pool | Default sandbox |
 | `vm-aws-sample-app` | t3.small | `coda-sample-app-vm` | On-demand | Pre-configured integration app |
+| `vm-aws-alloy-scenario` | t3.small | `coda-alloy-scenario-vm` | On-demand | Grafana Alloy learning scenario |
 
 Sample app flow: `CreateVM("vm-aws-sample-app", user, { "app": "nginx" })` → EC2 user-data runs `systemctl start coda-bootstrap@nginx` → bootstrap renders cloud-init template, installs the app + Alloy with placeholder config.
+
+Alloy scenario flow: `CreateVM("vm-aws-alloy-scenario", user, { "scenario": "otel-examples/cost-control" })` → EC2 user-data bootstraps the selected scenario. Scenario IDs may contain slashes and are passed as-is to the Coda API.
 
 ## Terminal-connect block type
 
@@ -187,6 +192,7 @@ Guides request specific VM templates via `terminal-connect` blocks:
 |-------|------|---------|-------------|
 | `vmTemplate` | string | `""` (→ `vm-aws`) | VM template to provision |
 | `vmApp` | string | `""` | App name for `vm-aws-sample-app` |
+| `vmScenario` | string | `""` | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
 
 ## Security constraints
 

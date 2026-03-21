@@ -428,7 +428,7 @@ The requirements system manages several visual states:
 
 #### Core Interactive Attributes
 - `data-requirements`: Comma-separated list of guide-specific requirements
-- `data-targetaction`: Type of action to perform (button, formfill, highlight, sequence, multistep)
+- `data-targetaction`: Type of action to perform (button, formfill, highlight, sequence, multistep, code-block)
 - `data-reftarget`: Target element selector or button text to interact with
 - `data-targetvalue`: Value to use for formfill actions (optional)
 - `data-button-type`: Button type (show, do) to distinguish behavior
