@@ -23,7 +23,7 @@ import {
   BundledInteractive,
   BundledInteractivesIndex,
 } from '../types/context.types';
-import type { V1Recommendation, V1PackageManifest } from '../types/v1-recommender.types';
+import type { V1Recommendation, V1PackageManifest, V1RecommenderResponse } from '../types/v1-recommender.types';
 
 export class ContextService {
   private static echoLoggingInitialized = false;
@@ -458,7 +458,7 @@ export class ContextService {
       const timeoutId = setTimeout(() => controller.abort(), DEFAULT_RECOMMENDER_TIMEOUT);
 
       try {
-        const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
+        const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/api/v1/recommend`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -496,18 +496,21 @@ export class ContextService {
           );
         }
 
-        const data = await response.json();
+        const data: V1RecommenderResponse = await response.json();
 
-        const mappedExternalRecommendations = (data.recommendations || []).map((rec: Recommendation) =>
-          this.sanitizeLegacyRecommendation(rec)
+        const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
+          this.sanitizeV1Recommendation(rec)
         );
 
         // SECURITY: Sanitize featured recommendations using same logic
-        const mappedFeaturedRecommendations = (data.featured || []).map((rec: Recommendation) =>
-          this.sanitizeLegacyRecommendation(rec)
-        );
+        const mappedFeaturedRecommendations = (data.featured ?? []).map((rec) => this.sanitizeV1Recommendation(rec));
 
-        const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
+        // Deduplicate: bundled content always wins for packages that exist locally
+        const deduplicatedExternal = this.deduplicateRecommendations(
+          mappedExternalRecommendations,
+          bundledRecommendations
+        );
+        const allRecommendations = [...deduplicatedExternal, ...bundledRecommendations];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
         // Process featured recommendations separately
@@ -638,10 +641,12 @@ export class ContextService {
   }
 
   /**
-   * SECURITY: Sanitize a legacy recommendation to prevent XSS and prototype pollution.
-   * Uses an explicit allowlist and preserves the current /recommend wire contract.
+   * SECURITY: Sanitize a legacy /recommend recommendation to prevent XSS and prototype
+   * pollution. Preserved for rollback: if the v1 endpoint is reverted to /recommend,
+   * restore its call site in getExternalRecommendations(). See Phase 8 cleanup in the
+   * package implementation plan for the scheduled removal.
    */
-  private static sanitizeLegacyRecommendation(rec: Recommendation): Recommendation {
+  static sanitizeLegacyRecommendation(rec: Recommendation): Recommendation {
     return {
       title: sanitizeTextForDisplay(rec.title || ''),
       url: typeof rec.url === 'string' ? rec.url : '',

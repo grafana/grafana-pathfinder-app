@@ -104,7 +104,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 4b: Content migration (interactive-tutorials) | Layer 1            | ✅          |
 | 4c: E2E manifest pre-flight                   | Layer 3            | ✅          |
 | 4d1: Frontend remote resolver + v1 groundwork | Layer 2            | ✅          |
-| 4d2: Endpoint switch and v1 activation        | Layer 2            | **Next**    |
+| 4d2: Endpoint switch and v1 activation        | Layer 2            | ✅          |
 | 4e: Integration verification                  | Layer 2 + Layer 3  | —           |
 | 4f: Path migration tooling                    | Layer 1            | ⏸️ Optional |
 | 4g: Docs-retrieval integration                | Layer 2            | —           |
@@ -223,10 +223,9 @@ This plan is designed to support and further the [content testing strategy](./TE
 Phase 4 is decomposed into eight sub-phases. Phases 4a, 4b, 4c, and 4d1 are complete. The remaining critical path is 4d2 → 4e → 4g. Phase 4f has been demoted to optional.
 
 ```
-Complete:          4a ✅, 4b ✅, 4c ✅, 4d1 ✅
-Wave 1:            4d2
-Wave 2:            4e (after 4d2)
-Wave 3:            4g (after 4e)
+Complete:          4a ✅, 4b ✅, 4c ✅, 4d1 ✅, 4d2 ✅
+Wave 1:            4e (after 4d2)
+Wave 2:            4g (after 4e)
 Optional:          4f (demoted — migration completed without tooling)
 ```
 
@@ -460,22 +459,23 @@ Implements `PackageResolver` for by-ID loading via the recommender's `GET /api/v
 - **Dev deployment security.** The Cloud Run dev URL (`grafana-recommender-93209135917.us-central1.run.app`) is not in `ALLOWED_RECOMMENDER_DOMAINS` in `constants.ts`. For local testing during 4d2/4e, this domain must be temporarily added or the allowlist check bypassed. These changes are strictly local — see the `constants.ts` constraint above. Tests must mock the recommender, not hit the dev deployment.
 - **Wire types match OpenAPI, not earlier plan text.** Where the plan text (written before the OpenAPI spec was finalized) conflicts with `openapi.yaml`, the OpenAPI spec wins. The key difference is the `manifest` nesting — see the schema reconciliation note above.
 
-#### Phase 4d2: Endpoint switch and v1 activation
+#### Phase 4d2: Endpoint switch and v1 activation ✅
 
 **Repo:** `grafana-pathfinder-app`
 **Testing:** Layer 2
 **Depends on:** 4d1
-**Status:** Next — **this is the critical path**
+**Status:** Complete — [PR #695](https://github.com/grafana/grafana-pathfinder-app/pull/695)
 
-Activate the v1 recommendation flow on the main code path after the additive groundwork from 4d1 has landed and been reviewed.
+**Key decisions and artifacts:**
 
-- [ ] Change `getExternalRecommendations()` from `POST /recommend` to `POST /api/v1/recommend`
-- [ ] Parse the response as `V1RecommenderResponse`
-- [ ] Activate v1 recommendation sanitization and package-aware discrimination in the live path
-- [ ] Activate deduplication between v1 package-backed recommendations and bundled interactives
-- [ ] Verify that package-backed recommendations remain additive to the UI until Phase 4g wires package rendering into `docs-retrieval`
-- [ ] Keep `constants.ts` checked in with the production recommender URL; any dev deployment override remains local-only
-- [ ] Update this document with any activation-specific gotchas discovered during the cutover
+- `getExternalRecommendations()` now calls `POST /api/v1/recommend`. Response is parsed as `V1RecommenderResponse` and each item is sanitized via `sanitizeV1Recommendation` (allowlist-based; handles URL-backed and package-backed items).
+- `deduplicateRecommendations()` is applied before merging with bundled content — bundled packages always win for items that exist locally.
+- **`sanitizeLegacyRecommendation` is intentionally preserved** (with an eslint-disable comment) as a rollback aid. This branch is high-risk; if the v1 endpoint needs to be reverted to `POST /recommend`, restore its call site in `getExternalRecommendations()`. Scheduled for removal in Phase 8 once the v1 path is fully deployed and stable.
+- **`constants.ts` dev wiring is local-only, never committed.** For local testing against the temporary Cloud Run deployment, make these two changes to `constants.ts` but do **not** stage or commit them:
+  1. Set `DEFAULT_RECOMMENDER_SERVICE_URL` to `https://grafana-recommender-93209135917.us-central1.run.app`
+  2. Add `'grafana-recommender-93209135917.us-central1.run.app'` to `ALLOWED_RECOMMENDER_DOMAINS`
+- Package-backed recommendations are additive at this stage — they flow through the live sanitization/dedup path but are not yet rendered distinctly by the UI (Phase 4g wires package rendering into `docs-retrieval`).
+- Tests updated: "V1 /api/v1/recommend endpoint integration" suite replaces the old legacy-branch-isolation suite; new integration test covers deduplication across bundled and remote items.
 
 #### Phase 4e: Integration verification
 
@@ -661,6 +661,8 @@ The remaining work is specifically about `memberOf` path membership enrichment a
 
 **Known candidates:**
 
+- [ ] **Legacy `/recommend` support in `context.service.ts`:** `sanitizeLegacyRecommendation` was preserved in Phase 4d2 as a rollback aid (the v1 endpoint switch is high-risk). Once `POST /api/v1/recommend` is fully deployed, stable, and confirmed in production, remove `sanitizeLegacyRecommendation` and its eslint-disable comment. Also remove the `/recommend` path from any related comments in `getExternalRecommendations()`. **Prerequisite:** Phase 4e integration verification passes and the v1 path has been live in production without incident.
+
 - [ ] **`src/package-engine/dependency-resolver.ts`:** Exports 10 structural dependency query functions (`getProviders`, `getTransitiveDependencies`, `getRecommendedBy`, `getDependedOnBy`, etc.) from the package-engine barrel. No consumer outside its own test file. The CLI graph builder (`src/cli/commands/build-graph.ts`) implements equivalent logic independently (`extractDependencyIds`, `buildProvidesMap`, `detectCycles`). The Phase 5 decision (graph navigation lives in the recommender) means the frontend will not need client-side dependency queries. **Action:** verify no runtime or CLI code path imports these functions; if confirmed, delete the module and its tests. If the CLI graph builder should share this logic instead of duplicating it, consolidate into `validation/` (Tier 1) where both CLI and future consumers can reach it.
 - [ ] **`loadBundledLegacyGuide` in `src/package-engine/loader.ts`:** Exported from the barrel but unused outside its own module and tests. Phase 2 migrated all bundled guides to the package directory format. **Action:** verify no import path; if confirmed, remove the function and its tests.
 - [ ] **Functional duplication between `build-graph.ts` and `dependency-resolver.ts`:** `extractDependencyIds` duplicates `flattenDependencyList`/`flattenClause`; `buildProvidesMap` duplicates `buildProvidesIndex`. If both modules survive cleanup, one should consume the other. If `dependency-resolver.ts` is deleted, the CLI's local copies are canonical and no action is needed.
@@ -683,7 +685,7 @@ The remaining work is specifically about `memberOf` path membership enrichment a
 | 4b: Content migration (interactive-tutorials) | ✅          | 31 packages live on CDN, CI-generated `repository.json`, dual CDN paths, migration skill                                                                      | Layer 1            |
 | 4c: E2E manifest pre-flight                   | ✅          | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                                                                                              | Layer 3            |
 | 4d1: Frontend remote resolver + v1 groundwork | ✅          | V1 response types, `RecommenderPackageResolver`, `CompositePackageResolver`, dormant v1 response helpers, legacy-path isolation                               | Layer 2            |
-| 4d2: Endpoint switch and v1 activation        | **Next**    | `POST /api/v1/recommend` activated in `ContextService`, package-backed recommendations reach the live frontend seam                                           | Layer 2            |
+| 4d2: Endpoint switch and v1 activation        | ✅          | `POST /api/v1/recommend` activated in `ContextService`, package-backed recommendations reach the live frontend seam                                           | Layer 2            |
 | 4e: Integration verification                  | —           | Full pipeline verified across bundled and remote sources after the v1 cutover                                                                                 | Layer 2 + Layer 3  |
 | 4f: Path migration tooling                    | ⏸️ Optional | `migrate-paths` CLI — demoted; migration completed without tooling                                                                                            | Layer 1            |
 | 4g: Docs-retrieval integration                | —           | Package resolver wired into rendering pipeline, content-type dispatch, metadata + navigation passthrough                                                      | Layer 2            |
