@@ -736,10 +736,7 @@ export class ContextService {
    * External recommendations that duplicate a bundled one are dropped —
    * bundled content always wins.
    */
-  static deduplicateRecommendations(
-    externalRecs: Recommendation[],
-    bundledRecs: Recommendation[]
-  ): Recommendation[] {
+  static deduplicateRecommendations(externalRecs: Recommendation[], bundledRecs: Recommendation[]): Recommendation[] {
     const bundledIds = new Set<string>();
     const bundledTitles = new Set<string>();
 

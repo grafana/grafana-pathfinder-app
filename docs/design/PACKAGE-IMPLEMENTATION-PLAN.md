@@ -31,16 +31,16 @@ This plan spans three repositories. Each has its own detailed implementation doc
 
 ### Canonical URLs
 
-| Resource                  | URL                                                                                     | Notes                                                                            |
-| ------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Package repository (live) | `https://interactive-learning.grafana.net/packages/repository.json`                     | 31 packages, CI-generated on every push                                          |
-| Recommender (production)  | `https://recommender.grafana.com`                                                       | Configured via `recommenderServiceUrl` plugin setting                            |
+| Resource                  | URL                                                                                     | Notes                                                                                 |
+| ------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Package repository (live) | `https://interactive-learning.grafana.net/packages/repository.json`                     | 31 packages, CI-generated on every push                                               |
+| Recommender (production)  | `https://recommender.grafana.com`                                                       | Configured via `recommenderServiceUrl` plugin setting                                 |
 | Recommender (dev)         | `https://grafana-recommender-93209135917.us-central1.run.app`                           | Temporary Cloud Run deploy for Phases 4d2/4e dev. **Never check in.** Local use only. |
-| Recommender v1 recommend  | `POST {recommenderBaseUrl}/api/v1/recommend`                                            | Package-aware recommendations                                                    |
-| Recommender v1 packages   | `GET {recommenderBaseUrl}/api/v1/packages/{id}`                                         | Bare ID → CDN URL resolution                                                     |
-| Recommender OpenAPI spec  | [`openapi.yaml`](https://github.com/grafana/grafana-recommender/blob/main/openapi.yaml) | Private repo — use `gh` CLI. Source of truth for v1 types.                       |
-| CDN content base          | `https://interactive-learning.grafana.net/packages/`                                    | Package directories co-located with repository.json                              |
-| Legacy recommend endpoint | `POST {recommenderBaseUrl}/recommend`                                                   | URL-backed only; deprecation per RFC 8594                                        |
+| Recommender v1 recommend  | `POST {recommenderBaseUrl}/api/v1/recommend`                                            | Package-aware recommendations                                                         |
+| Recommender v1 packages   | `GET {recommenderBaseUrl}/api/v1/packages/{id}`                                         | Bare ID → CDN URL resolution                                                          |
+| Recommender OpenAPI spec  | [`openapi.yaml`](https://github.com/grafana/grafana-recommender/blob/main/openapi.yaml) | Private repo — use `gh` CLI. Source of truth for v1 types.                            |
+| CDN content base          | `https://interactive-learning.grafana.net/packages/`                                    | Package directories co-located with repository.json                                   |
+| Legacy recommend endpoint | `POST {recommenderBaseUrl}/recommend`                                                   | URL-backed only; deprecation per RFC 8594                                             |
 
 ---
 
@@ -111,7 +111,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 5: Path and journey integration               | Layer 1 + Layer 2  | —           |
 | 6: Layer 4 test environment routing           | Layer 4            | —           |
 | 7: Dynamic repository registry                | —                  | —           |
-| 8: Implementation cleanup                    | —                  | —           |
+| 8: Implementation cleanup                     | —                  | —           |
 
 ---
 
@@ -682,12 +682,12 @@ The remaining work is specifically about `memberOf` path membership enrichment a
 | 4a: Backend resolution + v1 recommend routes  | ✅ (PR)     | Recommender resolves bare IDs via `GET /api/v1/packages/{id}`, surfaces packages via `POST /api/v1/recommend` with virtual rules, full metadata carry-through | Go tests + Layer 2 |
 | 4b: Content migration (interactive-tutorials) | ✅          | 31 packages live on CDN, CI-generated `repository.json`, dual CDN paths, migration skill                                                                      | Layer 1            |
 | 4c: E2E manifest pre-flight                   | ✅          | Manifest-aware e2e pre-flight checks (tier, minVersion, plugins)                                                                                              | Layer 3            |
-| 4d1: Frontend remote resolver + v1 groundwork | ✅          | V1 response types, `RecommenderPackageResolver`, `CompositePackageResolver`, dormant v1 response helpers, legacy-path isolation                                | Layer 2            |
-| 4d2: Endpoint switch and v1 activation        | **Next**    | `POST /api/v1/recommend` activated in `ContextService`, package-backed recommendations reach the live frontend seam                                            | Layer 2            |
-| 4e: Integration verification                  | —           | Full pipeline verified across bundled and remote sources after the v1 cutover                                                                                | Layer 2 + Layer 3  |
+| 4d1: Frontend remote resolver + v1 groundwork | ✅          | V1 response types, `RecommenderPackageResolver`, `CompositePackageResolver`, dormant v1 response helpers, legacy-path isolation                               | Layer 2            |
+| 4d2: Endpoint switch and v1 activation        | **Next**    | `POST /api/v1/recommend` activated in `ContextService`, package-backed recommendations reach the live frontend seam                                           | Layer 2            |
+| 4e: Integration verification                  | —           | Full pipeline verified across bundled and remote sources after the v1 cutover                                                                                 | Layer 2 + Layer 3  |
 | 4f: Path migration tooling                    | ⏸️ Optional | `migrate-paths` CLI — demoted; migration completed without tooling                                                                                            | Layer 1            |
 | 4g: Docs-retrieval integration                | —           | Package resolver wired into rendering pipeline, content-type dispatch, metadata + navigation passthrough                                                      | Layer 2            |
 | 5: Path and journey integration               | —           | `memberOf` path membership enrichment, frontend path progress UI, journey metapackages, `paths.json` deprecation                                              | Layer 1 + Layer 2  |
 | 6: Layer 4 test environment routing           | —           | Managed environment routing, version matrix, dataset provisioning                                                                                             | Layer 4            |
 | 7: Dynamic repository registry                | —           | Dynamic registry, webhook refresh, ecosystem scale (multi-tenancy deferred)                                                                                   | —                  |
-| 8: Implementation cleanup                    | —           | Dead code removal, duplication consolidation, spec-implementation alignment                                                                                   | —                  |
+| 8: Implementation cleanup                     | —           | Dead code removal, duplication consolidation, spec-implementation alignment                                                                                   | —                  |
