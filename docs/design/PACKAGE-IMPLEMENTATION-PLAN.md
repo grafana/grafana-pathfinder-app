@@ -111,9 +111,7 @@ This plan is designed to support and further the [content testing strategy](./TE
 | 5: Path and journey integration               | Layer 1 + Layer 2  | —           |
 | 6: Layer 4 test environment routing           | Layer 4            | —           |
 | 7: Dynamic repository registry                | —                  | —           |
-| 8: SCORM foundation                           | —                  | —           |
-| 9+: SCORM import pipeline                     | —                  | —           |
-| 10: Implementation cleanup                    | —                  | —           |
+| 8: Implementation cleanup                    | —                  | —           |
 
 ---
 
@@ -657,25 +655,7 @@ The remaining work is specifically about `memberOf` path membership enrichment a
 
 **Why eighth:** Extends Phase 4a's resolution from a config-driven bootstrap to a production registry. Enables rapid content updates (webhook-triggered refresh), independent repository management, and ecosystem growth. The resolution endpoint and frontend resolver from Phase 4 are unchanged — only the recommender's repository discovery and refresh mechanisms evolve.
 
-### Phase 8: SCORM foundation
-
-**Goal:** Extend the package format for SCORM import needs. Schema extensions only — not the importer itself. Builds on the `type` discriminator (Phase 0) and two-level metapackage composition model established by paths and journeys in Phase 5.
-
-**Deliverables:**
-
-- [ ] Extend `type` field with `"course"` and `"module"` values (`"guide"`, `"path"`, and `"journey"` already in place from Phase 0)
-- [ ] Add flat `source` field to `manifest.json` for provenance tracking
-- [ ] Add flat `keywords`, `rights`, `educationalContext`, `difficulty`, `estimatedDuration` fields to `manifest.json`
-- [ ] Course/module rendering in web display mode (table-of-contents page)
-- [ ] Design SCORM import pipeline CLI interface
-
-**Why ninth:** Extends the package format so it can receive SCORM-imported content. The path and journey metapackage model from Phase 5 provides the composition infrastructure; SCORM types refine it with import-specific semantics. The actual importer follows the phased plan in [SCORM.md](./SCORM.md).
-
-### Phase 9+: SCORM import pipeline
-
-Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor, transformer, assembler, enhanced assessment types, scoring. The package format from Phases 0-8 is the foundation it writes to.
-
-### Phase 10: Implementation cleanup
+### Phase 8: Implementation cleanup
 
 **Goal:** Revisit code committed in earlier phases that may be unnecessary given design decisions made in later phases. This is a scheduled debt reconciliation pass — earlier phases were executed under assumptions that later phases refined or replaced.
 
@@ -710,6 +690,4 @@ Follows the 5-phase plan in the [SCORM analysis](./SCORM.md): parser, extractor,
 | 5: Path and journey integration               | —           | `memberOf` path membership enrichment, frontend path progress UI, journey metapackages, `paths.json` deprecation                                              | Layer 1 + Layer 2  |
 | 6: Layer 4 test environment routing           | —           | Managed environment routing, version matrix, dataset provisioning                                                                                             | Layer 4            |
 | 7: Dynamic repository registry                | —           | Dynamic registry, webhook refresh, ecosystem scale (multi-tenancy deferred)                                                                                   | —                  |
-| 8: SCORM foundation                           | —           | SCORM import readiness, extends `type` with course/module                                                                                                     | —                  |
-| 9+: SCORM import pipeline                     | —           | Full SCORM conversion pipeline                                                                                                                                | —                  |
-| 10: Implementation cleanup                    | —           | Dead code removal, duplication consolidation, spec-implementation alignment                                                                                   | —                  |
+| 8: Implementation cleanup                    | —           | Dead code removal, duplication consolidation, spec-implementation alignment                                                                                   | —                  |

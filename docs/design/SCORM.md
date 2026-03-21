@@ -492,9 +492,24 @@ The importer writes both `content.json` (converted SCO content) and `package.jso
 
 ## Phased implementation plan
 
-### Phase 0: Schema foundation
+### Phase 0: Schema foundation (prerequisite)
 
-> **Covered by the Pathfinder package design.** Phase 0 schema work (metadata fields, `type` discriminator, dependency validation) is specified in the [implementation plan](./PACKAGE-IMPLEMENTATION-PLAN.md) as Phases 0-1 (schema foundation + CLI validation) and Phase 5 (SCORM foundation — `type`, `metadata.source`, `metadata.keywords`, `metadata.rights`, `metadata.educationalContext`). This SCORM implementation plan begins at Phase 1 below, assuming the package model is in place.
+Before any SCORM import work begins, the following changes to the Pathfinder package model must be in place. These are additive, backward-compatible extensions to the existing `manifest.json` schema.
+
+**Prerequisite dependency:** The path/journey metapackage model must exist first. SCORM's `course` and `module` container types build on the same two-level metapackage composition established by `path` and `journey` packages — a course renders as a table-of-contents over its module dependencies, exactly as a path renders over its step guides.
+
+**Schema deliverables:**
+
+- [ ] Extend the `type` discriminator with `"course"` and `"module"` values (alongside existing `"guide"`, `"path"`, `"journey"`)
+- [ ] Add `source` field to `manifest.json` for SCORM provenance tracking (e.g. `{ "format": "scorm-1.2", "originalId": "...", "importedAt": "..." }`)
+- [ ] Add `keywords` field to `manifest.json` (array of strings; maps from SCORM LOM keywords)
+- [ ] Add `rights` field to `manifest.json` (string; maps from SCORM LOM rights/licensing)
+- [ ] Add `educationalContext` field to `manifest.json` (string; maps from SCORM LOM educational context)
+- [ ] Course/module rendering: `type: "course"` renders as a table-of-contents page (analogous to a path cover page); `type: "module"` renders as a section overview
+- [ ] CLI validation rules per type: validate that `milestones` is present for `course` and `path`; validate that leaf `guide` packages do not have `milestones`
+- [ ] Document the `source` provenance pattern in `docs/developer/package-authoring.md`
+
+> **Note:** `difficulty` and `estimatedDuration` are already in the Phase 1 package model (`manifest.json`). `language` was also added in Phase 1. These do not need to be re-added.
 
 ### Phase 1: SCORM parser + content extractor (3-4 weeks)
 
