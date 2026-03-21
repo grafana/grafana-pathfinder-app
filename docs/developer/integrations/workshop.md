@@ -44,7 +44,7 @@ The Workshop integration enables recording and replaying user actions, which is 
 - Manages attendee connections via a `Map<string, DataConnection>`
 - Broadcasts events to all connected attendees
 - Integrates ECDSA presenter authentication (see [Session Crypto](#session-crypto) below)
-- Reads PeerJS config from Grafana runtime (`usePluginContext`) rather than plugin props
+- Receives PeerJS config as an argument from `SessionProvider` (`session-state.tsx`), which reads plugin settings via `usePluginContext` and `getConfigWithDefaults()` — `SessionManager` does not import Grafana hooks
 
 **Key class**: `SessionManager` — handles presenter and attendee roles, reconnection, hand raises, and event routing.
 
@@ -102,7 +102,7 @@ The Workshop integration is used for:
 
 - **Dev Tools** (`src/utils/devtools/`) — Uses action recorder utilities
 - **Interactive Engine** (`src/interactive-engine/`) — Executes replayed actions
-- **Grafana runtime** — PeerJS config is read from `usePluginContext` (not plugin props)
+- **Grafana runtime** — `SessionProvider` in `session-state.tsx` builds PeerJS config from `usePluginContext` + `getConfigWithDefaults()` and passes it into `SessionManager` (not plugin props)
 
 ## See Also
 

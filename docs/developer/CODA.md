@@ -304,7 +304,7 @@ Defined in `src/types/json-guide.types.ts` (`JsonTerminalConnectBlock`) and vali
 `src/components/interactive-tutorial/terminal-connect-step.tsx`
 
 - Renders the button and optional markdown content.
-- On click, calls `terminalCtx.openTerminal({ template: vmTemplate, app: vmApp })`.
+- On click, when `vmTemplate` is set, calls `terminalCtx.openTerminal({ template: vmTemplate, app: vmApp, scenario: vmScenario })` (empty `app`/`scenario` strings are fine for templates that do not use them).
 - Completes when `status === 'connected'` or user clicks "Continue".
 - 10-second safety timeout if connection never completes.
 
