@@ -83,6 +83,69 @@ The classifier should produce:
 
 `review_suppression_decisions` should be rare and justified explicitly. If there is doubt, do not suppress.
 
+## Coverage-gap detection
+
+This file is not complete and probably never will be, let's just admit it. 
+
+### Purpose
+
+Coverage-gap detection exists to keep our review systems honest as the repository evolves. It should:
+
+- identify change clusters that are only weakly owned by the current concern set
+- reduce false confidence when the review is mostly generic rather than subsystem-aware
+- suggest when `CONCERNS.md` may need a new concern or tighter routing
+
+### Coverage outputs
+
+The router or synthesizer should produce:
+
+- `owned_change_areas`
+- `weakly_owned_change_areas`
+- `unowned_change_areas`
+- `coverage_gap_reason`
+- `coverage_confidence`
+- `candidate_new_concerns`
+
+Allowed `coverage_confidence` values:
+
+- `high`: the PR's main change areas are strongly covered by activated concerns
+- `medium`: some important change areas are covered only by always-on or weakly related concerns
+- `low`: the PR appears to center on an area that is not strongly represented in this registry
+
+### What counts as a coverage gap
+
+Flag a potential coverage gap when one or more of these are true:
+
+- a directory with multiple changed files does not map strongly to any concern
+- repeated high-value symbols or APIs appear in the diff but are not represented in any concern's `trigger_keywords`
+- a new subsystem path or module namespace appears without a clear owning concern
+- most of the meaningful changed hunks are covered only by always-on concerns
+- the PR is clearly non-trivial, but no subsystem concern activates with high confidence
+
+### Center-of-gravity heuristic
+
+Treat an area as the PR's center of gravity when it has a meaningful concentration of:
+
+- changed files
+- changed hunks
+- repeated symbols
+- repeated contract names
+- repeated subsystem-specific vocabulary
+
+The exact math does not need to be rigid. This is a disclosure mechanism, not a gate.
+
+### Fail-open guidance
+
+If coverage is uncertain, do not suppress reviewers.
+
+Use coverage-gap detection to:
+
+- disclose reduced confidence
+- drive candidate concern additions
+- explain why the review stayed general in some areas
+
+Do not use it to avoid reviewing the PR.
+
 ## Concern schema
 
 Each concern entry contains:
@@ -281,6 +344,12 @@ When a concern is noisy:
 - narrow its `load_code_areas`
 - increase `min_signals`
 - prefer better semantic signals over broader globs
+
+When coverage-gap detection repeatedly points at the same unowned area:
+
+- first try tightening or expanding an adjacent existing concern
+- add a new concern only if the area has distinct invariants or review questions
+- prefer naming the concern after the subsystem or contract, not the implementation detail
 
 ## Always-on concerns
 
@@ -1555,6 +1624,86 @@ Protect command-line semantics, manifest-aware preflight behavior, structured ex
 
 - `testing-and-verification`
 - `guide-schema-and-contracts`
+- `reversibility-and-one-way-door`
+- `build-and-ci`
+
+---
+
+## Concern: `ai-subsystem`
+
+- `id`: `ai-subsystem`
+- `name`: AI subsystem and agent behavior
+- `category`: subsystem
+- `always_on`: false
+- `activation_mode`: strong_signal
+- `min_signals`: 1
+- `max_context_files`: 8
+
+### Purpose
+
+Protect the repository's agent-facing behavior: prompts, routing rules, skills, long-lived agent instructions, and other files that shape how AI agents understand, review, edit, or execute work in this codebase.
+
+### Trigger paths
+
+- `.cursor/**`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `**/SKILL.md`
+- `**/*.mdc`
+
+### Trigger keywords
+
+- `agent`
+- `agents`
+- `subagent`
+- `skill`
+- `prompt`
+- `routing`
+- `review`
+- `mode`
+- `tool`
+- `concern`
+- `instruction`
+- `orchestrator`
+- `planner`
+- `executor`
+
+### Load docs
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/design/CONCERNS.md`
+
+### Load code areas
+
+- changed agent-facing docs and rules only
+- directly related skill, rule, or prompt files
+
+### Review questions
+
+- Does this change alter what agents are allowed or encouraged to do?
+- Are routing rules, priorities, or safety constraints still coherent?
+- Could the new instructions cause agents to over-act, under-act, or contradict other repository guidance?
+- Are the prompts specific enough for faster or lower-reasoning models to behave well?
+- Does the change preserve the intended contract between general docs and executable review logic?
+- Is this area now important enough that `CONCERNS.md` should explicitly model it or refine it further?
+
+### One-way door signals
+
+- Prompt or rule changes that systematically steer agents toward unsafe or low-signal behavior
+- Changes that create contradictions between long-lived agent instructions
+- Routing or review logic changes that silently reduce review coverage or safety
+- Agent-facing format changes that other prompts or workflows depend on
+
+### Expected verification
+
+- dry-run reasoning about likely agent behavior
+- consistency check against neighboring rules and skills
+- explicit review of contradictions, missing constraints, and degraded coverage
+
+### Related concerns
+
+- `cross-cutting-architecture`
 - `reversibility-and-one-way-door`
 - `build-and-ci`
 

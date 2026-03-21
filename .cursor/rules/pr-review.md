@@ -79,8 +79,25 @@ Produce:
 - `risk_signals`
 - `likely_one_way_doors`
 - `reviewers_to_run`
+- `owned_change_areas`
+- `weakly_owned_change_areas`
+- `unowned_change_areas`
+- `coverage_gap_reason`
+- `coverage_confidence`
+- `candidate_new_concerns`
 
 Keep the router output terse and structured so the review can explain why a concern ran or did not run.
+
+Detect whether the PR has a center of gravity that is not strongly covered by `docs/design/CONCERNS.md`.
+
+Use simple heuristics:
+
+- clustered changed files in an unmapped area
+- repeated symbols or APIs not represented in concern triggers
+- mostly always-on coverage for a clearly non-trivial PR
+- a new subsystem path or namespace with no strong owning concern
+
+Coverage-gap detection is a disclosure mechanism, not a gate. If uncertain, fail open and review more rather than less.
 
 ## 4. Run reviewers
 
@@ -123,6 +140,7 @@ Examples:
 - `grafana-plugin-integration`
 - `performance-and-bundle`
 - `build-and-ci`
+- `ai-subsystem`
 - `go-backend`
 
 Prefer a small reviewer set over speculative breadth.
@@ -240,6 +258,8 @@ The synthesizer must:
 - elevate one-way door findings when rollback would not restore the system cleanly
 - call out disagreement or uncertainty explicitly if reviewers conflict
 - note when change classification may have reduced reviewer fan-out, if that affects confidence
+- disclose when the PR's center of gravity appears only weakly covered by the current concern registry
+- suggest updating `docs/design/CONCERNS.md` when the same unowned area appears important enough to deserve subsystem-aware review
 
 Report findings ordered by severity, then confidence.
 
@@ -252,6 +272,10 @@ Each finding should include:
 - suggested action
 
 If all activated concerns return `no_findings`, say so explicitly and mention any residual confidence gaps or testing gaps.
+
+If `coverage_confidence` is not `high`, include a short coverage note such as:
+
+> Coverage note: this PR appears to center on an area that is only lightly modeled by `docs/design/CONCERNS.md`. I reviewed it with general concerns and adjacent subsystem logic, but review confidence is reduced there. If this area is important long-term, consider refining or adding a concern entry.
 
 ## Existing review tables still apply
 
