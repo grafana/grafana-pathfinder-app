@@ -55,7 +55,9 @@ import {
   getMilestoneSlug,
   markMilestoneDone,
   isLastMilestone,
+  setPackageResolver,
 } from '../../docs-retrieval';
+import { createCompositeResolver } from '../../package-engine';
 
 import { ContextPanel } from './context-panel';
 import { BadgeUnlockedToast } from '../LearningPaths';
@@ -130,6 +132,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       contextPanel,
       pluginConfig,
     });
+
+    // Wire the composite PackageResolver into docs-retrieval so that
+    // fetchPackageContent() and fetchPackageById() can resolve bundled and
+    // remote packages. This is the Tier 3/4 injection point described in Phase 4g.
+    setPackageResolver(createCompositeResolver(pluginConfig));
 
     // Note: Tab restoration now happens from React component after storage is initialized
     // to avoid race condition with useUserStorage hook
