@@ -55,7 +55,7 @@ const getRecommendationCtaText = (type?: string): string => {
 
 /** Get category label for display as a tag below the title */
 const getCategoryLabel = (type?: string): string => {
-  if (type === 'interactive') {
+  if (type === 'interactive' || type === 'package') {
     return t('contextPanel.categoryInteractiveGuide', 'Interactive guide');
   }
   if (type === 'docs-page') {
@@ -78,8 +78,25 @@ const getCategoryTagStyle = (styles: ReturnType<typeof getStyles>, type?: string
 /** Check if recommendation type is docs-only (static documentation, not action-oriented) */
 const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page';
 
-/** Check if recommendation should use openDocsPage (docs-like content: docs-page or interactive) */
-const shouldUseDocsPageOpener = (type?: string): boolean => type === 'docs-page' || type === 'interactive';
+/**
+ * Check if recommendation should use openDocsPage.
+ * Packages route through openDocsPage because loadDocsTabContent auto-upgrades
+ * the tab type to 'interactive' when it detects interactive content.
+ */
+const shouldUseDocsPageOpener = (type?: string): boolean =>
+  type === 'docs-page' || type === 'interactive' || type === 'package';
+
+/**
+ * Return the URL that should be used to open a recommendation's content.
+ * Package-backed recommendations carry the content URL in contentUrl (not url,
+ * which is left empty in sanitizeV1Recommendation).
+ */
+const getRecommendationContentUrl = (recommendation: Recommendation): string => {
+  if (recommendation.type === 'package') {
+    return recommendation.contentUrl ?? '';
+  }
+  return recommendation.url;
+};
 
 import { ContextPanelState } from '../../types/content-panel.types';
 
@@ -331,9 +348,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                             // Open the appropriate content type
                             if (shouldUseDocsPageOpener(recommendation.type)) {
-                              openDocsPage(recommendation.url, recommendation.title);
+                              openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
                             } else {
-                              openLearningJourney(recommendation.url, recommendation.title);
+                              openLearningJourney(getRecommendationContentUrl(recommendation), recommendation.title);
                             }
                           }}
                           className={styles.startButton}
@@ -462,9 +479,12 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                                   // Open the appropriate content type
                                   if (shouldUseDocsPageOpener(recommendation.type)) {
-                                    openDocsPage(recommendation.url, recommendation.title);
+                                    openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
                                   } else {
-                                    openLearningJourney(recommendation.url, recommendation.title);
+                                    openLearningJourney(
+                                      getRecommendationContentUrl(recommendation),
+                                      recommendation.title
+                                    );
                                   }
                                 }}
                                 className={styles.summaryCtaButton}
@@ -489,7 +509,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
             {finalPrimaryRecommendations.map((recommendation, index) => (
               <Card
-                key={recommendation.url}
+                key={getRecommendationContentUrl(recommendation) || `rec-${index}`}
                 className={`${styles.recommendationCard} ${
                   isDocsOnlyRecommendation(recommendation.type) ? styles.compactCard : ''
                 }`}
@@ -539,9 +559,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                           // Open the appropriate content type
                           if (shouldUseDocsPageOpener(recommendation.type)) {
-                            openDocsPage(recommendation.url, recommendation.title);
+                            openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
                           } else {
-                            openLearningJourney(recommendation.url, recommendation.title);
+                            openLearningJourney(getRecommendationContentUrl(recommendation), recommendation.title);
                           }
                         }}
                         className={styles.startButton}
@@ -575,7 +595,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 }),
                               });
 
-                              toggleSummaryExpansion(recommendation.url);
+                              toggleSummaryExpansion(getRecommendationContentUrl(recommendation));
                             }}
                             className={styles.summaryButton}
                             data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
@@ -682,9 +702,12 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
                                 // Open the appropriate content type
                                 if (shouldUseDocsPageOpener(recommendation.type)) {
-                                  openDocsPage(recommendation.url, recommendation.title);
+                                  openDocsPage(getRecommendationContentUrl(recommendation), recommendation.title);
                                 } else {
-                                  openLearningJourney(recommendation.url, recommendation.title);
+                                  openLearningJourney(
+                                    getRecommendationContentUrl(recommendation),
+                                    recommendation.title
+                                  );
                                 }
                               }}
                               className={styles.summaryCtaButton}
@@ -727,7 +750,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                 <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
                   {secondaryDocs.map((item, index) => (
                     <div
-                      key={item.url}
+                      key={getRecommendationContentUrl(item) || `other-${index}`}
                       className={styles.otherDocItem}
                       data-testid={testIds.contextPanel.otherDocItem(index)}
                     >
@@ -758,10 +781,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             });
 
                             // Open the appropriate content type
-                            if (item.type === 'docs-page') {
-                              openDocsPage(item.url, item.title);
+                            if (shouldUseDocsPageOpener(item.type)) {
+                              openDocsPage(getRecommendationContentUrl(item), item.title);
                             } else {
-                              openLearningJourney(item.url, item.title);
+                              openLearningJourney(getRecommendationContentUrl(item), item.title);
                             }
                           }}
                           className={styles.docLink}

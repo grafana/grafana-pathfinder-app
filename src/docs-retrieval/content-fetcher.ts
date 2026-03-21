@@ -11,6 +11,7 @@ import {
   SingleDocMetadata,
   Milestone,
 } from '../types/content.types';
+import type { PackageResolver } from '../types';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
@@ -521,6 +522,50 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       return {
         content: null,
         error: `Failed to load test path: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  // Handle package-format paths: bundled:<package-dir>/content.json
+  // These are produced by BundledPackageResolver and follow the two-file package model.
+  if (contentId.includes('/') && contentId.endsWith('.json')) {
+    try {
+      const jsonModule = require(`../bundled-interactives/${contentId}`);
+      const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
+
+      if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
+        return {
+          content: null,
+          error: `Bundled package file not found: ${contentId}`,
+          errorType: 'not-found',
+        };
+      }
+
+      let title: string = contentId.split('/')[0] ?? contentId;
+      try {
+        const parsed = JSON.parse(jsonContent);
+        if (parsed.title && typeof parsed.title === 'string') {
+          title = parsed.title;
+        }
+      } catch {
+        // use directory name as title fallback
+      }
+
+      const rawContent: RawContent = {
+        content: jsonContent,
+        metadata: { title },
+        type: 'interactive',
+        url,
+        lastFetched: new Date().toISOString(),
+        isNativeJson: true,
+      };
+
+      return { content: rawContent };
+    } catch {
+      return {
+        content: null,
+        error: `Bundled package file not found: ${contentId}`,
+        errorType: 'not-found',
       };
     }
   }
@@ -1275,4 +1320,92 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
 function urlsMatch(url1: string, url2: string): boolean {
   const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
   return normalize(url1) === normalize(url2);
+}
+
+// ---------------------------------------------------------------------------
+// Package content integration (Phase 4g)
+// ---------------------------------------------------------------------------
+
+/**
+ * Module-level PackageResolver injected at Tier 3+ (docs-panel wires the
+ * concrete CompositePackageResolver here so docs-retrieval stays decoupled
+ * from the package-engine Tier 2 implementation).
+ */
+let _packageResolver: PackageResolver | undefined;
+
+/**
+ * Inject the PackageResolver implementation into docs-retrieval.
+ * Called once at app startup by Tier 3/4 wiring code.
+ */
+export function setPackageResolver(resolver: PackageResolver): void {
+  _packageResolver = resolver;
+}
+
+/**
+ * Fetch package content from a pre-resolved contentUrl (CDN or bundled).
+ *
+ * This is the primary fetch path for package-backed recommendations.
+ * The v1 recommender response already carries a resolved contentUrl, so no
+ * resolver call is needed — we fetch directly and enrich with manifest metadata.
+ *
+ * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
+ * @param packageManifest - Optional manifest metadata to attach to the result
+ */
+export async function fetchPackageContent(
+  contentUrl: string,
+  packageManifest?: Record<string, unknown>
+): Promise<ContentFetchResult> {
+  const result = await fetchContent(contentUrl);
+
+  if (!result.content) {
+    return result;
+  }
+
+  return {
+    ...result,
+    content: {
+      ...result.content,
+      // Package content is always interactive regardless of what determineContentType()
+      // returns for the URL shape (e.g., CDN URLs would otherwise be 'single-doc').
+      type: 'interactive',
+      metadata: {
+        ...result.content.metadata,
+        ...(packageManifest !== undefined && { packageManifest }),
+      },
+    },
+  };
+}
+
+/**
+ * Fetch package content by bare package ID using the injected PackageResolver.
+ * Used for deep links and milestone navigation where only an ID is available.
+ *
+ * Requires setPackageResolver() to have been called first.
+ *
+ * @param packageId - Bare package ID (e.g., "alerting-101")
+ * @param packageManifest - Optional manifest metadata to attach to the result
+ */
+export async function fetchPackageById(
+  packageId: string,
+  packageManifest?: Record<string, unknown>
+): Promise<ContentFetchResult> {
+  if (!_packageResolver) {
+    return {
+      content: null,
+      error: 'No package resolver configured — call setPackageResolver() first',
+      errorType: 'other',
+    };
+  }
+
+  const resolution = await _packageResolver.resolve(packageId, { loadContent: false });
+
+  if (!resolution.ok) {
+    return {
+      content: null,
+      error: `Failed to resolve package: ${packageId}`,
+      errorType: resolution.error.code === 'not-found' ? 'not-found' : 'other',
+    };
+  }
+
+  return fetchPackageContent(resolution.contentUrl, packageManifest);
 }

@@ -17,6 +17,9 @@ export * from './html-parser';
 // Re-export main functions with clear names for easy migration
 export { fetchContent as fetchUnifiedContent } from './content-fetcher';
 
+// Package content integration (Phase 4g)
+export { fetchPackageContent, fetchPackageById, setPackageResolver } from './content-fetcher';
+
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrl as getPreviousMilestoneUrlFromContent,
