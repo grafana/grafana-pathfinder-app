@@ -2,7 +2,7 @@
 
 ## What is this project?
 
-**Grafana Pathfinder** is a Grafana App Plugin that provides contextual, interactive documentation directly within the Grafana UI. It appears as a right-hand sidebar panel that displays personalized learning content, tutorials, and recommendations to help users learn Grafana products and configurations.
+**Grafana Pathfinder** is a Grafana App Plugin that provides contextual, interactive documentation directly within the Grafana UI. It appears as a right-hand sidebar panel that displays personalized learning content, tutorials, and recommendations to help users learn Grafana products and configurations. Built as a **React + TypeScript + Grafana Scenes** frontend with a **Go backend** using `grafana-plugin-sdk-go`.
 
 ### Key features
 
@@ -15,16 +15,6 @@
 ### Target audience
 
 Beginners and intermediate users who need to quickly learn Grafana products. Not intended for deep experts who primarily need reference documentation.
-
-## Project architecture
-
-This is a **React + TypeScript + Grafana Scenes** frontend with a **Go backend** built as a Grafana extension plugin. The architecture follows these key patterns:
-
-- **Modular, Scene-Based Architecture**: Uses Grafana Scenes for state management
-- **Hook-Based Business Logic**: Business logic extracted into focused React hooks
-- **Interactive Tutorial System**: Sophisticated requirement checking and automated action execution
-- **Functional-First Code Style**: Pragmatic functional programming approach with immutable data and pure functions
-- **Go Backend**: Plugin backend using `grafana-plugin-sdk-go` for streaming, terminal connections, and resource handling
 
 ## Code style and conventions
 
@@ -209,6 +199,7 @@ Load these files **only when working in the relevant domain**. Do not preload al
 
 | File                                   | When to load                                                                                                                                                                                                                     | Auto-triggered by globs                                                                           |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `docs/design/CONCERNS.md`              | PR review routing, impact analysis, change risk classification, one-way door analysis, subsystem-aware debugging                                                                                                                  | --                                                                                                |
 | `projectbrief.mdc`                     | Understanding project scope and goals                                                                                                                                                                                            | --                                                                                                |
 | `techContext.mdc`                      | Tech stack, dependencies, build system                                                                                                                                                                                           | --                                                                                                |
 | `systemPatterns.mdc`                   | Architecture, component relationships                                                                                                                                                                                            | --                                                                                                |
@@ -247,12 +238,17 @@ All `.mdc` files live in `.cursor/rules/`. `pr-review.md` is at `.cursor/rules/p
 
 ## PR reviews
 
-Load **[.cursor/rules/pr-review.md](.cursor/rules/pr-review.md)** for reviews. It contains a compact detection table covering all concern areas (React anti-patterns R1-R21, security F1-F6, and quality heuristics QC1-QC7) with a pointer to the detailed reference file.
+Two complementary documents drive review:
+
+- **[`docs/design/CONCERNS.md`](docs/design/CONCERNS.md)** — concern routing backbone: classifies the change, activates subsystem reviewers, surfaces one-way doors, and provides per-subsystem review questions and verification steps.
+- **[`.cursor/rules/pr-review.md`](.cursor/rules/pr-review.md)** — code-quality pattern detector: compact detection table for React anti-patterns R1-R21, security F1-F6, and quality heuristics QC1-QC7 with a pointer to the detailed reference file.
+
+Load both for `/review`. Use CONCERNS.md alone for impact analysis, change risk classification, and subsystem-aware debugging.
 
 **Tiered rule architecture:**
 
 - **Tier 1 (glob-triggered on `*.ts`/`*.tsx`/`*.js`/`*.jsx`)**: `frontend-security.mdc` -- security rules F1-F6
-- **Tier 1 (on `/review`)**: `pr-review.md` -- compact orchestrator with unified detection table
+- **Tier 1 (on `/review`)**: `docs/design/CONCERNS.md` + `pr-review.md` -- routing + pattern detection
 - **Tier 2 (loaded on hit)**: `react-antipatterns.mdc` -- detailed Do/Don't for R1-R21 (includes hooks, state, performance, and SRE reliability patterns; also used by `/attack`)
 
 **Go backend PRs:**
