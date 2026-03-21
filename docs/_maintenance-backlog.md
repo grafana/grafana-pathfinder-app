@@ -10,6 +10,9 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-03-20**: `.cursor/rules/systemPatterns.mdc` — Updated Utils description (removed stale keyboard-shortcuts/link-handling refs), added Package Engine subsystem, updated Learning Paths Critical Path for `paths-cloud.json` and `paths-data.ts`.
+- **2026-03-20**: `docs/developer/CLI_TOOLS.md` — Updated `--bundled` option description to reflect two-mode discovery (package directories + legacy flat JSON; `repository.json` exclusion; `static-links/` skip).
+- **2026-03-20**: `.cursor/rules/interactiveRequirements.mdc` — Added `code-block` to `data-targetaction` values in Core Interactive Attributes table.
 - **2026-03-20**: `docs/developer/interactive-examples/json-guide-format.md` — Updated "Bundling a JSON Guide" section to reflect new package directory structure (`my-guide/content.json` instead of flat `my-guide.json`, and cross-reference to `package-authoring.md` added).
 - **2026-03-20**: `docs/developer/CUSTOM_GUIDES.md` — Validated against `src/components/block-editor/` and custom guide backend. Indexed in `AGENTS.md`.
 - **2026-03-20**: `docs/developer/integrations/workshop.md` — Updated for `flags.ts` (follow-mode feature flag), `session-crypto.ts` (ECDSA P-256 presenter authentication), `session-manager.ts` and `session-state.tsx` (P2P session management). Added Session Manager, Session State, Session Crypto, and Feature Flags sections.
