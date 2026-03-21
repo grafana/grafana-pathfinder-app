@@ -528,7 +528,16 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 
   // Handle package-format paths: bundled:<package-dir>/content.json
   // These are produced by BundledPackageResolver and follow the two-file package model.
+  const SAFE_PACKAGE_PATH = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*\.json$/;
   if (contentId.includes('/') && contentId.endsWith('.json')) {
+    if (!SAFE_PACKAGE_PATH.test(contentId)) {
+      return {
+        content: null,
+        error: `Invalid bundled package path: ${contentId}`,
+        errorType: 'not-found',
+      };
+    }
+
     try {
       const jsonModule = require(`../bundled-interactives/${contentId}`);
       const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
