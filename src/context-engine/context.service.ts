@@ -20,10 +20,10 @@ import {
   DashboardInfo,
   Recommendation,
   ContextPayload,
-  RecommenderResponse,
   BundledInteractive,
   BundledInteractivesIndex,
 } from '../types/context.types';
+import type { V1Recommendation, V1PackageManifest } from '../types/v1-recommender.types';
 
 export class ContextService {
   private static echoLoggingInitialized = false;
@@ -45,8 +45,9 @@ export class ContextService {
   // Content type priority for sorting (lower number = higher priority)
   private static readonly TYPE_PRIORITY: Record<string, number> = {
     interactive: 0,
-    'learning-journey': 1,
-    'docs-page': 2,
+    package: 1,
+    'learning-journey': 2,
+    'docs-page': 3,
   };
 
   // Event buffer to handle missed events when plugin is closed/reopened
@@ -495,24 +496,16 @@ export class ContextService {
           );
         }
 
-        const data: RecommenderResponse = await response.json();
+        const data = await response.json();
 
-        // SECURITY: Sanitize external API recommendations to prevent XSS and prototype pollution
-        // Use explicit allowlist instead of spread operator to prevent malicious properties
-        const sanitizeRecommendation = (rec: any): Recommendation => ({
-          title: sanitizeTextForDisplay(rec.title || ''),
-          url: typeof rec.url === 'string' ? rec.url : '', // Validated when opened
-          summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
-          type: ['docs-page', 'learning-journey', 'interactive'].includes(rec.type) ? rec.type : 'docs-page',
-          matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
-          // Explicitly DO NOT spread ...rec to prevent prototype pollution attacks
-          // Properties like __proto__, constructor, onClick, dangerouslySetInnerHTML are blocked
-        });
-
-        const mappedExternalRecommendations = (data.recommendations || []).map(sanitizeRecommendation);
+        const mappedExternalRecommendations = (data.recommendations || []).map((rec: Recommendation) =>
+          this.sanitizeLegacyRecommendation(rec)
+        );
 
         // SECURITY: Sanitize featured recommendations using same logic
-        const mappedFeaturedRecommendations = (data.featured || []).map(sanitizeRecommendation);
+        const mappedFeaturedRecommendations = (data.featured || []).map((rec: Recommendation) =>
+          this.sanitizeLegacyRecommendation(rec)
+        );
 
         const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
@@ -642,6 +635,132 @@ export class ContextService {
     message: string;
   } | null {
     return this.lastExternalRecommenderError;
+  }
+
+  /**
+   * SECURITY: Sanitize a legacy recommendation to prevent XSS and prototype pollution.
+   * Uses an explicit allowlist and preserves the current /recommend wire contract.
+   */
+  private static sanitizeLegacyRecommendation(rec: Recommendation): Recommendation {
+    return {
+      title: sanitizeTextForDisplay(rec.title || ''),
+      url: typeof rec.url === 'string' ? rec.url : '',
+      summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
+      type: ['docs-page', 'learning-journey', 'interactive'].includes(rec.type ?? '') ? rec.type : 'docs-page',
+      matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
+    };
+  }
+
+  /**
+   * SECURITY: Sanitize a V1 recommendation to prevent XSS and prototype pollution.
+   * Uses an explicit allowlist — no spread operator. Handles both URL-backed and
+   * package-backed items based on `type`.
+   */
+  static sanitizeV1Recommendation(rec: V1Recommendation): Recommendation {
+    const validTypes = ['docs-page', 'learning-journey', 'interactive', 'package'];
+    const sanitizedType = validTypes.includes(rec.type) ? rec.type : 'docs-page';
+
+    const base: Recommendation = {
+      title: sanitizeTextForDisplay(rec.title || ''),
+      url: typeof rec.url === 'string' ? rec.url : '',
+      summary: sanitizeTextForDisplay(rec.description || ''),
+      type: sanitizedType as Recommendation['type'],
+      matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
+    };
+
+    if (rec.type === 'package') {
+      base.contentUrl = typeof rec.contentUrl === 'string' ? rec.contentUrl : undefined;
+      base.manifestUrl = typeof rec.manifestUrl === 'string' ? rec.manifestUrl : undefined;
+      base.repository = typeof rec.repository === 'string' ? rec.repository : undefined;
+
+      if (rec.manifest != null && typeof rec.manifest === 'object') {
+        base.manifest = this.sanitizeV1PackageManifest(rec.manifest);
+      }
+    }
+
+    return base;
+  }
+
+  /**
+   * SECURITY: Sanitize the nested V1PackageManifest object with an explicit allowlist.
+   */
+  private static sanitizeV1PackageManifest(m: V1PackageManifest): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = {
+      id: typeof m.id === 'string' ? m.id : '',
+      type: typeof m.type === 'string' ? m.type : 'guide',
+    };
+
+    if (typeof m.description === 'string') {
+      sanitized.description = sanitizeTextForDisplay(m.description);
+    }
+    if (typeof m.category === 'string') {
+      sanitized.category = m.category;
+    }
+    if (m.author != null && typeof m.author === 'object') {
+      sanitized.author = {
+        ...(typeof m.author.name === 'string' ? { name: m.author.name } : {}),
+        ...(typeof m.author.team === 'string' ? { team: m.author.team } : {}),
+      };
+    }
+    if (typeof m.startingLocation === 'string') {
+      sanitized.startingLocation = m.startingLocation;
+    }
+    if (Array.isArray(m.milestones)) {
+      sanitized.milestones = m.milestones.filter((s): s is string => typeof s === 'string');
+    }
+    if (Array.isArray(m.depends)) {
+      sanitized.depends = m.depends.filter((s): s is string => typeof s === 'string');
+    }
+    if (Array.isArray(m.recommends)) {
+      sanitized.recommends = m.recommends.filter((s): s is string => typeof s === 'string');
+    }
+    if (Array.isArray(m.suggests)) {
+      sanitized.suggests = m.suggests.filter((s): s is string => typeof s === 'string');
+    }
+    if (Array.isArray(m.provides)) {
+      sanitized.provides = m.provides.filter((s): s is string => typeof s === 'string');
+    }
+    if (Array.isArray(m.conflicts)) {
+      sanitized.conflicts = m.conflicts.filter((s): s is string => typeof s === 'string');
+    }
+    if (Array.isArray(m.replaces)) {
+      sanitized.replaces = m.replaces.filter((s): s is string => typeof s === 'string');
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Deduplicate external recommendations against bundled ones.
+   * Matches on manifest.id (for package-backed) or title (for all types).
+   * External recommendations that duplicate a bundled one are dropped —
+   * bundled content always wins.
+   */
+  static deduplicateRecommendations(externalRecs: Recommendation[], bundledRecs: Recommendation[]): Recommendation[] {
+    const bundledIds = new Set<string>();
+    const bundledTitles = new Set<string>();
+
+    for (const rec of bundledRecs) {
+      bundledTitles.add(rec.title.toLowerCase());
+      const url = rec.url;
+      if (url?.startsWith('bundled:')) {
+        const id = url.replace('bundled:', '');
+        bundledIds.add(id);
+      }
+    }
+
+    return externalRecs.filter((rec) => {
+      const manifest = rec.manifest as Record<string, unknown> | undefined;
+      if (manifest && typeof manifest.id === 'string') {
+        if (bundledIds.has(manifest.id)) {
+          return false;
+        }
+      }
+      if (bundledTitles.has(rec.title.toLowerCase())) {
+        return false;
+      }
+      return true;
+    });
   }
 
   /**
