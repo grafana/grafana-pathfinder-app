@@ -26,7 +26,12 @@ export interface DocsPanelModelOperations {
   loadTabContent(tabId: string, url: string): Promise<void>;
 
   /** Load content for a docs-like tab */
-  loadDocsTabContent(tabId: string, url: string, skipReadyToBegin?: boolean, packageInfo?: PackageOpenInfo): Promise<void>;
+  loadDocsTabContent(
+    tabId: string,
+    url: string,
+    skipReadyToBegin?: boolean,
+    packageInfo?: PackageOpenInfo
+  ): Promise<void>;
 
   /** Close a tab by ID */
   closeTab(tabId: string): void;

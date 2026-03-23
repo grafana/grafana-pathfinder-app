@@ -2,8 +2,7 @@ import { fetchContent, fetchPackageById, fetchPackageContent } from '../../../do
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
 import type { ContentFetchResult } from '../../../types/content.types';
 
-export const UNRESOLVED_PACKAGE_ERROR =
-  'Package content is not available yet. Please try again later.';
+export const UNRESOLVED_PACKAGE_ERROR = 'Package content is not available yet. Please try again later.';
 
 interface LoadDocsTabContentOptions {
   skipReadyToBegin?: boolean;

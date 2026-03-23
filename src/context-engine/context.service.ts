@@ -518,10 +518,7 @@ export class ContextService {
         const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
         // Process featured recommendations separately (deduplicated against bundled)
-        const processedFeaturedRecommendations = await this.processLearningJourneys(
-          deduplicatedFeatured,
-          pluginConfig
-        );
+        const processedFeaturedRecommendations = await this.processLearningJourneys(deduplicatedFeatured, pluginConfig);
 
         // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
