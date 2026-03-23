@@ -154,7 +154,11 @@ describe('createCompositeResolver', () => {
     expect(resolver).toBeInstanceOf(CompositePackageResolver);
 
     const { RecommenderPackageResolver } = require('./recommender-resolver');
-    expect(RecommenderPackageResolver).toHaveBeenCalledWith('https://recommender.grafana.com');
+    // WARNING: Temporary Cloud Run URL — restore to 'https://recommender.grafana.com' when
+    // DEFAULT_RECOMMENDER_SERVICE_URL in constants.ts is reverted before merging to main.
+    expect(RecommenderPackageResolver).toHaveBeenCalledWith(
+      'https://grafana-recommender-93209135917.us-central1.run.app'
+    );
   });
 
   it('should use custom recommender URL from config', () => {
