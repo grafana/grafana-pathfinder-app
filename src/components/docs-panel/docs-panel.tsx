@@ -508,6 +508,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     skipReadyToBegin?: boolean,
     packageInfoArg?: PackageOpenInfo
   ) {
+    // No early return for empty URLs — loadDocsTabContentResult handles all
+    // edge cases (empty URL with packageInfo falls back to fetchPackageById;
+    // empty URL without packageInfo returns a visible error). Surfacing errors
+    // is preferable to the old silent no-op for corrupted/restored tabs.
+
     // Update tab to loading state
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
@@ -537,7 +542,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                 error: null,
                 baseUrl: t.baseUrl || fetchedContent.url,
                 currentUrl: fetchedContent.url || url,
-                type: packageInfo || fetchedContent.type === 'interactive' ? 'interactive' : t.type,
+                // Package-backed content is always interactive. For non-package tabs,
+                // upgrade to 'interactive' only when the fetched content says so
+                // (e.g., bundled interactives detected by fetchContent).
+                type: packageInfo != null || fetchedContent.type === 'interactive' ? 'interactive' : t.type,
               }
             : t
         );
