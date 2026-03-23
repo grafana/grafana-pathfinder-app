@@ -91,7 +91,12 @@ import {
 import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
 
 // Import centralized types
-import { LearningJourneyTab, PersistedTabData, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
+import {
+  LearningJourneyTab,
+  PersistedTabData,
+  CombinedPanelState,
+  PackageOpenInfo,
+} from '../../types/content-panel.types';
 import type { DocsPanelModelOperations } from './types';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
@@ -123,7 +128,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
-      (url: string, title: string, packageInfo?: PackageOpenInfo) => this.openDocsPage(url, title, undefined, packageInfo),
+      (url: string, title: string, packageInfo?: PackageOpenInfo) =>
+        this.openDocsPage(url, title, undefined, packageInfo),
       () => this.openDevToolsTab()
     );
 
