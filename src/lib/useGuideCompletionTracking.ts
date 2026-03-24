@@ -39,8 +39,9 @@ export function useGuideCompletionTracking(opts: {
       return;
     }
     prevGuideUrlRef.current = guideUrl;
+    const guideId = extractGuideId(guideUrl);
     const category = guideType === 'learning-journey' ? 'learning-journey' : 'interactive';
-    startGuideSession(extractGuideId(guideUrl), guideTitle || extractGuideId(guideUrl), category);
+    startGuideSession(guideId, guideTitle || guideId, category);
   }, [guideUrl, guideTitle, guideType]);
 
   // Listen for partial progress events

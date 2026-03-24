@@ -1,5 +1,5 @@
 import { AppRootProps, GrafanaTheme2 } from '@grafana/data';
-import { config } from '@grafana/runtime';
+import { config as grafanaConfig } from '@grafana/runtime';
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // import { faro } from '@grafana/faro-react';
 import React, { useMemo, useEffect, Component, ReactNode } from 'react';
@@ -133,7 +133,7 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
 function getSceneApp() {
   const pages = [homePage, docsPage];
 
-  if (config.bootData?.user?.orgRole === 'Admin') {
+  if (grafanaConfig.bootData?.user?.orgRole === 'Admin') {
     pages.push(teamProgressPage);
   }
 

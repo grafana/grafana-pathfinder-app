@@ -1752,26 +1752,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         const baseUrl = activeTab?.baseUrl || stableContent.url;
 
                         // Mark bundled guides as 100% complete when all interactive steps finish
+                        // This also triggers recordGuideCompletion via markGuideCompleted
                         if (baseUrl?.startsWith('bundled:')) {
                           setJourneyCompletionPercentage(baseUrl, 100);
-                        }
-
-                        // Record 100% completion to backend CRD
-                        if (baseUrl) {
-                          const guideId = baseUrl.startsWith('bundled:')
-                            ? baseUrl.slice('bundled:'.length)
-                            : baseUrl.replace(/\/+$/, '').split('/').pop() || baseUrl;
-                          const category =
-                            stableContent.type === 'learning-journey' ? 'learning-journey' : 'interactive';
-                          import('../../lib/guide-completion-tracker').then(({ recordGuideCompletion }) => {
-                            recordGuideCompletion({
-                              guideId,
-                              guideTitle: activeTab?.title || guideId,
-                              guideCategory: category,
-                              pathId: '',
-                              completionPercent: 100,
-                            });
-                          });
                         }
 
                         // Mark learning journey milestones as done when all interactive steps finish

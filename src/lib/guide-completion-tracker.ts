@@ -273,7 +273,7 @@ export function recordGuideCompletion(opts: {
     {
       guideId: opts.guideId,
       guideTitle: opts.guideTitle === opts.guideId && session ? session.guideTitle : opts.guideTitle,
-      guideCategory: session?.guideCategory ?? opts.guideCategory,
+      guideCategory: opts.guideCategory,
       pathId: opts.pathId,
       durationSeconds,
       completionPercent: opts.completionPercent ?? 100,
