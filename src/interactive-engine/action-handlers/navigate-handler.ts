@@ -55,12 +55,22 @@ export class NavigateHandler {
     } else {
       // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
       const safePath = validateRedirectPath(data.reftarget);
-      if (safePath !== data.reftarget) {
+      let parsedTarget: URL;
+      try {
+        parsedTarget = new URL(data.reftarget, window.location.origin);
+      } catch {
+        console.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.reftarget.slice(0, 100)}`);
+        return;
+      }
+
+      if (parsedTarget.origin !== window.location.origin || safePath !== parsedTarget.pathname) {
         console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.reftarget.slice(0, 100)}`);
         return;
       }
+
+      const safeTarget = `${safePath}${parsedTarget.search}${parsedTarget.hash}`;
       // Internal Grafana route - use locationService for proper routing
-      locationService.push(safePath);
+      locationService.push(safeTarget);
     }
   }
 

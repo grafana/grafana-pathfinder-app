@@ -23,10 +23,15 @@ jest.mock('../../security/url-validator', () => ({
     if (!input || !input.startsWith('/') || input.startsWith('//')) {
       return '/';
     }
-    if (denied.some((d) => input === d || input.startsWith(d + '/'))) {
+    const parsed = new URL(input, window.location.origin);
+    if (parsed.origin !== window.location.origin) {
       return '/';
     }
-    return input;
+    const normalized = parsed.pathname;
+    if (denied.some((d) => normalized === d || normalized.startsWith(d + '/'))) {
+      return '/';
+    }
+    return normalized;
   }),
 }));
 
@@ -167,6 +172,18 @@ describe('NavigateHandler', () => {
       expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData);
     });
 
+    it('should preserve locationService.push errors when reftarget has query and hash', async () => {
+      const queryData = { ...mockData, reftarget: '/explore?orgId=1#logs' };
+      const testError = new Error('Location service failed');
+      (locationService.push as jest.Mock).mockImplementationOnce(() => {
+        throw testError;
+      });
+
+      await navigateHandler.execute(queryData, true);
+
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', queryData);
+    });
+
     it('should handle window.open errors', async () => {
       const externalData = { ...mockData, reftarget: 'https://example.com' };
       const testError = new Error('Window open failed');
@@ -284,6 +301,15 @@ describe('NavigateHandler', () => {
       await navigateHandler.execute(safeData, true);
 
       expect(locationService.push).toHaveBeenCalledWith('/dashboards');
+    });
+
+    it('should allow safe internal paths with query parameters and hash', async () => {
+      const safeData = { ...mockData, reftarget: '/explore?orgId=1#logs' };
+
+      await navigateHandler.execute(safeData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/explore?orgId=1#logs');
+      expect(mockWindowOpen).not.toHaveBeenCalled();
     });
   });
 });
