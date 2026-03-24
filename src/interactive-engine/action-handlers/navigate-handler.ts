@@ -2,7 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { locationService } from '@grafana/runtime';
-import { parseUrlSafely } from '../../security/url-validator';
+import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
 
 export class NavigateHandler {
   constructor(
@@ -53,8 +53,14 @@ export class NavigateHandler {
       // External URL - open in new tab to preserve current Grafana session
       window.open(data.reftarget, '_blank', 'noopener,noreferrer');
     } else {
+      // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
+      const safePath = validateRedirectPath(data.reftarget);
+      if (safePath !== data.reftarget) {
+        console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.reftarget.slice(0, 100)}`);
+        return;
+      }
       // Internal Grafana route - use locationService for proper routing
-      locationService.push(data.reftarget);
+      locationService.push(safePath);
     }
   }
 

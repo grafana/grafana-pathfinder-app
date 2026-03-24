@@ -10,6 +10,25 @@ jest.mock('@grafana/runtime', () => ({
     push: jest.fn(),
   },
 }));
+jest.mock('../../security/url-validator', () => ({
+  parseUrlSafely: jest.fn((url: string) => {
+    try {
+      return new URL(url);
+    } catch {
+      return null;
+    }
+  }),
+  validateRedirectPath: jest.fn((input: string) => {
+    const denied = ['/logout', '/admin', '/api', '/profile/password'];
+    if (!input || !input.startsWith('/') || input.startsWith('//')) {
+      return '/';
+    }
+    if (denied.some((d) => input === d || input.startsWith(d + '/'))) {
+      return '/';
+    }
+    return input;
+  }),
+}));
 
 const mockStateManager = {
   setState: jest.fn(),
@@ -100,12 +119,13 @@ describe('NavigateHandler', () => {
       expect(locationService.push).not.toHaveBeenCalled();
     });
 
-    it('should handle relative internal route correctly', async () => {
+    it('should block relative internal routes that fail path validation', async () => {
       const relativeData = { ...mockData, reftarget: './relative-path' };
 
       await navigateHandler.execute(relativeData, true);
 
-      expect(locationService.push).toHaveBeenCalledWith('./relative-path');
+      // validateRedirectPath rejects paths not starting with '/'
+      expect(locationService.push).not.toHaveBeenCalled();
       expect(mockWindowOpen).not.toHaveBeenCalled();
     });
 
@@ -212,6 +232,58 @@ describe('NavigateHandler', () => {
 
       // Step should still complete to avoid blocking guide progression
       expect(mockStateManager.setState).toHaveBeenCalledWith(maliciousData, 'completed');
+    });
+
+    it('should block navigation to /logout (F-1 / ASE26016)', async () => {
+      const logoutData = { ...mockData, reftarget: '/logout' };
+
+      await navigateHandler.execute(logoutData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block navigation to /admin/users (F-1 / ASE26016)', async () => {
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block navigation to /api/datasources (F-1 / ASE26016)', async () => {
+      const apiData = { ...mockData, reftarget: '/api/datasources' };
+
+      await navigateHandler.execute(apiData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block navigation to /profile/password (F-1 / ASE26016)', async () => {
+      const profileData = { ...mockData, reftarget: '/profile/password' };
+
+      await navigateHandler.execute(profileData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should allow safe internal paths like /explore', async () => {
+      const safeData = { ...mockData, reftarget: '/explore' };
+
+      await navigateHandler.execute(safeData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/explore');
+    });
+
+    it('should allow safe internal paths like /dashboards', async () => {
+      const safeData = { ...mockData, reftarget: '/dashboards' };
+
+      await navigateHandler.execute(safeData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/dashboards');
     });
   });
 });
