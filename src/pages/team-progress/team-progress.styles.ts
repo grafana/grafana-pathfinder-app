@@ -30,4 +30,10 @@ export const getTeamProgressStyles = (theme: GrafanaTheme2) => ({
     height: 250,
     width: '100%',
   }),
+  filterBar: css({
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+  }),
 });

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   EmbeddedScene,
+  sceneGraph,
   SceneDataNode,
   SceneFlexItem,
   SceneFlexLayout,
@@ -8,7 +9,7 @@ import {
   VizPanel,
   type SceneObjectState,
 } from '@grafana/scenes';
-import { InteractiveTable, PanelChrome, useStyles2, type Column } from '@grafana/ui';
+import { InteractiveTable, PanelChrome, RadioButtonGroup, useStyles2, type Column } from '@grafana/ui';
 import { config } from '@grafana/runtime';
 import { createDataFrame, FieldType, LoadingState } from '@grafana/data';
 
@@ -126,6 +127,51 @@ function aggregateByUser(items: GuideCompletionResource[]): UserRow[] {
     .sort((a, b) => b.completed - a.completed || b.inProgress - a.inProgress);
 }
 
+interface DropOffRow {
+  id: string;
+  guideTitle: string;
+  below50: number;
+  between50and99: number;
+  totalStalled: number;
+  avgStallPoint: number;
+}
+
+function aggregateDropOff(items: GuideCompletionResource[]): DropOffRow[] {
+  const gracePeriod = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  const stalled = items.filter(
+    (c) => c.spec.completionPercent < 100 && now - new Date(c.metadata.creationTimestamp ?? 0).getTime() > gracePeriod
+  );
+
+  const map = new Map<string, { title: string; percents: number[] }>();
+  for (const item of stalled) {
+    const key = item.spec.guideId;
+    if (!map.has(key)) {
+      map.set(key, { title: item.spec.guideTitle, percents: [] });
+    }
+    map.get(key)!.percents.push(item.spec.completionPercent);
+  }
+
+  return Array.from(map.entries())
+    .map(([id, { title, percents }]) => {
+      const below50 = percents.filter((p) => p < 50).length;
+      const between50and99 = percents.filter((p) => p >= 50).length;
+      const avgStallPoint = Math.round(percents.reduce((s, p) => s + p, 0) / percents.length);
+      return { id, guideTitle: title, below50, between50and99, totalStalled: percents.length, avgStallPoint };
+    })
+    .sort((a, b) => b.totalStalled - a.totalStalled);
+}
+
+type CategoryFilter = 'all' | 'interactive' | 'documentation' | 'learning-journey';
+
+const CATEGORY_OPTIONS: Array<{ label: string; value: CategoryFilter }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Interactive', value: 'interactive' },
+  { label: 'Documentation', value: 'documentation' },
+  { label: 'Learning journey', value: 'learning-journey' },
+];
+
 function buildStatPanel(title: string, value: number | string, unit?: string): SceneFlexItem {
   const isNumeric = typeof value === 'number';
   const frame = createDataFrame({
@@ -169,24 +215,37 @@ function buildStatPanel(title: string, value: number | string, unit?: string): S
   });
 }
 
-function buildChartScene(items: GuideCompletionResource[], referenceNow: number): EmbeddedScene {
-  const days = 30;
-  const now = new Date(referenceNow);
+function buildChartScene(items: GuideCompletionResource[], from: Date, to: Date): EmbeddedScene {
+  const days = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)));
+  const useWeekly = days > 90;
+
   const countMap = new Map<string, number>();
 
   for (const item of items.filter(isCompleted)) {
     const d = new Date(item.spec.completedAt);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let key: string;
+    if (useWeekly) {
+      const weekStart = new Date(d);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      key = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+    } else {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
     countMap.set(key, (countMap.get(key) ?? 0) + 1);
   }
 
   const timestamps: number[] = [];
   const counts: number[] = [];
+  const step = useWeekly ? 7 : 1;
+  const cappedDays = Math.min(days, 365);
 
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
+  for (let i = cappedDays - 1; i >= 0; i -= step) {
+    const d = new Date(to);
     d.setDate(d.getDate() - i);
     d.setHours(0, 0, 0, 0);
+    if (useWeekly) {
+      d.setDate(d.getDate() - d.getDay());
+    }
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     timestamps.push(d.getTime());
     counts.push(countMap.get(key) ?? 0);
@@ -205,9 +264,9 @@ function buildChartScene(items: GuideCompletionResource[], referenceNow: number)
         series: [frame],
         state: LoadingState.Done,
         timeRange: {
-          from: new Date(timestamps[0]!),
-          to: new Date(timestamps[timestamps.length - 1]!),
-          raw: { from: 'now-30d', to: 'now' },
+          from: timestamps.length > 0 ? new Date(timestamps[0]!) : from,
+          to: timestamps.length > 0 ? new Date(timestamps[timestamps.length - 1]!) : to,
+          raw: { from: from.toISOString(), to: to.toISOString() },
         } as any,
       },
     }),
@@ -262,6 +321,19 @@ const USER_COLUMNS: Array<Column<UserRow>> = [
   { id: 'inProgress', header: 'In progress', sortType: 'number' },
 ];
 
+const DROP_OFF_COLUMNS: Array<Column<DropOffRow>> = [
+  { id: 'guideTitle', header: 'Guide title', sortType: 'alphanumeric' },
+  { id: 'below50', header: 'Below 50%', sortType: 'number' },
+  { id: 'between50and99', header: '50–99%', sortType: 'number' },
+  { id: 'totalStalled', header: 'Total stalled', sortType: 'number' },
+  {
+    id: 'avgStallPoint',
+    header: 'Avg stall point',
+    sortType: 'number',
+    cell: ({ value }: { value: number }) => <>{value}%</>,
+  },
+];
+
 // ============================================================================
 // RENDERER
 // ============================================================================
@@ -271,6 +343,11 @@ function TeamProgressPanelRenderer({ model }: { model: TeamProgressPanel }) {
   const { fetchEpoch } = model.useState();
   const [completions, setCompletions] = useState<GuideCompletionResource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [category, setCategory] = useState<CategoryFilter>('all');
+
+  // Subscribe to the Scenes time range picker
+  const timeRange = sceneGraph.getTimeRange(model);
+  const { value: range } = timeRange.useState();
 
   useEffect(() => {
     let cancelled = false;
@@ -289,39 +366,48 @@ function TeamProgressPanelRenderer({ model }: { model: TeamProgressPanel }) {
 
   const admin = isAdmin();
 
-  const [now] = useState(() => Date.now());
+  // Filter by category and time range
+  const filteredCompletions = useMemo(() => {
+    let items = completions;
+    if (category !== 'all') {
+      items = items.filter((c) => c.spec.guideCategory === category);
+    }
+    items = items.filter((c) => {
+      const ts = new Date(c.metadata.creationTimestamp ?? 0).getTime();
+      return ts >= range.from.valueOf() && ts <= range.to.valueOf();
+    });
+    return items;
+  }, [completions, category, range]);
 
   const statsScene = useMemo(() => {
-    const completed = completions.filter(isCompleted);
-    const inProgress = completions.filter((c) => !isCompleted(c));
-    let avgSeconds = 0;
+    const completed = filteredCompletions.filter(isCompleted);
+    const inProgress = filteredCompletions.filter((c) => !isCompleted(c));
     let topGuide = '-';
 
     if (completed.length > 0) {
-      avgSeconds = completed.reduce((s, c) => s + c.spec.durationSeconds, 0) / completed.length;
       topGuide = aggregateByGuide(completed)[0]?.guideTitle ?? '-';
     }
 
-    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-    const activeUsers = new Set(
-      completions.filter((c) => new Date(c.spec.completedAt).getTime() > sevenDaysAgo).map((c) => c.spec.userLogin)
-    ).size;
+    const activeUsers = new Set(filteredCompletions.map((c) => c.spec.userLogin)).size;
 
     return new SceneFlexLayout({
       direction: 'row',
       children: [
         buildStatPanel('Completed', completed.length),
         buildStatPanel('In progress', inProgress.length),
-        buildStatPanel('Active learners this week', activeUsers),
-        buildStatPanel('Avg completion time', Math.round(avgSeconds), 's'),
+        buildStatPanel('Active learners', activeUsers),
         buildStatPanel('Most popular guide', topGuide),
       ],
     });
-  }, [completions, now]);
+  }, [filteredCompletions]);
 
-  const guideRows = useMemo(() => aggregateByGuide(completions), [completions]);
-  const userRows = useMemo(() => aggregateByUser(completions), [completions]);
-  const chartScene = useMemo(() => buildChartScene(completions, now), [completions, now]);
+  const guideRows = useMemo(() => aggregateByGuide(filteredCompletions), [filteredCompletions]);
+  const userRows = useMemo(() => aggregateByUser(filteredCompletions), [filteredCompletions]);
+  const dropOffRows = useMemo(() => aggregateDropOff(filteredCompletions), [filteredCompletions]);
+  const chartScene = useMemo(
+    () => buildChartScene(filteredCompletions, range.from.toDate(), range.to.toDate()),
+    [filteredCompletions, range]
+  );
 
   if (isLoading) {
     return (
@@ -349,27 +435,48 @@ function TeamProgressPanelRenderer({ model }: { model: TeamProgressPanel }) {
 
   return (
     <div className={styles.container} data-testid="team-progress-page">
-      {/* Summary stat panels */}
-      <div className={styles.statRow}>
-        <statsScene.Component model={statsScene} key="stats" />
+      {/* Category filter */}
+      <div className={styles.filterBar}>
+        <RadioButtonGroup options={CATEGORY_OPTIONS} value={category} onChange={setCategory} size="sm" />
       </div>
 
-      {/* Completions over time — native Grafana bar chart */}
-      <PanelChrome title="Completions over time">
-        <div className={styles.chartContainer}>
-          <chartScene.Component model={chartScene} />
+      {/* Empty filter state */}
+      {filteredCompletions.length === 0 ? (
+        <div className={styles.emptyState}>
+          <p>No data matches the current filters.</p>
         </div>
-      </PanelChrome>
+      ) : (
+        <>
+          {/* Summary stat panels */}
+          <div className={styles.statRow}>
+            <statsScene.Component model={statsScene} key="stats" />
+          </div>
 
-      {/* Guide completion rates */}
-      <PanelChrome title="Guide completion rates">
-        <InteractiveTable columns={GUIDE_COLUMNS} data={guideRows} getRowId={(row) => row.id} />
-      </PanelChrome>
+          {/* Completions over time — native Grafana bar chart */}
+          <PanelChrome title="Completions over time">
+            <div className={styles.chartContainer}>
+              <chartScene.Component model={chartScene} />
+            </div>
+          </PanelChrome>
 
-      {/* Leaderboard */}
-      <PanelChrome title="Leaderboard">
-        <InteractiveTable columns={USER_COLUMNS} data={userRows} getRowId={(row) => row.id} />
-      </PanelChrome>
+          {/* Guide completion rates */}
+          <PanelChrome title="Guide completion rates">
+            <InteractiveTable columns={GUIDE_COLUMNS} data={guideRows} getRowId={(row) => row.id} />
+          </PanelChrome>
+
+          {/* Stalled learners */}
+          {dropOffRows.length > 0 && (
+            <PanelChrome title="Stalled learners" description="Excludes items started within the last 24 hours">
+              <InteractiveTable columns={DROP_OFF_COLUMNS} data={dropOffRows} getRowId={(row) => row.id} />
+            </PanelChrome>
+          )}
+
+          {/* Leaderboard */}
+          <PanelChrome title="Leaderboard">
+            <InteractiveTable columns={USER_COLUMNS} data={userRows} getRowId={(row) => row.id} />
+          </PanelChrome>
+        </>
+      )}
     </div>
   );
 }
