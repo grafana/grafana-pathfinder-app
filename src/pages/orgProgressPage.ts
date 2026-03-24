@@ -9,16 +9,16 @@ import {
 } from '@grafana/scenes';
 import { prefixRoute } from '../utils/utils.routing';
 import { ROUTES } from '../constants';
-import { TeamProgressPanel } from './team-progress';
+import { OrgProgressPanel } from './org-progress';
 
-export const teamProgressPage = new SceneAppPage({
-  title: 'Team progress',
-  url: prefixRoute(ROUTES.TeamProgress),
-  routePath: ROUTES.TeamProgress,
-  getScene: teamProgressScene,
+export const orgProgressPage = new SceneAppPage({
+  title: 'Org progress',
+  url: prefixRoute(ROUTES.OrgProgress),
+  routePath: ROUTES.OrgProgress,
+  getScene: orgProgressScene,
 });
 
-function teamProgressScene() {
+function orgProgressScene() {
   return new EmbeddedScene({
     $timeRange: new SceneTimeRange({ from: 'now-30d', to: 'now' }),
     controls: [new SceneControlsSpacer(), new SceneTimePicker({ isOnCanvas: true })],
@@ -27,7 +27,7 @@ function teamProgressScene() {
         new SceneFlexItem({
           width: '100%',
           height: '100%',
-          body: new TeamProgressPanel(),
+          body: new OrgProgressPanel(),
         }),
       ],
     }),

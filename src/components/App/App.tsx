@@ -8,7 +8,7 @@ import { Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
-import { teamProgressPage } from '../../pages/teamProgressPage';
+import { orgProgressPage } from '../../pages/orgProgressPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
@@ -134,7 +134,7 @@ function getSceneApp() {
   const pages = [homePage, docsPage];
 
   if (config.bootData?.user?.orgRole === 'Admin') {
-    pages.push(teamProgressPage);
+    pages.push(orgProgressPage);
   }
 
   return new SceneApp({ pages });

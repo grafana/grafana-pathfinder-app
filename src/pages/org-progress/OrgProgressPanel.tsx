@@ -15,19 +15,19 @@ import { createDataFrame, FieldType, LoadingState } from '@grafana/data';
 
 import { GuideCompletionResource } from '../../types/guide-completion.types';
 import { fetchGuideCompletions } from '../../lib/fetchGuideCompletions';
-import { getTeamProgressStyles } from './team-progress.styles';
+import { getOrgProgressStyles } from './org-progress.styles';
 
 // ============================================================================
 // SCENE OBJECT
 // ============================================================================
 
-interface TeamProgressPanelState extends SceneObjectState {
+interface OrgProgressPanelState extends SceneObjectState {
   /** Bumped on each activation to trigger a data re-fetch */
   fetchEpoch?: number;
 }
 
-export class TeamProgressPanel extends SceneObjectBase<TeamProgressPanelState> {
-  public static Component = TeamProgressPanelRenderer;
+export class OrgProgressPanel extends SceneObjectBase<OrgProgressPanelState> {
+  public static Component = OrgProgressPanelRenderer;
 
   constructor() {
     super({ fetchEpoch: 0 });
@@ -338,8 +338,8 @@ const DROP_OFF_COLUMNS: Array<Column<DropOffRow>> = [
 // RENDERER
 // ============================================================================
 
-function TeamProgressPanelRenderer({ model }: { model: TeamProgressPanel }) {
-  const styles = useStyles2(getTeamProgressStyles);
+function OrgProgressPanelRenderer({ model }: { model: OrgProgressPanel }) {
+  const styles = useStyles2(getOrgProgressStyles);
   const { fetchEpoch } = model.useState();
   const [completions, setCompletions] = useState<GuideCompletionResource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -412,29 +412,29 @@ function TeamProgressPanelRenderer({ model }: { model: TeamProgressPanel }) {
   if (isLoading) {
     return (
       <div className={styles.emptyState}>
-        <p>Loading team progress data...</p>
+        <p>Loading org progress data...</p>
       </div>
     );
   }
 
   if (!admin) {
     return (
-      <div className={styles.emptyState} data-testid="team-progress-access-denied">
-        <p>Team progress requires admin access.</p>
+      <div className={styles.emptyState} data-testid="org-progress-access-denied">
+        <p>Org progress requires admin access.</p>
       </div>
     );
   }
 
   if (completions.length === 0) {
     return (
-      <div className={styles.emptyState} data-testid="team-progress-empty">
+      <div className={styles.emptyState} data-testid="org-progress-empty">
         <p>No completion data yet. Completions will appear here as users complete guides.</p>
       </div>
     );
   }
 
   return (
-    <div className={styles.container} data-testid="team-progress-page">
+    <div className={styles.container} data-testid="org-progress-page">
       {/* Category filter */}
       <div className={styles.filterBar}>
         <RadioButtonGroup options={CATEGORY_OPTIONS} value={category} onChange={setCategory} size="sm" />

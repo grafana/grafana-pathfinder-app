@@ -34,7 +34,7 @@ jest.mock('@grafana/runtime', () => ({
 
 jest.mock('../../constants', () => ({
   PLUGIN_BASE_URL: '/a/grafana-pathfinder-app',
-  ROUTES: { TeamProgress: 'team-progress' },
+  ROUTES: { OrgProgress: 'org-progress' },
 }));
 
 // Minimal GrafanaTheme2-shaped object for style functions

@@ -176,5 +176,5 @@ export const DOCS_BASE_URL = DEFAULT_DOCS_BASE_URL;
 export enum ROUTES {
   Home = '',
   Context = 'context',
-  TeamProgress = 'team-progress',
+  OrgProgress = 'org-progress',
 }

@@ -1,7 +1,7 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
-export const getTeamProgressStyles = (theme: GrafanaTheme2) => ({
+export const getOrgProgressStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',

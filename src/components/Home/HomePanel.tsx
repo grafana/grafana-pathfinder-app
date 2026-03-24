@@ -54,8 +54,8 @@ export function HomePanelRenderer() {
   return (
     <div className={styles.container} data-testid="home-page">
       {config.bootData?.user?.orgRole === 'Admin' && (
-        <a href={`${PLUGIN_BASE_URL}/${ROUTES.TeamProgress}`} className={styles.adminLink}>
-          <Icon name="users-alt" /> View team progress <Icon name="angle-right" />
+        <a href={`${PLUGIN_BASE_URL}/${ROUTES.OrgProgress}`} className={styles.adminLink}>
+          <Icon name="users-alt" /> View org progress <Icon name="angle-right" />
         </a>
       )}
       <MyLearningErrorBoundary>

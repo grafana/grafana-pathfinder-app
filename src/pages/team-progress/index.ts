@@ -1,1 +1,0 @@
-export { TeamProgressPanel } from './TeamProgressPanel';
