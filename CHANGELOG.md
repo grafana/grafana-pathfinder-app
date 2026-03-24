@@ -1,5 +1,92 @@
 # Changelog
 
+## 2.4.0
+
+### Added
+
+- **Alloy scenario VM support**: New `alloy-scenario` VM template for Coda terminal, enabling guide authors to deploy Alloy-based sandbox environments (#688)
+  - Animated progress bar during VM provisioning with SSH connection status
+  - Quota cleanup with polling to auto-destroy stale VMs before creating new ones
+  - Persistent VM options in sessionStorage for auto-reconnect across page refresh
+- **Package recommender groundwork** (dormant): Frontend infrastructure for the v1 recommender API including response types, allowlist-based sanitizer, deduplication, and composite package resolver — production endpoint unchanged (#693)
+
+### Changed
+
+- **Agent context centralisation**: Concern-routed PR review and centralised agent context for improved review routing and impact analysis (#699)
+- **Documentation maintenance**: Updated Coda, workshop, CLI tools, and interactive requirements docs; indexed `CUSTOM_GUIDES.md` (#690, #691, #692)
+
+### Fixed
+
+- **Coda terminal UX**: Fixed VM replacement messages, error/disconnect retry loop, terminal panel not opening from guide connect blocks, connect button state during provisioning, and disconnect as a proper kill switch (#688)
+
+### Chore
+
+- Deduplicated `useSampleApps`/`useAlloyScenarios` into generic `useCodaOptions` hook (#688)
+
+## 2.3.7
+
+### Fixed
+
+- **Section requirement**: Fixed issue with section requirement checking not evaluating correctly
+- **Workshop PeerJS config**: Read PeerJS config from Grafana runtime instead of `PluginPropsContext`, which was always null when rendered via `plugin.addComponent()` outside the provider tree (#687)
+  - Made PeerJS TLS toggle explicitly configurable
+
+## 2.3.6
+
+### Added
+
+- **`pathfinder.enabled` feature flag**: Global kill-switch for cloud-wide rollout control, separate from A/B experiments. When disabled, the plugin dismounts and the native Grafana help menu takes over (#685)
+- **Workshop ECDSA presenter authentication**: Challenge-response authentication using ECDSA P-256 key pairs to prevent peer ID impersonation on the PeerJS signalling layer (#680)
+  - Public key embedded in join code; private key never leaves the presenter's browser
+  - Removed legacy unauthenticated join path entirely
+  - Follow mode gated behind feature flag pending security review
+- **CLI manifest pre-flight checks**: New `--package` and `--tier` flags for the e2e command with tier check, minVersion check, and plugin checks before spawning Playwright (#681)
+
+### Security
+
+- Updated `google.golang.org/grpc` to v1.79.3 (#683)
+
+### Chore
+
+- Updated npm to v11.11.1 (#675)
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v6.1.1 (#676)
+- Updated magefile/mage-action digest to 96c659d (#684)
+
+## 2.3.5
+
+### Fixed
+
+- **Pathfinder-suggest event buffering**: Early `pathfinder-suggest` events from faster-loading apps were lost because the handler was only registered after async experiment init. Added a synchronous buffer that replays events once the real handler is ready (#679)
+- **Auto-opened flag deferral**: Deferred the auto-opened localStorage flag write until the sidebar actually mounts, so the flag is never burned if the sidebar fails to open (#679)
+
+## 2.3.4
+
+_Patch release — version bump only._
+
+## 2.3.3
+
+### Added
+
+- **VM template selection**: Guide authors can now specify a custom VM template and sample app name when provisioning sandbox VMs through the `terminal-connect` block (#672)
+  - Backend: new sample-apps endpoint, `CreateVM` accepts config map, `resolveVMForUser` respects template/app when reusing or replacing VMs
+  - Frontend: `TerminalConnectBlock` form with VM template selector and dynamic sample-app dropdown
+  - Block palette hides Coda block types when Coda terminal is disabled
+
+## 2.3.2
+
+_Patch release — version bump only._
+
+## 2.3.1
+
+### Fixed
+
+- **Coda VM lifecycle**: Fixed VM lifecycle issues in the Coda terminal integration (#667)
+
+### Chore
+
+- Updated actions/upload-artifact action to v7 (#660)
+- Updated grafana/plugin-actions digest to 4698961 (#661)
+
 ## 2.3.0
 
 ### Added
