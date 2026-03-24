@@ -117,9 +117,9 @@ function aggregateByUser(items: GuideCompletionResource[]): UserRow[] {
     }
   }
 
-  return Array.from(map.values())
-    .map((v) => ({
-      id: v.displayName,
+  return Array.from(map.entries())
+    .map(([userLogin, v]) => ({
+      id: userLogin,
       userDisplayName: v.displayName,
       completed: v.completed,
       inProgress: v.inProgress,
