@@ -10,6 +10,7 @@ jest.mock('@grafana/runtime', () => ({
     bootData: {
       user: {
         orgRole: 'Viewer',
+        isGrafanaAdmin: false,
       },
     },
   },
@@ -74,6 +75,7 @@ describe('NavigateHandler', () => {
     jest.clearAllMocks();
     // Reset to Viewer role before each test to avoid leaking state
     (config as any).bootData.user.orgRole = 'Viewer';
+    (config as any).bootData.user.isGrafanaAdmin = false;
 
     navigateHandler = new NavigateHandler(mockStateManager, mockWaitForReactUpdates);
   });
@@ -317,6 +319,16 @@ describe('NavigateHandler', () => {
       expect(locationService.push).toHaveBeenCalledWith('/admin/users');
     });
 
+    it('should allow Grafana server admins to navigate to /admin/users even with Viewer org role', async () => {
+      (config as any).bootData.user.orgRole = 'Viewer';
+      (config as any).bootData.user.isGrafanaAdmin = true;
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/admin/users');
+    });
+
     it('should block Viewer users from navigating to /admin/users', async () => {
       (config as any).bootData.user.orgRole = 'Viewer';
       const adminData = { ...mockData, reftarget: '/admin/users' };
@@ -356,6 +368,23 @@ describe('NavigateHandler', () => {
       await navigateHandler.execute(logoutQuery, true);
 
       expect(locationService.push).not.toHaveBeenCalled();
+    });
+
+    it('should block protocol-relative URLs that were normalized to root', async () => {
+      const protocolRelativeData = { ...mockData, reftarget: '//evil.com' };
+
+      await navigateHandler.execute(protocolRelativeData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should still allow explicit root navigation', async () => {
+      const rootData = { ...mockData, reftarget: '/' };
+
+      await navigateHandler.execute(rootData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/');
     });
   });
 });

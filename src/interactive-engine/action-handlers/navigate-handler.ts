@@ -54,8 +54,9 @@ export class NavigateHandler {
       window.open(data.reftarget, '_blank', 'noopener,noreferrer');
     } else {
       // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
-      // Pass user's org role so admin-only paths are permitted for admins
-      const userRole = config.bootData?.user?.orgRole;
+      // Treat Grafana server admins as Admin even if orgRole is Viewer/Editor.
+      const user = config.bootData?.user;
+      const userRole = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin' ? 'Admin' : user?.orgRole;
       const safePath = validateRedirectPath(data.reftarget, userRole);
 
       // validateRedirectPath strips query/fragment, so compare against pathname only
@@ -66,7 +67,10 @@ export class NavigateHandler {
         inputPathname = data.reftarget;
       }
 
-      if (safePath !== inputPathname) {
+      const hasSingleLeadingSlash = data.reftarget.startsWith('/') && !data.reftarget.startsWith('//');
+      const rejectedAsRootFallback = safePath === '/' && !hasSingleLeadingSlash;
+
+      if (safePath !== inputPathname || rejectedAsRootFallback) {
         console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.reftarget.slice(0, 100)}`);
         return;
       }
