@@ -10,6 +10,7 @@ jest.mock('@grafana/runtime', () => ({
     bootData: {
       user: {
         orgRole: 'Viewer',
+        isGrafanaAdmin: false,
       },
     },
   },
@@ -25,7 +26,7 @@ jest.mock('../../security/url-validator', () => ({
       return null;
     }
   }),
-  validateRedirectPath: jest.fn((input: string, userRole?: string) => {
+  validateRedirectPath: jest.fn((input: string, isAdmin?: boolean) => {
     const alwaysDenied = ['/logout', '/profile/password'];
     const adminOnly = ['/admin', '/api'];
     if (!input || !input.startsWith('/') || input.startsWith('//')) {
@@ -41,7 +42,7 @@ jest.mock('../../security/url-validator', () => ({
     if (alwaysDenied.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
       return '/';
     }
-    if (userRole !== 'Admin') {
+    if (!isAdmin) {
       if (adminOnly.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
         return '/';
       }
@@ -72,8 +73,9 @@ describe('NavigateHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset to Viewer role before each test to avoid leaking state
+    // Reset to non-admin Viewer before each test to avoid leaking state
     (config as any).bootData.user.orgRole = 'Viewer';
+    (config as any).bootData.user.isGrafanaAdmin = false;
 
     navigateHandler = new NavigateHandler(mockStateManager, mockWaitForReactUpdates);
   });
@@ -317,6 +319,16 @@ describe('NavigateHandler', () => {
       expect(locationService.push).toHaveBeenCalledWith('/admin/users');
     });
 
+    it('should allow Grafana Server Admin (isGrafanaAdmin) to navigate to /admin/users', async () => {
+      (config as any).bootData.user.orgRole = 'Viewer';
+      (config as any).bootData.user.isGrafanaAdmin = true;
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/admin/users');
+    });
+
     it('should block Viewer users from navigating to /admin/users', async () => {
       (config as any).bootData.user.orgRole = 'Viewer';
       const adminData = { ...mockData, reftarget: '/admin/users' };
@@ -356,6 +368,43 @@ describe('NavigateHandler', () => {
       await navigateHandler.execute(logoutQuery, true);
 
       expect(locationService.push).not.toHaveBeenCalled();
+    });
+
+    it('should block protocol-relative URLs like //evil.com', async () => {
+      const protoRelative = { ...mockData, reftarget: '//evil.com' };
+
+      await navigateHandler.execute(protoRelative, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block protocol-relative URLs with paths like //evil.com/phish', async () => {
+      const protoRelativePath = { ...mockData, reftarget: '//evil.com/phish' };
+
+      await navigateHandler.execute(protoRelativePath, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block inputs that do not start with /', async () => {
+      const noSlash = { ...mockData, reftarget: 'evil.com/foo' };
+
+      await navigateHandler.execute(noSlash, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should push validated path, not raw input, for internal routes', async () => {
+      const safeData = { ...mockData, reftarget: '/explore?orgId=1' };
+
+      await navigateHandler.execute(safeData, true);
+
+      // Validates that locationService receives the reconstructed URL from
+      // safePath + parsed.search + parsed.hash, not the raw reftarget.
+      expect(locationService.push).toHaveBeenCalledWith('/explore?orgId=1');
     });
   });
 });

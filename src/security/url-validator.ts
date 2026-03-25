@@ -353,16 +353,16 @@ const ADMIN_ONLY_PATHS = ['/admin', '/api'];
  * - Stripping query strings and fragments (only pathname is trusted)
  * - Rejecting path traversal (`../`) even after normalization (defense-in-depth)
  * - Denying sensitive route prefixes (e.g., /logout, /admin) to block social-engineering redirects
- *   Admin-only paths (/admin, /api) are permitted when userRole is 'Admin'.
+ *   Admin-only paths (/admin, /api) are permitted when isAdmin is true.
  *
  * Fail-safe: any suspicious input returns `/`, never throws.
  *
  * @param input - Raw string from the `page` query parameter
- * @param userRole - Optional Grafana org role ('Admin', 'Editor', 'Viewer'). When 'Admin',
- *                   admin-only paths are permitted. Omitting defaults to most restrictive.
+ * @param isAdmin - Whether the current user has admin privileges
+ *                  (orgRole === 'Admin' OR isGrafanaAdmin === true). Defaults to false.
  * @returns A safe, normalized pathname (or `/` as default)
  */
-export function validateRedirectPath(input: string, userRole?: string): string {
+export function validateRedirectPath(input: string, isAdmin?: boolean): string {
   if (!input || typeof input !== 'string') {
     return DEFAULT_REDIRECT;
   }
@@ -394,8 +394,8 @@ export function validateRedirectPath(input: string, userRole?: string): string {
       return DEFAULT_REDIRECT;
     }
 
-    // SECURITY: Reject admin-only paths unless the user has Admin role
-    if (userRole !== 'Admin') {
+    // SECURITY: Reject admin-only paths unless the caller asserts admin privileges
+    if (!isAdmin) {
       if (ADMIN_ONLY_PATHS.some((denied) => normalized === denied || normalized.startsWith(denied + '/'))) {
         return DEFAULT_REDIRECT;
       }

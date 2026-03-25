@@ -391,38 +391,33 @@ describe('validateRedirectPath', () => {
     });
   });
 
-  describe('role-aware validation', () => {
-    it('should allow Admin users to navigate to /admin paths', () => {
-      expect(validateRedirectPath('/admin', 'Admin')).toBe('/admin');
-      expect(validateRedirectPath('/admin/users', 'Admin')).toBe('/admin/users');
+  describe('admin-aware validation', () => {
+    it('should allow admin users to navigate to /admin paths', () => {
+      expect(validateRedirectPath('/admin', true)).toBe('/admin');
+      expect(validateRedirectPath('/admin/users', true)).toBe('/admin/users');
     });
 
-    it('should allow Admin users to navigate to /api paths', () => {
-      expect(validateRedirectPath('/api/datasources', 'Admin')).toBe('/api/datasources');
+    it('should allow admin users to navigate to /api paths', () => {
+      expect(validateRedirectPath('/api/datasources', true)).toBe('/api/datasources');
     });
 
-    it('should still block /logout for Admin users', () => {
-      expect(validateRedirectPath('/logout', 'Admin')).toBe('/');
+    it('should still block /logout for admin users', () => {
+      expect(validateRedirectPath('/logout', true)).toBe('/');
     });
 
-    it('should still block /profile/password for Admin users', () => {
-      expect(validateRedirectPath('/profile/password', 'Admin')).toBe('/');
+    it('should still block /profile/password for admin users', () => {
+      expect(validateRedirectPath('/profile/password', true)).toBe('/');
     });
 
-    it('should block /admin paths for Editor users', () => {
-      expect(validateRedirectPath('/admin/users', 'Editor')).toBe('/');
-    });
-
-    it('should block /admin paths for Viewer users', () => {
-      expect(validateRedirectPath('/admin/users', 'Viewer')).toBe('/');
+    it('should block /admin paths for non-admin users', () => {
+      expect(validateRedirectPath('/admin/users', false)).toBe('/');
     });
 
     it('should block /api paths for non-admin users', () => {
-      expect(validateRedirectPath('/api/datasources', 'Editor')).toBe('/');
-      expect(validateRedirectPath('/api/datasources', 'Viewer')).toBe('/');
+      expect(validateRedirectPath('/api/datasources', false)).toBe('/');
     });
 
-    it('should default to most restrictive when no role is provided', () => {
+    it('should default to most restrictive when isAdmin is omitted', () => {
       expect(validateRedirectPath('/admin/users')).toBe('/');
       expect(validateRedirectPath('/api/datasources')).toBe('/');
     });
