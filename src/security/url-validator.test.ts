@@ -390,6 +390,43 @@ describe('validateRedirectPath', () => {
       expect(validateRedirectPath('/profiles')).toBe('/profiles');
     });
   });
+
+  describe('role-aware validation', () => {
+    it('should allow Admin users to navigate to /admin paths', () => {
+      expect(validateRedirectPath('/admin', 'Admin')).toBe('/admin');
+      expect(validateRedirectPath('/admin/users', 'Admin')).toBe('/admin/users');
+    });
+
+    it('should allow Admin users to navigate to /api paths', () => {
+      expect(validateRedirectPath('/api/datasources', 'Admin')).toBe('/api/datasources');
+    });
+
+    it('should still block /logout for Admin users', () => {
+      expect(validateRedirectPath('/logout', 'Admin')).toBe('/');
+    });
+
+    it('should still block /profile/password for Admin users', () => {
+      expect(validateRedirectPath('/profile/password', 'Admin')).toBe('/');
+    });
+
+    it('should block /admin paths for Editor users', () => {
+      expect(validateRedirectPath('/admin/users', 'Editor')).toBe('/');
+    });
+
+    it('should block /admin paths for Viewer users', () => {
+      expect(validateRedirectPath('/admin/users', 'Viewer')).toBe('/');
+    });
+
+    it('should block /api paths for non-admin users', () => {
+      expect(validateRedirectPath('/api/datasources', 'Editor')).toBe('/');
+      expect(validateRedirectPath('/api/datasources', 'Viewer')).toBe('/');
+    });
+
+    it('should default to most restrictive when no role is provided', () => {
+      expect(validateRedirectPath('/admin/users')).toBe('/');
+      expect(validateRedirectPath('/api/datasources')).toBe('/');
+    });
+  });
 });
 
 describe('GitHub URL validators', () => {

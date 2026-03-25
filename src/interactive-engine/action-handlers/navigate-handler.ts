@@ -1,7 +1,7 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { locationService } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
 
 export class NavigateHandler {
@@ -54,7 +54,9 @@ export class NavigateHandler {
       window.open(data.reftarget, '_blank', 'noopener,noreferrer');
     } else {
       // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
-      const safePath = validateRedirectPath(data.reftarget);
+      // Pass user's org role so admin-only paths are permitted for admins
+      const userRole = config.bootData?.user?.orgRole;
+      const safePath = validateRedirectPath(data.reftarget, userRole);
       if (safePath !== data.reftarget) {
         console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.reftarget.slice(0, 100)}`);
         return;

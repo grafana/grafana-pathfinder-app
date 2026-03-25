@@ -1,11 +1,18 @@
 import { NavigateHandler } from './navigate-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { locationService } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 
 // Mock dependencies
 jest.mock('../interactive-state-manager');
 jest.mock('@grafana/runtime', () => ({
+  config: {
+    bootData: {
+      user: {
+        orgRole: 'Viewer',
+      },
+    },
+  },
   locationService: {
     push: jest.fn(),
   },
@@ -18,13 +25,19 @@ jest.mock('../../security/url-validator', () => ({
       return null;
     }
   }),
-  validateRedirectPath: jest.fn((input: string) => {
-    const denied = ['/logout', '/admin', '/api', '/profile/password'];
+  validateRedirectPath: jest.fn((input: string, userRole?: string) => {
+    const alwaysDenied = ['/logout', '/profile/password'];
+    const adminOnly = ['/admin', '/api'];
     if (!input || !input.startsWith('/') || input.startsWith('//')) {
       return '/';
     }
-    if (denied.some((d) => input === d || input.startsWith(d + '/'))) {
+    if (alwaysDenied.some((d) => input === d || input.startsWith(d + '/'))) {
       return '/';
+    }
+    if (userRole !== 'Admin') {
+      if (adminOnly.some((d) => input === d || input.startsWith(d + '/'))) {
+        return '/';
+      }
     }
     return input;
   }),
@@ -52,6 +65,8 @@ describe('NavigateHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Reset to Viewer role before each test to avoid leaking state
+    (config as any).bootData.user.orgRole = 'Viewer';
 
     navigateHandler = new NavigateHandler(mockStateManager, mockWaitForReactUpdates);
   });
@@ -284,6 +299,24 @@ describe('NavigateHandler', () => {
       await navigateHandler.execute(safeData, true);
 
       expect(locationService.push).toHaveBeenCalledWith('/dashboards');
+    });
+
+    it('should allow Admin users to navigate to /admin/users', async () => {
+      (config as any).bootData.user.orgRole = 'Admin';
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/admin/users');
+    });
+
+    it('should block Viewer users from navigating to /admin/users', async () => {
+      (config as any).bootData.user.orgRole = 'Viewer';
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
     });
   });
 });

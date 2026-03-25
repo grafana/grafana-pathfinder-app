@@ -327,15 +327,21 @@ export function isGitHubRawUrl(urlString: string): boolean {
 const DEFAULT_REDIRECT = '/';
 
 /**
- * Route prefixes that must never be used as redirect targets.
- * Prevents social-engineering deep links that steer users to sensitive pages
- * (e.g., a "helpful tutorial" link that actually redirects to /logout).
+ * Route prefixes that are ALWAYS denied regardless of user role.
+ * These are destructive or sensitive actions that no guide should automate.
+ */
+const ALWAYS_DENIED_PATHS = ['/logout', '/profile/password'];
+
+/**
+ * Route prefixes that are denied for non-admin users but permitted for admins.
+ * Grafana RBAC enforces server-side access control on these routes, so allowing
+ * admin navigation is safe — guides legitimately need to steer admins here.
  *
  * Matching: a path is denied if it equals the entry exactly OR starts with
  * the entry followed by `/`. This avoids false positives on unrelated routes
  * (e.g., `/admin` blocks `/admin/users` but NOT `/administration`).
  */
-const DENIED_REDIRECT_PATHS = ['/logout', '/admin', '/api', '/profile/password'];
+const ADMIN_ONLY_PATHS = ['/admin', '/api'];
 
 /**
  * Validates and normalizes a redirect path from the `page` query parameter.
@@ -347,13 +353,16 @@ const DENIED_REDIRECT_PATHS = ['/logout', '/admin', '/api', '/profile/password']
  * - Stripping query strings and fragments (only pathname is trusted)
  * - Rejecting path traversal (`../`) even after normalization (defense-in-depth)
  * - Denying sensitive route prefixes (e.g., /logout, /admin) to block social-engineering redirects
+ *   Admin-only paths (/admin, /api) are permitted when userRole is 'Admin'.
  *
  * Fail-safe: any suspicious input returns `/`, never throws.
  *
  * @param input - Raw string from the `page` query parameter
+ * @param userRole - Optional Grafana org role ('Admin', 'Editor', 'Viewer'). When 'Admin',
+ *                   admin-only paths are permitted. Omitting defaults to most restrictive.
  * @returns A safe, normalized pathname (or `/` as default)
  */
-export function validateRedirectPath(input: string): string {
+export function validateRedirectPath(input: string, userRole?: string): string {
   if (!input || typeof input !== 'string') {
     return DEFAULT_REDIRECT;
   }
@@ -380,9 +389,16 @@ export function validateRedirectPath(input: string): string {
       return DEFAULT_REDIRECT;
     }
 
-    // SECURITY: Reject sensitive route prefixes to prevent social-engineering redirects
-    if (DENIED_REDIRECT_PATHS.some((denied) => normalized === denied || normalized.startsWith(denied + '/'))) {
+    // SECURITY: Always reject universally dangerous paths (e.g., /logout)
+    if (ALWAYS_DENIED_PATHS.some((denied) => normalized === denied || normalized.startsWith(denied + '/'))) {
       return DEFAULT_REDIRECT;
+    }
+
+    // SECURITY: Reject admin-only paths unless the user has Admin role
+    if (userRole !== 'Admin') {
+      if (ADMIN_ONLY_PATHS.some((denied) => normalized === denied || normalized.startsWith(denied + '/'))) {
+        return DEFAULT_REDIRECT;
+      }
     }
 
     return normalized;
