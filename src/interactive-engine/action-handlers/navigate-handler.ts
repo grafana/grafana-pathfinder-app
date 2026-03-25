@@ -57,12 +57,21 @@ export class NavigateHandler {
       // Pass user's org role so admin-only paths are permitted for admins
       const userRole = config.bootData?.user?.orgRole;
       const safePath = validateRedirectPath(data.reftarget, userRole);
-      if (safePath !== data.reftarget) {
+
+      // validateRedirectPath strips query/fragment, so compare against pathname only
+      let inputPathname: string;
+      try {
+        inputPathname = new URL(data.reftarget, window.location.origin).pathname;
+      } catch {
+        inputPathname = data.reftarget;
+      }
+
+      if (safePath !== inputPathname) {
         console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.reftarget.slice(0, 100)}`);
         return;
       }
       // Internal Grafana route - use locationService for proper routing
-      locationService.push(safePath);
+      locationService.push(data.reftarget);
     }
   }
 

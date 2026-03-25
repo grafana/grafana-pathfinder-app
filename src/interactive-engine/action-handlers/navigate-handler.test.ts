@@ -31,15 +31,22 @@ jest.mock('../../security/url-validator', () => ({
     if (!input || !input.startsWith('/') || input.startsWith('//')) {
       return '/';
     }
-    if (alwaysDenied.some((d) => input === d || input.startsWith(d + '/'))) {
+    // Replicate real behavior: strip query strings and fragments (return pathname only)
+    let pathname: string;
+    try {
+      pathname = new URL(input, 'http://localhost').pathname;
+    } catch {
+      return '/';
+    }
+    if (alwaysDenied.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
       return '/';
     }
     if (userRole !== 'Admin') {
-      if (adminOnly.some((d) => input === d || input.startsWith(d + '/'))) {
+      if (adminOnly.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
         return '/';
       }
     }
-    return input;
+    return pathname;
   }),
 }));
 
@@ -315,6 +322,38 @@ describe('NavigateHandler', () => {
       const adminData = { ...mockData, reftarget: '/admin/users' };
 
       await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+    });
+
+    it('should allow internal paths with query strings (e.g., /explore?orgId=1)', async () => {
+      const queryData = { ...mockData, reftarget: '/explore?orgId=1' };
+
+      await navigateHandler.execute(queryData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/explore?orgId=1');
+    });
+
+    it('should allow internal paths with fragments (e.g., /dashboards#section)', async () => {
+      const fragmentData = { ...mockData, reftarget: '/dashboards#section' };
+
+      await navigateHandler.execute(fragmentData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/dashboards#section');
+    });
+
+    it('should allow internal paths with both query strings and fragments', async () => {
+      const bothData = { ...mockData, reftarget: '/connections/datasources?search=prom#config' };
+
+      await navigateHandler.execute(bothData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/connections/datasources?search=prom#config');
+    });
+
+    it('should still block denied paths even with query strings', async () => {
+      const logoutQuery = { ...mockData, reftarget: '/logout?redirect=/' };
+
+      await navigateHandler.execute(logoutQuery, true);
 
       expect(locationService.push).not.toHaveBeenCalled();
     });
