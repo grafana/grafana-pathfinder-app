@@ -1,8 +1,8 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { locationService } from '@grafana/runtime';
-import { parseUrlSafely } from '../../security/url-validator';
+import { config, locationService } from '@grafana/runtime';
+import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
 
 export class NavigateHandler {
   constructor(
@@ -53,8 +53,36 @@ export class NavigateHandler {
       // External URL - open in new tab to preserve current Grafana session
       window.open(data.reftarget, '_blank', 'noopener,noreferrer');
     } else {
-      // Internal Grafana route - use locationService for proper routing
-      locationService.push(data.reftarget);
+      // SECURITY: Reject protocol-relative URLs before URL parsing.
+      // '//evil.com' parses via new URL() as cross-origin with pathname '/', which
+      // collides with validateRedirectPath's rejection sentinel and bypasses the check.
+      if (!data.reftarget.startsWith('/') || data.reftarget.startsWith('//')) {
+        console.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.reftarget.slice(0, 100)}`);
+        return;
+      }
+
+      // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
+      const user = config.bootData?.user;
+      const isAdmin = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
+      const safePath = validateRedirectPath(data.reftarget, isAdmin);
+
+      let parsed: URL;
+      try {
+        parsed = new URL(data.reftarget, window.location.origin);
+      } catch {
+        console.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${data.reftarget.slice(0, 100)}`);
+        return;
+      }
+
+      if (safePath !== parsed.pathname) {
+        console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.reftarget.slice(0, 100)}`);
+        return;
+      }
+
+      // SECURITY: Navigate using validated pathname + original query/fragment.
+      // Never push raw data.reftarget — even if the comparison above were bypassed,
+      // locationService only receives the validated path.
+      locationService.push(safePath + parsed.search + parsed.hash);
     }
   }
 
