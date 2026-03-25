@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.4.1
+
+### Added
+
+- **Custom guide deep links**: Support `?doc=api:<resourceName>` deep links for custom guides stored as App Platform CRDs (#696, #701)
+
+### Security
+
+- **Navigate handler path validation**: Internal navigation paths are now validated against denied routes (`/logout`, `/profile/password`, `/admin/*`, `/api/*`), closing a carry-forward from ASE25039 that becomes higher-impact under default enablement in Grafana 13 (#702)
+  - Role-aware validation: admin users can navigate to admin-only paths since guides legitimately steer admins there and Grafana RBAC enforces server-side access control
+
 ## 2.4.0
 
 ### Added
