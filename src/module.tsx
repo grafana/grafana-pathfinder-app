@@ -158,7 +158,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           console.warn(
             'Could not parse doc param:',
             docsParam,
-            '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
+            '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
           );
           sidebarState.setPendingOpenSource('url_param', 'auto-open');
           attemptAutoOpen(200);

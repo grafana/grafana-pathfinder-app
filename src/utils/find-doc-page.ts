@@ -19,6 +19,19 @@ export function findDocPage(param: string): DocPage | null {
     return null;
   }
 
+  // Case: Custom guide stored in the Pathfinder backend (App Platform CRD)
+  if (param.startsWith('api:')) {
+    const resourceName = param.slice(4).trim();
+    if (!resourceName) {
+      return null;
+    }
+    return {
+      type: 'docs-page',
+      url: `backend-guide:${resourceName}`,
+      title: resourceName,
+    };
+  }
+
   // Case 1: Bundled interactive
   if (param.startsWith('bundled:')) {
     try {
