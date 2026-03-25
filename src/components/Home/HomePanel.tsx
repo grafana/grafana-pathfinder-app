@@ -8,13 +8,15 @@
 
 import React, { useCallback } from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
-import { useStyles2 } from '@grafana/ui';
+import { Icon, useStyles2 } from '@grafana/ui';
+import { config } from '@grafana/runtime';
 
 import { sidebarState } from '../../global-state/sidebar';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { MyLearningTab } from '../LearningPaths';
 import { MyLearningErrorBoundary } from '../docs-panel/components';
 import { getHomePageStyles } from './home.styles';
+import { PLUGIN_BASE_URL, ROUTES } from '../../constants';
 
 // ============================================================================
 // SCENE OBJECT
@@ -51,6 +53,11 @@ export function HomePanelRenderer() {
 
   return (
     <div className={styles.container} data-testid="home-page">
+      {config.bootData?.user?.orgRole === 'Admin' && (
+        <a href={`${PLUGIN_BASE_URL}/${ROUTES.OrgProgress}`} className={styles.adminLink}>
+          <Icon name="users-alt" /> View org progress <Icon name="angle-right" />
+        </a>
+      )}
       <MyLearningErrorBoundary>
         <MyLearningTab onOpenGuide={handleOpenGuide} />
       </MyLearningErrorBoundary>

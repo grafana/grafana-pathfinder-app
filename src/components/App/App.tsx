@@ -1,4 +1,5 @@
 import { AppRootProps, GrafanaTheme2 } from '@grafana/data';
+import { config } from '@grafana/runtime';
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // import { faro } from '@grafana/faro-react';
 import React, { useMemo, useEffect, Component, ReactNode } from 'react';
@@ -7,6 +8,7 @@ import { Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
+import { orgProgressPage } from '../../pages/orgProgressPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
@@ -129,9 +131,13 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
 });
 
 function getSceneApp() {
-  return new SceneApp({
-    pages: [homePage, docsPage],
-  });
+  const pages = [homePage, docsPage];
+
+  if (config.bootData?.user?.orgRole === 'Admin') {
+    pages.push(orgProgressPage);
+  }
+
+  return new SceneApp({ pages });
 }
 
 function App(props: AppRootProps) {

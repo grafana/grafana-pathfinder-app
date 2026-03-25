@@ -22,6 +22,19 @@ jest.mock('@grafana/scenes', () => ({
 // Mock @grafana/ui - provide simple stand-ins
 jest.mock('@grafana/ui', () => ({
   useStyles2: (fn: any) => fn(mockTheme),
+  Icon: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} />,
+}));
+
+// Mock @grafana/runtime
+jest.mock('@grafana/runtime', () => ({
+  config: {
+    bootData: { user: { orgRole: 'Admin' } },
+  },
+}));
+
+jest.mock('../../constants', () => ({
+  PLUGIN_BASE_URL: '/a/grafana-pathfinder-app',
+  ROUTES: { OrgProgress: 'org-progress' },
 }));
 
 // Minimal GrafanaTheme2-shaped object for style functions
