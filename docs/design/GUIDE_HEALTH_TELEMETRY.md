@@ -251,6 +251,79 @@ A separate epic is adding per-guide metadata (mutation profile, dependencies, pl
 | Error boundary            | CLI always writes a report              | Single communication contract between layers                   |
 | Artifact upload trigger   | Failure only                            | Passed guides have no diagnostic value                         |
 
+## Implementation plan
+
+The implementation is structured around a key decoupling principle: **separate the orchestration layer from real guide variability**. Two synthetic guide fixtures with deterministic outcomes (one always passes, one always fails) allow each phase to be validated against known expected outputs. The orchestration layer is never confused by real guide flakiness during development.
+
+### Phase 1 — Synthetic test fixtures
+
+Create two guide packages that exercise the full CLI pipeline with predictable outcomes:
+
+- `tests/e2e-runner/fixtures/always-passes/` — a trivially completable guide (e.g., highlight on an always-present element like the Grafana sidebar)
+- `tests/e2e-runner/fixtures/always-fails/` — a guide that deterministically fails (e.g., targets a selector that does not exist)
+
+Each package contains `content.json` and `manifest.json`, loaded via `--package`. Both run against the local dev stack (`npm run dev` + `npm run server`). These serve a dual purpose: regression tests for the E2E CLI itself, and deterministic fixtures for orchestration development.
+
+**Exit criteria:** Both fixtures produce valid `E2ETestReport` JSON through the real CLI. The always-passes report has `summary.mandatoryFailed === 0` with all steps `passed`. The always-fails report has a specific, predictable failure with known step index, error, and classification.
+
+### Phase 2 — CLI error boundary
+
+Implement the error boundary contract described in [CLI error boundary](#cli-error-boundary). The CLI must always produce a JSON report, regardless of failure mode. This is the foundational contract between the CLI and the orchestration layer.
+
+- Wrap `e2eCommand` action handler in a top-level try/catch
+- Add abort reason values for pre-execution failures: `VALIDATION_FAILED`, `GRAFANA_UNREACHABLE`, `SPAWN_FAILED`, `INTERNAL_ERROR`
+- Every catch branch writes a valid `E2ETestReport` with zero steps and an appropriate `abortReason` before exiting
+
+The synthetic fixtures from Phase 1 provide a baseline to verify the happy path is not broken while adding the error boundary.
+
+**Exit criteria:** Every failure mode in the [failure modes table](#failure-modes-and-report-guarantees) produces a valid JSON report. No CLI exit path is report-silent.
+
+### Phase 3 — Orchestration loop
+
+Build the outer process that iterates a guide list, invokes the CLI per guide, and reads the JSON report. No metrics yet — just the loop, invocation, and report parsing.
+
+- Accept a list of guide package paths (or a directory of packages)
+- For each guide: create a run directory, invoke the CLI with `--output` and `--artifacts` flags, read and parse the resulting JSON report
+- Classify results: pass, fail, abort, missing report (the SIGKILL edge case)
+- For the MVP, run against the local dev stack rather than spinning up containers per guide
+
+**Exit criteria:** A single sweep of the two synthetic fixtures produces one pass record and one fail record with the expected report contents. The orchestration loop handles missing reports (CLI killed without writing) by synthesizing a minimal infrastructure failure record.
+
+### Phase 4 — Metrics emission
+
+Wire the orchestration loop to emit `guide_health_*` Prometheus metrics from parsed reports.
+
+- Emit the MVP metrics defined in [MVP metrics](#mvp-metrics): `guide_health_run_result`, `guide_health_run_duration_seconds`, `guide_health_steps_total`, `guide_health_abort_total`
+- Add operational metrics: `guide_health_sweep_duration_seconds`, `guide_health_sweep_progress`
+- Push metrics via Prometheus push gateway, remote write, or exposition endpoint (implementation choice deferred to this phase)
+
+**Exit criteria:** A sweep of the two synthetic fixtures produces the expected metric values. The always-passes fixture emits `guide_health_run_result{guide_id="always-passes"} = 1`. The always-fails fixture emits `guide_health_run_result{guide_id="always-fails"} = 0` with the correct step counts and classification labels.
+
+### Phase 5 — Artifact lifecycle and alerting
+
+Implement artifact management and observability.
+
+- Upload failure artifacts to GCS on guide failure; delete run directory on success
+- Apply 30-day lifecycle policy to the GCS bucket
+- Link artifacts to metrics via `run_id` label matching the GCS directory name
+- Create Grafana dashboard showing guide health status, sweep progress, and failure details
+- Configure alert rules per the [alerting](#alerting) section
+
+**Exit criteria:** The always-fails fixture triggers artifact upload to GCS with the expected directory structure. The always-passes fixture leaves no artifacts. Dashboard correctly reflects both fixture outcomes. Alert rules fire for the always-fails fixture.
+
+### Phase 6 — Graduate to real guides
+
+Expand the orchestration loop from synthetic fixtures to the full bundled guide population.
+
+- Add all bundled guides to the sweep population
+- Introduce container-level isolation (fresh Grafana per guide) for guides that mutate state
+- Establish the continuous sweep schedule (cron job targeting sub-48-hour detection latency)
+- Triage initial failures: distinguish real guide breakage from test infrastructure issues
+
+The synthetic fixtures remain in the population permanently as canaries — if the always-passes fixture fails, the problem is infrastructure, not guide content.
+
+**Exit criteria:** Continuous sweeps running against the full guide population with metrics, artifacts, and alerting operational. Synthetic fixtures serve as ongoing infrastructure health canaries.
+
 ## Out of scope
 
 | Item                                                         | Reason                                          |
