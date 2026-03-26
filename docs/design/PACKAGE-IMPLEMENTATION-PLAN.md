@@ -2,6 +2,8 @@
 
 This is the phased implementation plan for the [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md). It can be changed, elaborated, or removed as implementation proceeds — the design spec is the source of truth for the package format and will remain.
 
+**Cross-repo rollout:** The sequencing of work across `grafana-pathfinder-app`, `grafana-recommender`, and `interactive-tutorials` is coordinated in [DEPLOYMENT-COORDINATION.md](./DEPLOYMENT-COORDINATION.md).
+
 ---
 
 ## Progressive refinement
