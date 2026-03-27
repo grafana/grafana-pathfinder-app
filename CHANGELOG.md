@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.2
+
+### Added
+
+- **Kiosk mode**: Full-screen overlay presenting interactive guide tiles over Grafana, gated behind dev mode and configured in the Interactive Features tab (#712)
+  - Fetches rules JSON from a configurable CDN URL with bundled fallback defaults
+  - HTML banner block at the top of the overlay for custom branding (sanitized via DOMPurify)
+  - Each tile opens the guide in a new tab via `?doc=` deep link with per-rule target URL
+  - Kiosk button in the sidebar header; overlay closes only via close button or Escape key
+  - Default banner themed for GrafanaCON 2026 with official stacked logo
+- **Comprehensive test ID audit**: Added ~100 new centralized `data-testid` selectors across all component areas and centralized ~20 hardcoded test ID strings into `testIds` constants (#711)
+  - New test ID namespaces: `editorPanel`, `learningPaths`, `liveSession`, `prTester`, `urlTester`, `codaTerminal`, `homePage`, `controlGroupPopup`, `feedbackButton`, `helpFooter`, `app`, `enableRecommender`, `kioskMode`
+
+### Fixed
+
+- **Sidebar dock toggle**: Prevent dock button from undocking an already-docked sidebar (#710)
+
 ## 2.4.1
 
 ### Added
