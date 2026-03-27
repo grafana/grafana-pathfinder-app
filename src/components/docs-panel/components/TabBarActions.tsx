@@ -69,9 +69,6 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
   useEffect(() => {
     const onReady = () => setKioskEnabled(true);
     document.addEventListener('pathfinder-kiosk-ready', onReady);
-    if ((window as any).__pathfinderKioskConfig) {
-      setKioskEnabled(true);
-    }
     return () => document.removeEventListener('pathfinder-kiosk-ready', onReady);
   }, []);
 
