@@ -120,7 +120,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose })
         )}
 
         {!loading && warning && (
-          <div className={styles.warning} data-testid={testIds.kioskMode.error}>
+          <div className={styles.warning} data-testid={testIds.kioskMode.warning}>
             Custom rules URL failed to load ({warning}). Showing default guides.
           </div>
         )}

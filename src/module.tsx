@@ -223,6 +223,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         }
 
         (window as any).__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
+        document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
 
         return import('react-dom/client').then(({ createRoot }) =>
           import('./components/kiosk/KioskModeManager').then(({ KioskModeManager }) => {

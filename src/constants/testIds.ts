@@ -179,6 +179,6 @@ export const testIds = {
     tile: (index: number) => `kiosk-mode-tile-${index}`,
     tileTitle: (index: number) => `kiosk-mode-tile-title-${index}`,
     loading: 'kiosk-mode-loading',
-    error: 'kiosk-mode-error',
+    warning: 'kiosk-mode-warning',
   },
 };

@@ -114,14 +114,6 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => {
       color: 'rgba(255, 255, 255, 0.6)',
       fontSize: theme.typography.h4.fontSize,
     }),
-    error: css({
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: theme.spacing(8),
-      color: theme.colors.error.text,
-      fontSize: theme.typography.body.fontSize,
-    }),
     tile: css({
       position: 'relative',
       display: 'flex',
