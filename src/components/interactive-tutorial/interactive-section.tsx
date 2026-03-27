@@ -1636,6 +1636,7 @@ export function InteractiveSection({
             type="button"
             title={isCollapsed ? 'Expand section' : 'Collapse section'}
             aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
+            data-testid={testIds.interactive.sectionToggle(sectionId)}
           >
             <span className="interactive-section-toggle-icon">{isCollapsed ? '▶' : '▼'}</span>
           </button>

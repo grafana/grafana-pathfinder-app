@@ -56,7 +56,7 @@ export async function openBlockEditor(page: Page): Promise<void> {
   await devToolsTab.click();
 
   // Wait for block editor to be visible
-  const blockEditor = page.getByTestId('block-editor');
+  const blockEditor = page.getByTestId(testIds.blockEditor.container);
   await expect(blockEditor).toBeVisible();
 }
 
@@ -65,7 +65,7 @@ export async function openBlockEditor(page: Page): Promise<void> {
  */
 export async function createMarkdownBlock(page: Page, content: string): Promise<void> {
   // Click the Add Block button in the palette (there may be multiple add buttons when blocks exist)
-  await page.getByTestId('block-palette').getByTestId(testIds.blockEditor.addBlockButton).click();
+  await page.getByTestId(testIds.blockEditor.palette).getByTestId(testIds.blockEditor.addBlockButton).click();
 
   // Wait for modal and select Markdown
   const modal = page.getByTestId(testIds.blockEditor.addBlockModal);
@@ -95,7 +95,7 @@ export async function createSectionBlock(
   options?: { startRecording?: boolean }
 ): Promise<void> {
   // Click the Add Block button in the palette (there may be multiple add buttons when blocks exist)
-  await page.getByTestId('block-palette').getByTestId(testIds.blockEditor.addBlockButton).click();
+  await page.getByTestId(testIds.blockEditor.palette).getByTestId(testIds.blockEditor.addBlockButton).click();
 
   // Wait for modal and select Section
   const modal = page.getByTestId(testIds.blockEditor.addBlockModal);
@@ -125,7 +125,7 @@ export async function createSectionBlock(
  */
 export async function copyGuideJson(page: Page): Promise<Record<string, unknown>> {
   // Open the "More actions" dropdown menu first
-  await page.getByTestId('more-actions-button').click();
+  await page.getByTestId(testIds.blockEditor.moreActionsButton).click();
   // Then click the "Copy JSON" menu item by its label text (Menu.Item doesn't forward data-testid)
   await page.getByRole('menuitem', { name: 'Copy JSON' }).click();
 
@@ -217,7 +217,7 @@ export async function confirmDeleteBlock(page: Page): Promise<void> {
  * Uses the section empty state testId to scope the search.
  */
 export async function clickAddBlockInSection(page: Page): Promise<void> {
-  const blockEditor = page.getByTestId('block-editor');
+  const blockEditor = page.getByTestId(testIds.blockEditor.container);
   // Find the section container via the empty state testId
   const sectionEmptyState = blockEditor.getByTestId(testIds.blockEditor.sectionEmptyState);
   // The Add Block button is a sibling of the empty state div inside the same parent

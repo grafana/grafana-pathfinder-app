@@ -7,6 +7,7 @@
 
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
@@ -208,7 +209,7 @@ export const TerminalConnectStep = forwardRef<
       <div
         className={containerClasses}
         data-test-step-state={stepState}
-        data-testid={`terminal-connect-step-${renderedStepId}`}
+        data-testid={testIds.interactive.terminalConnectStep(renderedStepId)}
       >
         {children && <div className={styles.content}>{children}</div>}
 
@@ -219,7 +220,12 @@ export const TerminalConnectStep = forwardRef<
                 <span className={`${styles.statusText} ${styles.connectedText}`}>
                   <Icon name="check" size="sm" /> Connected
                 </span>
-                <Button size="sm" variant="secondary" onClick={markComplete}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={markComplete}
+                  data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
+                >
                   Continue
                 </Button>
               </>

@@ -8,6 +8,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, Field, TextArea, Alert, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonHtmlBlock } from '../../../types/json-guide.types';
 
@@ -78,7 +79,7 @@ export function HtmlBlockForm({
             <TypeSwitchDropdown currentType="html" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
-        <Button variant="secondary" onClick={onCancel} type="button">
+        <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>

@@ -466,7 +466,13 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         )}
 
         {canSkip && !isCompleted && (
-          <Button variant="secondary" fill="text" onClick={handleSkip} disabled={disabled}>
+          <Button
+            variant="secondary"
+            fill="text"
+            onClick={handleSkip}
+            disabled={disabled}
+            data-testid={testIds.interactive.quizSkipButton(stepId)}
+          >
             Skip
           </Button>
         )}

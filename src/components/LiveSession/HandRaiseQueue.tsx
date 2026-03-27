@@ -9,6 +9,7 @@ import { useStyles2, IconButton } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { HandRaiseInfo } from '../../types/collaboration.types';
+import { testIds } from '../../constants/testIds';
 
 /**
  * Props for HandRaiseQueue
@@ -87,10 +88,17 @@ export function HandRaiseQueue({ handRaises, isOpen, onClose, anchorRef }: HandR
   return (
     <>
       <div className={styles.backdrop} onClick={onClose} />
-      <div ref={modalRef} className={styles.modal}>
+      <div ref={modalRef} className={styles.modal} data-testid={testIds.liveSession.handRaiseQueue}>
         <div className={styles.header}>
           <h4 className={styles.title}>Raised Hands</h4>
-          <IconButton name="times" size="md" onClick={onClose} aria-label="Close" tooltip="Close" />
+          <IconButton
+            name="times"
+            size="md"
+            onClick={onClose}
+            aria-label="Close"
+            tooltip="Close"
+            data-testid={testIds.liveSession.handRaiseQueueClose}
+          />
         </div>
         <div className={styles.content}>
           {handRaises.length === 0 ? (

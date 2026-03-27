@@ -10,6 +10,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, Field, Input, TextArea, Checkbox, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonTerminalBlock } from '../../../types/json-guide.types';
 
@@ -117,7 +118,7 @@ export function TerminalBlockForm({
         <Button type="submit" disabled={!isValid}>
           {isEditing ? 'Update' : 'Add'} block
         </Button>
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel} data-testid={testIds.blockEditor.formCancelButton}>
           Cancel
         </Button>
       </div>

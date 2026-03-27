@@ -70,11 +70,11 @@ test.describe.serial('Block Editor', () => {
     await expect(devToolsContent).toBeVisible();
 
     // Verify the block editor is visible
-    const blockEditor = page.getByTestId('block-editor');
+    const blockEditor = page.getByTestId(testIds.blockEditor.container);
     await expect(blockEditor).toBeVisible();
 
     // The block editor should show the block palette in the footer
-    const blockPalette = page.getByTestId('block-palette');
+    const blockPalette = page.getByTestId(testIds.blockEditor.palette);
     await expect(blockPalette).toBeVisible();
   });
 
@@ -82,7 +82,7 @@ test.describe.serial('Block Editor', () => {
     await openBlockEditor(page);
 
     // Find the view mode toggle
-    const viewModeToggle = page.getByTestId('view-mode-toggle');
+    const viewModeToggle = page.getByTestId(testIds.blockEditor.viewModeToggle);
     await expect(viewModeToggle).toBeVisible();
 
     // Click preview mode button (eye icon) - Grafana Button uses tooltip which becomes aria-label
@@ -90,7 +90,7 @@ test.describe.serial('Block Editor', () => {
     await previewButton.click();
 
     // Block palette should be hidden in preview mode
-    const blockPalette = page.getByTestId('block-palette');
+    const blockPalette = page.getByTestId(testIds.blockEditor.palette);
     await expect(blockPalette).not.toBeVisible();
 
     // Click edit mode button (pen icon) to go back - tooltip is "Edit" not "Edit blocks"
@@ -290,11 +290,11 @@ test.describe.serial('Block Editor', () => {
     await createMarkdownBlock(page, 'original-content');
 
     // Wait for the block to be fully rendered
-    const blockContent = page.getByTestId('block-editor-content');
+    const blockContent = page.getByTestId(testIds.blockEditor.content);
     await expect(blockContent.locator('text=original-content')).toBeVisible();
 
     // Click edit button using helper (handles scroll/hover for dnd-kit overlays)
-    await clickBlockAction(page, 'block-edit-button');
+    await clickBlockAction(page, testIds.blockEditor.editButton);
 
     // Wait for edit modal to appear
     const editModal = page.getByTestId(testIds.blockEditor.blockFormModal);
@@ -336,7 +336,7 @@ test.describe.serial('Block Editor', () => {
     expect(blocks).toHaveLength(2);
 
     // Click delete button on the first block using helper (handles scroll/hover for dnd-kit overlays)
-    await clickBlockAction(page, 'block-delete-button');
+    await clickBlockAction(page, testIds.blockEditor.deleteButton);
 
     // Confirm deletion using helper (locates modal by role and text)
     await confirmDeleteBlock(page);
