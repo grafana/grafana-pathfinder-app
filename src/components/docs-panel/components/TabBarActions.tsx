@@ -64,8 +64,24 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
     locationService.push(PLUGIN_BASE_URL);
   };
 
+  const handleKioskClick = () => {
+    document.dispatchEvent(new CustomEvent('pathfinder-open-kiosk'));
+  };
+
+  const kioskEnabled = !!(window as any).__pathfinderKioskConfig;
+
   return (
     <div className={className}>
+      {kioskEnabled && (
+        <IconButton
+          name="presentation-play"
+          size="sm"
+          tooltip="Kiosk mode"
+          onClick={handleKioskClick}
+          aria-label="Open kiosk mode"
+          data-testid={testIds.kioskMode.button}
+        />
+      )}
       <IconButton
         name="book-open"
         size="sm"

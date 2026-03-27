@@ -11,43 +11,6 @@ const slideUp = keyframes`
   to { opacity: 1; transform: translateY(0); }
 `;
 
-export const getKioskButtonStyles = (theme: GrafanaTheme2) => {
-  const accent = theme.isDark ? '#8B7CF6' : '#6C63FF';
-  const accentGlow = theme.isDark ? 'rgba(139, 124, 246, 0.4)' : 'rgba(108, 99, 255, 0.3)';
-
-  return {
-    button: css({
-      position: 'fixed',
-      top: theme.spacing(1),
-      right: theme.spacing(8),
-      zIndex: 10000,
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.75),
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
-      border: `1px solid ${accent}`,
-      borderRadius: theme.shape.radius.pill,
-      background: `linear-gradient(135deg, ${accent}20 0%, ${accent}10 100%)`,
-      color: accent,
-      cursor: 'pointer',
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      fontFamily: theme.typography.fontFamily,
-      transition: 'all 0.2s ease',
-      backdropFilter: 'blur(8px)',
-      boxShadow: `0 2px 8px ${accentGlow}`,
-      '&:hover': {
-        background: `linear-gradient(135deg, ${accent}35 0%, ${accent}20 100%)`,
-        boxShadow: `0 4px 16px ${accentGlow}`,
-        transform: 'translateY(-1px)',
-      },
-      '&:active': {
-        transform: 'translateY(0)',
-      },
-    }),
-  };
-};
-
 export const getKioskOverlayStyles = (theme: GrafanaTheme2) => {
   const accent = theme.isDark ? '#8B7CF6' : '#6C63FF';
 

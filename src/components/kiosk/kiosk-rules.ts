@@ -7,6 +7,8 @@ export interface KioskRule {
   url: string;
   description: string;
   type: string;
+  /** Grafana instance to open the guide on. Defaults to current origin if omitted. */
+  targetUrl?: string;
 }
 
 interface KioskRulesResponse {
@@ -22,30 +24,35 @@ export const BUNDLED_KIOSK_RULES: KioskRule[] = [
     url: 'https://interactive-learning.grafana.net/guides/tour-of-visualizations',
     description: "A quick tour of Grafana's visualization types\u2014when to use each one, with live examples.",
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: Explore Drilldowns 101',
     url: 'https://interactive-learning.grafana.net/guides/explore-drilldowns-101',
     description: 'Hands-on guide: Explore drilldowns in Grafana.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: Your First Dashboard',
     url: 'https://interactive-learning.grafana.net/guides/first-dashboard',
     description: 'Hands-on guide: Build your first Grafana dashboard.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: Welcome to Grafana Play',
     url: 'https://interactive-learning.grafana.net/guides/welcome-to-play/main-page',
     description: 'Comprehensive walkthrough of Grafana Play features and capabilities.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: Alerting 101',
     url: 'https://interactive-learning.grafana.net/guides/alerting-101',
     description: 'Hands-on guide: Learn how to create and test alerts in Grafana.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: IRM Setup and Configuration',
@@ -53,60 +60,70 @@ export const BUNDLED_KIOSK_RULES: KioskRule[] = [
     description:
       'Hands-on guide: Set up Grafana IRM for on-call notifications, including schedules and escalation chains.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'How to set up your first Synthetic Monitoring check',
     url: 'https://interactive-learning.grafana.net/guides/sm-setting-up-your-first-check',
     description: 'Hands-on guide: Create and configure HTTP checks in Grafana Cloud Synthetic Monitoring.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: CPU Usage in Kubernetes',
     url: 'https://interactive-learning.grafana.net/guides/k8s-cpu',
     description: 'Hands-on guide: Explore CPU usage in Kubernetes Monitoring, from namespaces to containers.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: Memory Usage in Kubernetes',
     url: 'https://interactive-learning.grafana.net/guides/k8s-mem',
     description: 'Hands-on guide: Explore memory usage in Kubernetes Monitoring, from namespaces to containers.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Interactive Guide: Enable Block Editor',
     url: 'https://interactive-learning.grafana.net/guides/enable-block-editor',
     description: 'Hands-on guide: Learn how to enable the Block Editor for first-time authors.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Connect a metrics data source to Grafana Cloud',
     url: 'https://interactive-learning.grafana.net/guides/connect-metrics-data/content.json',
     description: 'Hands-on guide: Learn how to connect a metrics data source to Grafana Cloud.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Introduction to data transformations',
     url: 'https://interactive-learning.grafana.net/guides/find-transformations/content.json',
     description: 'Hands-on guide: Learn how to use data transformations in Grafana.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Reduce log volume using Adaptive Logs recommendations',
     url: 'https://interactive-learning.grafana.net/guides/reduce-log-volume-adaptive-logs/content.json',
     description: 'Hands-on guide: Reduce log volume safely with Adaptive Logs.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Reduce metrics volume using Adaptive Metrics recommendations',
     url: 'https://interactive-learning.grafana.net/guides/adaptive-metrics-recommendations/content.json',
     description: 'Hands-on guide: Reduce metrics volume safely with Adaptive Metrics.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Welcome to Testing & Synthetics!',
     url: 'https://interactive-learning.grafana.net/guides/test-sm-overview-tutorial',
     description: 'Hands-on guide: Navigate Testing & Synthetics; Understanding K6 and Synthetic Monitoring.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Understanding the Four Golden Signals of Observability',
@@ -114,6 +131,7 @@ export const BUNDLED_KIOSK_RULES: KioskRule[] = [
     description:
       'Learn about the Four Golden Signals \u2014 Latency, Traffic, Errors, and Saturation \u2014 with interactive examples.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Explore SQL Expressions with The Traitors UK Dashboard',
@@ -121,18 +139,21 @@ export const BUNDLED_KIOSK_RULES: KioskRule[] = [
     description:
       'A guided tour of the Traitors UK Series 4 dashboard, exploring how SQL expressions transform raw data into rich visualizations.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Fleet Management: Onboard Your First Collector',
     url: 'https://interactive-learning.grafana.net/guides/fleet-management-onboarding/content.json',
     description: 'Hands-on guide: Deploy and connect a Grafana Alloy collector to Fleet Management.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
   {
     title: 'Tour the UK Carbon Intensity Dashboard',
     url: 'https://interactive-learning.grafana.net/guides/play-carbon-intensity/content.json',
     description: 'Explore live UK carbon intensity data with the Infinity data source and JQ expressions.',
     type: 'interactive',
+    targetUrl: 'https://play.grafana.org',
   },
 ];
 

@@ -7,17 +7,16 @@ import type { KioskRule } from './kiosk-rules';
 interface KioskTileProps {
   rule: KioskRule;
   index: number;
-  targetUrl: string;
 }
 
-export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, targetUrl }) => {
+export const KioskTile: React.FC<KioskTileProps> = ({ rule, index }) => {
   const styles = useStyles2(getKioskOverlayStyles);
 
   const handleClick = useCallback(() => {
-    const base = targetUrl.replace(/\/+$/, '');
+    const base = (rule.targetUrl || window.location.origin).replace(/\/+$/, '');
     const docParam = encodeURIComponent(rule.url);
     window.open(`${base}/?doc=${docParam}`, '_blank', 'noopener,noreferrer');
-  }, [targetUrl, rule.url]);
+  }, [rule.targetUrl, rule.url]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

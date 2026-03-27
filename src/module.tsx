@@ -213,10 +213,14 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       });
   }
 
-  // Mount kiosk mode button if enabled and user has dev mode access
-  if (config.enableKioskMode) {
+  // Mount kiosk mode overlay manager if enabled, user has dev mode access, and no ?doc= param
+  // (skip kiosk in tabs opened via tile deep links so the overlay doesn't reappear)
+  if (config.enableKioskMode && !docsParam) {
     import('./utils/dev-mode').then(({ isDevModeEnabled }) => {
       if (isDevModeEnabled(jsonData)) {
+        // Store kiosk config globally so the sidebar can access it
+        (window as any).__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
+
         import('react-dom/client').then(({ createRoot }) => {
           import('./components/kiosk/KioskModeManager').then(({ KioskModeManager }) => {
             const container = document.createElement('div');
@@ -226,7 +230,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
             root.render(
               React.createElement(KioskModeManager, {
                 rulesUrl: config.kioskRulesUrl,
-                targetUrl: config.kioskTargetUrl,
               })
             );
           });

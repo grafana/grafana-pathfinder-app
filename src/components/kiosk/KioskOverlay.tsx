@@ -8,11 +8,10 @@ import { KioskTile } from './KioskTile';
 
 interface KioskOverlayProps {
   rulesUrl: string;
-  targetUrl: string;
   onClose: () => void;
 }
 
-export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, targetUrl, onClose }) => {
+export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose }) => {
   const styles = useStyles2(getKioskOverlayStyles);
   const [rules, setRules] = useState<KioskRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +108,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, targetUrl,
         {!loading && !error && (
           <div className={styles.grid} data-testid={testIds.kioskMode.tileGrid}>
             {rules.map((rule, index) => (
-              <KioskTile key={rule.url} rule={rule} index={index} targetUrl={targetUrl} />
+              <KioskTile key={rule.url} rule={rule} index={index} />
             ))}
           </div>
         )}

@@ -11,7 +11,6 @@ import {
   DEFAULT_DISABLE_AUTO_COLLAPSE,
   DEFAULT_ENABLE_KIOSK_MODE,
   DEFAULT_KIOSK_RULES_URL,
-  DEFAULT_KIOSK_TARGET_URL,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -24,7 +23,6 @@ type State = {
   disableAutoCollapse: boolean;
   enableKioskMode: boolean;
   kioskRulesUrl: string;
-  kioskTargetUrl: string;
 };
 
 export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -42,7 +40,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     disableAutoCollapse: jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
     enableKioskMode: jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
     kioskRulesUrl: jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
-    kioskTargetUrl: jsonData?.kioskTargetUrl ?? DEFAULT_KIOSK_TARGET_URL,
   }));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -95,10 +92,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setState({ ...state, kioskRulesUrl: event.target.value.trim() });
   };
 
-  const onChangeKioskTargetUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({ ...state, kioskTargetUrl: event.target.value.trim() });
-  };
-
   const onResetDefaults = () => {
     setState({
       enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
@@ -107,7 +100,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       disableAutoCollapse: DEFAULT_DISABLE_AUTO_COLLAPSE,
       enableKioskMode: DEFAULT_ENABLE_KIOSK_MODE,
       kioskRulesUrl: DEFAULT_KIOSK_RULES_URL,
-      kioskTargetUrl: DEFAULT_KIOSK_TARGET_URL,
     });
     setValidationErrors({});
   };
@@ -131,7 +123,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         disableAutoCollapse: state.disableAutoCollapse,
         enableKioskMode: state.enableKioskMode,
         kioskRulesUrl: state.kioskRulesUrl,
-        kioskTargetUrl: state.kioskTargetUrl,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -163,8 +154,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT) ||
     state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE) ||
     state.enableKioskMode !== (jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE) ||
-    state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL) ||
-    state.kioskTargetUrl !== (jsonData?.kioskTargetUrl ?? DEFAULT_KIOSK_TARGET_URL);
+    state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL);
 
   return (
     <form onSubmit={onSubmit}>
@@ -317,18 +307,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
                   value={state.kioskRulesUrl}
                   onChange={onChangeKioskRulesUrl}
                   placeholder="https://example.com/kiosk-rules.json"
-                />
-              </Field>
-
-              <Field
-                label="Target Grafana URL"
-                description="Base URL of the Grafana instance to open guides in (e.g. https://play.grafana.org)"
-              >
-                <Input
-                  id="kiosk-target-url"
-                  value={state.kioskTargetUrl}
-                  onChange={onChangeKioskTargetUrl}
-                  placeholder="https://play.grafana.org"
                 />
               </Field>
             </>
