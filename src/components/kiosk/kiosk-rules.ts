@@ -26,13 +26,11 @@ export interface KioskData {
  * Default HTML banner themed for GrafanaCON.
  */
 const DEFAULT_BANNER = `
-<div style="display:flex;align-items:center;gap:24px;padding:32px;border-radius:16px;background:linear-gradient(135deg,#1a0533 0%,#2d1b69 40%,#f55f3e 100%);border:1px solid rgba(245,95,62,0.3);margin-bottom:8px;">
+<div style="display:flex;align-items:center;gap:32px;padding:32px 40px;border-radius:16px;background:linear-gradient(135deg,#1a0533 0%,#2d1b69 50%,#f55f3e 100%);border:1px solid rgba(245,95,62,0.3);margin-bottom:8px;overflow:hidden;">
+  <img src="https://a-us.storyblok.com/f/1022730/370x168/3b714f67ef/grafanacon-stack-logo-2026.svg" alt="GrafanaCON 2026" style="height:120px;flex-shrink:0;" />
   <div style="flex:1;min-width:0;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-      <img src="https://grafana.com/media/grafanacon/grafanacon-logo.svg" alt="GrafanaCON" style="height:40px;" onerror="this.style.display='none'" />
-    </div>
-    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.01em;">Welcome to the Interactive Learning Booth</h2>
-    <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.5;">Choose a hands-on guide below to explore Grafana features at your own pace. Each guide opens in a new tab with step-by-step interactive instructions.</p>
+    <h2 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#fff;letter-spacing:-0.01em;">Welcome to the Interactive Learning Booth</h2>
+    <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.6;">Choose a hands-on guide below to explore Grafana features at your own pace. Each guide opens in a new tab with step-by-step interactive instructions.</p>
   </div>
 </div>
 `;
