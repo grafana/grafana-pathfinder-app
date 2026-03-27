@@ -58,6 +58,16 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => {
       color: 'rgba(255, 255, 255, 0.6)',
       margin: 0,
     }),
+    banner: css({
+      '& img': {
+        maxWidth: '100%',
+        height: 'auto',
+      },
+      '& a': {
+        color: accent,
+        textDecoration: 'underline',
+      },
+    }),
     closeButton: css({
       display: 'flex',
       alignItems: 'center',

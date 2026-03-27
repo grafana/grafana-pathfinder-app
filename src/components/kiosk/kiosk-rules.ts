@@ -11,9 +11,31 @@ export interface KioskRule {
   targetUrl?: string;
 }
 
-interface KioskRulesResponse {
+export interface KioskRulesResponse {
+  /** HTML banner rendered at the top of the kiosk overlay */
+  banner?: string;
   rules: KioskRule[];
 }
+
+export interface KioskData {
+  banner: string;
+  rules: KioskRule[];
+}
+
+/**
+ * Default HTML banner themed for GrafanaCON.
+ */
+const DEFAULT_BANNER = `
+<div style="display:flex;align-items:center;gap:24px;padding:32px;border-radius:16px;background:linear-gradient(135deg,#1a0533 0%,#2d1b69 40%,#f55f3e 100%);border:1px solid rgba(245,95,62,0.3);margin-bottom:8px;">
+  <div style="flex:1;min-width:0;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <img src="https://grafana.com/media/grafanacon/grafanacon-logo.svg" alt="GrafanaCON" style="height:40px;" onerror="this.style.display='none'" />
+    </div>
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.01em;">Welcome to the Interactive Learning Booth</h2>
+    <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.5;">Choose a hands-on guide below to explore Grafana features at your own pace. Each guide opens in a new tab with step-by-step interactive instructions.</p>
+  </div>
+</div>
+`;
 
 /**
  * Bundled default rules used as fallback when CDN fetch fails or no URL is configured.
@@ -166,19 +188,21 @@ function isValidRule(item: unknown): item is KioskRule {
 }
 
 /**
- * Fetch kiosk rules from a CDN URL.
+ * Fetch kiosk data (banner + rules) from a CDN URL.
  * Falls back to bundled defaults on any error.
  */
-export async function fetchKioskRules(url: string): Promise<KioskRule[]> {
+export async function fetchKioskData(url: string): Promise<KioskData> {
+  const defaults: KioskData = { banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES };
+
   if (!url) {
-    return BUNDLED_KIOSK_RULES;
+    return defaults;
   }
 
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!response.ok) {
       console.warn(`[KioskMode] Failed to fetch rules (${response.status}), using defaults`);
-      return BUNDLED_KIOSK_RULES;
+      return defaults;
     }
 
     const data: KioskRulesResponse = await response.json();
@@ -187,12 +211,15 @@ export async function fetchKioskRules(url: string): Promise<KioskRule[]> {
 
     if (valid.length === 0) {
       console.warn('[KioskMode] No valid rules in response, using defaults');
-      return BUNDLED_KIOSK_RULES;
+      return defaults;
     }
 
-    return valid;
+    return {
+      banner: typeof data?.banner === 'string' ? data.banner : DEFAULT_BANNER,
+      rules: valid,
+    };
   } catch (error) {
     console.warn('[KioskMode] Failed to fetch rules, using defaults:', error);
-    return BUNDLED_KIOSK_RULES;
+    return defaults;
   }
 }

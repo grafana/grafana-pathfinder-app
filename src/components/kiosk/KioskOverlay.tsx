@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
-import { fetchKioskRules, type KioskRule } from './kiosk-rules';
+import { fetchKioskData, type KioskRule } from './kiosk-rules';
 import { KioskTile } from './KioskTile';
+import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 
 interface KioskOverlayProps {
   rulesUrl: string;
@@ -14,16 +15,29 @@ interface KioskOverlayProps {
 export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose }) => {
   const styles = useStyles2(getKioskOverlayStyles);
   const [rules, setRules] = useState<KioskRule[]>([]);
+  const [banner, setBanner] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const sanitizedBanner = useMemo(() => {
+    if (!banner) {
+      return '';
+    }
+    try {
+      return sanitizeDocumentationHTML(banner);
+    } catch {
+      return '';
+    }
+  }, [banner]);
 
   useEffect(() => {
     let cancelled = false;
 
-    fetchKioskRules(rulesUrl)
+    fetchKioskData(rulesUrl)
       .then((result) => {
         if (!cancelled) {
-          setRules(result);
+          setRules(result.rules);
+          setBanner(result.banner);
           setLoading(false);
         }
       })
@@ -92,6 +106,12 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose })
             <Icon name="times" />
           </button>
         </div>
+
+        {/* Banner block — sanitized HTML from JSON, themed by the content author */}
+        {!loading && sanitizedBanner && (
+          // eslint-disable-next-line no-restricted-syntax -- admin-controlled CDN content, sanitized with DOMPurify
+          <div className={styles.banner} dangerouslySetInnerHTML={{ __html: sanitizedBanner }} />
+        )}
 
         {loading && (
           <div className={styles.loading} data-testid={testIds.kioskMode.loading}>
