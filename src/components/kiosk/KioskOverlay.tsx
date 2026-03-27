@@ -1,11 +1,19 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import DOMPurify from 'dompurify';
 import { Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
-import { fetchKioskData, type KioskRule } from './kiosk-rules';
+import { fetchKioskData, BUNDLED_KIOSK_RULES, DEFAULT_BANNER, type KioskRule } from './kiosk-rules';
 import { KioskTile } from './KioskTile';
-import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
+
+// SECURITY: Tags and attributes permitted in the kiosk banner.
+// Includes 'style' because admin-controlled banner content uses inline styles
+// for layout — unlike sanitizeDocumentationHTML which strips style for docs.
+const BANNER_SANITIZE_CONFIG: DOMPurify.Config = {
+  ALLOWED_TAGS: ['div', 'img', 'h1', 'h2', 'h3', 'p', 'a', 'span', 'strong', 'em', 'br'],
+  ALLOWED_ATTR: ['style', 'src', 'alt', 'href', 'target', 'rel', 'class', 'id'],
+};
 
 interface KioskOverlayProps {
   rulesUrl: string;
@@ -17,14 +25,14 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose })
   const [rules, setRules] = useState<KioskRule[]>([]);
   const [banner, setBanner] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const sanitizedBanner = useMemo(() => {
     if (!banner) {
       return '';
     }
     try {
-      return sanitizeDocumentationHTML(banner);
+      return DOMPurify.sanitize(banner, BANNER_SANITIZE_CONFIG);
     } catch {
       return '';
     }
@@ -43,7 +51,9 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose })
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load rules');
+          setRules(BUNDLED_KIOSK_RULES);
+          setBanner(DEFAULT_BANNER);
+          setWarning(err instanceof Error ? err.message : 'Failed to load custom rules');
           setLoading(false);
         }
       });
@@ -119,13 +129,13 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose })
           </div>
         )}
 
-        {error && (
-          <div className={styles.error} data-testid={testIds.kioskMode.error}>
-            {error}
+        {!loading && warning && (
+          <div className={styles.warning} data-testid={testIds.kioskMode.error}>
+            Custom rules URL failed to load ({warning}). Showing default guides.
           </div>
         )}
 
-        {!loading && !error && (
+        {!loading && (
           <div className={styles.grid} data-testid={testIds.kioskMode.tileGrid}>
             {rules.map((rule, index) => (
               <KioskTile key={rule.url} rule={rule} index={index} />

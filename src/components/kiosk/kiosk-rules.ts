@@ -25,7 +25,7 @@ export interface KioskData {
 /**
  * Default HTML banner themed for GrafanaCON.
  */
-const DEFAULT_BANNER = `
+export const DEFAULT_BANNER = `
 <div style="display:flex;align-items:center;gap:32px;padding:32px 40px;border-radius:16px;background:linear-gradient(135deg,#1a0533 0%,#2d1b69 50%,#f55f3e 100%);border:1px solid rgba(245,95,62,0.3);margin-bottom:8px;overflow:hidden;">
   <img src="https://a-us.storyblok.com/f/1022730/370x168/3b714f67ef/grafanacon-stack-logo-2026.svg" alt="GrafanaCON 2026" style="height:120px;flex-shrink:0;" />
   <div style="flex:1;min-width:0;">
@@ -187,37 +187,30 @@ function isValidRule(item: unknown): item is KioskRule {
 
 /**
  * Fetch kiosk data (banner + rules) from a CDN URL.
- * Falls back to bundled defaults on any error.
+ * Returns bundled defaults when no URL is configured.
+ * Throws when a URL IS configured but the fetch fails, so the caller
+ * can surface a warning while falling back to bundled defaults.
  */
 export async function fetchKioskData(url: string): Promise<KioskData> {
-  const defaults: KioskData = { banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES };
-
   if (!url) {
-    return defaults;
+    return { banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES };
   }
 
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!response.ok) {
-      console.warn(`[KioskMode] Failed to fetch rules (${response.status}), using defaults`);
-      return defaults;
-    }
-
-    const data: KioskRulesResponse = await response.json();
-    const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : [];
-    const valid = rules.filter(isValidRule);
-
-    if (valid.length === 0) {
-      console.warn('[KioskMode] No valid rules in response, using defaults');
-      return defaults;
-    }
-
-    return {
-      banner: typeof data?.banner === 'string' ? data.banner : DEFAULT_BANNER,
-      rules: valid,
-    };
-  } catch (error) {
-    console.warn('[KioskMode] Failed to fetch rules, using defaults:', error);
-    return defaults;
+  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
   }
+
+  const data: KioskRulesResponse = await response.json();
+  const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : [];
+  const valid = rules.filter(isValidRule).map((rule) => ({ ...rule, type: rule.type || 'guide' }));
+
+  if (valid.length === 0) {
+    throw new Error('No valid rules in response');
+  }
+
+  return {
+    banner: typeof data?.banner === 'string' ? data.banner : DEFAULT_BANNER,
+    rules: valid,
+  };
 }

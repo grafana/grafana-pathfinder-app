@@ -14,6 +14,20 @@ const slideUp = keyframes`
 export const getKioskOverlayStyles = (theme: GrafanaTheme2) => {
   const accent = theme.isDark ? '#8B7CF6' : '#6C63FF';
 
+  const tileArrowClass = css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    color: accent,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    marginTop: 'auto',
+    paddingTop: theme.spacing(1),
+    position: 'relative',
+    opacity: 0.7,
+    transition: 'opacity 0.2s ease',
+  });
+
   return {
     backdrop: css({
       position: 'fixed',
@@ -137,6 +151,9 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => {
         '&::before': {
           opacity: 1,
         },
+        [`& .${tileArrowClass}`]: {
+          opacity: 1,
+        },
       },
       '&:active': {
         transform: 'translateY(-2px)',
@@ -187,21 +204,17 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => {
       WebkitBoxOrient: 'vertical',
       overflow: 'hidden',
     }),
-    tileArrow: css({
+    tileArrow: tileArrowClass,
+    warning: css({
       display: 'flex',
       alignItems: 'center',
-      gap: theme.spacing(0.5),
-      color: accent,
+      gap: theme.spacing(1),
+      padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
+      borderRadius: theme.spacing(1),
+      background: 'rgba(255, 152, 0, 0.12)',
+      border: '1px solid rgba(255, 152, 0, 0.3)',
+      color: 'rgba(255, 255, 255, 0.8)',
       fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      marginTop: 'auto',
-      paddingTop: theme.spacing(1),
-      position: 'relative',
-      opacity: 0.7,
-      transition: 'opacity 0.2s ease',
-      '.tile-hovered &': {
-        opacity: 1,
-      },
     }),
   };
 };
