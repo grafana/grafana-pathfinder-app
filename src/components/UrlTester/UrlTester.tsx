@@ -8,6 +8,7 @@ import {
   isLocalhostUrl,
   type UrlValidation,
 } from '../../security';
+import { testIds } from '../../constants/testIds';
 
 const STORAGE_KEY = 'pathfinder-url-tester-url';
 
@@ -124,7 +125,7 @@ export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterPr
   );
 
   return (
-    <form className={styles.formGroup} onSubmit={handleSubmit}>
+    <form className={styles.formGroup} onSubmit={handleSubmit} data-testid={testIds.urlTester.form}>
       <label className={styles.label} htmlFor="urlTesterInput">
         URL to test
       </label>
@@ -138,12 +139,19 @@ export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterPr
           setTestSuccess(false);
         }}
         placeholder="https://interactive-learning.grafana.net/tutorial-name"
+        data-testid={testIds.urlTester.urlInput}
       />
       <p className={styles.helpText}>
         Supported URLs: interactive-learning.grafana.net, raw.githubusercontent.com, grafana.com/docs, localhost
       </p>
       <Box marginTop={1}>
-        <Button variant="primary" size="sm" type="submit" disabled={!testUrl.trim() || !onOpenDocsPage}>
+        <Button
+          variant="primary"
+          size="sm"
+          type="submit"
+          disabled={!testUrl.trim() || !onOpenDocsPage}
+          data-testid={testIds.urlTester.loadButton}
+        >
           Test URL
         </Button>
       </Box>

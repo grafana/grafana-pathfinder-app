@@ -10,6 +10,7 @@ import { useStyles2 } from '@grafana/ui';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { BlockPalette } from './BlockPalette';
 import type { BlockType, ViewMode } from './types';
+import { testIds } from '../../constants/testIds';
 
 interface BlockEditorFooterProps {
   /** Current view mode (footer only shown in edit mode) */
@@ -30,7 +31,7 @@ export function BlockEditorFooter({ viewMode, onBlockTypeSelect }: BlockEditorFo
   }
 
   return (
-    <div data-testid="block-palette" className={styles.footer}>
+    <div data-testid={testIds.blockEditor.palette} className={styles.footer}>
       <BlockPalette onSelect={onBlockTypeSelect} embedded />
     </div>
   );

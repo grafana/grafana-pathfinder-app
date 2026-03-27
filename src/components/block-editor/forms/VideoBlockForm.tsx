@@ -10,6 +10,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { VIDEO_PROVIDERS } from '../constants';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { PLACEHOLDER_URL } from '../utils';
+import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonVideoBlock } from '../../../types/json-guide.types';
 
@@ -156,7 +157,7 @@ export function VideoBlockForm({
             <TypeSwitchDropdown currentType="video" onSwitch={onSwitchBlockType} blockData={initialData} />
           </div>
         )}
-        <Button variant="secondary" onClick={onCancel} type="button">
+        <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>

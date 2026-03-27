@@ -10,6 +10,7 @@ import { useStyles2, Icon } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
 import { useLearningPaths, BADGES, getPathsData } from '../../learning-paths';
+import { testIds } from '../../constants/testIds';
 import { LearningPathCard } from './LearningPathCard';
 import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -61,9 +62,9 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
 
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.card} onClick={(e) => e.stopPropagation()}>
+      <div className={styles.card} onClick={(e) => e.stopPropagation()} data-testid={testIds.learningPaths.badgesModal}>
         {/* Close button */}
-        <button className={styles.closeButton} onClick={onClose}>
+        <button className={styles.closeButton} onClick={onClose} data-testid={testIds.learningPaths.badgesModalClose}>
           <Icon name="times" size="lg" />
         </button>
 
@@ -167,6 +168,7 @@ function BadgeGridItem({ badge, index, completedGuides, streakDays, paths, style
       onClick={() => onSelect(badge)}
       style={{ animationDelay: `${index * 50}ms` }}
       title={isLegacy ? 'This badge was earned in a previous version' : undefined}
+      data-testid={testIds.learningPaths.badgeItem(badge.id)}
     >
       <div className={styles.badgeIconWrapper}>
         <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xl" emojiClassName={styles.badgeEmojiSmall} />
@@ -460,7 +462,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           <Icon name="book-open" size="md" className={styles.sectionIcon} />
           <h2 className={styles.sectionTitle}>{t('myLearning.learningPaths', 'Learning paths')}</h2>
           {sortedPaths.length > 4 && (
-            <button className={styles.expandButton} onClick={() => setShowAllPaths(!showAllPaths)}>
+            <button
+              className={styles.expandButton}
+              onClick={() => setShowAllPaths(!showAllPaths)}
+              data-testid={testIds.learningPaths.showAllPathsButton}
+            >
               {showAllPaths
                 ? t('myLearning.showLess', 'Show less')
                 : t('myLearning.viewAll', 'View all ({{count}})', { count: sortedPaths.length })}
@@ -518,7 +524,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={styles.sectionHeader}>
           <Icon name="star" size="md" className={styles.sectionIcon} />
           <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
-          <button className={styles.expandButton} onClick={() => setShowAllBadges(!showAllBadges)}>
+          <button
+            className={styles.expandButton}
+            onClick={() => setShowAllBadges(!showAllBadges)}
+            data-testid={testIds.learningPaths.showAllBadgesButton}
+          >
             {showAllBadges
               ? t('myLearning.showLess', 'Show less')
               : t('myLearning.viewAll', 'View all ({{count}})', { count: totalBadges })}
@@ -559,6 +569,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           className={styles.resetButton}
           onClick={handleResetProgress}
           title="Reset all learning progress (for testing)"
+          data-testid={testIds.learningPaths.resetProgressButton}
         >
           Reset progress
         </button>

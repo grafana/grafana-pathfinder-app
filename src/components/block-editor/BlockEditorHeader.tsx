@@ -13,6 +13,7 @@ import { Button, Badge, ButtonGroup, Tooltip, Dropdown, Menu, useStyles2 } from 
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import type { ViewMode } from './types';
+import { testIds } from '../../constants/testIds';
 
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
@@ -241,7 +242,7 @@ export function BlockEditorHeader({
         icon="times-circle"
         onClick={onUnpublish}
         disabled={isPostingToBackend}
-        data-testid="unpublish-button"
+        data-testid={testIds.blockEditor.unpublishButton}
       />
     );
   };
@@ -253,7 +254,7 @@ export function BlockEditorHeader({
       {isBackendAvailable && <Menu.Divider />}
       <Menu.Item label="Import" icon="upload" onClick={onOpenImport} />
       <Menu.Divider />
-      <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid="copy-json-button" />
+      <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid={testIds.blockEditor.copyJsonButton} />
       <Menu.Item label="Download JSON" icon="download-alt" onClick={onDownload} />
       <Menu.Item label="Create GitHub PR" icon="github" onClick={onOpenGitHubPR} />
       <Menu.Divider />
@@ -310,7 +311,7 @@ export function BlockEditorHeader({
           onClick={onSaveDraft}
           disabled={isPostingToBackend}
           tooltip="Save as draft without publishing"
-          data-testid="save-draft-button"
+          data-testid={testIds.blockEditor.saveDraftButton}
         >
           Save as draft
         </Button>
@@ -327,7 +328,7 @@ export function BlockEditorHeader({
             onClick={onSaveDraft}
             disabled={isPostingToBackend}
             tooltip="Save current changes to library draft"
-            data-testid="save-draft-button"
+            data-testid={testIds.blockEditor.saveDraftButton}
           >
             Update draft
           </Button>
@@ -341,7 +342,7 @@ export function BlockEditorHeader({
           onClick={onPostToBackend}
           disabled={isPostingToBackend}
           tooltip="Publish and make visible to users"
-          data-testid="post-to-backend-button"
+          data-testid={testIds.blockEditor.publishButton}
         >
           Publish
         </Button>
@@ -357,7 +358,7 @@ export function BlockEditorHeader({
         onClick={onPostToBackend}
         disabled={isPostingToBackend}
         tooltip="Save changes and keep published"
-        data-testid="post-to-backend-button"
+        data-testid={testIds.blockEditor.publishButton}
       >
         Update
       </Button>
@@ -405,11 +406,23 @@ export function BlockEditorHeader({
       <div className={styles.toolbarRow}>
         {/* Left: New + Library */}
         <div className={styles.leftSection}>
-          <Button variant="secondary" size="sm" icon="file-blank" onClick={onNewGuide}>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="file-blank"
+            onClick={onNewGuide}
+            data-testid={testIds.blockEditor.newGuideButton}
+          >
             New
           </Button>
           {isBackendAvailable && (
-            <Button variant="secondary" size="sm" icon="book-open" onClick={onOpenGuideLibrary}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="book-open"
+              onClick={onOpenGuideLibrary}
+              data-testid={testIds.blockEditor.libraryButton}
+            >
               Library
             </Button>
           )}
@@ -417,7 +430,7 @@ export function BlockEditorHeader({
 
         {/* Right: View mode, publish, and more */}
         <div className={styles.rightSection}>
-          <ButtonGroup data-testid="view-mode-toggle">
+          <ButtonGroup data-testid={testIds.blockEditor.viewModeToggle}>
             <Button
               variant={viewMode === 'edit' ? 'primary' : 'secondary'}
               size="sm"
@@ -455,7 +468,7 @@ export function BlockEditorHeader({
                 size="sm"
                 icon="ellipsis-v"
                 tooltip="More actions"
-                data-testid="more-actions-button"
+                data-testid={testIds.blockEditor.moreActionsButton}
               />
             </Dropdown>
           </div>

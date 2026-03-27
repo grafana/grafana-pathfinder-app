@@ -132,7 +132,10 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
     references: ['testIds.docsPanel.closeButton', 'testIds.docsPanel.myLearningTab'],
   },
   { file: 'components/LoadingIndicator.tsx', references: ['testIds.docsPanel.loadingState'] },
-  { file: 'components/ErrorDisplay.tsx', references: ['testIds.docsPanel.errorState'] },
+  {
+    file: 'components/ErrorDisplay.tsx',
+    references: ['testIds.docsPanel.errorState', 'testIds.docsPanel.retryButton'],
+  },
 ];
 
 /**
