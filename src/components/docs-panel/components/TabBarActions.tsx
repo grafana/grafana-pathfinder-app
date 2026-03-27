@@ -4,7 +4,7 @@
  * plus the close sidebar button.
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { IconButton, Dropdown, Menu, Tooltip } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
@@ -64,8 +64,30 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
     locationService.push(PLUGIN_BASE_URL);
   };
 
+  const [kioskEnabled, setKioskEnabled] = useState(!!(window as any).__pathfinderKioskConfig);
+
+  useEffect(() => {
+    const onReady = () => setKioskEnabled(true);
+    document.addEventListener('pathfinder-kiosk-ready', onReady);
+    return () => document.removeEventListener('pathfinder-kiosk-ready', onReady);
+  }, []);
+
+  const handleKioskClick = () => {
+    document.dispatchEvent(new CustomEvent('pathfinder-open-kiosk'));
+  };
+
   return (
     <div className={className}>
+      {kioskEnabled && (
+        <IconButton
+          name="presentation-play"
+          size="sm"
+          tooltip="Kiosk mode"
+          onClick={handleKioskClick}
+          aria-label="Open kiosk mode"
+          data-testid={testIds.kioskMode.button}
+        />
+      )}
       <IconButton
         name="book-open"
         size="sm"
