@@ -2,7 +2,7 @@
  * Tests for enhanced selector functionality
  */
 
-import { querySelectorAllEnhanced } from './enhanced-selector';
+import { querySelectorAllEnhanced, querySelectorEnhanced } from './enhanced-selector';
 
 describe('Enhanced Selector', () => {
   beforeEach(() => {
@@ -278,6 +278,145 @@ describe('Enhanced Selector', () => {
       const result = querySelectorAllEnhanced('div[[[invalid');
 
       expect(result.elements.length).toBe(0);
+    });
+  });
+
+  describe('enhanced-selector :parent pseudo-selector', () => {
+    afterEach(() => {
+      document.body.innerHTML = '';
+    });
+
+    describe(':parent traversal', () => {
+      it('should traverse up one level with :parent', () => {
+        document.body.innerHTML = `
+          <button class="restore-btn">
+            <span class="btn-text">Restore</span>
+          </button>
+        `;
+
+        const result = querySelectorAllEnhanced('span:contains("Restore"):parent');
+
+        expect(result.elements).toHaveLength(1);
+        expect(result.elements[0]?.tagName).toBe('BUTTON');
+        expect(result.elements[0]?.classList.contains('restore-btn')).toBe(true);
+      });
+
+      it('should traverse up multiple levels with multiple :parent', () => {
+        document.body.innerHTML = `
+          <div class="grandparent">
+            <div class="parent">
+              <span class="child">Target</span>
+            </div>
+          </div>
+        `;
+
+        const result = querySelectorAllEnhanced('span:contains("Target"):parent:parent');
+
+        expect(result.elements).toHaveLength(1);
+        expect(result.elements[0]?.classList.contains('grandparent')).toBe(true);
+      });
+
+      it('should return empty array when traversing beyond root', () => {
+        document.body.innerHTML = `<span>Orphan</span>`;
+
+        const result = querySelectorAllEnhanced('span:contains("Orphan"):parent:parent:parent:parent:parent');
+
+        expect(result.elements).toHaveLength(0);
+      });
+
+      it('should work with :parent on elements without :contains', () => {
+        document.body.innerHTML = `
+          <div class="container">
+            <button class="target">
+              <svg data-testid="icon-copy"></svg>
+            </button>
+          </div>
+        `;
+
+        const result = querySelectorAllEnhanced('[data-testid="icon-copy"]:parent');
+
+        expect(result.elements).toHaveLength(1);
+        expect(result.elements[0]?.tagName).toBe('BUTTON');
+        expect(result.elements[0]?.classList.contains('target')).toBe(true);
+      });
+
+      it('should handle Grafana Restore button scenario', () => {
+        document.body.innerHTML = `
+          <div class="css-w6nko1">
+            <button class="css-qjvyeh-button" type="button">
+              <svg data-testid="icon-history-alt"></svg>
+              <span class="css-1riaxdn">Restore</span>
+            </button>
+          </div>
+        `;
+
+        const result = querySelectorAllEnhanced('span:contains("Restore"):parent');
+
+        expect(result.elements).toHaveLength(1);
+        expect(result.elements[0]?.tagName).toBe('BUTTON');
+        expect(result.elements[0]?.getAttribute('type')).toBe('button');
+      });
+
+      it('should deduplicate parent elements from multiple children', () => {
+        document.body.innerHTML = `
+          <button class="shared-parent">
+            <span>Action</span>
+            <span>Action</span>
+          </button>
+        `;
+
+        const result = querySelectorAllEnhanced('span:contains("Action"):parent');
+
+        // Both spans have the same parent, should only return one button
+        expect(result.elements).toHaveLength(1);
+        expect(result.elements[0]?.classList.contains('shared-parent')).toBe(true);
+      });
+    });
+
+    describe(':parent with querySelectorEnhanced', () => {
+      it('should return first parent element', () => {
+        document.body.innerHTML = `
+          <button class="btn-1"><span>Action</span></button>
+          <button class="btn-2"><span>Action</span></button>
+        `;
+
+        const element = querySelectorEnhanced('span:contains("Action"):parent');
+
+        expect(element).not.toBeNull();
+        expect(element?.tagName).toBe('BUTTON');
+        expect(element?.classList.contains('btn-1')).toBe(true);
+      });
+    });
+
+    describe(':parent combined with other pseudo-selectors', () => {
+      it('should combine :parent with :nth-match', () => {
+        document.body.innerHTML = `
+          <button class="btn-1"><span>Restore</span></button>
+          <button class="btn-2"><span>Restore</span></button>
+          <button class="btn-3"><span>Restore</span></button>
+        `;
+
+        const result = querySelectorAllEnhanced('span:contains("Restore"):parent:nth-match(2)');
+
+        expect(result.elements).toHaveLength(1);
+        expect(result.elements[0]?.classList.contains('btn-2')).toBe(true);
+      });
+
+      it('should combine :parent with :has', () => {
+        document.body.innerHTML = `
+          <div class="container">
+            <button>
+              <svg data-testid="icon"></svg>
+              <span>Save</span>
+            </button>
+          </div>
+        `;
+
+        const result = querySelectorAllEnhanced('span:contains("Save"):parent:has([data-testid="icon"])');
+
+        expect(result.elements).toHaveLength(1);
+        expect(result.elements[0]?.tagName).toBe('BUTTON');
+      });
     });
   });
 });

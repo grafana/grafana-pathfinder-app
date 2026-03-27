@@ -11,6 +11,8 @@ export interface SelectorResult {
   effectiveSelector?: string;
 }
 
+const PARENT_REGEX = /:parent/g;
+
 /**
  * Enhanced querySelector that supports complex selectors with fallbacks
  * Handles :has(), :contains(), and other advanced pseudo-selectors
@@ -80,6 +82,7 @@ function isComplexSelector(selector: string): boolean {
     selector.includes(':has(') ||
     selector.includes(':text(') ||
     selector.includes(':nth-match(') ||
+    selector.includes(':parent') ||
     // Treat data-testid selectors as complex to ensure we can debug/trace hierarchy issues
     // especially when they involve parent-child relationships
     (selector.includes('data-testid') && (selector.includes(' ') || selector.includes('>')))
@@ -106,6 +109,11 @@ function handleComplexSelector(selector: string): SelectorResult {
   // Check for :nth-match() first (custom pseudo-selector for getting nth occurrence globally)
   if (selector.includes(':nth-match(')) {
     return handleNthMatchSelector(selector);
+  }
+
+  // Check for :parent pseudo-selector
+  if (selector.includes(':parent')) {
+    return handleParentSelector(selector);
   }
 
   // Check for :has() pseudo-selector (it may contain :contains())
@@ -483,6 +491,81 @@ function handleTextSelector(selector: string): SelectorResult {
       usedFallback: true,
       originalSelector: selector,
       effectiveSelector: 'ERROR_IN_TEXT',
+    };
+  }
+}
+
+/**
+ * Handle :parent pseudo-selector - traverses up the DOM tree
+ * Example: span:contains("Restore"):parent finds the parent of the span
+ * Multiple :parent can be chained: span:parent:parent traverses up two levels
+ *
+ * @param selector - Selector with :parent pseudo-selector(s)
+ * @returns SelectorResult with parent element(s)
+ */
+function handleParentSelector(selector: string): SelectorResult {
+  // Count how many :parent occurrences we have
+  const parentMatches = selector.match(PARENT_REGEX);
+  const parentCount = parentMatches ? parentMatches.length : 0;
+
+  if (parentCount === 0) {
+    console.warn(`No :parent found in selector: ${selector}`);
+    return {
+      elements: [],
+      usedFallback: true,
+      originalSelector: selector,
+      effectiveSelector: 'NO_PARENT_FOUND',
+    };
+  }
+
+  // Remove all :parent occurrences to get base selector
+  const baseSelector = selector.replace(PARENT_REGEX, '').trim();
+
+  try {
+    // Get elements matching the base selector (recursively handle complex selectors)
+    const baseResult = baseSelector
+      ? querySelectorAllEnhanced(baseSelector)
+      : { elements: [], usedFallback: false, originalSelector: '' };
+
+    if (baseResult.elements.length === 0) {
+      return {
+        elements: [],
+        usedFallback: true,
+        originalSelector: selector,
+        effectiveSelector: `${baseSelector} (no matches for base selector)`,
+      };
+    }
+
+    // Traverse up to parent(s)
+    const parentElements: HTMLElement[] = [];
+
+    for (const element of baseResult.elements) {
+      let current: Element | null = element;
+
+      // Traverse up parentCount levels
+      for (let i = 0; i < parentCount && current; i++) {
+        current = current.parentElement;
+      }
+
+      // Add to results if we successfully traversed and haven't added this parent yet
+      if (current && !parentElements.includes(current as HTMLElement)) {
+        parentElements.push(current as HTMLElement);
+      }
+    }
+
+    return {
+      elements: parentElements,
+      usedFallback: true,
+      originalSelector: selector,
+      effectiveSelector: `${baseSelector} (parent ${parentCount}x)`,
+    };
+  } catch (error) {
+    console.warn(`Error processing :parent selector "${selector}":`, error);
+    return {
+      elements: [],
+      usedFallback: true,
+      originalSelector: selector,
+      effectiveSelector: 'ERROR_IN_PARENT',
     };
   }
 }
