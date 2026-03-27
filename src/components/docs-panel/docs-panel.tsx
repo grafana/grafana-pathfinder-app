@@ -55,7 +55,9 @@ import {
   getMilestoneSlug,
   markMilestoneDone,
   isLastMilestone,
+  setPackageResolver,
 } from '../../docs-retrieval';
+import { createCompositeResolver } from '../../package-engine';
 
 import { ContextPanel } from './context-panel';
 import { BadgeUnlockedToast } from '../LearningPaths';
@@ -83,12 +85,18 @@ import {
   restoreActiveTabFromStorage,
   isGrafanaDocsUrl,
   cleanDocsUrl,
+  loadDocsTabContentResult,
 } from './utils';
 // Import extracted hooks
 import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
 
 // Import centralized types
-import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
+import {
+  LearningJourneyTab,
+  PersistedTabData,
+  CombinedPanelState,
+  PackageOpenInfo,
+} from '../../types/content-panel.types';
 import type { DocsPanelModelOperations } from './types';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
@@ -120,7 +128,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
-      (url: string, title: string) => this.openDocsPage(url, title),
+      (url: string, title: string, packageInfo?: PackageOpenInfo) =>
+        this.openDocsPage(url, title, undefined, packageInfo),
       () => this.openDevToolsTab()
     );
 
@@ -130,6 +139,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       contextPanel,
       pluginConfig,
     });
+
+    // Wire the composite PackageResolver into docs-retrieval so that
+    // fetchPackageContent() and fetchPackageById() can resolve bundled and
+    // remote packages. This is the Tier 3/4 injection point described in Phase 4g.
+    setPackageResolver(createCompositeResolver(pluginConfig));
 
     // Note: Tab restoration now happens from React component after storage is initialized
     // to avoid race condition with useUserStorage hook
@@ -191,6 +205,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           baseUrl: tab.baseUrl,
           currentUrl: tab.currentUrl,
           type: tab.type,
+          packageInfo: tab.packageInfo,
         }));
 
       // Save both tabs and active tab
@@ -452,7 +467,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.saveTabsToStorage();
   }
 
-  public async openDocsPage(url: string, title?: string, skipReadyToBegin?: boolean): Promise<string> {
+  public async openDocsPage(
+    url: string,
+    title?: string,
+    skipReadyToBegin?: boolean,
+    packageInfo?: PackageOpenInfo
+  ): Promise<string> {
     const finalTitle = title || 'Documentation';
     const tabId = this.generateTabId();
 
@@ -465,6 +485,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       isLoading: true,
       error: null,
       type: 'docs',
+      packageInfo,
     };
 
     this.setState({
@@ -476,16 +497,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.saveTabsToStorage();
 
     // Load docs content for the tab
-    this.loadDocsTabContent(tabId, url, skipReadyToBegin);
+    this.loadDocsTabContent(tabId, url, skipReadyToBegin, packageInfo);
 
     return tabId;
   }
 
-  public async loadDocsTabContent(tabId: string, url: string, skipReadyToBegin?: boolean) {
-    // Skip loading if URL is empty
-    if (!url || url.trim() === '') {
-      return;
-    }
+  public async loadDocsTabContent(
+    tabId: string,
+    url: string,
+    skipReadyToBegin?: boolean,
+    packageInfoArg?: PackageOpenInfo
+  ) {
+    // No early return for empty URLs — loadDocsTabContentResult handles all
+    // edge cases (empty URL with packageInfo falls back to fetchPackageById;
+    // empty URL without packageInfo returns a visible error). Surfacing errors
+    // is preferable to the old silent no-op for corrupted/restored tabs.
 
     // Update tab to loading state
     const updatedTabs = this.state.tabs.map((t) =>
@@ -500,12 +526,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({ tabs: updatedTabs });
 
     try {
-      const result = await fetchContent(url, { skipReadyToBegin });
+      const packageInfo = packageInfoArg ?? this.state.tabs.find((t) => t.id === tabId)?.packageInfo;
+      const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
 
       // Check if fetch succeeded or failed
       if (result.content) {
         // Success: set content and clear error
-        // Also sync tab type with fetched content type (important for bundled interactives)
         const fetchedContent = result.content;
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
@@ -514,9 +540,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                 content: fetchedContent,
                 isLoading: false,
                 error: null,
-                currentUrl: url,
-                // Sync tab type with content type - automatically detect interactives
-                type: fetchedContent.type === 'interactive' ? 'interactive' : t.type,
+                baseUrl: t.baseUrl || fetchedContent.url,
+                currentUrl: fetchedContent.url || url,
+                // Package-backed content is always interactive. For non-package tabs,
+                // upgrade to 'interactive' only when the fetched content says so
+                // (e.g., bundled interactives detected by fetchContent).
+                type: packageInfo != null || fetchedContent.type === 'interactive' ? 'interactive' : t.type,
               }
             : t
         );
