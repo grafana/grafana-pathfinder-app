@@ -11,6 +11,8 @@ export interface NavigationOptions {
   ensureDocked?: boolean;
 }
 
+const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
+
 export class NavigationManager {
   private activeCleanupHandlers: Array<() => void> = [];
 
@@ -1298,35 +1300,36 @@ export class NavigationManager {
    */
   async expandParentNavigationSection(targetHref: string): Promise<boolean> {
     try {
-      // Check for /a/ pattern (app paths) - immediately expand all sections
+      if (this.findNavItemByHref(targetHref)) {
+        return true;
+      }
+
+      await this.openAndDockNavigation(undefined, { ensureDocked: true });
+
+      const polled = await this.pollForNavItem(targetHref);
+      if (polled) {
+        return true;
+      }
+
       if (targetHref.includes('/a/')) {
         return this.expandAllNavigationSections();
       }
 
-      // Parse the href to find the parent section
       const parentPath = this.getParentPathFromHref(targetHref);
       if (!parentPath) {
-        // Fallback: expand all navigation sections if we can't determine the parent path
         return this.expandAllNavigationSections();
       }
 
-      // Look for the parent section's expand button
       const parentExpandButton = this.findParentExpandButton(parentPath);
       if (!parentExpandButton) {
-        // Fallback: expand all navigation sections if we can't find the specific parent
         return this.expandAllNavigationSections();
       }
 
-      // Check if the parent section is already expanded
-      const isExpanded = this.isParentSectionExpanded(parentExpandButton);
-      if (isExpanded) {
-        return true; // Already expanded, so this is success
+      if (this.isParentSectionExpanded(parentExpandButton)) {
+        return true;
       }
 
-      // Click the expand button to reveal nested items
       parentExpandButton.click();
-
-      // Wait for expansion animation to complete
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
 
       return true;
@@ -1355,11 +1358,36 @@ export class NavigationManager {
   }
 
   /**
+   * Find a nav menu item by its href using JS filtering (avoids CSS selector injection).
+   */
+  private findNavItemByHref(href: string): Element | null {
+    return (
+      Array.from(document.querySelectorAll(NAV_ITEM_SELECTOR)).find((el) => el.getAttribute('href') === href) ?? null
+    );
+  }
+
+  /**
+   * Poll the DOM for a nav item matching the given href, retrying at short intervals.
+   * Returns the element if found within the timeout, or null.
+   */
+  private async pollForNavItem(href: string): Promise<Element | null> {
+    const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
+    for (let i = 0; i < pollMaxAttempts; i++) {
+      const el = this.findNavItemByHref(href);
+      if (el) {
+        return el;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+    return null;
+  }
+
+  /**
    * Find the expand button for a parent navigation section
    */
   private findParentExpandButton(parentPath: string): HTMLButtonElement | null {
     // Strategy 1: Look for parent link, then find its expand button sibling
-    const parentLink = document.querySelector(`a[data-testid="data-testid Nav menu item"][href="${parentPath}"]`);
+    const parentLink = this.findNavItemByHref(parentPath);
     if (parentLink) {
       // Look for expand button in the same container
       const container = parentLink.closest('li, div');
@@ -1479,7 +1507,6 @@ export class NavigationManager {
   async openAndDockNavigation(element?: HTMLElement, options: NavigationOptions = {}): Promise<void> {
     const { checkContext = false, logWarnings = true, ensureDocked = true } = options;
 
-    // Check if element is within navigation (only if checkContext is true)
     if (checkContext && element) {
       const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
       if (!isInNavigation) {
@@ -1487,7 +1514,6 @@ export class NavigationManager {
       }
     }
 
-    // Look for the mega menu toggle button
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
@@ -1496,39 +1522,65 @@ export class NavigationManager {
       return;
     }
 
-    // Check if navigation appears to be closed
-    const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
-    const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
-
-    if (isNavClosed) {
-      megaMenuToggle.click();
-
-      await waitForReactUpdates();
-
-      const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-      if (dockMenuButton) {
-        dockMenuButton.click();
-
-        await waitForReactUpdates();
-        return;
-      } else {
-        if (logWarnings) {
-          console.warn('Dock menu button not found, navigation will remain in modal mode');
-        }
-        return;
-      }
-    } else if (ensureDocked) {
-      // Navigation is already open, just try to dock it if needed
-      const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-      if (dockMenuButton) {
-        dockMenuButton.click();
-        await waitForReactUpdates();
-        return;
-      } else {
-        return;
-      }
+    // Nav items in the DOM means the sidebar is already open (docked or overlay).
+    // The mega-menu toggle's aria-expanded only reflects overlay state, not docked
+    // sidebar state, so checking actual DOM content is the reliable signal.
+    const navItemsVisible = document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0;
+    if (navItemsVisible) {
+      return;
     }
 
-    return;
+    megaMenuToggle.click();
+    await waitForReactUpdates();
+
+    // After the toggle click, the sidebar may have opened directly as docked
+    // (if the user's localStorage preference was already set). In that case
+    // nav items are already visible and clicking the dock button would UNDOCK it.
+    if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
+      return;
+    }
+
+    if (ensureDocked) {
+      const dockMenuButton = await this.pollForDockButton();
+      if (dockMenuButton) {
+        dockMenuButton.click();
+        await waitForReactUpdates();
+        await this.pollForNavItems();
+      } else if (logWarnings) {
+        console.warn('Dock menu button not found after polling, navigation will remain in modal mode');
+      }
+    }
+  }
+
+  /**
+   * Poll for the dock menu button to appear in the DOM.
+   * The overlay needs time to fully render after the mega-menu toggle click
+   * before the dock button is available.
+   */
+  private async pollForDockButton(): Promise<HTMLButtonElement | null> {
+    const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
+    for (let i = 0; i < pollMaxAttempts; i++) {
+      const btn = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+      if (btn) {
+        return btn;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+    return null;
+  }
+
+  /**
+   * Poll until at least one nav menu item is present in the DOM.
+   * Used after docking to wait for the sidebar's nav tree to finish mounting.
+   */
+  private async pollForNavItems(): Promise<boolean> {
+    const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
+    for (let i = 0; i < pollMaxAttempts; i++) {
+      if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+    return false;
   }
 }
