@@ -168,4 +168,17 @@ export const testIds = {
     sectionEmptyState: 'block-editor-section-empty-state',
     sectionNestedAddButton: 'block-editor-section-add-nested-block',
   },
+
+  // Kiosk Mode
+  kioskMode: {
+    button: 'kiosk-mode-button',
+    overlay: 'kiosk-mode-overlay',
+    closeButton: 'kiosk-mode-close',
+    header: 'kiosk-mode-header',
+    tileGrid: 'kiosk-mode-tile-grid',
+    tile: (index: number) => `kiosk-mode-tile-${index}`,
+    tileTitle: (index: number) => `kiosk-mode-tile-title-${index}`,
+    loading: 'kiosk-mode-loading',
+    error: 'kiosk-mode-error',
+  },
 };

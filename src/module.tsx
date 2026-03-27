@@ -213,6 +213,28 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       });
   }
 
+  // Mount kiosk mode button if enabled and user has dev mode access
+  if (config.enableKioskMode) {
+    import('./utils/dev-mode').then(({ isDevModeEnabled }) => {
+      if (isDevModeEnabled(jsonData)) {
+        import('react-dom/client').then(({ createRoot }) => {
+          import('./components/kiosk/KioskModeManager').then(({ KioskModeManager }) => {
+            const container = document.createElement('div');
+            container.id = 'pathfinder-kiosk-root';
+            document.body.appendChild(container);
+            const root = createRoot(container);
+            root.render(
+              React.createElement(KioskModeManager, {
+                rulesUrl: config.kioskRulesUrl,
+                targetUrl: config.kioskTargetUrl,
+              })
+            );
+          });
+        });
+      }
+    });
+  }
+
   // Skip experiment auto-open when a ?doc= param is present — the doc-param
   // handler (async import above) owns sidebar opening and may redirect first.
   // Running the experiment here would evaluate against the pre-redirect path.

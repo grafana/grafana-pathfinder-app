@@ -33,6 +33,11 @@ export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled 
 // Coda Terminal defaults (experimental dev feature)
 export const DEFAULT_ENABLE_CODA_TERMINAL = false;
 
+// Kiosk Mode defaults (dev feature for presenting guide catalogs)
+export const DEFAULT_ENABLE_KIOSK_MODE = false;
+export const DEFAULT_KIOSK_RULES_URL = '';
+export const DEFAULT_KIOSK_TARGET_URL = '';
+
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
 export const DEFAULT_PEERJS_PORT = 9000;
@@ -99,6 +104,10 @@ export interface DocsPluginConfig {
   codaApiUrl?: string;
   // Coda Relay URL for SSH connections
   codaRelayUrl?: string;
+  // Kiosk Mode (dev feature for presenting guide catalogs)
+  enableKioskMode?: boolean;
+  kioskRulesUrl?: string;
+  kioskTargetUrl?: string;
 }
 
 // Helper functions to get configuration values with defaults
@@ -137,6 +146,10 @@ export const getConfigWithDefaults = (
   // Coda URLs (required for registration)
   codaApiUrl: config.codaApiUrl ?? '',
   codaRelayUrl: config.codaRelayUrl ?? '',
+  // Kiosk Mode
+  enableKioskMode: config.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
+  kioskRulesUrl: config.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
+  kioskTargetUrl: config.kioskTargetUrl ?? DEFAULT_KIOSK_TARGET_URL,
 });
 
 /**

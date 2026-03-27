@@ -1,0 +1,120 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Icon, useStyles2 } from '@grafana/ui';
+import { testIds } from '../../constants/testIds';
+import { getKioskOverlayStyles } from './kiosk-mode.styles';
+import { fetchKioskRules, type KioskRule } from './kiosk-rules';
+import { KioskTile } from './KioskTile';
+
+interface KioskOverlayProps {
+  rulesUrl: string;
+  targetUrl: string;
+  onClose: () => void;
+}
+
+export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, targetUrl, onClose }) => {
+  const styles = useStyles2(getKioskOverlayStyles);
+  const [rules, setRules] = useState<KioskRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchKioskRules(rulesUrl)
+      .then((result) => {
+        if (!cancelled) {
+          setRules(result);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load rules');
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rulesUrl]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [handleKeyDown]);
+
+  const handleBackdropClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  return createPortal(
+    <div
+      className={styles.backdrop}
+      onClick={handleBackdropClick}
+      data-testid={testIds.kioskMode.overlay}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Kiosk mode"
+    >
+      <div className={styles.container}>
+        <div className={styles.header} data-testid={testIds.kioskMode.header}>
+          <div className={styles.titleGroup}>
+            <h1 className={styles.title}>
+              <Icon name="presentation-play" size="lg" /> Interactive Guides
+            </h1>
+            <p className={styles.subtitle}>Select a guide to launch it in a new tab</p>
+          </div>
+          <button
+            className={styles.closeButton}
+            onClick={onClose}
+            aria-label="Close kiosk mode"
+            data-testid={testIds.kioskMode.closeButton}
+          >
+            <Icon name="times" />
+          </button>
+        </div>
+
+        {loading && (
+          <div className={styles.loading} data-testid={testIds.kioskMode.loading}>
+            Loading guides...
+          </div>
+        )}
+
+        {error && (
+          <div className={styles.error} data-testid={testIds.kioskMode.error}>
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && (
+          <div className={styles.grid} data-testid={testIds.kioskMode.tileGrid}>
+            {rules.map((rule, index) => (
+              <KioskTile key={rule.url} rule={rule} index={index} targetUrl={targetUrl} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+};
