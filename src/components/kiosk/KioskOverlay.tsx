@@ -81,19 +81,9 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({ rulesUrl, onClose })
     };
   }, [handleKeyDown]);
 
-  const handleBackdropClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) {
-        onClose();
-      }
-    },
-    [onClose]
-  );
-
   return createPortal(
     <div
       className={styles.backdrop}
-      onClick={handleBackdropClick}
       data-testid={testIds.kioskMode.overlay}
       role="dialog"
       aria-modal="true"
