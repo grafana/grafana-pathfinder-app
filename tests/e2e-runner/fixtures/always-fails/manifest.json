@@ -1,0 +1,16 @@
+{
+  "id": "always-fails",
+  "type": "guide",
+  "repository": "test-fixture",
+  "description": "Synthetic fixture that always fails. Contains a mandatory step targeting a nonexistent element. Used for E2E CLI regression testing and orchestration layer development.",
+  "category": "test-fixture",
+  "author": {
+    "name": "Pathfinder E2E",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}
