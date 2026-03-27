@@ -52,6 +52,8 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
       domSettlingDelay: 300, // Delay after scroll before highlight positioning for DOM stability
       expansionAnimationMs: 300, // Single navigation section expansion animation duration
       allExpansionAnimationMs: 500, // All navigation sections expansion animation duration
+      pollMaxAttempts: 10, // Max polling attempts when waiting for nav items to render
+      pollIntervalMs: 100, // Interval between polling attempts (total wait = attempts × interval)
     },
     // Form filling timing (for typing simulation)
     formFill: {

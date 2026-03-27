@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "always-passes",
+  "title": "Always Passes (Synthetic Fixture)",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Synthetic Test Fixture: Always Passes\n\nThis guide is a deterministic test fixture for the E2E CLI and orchestration layer. Every step targets stable, always-present Grafana UI elements and should complete successfully in any Grafana environment."
+    },
+    {
+      "type": "section",
+      "id": "stable-steps",
+      "title": "Stable Steps",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "content": "Step 1: Highlight the Dashboards nav item. This element is always present in the Grafana sidebar.",
+          "tooltip": "Deterministic pass — targets a stable nav element."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+          "skippable": true,
+          "content": "Step 2: Highlight the Explore nav item. Marked skippable as a secondary validation.",
+          "tooltip": "Deterministic pass — targets a stable nav element."
+        }
+      ]
+    }
+  ]
+}
