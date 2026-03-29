@@ -9,6 +9,7 @@ import {
   isMarkdownBlock,
   isHtmlBlock,
   isImageBlock,
+  isCalloutBlock,
   isVideoBlock,
   isSectionBlock,
   isInteractiveBlock,
@@ -63,6 +64,12 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
     // Strip HTML tags and show text
     const text = block.content.replace(/<[^>]+>/g, ' ').trim();
     return truncate(text, maxLength);
+  }
+
+  if (isCalloutBlock(block)) {
+    const prefix = `[${block.variant}]`;
+    const text = block.title || block.content.split('\n')[0] || '';
+    return truncate(`${prefix} ${text}`, maxLength);
   }
 
   if (isImageBlock(block)) {

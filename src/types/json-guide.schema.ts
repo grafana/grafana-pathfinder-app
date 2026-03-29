@@ -138,6 +138,17 @@ export const JsonImageBlockSchema = z.object({
 });
 
 /**
+ * Schema for callout block.
+ * @coupling Type: JsonCalloutBlock
+ */
+export const JsonCalloutBlockSchema = z.object({
+  type: z.literal('callout'),
+  variant: z.enum(['info', 'warning', 'success', 'error']),
+  content: z.string().min(1, 'Callout content is required'),
+  title: z.string().optional(),
+});
+
+/**
  * Schema for video block.
  * @coupling Type: JsonVideoBlock
  */
@@ -328,6 +339,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
   JsonInteractiveBlockSchema,
+  JsonCalloutBlockSchema,
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
   JsonQuizBlockSchema,
@@ -503,6 +515,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   markdown: new Set(['type', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
   html: new Set(['type', 'content']),
   image: new Set(['type', 'src', 'alt', 'width', 'height']),
+  callout: new Set(['type', 'variant', 'content', 'title']),
   video: new Set(['type', 'src', 'provider', 'title', 'start', 'end']),
   interactive: new Set([
     'type',
@@ -620,6 +633,7 @@ export const VALID_BLOCK_TYPES = new Set([
   'markdown',
   'html',
   'image',
+  'callout',
   'video',
   'interactive',
   'multistep',
