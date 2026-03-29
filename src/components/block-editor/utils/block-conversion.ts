@@ -76,7 +76,7 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   quiz: { choices: [{ id: 'a', text: 'Option A', correct: true }] },
   input: { inputType: 'text', variableName: 'userInput' },
   image: { src: PLACEHOLDER_URL, alt: '' },
-  callout: { variant: 'info' },
+  callout: { variant: 'info', content: 'Callout content' },
   video: { src: PLACEHOLDER_URL },
   interactive: { action: 'noop' },
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },

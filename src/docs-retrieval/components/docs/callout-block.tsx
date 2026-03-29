@@ -47,6 +47,7 @@ const getStyles = (theme: GrafanaTheme2) => {
         css({
           backgroundColor: colors.bg,
           borderLeft: `4px solid ${colors.border}`,
+          color: colors.text,
           padding: theme.spacing(2),
           marginBottom: theme.spacing(2),
           borderRadius: theme.shape.radius.default,
