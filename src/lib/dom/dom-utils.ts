@@ -236,9 +236,10 @@ export async function reftargetExistsCheck(
     }
   }
 
-  // Use resolveWithRetry for resilient element detection with exponential backoff.
+  // Quick existence check — no retry delays. Requirement checks run frequently and must be fast.
+  // The action handlers do their own retry with backoff when they actually execute.
   // Pass the original reftarget so selector pipeline can correctly classify prefixed selectors.
-  const resolved = await resolveWithRetry(reftarget, targetAction);
+  const resolved = await resolveWithRetry(reftarget, targetAction, { delays: [] });
 
   if (resolved) {
     return {
