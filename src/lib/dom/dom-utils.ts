@@ -2,7 +2,6 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 import { resolveSelector } from './selector-resolver';
 import { isCssSelector } from './selector-detector';
-import { resolveWithRetry } from './selector-retry';
 
 /**
  * Recursively get all text content from an element and its descendants
@@ -228,12 +227,10 @@ export async function reftargetExistsCheck(
     }
   }
 
-  // Quick existence check — no retry delays. Requirement checks run frequently and must be fast.
+  // Quick synchronous existence check — no retry. Requirement checks run frequently and must be fast.
   // The action handlers do their own retry with backoff when they actually execute.
-  // Pass the original reftarget so selector pipeline can correctly classify prefixed selectors.
-  const resolved = await resolveWithRetry(reftarget, targetAction, { delays: [] });
-
-  if (resolved) {
+  const existsResult = querySelectorAllEnhanced(resolvedSelector);
+  if (existsResult.elements.length > 0) {
     return {
       requirement: 'exists-reftarget',
       pass: true,

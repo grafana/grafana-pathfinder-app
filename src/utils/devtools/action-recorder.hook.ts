@@ -184,7 +184,9 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordedSteps, setRecordedSteps] = useState<RecordedStep[]>([]);
-  const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number }>>(new Map());
+  const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number; formCaptured?: boolean }>>(
+    new Map()
+  );
 
   // Modal detection state
   const [activeModal, setActiveModal] = useState<Element | null>(null);
@@ -484,10 +486,11 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         event.preventDefault();
         event.stopPropagation();
 
-        // Track this element as a form-fill target
+        // Track this element as an Alt+click form-fill target
         recordingElementsRef.current.set(target, {
           value: (target as HTMLInputElement).value || '',
           timestamp: Date.now(),
+          formCaptured: true,
         });
 
         // Signal the overlay to show "type now" feedback
@@ -685,10 +688,12 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         return;
       }
 
-      // Update the tracked value for text inputs
+      // Update the tracked value for text inputs, preserving formCaptured flag
+      const existing = recordingElementsRef.current.get(target);
       recordingElementsRef.current.set(target, {
         value: inputElement.value || '',
         timestamp: Date.now(),
+        formCaptured: existing?.formCaptured,
       });
     };
 
@@ -710,6 +715,12 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
       const tracked = recordingElementsRef.current.get(target);
       if (tracked) {
+        // Form-captured elements (Alt+click) are finalized by the blur handler,
+        // not handleChange — skip to avoid racing and wrong action types
+        if (tracked.formCaptured) {
+          return;
+        }
+
         // Generate selector using shared utility
         const result = generateSelectorFromEvent(target, event);
         const selector = result.selector;
