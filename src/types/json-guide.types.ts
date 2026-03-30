@@ -474,6 +474,8 @@ export interface JsonCodeBlockBlock {
   type: 'code-block';
   /** CSS selector for the Monaco editor container */
   reftarget: string;
+  /** Fallback selectors ordered by stability score, used when reftarget fails */
+  reftargetFallbacks?: string[];
   /** Programming language for syntax highlighting (e.g., 'javascript', 'typescript', 'python') */
   language?: string;
   /** The code to display and insert */

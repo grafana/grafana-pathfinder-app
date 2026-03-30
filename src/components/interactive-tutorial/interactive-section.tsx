@@ -405,6 +405,7 @@ export function InteractiveSection({
           index: stepIndex,
           targetAction: props.targetAction,
           refTarget: props.refTarget,
+          refTargetFallbacks: props.refTargetFallbacks,
           targetValue: props.targetValue,
           targetComment: props.targetComment,
           requirements: props.requirements,
@@ -804,7 +805,8 @@ export function InteractiveSection({
           stepInfo.refTarget!,
           stepInfo.targetValue,
           'do',
-          stepInfo.targetComment
+          stepInfo.targetComment,
+          stepInfo.refTargetFallbacks
         );
 
         // Only run post-verification if explicitly specified
@@ -983,6 +985,7 @@ export function InteractiveSection({
             requirements: stepInfo.requirements,
             targetaction: stepInfo.targetAction || 'button',
             reftarget: stepInfo.refTarget || '',
+            reftargetFallbacks: stepInfo.refTargetFallbacks,
             targetvalue: stepInfo.targetValue,
             textContent: stepInfo.stepId,
             tagName: 'div',
@@ -1089,7 +1092,8 @@ export function InteractiveSection({
             stepInfo.refTarget!,
             stepInfo.targetValue,
             'show',
-            stepInfo.targetComment
+            stepInfo.targetComment,
+            stepInfo.refTargetFallbacks
           );
 
           // Wait for highlight to be visible and animation to complete

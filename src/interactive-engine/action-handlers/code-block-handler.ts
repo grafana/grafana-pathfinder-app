@@ -31,9 +31,13 @@ export interface CodeBlockInsertResult {
   error?: string;
 }
 
-export async function clearAndInsertCode(reftarget: string, code: string): Promise<CodeBlockInsertResult> {
+export async function clearAndInsertCode(
+  reftarget: string,
+  code: string,
+  reftargetFallbacks?: string[]
+): Promise<CodeBlockInsertResult> {
   try {
-    const resolved = await resolveWithRetry(reftarget, 'codeblock');
+    const resolved = await resolveWithRetry(reftarget, 'codeblock', { fallbacks: reftargetFallbacks });
 
     if (!resolved) {
       return { success: false, error: `Code editor container not found: ${reftarget}` };

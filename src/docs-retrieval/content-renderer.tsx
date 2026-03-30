@@ -911,10 +911,13 @@ function renderParsedElement(
 
   // Helper to substitute variables in internal actions (for multistep/guided blocks)
   // Uses generic to preserve the input array type (InternalAction[], GuidedAction[], etc.)
-  const subInternalActions = <T extends { refTarget?: string; targetValue?: string }>(actions: T[]): T[] => {
+  const subInternalActions = <T extends { refTarget?: string; refTargetFallbacks?: string[]; targetValue?: string }>(
+    actions: T[]
+  ): T[] => {
     return actions.map((action) => ({
       ...action,
       refTarget: sub(action.refTarget) ?? action.refTarget,
+      refTargetFallbacks: action.refTargetFallbacks?.map((fallback) => sub(fallback) ?? fallback),
       targetValue: sub(action.targetValue),
     }));
   };
@@ -972,6 +975,7 @@ function renderParsedElement(
           key={key}
           targetAction={element.props.targetAction}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
+          refTargetFallbacks={element.props.refTargetFallbacks}
           targetValue={sub(element.props.targetValue)}
           hints={element.props.hints}
           targetComment={element.props.targetComment}
@@ -1084,6 +1088,7 @@ function renderParsedElement(
           code={sub(element.props.code) ?? element.props.code}
           language={element.props.language}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
+          refTargetFallbacks={element.props.refTargetFallbacks}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           skippable={element.props.skippable}

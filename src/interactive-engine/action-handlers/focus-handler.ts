@@ -16,7 +16,7 @@ export class FocusHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const resolved = await resolveWithRetry(data.reftarget, 'focus');
+      const resolved = await resolveWithRetry(data.reftarget, 'focus', { fallbacks: data.reftargetFallbacks });
 
       let targetElements: HTMLElement[];
       if (!resolved) {

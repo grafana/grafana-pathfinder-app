@@ -17,7 +17,7 @@ export class ButtonHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const buttons = await this.findButtons(data.reftarget);
+      const buttons = await this.findButtons(data.reftarget, data.reftargetFallbacks);
 
       if (!click) {
         await this.handleShowMode(buttons, data.targetcomment);
@@ -35,10 +35,10 @@ export class ButtonHandler {
    * Find buttons using intelligent selector/text detection with retry support
    * Uses resolveWithRetry for resilience against timing issues
    */
-  private async findButtons(refTarget: string): Promise<HTMLElement[]> {
+  private async findButtons(refTarget: string, fallbacks?: string[]): Promise<HTMLElement[]> {
     // For CSS selectors, use resolveWithRetry then filter to buttons
     if (isCssSelector(refTarget)) {
-      const resolved = await resolveWithRetry(refTarget, 'button');
+      const resolved = await resolveWithRetry(refTarget, 'button', { fallbacks });
       if (resolved) {
         // Filter to only button elements
         const buttons = resolved.elements.filter(
@@ -48,11 +48,13 @@ export class ButtonHandler {
           return buttons;
         }
       }
-      // Fall back to text matching if selector finds nothing
+
+      // Fall back to text matching if selector finds nothing or no button-like elements
+      return findButtonByText(refTarget);
     }
 
     // For plain text, use resolveWithRetry which internally uses findButtonByText
-    const resolved = await resolveWithRetry(refTarget, 'button');
+    const resolved = await resolveWithRetry(refTarget, 'button', { fallbacks });
     if (resolved) {
       return resolved.elements;
     }
