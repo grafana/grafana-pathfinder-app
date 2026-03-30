@@ -132,6 +132,29 @@ const getStyles = (theme: GrafanaTheme2) => ({
     pointerEvents: 'none',
     transition: 'all 0.1s ease',
   }),
+  highlightHover: css({
+    position: 'fixed',
+    zIndex: 99997,
+    border: `2px solid ${theme.colors.info.main}`,
+    backgroundColor: theme.colors.info.transparent,
+    pointerEvents: 'none',
+    transition: 'all 0.1s ease',
+  }),
+  hoverModeIndicator: css({
+    backgroundColor: theme.colors.info.main,
+    color: theme.colors.info.contrastText,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+  }),
+  hintText: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    opacity: 0.7,
+  }),
 });
 
 export interface RecordModeOverlayProps {
@@ -173,6 +196,27 @@ export function RecordModeOverlay({
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
+  const [isHoverMode, setIsHoverMode] = useState(false);
+
+  // Track Shift key state for hover mode visual indicator
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setIsHoverMode(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setIsHoverMode(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   // Check if we're already at the starting URL
   const isAtStartingUrl = startingUrl ? window.location.href === startingUrl : true;
@@ -300,10 +344,10 @@ export function RecordModeOverlay({
   // Render directly to document.body to bypass any modal overlays
   return createPortal(
     <>
-      {/* Element highlight - red border */}
+      {/* Element highlight - red border (blue when in hover mode) */}
       {highlightRect && (
         <div
-          className={styles.highlight}
+          className={isHoverMode ? styles.highlightHover : styles.highlight}
           data-record-overlay="highlight"
           style={{
             left: highlightRect.left,
@@ -326,6 +370,8 @@ export function RecordModeOverlay({
           {stepCount} {sectionName ? 'block' : 'step'}
           {stepCount !== 1 ? 's' : ''}
         </span>
+        {isHoverMode && <span className={styles.hoverModeIndicator}>⇧ Hover capture</span>}
+        <span className={styles.hintText}>Hold Shift + click to capture hover steps</span>
         {/* Multi-step grouping indicator - only show when enabled and actively grouping */}
         {isMultiStepGroupingEnabled && isGroupingMultiStep && (
           <span

@@ -24,6 +24,9 @@ import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { testIds } from '../../../constants/testIds';
+import { SelectorHealthBadge } from '../SelectorHealthBadge';
+import { SelectorTestOverlay } from '../SelectorTestOverlay';
+import { useSelectorTest } from '../useSelectorTest';
 import type { BlockFormProps, JsonBlock, JsonInteractiveAction } from '../types';
 import type { JsonInteractiveBlock } from '../../../types/json-guide.types';
 
@@ -80,6 +83,12 @@ export function InteractiveBlockForm({
   const [lazyRender, setLazyRender] = useState(initial?.lazyRender ?? false);
   const [scrollContainer, setScrollContainer] = useState(initial?.scrollContainer ?? '');
 
+  // Fallback selectors state
+  const [fallbacks, setFallbacks] = useState<string[]>(initial?.reftargetFallbacks ?? []);
+
+  // Selector test hook
+  const { testSelector, testResult, clearTest } = useSelectorTest();
+
   // AI customization state
   const [assistantEnabled, setAssistantEnabled] = useState(initial?.assistantEnabled ?? false);
   const [assistantId, setAssistantId] = useState(initial?.assistantId ?? '');
@@ -125,6 +134,7 @@ export function InteractiveBlockForm({
         action,
         // Only include reftarget for non-noop actions
         ...(!isNoopAction && reftarget.trim() && { reftarget: reftarget.trim() }),
+        ...(!isNoopAction && fallbacks.length > 0 && { reftargetFallbacks: fallbacks }),
         content: content.trim(),
         // The following fields are not relevant for noop actions
         ...(!isNoopAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
@@ -151,6 +161,7 @@ export function InteractiveBlockForm({
     [
       action,
       reftarget,
+      fallbacks,
       targetvalue,
       content,
       tooltip,
@@ -193,6 +204,20 @@ export function InteractiveBlockForm({
     });
   }, []);
 
+  // Swap a fallback selector into the primary reftarget position
+  const promoteSelector = useCallback(
+    (fallback: string, index: number) => {
+      const newFallbacks = [...fallbacks];
+      newFallbacks.splice(index, 1);
+      if (reftarget) {
+        newFallbacks.unshift(reftarget); // demote old primary
+      }
+      setFallbacks(newFallbacks);
+      setReftarget(fallback);
+    },
+    [fallbacks, reftarget]
+  );
+
   // noop actions don't require a reftarget since they're informational only
   // navigate actions use reftarget as a path, not a DOM selector
   const isNoop = action === 'noop';
@@ -220,25 +245,74 @@ export function InteractiveBlockForm({
 
       {/* Target Selector with DOM Picker - hidden for noop and navigate actions */}
       {!isNoop && !isNavigate && (
-        <Field label="Target selector" description="CSS selector or Grafana selector for the target element" required>
-          <div className={styles.selectorField}>
-            <Input
-              value={reftarget}
-              onChange={(e) => setReftarget(e.currentTarget.value)}
-              placeholder="e.g., button[data-testid='save'], .my-class"
-              className={styles.selectorInput}
-            />
-            <Button
-              variant="secondary"
-              onClick={startPicker}
-              type="button"
-              icon="crosshair"
-              tooltip="Click an element to capture its selector"
+        <>
+          <Field label="Target selector" description="CSS selector or Grafana selector for the target element" required>
+            <div className={styles.selectorField}>
+              <Input
+                value={reftarget}
+                onChange={(e) => setReftarget(e.currentTarget.value)}
+                placeholder="e.g., button[data-testid='save'], .my-class"
+                className={styles.selectorInput}
+              />
+              <Button
+                variant="secondary"
+                onClick={startPicker}
+                type="button"
+                icon="crosshair"
+                tooltip="Click an element to capture its selector"
+              >
+                Pick element
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => testSelector(reftarget, action)}
+                type="button"
+                icon="eye"
+                tooltip="Test selector on current page"
+                disabled={!reftarget}
+              >
+                Test
+              </Button>
+            </div>
+          </Field>
+
+          {/* Selector health badge */}
+          {reftarget && <SelectorHealthBadge reftarget={reftarget} action={action} />}
+
+          {/* Test result overlay */}
+          {testResult && <SelectorTestOverlay elements={testResult.elements} onDismiss={clearTest} />}
+
+          {/* Test result text */}
+          {testResult && (
+            <span
+              style={{
+                fontSize: 12,
+                color: testResult.matchCount === 1 ? '#73BF69' : testResult.matchCount === 0 ? '#F2495C' : '#FF9830',
+              }}
             >
-              Pick element
-            </Button>
-          </div>
-        </Field>
+              {testResult.matchCount === 0
+                ? 'No elements found on this page'
+                : `${testResult.matchCount} match${testResult.matchCount !== 1 ? 'es' : ''}`}
+            </span>
+          )}
+
+          {/* Fallback alternatives */}
+          {fallbacks.length > 0 && (
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: '#8e8e8e' }}>
+                Alternative selectors ({fallbacks.length})
+              </summary>
+              {fallbacks.map((fb, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                  <code style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{fb}</code>
+                  <Button size="sm" variant="secondary" onClick={() => promoteSelector(fb, i)} type="button">
+                    Use this
+                  </Button>
+                </div>
+              ))}
+            </details>
+          )}
+        </>
       )}
 
       {/* Target Value (for formfill) */}

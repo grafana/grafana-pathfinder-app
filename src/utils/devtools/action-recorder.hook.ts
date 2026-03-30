@@ -2,7 +2,7 @@
  * Hook for recording user interactions as tutorial steps (Record Mode)
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { shouldCaptureElement, getActionDescription } from '../../lib/dom/action-detector';
 import { generateSelectorFromEvent } from './selector-generator.util';
 import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
@@ -136,6 +136,8 @@ export interface UseActionRecorderReturn {
   // Modal detection state
   activeModal: Element | null;
   pendingGroupSteps: RecordedStep[];
+  // Hover mode ref (Shift key state)
+  isHoverModeRef: MutableRefObject<boolean>;
 }
 
 /**
@@ -190,6 +192,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const triggerStepRef = useRef<RecordedStep | null>(null);
   const modalObserverRef = useRef<MutationObserver | null>(null);
   const pendingModalCheckRef = useRef<boolean>(false);
+  const isHoverModeRef = useRef(false);
 
   // REACT: Store callbacks in refs to avoid effect re-runs when they change (R2, R3)
   // This allows the effect to always use the latest callback without re-attaching listeners
@@ -433,6 +436,33 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       const currentExcludeSelectors = excludeSelectorsRef.current;
       const shouldExclude = currentExcludeSelectors.some((selector) => target.closest(selector));
       if (shouldExclude) {
+        return;
+      }
+
+      // Hover mode: Shift+Click captures hover step without clicking through
+      if (event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const result = generateSelectorFromEvent(target, event);
+        const description = getActionDescription('hover', target);
+
+        const newStep: RecordedStep = {
+          action: 'hover',
+          selector: result.selector,
+          value: undefined,
+          description,
+          isUnique: result.selectorInfo.isUnique,
+          matchCount: result.selectorInfo.matchCount,
+          contextStrategy: result.selectorInfo.contextStrategy,
+          fallbacks: result.fallbacks.length > 0 ? result.fallbacks : undefined,
+        };
+
+        // Add step directly — skip modal detection since click was intercepted
+        setRecordedSteps((prev) => [...prev, newStep]);
+        if (onStepRecordedRef.current) {
+          onStepRecordedRef.current(newStep);
+        }
         return;
       }
 
@@ -683,6 +713,30 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     // This prevents excessive effect re-runs when callbacks change on every render
   }, [recordingState, enableModalDetection, activeModal, pendingGroupSteps]);
 
+  // Track Shift key state for hover capture mode
+  useEffect(() => {
+    if (recordingState !== 'recording') {
+      return;
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isHoverModeRef.current = true;
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isHoverModeRef.current = false;
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+      isHoverModeRef.current = false;
+    };
+  }, [recordingState]);
+
   return {
     isRecording, // Backward compatibility
     recordingState,
@@ -703,5 +757,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     // Modal detection state
     activeModal,
     pendingGroupSteps,
+    // Hover mode ref (Shift key state)
+    isHoverModeRef,
   };
 }
