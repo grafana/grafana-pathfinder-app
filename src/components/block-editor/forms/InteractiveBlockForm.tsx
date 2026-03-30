@@ -24,7 +24,7 @@ import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { testIds } from '../../../constants/testIds';
-import { generateFallbackSelectors, querySelectorAllEnhanced } from '../../../lib/dom';
+import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import { SelectorTestOverlay } from '../SelectorTestOverlay';
 import { useSelectorTest } from '../useSelectorTest';
@@ -218,8 +218,8 @@ export function InteractiveBlockForm({
       return;
     }
     try {
-      // Find the target element to generate alternatives from
-      const result = querySelectorAllEnhanced(reftarget.trim());
+      const resolved = resolveSelector(reftarget.trim());
+      const result = querySelectorAllEnhanced(resolved);
       if (result.elements.length > 0) {
         const alts = generateFallbackSelectors(result.elements[0] as HTMLElement, reftarget.trim());
         setAlternatives(alts);

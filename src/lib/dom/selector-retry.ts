@@ -63,7 +63,7 @@ export async function resolveWithRetry(
     element: pipelineResult.element,
     elements: pipelineResult.elements,
     resolvedSelector: pipelineResult.resolvedSelector,
-    usedFallback: false,
+    usedFallback: pipelineResult.strategy !== 'exact',
     retryCount: pipelineResult.retryCount,
   };
 }

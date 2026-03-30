@@ -160,7 +160,7 @@ function resolveTrailingSelector(elements: HTMLElement[], trailing: string): HTM
     const results = Array.from(document.querySelectorAll(markerSelector)) as HTMLElement[];
     return results;
   } catch {
-    return elements;
+    return [];
   } finally {
     elements.forEach((el) => el.removeAttribute(marker));
   }
