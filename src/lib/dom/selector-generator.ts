@@ -195,7 +195,8 @@ function isValidTestId(value: string | null): boolean {
  * @returns The overlay element if found, null otherwise
  */
 function findOverlayContext(element: HTMLElement): HTMLElement | null {
-  let current: HTMLElement | null = element;
+  // Start from parent — the element itself should not be its own overlay context
+  let current: HTMLElement | null = element.parentElement;
 
   while (current) {
     const role = current.getAttribute('role');
@@ -492,10 +493,12 @@ function isUniqueButtonText(text: string): boolean {
 function findScopingAncestorSelector(element: HTMLElement): string | null {
   let current = element.parentElement;
   let depth = 0;
+  let bestDataAttrAncestor: string | null = null;
 
   while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
     const tag = current.tagName.toLowerCase();
 
+    // Priority 1: Semantic scoping tags with testid (original behavior)
     if ((SELECTOR_CONFIG.scopingTags as readonly string[]).includes(tag)) {
       const testId = getAnyTestId(current);
       if (testId) {
@@ -504,11 +507,27 @@ function findScopingAncestorSelector(element: HTMLElement): string | null {
       }
     }
 
+    // Priority 2: Any element with a testid (including divs)
+    const testId = getAnyTestId(current);
+    if (testId) {
+      const testIdAttr = getTestIdAttr(current);
+      return `${tag}[${testIdAttr}='${testId}']`;
+    }
+
+    // Priority 3: Capture first ancestor with stable data-* attribute (as fallback)
+    if (!bestDataAttrAncestor) {
+      const stableAttr = getStableDataAttr(current);
+      if (stableAttr) {
+        bestDataAttrAncestor = `${tag}[${stableAttr.name}='${stableAttr.value}']`;
+      }
+    }
+
     current = current.parentElement;
     depth++;
   }
 
-  return null;
+  // Return data-attr ancestor only if no testid ancestor was found
+  return bestDataAttrAncestor;
 }
 
 function findBestElementInHierarchy(
@@ -629,6 +648,58 @@ function findNearbyFormControl(element: HTMLElement, maxDepth: number): HTMLElem
     depth++;
   }
 
+  return null;
+}
+
+/**
+ * Patterns for data-* attributes that are dynamic/unstable and should NOT be used
+ * as parent scoping context. These change between sessions, locales, or interactions.
+ */
+const UNSTABLE_DATA_ATTR_PATTERNS: RegExp[] = [
+  /^data-emotion/,
+  /^data-react/,
+  /^data-state$/,
+  /^data-focus/,
+  /^data-hover/,
+  /^data-active/,
+  /^data-selected$/,
+  /^data-disabled$/,
+  /^data-checked$/,
+  /^data-popper-/,
+  /^data-radix-/,
+  /^data-headlessui-/,
+  /^data-new-gr-/,
+  /^data-gr-/,
+  // Already handled by getAnyTestId — avoid double-matching
+  /^data-testid$/,
+  /^data-cy$/,
+  /^data-test-id$/,
+  /^data-qa$/,
+  /^data-test-subj$/,
+];
+
+/**
+ * Find the first stable (non-dynamic) data-* attribute on an element.
+ * Returns the attribute name and value, or null if none found.
+ * Skips attributes that are in the unstable denylist or look like state flags.
+ */
+function getStableDataAttr(element: HTMLElement): { name: string; value: string } | null {
+  for (const attr of Array.from(element.attributes)) {
+    if (!attr.name.startsWith('data-')) {
+      continue;
+    }
+    if (UNSTABLE_DATA_ATTR_PATTERNS.some((p) => p.test(attr.name))) {
+      continue;
+    }
+    if (!attr.value || attr.value.length > SELECTOR_CONFIG.maxTextLength) {
+      continue;
+    }
+    // Skip boolean-like values that are likely state attributes
+    if (attr.value === 'true' || attr.value === 'false') {
+      continue;
+    }
+    return { name: attr.name, value: attr.value };
+  }
   return null;
 }
 
@@ -862,6 +933,18 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
       const contextualSelector = buildContextualSelector(bestElement, roleSelector);
       return cleanDynamicAttributes(contextualSelector);
     }
+
+    // For elements with semantic role but no text (e.g., combobox inputs),
+    // use the role as a base selector and add context
+    const tag = bestElement.tagName.toLowerCase();
+    const roleBaseSelector = `${tag}[role='${role}']`;
+    const roleMatches = querySelectorAllEnhanced(roleBaseSelector);
+    if (roleMatches.elements.length === 1) {
+      return cleanDynamicAttributes(roleBaseSelector);
+    }
+    // Not unique — use context to disambiguate
+    const contextualSelector = buildContextualSelector(bestElement, roleBaseSelector);
+    return cleanDynamicAttributes(contextualSelector);
   }
 
   // 2. Check ID (if not auto-generated)
@@ -1104,6 +1187,158 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
  * Find sibling-based context for an element.
  * Useful for form inputs that follow labels or other identifiable siblings.
  */
+/**
+ * Find the direct child of `ancestor` that is an ancestor-or-self of `descendant`.
+ * Used to determine which branch of the ancestor's children tree the descendant lives in.
+ */
+function findDirectChildAncestor(ancestor: HTMLElement, descendant: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = descendant;
+  while (current && current.parentElement !== ancestor) {
+    current = current.parentElement;
+  }
+  return current;
+}
+
+/**
+ * Find a scoped :nth-child selector within a meaningful parent.
+ * Instead of a global :nth-match(N) (fragile — any page change breaks it),
+ * builds parentSelector > tag:nth-child(N) baseSelector (scoped to a stable parent).
+ *
+ * Example output: [data-intercom-target="env-site-selectors"] > div:nth-child(1) input[role="combobox"]
+ */
+function findScopedNthChild(element: HTMLElement, baseSelector: string): string | null {
+  let current = element.parentElement;
+  let depth = 0;
+
+  while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
+    // Try to identify this parent
+    let parentSelector: string | null = null;
+    const tag = current.tagName.toLowerCase();
+
+    const testId = getAnyTestId(current);
+    const id = current.id && !isAutoGeneratedId(current.id) ? current.id : null;
+    const stableAttr = getStableDataAttr(current);
+
+    if (testId) {
+      const testIdAttr = getTestIdAttr(current);
+      parentSelector = `${tag}[${testIdAttr}='${testId}']`;
+    } else if (id) {
+      parentSelector = `#${id}`;
+    } else if (stableAttr) {
+      parentSelector = `${tag}[${stableAttr.name}='${stableAttr.value}']`;
+    }
+
+    if (parentSelector) {
+      // Find which direct child of this parent contains the target element
+      const directChild = findDirectChildAncestor(current, element);
+      if (directChild) {
+        const siblings = Array.from(current.children);
+        const childIndex = siblings.indexOf(directChild) + 1;
+        if (childIndex > 0) {
+          const childTag = directChild.tagName.toLowerCase();
+
+          // Try: parentSelector > tag:nth-child(N) baseSelector
+          const nthChildSelector = `${parentSelector} > ${childTag}:nth-child(${childIndex}) ${baseSelector}`;
+          const result = tryUniqueSelector(nthChildSelector, element);
+          if (result.success) {
+            return result.selector;
+          }
+
+          // Try without child tag constraint
+          const nthChildSelector2 = `${parentSelector} > :nth-child(${childIndex}) ${baseSelector}`;
+          const result2 = tryUniqueSelector(nthChildSelector2, element);
+          if (result2.success) {
+            return result2.selector;
+          }
+        }
+      }
+
+      // Fallback: scoped nth-match (still better than global nth-match)
+      try {
+        const scopedSelector = `${parentSelector} ${baseSelector}`;
+        const scopedMatches = querySelectorAllEnhanced(scopedSelector);
+        const idx = scopedMatches.elements.indexOf(element);
+        if (idx >= 0) {
+          const scopedNthSelector = `${parentSelector} ${baseSelector}:nth-match(${idx + 1})`;
+          const verifyResult = tryUniqueSelector(scopedNthSelector, element);
+          if (verifyResult.success) {
+            return verifyResult.selector;
+          }
+        }
+      } catch {
+        // Continue to next parent
+      }
+    }
+
+    current = current.parentElement;
+    depth++;
+  }
+  return null;
+}
+
+/**
+ * Find label-scoped context for form elements.
+ * Walks up from the element to find a container with a <label> child,
+ * then uses that label's text (and optionally the container's attributes) for scoping.
+ *
+ * Handles Grafana's InlineField pattern where a wrapper div contains
+ * a <label> and a form control (e.g., MultiSelect, input).
+ */
+function findLabelScopedContext(element: HTMLElement, baseSelector: string): string | null {
+  let current = element.parentElement;
+  let depth = 0;
+
+  while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
+    // Look for a <label> that is a direct child of this ancestor
+    const labels = current.querySelectorAll(':scope > label');
+    for (const label of Array.from(labels)) {
+      if (!(label instanceof HTMLElement)) {
+        continue;
+      }
+      const labelText = normalizeText(label.textContent || '');
+      if (labelText.length === 0 || labelText.length >= SELECTOR_CONFIG.maxTextLength) {
+        continue;
+      }
+
+      // Try to identify the container by its attributes
+      const tag = current.tagName.toLowerCase();
+      const testId = getAnyTestId(current);
+      const id = current.id && !isAutoGeneratedId(current.id) ? current.id : null;
+      const stableAttr = getStableDataAttr(current);
+
+      let parentPart: string | null = null;
+      if (testId) {
+        const testIdAttr = getTestIdAttr(current);
+        parentPart = `${tag}[${testIdAttr}='${testId}']`;
+      } else if (id) {
+        parentPart = `#${id}`;
+      } else if (stableAttr) {
+        parentPart = `${tag}[${stableAttr.name}='${stableAttr.value}']`;
+      }
+
+      if (parentPart) {
+        // Container has stable identifier — combine with descendant selector
+        const candidateSelector = `${parentPart} ${baseSelector}`;
+        const result = tryUniqueSelector(candidateSelector, element);
+        if (result.success) {
+          return result.selector;
+        }
+      }
+
+      // Container has no stable id — use :has(> label) to identify it by label text
+      const textPseudo = labelText.length < 20 ? `:text('${labelText}')` : `:contains('${labelText}')`;
+      const hasLabelSelector = `${tag}:has(> label${textPseudo}) ${baseSelector}`;
+      const result = tryUniqueSelector(hasLabelSelector, element);
+      if (result.success) {
+        return result.selector;
+      }
+    }
+    current = current.parentElement;
+    depth++;
+  }
+  return null;
+}
+
 function findSiblingContext(element: HTMLElement, baseSelector: string): string | null {
   // Try previous sibling with testid (common for labels before inputs)
   const prevSibling = element.previousElementSibling;
@@ -1158,6 +1393,12 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
       return parentContext;
     }
 
+    // Strategy 1.5: Try label-scoped context (for form fields with associated labels)
+    const labelContext = findLabelScopedContext(element, baseSelector);
+    if (labelContext) {
+      return labelContext;
+    }
+
     // Strategy 2: Try sibling context (common for form inputs after labels)
     const siblingContext = findSiblingContext(element, baseSelector);
     if (siblingContext) {
@@ -1208,6 +1449,12 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
       }
     }
 
+    // Strategy 5.5: Try scoped :nth-child within a meaningful parent
+    const scopedNthChild = findScopedNthChild(element, baseSelector);
+    if (scopedNthChild) {
+      return scopedNthChild;
+    }
+
     // Strategy 6: Last resort - Use :nth-match() (fragile, but better than nothing)
     // For overlays, scope the nth-match to the overlay
     const index = matches.elements.indexOf(element);
@@ -1247,6 +1494,14 @@ interface AriaLabelParent {
   labelText: string;
 }
 
+/** Parent element with a stable data-* attribute for context building */
+interface DataAttrParent {
+  element: HTMLElement;
+  depth: number;
+  attrName: string;
+  attrValue: string;
+}
+
 /**
  * Try to add simple parent context (no complex :has() selectors)
  *
@@ -1262,6 +1517,7 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
   const testIdParents: TestIdParent[] = [];
   const idParents: IdParent[] = [];
   const ariaLabelParents: AriaLabelParent[] = [];
+  const dataAttrParents: DataAttrParent[] = [];
 
   let current = element.parentElement;
   let totalDepth = 0;
@@ -1275,7 +1531,8 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
   ) {
     const testId = getAnyTestId(current);
     const id = current.id && !isAutoGeneratedId(current.id) ? current.id : null;
-    const hasMeaningfulAttribute = testId || id || current.hasAttribute('aria-label');
+    const stableAttr = getStableDataAttr(current);
+    const hasMeaningfulAttribute = testId || id || current.hasAttribute('aria-label') || stableAttr;
 
     if (testId) {
       const testIdAttr = getTestIdAttr(current);
@@ -1284,6 +1541,16 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
 
     if (id) {
       idParents.push({ element: current, depth: totalDepth, id });
+    }
+
+    // Collect stable data-* attributes (e.g., data-intercom-target, data-feature, etc.)
+    if (stableAttr) {
+      dataAttrParents.push({
+        element: current,
+        depth: totalDepth,
+        attrName: stableAttr.name,
+        attrValue: stableAttr.value,
+      });
     }
 
     // Check for semantic section/article/main tags with ARIA labels
@@ -1349,6 +1616,17 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
   for (const parent of ariaLabelParents) {
     const tag = parent.element.tagName.toLowerCase();
     const parentSelector = `${tag}[aria-label='${parent.labelText}']`;
+    const candidateSelector = `${parentSelector} ${baseSelector}`;
+    const result = tryUniqueSelector(candidateSelector, element);
+    if (result.success) {
+      return result.selector;
+    }
+  }
+
+  // Try stable data-* attribute parents from closest to farthest
+  for (const parent of dataAttrParents) {
+    const tag = parent.element.tagName.toLowerCase();
+    const parentSelector = `${tag}[${parent.attrName}='${parent.attrValue}']`;
     const candidateSelector = `${parentSelector} ${baseSelector}`;
     const result = tryUniqueSelector(candidateSelector, element);
     if (result.success) {

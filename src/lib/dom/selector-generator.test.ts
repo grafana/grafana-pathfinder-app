@@ -595,4 +595,199 @@ describe('Selector Generator', () => {
       expect(selector).not.toContain('data-new-gr-c-s-check-loaded');
     });
   });
+
+  describe('generateBestSelector - Stable data-* attribute scoping', () => {
+    it('should use data-intercom-target on parent for scoping', () => {
+      document.body.innerHTML = `
+        <div data-intercom-target="env-site-selectors">
+          <div>
+            <input role="combobox" aria-autocomplete="list" type="text" />
+          </div>
+          <div>
+            <input role="combobox" aria-autocomplete="list" type="text" />
+          </div>
+        </div>
+      `;
+
+      const input = document.querySelector('input[role="combobox"]') as HTMLElement;
+      const selector = generateBestSelector(input);
+      expect(selector).toContain('data-intercom-target');
+      expect(selector).not.toContain(':nth-match');
+    });
+
+    it('should NOT use data-emotion as parent scoping attribute', () => {
+      document.body.innerHTML = `
+        <div data-emotion="css-abc123">
+          <button>Click 1</button>
+          <button>Click 2</button>
+        </div>
+      `;
+
+      const button = document.querySelector('button') as HTMLElement;
+      const selector = generateBestSelector(button);
+      expect(selector).not.toContain('data-emotion');
+    });
+
+    it('should NOT use data-state as parent scoping attribute', () => {
+      document.body.innerHTML = `
+        <div data-state="open">
+          <button>Click 1</button>
+          <button>Click 2</button>
+        </div>
+      `;
+
+      const button = document.querySelector('button') as HTMLElement;
+      const selector = generateBestSelector(button);
+      expect(selector).not.toContain('data-state');
+    });
+
+    it('should prefer data-testid over custom data-* attributes on ancestors', () => {
+      document.body.innerHTML = `
+        <div data-intercom-target="env-selectors">
+          <div data-testid="env-field">
+            <input type="text" name="env" />
+          </div>
+        </div>
+      `;
+
+      const input = document.querySelector('input') as HTMLElement;
+      const selector = generateBestSelector(input);
+      // Should use testid, not intercom target
+      expect(selector).toContain('data-testid');
+    });
+  });
+
+  describe('generateBestSelector - Label-scoped field wrapper detection', () => {
+    it('should use label text to scope form fields when container has no id', () => {
+      document.body.innerHTML = `
+        <div>
+          <label>env</label>
+          <input role="combobox" aria-autocomplete="list" type="text" />
+        </div>
+        <div>
+          <label>region</label>
+          <input role="combobox" aria-autocomplete="list" type="text" />
+        </div>
+      `;
+
+      const inputs = document.querySelectorAll('input[role="combobox"]');
+      const envSelector = generateBestSelector(inputs[0] as HTMLElement);
+      const regionSelector = generateBestSelector(inputs[1] as HTMLElement);
+
+      // Each selector should be different (scoped by label)
+      expect(envSelector).not.toBe(regionSelector);
+    });
+
+    it('should use container data attribute combined with label for scoping', () => {
+      document.body.innerHTML = `
+        <div data-intercom-target="env-site-selectors">
+          <div>
+            <label>env</label>
+            <input role="combobox" aria-autocomplete="list" type="text" />
+          </div>
+          <div>
+            <label>region</label>
+            <input role="combobox" aria-autocomplete="list" type="text" />
+          </div>
+        </div>
+      `;
+
+      const inputs = document.querySelectorAll('input[role="combobox"]');
+      const envSelector = generateBestSelector(inputs[0] as HTMLElement);
+      const regionSelector = generateBestSelector(inputs[1] as HTMLElement);
+
+      // Selectors should be unique and different
+      expect(envSelector).not.toBe(regionSelector);
+      // Should find the elements
+      const envMatches = querySelectorAllEnhanced(envSelector);
+      expect(envMatches.elements).toContain(inputs[0]);
+      const regionMatches = querySelectorAllEnhanced(regionSelector);
+      expect(regionMatches.elements).toContain(inputs[1]);
+    });
+  });
+
+  describe('generateBestSelector - Non-semantic tag scoping ancestors', () => {
+    it('should use div with stable data-* as scoping ancestor', () => {
+      document.body.innerHTML = `
+        <div data-intercom-target="env-site-selectors">
+          <input type="text" name="env" />
+        </div>
+        <div>
+          <input type="text" name="env" />
+        </div>
+      `;
+
+      const input = document.querySelector('[data-intercom-target] input') as HTMLElement;
+      const selector = generateBestSelector(input);
+      expect(selector).toContain('data-intercom-target');
+    });
+
+    it('should prefer semantic tag + testid over div + data-* attr', () => {
+      document.body.innerHTML = `
+        <div data-intercom-target="env-selectors">
+          <section data-testid="form-section">
+            <input type="text" name="field" />
+          </section>
+        </div>
+      `;
+
+      const input = document.querySelector('input') as HTMLElement;
+      const selector = generateBestSelector(input);
+      // Section with testid should be preferred
+      expect(selector).toContain('data-testid');
+    });
+  });
+
+  describe('generateBestSelector - Scoped nth-child within parent', () => {
+    it('should use :nth-child within scoped parent instead of global :nth-match', () => {
+      document.body.innerHTML = `
+        <div data-intercom-target="env-site-selectors">
+          <div><input role="combobox" aria-autocomplete="list" type="text" /></div>
+          <div><input role="combobox" aria-autocomplete="list" type="text" /></div>
+          <div><input role="combobox" aria-autocomplete="list" type="text" /></div>
+        </div>
+      `;
+
+      const inputs = document.querySelectorAll('input[role="combobox"]');
+
+      // Generate selectors for each
+      const selector1 = generateBestSelector(inputs[0] as HTMLElement);
+      const selector2 = generateBestSelector(inputs[1] as HTMLElement);
+      const selector3 = generateBestSelector(inputs[2] as HTMLElement);
+
+      // All three should be different
+      expect(selector1).not.toBe(selector2);
+      expect(selector2).not.toBe(selector3);
+
+      // Should NOT use global :nth-match
+      // (may use scoped :nth-child or scoped :nth-match, both are acceptable)
+      expect(selector1).toContain('data-intercom-target');
+      expect(selector2).toContain('data-intercom-target');
+      expect(selector3).toContain('data-intercom-target');
+
+      // Each should resolve to the correct element
+      const matches1 = querySelectorAllEnhanced(selector1);
+      expect(matches1.elements).toContain(inputs[0]);
+      const matches2 = querySelectorAllEnhanced(selector2);
+      expect(matches2.elements).toContain(inputs[1]);
+      const matches3 = querySelectorAllEnhanced(selector3);
+      expect(matches3.elements).toContain(inputs[2]);
+    });
+
+    it('should still generate valid selectors for elements with testid (no regression)', () => {
+      document.body.innerHTML = `
+        <button data-testid="save-btn">Save</button>
+        <input data-testid="name-input" type="text" />
+        <a href="/dashboard" data-testid="nav-link">Dashboard</a>
+      `;
+
+      const button = document.querySelector('button') as HTMLElement;
+      const input = document.querySelector('input') as HTMLElement;
+      const link = document.querySelector('a') as HTMLElement;
+
+      expect(generateBestSelector(button)).toBe("button[data-testid='save-btn']");
+      expect(generateBestSelector(input)).toBe("input[data-testid='name-input']");
+      expect(generateBestSelector(link)).toBe("a[data-testid='nav-link']");
+    });
+  });
 });
