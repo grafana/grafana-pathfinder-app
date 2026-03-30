@@ -277,7 +277,7 @@ export function InteractiveBlockForm({
           </Field>
 
           {/* Selector health badge */}
-          {reftarget && <SelectorHealthBadge reftarget={reftarget} action={action} />}
+          {reftarget && <SelectorHealthBadge reftarget={reftarget} />}
 
           {/* Test result overlay */}
           {testResult && <SelectorTestOverlay elements={testResult.elements} onDismiss={clearTest} />}
