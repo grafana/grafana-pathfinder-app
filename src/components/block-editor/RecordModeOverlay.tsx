@@ -170,6 +170,22 @@ const getStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(0.5),
   }),
+  formCaptureActiveIndicator: css({
+    backgroundColor: theme.colors.success.main,
+    color: theme.colors.success.contrastText,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    animation: 'pulse-form-capture 1.5s ease-in-out infinite',
+    '@keyframes pulse-form-capture': {
+      '0%, 100%': { opacity: 1 },
+      '50%': { opacity: 0.7 },
+    },
+  }),
   hintText: css({
     fontSize: theme.typography.bodySmall.fontSize,
     opacity: 0.7,
@@ -195,6 +211,8 @@ export interface RecordModeOverlayProps {
   isMultiStepGroupingEnabled?: boolean;
   /** Called when user toggles multi-step grouping */
   onToggleMultiStepGrouping?: () => void;
+  /** Element currently being form-captured (Alt+click), null when not active */
+  formCaptureElement?: HTMLElement | null;
 }
 
 /**
@@ -210,6 +228,7 @@ export function RecordModeOverlay({
   isGroupingMultiStep = false,
   isMultiStepGroupingEnabled = true,
   onToggleMultiStepGrouping,
+  formCaptureElement = null,
 }: RecordModeOverlayProps) {
   const styles = useStyles2(getStyles);
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
@@ -399,7 +418,12 @@ export function RecordModeOverlay({
           {stepCount !== 1 ? 's' : ''}
         </span>
         {isHoverMode && <span className={styles.hoverModeIndicator}>⇧ Hover capture</span>}
-        {isFormCaptureMode && <span className={styles.formCaptureModeIndicator}>⌥ Form capture</span>}
+        {isFormCaptureMode && !formCaptureElement && (
+          <span className={styles.formCaptureModeIndicator}>⌥ Form capture</span>
+        )}
+        {formCaptureElement && (
+          <span className={styles.formCaptureActiveIndicator}>✏️ Type your value, then click away to confirm</span>
+        )}
         <span className={styles.hintText}>Shift+click = hover | Alt+click = form fill</span>
         {/* Multi-step grouping indicator - only show when enabled and actively grouping */}
         {isMultiStepGroupingEnabled && isGroupingMultiStep && (

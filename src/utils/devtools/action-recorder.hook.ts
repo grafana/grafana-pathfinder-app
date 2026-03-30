@@ -2,7 +2,7 @@
  * Hook for recording user interactions as tutorial steps (Record Mode)
  */
 
-import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { shouldCaptureElement, getActionDescription } from '../../lib/dom/action-detector';
 import { generateSelectorFromEvent } from './selector-generator.util';
 import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
@@ -136,8 +136,8 @@ export interface UseActionRecorderReturn {
   // Modal detection state
   activeModal: Element | null;
   pendingGroupSteps: RecordedStep[];
-  // Hover mode ref (Shift key state)
-  isHoverModeRef: MutableRefObject<boolean>;
+  // Form capture mode (Alt+click target element)
+  formCaptureElement: HTMLElement | null;
 }
 
 /**
@@ -192,7 +192,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const triggerStepRef = useRef<RecordedStep | null>(null);
   const modalObserverRef = useRef<MutationObserver | null>(null);
   const pendingModalCheckRef = useRef<boolean>(false);
-  const isHoverModeRef = useRef(false);
+  const [formCaptureElement, setFormCaptureElement] = useState<HTMLElement | null>(null);
 
   // REACT: Store callbacks in refs to avoid effect re-runs when they change (R2, R3)
   // This allows the effect to always use the latest callback without re-attaching listeners
@@ -468,8 +468,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
       // Form capture mode: Alt+Click forces formfill on any element.
       // Intercepts the click, focuses the element, then watches for typing.
-      // The existing input/change handlers capture the typed value and record
-      // the step automatically when the author stops typing or blurs the field.
+      // The existing input/change handlers capture the typed value.
+      // A blur listener finalizes the step when the author clicks away.
       if (event.altKey) {
         event.preventDefault();
         event.stopPropagation();
@@ -480,11 +480,45 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           timestamp: Date.now(),
         });
 
+        // Signal the overlay to show "type now" feedback
+        setFormCaptureElement(target);
+
         // Focus the element so the author can type
         target.focus();
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
           target.select();
         }
+
+        // Finalize on blur: record the step when the author clicks away
+        const handleBlur = () => {
+          target.removeEventListener('blur', handleBlur);
+          setFormCaptureElement(null);
+
+          const tracked = recordingElementsRef.current.get(target);
+          if (tracked) {
+            recordingElementsRef.current.delete(target);
+
+            const blurResult = generateSelectorFromEvent(target, event);
+            const description = getActionDescription('formfill', target);
+
+            const newStep: RecordedStep = {
+              action: 'formfill',
+              selector: blurResult.selector,
+              value: tracked.value,
+              description,
+              isUnique: blurResult.selectorInfo.isUnique,
+              matchCount: blurResult.selectorInfo.matchCount,
+              contextStrategy: blurResult.selectorInfo.contextStrategy,
+              fallbacks: blurResult.fallbacks.length > 0 ? blurResult.fallbacks : undefined,
+            };
+
+            setRecordedSteps((prev) => [...prev, newStep]);
+            if (onStepRecordedRef.current) {
+              onStepRecordedRef.current(newStep);
+            }
+          }
+        };
+        target.addEventListener('blur', handleBlur, { once: true });
 
         return;
       }
@@ -736,30 +770,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     // This prevents excessive effect re-runs when callbacks change on every render
   }, [recordingState, enableModalDetection, activeModal, pendingGroupSteps]);
 
-  // Track Shift key state for hover capture mode
-  useEffect(() => {
-    if (recordingState !== 'recording') {
-      return;
-    }
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        isHoverModeRef.current = true;
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        isHoverModeRef.current = false;
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
-      isHoverModeRef.current = false;
-    };
-  }, [recordingState]);
-
   return {
     isRecording, // Backward compatibility
     recordingState,
@@ -780,7 +790,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     // Modal detection state
     activeModal,
     pendingGroupSteps,
-    // Hover mode ref (Shift key state)
-    isHoverModeRef,
+    // Form capture mode (Alt+click target element)
+    formCaptureElement,
   };
 }
