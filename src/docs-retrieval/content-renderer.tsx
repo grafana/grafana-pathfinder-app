@@ -975,7 +975,7 @@ function renderParsedElement(
           key={key}
           targetAction={element.props.targetAction}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
-          refTargetFallbacks={element.props.refTargetFallbacks?.map((fallback) => sub(fallback) ?? fallback)}
+          refTargetFallbacks={element.props.refTargetFallbacks?.map((fallback: string) => sub(fallback) ?? fallback)}
           targetValue={sub(element.props.targetValue)}
           hints={element.props.hints}
           targetComment={element.props.targetComment}
@@ -1088,7 +1088,7 @@ function renderParsedElement(
           code={sub(element.props.code) ?? element.props.code}
           language={element.props.language}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
-          refTargetFallbacks={element.props.refTargetFallbacks?.map((fallback) => sub(fallback) ?? fallback)}
+          refTargetFallbacks={element.props.refTargetFallbacks?.map((fallback: string) => sub(fallback) ?? fallback)}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           skippable={element.props.skippable}
