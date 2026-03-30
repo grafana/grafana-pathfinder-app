@@ -466,6 +466,29 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         return;
       }
 
+      // Form capture mode: Alt+Click forces formfill on any element.
+      // Intercepts the click, focuses the element, then watches for typing.
+      // The existing input/change handlers capture the typed value and record
+      // the step automatically when the author stops typing or blurs the field.
+      if (event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Track this element as a form-fill target
+        recordingElementsRef.current.set(target, {
+          value: (target as HTMLInputElement).value || '',
+          timestamp: Date.now(),
+        });
+
+        // Focus the element so the author can type
+        target.focus();
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          target.select();
+        }
+
+        return;
+      }
+
       // DON'T preventDefault - let the click proceed normally!
       // Just record the action and let navigation/actions happen
       //

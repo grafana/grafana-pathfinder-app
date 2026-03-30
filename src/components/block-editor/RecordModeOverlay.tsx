@@ -151,6 +151,25 @@ const getStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(0.5),
   }),
+  highlightFormCapture: css({
+    position: 'fixed',
+    zIndex: 99997,
+    border: `2px solid ${theme.colors.warning.main}`,
+    backgroundColor: theme.colors.warning.transparent,
+    pointerEvents: 'none',
+    transition: 'all 0.1s ease',
+  }),
+  formCaptureModeIndicator: css({
+    backgroundColor: theme.colors.warning.main,
+    color: theme.colors.warning.contrastText,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+  }),
   hintText: css({
     fontSize: theme.typography.bodySmall.fontSize,
     opacity: 0.7,
@@ -197,17 +216,24 @@ export function RecordModeOverlay({
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
   const [isHoverMode, setIsHoverMode] = useState(false);
+  const [isFormCaptureMode, setIsFormCaptureMode] = useState(false);
 
-  // Track Shift key state for hover mode visual indicator
+  // Track Shift/Alt key state for recording mode visual indicators
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
         setIsHoverMode(true);
       }
+      if (e.key === 'Alt') {
+        setIsFormCaptureMode(true);
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
         setIsHoverMode(false);
+      }
+      if (e.key === 'Alt') {
+        setIsFormCaptureMode(false);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -347,7 +373,9 @@ export function RecordModeOverlay({
       {/* Element highlight - red border (blue when in hover mode) */}
       {highlightRect && (
         <div
-          className={isHoverMode ? styles.highlightHover : styles.highlight}
+          className={
+            isFormCaptureMode ? styles.highlightFormCapture : isHoverMode ? styles.highlightHover : styles.highlight
+          }
           data-record-overlay="highlight"
           style={{
             left: highlightRect.left,
@@ -371,7 +399,8 @@ export function RecordModeOverlay({
           {stepCount !== 1 ? 's' : ''}
         </span>
         {isHoverMode && <span className={styles.hoverModeIndicator}>⇧ Hover capture</span>}
-        <span className={styles.hintText}>Hold Shift + click to capture hover steps</span>
+        {isFormCaptureMode && <span className={styles.formCaptureModeIndicator}>⌥ Form capture</span>}
+        <span className={styles.hintText}>Shift+click = hover | Alt+click = form fill</span>
         {/* Multi-step grouping indicator - only show when enabled and actively grouping */}
         {isMultiStepGroupingEnabled && isGroupingMultiStep && (
           <span
