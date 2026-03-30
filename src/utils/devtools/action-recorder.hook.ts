@@ -193,6 +193,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const modalObserverRef = useRef<MutationObserver | null>(null);
   const pendingModalCheckRef = useRef<boolean>(false);
   const [formCaptureElement, setFormCaptureElement] = useState<HTMLElement | null>(null);
+  const formCaptureCleanupRef = useRef<(() => void) | null>(null);
 
   // REACT: Store callbacks in refs to avoid effect re-runs when they change (R2, R3)
   // This allows the effect to always use the latest callback without re-attaching listeners
@@ -245,6 +246,10 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
   const stopRecording = useCallback(() => {
     setRecordingState('idle');
+    if (formCaptureCleanupRef.current) {
+      formCaptureCleanupRef.current();
+      formCaptureCleanupRef.current = null;
+    }
     setFormCaptureElement(null);
     // Keep recorded steps when stopping
   }, []);
@@ -252,6 +257,10 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const clearRecording = useCallback(() => {
     setRecordedSteps([]);
     recordingElementsRef.current.clear();
+    if (formCaptureCleanupRef.current) {
+      formCaptureCleanupRef.current();
+      formCaptureCleanupRef.current = null;
+    }
     setFormCaptureElement(null);
     // Also clear modal detection state
     setActiveModal(null);
@@ -493,6 +502,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         // Finalize on blur: record the step when the author clicks away
         const handleBlur = () => {
           target.removeEventListener('blur', handleBlur);
+          formCaptureCleanupRef.current = null;
           setFormCaptureElement(null);
 
           const tracked = recordingElementsRef.current.get(target);
@@ -523,6 +533,10 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           }
         };
         target.addEventListener('blur', handleBlur, { once: true });
+        formCaptureCleanupRef.current = () => {
+          target.removeEventListener('blur', handleBlur);
+          recordingElementsRef.current.delete(target);
+        };
 
         return;
       }

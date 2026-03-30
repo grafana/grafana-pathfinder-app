@@ -2,15 +2,27 @@ import { ButtonHandler } from './button-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { findButtonByText } from '../../lib/dom';
 import * as elementValidator from '../../lib/dom';
 
-// Mock dependencies
 jest.mock('../../lib/dom');
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
+jest.mock('../../lib/dom/selector-retry', () => ({
+  resolveWithRetry: jest.fn().mockResolvedValue(null),
+}));
 
-const mockFindButtonByText = findButtonByText as jest.MockedFunction<typeof findButtonByText>;
+const { resolveWithRetry } = require('../../lib/dom/selector-retry') as {
+  resolveWithRetry: jest.Mock;
+};
+
+const makeResolved = (buttons: HTMLElement[]) => ({
+  element: buttons[0]!,
+  elements: buttons,
+  resolvedSelector: '#mock',
+  usedFallback: false,
+  retryCount: 0,
+});
+
 const mockStateManager = {
   setState: jest.fn(),
   handleError: jest.fn(),
@@ -30,7 +42,6 @@ const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFun
   typeof elementValidator.isElementVisible
 >;
 
-// Mock console.warn to avoid noise in tests
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 describe('ButtonHandler', () => {
@@ -39,15 +50,14 @@ describe('ButtonHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockIsElementVisible.mockReturnValue(true); // Default to visible
+    mockIsElementVisible.mockReturnValue(true);
 
-    // Create mock buttons
     mockButtons = [
       { click: jest.fn() } as unknown as HTMLButtonElement,
       { click: jest.fn() } as unknown as HTMLButtonElement,
     ];
 
-    mockFindButtonByText.mockReturnValue(mockButtons);
+    resolveWithRetry.mockResolvedValue(makeResolved(mockButtons));
 
     buttonHandler = new ButtonHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
   });
@@ -67,18 +77,18 @@ describe('ButtonHandler', () => {
       await buttonHandler.execute(mockData, false);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(mockFindButtonByText).toHaveBeenCalledWith('test-button');
+      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button');
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockButtons[0]!, undefined);
-      expect(mockWaitForReactUpdates).not.toHaveBeenCalled(); // No completion in show mode
+      expect(mockWaitForReactUpdates).not.toHaveBeenCalled();
     });
 
     it('should handle do mode correctly', async () => {
       await buttonHandler.execute(mockData, true);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(mockFindButtonByText).toHaveBeenCalledWith('test-button');
+      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button');
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockButtons[0]!.click).toHaveBeenCalled();
@@ -88,9 +98,7 @@ describe('ButtonHandler', () => {
 
     it('should handle errors gracefully', async () => {
       const testError = new Error('Button not found');
-      mockFindButtonByText.mockImplementation(() => {
-        throw testError;
-      });
+      resolveWithRetry.mockRejectedValue(testError);
 
       await buttonHandler.execute(mockData, true);
 

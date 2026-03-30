@@ -2,7 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { findButtonByText, isElementVisible } from '../../lib/dom';
+import { isElementVisible } from '../../lib/dom';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
@@ -55,12 +55,7 @@ export class ButtonHandler {
 
     // For plain text, use resolveWithRetry which internally uses findButtonByText
     const resolved = await resolveWithRetry(refTarget, 'button');
-    if (resolved) {
-      return resolved.elements;
-    }
-
-    // Final fallback: direct text matching (no retry)
-    return findButtonByText(refTarget);
+    return resolved ? resolved.elements : [];
   }
 
   private async handleShowMode(buttons: HTMLElement[], comment?: string): Promise<void> {
