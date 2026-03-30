@@ -309,6 +309,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
 export const JsonCodeBlockBlockSchema = z.object({
   type: z.literal('code-block'),
   reftarget: z.string().min(1, 'Code block reftarget is required'),
+  reftargetFallbacks: z.array(z.string()).optional(),
   language: z.string().optional(),
   code: z.string().min(1, 'Code is required'),
   content: z.string().optional(),
@@ -586,6 +587,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   'code-block': new Set([
     'type',
     'reftarget',
+    'reftargetFallbacks',
     'language',
     'code',
     'content',

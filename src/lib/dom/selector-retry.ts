@@ -55,6 +55,7 @@ export async function resolveWithRetry(
     action,
     fallbacks: mergedConfig.fallbacks,
     delays: mergedConfig.delays,
+    relaxOnRetry: mergedConfig.relaxOnRetry,
   });
 
   if (!pipelineResult) {

@@ -11,6 +11,7 @@ export type InteractiveActionType =
 export interface InteractiveElementData {
   // Core interactive attributes
   reftarget: string;
+  reftargetFallbacks?: string[];
   targetaction: string;
   targetvalue?: string;
   targetcomment?: string;

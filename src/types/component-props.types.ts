@@ -28,6 +28,7 @@ export interface BaseInteractiveProps {
 export interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop';
   refTarget: string;
+  refTargetFallbacks?: string[];
   targetValue?: string;
   postVerify?: string;
   targetComment?: string;
@@ -84,6 +85,7 @@ export interface StepInfo {
   index: number;
   targetAction?: string; // Optional for multi-step and guided
   refTarget?: string; // Optional for multi-step and guided
+  refTargetFallbacks?: string[];
   targetValue?: string;
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;

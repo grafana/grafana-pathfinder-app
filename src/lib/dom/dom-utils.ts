@@ -53,6 +53,13 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
 
   // Extract core attributes with validation
   const reftarget = element.getAttribute('data-reftarget') || '';
+  const reftargetFallbacksAttr = element.getAttribute('data-reftarget-fallbacks');
+  const reftargetFallbacks = reftargetFallbacksAttr
+    ? reftargetFallbacksAttr
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    : undefined;
   const targetaction = element.getAttribute('data-targetaction') || '';
   const targetvalue = element.getAttribute('data-targetvalue') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
@@ -69,6 +76,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
 
   return {
     reftarget: reftarget,
+    reftargetFallbacks: reftargetFallbacks,
     targetaction: targetaction,
     targetvalue: targetvalue,
     requirements: requirements,
@@ -228,8 +236,9 @@ export async function reftargetExistsCheck(
     }
   }
 
-  // Use resolveWithRetry for resilient element detection with exponential backoff
-  const resolved = await resolveWithRetry(resolvedSelector, targetAction);
+  // Use resolveWithRetry for resilient element detection with exponential backoff.
+  // Pass the original reftarget so selector pipeline can correctly classify prefixed selectors.
+  const resolved = await resolveWithRetry(reftarget, targetAction);
 
   if (resolved) {
     return {

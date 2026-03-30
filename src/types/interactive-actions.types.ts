@@ -10,6 +10,7 @@
 export interface InternalAction {
   targetAction: string;
   refTarget?: string;
+  refTargetFallbacks?: string[];
   targetValue?: string;
   requirements?: string;
   targetComment?: string; // Optional comment to display during this step
@@ -23,6 +24,7 @@ export interface InternalAction {
 export interface GuidedAction extends InternalAction {
   targetAction: 'hover' | 'button' | 'highlight' | 'noop' | 'formfill';
   refTarget?: string; // Required for hover/button/highlight/formfill, optional for noop
+  refTargetFallbacks?: string[];
   targetValue?: string; // Value for formfill actions (supports regex patterns)
   targetComment?: string; // Optional comment to display in tooltip during this step
   isSkippable?: boolean; // Whether this specific step can be skipped

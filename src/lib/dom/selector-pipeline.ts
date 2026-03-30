@@ -22,6 +22,7 @@ export interface PipelineConfig {
   action?: string;
   fallbacks?: string[];
   delays?: number[];
+  relaxOnRetry?: boolean;
 }
 
 export interface PipelineResult {
@@ -45,7 +46,7 @@ export interface PipelineResult {
  * during Stage 1 and Stage 2.
  */
 export async function resolveSelectorPipeline(config: PipelineConfig): Promise<PipelineResult | null> {
-  const { reftarget, action, fallbacks, delays = [200, 600, 1800] } = config;
+  const { reftarget, action, fallbacks, delays = [200, 600, 1800], relaxOnRetry = true } = config;
   const effectiveAction = action ?? 'highlight';
 
   // Resolve any prefixes (grafana:, panel:, etc.)
@@ -75,8 +76,8 @@ export async function resolveSelectorPipeline(config: PipelineConfig): Promise<P
   for (let i = 0; i < delays.length; i++) {
     await sleep(delays[i]!);
 
-    // On retry 2+ (i >= 1), also try relaxing child combinators
-    const shouldRelax = i >= 1 && !isButtonText && resolvedSelector.includes('>');
+    // On retry 2+ (i >= 1), optionally relax child combinators
+    const shouldRelax = relaxOnRetry && i >= 1 && !isButtonText && resolvedSelector.includes('>');
 
     // Try original selector
     const result = attemptResolve(resolvedSelector, isButtonText);
