@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.5.0
+
+### Added
+
+- **Selector resilience engine**: Retry-with-wait, prefix matching, domain selectors, and strategy escalation pipeline for more robust interactive tutorials (#716)
+  - `resolveWithRetry()` with exponential backoff (200/600/1800ms) replaces single-pass resolution in all action handlers
+  - `:text()` exact match for short button labels (< 20 chars) eliminates false positives
+  - `data-testid` prefix matching fallback when exact match fails (uniqueness-guarded)
+  - `panel:` domain selector prefix resolves Grafana panels by title
+  - Unified `resolveSelectorPipeline()` with confidence scoring
+- **Selector Health Badge**: Inline quality indicator (green/yellow/red dot, stability score, method, match count) in the block editor form
+- **Test Selector Button**: Evaluates selector against live DOM and flash-highlights matched elements with numbered overlays
+- **Shift+Click hover capture**: Hold Shift during recording to capture hover steps without clicking through — prevents accidental navigation
+- **Alt+Click form capture**: Hold Alt during recording to force-capture any element as a form fill — element is focused for typing, step recorded on blur with typed value
+- **On-demand alternative selectors**: "Show alternatives" in block editor computes alternative selectors on-the-fly with stability scores and "Use this" swap buttons
+- **Auto-populate requirements**: Recorded steps auto-populate `exists-reftarget` and `navmenu-open` requirements
+
 ## 2.4.2
 
 ### Added
