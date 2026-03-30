@@ -411,13 +411,26 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           const actionType = currentAction.targetAction;
 
           if (actionType === 'button') {
-            // Use button-specific finder for text matching
+            // Try text matching on primary
             const buttons = findButtonByText(selector);
-            targetElement = buttons[0] || null;
+            if (buttons.length > 0) {
+              targetElement = buttons[0] || null;
+            } else {
+              // Try CSS selector matching
+              const result = querySelectorAllEnhanced(selector);
+              const btnElements = result.elements.filter(
+                (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+              );
+              if (btnElements.length > 0) {
+                targetElement = btnElements[0] || null;
+              }
+            }
           } else if (actionType === 'highlight' || actionType === 'hover') {
             // Use enhanced selector for other action types
             const result = querySelectorAllEnhanced(selector);
-            targetElement = result.elements[0] || null;
+            if (result.elements.length > 0) {
+              targetElement = result.elements[0] || null;
+            }
           } else if (actionType === 'formfill') {
             // Find form elements for formfill actions
             const result = querySelectorAllEnhanced(selector);
@@ -425,7 +438,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               const tag = el.tagName.toLowerCase();
               return tag === 'input' || tag === 'textarea' || tag === 'select';
             });
-            targetElement = formElements[0] || null;
+            if (formElements.length > 0) {
+              targetElement = formElements[0] || null;
+            }
           }
         } catch (error) {
           // Element resolution failed, fall back to selector-based matching

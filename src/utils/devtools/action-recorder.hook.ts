@@ -136,6 +136,8 @@ export interface UseActionRecorderReturn {
   // Modal detection state
   activeModal: Element | null;
   pendingGroupSteps: RecordedStep[];
+  // Form capture mode (Alt+click target element)
+  formCaptureElement: HTMLElement | null;
 }
 
 /**
@@ -182,7 +184,9 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordedSteps, setRecordedSteps] = useState<RecordedStep[]>([]);
-  const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number }>>(new Map());
+  const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number; formCaptured?: boolean }>>(
+    new Map()
+  );
 
   // Modal detection state
   const [activeModal, setActiveModal] = useState<Element | null>(null);
@@ -190,6 +194,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const triggerStepRef = useRef<RecordedStep | null>(null);
   const modalObserverRef = useRef<MutationObserver | null>(null);
   const pendingModalCheckRef = useRef<boolean>(false);
+  const [formCaptureElement, setFormCaptureElement] = useState<HTMLElement | null>(null);
+  const formCaptureCleanupRef = useRef<(() => void) | null>(null);
 
   // REACT: Store callbacks in refs to avoid effect re-runs when they change (R2, R3)
   // This allows the effect to always use the latest callback without re-attaching listeners
@@ -242,12 +248,22 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
   const stopRecording = useCallback(() => {
     setRecordingState('idle');
+    if (formCaptureCleanupRef.current) {
+      formCaptureCleanupRef.current();
+      formCaptureCleanupRef.current = null;
+    }
+    setFormCaptureElement(null);
     // Keep recorded steps when stopping
   }, []);
 
   const clearRecording = useCallback(() => {
     setRecordedSteps([]);
     recordingElementsRef.current.clear();
+    if (formCaptureCleanupRef.current) {
+      formCaptureCleanupRef.current();
+      formCaptureCleanupRef.current = null;
+    }
+    setFormCaptureElement(null);
     // Also clear modal detection state
     setActiveModal(null);
     setPendingGroupSteps([]);
@@ -436,6 +452,98 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         return;
       }
 
+      // Hover mode: Shift+Click captures hover step without clicking through
+      if (event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const result = generateSelectorFromEvent(target, event);
+        const description = getActionDescription('hover', target);
+
+        const newStep: RecordedStep = {
+          action: 'hover',
+          selector: result.selector,
+          value: undefined,
+          description,
+          isUnique: result.selectorInfo.isUnique,
+          matchCount: result.selectorInfo.matchCount,
+          contextStrategy: result.selectorInfo.contextStrategy,
+        };
+
+        // Add step directly — skip modal detection since click was intercepted
+        setRecordedSteps((prev) => [...prev, newStep]);
+        if (onStepRecordedRef.current) {
+          onStepRecordedRef.current(newStep);
+        }
+        return;
+      }
+
+      // Form capture mode: Alt+Click forces formfill on any element.
+      // Intercepts the click, focuses the element, then watches for typing.
+      // The existing input/change handlers capture the typed value.
+      // A blur listener finalizes the step when the author clicks away.
+      if (event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Track this element as an Alt+click form-fill target
+        recordingElementsRef.current.set(target, {
+          value: (target as HTMLInputElement).value || '',
+          timestamp: Date.now(),
+          formCaptured: true,
+        });
+
+        // Signal the overlay to show "type now" feedback
+        setFormCaptureElement(target);
+
+        // Focus the element so the author can type
+        target.focus();
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          target.select();
+        }
+
+        // Finalize on blur: record the step when the author clicks away
+        const handleBlur = () => {
+          target.removeEventListener('blur', handleBlur);
+          formCaptureCleanupRef.current = null;
+          setFormCaptureElement(null);
+
+          const tracked = recordingElementsRef.current.get(target);
+          if (tracked) {
+            recordingElementsRef.current.delete(target);
+
+            const blurResult = generateSelectorFromEvent(target, event);
+            const description = getActionDescription('formfill', target);
+
+            // Prefer tracked value from input/change handlers; fall back to live DOM value
+            // in case those handlers were filtered by shouldCaptureElement
+            const finalValue = tracked.value || (target as HTMLInputElement).value || '';
+
+            const newStep: RecordedStep = {
+              action: 'formfill',
+              selector: blurResult.selector,
+              value: finalValue,
+              description,
+              isUnique: blurResult.selectorInfo.isUnique,
+              matchCount: blurResult.selectorInfo.matchCount,
+              contextStrategy: blurResult.selectorInfo.contextStrategy,
+            };
+
+            setRecordedSteps((prev) => [...prev, newStep]);
+            if (onStepRecordedRef.current) {
+              onStepRecordedRef.current(newStep);
+            }
+          }
+        };
+        target.addEventListener('blur', handleBlur, { once: true });
+        formCaptureCleanupRef.current = () => {
+          target.removeEventListener('blur', handleBlur);
+          recordingElementsRef.current.delete(target);
+        };
+
+        return;
+      }
+
       // DON'T preventDefault - let the click proceed normally!
       // Just record the action and let navigation/actions happen
       //
@@ -560,15 +668,18 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
     const handleInput = (event: Event) => {
       const target = event.target as HTMLElement;
+      const isFormCaptured = recordingElementsRef.current.has(target);
 
-      if (!shouldCaptureElement(target)) {
+      if (!isFormCaptured && !shouldCaptureElement(target)) {
         return;
       }
 
-      // Check exclusion selectors - use ref to avoid effect re-runs
-      const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
-      if (shouldExclude) {
-        return;
+      if (!isFormCaptured) {
+        // Check exclusion selectors - use ref to avoid effect re-runs
+        const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
+        if (shouldExclude) {
+          return;
+        }
       }
 
       // Skip tracking radio/checkbox inputs - they're handled on click
@@ -577,28 +688,39 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         return;
       }
 
-      // Update the tracked value for text inputs
+      // Update the tracked value for text inputs, preserving formCaptured flag
+      const existing = recordingElementsRef.current.get(target);
       recordingElementsRef.current.set(target, {
         value: inputElement.value || '',
         timestamp: Date.now(),
+        formCaptured: existing?.formCaptured,
       });
     };
 
     const handleChange = (event: Event) => {
       const target = event.target as HTMLElement;
+      const isFormCaptured = recordingElementsRef.current.has(target);
 
-      if (!shouldCaptureElement(target)) {
+      if (!isFormCaptured && !shouldCaptureElement(target)) {
         return;
       }
 
-      // Check exclusion selectors - use ref to avoid effect re-runs
-      const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
-      if (shouldExclude) {
-        return;
+      if (!isFormCaptured) {
+        // Check exclusion selectors - use ref to avoid effect re-runs
+        const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
+        if (shouldExclude) {
+          return;
+        }
       }
 
       const tracked = recordingElementsRef.current.get(target);
       if (tracked) {
+        // Form-captured elements (Alt+click) are finalized by the blur handler,
+        // not handleChange — skip to avoid racing and wrong action types
+        if (tracked.formCaptured) {
+          return;
+        }
+
         // Generate selector using shared utility
         const result = generateSelectorFromEvent(target, event);
         const selector = result.selector;
@@ -701,5 +823,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     // Modal detection state
     activeModal,
     pendingGroupSteps,
+    // Form capture mode (Alt+click target element)
+    formCaptureElement,
   };
 }

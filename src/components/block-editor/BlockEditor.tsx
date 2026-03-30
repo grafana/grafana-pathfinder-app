@@ -828,6 +828,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           isGroupingMultiStep={actionRecorder.activeModal !== null}
           isMultiStepGroupingEnabled={isSectionMultiStepGroupingEnabled}
           onToggleMultiStepGrouping={() => setIsSectionMultiStepGroupingEnabled((prev) => !prev)}
+          formCaptureElement={actionRecorder.formCaptureElement}
         />
       )}
 

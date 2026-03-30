@@ -227,26 +227,14 @@ export async function reftargetExistsCheck(
     }
   }
 
-  // Retry configuration for element detection
-  const maxRetries = 2;
-  const retryDelay = 200;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    // Use enhanced selector to support complex selectors like :has() and :contains()
-    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-    const targetElement = enhancedResult.elements.length > 0 ? enhancedResult.elements[0] : null;
-
-    if (targetElement) {
-      return {
-        requirement: 'exists-reftarget',
-        pass: true,
-      };
-    }
-
-    // If this isn't the last attempt, wait before retrying
-    if (attempt < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    }
+  // Quick synchronous existence check — no retry. Requirement checks run frequently and must be fast.
+  // The action handlers do their own retry with backoff when they actually execute.
+  const existsResult = querySelectorAllEnhanced(resolvedSelector);
+  if (existsResult.elements.length > 0) {
+    return {
+      requirement: 'exists-reftarget',
+      pass: true,
+    };
   }
 
   // Element not found after retries - check for general navigation menu pattern
