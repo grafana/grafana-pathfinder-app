@@ -47,7 +47,6 @@ interface LazyScrollResult {
  */
 async function executeWithLazyScroll(
   refTarget: string,
-  refTargetFallbacks: string[] | undefined,
   lazyRender: boolean,
   scrollContainer: string | undefined,
   action: () => Promise<void>,
@@ -62,7 +61,7 @@ async function executeWithLazyScroll(
   // DOM-targeting actions: quick synchronous check if element exists (provides user feedback if missing)
   // Use resolveWithRetry with NO delays — the action handlers do their own retry with backoff,
   // so retrying here would cause redundant 2.6s delays on every action.
-  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [], fallbacks: refTargetFallbacks });
+  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [] });
   const elementExists = resolved !== null;
 
   if (elementExists) {
@@ -136,7 +135,6 @@ export const InteractiveStep = forwardRef<
     {
       targetAction,
       refTarget,
-      refTargetFallbacks,
       targetValue,
       targetComment,
       postVerify,
@@ -411,14 +409,7 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(
-          targetAction,
-          refTarget,
-          currentTargetValue,
-          'do',
-          targetComment,
-          refTargetFallbacks
-        );
+        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'do', targetComment);
 
         // Wait for DOM to settle after action (especially important for navigation, form fills, etc.)
         await waitForReactUpdates();
@@ -482,7 +473,6 @@ export const InteractiveStep = forwardRef<
       stepId,
       targetAction,
       refTarget,
-      refTargetFallbacks,
       currentTargetValue,
       targetComment,
       postVerify,
@@ -636,18 +626,10 @@ export const InteractiveStep = forwardRef<
         // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(
           refTarget,
-          refTargetFallbacks,
           lazyRender,
           scrollContainer,
           async () => {
-            await executeInteractiveAction(
-              targetAction,
-              refTarget,
-              currentTargetValue,
-              'show',
-              targetComment,
-              refTargetFallbacks
-            );
+            await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
           },
           targetAction
         );
@@ -681,7 +663,6 @@ export const InteractiveStep = forwardRef<
     }, [
       targetAction,
       refTarget,
-      refTargetFallbacks,
       currentTargetValue,
       targetComment,
       doIt,
@@ -727,7 +708,6 @@ export const InteractiveStep = forwardRef<
         // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(
           refTarget,
-          refTargetFallbacks,
           lazyRender,
           scrollContainer,
           async () => {
@@ -754,7 +734,6 @@ export const InteractiveStep = forwardRef<
       lazyRender,
       scrollContainer,
       refTarget,
-      refTargetFallbacks,
       executeStep,
       targetAction,
       currentTargetValue,

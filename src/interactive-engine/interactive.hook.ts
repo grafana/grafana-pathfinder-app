@@ -358,13 +358,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       refTarget: string,
       targetValue?: string,
       buttonType: 'show' | 'do' = 'do',
-      targetComment?: string,
-      refTargetFallbacks?: string[]
+      targetComment?: string
     ): Promise<void> => {
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         reftarget: refTarget,
-        reftargetFallbacks: refTargetFallbacks,
         targetaction: targetAction,
         targetvalue: targetValue,
         targetcomment: targetComment,

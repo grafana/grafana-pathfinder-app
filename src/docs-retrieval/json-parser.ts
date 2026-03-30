@@ -547,7 +547,6 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
       props: {
         targetAction,
         refTarget: block.reftarget,
-        refTargetFallbacks: block.reftargetFallbacks,
         targetValue: block.targetvalue,
         targetComment: block.tooltip ? markdownToHtml(block.tooltip) : undefined,
         requirements,
@@ -577,7 +576,6 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string): Convers
   const internalActions = block.steps.map((step: JsonStep) => ({
     targetAction: step.action,
     refTarget: step.reftarget,
-    refTargetFallbacks: step.reftargetFallbacks,
     targetValue: step.targetvalue,
     requirements: step.requirements?.join(','),
     targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
@@ -610,7 +608,6 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionRes
   const internalActions = block.steps.map((step: JsonStep) => ({
     targetAction: step.action,
     refTarget: step.reftarget,
-    refTargetFallbacks: step.reftargetFallbacks,
     targetValue: step.targetvalue,
     requirements: step.requirements?.join(','),
     // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
@@ -813,7 +810,6 @@ function convertCodeBlockBlock(block: JsonCodeBlockBlock, _path: string): Conver
         code: block.code,
         language: block.language || 'javascript',
         refTarget: block.reftarget,
-        refTargetFallbacks: block.reftargetFallbacks,
         requirements,
         objectives,
         skippable: block.skippable ?? false,

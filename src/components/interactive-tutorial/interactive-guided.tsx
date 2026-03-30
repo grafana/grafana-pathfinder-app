@@ -410,37 +410,36 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         try {
           const actionType = currentAction.targetAction;
 
-          const resolveWithFallbacks = (primary: string, fallbacks?: string[]): HTMLElement | null => {
-            const selectorsToTry = [primary, ...(fallbacks ?? [])];
-            for (const candidateSelector of selectorsToTry) {
-              const result = querySelectorAllEnhanced(candidateSelector);
-              if (result.elements.length > 0) {
-                return result.elements[0] || null;
+          if (actionType === 'button') {
+            // Try text matching on primary
+            const buttons = findButtonByText(selector);
+            if (buttons.length > 0) {
+              targetElement = buttons[0] || null;
+            } else {
+              // Try CSS selector matching
+              const result = querySelectorAllEnhanced(selector);
+              const btnElements = result.elements.filter(
+                (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+              );
+              if (btnElements.length > 0) {
+                targetElement = btnElements[0] || null;
               }
             }
-            return null;
-          };
-
-          if (actionType === 'button') {
-            // Use button-specific finder for text matching
-            const buttons = findButtonByText(selector);
-            targetElement = buttons[0] || null;
           } else if (actionType === 'highlight' || actionType === 'hover') {
             // Use enhanced selector for other action types
-            targetElement = resolveWithFallbacks(selector, currentAction.refTargetFallbacks);
+            const result = querySelectorAllEnhanced(selector);
+            if (result.elements.length > 0) {
+              targetElement = result.elements[0] || null;
+            }
           } else if (actionType === 'formfill') {
             // Find form elements for formfill actions
-            const selectorsToTry = [selector, ...(currentAction.refTargetFallbacks ?? [])];
-            for (const candidateSelector of selectorsToTry) {
-              const result = querySelectorAllEnhanced(candidateSelector);
-              const formElements = result.elements.filter((el) => {
-                const tag = el.tagName.toLowerCase();
-                return tag === 'input' || tag === 'textarea' || tag === 'select';
-              });
-              if (formElements.length > 0) {
-                targetElement = formElements[0] || null;
-                break;
-              }
+            const result = querySelectorAllEnhanced(selector);
+            const formElements = result.elements.filter((el) => {
+              const tag = el.tagName.toLowerCase();
+              return tag === 'input' || tag === 'textarea' || tag === 'select';
+            });
+            if (formElements.length > 0) {
+              targetElement = formElements[0] || null;
             }
           }
         } catch (error) {

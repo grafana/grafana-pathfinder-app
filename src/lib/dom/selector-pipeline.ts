@@ -5,7 +5,6 @@
  *
  * Stage 1: Exact match (confidence 1.0)
  * Stage 2: Wait + retry with exponential backoff (confidence 0.95)
- * Stage 3: Try each fallback selector from reftargetFallbacks (confidence 0.6)
  *
  * Note: prefix matching and combinator relaxation are already handled internally
  * by querySelectorAllEnhanced/handleTestIdSelector, so they fire automatically
@@ -20,7 +19,6 @@ import { isCssSelector } from './selector-detector';
 export interface PipelineConfig {
   reftarget: string;
   action?: string;
-  fallbacks?: string[];
   delays?: number[];
   relaxOnRetry?: boolean;
 }
@@ -29,7 +27,7 @@ export interface PipelineResult {
   element: HTMLElement;
   elements: HTMLElement[];
   resolvedSelector: string;
-  strategy: 'exact' | 'retry' | 'fallback';
+  strategy: 'exact' | 'retry';
   confidence: number;
   retryCount: number;
 }
@@ -39,14 +37,13 @@ export interface PipelineResult {
  *
  * Stage 1: Exact match (confidence 1.0)
  * Stage 2: Wait + retry with exponential backoff (confidence 0.95)
- * Stage 3: Try each fallback selector from reftargetFallbacks (confidence 0.6)
  *
  * Note: prefix matching and combinator relaxation are already handled internally
  * by querySelectorAllEnhanced/handleTestIdSelector, so they fire automatically
  * during Stage 1 and Stage 2.
  */
 export async function resolveSelectorPipeline(config: PipelineConfig): Promise<PipelineResult | null> {
-  const { reftarget, action, fallbacks, delays = [200, 600, 1800], relaxOnRetry = true } = config;
+  const { reftarget, action, delays = [200, 600, 1800], relaxOnRetry = true } = config;
   const effectiveAction = action ?? 'highlight';
 
   // Resolve any prefixes (grafana:, panel:, etc.)
@@ -104,29 +101,6 @@ export async function resolveSelectorPipeline(config: PipelineConfig): Promise<P
           strategy: 'retry',
           confidence: 0.95,
           retryCount: i + 1,
-        };
-      }
-    }
-  }
-
-  // Stage 3: Fallback selectors (confidence 0.6)
-  if (fallbacks && fallbacks.length > 0) {
-    for (const fallback of fallbacks) {
-      const fallbackResolved = resolveSelector(fallback);
-      const fallbackResult = attemptResolve(fallbackResolved, false);
-      if (fallbackResult) {
-        console.warn('[Pathfinder] Primary selector failed, used fallback', {
-          original: reftarget,
-          fallback,
-          strategy: 'fallback',
-        });
-        return {
-          element: fallbackResult.element,
-          elements: fallbackResult.elements,
-          resolvedSelector: fallbackResult.resolvedSelector,
-          strategy: 'fallback',
-          confidence: 0.6,
-          retryCount: delays.length,
         };
       }
     }

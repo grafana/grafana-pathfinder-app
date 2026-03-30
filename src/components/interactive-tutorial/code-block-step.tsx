@@ -22,7 +22,6 @@ export interface CodeBlockStepProps {
   code: string;
   language?: string;
   refTarget: string;
-  refTargetFallbacks?: string[];
   requirements?: string;
   objectives?: string;
   skippable?: boolean;
@@ -107,7 +106,6 @@ export const CodeBlockStep = forwardRef<
       code,
       language = 'javascript',
       refTarget,
-      refTargetFallbacks,
       requirements,
       objectives,
       skippable = false,
@@ -182,19 +180,19 @@ export const CodeBlockStep = forwardRef<
       setIsShowRunning(true);
       try {
         // Highlight the target Monaco editor using the interactive engine
-        await executeInteractiveAction('highlight', refTarget, undefined, 'show', undefined, refTargetFallbacks);
+        await executeInteractiveAction('highlight', refTarget, undefined, 'show');
       } catch (err) {
         console.error('[CodeBlockStep] Show me failed:', err);
       } finally {
         setIsShowRunning(false);
       }
-    }, [refTarget, refTargetFallbacks, isShowRunning, executeInteractiveAction]);
+    }, [refTarget, isShowRunning, executeInteractiveAction]);
 
     const handleInsert = useCallback(async () => {
       setIsInsertRunning(true);
       setInsertError(null);
       try {
-        const result = await clearAndInsertCode(refTarget, code, refTargetFallbacks);
+        const result = await clearAndInsertCode(refTarget, code);
         if (result.success) {
           markComplete();
         } else {
@@ -206,7 +204,7 @@ export const CodeBlockStep = forwardRef<
       } finally {
         setIsInsertRunning(false);
       }
-    }, [code, refTarget, refTargetFallbacks, markComplete]);
+    }, [code, refTarget, markComplete]);
 
     useImperativeHandle(
       ref,
@@ -215,7 +213,7 @@ export const CodeBlockStep = forwardRef<
           if (isCompleted) {
             return true;
           }
-          const result = await clearAndInsertCode(refTarget, code, refTargetFallbacks);
+          const result = await clearAndInsertCode(refTarget, code);
           if (result.success) {
             markComplete();
             return true;
@@ -226,7 +224,7 @@ export const CodeBlockStep = forwardRef<
           markComplete();
         },
       }),
-      [isCompleted, code, refTarget, refTargetFallbacks, markComplete]
+      [isCompleted, code, refTarget, markComplete]
     );
 
     const isEnabled = checker.isEnabled && !disabled;

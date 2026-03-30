@@ -7,128 +7,217 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useStyles2 } from '@grafana/ui';
+import { Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-import { css } from '@emotion/css';
+import { css, keyframes } from '@emotion/css';
 import { generateFullDomPath } from '../../utils/devtools';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { testIds } from '../../constants/testIds';
 
+const pulseKeyframe = keyframes({
+  '0%, 100%': { opacity: 1 },
+  '50%': { opacity: 0.3 },
+});
+
 const getStyles = (theme: GrafanaTheme2) => ({
   banner: css({
     position: 'fixed',
-    top: theme.spacing(1),
+    top: 0,
     left: '50%',
     transform: 'translateX(-50%)',
     zIndex: 99999,
-    padding: `${theme.spacing(0.75)} ${theme.spacing(2)}`,
-    backgroundColor: theme.colors.error.main,
-    color: theme.colors.error.contrastText,
+    height: 36,
+    padding: `0 ${theme.spacing(2)}`,
+    backgroundColor: theme.colors.background.primary,
+    border: `2px solid ${theme.colors.warning.main}`,
+    borderTop: 'none',
+    borderRadius: `0 0 ${theme.shape.radius.default} ${theme.shape.radius.default}`,
+    boxShadow: theme.shadows.z3,
     display: 'flex',
     alignItems: 'center',
+    gap: theme.spacing(1),
+    maxWidth: 'calc(100vw - 32px)',
+  }),
+  leftGroup: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flexShrink: 0,
+  }),
+  centerGroup: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flex: 1,
     justifyContent: 'center',
-    gap: theme.spacing(1.5),
-    boxShadow: theme.shadows.z3,
-    borderRadius: theme.shape.radius.default,
+    minWidth: 0,
+  }),
+  rightGroup: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+    flexShrink: 0,
+  }),
+  recordingDot: css({
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    backgroundColor: theme.colors.error.main,
+    flexShrink: 0,
+    animation: `${pulseKeyframe} 1.2s ease-in-out infinite`,
   }),
   bannerText: css({
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
-  }),
-  recordingDot: css({
-    width: '10px',
-    height: '10px',
-    borderRadius: '50%',
-    backgroundColor: theme.colors.error.contrastText,
-    animation: 'blink-dot 1s ease-in-out infinite',
-    '@keyframes blink-dot': {
-      '0%, 100%': { opacity: 1 },
-      '50%': { opacity: 0.3 },
-    },
+    color: theme.colors.text.primary,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   }),
   stepCount: css({
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.background.secondary,
+    color: theme.colors.text.secondary,
+    padding: `1px ${theme.spacing(0.75)}`,
     borderRadius: theme.shape.radius.default,
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
+    whiteSpace: 'nowrap',
+  }),
+  separator: css({
+    width: 1,
+    height: 16,
+    backgroundColor: theme.colors.border.weak,
+    flexShrink: 0,
+  }),
+  modeIndicator: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    padding: `1px ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    whiteSpace: 'nowrap',
+  }),
+  hoverIndicator: css({
+    backgroundColor: theme.colors.info.transparent,
+    color: theme.colors.info.text,
+    border: `1px solid ${theme.colors.info.border}`,
+  }),
+  formCaptureIndicator: css({
+    backgroundColor: theme.colors.warning.transparent,
+    color: theme.colors.warning.text,
+    border: `1px solid ${theme.colors.warning.border}`,
+  }),
+  formCaptureActiveIndicator: css({
+    backgroundColor: theme.colors.success.transparent,
+    color: theme.colors.success.text,
+    border: `1px solid ${theme.colors.success.border}`,
   }),
   multiStepIndicator: css({
-    backgroundColor: theme.colors.warning.main,
-    color: theme.colors.warning.contrastText,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.warning.transparent,
+    color: theme.colors.warning.text,
+    border: `1px solid ${theme.colors.warning.border}`,
+    padding: `1px ${theme.spacing(0.75)}`,
     borderRadius: theme.shape.radius.default,
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    animation: 'pulse-indicator 1.5s ease-in-out infinite',
-    '@keyframes pulse-indicator': {
-      '0%, 100%': { opacity: 1 },
-      '50%': { opacity: 0.7 },
-    },
-  }),
-  multiStepIcon: css({
-    fontSize: '12px',
-  }),
-  toggleButton: css({
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    border: '1px solid rgba(255, 255, 255, 0.3)',
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.error.contrastText,
-    cursor: 'pointer',
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.15s ease',
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-
-    '&:hover': {
-      backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    },
-  }),
-  toggleButtonEnabled: css({
-    backgroundColor: theme.colors.success.main,
-    borderColor: theme.colors.success.border,
-    color: theme.colors.success.contrastText,
-
-    '&:hover': {
-      backgroundColor: theme.colors.success.shade,
-    },
-  }),
-  toggleButtonDisabled: css({
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    opacity: 0.8,
+    whiteSpace: 'nowrap',
   }),
   bannerButton: css({
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1.5)}`,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    border: '1px solid rgba(255, 255, 255, 0.4)',
+    padding: `2px ${theme.spacing(1)}`,
+    backgroundColor: 'transparent',
+    border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
-    color: theme.colors.error.contrastText,
+    color: theme.colors.text.secondary,
     cursor: 'pointer',
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     transition: 'all 0.15s ease',
+    whiteSpace: 'nowrap',
 
     '&:hover': {
-      backgroundColor: 'rgba(255, 255, 255, 0.3)',
+      backgroundColor: theme.colors.action.hover,
+      color: theme.colors.text.primary,
+      borderColor: theme.colors.border.strong,
     },
 
     '&:disabled': {
-      opacity: 0.5,
+      opacity: 0.4,
       cursor: 'not-allowed',
     },
+  }),
+  stopButton: css({
+    padding: `2px ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.error.transparent,
+    border: `1px solid ${theme.colors.error.border}`,
+    borderRadius: theme.shape.radius.default,
+    color: theme.colors.error.text,
+    cursor: 'pointer',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.15s ease',
+    whiteSpace: 'nowrap',
+
+    '&:hover': {
+      backgroundColor: theme.colors.error.main,
+      color: theme.colors.error.contrastText,
+    },
+  }),
+  toggleButton: css({
+    padding: `2px ${theme.spacing(0.75)}`,
+    backgroundColor: 'transparent',
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    color: theme.colors.text.secondary,
+    cursor: 'pointer',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.15s ease',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    whiteSpace: 'nowrap',
+
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  toggleButtonEnabled: css({
+    backgroundColor: theme.colors.success.transparent,
+    borderColor: theme.colors.success.border,
+    color: theme.colors.success.text,
+
+    '&:hover': {
+      backgroundColor: theme.colors.success.transparent,
+    },
+  }),
+  toggleButtonDisabled: css({
+    opacity: 0.6,
+  }),
+  hintText: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.disabled,
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  }),
+  hintKey: css({
+    fontFamily: theme.typography.fontFamilyMonospace,
+    fontSize: '10px',
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: 3,
+    padding: '0 3px',
+    lineHeight: '16px',
   }),
   highlight: css({
     position: 'fixed',
     zIndex: 99997,
-    border: `2px solid ${theme.colors.error.main}`,
-    backgroundColor: theme.colors.error.transparent,
+    border: `2px solid ${theme.colors.primary.main}`,
+    backgroundColor: theme.colors.primary.transparent,
     pointerEvents: 'none',
     transition: 'all 0.1s ease',
   }),
@@ -140,17 +229,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     pointerEvents: 'none',
     transition: 'all 0.1s ease',
   }),
-  hoverModeIndicator: css({
-    backgroundColor: theme.colors.info.main,
-    color: theme.colors.info.contrastText,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
-    borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-  }),
   highlightFormCapture: css({
     position: 'fixed',
     zIndex: 99997,
@@ -158,37 +236,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.warning.transparent,
     pointerEvents: 'none',
     transition: 'all 0.1s ease',
-  }),
-  formCaptureModeIndicator: css({
-    backgroundColor: theme.colors.warning.main,
-    color: theme.colors.warning.contrastText,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
-    borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-  }),
-  formCaptureActiveIndicator: css({
-    backgroundColor: theme.colors.success.main,
-    color: theme.colors.success.contrastText,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
-    borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    animation: 'pulse-form-capture 1.5s ease-in-out infinite',
-    '@keyframes pulse-form-capture': {
-      '0%, 100%': { opacity: 1 },
-      '50%': { opacity: 0.7 },
-    },
-  }),
-  hintText: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    opacity: 0.7,
   }),
 });
 
@@ -386,10 +433,19 @@ export function RecordModeOverlay({
   // Generate full DOM path with data-testid highlighting
   const domPath = hoveredElement ? generateFullDomPath(hoveredElement) : '';
 
+  // Determine active mode for center indicators
+  const activeMode = formCaptureElement
+    ? 'formCaptureActive'
+    : isFormCaptureMode
+      ? 'formCapture'
+      : isHoverMode
+        ? 'hover'
+        : null;
+
   // Render directly to document.body to bypass any modal overlays
   return createPortal(
     <>
-      {/* Element highlight - red border (blue when in hover mode) */}
+      {/* Element highlight */}
       {highlightRect && (
         <div
           className={
@@ -405,70 +461,86 @@ export function RecordModeOverlay({
         />
       )}
 
-      {/* Top banner - red with recording indicator */}
+      {/* Top bar */}
       <div className={styles.banner} data-record-overlay="banner">
-        <div className={styles.recordingDot} />
-        <span className={styles.bannerText}>
-          {sectionName
-            ? `Recording into "${sectionName}"... Click elements to capture blocks`
-            : 'Recording... Click elements to capture steps'}
-        </span>
-        <span className={styles.stepCount}>
-          {stepCount} {sectionName ? 'block' : 'step'}
-          {stepCount !== 1 ? 's' : ''}
-        </span>
-        {isHoverMode && <span className={styles.hoverModeIndicator}>⇧ Hover capture</span>}
-        {isFormCaptureMode && !formCaptureElement && (
-          <span className={styles.formCaptureModeIndicator}>⌥ Form capture</span>
-        )}
-        {formCaptureElement && (
-          <span className={styles.formCaptureActiveIndicator}>✏️ Type your value, then click away to confirm</span>
-        )}
-        <span className={styles.hintText}>Shift+click = hover | Alt+click = form fill</span>
-        {/* Multi-step grouping indicator - only show when enabled and actively grouping */}
-        {isMultiStepGroupingEnabled && isGroupingMultiStep && (
-          <span
-            className={styles.multiStepIndicator}
-            title="A dropdown or modal was detected - steps are being grouped"
-          >
-            <span className={styles.multiStepIcon}>📦</span>
-            Grouping: {pendingMultiStepCount} step{pendingMultiStepCount !== 1 ? 's' : ''}
+        {/* Left: recording indicator + text + count */}
+        <div className={styles.leftGroup}>
+          <div className={styles.recordingDot} />
+          <span className={styles.bannerText}>{sectionName ? `Recording "${sectionName}"` : 'Recording'}</span>
+          <span className={styles.stepCount}>
+            {stepCount} {sectionName ? 'block' : 'step'}
+            {stepCount !== 1 ? 's' : ''}
           </span>
-        )}
-        {/* Multi-step grouping toggle button */}
-        {onToggleMultiStepGrouping && (
+        </div>
+
+        {/* Center: mode indicators (only when active) */}
+        <div className={styles.centerGroup}>
+          {activeMode === 'hover' && (
+            <span className={`${styles.modeIndicator} ${styles.hoverIndicator}`}>
+              <Icon name="eye" size="sm" /> Hover capture
+            </span>
+          )}
+          {activeMode === 'formCapture' && (
+            <span className={`${styles.modeIndicator} ${styles.formCaptureIndicator}`}>
+              <Icon name="pen" size="sm" /> Form capture
+            </span>
+          )}
+          {activeMode === 'formCaptureActive' && (
+            <span className={`${styles.modeIndicator} ${styles.formCaptureActiveIndicator}`}>
+              <Icon name="pen" size="sm" /> Type your value, then click away
+            </span>
+          )}
+          {isMultiStepGroupingEnabled && isGroupingMultiStep && (
+            <span
+              className={styles.multiStepIndicator}
+              title="A dropdown or modal was detected - steps are being grouped"
+            >
+              Grouping: {pendingMultiStepCount} step{pendingMultiStepCount !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        {/* Right: actions */}
+        <div className={styles.rightGroup}>
+          <span className={styles.hintText}>
+            <span className={styles.hintKey}>Shift</span>+click hover <span className={styles.hintKey}>Alt</span>+click
+            fill <span className={styles.hintKey}>Esc</span> stop
+          </span>
+          <div className={styles.separator} />
+          {onToggleMultiStepGrouping && (
+            <button
+              className={`${styles.toggleButton} ${isMultiStepGroupingEnabled ? styles.toggleButtonEnabled : styles.toggleButtonDisabled}`}
+              onClick={handleToggleMultiStepGrouping}
+              type="button"
+              title={
+                isMultiStepGroupingEnabled
+                  ? 'Multi-step grouping is ON. Click to disable.'
+                  : 'Multi-step grouping is OFF. Click to enable.'
+              }
+            >
+              {isMultiStepGroupingEnabled ? 'Auto-group' : 'No grouping'}
+            </button>
+          )}
+          {startingUrl && (
+            <button
+              className={styles.bannerButton}
+              onClick={handleReturnToStart}
+              disabled={isAtStartingUrl}
+              type="button"
+              title={isAtStartingUrl ? 'Already at starting page' : 'Return to the page where recording started'}
+            >
+              Return to start
+            </button>
+          )}
           <button
-            className={`${styles.toggleButton} ${isMultiStepGroupingEnabled ? styles.toggleButtonEnabled : styles.toggleButtonDisabled}`}
-            onClick={handleToggleMultiStepGrouping}
+            className={styles.stopButton}
+            onClick={handleStopClick}
             type="button"
-            title={
-              isMultiStepGroupingEnabled
-                ? 'Multi-step grouping is ON: Dropdown/modal clicks will be grouped together. Click to disable.'
-                : 'Multi-step grouping is OFF: All clicks recorded individually. Click to enable.'
-            }
+            data-testid={testIds.blockEditor.recordStopButton}
           >
-            {isMultiStepGroupingEnabled ? '📦 Auto-group' : '📦 No grouping'}
+            Stop
           </button>
-        )}
-        {startingUrl && (
-          <button
-            className={styles.bannerButton}
-            onClick={handleReturnToStart}
-            disabled={isAtStartingUrl}
-            type="button"
-            title={isAtStartingUrl ? 'Already at starting page' : 'Return to the page where recording started'}
-          >
-            Return to start
-          </button>
-        )}
-        <button
-          className={styles.bannerButton}
-          onClick={handleStopClick}
-          type="button"
-          data-testid={testIds.blockEditor.recordStopButton}
-        >
-          Stop (Esc)
-        </button>
+        </div>
       </div>
 
       {/* DOM path tooltip - uses existing component with testid highlighting */}

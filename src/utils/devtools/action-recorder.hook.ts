@@ -245,12 +245,14 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
   const stopRecording = useCallback(() => {
     setRecordingState('idle');
+    setFormCaptureElement(null);
     // Keep recorded steps when stopping
   }, []);
 
   const clearRecording = useCallback(() => {
     setRecordedSteps([]);
     recordingElementsRef.current.clear();
+    setFormCaptureElement(null);
     // Also clear modal detection state
     setActiveModal(null);
     setPendingGroupSteps([]);
@@ -455,7 +457,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           isUnique: result.selectorInfo.isUnique,
           matchCount: result.selectorInfo.matchCount,
           contextStrategy: result.selectorInfo.contextStrategy,
-          fallbacks: result.fallbacks.length > 0 ? result.fallbacks : undefined,
         };
 
         // Add step directly — skip modal detection since click was intercepted
@@ -501,15 +502,18 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
             const blurResult = generateSelectorFromEvent(target, event);
             const description = getActionDescription('formfill', target);
 
+            // Prefer tracked value from input/change handlers; fall back to live DOM value
+            // in case those handlers were filtered by shouldCaptureElement
+            const finalValue = tracked.value || (target as HTMLInputElement).value || '';
+
             const newStep: RecordedStep = {
               action: 'formfill',
               selector: blurResult.selector,
-              value: tracked.value,
+              value: finalValue,
               description,
               isUnique: blurResult.selectorInfo.isUnique,
               matchCount: blurResult.selectorInfo.matchCount,
               contextStrategy: blurResult.selectorInfo.contextStrategy,
-              fallbacks: blurResult.fallbacks.length > 0 ? blurResult.fallbacks : undefined,
             };
 
             setRecordedSteps((prev) => [...prev, newStep]);
@@ -563,7 +567,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         isUnique: selectorInfo.isUnique,
         matchCount: selectorInfo.matchCount,
         contextStrategy: selectorInfo.contextStrategy,
-        fallbacks: result.fallbacks.length > 0 ? result.fallbacks : undefined,
       };
 
       // Modal detection: check if we're inside an active modal or if this might trigger one
@@ -648,15 +651,18 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
     const handleInput = (event: Event) => {
       const target = event.target as HTMLElement;
+      const isFormCaptured = recordingElementsRef.current.has(target);
 
-      if (!shouldCaptureElement(target)) {
+      if (!isFormCaptured && !shouldCaptureElement(target)) {
         return;
       }
 
-      // Check exclusion selectors - use ref to avoid effect re-runs
-      const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
-      if (shouldExclude) {
-        return;
+      if (!isFormCaptured) {
+        // Check exclusion selectors - use ref to avoid effect re-runs
+        const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
+        if (shouldExclude) {
+          return;
+        }
       }
 
       // Skip tracking radio/checkbox inputs - they're handled on click
@@ -674,15 +680,18 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
     const handleChange = (event: Event) => {
       const target = event.target as HTMLElement;
+      const isFormCaptured = recordingElementsRef.current.has(target);
 
-      if (!shouldCaptureElement(target)) {
+      if (!isFormCaptured && !shouldCaptureElement(target)) {
         return;
       }
 
-      // Check exclusion selectors - use ref to avoid effect re-runs
-      const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
-      if (shouldExclude) {
-        return;
+      if (!isFormCaptured) {
+        // Check exclusion selectors - use ref to avoid effect re-runs
+        const shouldExclude = excludeSelectorsRef.current.some((selector) => target.closest(selector));
+        if (shouldExclude) {
+          return;
+        }
       }
 
       const tracked = recordingElementsRef.current.get(target);
@@ -715,7 +724,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           isUnique: selectorInfo.isUnique,
           matchCount: selectorInfo.matchCount,
           contextStrategy: selectorInfo.contextStrategy,
-          fallbacks: result.fallbacks.length > 0 ? result.fallbacks : undefined,
         };
 
         // Modal detection: if we're inside a modal, add to pending group

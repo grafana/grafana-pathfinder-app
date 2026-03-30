@@ -307,6 +307,40 @@ describe('Enhanced Selector', () => {
 
       expect(result.elements.length).toBe(0);
     });
+
+    it('should apply trailing sibling combinator after :text()', () => {
+      document.body.innerHTML = '<label>Username</label><input type="text" />';
+
+      const result = querySelectorAllEnhanced("label:text('Username') + input");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.tagName).toBe('INPUT');
+    });
+
+    it('should apply trailing descendant selector after :contains()', () => {
+      document.body.innerHTML = '<div class="field"><span>Label</span><input type="text" /></div>';
+
+      // Verify DOM is set up correctly
+      expect(document.querySelector('div.field')).not.toBeNull();
+      expect(document.querySelector('div.field input')).not.toBeNull();
+
+      const result = querySelectorAllEnhanced("div.field:contains('Label') input");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.tagName).toBe('INPUT');
+    });
+  });
+
+  describe(':contains() with trailing selector', () => {
+    it('should apply trailing sibling combinator after :contains()', () => {
+      document.body.innerHTML =
+        '<label>Username</label><input type="text" /><label>Password</label><input type="password" />';
+
+      const result = querySelectorAllEnhanced("label:contains('Password') + input");
+
+      expect(result.elements.length).toBe(1);
+      expect((result.elements[0] as HTMLInputElement).type).toBe('password');
+    });
   });
 
   describe('Edge cases', () => {

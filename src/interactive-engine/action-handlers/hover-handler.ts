@@ -20,7 +20,7 @@ export class HoverHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const targetElement = await this.findTargetElement(data.reftarget, data.reftargetFallbacks);
+      const targetElement = await this.findTargetElement(data.reftarget);
       await this.prepareElement(targetElement);
 
       if (!performHover) {
@@ -36,8 +36,8 @@ export class HoverHandler {
     }
   }
 
-  private async findTargetElement(selector: string, fallbacks?: string[]): Promise<HTMLElement> {
-    const resolved = await resolveWithRetry(selector, 'hover', { fallbacks });
+  private async findTargetElement(selector: string): Promise<HTMLElement> {
+    const resolved = await resolveWithRetry(selector, 'hover');
 
     if (!resolved) {
       throw new Error(`No elements found matching selector: ${selector}`);

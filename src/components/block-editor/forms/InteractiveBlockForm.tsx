@@ -24,6 +24,7 @@ import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { testIds } from '../../../constants/testIds';
+import { generateFallbackSelectors, querySelectorAllEnhanced } from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import { SelectorTestOverlay } from '../SelectorTestOverlay';
 import { useSelectorTest } from '../useSelectorTest';
@@ -83,8 +84,9 @@ export function InteractiveBlockForm({
   const [lazyRender, setLazyRender] = useState(initial?.lazyRender ?? false);
   const [scrollContainer, setScrollContainer] = useState(initial?.scrollContainer ?? '');
 
-  // Fallback selectors state
-  const [fallbacks, setFallbacks] = useState<string[]>(initial?.reftargetFallbacks ?? []);
+  // On-demand alternative selectors (computed via "Show alternatives" button)
+  const [alternatives, setAlternatives] = useState<string[]>([]);
+  const [showAlternatives, setShowAlternatives] = useState(false);
 
   // Selector test hook
   const { testSelector, testResult, clearTest } = useSelectorTest();
@@ -134,7 +136,6 @@ export function InteractiveBlockForm({
         action,
         // Only include reftarget for non-noop actions
         ...(!isNoopAction && reftarget.trim() && { reftarget: reftarget.trim() }),
-        ...(!isNoopAction && fallbacks.length > 0 && { reftargetFallbacks: fallbacks }),
         content: content.trim(),
         // The following fields are not relevant for noop actions
         ...(!isNoopAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
@@ -161,7 +162,6 @@ export function InteractiveBlockForm({
     [
       action,
       reftarget,
-      fallbacks,
       targetvalue,
       content,
       tooltip,
@@ -204,19 +204,33 @@ export function InteractiveBlockForm({
     });
   }, []);
 
-  // Swap a fallback selector into the primary reftarget position
-  const promoteSelector = useCallback(
-    (fallback: string, index: number) => {
-      const newFallbacks = [...fallbacks];
-      newFallbacks.splice(index, 1);
-      if (reftarget) {
-        newFallbacks.unshift(reftarget); // demote old primary
+  // Swap an alternative selector into the primary reftarget position
+  const promoteSelector = useCallback((alternative: string) => {
+    setReftarget(alternative);
+    // Clear alternatives since the primary changed
+    setAlternatives([]);
+    setShowAlternatives(false);
+  }, []);
+
+  // Compute alternative selectors on demand using generateFallbackSelectors
+  const computeAlternatives = useCallback(() => {
+    if (!reftarget.trim()) {
+      return;
+    }
+    try {
+      // Find the target element to generate alternatives from
+      const result = querySelectorAllEnhanced(reftarget.trim());
+      if (result.elements.length > 0) {
+        const alts = generateFallbackSelectors(result.elements[0] as HTMLElement, reftarget.trim());
+        setAlternatives(alts);
+      } else {
+        setAlternatives([]);
       }
-      setFallbacks(newFallbacks);
-      setReftarget(fallback);
-    },
-    [fallbacks, reftarget]
-  );
+    } catch {
+      setAlternatives([]);
+    }
+    setShowAlternatives(true);
+  }, [reftarget]);
 
   // noop actions don't require a reftarget since they're informational only
   // navigate actions use reftarget as a path, not a DOM selector
@@ -296,21 +310,35 @@ export function InteractiveBlockForm({
             </span>
           )}
 
-          {/* Fallback alternatives */}
-          {fallbacks.length > 0 && (
-            <details>
+          {/* On-demand alternative selectors */}
+          {!showAlternatives && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={computeAlternatives}
+              type="button"
+              disabled={!reftarget.trim()}
+            >
+              Show alternatives
+            </Button>
+          )}
+          {showAlternatives && alternatives.length > 0 && (
+            <details open>
               <summary style={{ cursor: 'pointer', fontSize: 12, color: '#8e8e8e' }}>
-                Alternative selectors ({fallbacks.length})
+                Alternative selectors ({alternatives.length})
               </summary>
-              {fallbacks.map((fb, i) => (
+              {alternatives.map((alt, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                  <code style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{fb}</code>
-                  <Button size="sm" variant="secondary" onClick={() => promoteSelector(fb, i)} type="button">
+                  <code style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{alt}</code>
+                  <Button size="sm" variant="secondary" onClick={() => promoteSelector(alt)} type="button">
                     Use this
                   </Button>
                 </div>
               ))}
             </details>
+          )}
+          {showAlternatives && alternatives.length === 0 && (
+            <span style={{ fontSize: 12, color: '#8e8e8e' }}>No alternative selectors found for this element.</span>
           )}
         </>
       )}

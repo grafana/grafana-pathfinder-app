@@ -145,6 +145,28 @@ function handleComplexSelector(selector: string): SelectorResult {
 }
 
 /**
+ * Resolve a trailing selector fragment against a set of matched elements.
+ * Uses a temporary data attribute to bridge custom pseudo-selector matches
+ * back into native CSS queries.
+ *
+ * Supports combinators: " + " (adjacent sibling), " ~ " (general sibling),
+ * " > " (child), and " " (descendant).
+ */
+function resolveTrailingSelector(elements: HTMLElement[], trailing: string): HTMLElement[] {
+  const marker = `__es_trail_${Date.now()}`;
+  try {
+    elements.forEach((el) => el.setAttribute(marker, ''));
+    const markerSelector = `[${marker}]${trailing}`;
+    const results = Array.from(document.querySelectorAll(markerSelector)) as HTMLElement[];
+    return results;
+  } catch {
+    return elements;
+  } finally {
+    elements.forEach((el) => el.removeAttribute(marker));
+  }
+}
+
+/**
  * Handle :contains() pseudo-selector
  * Example: div[data-cy="wb-list-item"]:contains("checkoutservice")
  */
@@ -164,26 +186,31 @@ function handleContainsSelector(selector: string): SelectorResult {
 
   const baseSelector = containsMatch[1]!;
   const searchText = containsMatch[3]!;
+  const afterContains = containsMatch[4] || '';
 
   try {
     // Get all elements matching the base selector
     const candidateElements = document.querySelectorAll(baseSelector);
-    const matchingElements: HTMLElement[] = [];
+    let matchingElements: HTMLElement[] = [];
 
     for (const element of candidateElements) {
       // Check if element's text content contains the search text
       const textContent = element.textContent || '';
       if (textContent.toLowerCase().includes(searchText.toLowerCase())) {
-        // Element matches the text content requirement
         matchingElements.push(element as HTMLElement);
       }
+    }
+
+    // Apply trailing selector (e.g. " + input" or " > span") if present
+    if (afterContains.trim() && matchingElements.length > 0) {
+      matchingElements = resolveTrailingSelector(matchingElements, afterContains);
     }
 
     return {
       elements: matchingElements,
       usedFallback: true,
       originalSelector: selector,
-      effectiveSelector: `${baseSelector} (text contains "${searchText}")`,
+      effectiveSelector: `${baseSelector} (text contains "${searchText}")${afterContains ? ` then ${afterContains}` : ''}`,
     };
   } catch (error) {
     console.warn(`Error processing :contains() selector "${selector}":`, error);
@@ -452,10 +479,11 @@ function handleTextSelector(selector: string): SelectorResult {
 
   const textBaseSelector = textMatch[1]!;
   const textSearchText = textMatch[3]!;
+  const textAfter = textMatch[4] || '';
 
   try {
     const candidateElements = document.querySelectorAll(textBaseSelector);
-    const matchingElements: HTMLElement[] = [];
+    let matchingElements: HTMLElement[] = [];
 
     for (const element of candidateElements) {
       // Use full textContent (including descendants) for exact matching.
@@ -468,11 +496,16 @@ function handleTextSelector(selector: string): SelectorResult {
       }
     }
 
+    // Apply trailing selector (e.g. " + input" or " > span") if present
+    if (textAfter.trim() && matchingElements.length > 0) {
+      matchingElements = resolveTrailingSelector(matchingElements, textAfter);
+    }
+
     return {
       elements: matchingElements,
       usedFallback: true,
       originalSelector: selector,
-      effectiveSelector: `${textBaseSelector} (text equals "${textSearchText}")`,
+      effectiveSelector: `${textBaseSelector} (text equals "${textSearchText}")${textAfter ? ` then ${textAfter}` : ''}`,
     };
   } catch (error) {
     console.warn(`Error processing :text() selector "${selector}":`, error);

@@ -13,8 +13,6 @@ export interface RecordedStep {
   contextStrategy?: string;
   /** If set, this step is part of a group (e.g., modal interaction) */
   groupId?: string;
-  /** Fallback selectors ordered by stability score */
-  fallbacks?: string[];
 }
 
 export interface MultistepGroup {

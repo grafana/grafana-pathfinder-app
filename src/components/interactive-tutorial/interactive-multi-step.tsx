@@ -75,7 +75,6 @@ async function checkActionRequirements(
       requirements: action.requirements,
       targetaction: action.targetAction,
       reftarget: action.refTarget || '',
-      reftargetFallbacks: action.refTargetFallbacks,
       targetvalue: action.targetValue,
       textContent: `multistep-action-${actionIndex + 1}`,
       tagName: 'span',
@@ -343,8 +342,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               action.refTarget || '',
               action.targetValue,
               'show',
-              action.targetComment,
-              action.refTargetFallbacks
+              action.targetComment
             );
 
             // Delay between show and do with cancellation check
@@ -364,8 +362,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               action.refTarget || '',
               action.targetValue,
               'do',
-              action.targetComment,
-              action.refTargetFallbacks
+              action.targetComment
             );
 
             // Wait for DOM to settle after action
@@ -463,7 +460,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         internalActions.map((action) => ({
           targetAction: action.targetAction,
           refTarget: action.refTarget || '',
-          refTargetFallbacks: action.refTargetFallbacks,
           targetValue: action.targetValue,
         })),
       [internalActions]

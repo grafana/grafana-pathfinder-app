@@ -11,7 +11,6 @@ import { resolveSelectorPipeline } from './selector-pipeline';
 export interface RetryConfig {
   delays: number[];
   relaxOnRetry: boolean;
-  fallbacks?: string[];
 }
 
 export const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -35,8 +34,7 @@ export interface ResolvedElement {
  * 3. For everything else: uses `querySelectorAllEnhanced()`
  * 4. If zero matches, sleeps for `delays[i]` then retries
  * 5. On retry 2+ with `relaxOnRetry`: relaxes child combinators (`>` -> space)
- * 6. After all retries exhausted, tries fallback selectors if provided
- * 7. After all strategies exhausted, returns null
+ * 6. After all strategies exhausted, returns null
  *
  * @param reftarget - The selector or button text to resolve
  * @param action - The action type (e.g. 'button', 'highlight', 'formfill'). Defaults to 'highlight'.
@@ -53,7 +51,6 @@ export async function resolveWithRetry(
   const pipelineResult = await resolveSelectorPipeline({
     reftarget,
     action,
-    fallbacks: mergedConfig.fallbacks,
     delays: mergedConfig.delays,
     relaxOnRetry: mergedConfig.relaxOnRetry,
   });
@@ -66,7 +63,7 @@ export async function resolveWithRetry(
     element: pipelineResult.element,
     elements: pipelineResult.elements,
     resolvedSelector: pipelineResult.resolvedSelector,
-    usedFallback: pipelineResult.strategy === 'fallback',
+    usedFallback: false,
     retryCount: pipelineResult.retryCount,
   };
 }
