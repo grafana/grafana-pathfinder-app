@@ -59,9 +59,10 @@ async function executeWithLazyScroll(
     return { success: true, elementFound: true };
   }
 
-  // DOM-targeting actions: always check if element exists (provides user feedback if missing)
-  // Use resolveWithRetry for resilient element detection with exponential backoff
-  const resolved = await resolveWithRetry(refTarget, targetAction, { fallbacks: refTargetFallbacks });
+  // DOM-targeting actions: quick synchronous check if element exists (provides user feedback if missing)
+  // Use resolveWithRetry with NO delays — the action handlers do their own retry with backoff,
+  // so retrying here would cause redundant 2.6s delays on every action.
+  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [], fallbacks: refTargetFallbacks });
   const elementExists = resolved !== null;
 
   if (elementExists) {

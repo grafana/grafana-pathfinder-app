@@ -40,7 +40,7 @@ function analyzeSelectorPattern(reftarget: string): Omit<SelectorInfo, 'matchCou
     score = 90;
   } else if (reftarget.includes(':text(') || reftarget.includes(':contains(')) {
     method = 'text';
-    score = reftarget.includes(':text(') ? 55 : 65;
+    score = reftarget.includes(':text(') ? 65 : 55;
     warnings.push('Text-based selectors are fragile and may break if the UI text changes');
   } else if (reftarget.includes(':nth-match') || reftarget.includes(':nth-of-type')) {
     method = 'positional';
