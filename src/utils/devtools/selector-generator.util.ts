@@ -5,7 +5,12 @@
  * the useActionRecorder hook and block editor components.
  */
 
-import { generateBestSelector, getSelectorInfo, validateAndCleanSelector } from '../../lib/dom';
+import {
+  generateBestSelector,
+  generateFallbackSelectors,
+  getSelectorInfo,
+  validateAndCleanSelector,
+} from '../../lib/dom';
 import { detectActionType, type DetectedAction } from '../../lib/dom/action-detector';
 import type { SelectorInfo } from './dev-tools.types';
 
@@ -15,6 +20,7 @@ export interface SelectorGenerationResult {
   selectorInfo: SelectorInfo;
   warnings: string[];
   wasModified: boolean;
+  fallbacks: string[];
 }
 
 /**
@@ -93,11 +99,15 @@ export function generateSelectorFromEvent(target: HTMLElement, event: MouseEvent
     contextStrategy: info.contextStrategy,
   };
 
+  // Generate fallback selectors for resilience
+  const fallbacks = generateFallbackSelectors(target, selector);
+
   return {
     selector,
     action,
     selectorInfo,
     warnings: validated.warnings,
     wasModified: validated.wasModified,
+    fallbacks,
   };
 }

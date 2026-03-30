@@ -2,7 +2,8 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
-import { resetValueTracker, querySelectorAllEnhanced, isElementVisible, resolveSelector } from '../../lib/dom';
+import { resetValueTracker, isElementVisible } from '../../lib/dom';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
 export class FormFillHandler {
   constructor(
@@ -32,22 +33,17 @@ export class FormFillHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement> {
-    // Resolve grafana: prefix if present
-    const resolvedSelector = resolveSelector(selector);
+    const resolved = await resolveWithRetry(selector, 'formfill');
 
-    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-    const targetElements = enhancedResult.elements;
-
-    if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
+    if (!resolved) {
+      throw new Error(`No elements found matching selector: ${selector}`);
     }
 
-    if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}`);
+    if (resolved.elements.length > 1) {
+      console.warn(`Multiple elements found matching selector: ${selector}`);
     }
 
-    const targetElement = targetElements[0]!;
-    return targetElement;
+    return resolved.element;
   }
 
   private async prepareElement(targetElement: HTMLElement): Promise<void> {

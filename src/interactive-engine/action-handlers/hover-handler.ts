@@ -2,7 +2,8 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { querySelectorAllEnhanced, isElementVisible, resolveSelector } from '../../lib/dom';
+import { isElementVisible } from '../../lib/dom';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
 /**
  * Handler for hover actions that simulate mouse hover to trigger CSS :hover states
@@ -36,21 +37,17 @@ export class HoverHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement> {
-    // Resolve grafana: prefix if present
-    const resolvedSelector = resolveSelector(selector);
+    const resolved = await resolveWithRetry(selector, 'hover');
 
-    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-    const targetElements = enhancedResult.elements;
-
-    if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
+    if (!resolved) {
+      throw new Error(`No elements found matching selector: ${selector}`);
     }
 
-    if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
+    if (resolved.elements.length > 1) {
+      console.warn(`Multiple elements found matching selector: ${selector}, using first element`);
     }
 
-    return targetElements[0]!;
+    return resolved.element;
   }
 
   private async prepareElement(targetElement: HTMLElement): Promise<void> {

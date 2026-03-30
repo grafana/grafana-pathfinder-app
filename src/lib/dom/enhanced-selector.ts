@@ -465,7 +465,7 @@ function handleTextSelector(selector: string): SelectorResult {
         .join('')
         .trim();
 
-      if (directText.toLowerCase().includes(textSearchText.toLowerCase())) {
+      if (directText.trim().toLowerCase() === textSearchText.trim().toLowerCase()) {
         matchingElements.push(element as HTMLElement);
       }
     }
@@ -474,7 +474,7 @@ function handleTextSelector(selector: string): SelectorResult {
       elements: matchingElements,
       usedFallback: true,
       originalSelector: selector,
-      effectiveSelector: `${textBaseSelector} (direct text contains "${textSearchText}")`,
+      effectiveSelector: `${textBaseSelector} (direct text equals "${textSearchText}")`,
     };
   } catch (error) {
     console.warn(`Error processing :text() selector "${selector}":`, error);
@@ -485,6 +485,86 @@ function handleTextSelector(selector: string): SelectorResult {
       effectiveSelector: 'ERROR_IN_TEXT',
     };
   }
+}
+
+/**
+ * Extract the stable prefix from a data-testid value.
+ * Strips trailing dynamic content: numbers, UUIDs, user-generated text after known delimiters.
+ * Returns null if no meaningful split point found or prefix is too short.
+ */
+function extractStableTestIdPrefix(testId: string): string | null {
+  // Too short to split meaningfully
+  if (testId.length < 12) {
+    return null;
+  }
+
+  let prefix: string | null = null;
+
+  // Try splitting on common dynamic trailing patterns (most specific first)
+
+  // Trailing UUID segment after hyphen: e.g. "component-a1b2c3d4-e5f6-..."
+  const uuidTrailingMatch = testId.match(/^(.+?-)[0-9a-f]{8}(-[0-9a-f]{4}){0,3}/i);
+  if (uuidTrailingMatch) {
+    prefix = uuidTrailingMatch[1]!;
+  }
+
+  // Trailing number after hyphen: e.g. "panel-42"
+  if (!prefix) {
+    const numberTrailingMatch = testId.match(/^(.+-)\d+$/);
+    if (numberTrailingMatch) {
+      prefix = numberTrailingMatch[1]!;
+    }
+  }
+
+  // Space followed by content that looks dynamic (contains capitals mixed with spaces,
+  // typical of user-generated titles like "Panel header Disk Usage")
+  if (!prefix) {
+    const spaceSegments = testId.split(' ');
+    if (spaceSegments.length >= 3) {
+      // Check if the last segment looks like user-generated content
+      // (starts with uppercase, typical of dashboard panel titles etc.)
+      const lastSegment = spaceSegments[spaceSegments.length - 1]!;
+      const secondLast = spaceSegments[spaceSegments.length - 2]!;
+      // If the last 1-2 segments start with uppercase and prior segments are lowercase,
+      // they likely represent user-generated titles
+      if (/^[A-Z]/.test(lastSegment) && /^[a-z]/.test(secondLast)) {
+        // Keep everything up to the dynamic-looking suffix
+        // Find the last segment that starts lowercase, include up to one past it
+        for (let i = spaceSegments.length - 1; i >= 1; i--) {
+          if (/^[a-z]/.test(spaceSegments[i]!)) {
+            prefix = spaceSegments.slice(0, i + 1).join(' ') + ' ';
+            break;
+          }
+        }
+      } else if (/^[A-Z]/.test(lastSegment) && /^[A-Z]/.test(secondLast)) {
+        // Multiple trailing capitalized words — strip from the first capitalized trailing word
+        // e.g. "Panel header Disk Usage" -> "Panel header "
+        for (let i = spaceSegments.length - 1; i >= 1; i--) {
+          if (/^[a-z]/.test(spaceSegments[i]!)) {
+            prefix = spaceSegments.slice(0, i + 1).join(' ') + ' ';
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // No good split point found
+  if (!prefix) {
+    return null;
+  }
+
+  // Prefix must be at least 8 characters
+  if (prefix.length < 8) {
+    return null;
+  }
+
+  // Prefix must differ from the original
+  if (prefix === testId) {
+    return null;
+  }
+
+  return prefix;
 }
 
 /**
@@ -547,7 +627,32 @@ function handleTestIdSelector(selector: string): SelectorResult {
     }
   }
 
-  // If native failed, return empty result (we could add manual traversal here if needed)
+  // 4. Prefix matching: try [data-testid^='stable-prefix'] when exact match fails
+  const testIdAttrMatch = selector.match(/\[data-testid=['"]([^'"]+)['"]\]/);
+  if (testIdAttrMatch) {
+    const fullTestId = testIdAttrMatch[1]!;
+    const stablePrefix = extractStableTestIdPrefix(fullTestId);
+    if (stablePrefix) {
+      const prefixSelector = selector.replace(/\[data-testid=['"][^'"]+['"]\]/, `[data-testid^='${stablePrefix}']`);
+      try {
+        const prefixResults = document.querySelectorAll(prefixSelector);
+        // Only accept if exactly 1 visible element matches
+        const visibleMatches = Array.from(prefixResults).filter((el) => isElementDisplayed(el as HTMLElement));
+        if (visibleMatches.length === 1) {
+          return {
+            elements: visibleMatches as HTMLElement[],
+            usedFallback: true,
+            originalSelector: selector,
+            effectiveSelector: prefixSelector,
+          };
+        }
+      } catch {
+        // Invalid prefix selector, skip
+      }
+    }
+  }
+
+  // If all strategies failed, return empty result
   return {
     elements: [],
     usedFallback: true,

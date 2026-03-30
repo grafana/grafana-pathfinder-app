@@ -849,7 +849,8 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
 
     // If we have meaningful text, use role + contains strategy
     if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-      const roleSelector = `[role='${role}']:contains('${text}')`;
+      const roleSelector =
+        text.length < 20 ? `[role='${role}']:text('${text}')` : `[role='${role}']:contains('${text}')`;
 
       // Check uniqueness
       const matches = querySelectorAllEnhanced(roleSelector);
@@ -890,7 +891,10 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
         if (parent && (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label'))) {
           // Don't pass click coordinates to parent - they only apply to the clicked element
           const parentSelector = generateBestSelector(parent);
-          const fullSelector = `${parentSelector} button:contains('${cleanText}')`;
+          const fullSelector =
+            cleanText.length < 20
+              ? `${parentSelector} button:text('${cleanText}')`
+              : `${parentSelector} button:contains('${cleanText}')`;
           return cleanDynamicAttributes(fullSelector);
         }
 
@@ -900,7 +904,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
         }
 
         // Strategy C: Standalone :contains as fallback (with validation)
-        const baseSelector = `button:contains('${cleanText}')`;
+        const baseSelector = cleanText.length < 20 ? `button:text('${cleanText}')` : `button:contains('${cleanText}')`;
         const contextualSelector = buildContextualSelector(bestElement, baseSelector);
         return cleanDynamicAttributes(contextualSelector);
       }
@@ -1404,11 +1408,13 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
     if (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label')) {
       const parentSelector = generateBestSelector(parent);
 
-      // For buttons with text, use :contains for better readability
+      // For buttons with text, use :text/:contains for better readability
       if (tag === 'button' && element.textContent) {
         const text = normalizeText(element.textContent);
         if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-          return `${parentSelector} button:contains('${text}')`;
+          return text.length < 20
+            ? `${parentSelector} button:text('${text}')`
+            : `${parentSelector} button:contains('${text}')`;
         }
       }
 
@@ -1416,11 +1422,11 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
     }
   }
 
-  // Strategy 2: Use :contains as fallback for LEAF elements only (buttons/links with short text)
+  // Strategy 2: Use :text/:contains as fallback for LEAF elements only (buttons/links with short text)
   if ((tag === 'button' || tag === 'a') && element.textContent) {
     const text = normalizeText(element.textContent);
     if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-      return `${tag}:contains('${text}')`;
+      return text.length < 20 ? `${tag}:text('${text}')` : `${tag}:contains('${text}')`;
     }
   }
 
@@ -1498,7 +1504,8 @@ function computeStabilityFlags(selector: string, method: string): StabilityFlag[
     selector.includes('placeholder') ||
     selector.includes("title='") ||
     selector.includes('title="') ||
-    selector.includes(':contains(')
+    selector.includes(':contains(') ||
+    selector.includes(':text(')
   ) {
     flags.push('i18n-sensitive');
   }
@@ -1633,7 +1640,7 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     method = 'nth-of-type';
   } else if (selector.includes(':nth-match')) {
     method = 'nth-match';
-  } else if (selector.includes(':contains(')) {
+  } else if (selector.includes(':contains(') || selector.includes(':text(')) {
     method = 'contains';
   } else if (selector.includes(' + ')) {
     method = 'sibling';
@@ -1649,7 +1656,7 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     contextStrategy = 'sibling';
   } else if (isPortalScoped) {
     contextStrategy = 'portal-scoped';
-  } else if (selector.includes(' ') && !selector.includes(':contains(')) {
+  } else if (selector.includes(' ') && !selector.includes(':contains(') && !selector.includes(':text(')) {
     // Has descendant combinator (space) but not just :contains
     contextStrategy = 'parent-context';
   }
@@ -1745,4 +1752,126 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     overlayRole,
     visibleMatchCount,
   };
+}
+
+// ============================================================================
+// Fallback Selector Generation
+// ============================================================================
+
+/**
+ * Generate fallback selectors for an element, ordered by stability score.
+ * Only includes selectors with stability >= 65 and match count 1-3 (not too generic).
+ * Never includes positional selectors (:nth-match, :nth-of-type).
+ */
+export function generateFallbackSelectors(element: HTMLElement, primarySelector: string): string[] {
+  const bestElement = findBestElementInHierarchy(element);
+  const tag = bestElement.tagName.toLowerCase();
+
+  interface FallbackCandidate {
+    selector: string;
+    score: number;
+  }
+
+  const candidates: FallbackCandidate[] = [];
+
+  // Helper to test a candidate and add it if valid
+  function tryCandidate(selector: string, method: string): void {
+    if (selector === primarySelector) {
+      return;
+    }
+
+    const score = STABILITY_SCORES[method];
+    if (score === undefined || score < 65) {
+      return;
+    }
+
+    try {
+      const matches = querySelectorAllEnhanced(selector);
+      if (matches.elements.length >= 1 && matches.elements.length <= 3) {
+        candidates.push({ selector, score });
+      }
+    } catch {
+      // Invalid selector, skip
+    }
+  }
+
+  // 1. data-testid
+  const testId = getAnyTestId(bestElement);
+  if (testId) {
+    const testIdAttr = getTestIdAttr(bestElement);
+    tryCandidate(`${tag}[${testIdAttr}='${testId}']`, 'data-testid');
+  }
+
+  // 2. id (non-auto-generated)
+  if (bestElement.id && !isAutoGeneratedId(bestElement.id)) {
+    tryCandidate(`#${bestElement.id}`, 'id');
+  }
+
+  // 3. aria-label
+  if (bestElement.hasAttribute('aria-label')) {
+    const ariaLabel = bestElement.getAttribute('aria-label');
+    if (ariaLabel) {
+      tryCandidate(`${tag}[aria-label='${ariaLabel}']`, 'aria-label');
+    }
+  }
+
+  // 4. placeholder
+  if (bestElement.hasAttribute('placeholder')) {
+    const placeholder = bestElement.getAttribute('placeholder');
+    if (placeholder) {
+      tryCandidate(`${tag}[placeholder='${placeholder}']`, 'placeholder');
+    }
+  }
+
+  // 5. title
+  if (bestElement.hasAttribute('title')) {
+    const title = bestElement.getAttribute('title');
+    if (title) {
+      tryCandidate(`${tag}[title='${title}']`, 'title');
+    }
+  }
+
+  // 6. name
+  if (bestElement.hasAttribute('name')) {
+    const name = bestElement.getAttribute('name');
+    if (name) {
+      tryCandidate(`${tag}[name='${name}']`, 'name');
+    }
+  }
+
+  // 7. href (for links)
+  if (tag === 'a' && bestElement.hasAttribute('href')) {
+    const href = normalizeHref(bestElement.getAttribute('href')!);
+    tryCandidate(`a[href='${href}']`, 'href');
+  }
+
+  // 8. button text
+  if (tag === 'button' || bestElement.getAttribute('role') === 'button') {
+    const text = normalizeText(bestElement.textContent || '');
+    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
+      if (text.length < 20) {
+        tryCandidate(`${tag}:text('${text}')`, 'button-text');
+      } else {
+        tryCandidate(`${tag}:contains('${text}')`, 'contains');
+      }
+    }
+  }
+
+  // Sort by stability score descending
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Deduplicate and return max 4
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const candidate of candidates) {
+    if (!seen.has(candidate.selector)) {
+      seen.add(candidate.selector);
+      result.push(candidate.selector);
+      if (result.length >= 4) {
+        break;
+      }
+    }
+  }
+
+  return result;
 }

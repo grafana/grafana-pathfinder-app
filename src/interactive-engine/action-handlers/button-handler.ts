@@ -4,8 +4,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { findButtonByText, isElementVisible } from '../../lib/dom';
 import { isCssSelector } from '../../lib/dom/selector-detector';
-import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
-import { resolveSelector } from '../../lib/dom/selector-resolver';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
 export class ButtonHandler {
   constructor(
@@ -18,7 +17,7 @@ export class ButtonHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const buttons = this.findButtons(data.reftarget);
+      const buttons = await this.findButtons(data.reftarget);
 
       if (!click) {
         await this.handleShowMode(buttons, data.targetcomment);
@@ -33,39 +32,33 @@ export class ButtonHandler {
   }
 
   /**
-   * Find buttons using intelligent selector/text detection
-   * Tries CSS selector first if pattern detected, falls back to text matching
+   * Find buttons using intelligent selector/text detection with retry support
+   * Uses resolveWithRetry for resilience against timing issues
    */
-  private findButtons(refTarget: string): HTMLElement[] {
-    // Try selector first if it looks like CSS
+  private async findButtons(refTarget: string): Promise<HTMLElement[]> {
+    // For CSS selectors, use resolveWithRetry then filter to buttons
     if (isCssSelector(refTarget)) {
-      const selectorResult = this.findButtonsBySelector(refTarget);
-      if (selectorResult.length > 0) {
-        return selectorResult;
+      const resolved = await resolveWithRetry(refTarget, 'button');
+      if (resolved) {
+        // Filter to only button elements
+        const buttons = resolved.elements.filter(
+          (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+        );
+        if (buttons.length > 0) {
+          return buttons;
+        }
       }
       // Fall back to text matching if selector finds nothing
     }
 
-    // Try text matching (existing behavior)
-    return findButtonByText(refTarget);
-  }
-
-  /**
-   * Find buttons using CSS selector with enhanced selector support
-   * Filters results to only button elements or elements with button role
-   */
-  private findButtonsBySelector(selector: string): HTMLElement[] {
-    try {
-      // Use enhanced selector engine (same as highlight action)
-      const resolvedSelector = resolveSelector(selector);
-      const result = querySelectorAllEnhanced(resolvedSelector);
-
-      // Filter to only button elements
-      return result.elements.filter((el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button');
-    } catch (error) {
-      console.warn(`Button selector matching failed for "${selector}":`, error);
-      return [];
+    // For plain text, use resolveWithRetry which internally uses findButtonByText
+    const resolved = await resolveWithRetry(refTarget, 'button');
+    if (resolved) {
+      return resolved.elements;
     }
+
+    // Final fallback: direct text matching (no retry)
+    return findButtonByText(refTarget);
   }
 
   private async handleShowMode(buttons: HTMLElement[], comment?: string): Promise<void> {

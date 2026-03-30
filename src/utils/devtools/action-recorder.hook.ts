@@ -476,6 +476,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         isUnique: selectorInfo.isUnique,
         matchCount: selectorInfo.matchCount,
         contextStrategy: selectorInfo.contextStrategy,
+        fallbacks: result.fallbacks.length > 0 ? result.fallbacks : undefined,
       };
 
       // Modal detection: check if we're inside an active modal or if this might trigger one
@@ -627,6 +628,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           isUnique: selectorInfo.isUnique,
           matchCount: selectorInfo.matchCount,
           contextStrategy: selectorInfo.contextStrategy,
+          fallbacks: result.fallbacks.length > 0 ? result.fallbacks : undefined,
         };
 
         // Modal detection: if we're inside a modal, add to pending group

@@ -2,6 +2,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 import { resolveSelector } from './selector-resolver';
 import { isCssSelector } from './selector-detector';
+import { resolveWithRetry } from './selector-retry';
 
 /**
  * Recursively get all text content from an element and its descendants
@@ -227,26 +228,14 @@ export async function reftargetExistsCheck(
     }
   }
 
-  // Retry configuration for element detection
-  const maxRetries = 2;
-  const retryDelay = 200;
+  // Use resolveWithRetry for resilient element detection with exponential backoff
+  const resolved = await resolveWithRetry(resolvedSelector, targetAction);
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    // Use enhanced selector to support complex selectors like :has() and :contains()
-    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-    const targetElement = enhancedResult.elements.length > 0 ? enhancedResult.elements[0] : null;
-
-    if (targetElement) {
-      return {
-        requirement: 'exists-reftarget',
-        pass: true,
-      };
-    }
-
-    // If this isn't the last attempt, wait before retrying
-    if (attempt < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    }
+  if (resolved) {
+    return {
+      requirement: 'exists-reftarget',
+      pass: true,
+    };
   }
 
   // Element not found after retries - check for general navigation menu pattern

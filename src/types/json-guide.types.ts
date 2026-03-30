@@ -223,6 +223,8 @@ export interface JsonInteractiveBlock extends AssistantProps {
   action: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element (optional for noop actions) */
   reftarget?: string;
+  /** Fallback selectors ordered by stability score, used when reftarget fails */
+  reftargetFallbacks?: string[];
   /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
   targetvalue?: string;
   /** Markdown description shown to the user */
@@ -314,6 +316,8 @@ export interface JsonStep {
   action: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element (optional for noop actions) */
   reftarget?: string;
+  /** Fallback selectors ordered by stability score, used when reftarget fails */
+  reftargetFallbacks?: string[];
   /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
   targetvalue?: string;
   /** Requirements for this specific step */

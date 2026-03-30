@@ -253,8 +253,8 @@ describe('Selector Generator', () => {
       document.body.appendChild(container);
 
       const selector = generateBestSelector(button1);
-      // Should use :contains() with text
-      expect(selector).toContain(":contains('Save Draft')");
+      // Should use :text() with text (short text < 20 chars uses :text())
+      expect(selector).toContain(":text('Save Draft')");
     });
 
     it('should use :nth-match() as fallback when needed', () => {
@@ -393,9 +393,9 @@ describe('Selector Generator', () => {
       document.body.appendChild(form);
 
       const selector = generateBestSelector(button);
-      // Generic words should use :contains() with parent context
+      // Generic words should use :text() with parent context (short text < 20 chars)
       expect(selector).toContain("data-testid='user-form'");
-      expect(selector).toContain(":contains('Save')");
+      expect(selector).toContain(":text('Save')");
     });
   });
 
@@ -518,7 +518,7 @@ describe('Selector Generator', () => {
       document.body.appendChild(form);
 
       const info = getSelectorInfo(button);
-      if (info.selector.includes(' ') && !info.selector.includes(':contains(')) {
+      if (info.selector.includes(' ') && !info.selector.includes(':contains(') && !info.selector.includes(':text(')) {
         expect(info.contextStrategy).toBe('parent-context');
       }
     });

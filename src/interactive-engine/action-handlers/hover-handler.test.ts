@@ -7,10 +7,20 @@ import { InteractiveElementData } from '../../types/interactive.types';
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
 jest.mock('../../lib/dom', () => ({
-  querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false }),
   isElementVisible: jest.fn().mockReturnValue(true),
-  resolveSelector: jest.fn((selector: string) => selector),
 }));
+jest.mock('../../lib/dom/selector-retry', () => ({
+  resolveWithRetry: jest.fn().mockResolvedValue(null),
+}));
+
+/** Helper to build the resolved-element shape returned by resolveWithRetry */
+const makeResolved = (el: HTMLElement, extras?: { elements?: HTMLElement[] }) => ({
+  element: el,
+  elements: extras?.elements ?? [el],
+  resolvedSelector: '#mock',
+  usedFallback: false,
+  retryCount: 0,
+});
 
 describe('HoverHandler', () => {
   let hoverHandler: HoverHandler;
@@ -54,9 +64,9 @@ describe('HoverHandler', () => {
 
   describe('execute', () => {
     it('should set state to running and then completed', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#test',
@@ -73,9 +83,9 @@ describe('HoverHandler', () => {
     }, 10000); // Extended timeout for real timers
 
     it('should handle show mode (performHover = false)', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#test',
@@ -93,9 +103,9 @@ describe('HoverHandler', () => {
     }, 10000);
 
     it('should handle do mode (performHover = true)', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#test',
@@ -111,8 +121,8 @@ describe('HoverHandler', () => {
     }, 10000);
 
     it('should handle errors gracefully', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
-      querySelectorAllEnhanced.mockReturnValue({ elements: [] });
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
+      resolveWithRetry.mockResolvedValue(null);
 
       const data: InteractiveElementData = {
         reftarget: '#non-existent',
@@ -130,9 +140,9 @@ describe('HoverHandler', () => {
 
   describe('hover state application', () => {
     it('should apply programmatic hover state with data attribute', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#test',
@@ -148,7 +158,7 @@ describe('HoverHandler', () => {
     }, 10000);
 
     it('should handle group-hover Tailwind classes', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
 
       // Create child element with group-hover class
@@ -156,7 +166,7 @@ describe('HoverHandler', () => {
       childElement.classList.add('group-hover:flex', 'hidden');
       mockElement.appendChild(childElement);
 
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#test',
@@ -179,14 +189,14 @@ describe('HoverHandler', () => {
     }, 10000);
 
     it('should dispatch hover events', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
       const eventsSpy = jest.fn();
       mockElement.addEventListener('mouseenter', eventsSpy);
       mockElement.addEventListener('mouseover', eventsSpy);
       mockElement.addEventListener('mousemove', eventsSpy);
 
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#test',
@@ -205,9 +215,10 @@ describe('HoverHandler', () => {
 
   describe('element visibility', () => {
     it('should warn but continue when element is not visible', async () => {
-      const { querySelectorAllEnhanced, isElementVisible } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
+      const { isElementVisible } = require('../../lib/dom');
       const mockElement = createMockElement();
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
       isElementVisible.mockReturnValue(false);
 
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
@@ -231,7 +242,7 @@ describe('HoverHandler', () => {
 
   describe('focusable elements', () => {
     it('should focus focusable elements during hover', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockButton = document.createElement('button');
       mockButton.getBoundingClientRect = jest.fn().mockReturnValue({
         left: 100,
@@ -243,7 +254,7 @@ describe('HoverHandler', () => {
       });
       const focusSpy = jest.spyOn(mockButton, 'focus');
 
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockButton] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockButton));
 
       const data: InteractiveElementData = {
         reftarget: 'button#test',
@@ -259,14 +270,14 @@ describe('HoverHandler', () => {
     }, 10000);
 
     it('should handle focus errors gracefully', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
       mockElement.setAttribute('tabindex', '0');
       mockElement.focus = jest.fn().mockImplementation(() => {
         throw new Error('Cannot focus');
       });
 
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#test',
@@ -284,9 +295,9 @@ describe('HoverHandler', () => {
 
   describe('navigation and visibility preparation', () => {
     it('should ensure navigation is open before hover', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
         reftarget: '#nav-element',
@@ -305,10 +316,10 @@ describe('HoverHandler', () => {
 
   describe('multiple elements', () => {
     it('should warn and use first element when multiple match', async () => {
-      const { querySelectorAllEnhanced } = require('../../lib/dom');
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement1 = createMockElement();
       const mockElement2 = createMockElement();
-      querySelectorAllEnhanced.mockReturnValue({ elements: [mockElement1, mockElement2] });
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement1, { elements: [mockElement1, mockElement2] }));
 
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 

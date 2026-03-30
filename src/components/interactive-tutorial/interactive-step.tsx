@@ -20,8 +20,8 @@ import {
 import { testIds } from '../../constants/testIds';
 import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../integrations/assistant-integration';
 import { CodeBlock } from '../../docs-retrieval';
-import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../lib/dom';
-import { isCssSelector } from '../../lib/dom/selector-detector';
+import { scrollUntilElementFound } from '../../lib/dom';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
@@ -59,22 +59,9 @@ async function executeWithLazyScroll(
   }
 
   // DOM-targeting actions: always check if element exists (provides user feedback if missing)
-  // Resolve grafana: selectors
-  const resolvedSelector = resolveSelector(refTarget);
-
-  // Check if element exists
-  // For button actions with text (not CSS selectors), use findButtonByText instead of querySelectorAllEnhanced
-  let elementExists = false;
-
-  if (targetAction === 'button' && !isCssSelector(refTarget)) {
-    // Use text-based button matching (same as reftargetExistsCheck)
-    const buttons = findButtonByText(refTarget);
-    elementExists = buttons.length > 0;
-  } else {
-    // Use CSS selector matching for all other actions
-    const existingResult = querySelectorAllEnhanced(resolvedSelector);
-    elementExists = existingResult.elements.length > 0;
-  }
+  // Use resolveWithRetry for resilient element detection with exponential backoff
+  const resolved = await resolveWithRetry(refTarget, targetAction);
+  const elementExists = resolved !== null;
 
   if (elementExists) {
     // Element found - execute action immediately

@@ -70,6 +70,7 @@ export function convertStepToInteractiveBlock(step: RecordedStep): JsonInteracti
     reftarget: step.selector,
     content: step.description || `${step.action} on element`,
     ...(step.value && { targetvalue: step.value }),
+    ...(step.fallbacks && step.fallbacks.length > 0 && { reftargetFallbacks: step.fallbacks }),
   };
 }
 
@@ -81,6 +82,7 @@ export function convertStepsToMultistepBlock(steps: RecordedStep[]): JsonMultist
     action: step.action as JsonStep['action'],
     reftarget: step.selector,
     ...(step.value && { targetvalue: step.value }),
+    ...(step.fallbacks && step.fallbacks.length > 0 && { reftargetFallbacks: step.fallbacks }),
     tooltip: step.description || `${step.action} on element`,
   }));
 
