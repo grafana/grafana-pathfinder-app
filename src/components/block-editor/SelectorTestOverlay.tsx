@@ -32,8 +32,8 @@ export function SelectorTestOverlay({ elements, onDismiss }: SelectorTestOverlay
       elements.map((el, i) => {
         const rect = el.getBoundingClientRect();
         return {
-          top: rect.top + window.scrollY,
-          left: rect.left + window.scrollX,
+          top: rect.top,
+          left: rect.left,
           width: rect.width,
           height: rect.height,
           index: i + 1,
@@ -77,17 +77,14 @@ SelectorTestOverlay.displayName = 'SelectorTestOverlay';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   backdrop: css({
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
+    position: 'fixed',
+    inset: 0,
     zIndex: 99998,
     pointerEvents: 'auto',
     cursor: 'pointer',
   }),
   highlight: css({
-    position: 'absolute',
+    position: 'fixed',
     border: `2px solid ${theme.colors.primary.main}`,
     backgroundColor: 'rgba(70, 130, 230, 0.12)',
     borderRadius: theme.shape.radius.default,

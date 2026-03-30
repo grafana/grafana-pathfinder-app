@@ -27,8 +27,8 @@ export function useSelectorTest() {
     try {
       const resolved = resolveSelector(selector);
 
-      // For click actions on non-CSS strings, try button text matching first
-      if (action === 'click' && !isCssSelector(resolved)) {
+      // For button actions on non-CSS strings, try button text matching first
+      if (action === 'button' && !isCssSelector(resolved)) {
         const buttons = findButtonByText(resolved);
         if (buttons.length > 0) {
           setTestResult({ elements: buttons, matchCount: buttons.length });

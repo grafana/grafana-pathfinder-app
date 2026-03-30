@@ -77,7 +77,8 @@ export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
       return null;
     }
 
-    const { method, score, warnings } = analyzeSelectorPattern(debouncedTarget);
+    const analysis = analyzeSelectorPattern(debouncedTarget);
+    const allWarnings = [...analysis.warnings];
 
     let matchCount = 0;
     try {
@@ -89,12 +90,12 @@ export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
     }
 
     if (matchCount === 0) {
-      warnings.push('No elements found on this page (may work on the target page)');
+      allWarnings.push('No elements found on this page (may work on the target page)');
     } else if (matchCount > 1) {
-      warnings.push(`Selector matches ${matchCount} elements; consider making it more specific`);
+      allWarnings.push(`Selector matches ${matchCount} elements; consider making it more specific`);
     }
 
-    return { method, score, matchCount, warnings };
+    return { method: analysis.method, score: analysis.score, matchCount, warnings: allWarnings };
   }, [debouncedTarget]);
 
   if (!info) {
