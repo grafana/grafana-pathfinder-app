@@ -458,14 +458,12 @@ function handleTextSelector(selector: string): SelectorResult {
     const matchingElements: HTMLElement[] = [];
 
     for (const element of candidateElements) {
-      // Check direct text content (not descendants)
-      const directText = Array.from(element.childNodes)
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .map((node) => node.textContent || '')
-        .join('')
-        .trim();
+      // Use full textContent (including descendants) for exact matching.
+      // Buttons commonly wrap text in child spans (e.g. <button><span>Save</span></button>),
+      // so checking only direct text nodes would miss them.
+      const fullText = (element.textContent || '').trim();
 
-      if (directText.trim().toLowerCase() === textSearchText.trim().toLowerCase()) {
+      if (fullText.toLowerCase() === textSearchText.trim().toLowerCase()) {
         matchingElements.push(element as HTMLElement);
       }
     }
@@ -474,7 +472,7 @@ function handleTextSelector(selector: string): SelectorResult {
       elements: matchingElements,
       usedFallback: true,
       originalSelector: selector,
-      effectiveSelector: `${textBaseSelector} (direct text equals "${textSearchText}")`,
+      effectiveSelector: `${textBaseSelector} (text equals "${textSearchText}")`,
     };
   } catch (error) {
     console.warn(`Error processing :text() selector "${selector}":`, error);

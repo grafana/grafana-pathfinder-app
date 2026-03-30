@@ -264,6 +264,51 @@ describe('Enhanced Selector', () => {
     });
   });
 
+  describe(':text() pseudo-selector', () => {
+    it('should match element whose direct text equals the search text', () => {
+      document.body.innerHTML = '<button>Save</button><button>Cancel</button>';
+
+      const result = querySelectorAllEnhanced("button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+    });
+
+    it('should match when text is inside a child span (Grafana button pattern)', () => {
+      document.body.innerHTML = '<button><span>Save</span></button><button><span>Cancel</span></button>';
+
+      const result = querySelectorAllEnhanced("button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+    });
+
+    it('should match case-insensitively', () => {
+      document.body.innerHTML = '<button><span>Save Dashboard</span></button>';
+
+      const result = querySelectorAllEnhanced("button:text('save dashboard')");
+
+      expect(result.elements.length).toBe(1);
+    });
+
+    it('should require exact text match (not substring)', () => {
+      document.body.innerHTML = '<button>Save Dashboard</button><button>Save</button>';
+
+      const result = querySelectorAllEnhanced("button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+    });
+
+    it('should return empty for non-matching text', () => {
+      document.body.innerHTML = '<button>Save</button>';
+
+      const result = querySelectorAllEnhanced("button:text('Delete')");
+
+      expect(result.elements.length).toBe(0);
+    });
+  });
+
   describe('Edge cases', () => {
     it('should return empty array for non-existent selector', () => {
       document.body.innerHTML = '<div id="test">Test</div>';
