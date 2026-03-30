@@ -49,8 +49,8 @@ export class ButtonHandler {
         }
       }
 
-      // Fall back to text matching if selector finds nothing or no button-like elements
-      return findButtonByText(refTarget);
+      // CSS selector branch should not fall back to text matching with selector literal
+      return [];
     }
 
     // For plain text, use resolveWithRetry which internally uses findButtonByText

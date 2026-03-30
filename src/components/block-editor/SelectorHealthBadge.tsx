@@ -15,7 +15,6 @@ import { useDebouncedValue } from './useDebouncedValue';
 
 interface SelectorHealthBadgeProps {
   reftarget: string;
-  action?: string;
 }
 
 interface SelectorInfo {
@@ -67,7 +66,7 @@ function getQuality(score: number): { label: string; color: string } {
   return { label: 'poor', color: '#F2495C' };
 }
 
-export function SelectorHealthBadge({ reftarget, action }: SelectorHealthBadgeProps) {
+export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
   const styles = useStyles2(getStyles);
 
   // Debounce the reftarget so DOM queries don't fire on every keystroke
