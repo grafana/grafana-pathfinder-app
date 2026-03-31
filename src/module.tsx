@@ -144,7 +144,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     window.history.replaceState({}, '', url.toString());
 
     import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
-      showControlGroupDocPopup();
+      showControlGroupDocPopup(docOpenSource);
     });
     return;
   }

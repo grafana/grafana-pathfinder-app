@@ -67,7 +67,7 @@ function ControlGroupDocPopup({ onDismiss }: ControlGroupDocPopupProps) {
  * Mount the control group popup into a standalone React root on document.body.
  * Cleans up after dismiss.
  */
-export function showControlGroupDocPopup(): void {
+export function showControlGroupDocPopup(source = 'url_param'): void {
   const container = document.createElement('div');
   container.setAttribute('data-testid', testIds.controlGroupPopup.container);
   document.body.appendChild(container);
@@ -82,6 +82,6 @@ export function showControlGroupDocPopup(): void {
   root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
 
   reportAppInteraction(UserInteraction.NoAccess, {
-    source: 'url_param',
+    source,
   });
 }
