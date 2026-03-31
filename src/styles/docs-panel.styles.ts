@@ -703,9 +703,9 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   milestoneActions: css({
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: theme.spacing(1),
-    marginLeft: 'auto',
-    flexShrink: 0,
+    flexWrap: 'wrap',
   }),
   navButton: css({
     display: 'flex',

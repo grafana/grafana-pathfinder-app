@@ -1662,80 +1662,78 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           disabled={!model.canNavigateNext() || activeTab.isLoading}
                           className={styles.navButton}
                         />
-
-                        {/* Action buttons — shared with docs/interactive toolbar */}
-                        <div className={styles.milestoneActions}>
-                          {(() => {
-                            const url = activeTab.content?.url || activeTab.baseUrl;
-                            if (url) {
-                              const cleanUrl = url.replace(/\/unstyled\.html$/, '');
-                              return (
-                                <button
-                                  className={styles.secondaryActionButton}
-                                  aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
-                                  onClick={() => {
-                                    reportAppInteraction(UserInteraction.OpenExtraResource, {
-                                      content_url: cleanUrl,
-                                      content_type: getContentTypeForAnalytics(
-                                        cleanUrl,
-                                        activeTab.type || 'learning-journey'
-                                      ),
-                                      link_text: activeTab.title,
-                                      source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                                      link_type: 'external_browser',
-                                      interaction_location: 'milestone_progress_bar',
-                                      current_milestone:
-                                        activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                                      total_milestones:
-                                        activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
-                                    });
-                                    setTimeout(() => {
-                                      window.open(cleanUrl, '_blank', 'noopener,noreferrer');
-                                    }, 100);
-                                  }}
-                                >
-                                  <Icon name="external-link-alt" size="sm" />
-                                  <span>{t('docsPanel.open', 'Open')}</span>
-                                </button>
-                              );
-                            }
-                            return null;
-                          })()}
-                          {isDevMode && (
-                            <IconButton
-                              tooltip="Refresh tab (dev mode only)"
-                              name="sync"
-                              onClick={() => {
-                                if (activeTab) {
-                                  reloadActiveTab(activeTab);
-                                }
-                              }}
-                            />
-                          )}
-                          {hasInteractiveProgress && (
-                            <button
-                              className={styles.secondaryActionButton}
-                              aria-label={t('docsPanel.resetGuide', 'Reset guide')}
-                              title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
-                              onClick={async () => {
-                                if (progressKey && activeTab) {
-                                  await handleResetGuide(progressKey, activeTab);
-                                }
-                              }}
-                            >
-                              <Icon name="history-alt" size="sm" />
-                              <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
-                            </button>
-                          )}
-                          <FeedbackButton
-                            variant="secondary"
-                            contentUrl={activeTab.content?.url || activeTab.baseUrl}
-                            contentType={activeTab.type || 'learning-journey'}
-                            interactionLocation="milestone_progress_bar_feedback_button"
-                            currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
-                            totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
+                      </div>
+                      {/* Action buttons — own row between arrows and progress bar */}
+                      <div className={styles.milestoneActions}>
+                        {(() => {
+                          const url = activeTab.content?.url || activeTab.baseUrl;
+                          if (url) {
+                            const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+                            return (
+                              <button
+                                className={styles.secondaryActionButton}
+                                aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
+                                onClick={() => {
+                                  reportAppInteraction(UserInteraction.OpenExtraResource, {
+                                    content_url: cleanUrl,
+                                    content_type: getContentTypeForAnalytics(
+                                      cleanUrl,
+                                      activeTab.type || 'learning-journey'
+                                    ),
+                                    link_text: activeTab.title,
+                                    source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                                    link_type: 'external_browser',
+                                    interaction_location: 'milestone_progress_bar',
+                                    current_milestone:
+                                      activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
+                                    total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
+                                  });
+                                  setTimeout(() => {
+                                    window.open(cleanUrl, '_blank', 'noopener,noreferrer');
+                                  }, 100);
+                                }}
+                              >
+                                <Icon name="external-link-alt" size="sm" />
+                                <span>{t('docsPanel.open', 'Open')}</span>
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
+                        {isDevMode && (
+                          <IconButton
+                            tooltip="Refresh tab (dev mode only)"
+                            name="sync"
+                            onClick={() => {
+                              if (activeTab) {
+                                reloadActiveTab(activeTab);
+                              }
+                            }}
                           />
-                        </div>
+                        )}
+                        {hasInteractiveProgress && (
+                          <button
+                            className={styles.secondaryActionButton}
+                            aria-label={t('docsPanel.resetGuide', 'Reset guide')}
+                            title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                            onClick={async () => {
+                              if (progressKey && activeTab) {
+                                await handleResetGuide(progressKey, activeTab);
+                              }
+                            }}
+                          >
+                            <Icon name="history-alt" size="sm" />
+                            <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
+                          </button>
+                        )}
+                        <FeedbackButton
+                          variant="secondary"
+                          contentUrl={activeTab.content?.url || activeTab.baseUrl}
+                          contentType={activeTab.type || 'learning-journey'}
+                          interactionLocation="milestone_progress_bar_feedback_button"
+                          currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
+                          totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
+                        />
                       </div>
                       <div className={styles.progressBar}>
                         <div
