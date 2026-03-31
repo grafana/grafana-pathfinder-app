@@ -692,15 +692,20 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   progressHeader: css({
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: theme.spacing(1),
   }),
   milestoneText: css({
-    flex: 1,
-    textAlign: 'center',
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
+    whiteSpace: 'nowrap',
+  }),
+  milestoneActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginLeft: 'auto',
+    flexShrink: 0,
   }),
   navButton: css({
     display: 'flex',
