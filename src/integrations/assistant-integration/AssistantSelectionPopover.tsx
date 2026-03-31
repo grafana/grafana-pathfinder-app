@@ -19,9 +19,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
     position: 'absolute',
     zIndex: theme.zIndex.portal - 1,
     background: 'transparent',
-    border: `2px solid ${theme.colors.warning.main}`, // Grafana orange
+    border: '2px solid rgb(143, 67, 179)', // Purple to match assistant button
     borderRadius: theme.shape.radius.default,
-    boxShadow: `0 0 8px ${theme.colors.warning.transparent}`,
+    boxShadow: '0 0 8px rgba(143, 67, 179, 0.3)',
     pointerEvents: 'none',
     padding: '4px',
     boxSizing: 'content-box',
