@@ -1663,12 +1663,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           className={styles.navButton}
                         />
                       </div>
-                      {/* Action buttons — own row between arrows and progress bar */}
                       <div className={styles.milestoneActions}>
                         {(() => {
                           const url = activeTab.content?.url || activeTab.baseUrl;
                           if (url) {
-                            const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+                            const cleanUrl = cleanDocsUrl(url);
                             return (
                               <button
                                 className={styles.secondaryActionButton}
@@ -1823,19 +1822,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         <Suspense fallback={null}>
           <TerminalPanel />
         </Suspense>
-      )}
-
-      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
-      {!isRecommendationsTab && !isDocsLikeTab(activeTab?.type) && (
-        <>
-          <FeedbackButton
-            contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
-            contentType={activeTab?.type || 'learning-journey'}
-            interactionLocation="docs_panel_footer_feedback_button"
-            currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
-            totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
-          />
-        </>
       )}
 
       {/* Live Session Modals */}
