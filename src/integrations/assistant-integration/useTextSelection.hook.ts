@@ -17,17 +17,28 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
     isValid: false,
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearDebounceTimer = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+  }, []);
+
+  const clearSelectionState = useCallback(() => {
+    clearDebounceTimer();
+    setSelectionState({
+      selectedText: '',
+      position: null,
+      isValid: false,
+    });
+  }, [clearDebounceTimer]);
 
   const handleSelectionChange = useCallback(() => {
     try {
       const selection = window.getSelection();
 
       if (!selection || selection.rangeCount === 0) {
-        setSelectionState({
-          selectedText: '',
-          position: null,
-          isValid: false,
-        });
+        clearSelectionState();
         return;
       }
 
@@ -35,11 +46,7 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
 
       // Check if selection is valid and within our container
       if (!isValidSelection(selectedText)) {
-        setSelectionState({
-          selectedText: '',
-          position: null,
-          isValid: false,
-        });
+        clearSelectionState();
         return;
       }
 
@@ -53,11 +60,7 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
           containerRef.current === selectionContainer || containerRef.current.contains(selectionContainer as Node);
 
         if (!isWithinContainer) {
-          setSelectionState({
-            selectedText: '',
-            position: null,
-            isValid: false,
-          });
+          clearSelectionState();
           return;
         }
       }
@@ -79,32 +82,30 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
         }
       }
 
+      const scrollY = window.scrollY;
+      const scrollX = window.scrollX;
+
       // Debounce: wait for user to finish selecting before showing popover
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
+      clearDebounceTimer();
       debounceRef.current = setTimeout(() => {
         setSelectionState({
           selectedText: selectedText.trim(),
           position: {
-            top: rect.top + window.scrollY,
-            left: rect.left + window.scrollX + rect.width / 2,
+            top: rect.top + scrollY,
+            left: rect.left + scrollX + rect.width / 2,
             width: rect.width,
             height: rect.height,
             buttonPlacement,
           },
           isValid: true,
         });
+        debounceRef.current = null;
       }, SELECTION_DEBOUNCE_MS);
     } catch (error) {
       console.warn('[useTextSelection] Error handling selection change:', error);
-      setSelectionState({
-        selectedText: '',
-        position: null,
-        isValid: false,
-      });
+      clearSelectionState();
     }
-  }, [containerRef]);
+  }, [containerRef, clearDebounceTimer, clearSelectionState]);
 
   useEffect(() => {
     // Listen for selection changes
@@ -116,11 +117,7 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
     // Clear selection when clicking outside
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setSelectionState({
-          selectedText: '',
-          position: null,
-          isValid: false,
-        });
+        clearSelectionState();
       }
     };
 
@@ -130,11 +127,9 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
       document.removeEventListener('selectionchange', handleSelectionChange);
       document.removeEventListener('mouseup', handleSelectionChange);
       document.removeEventListener('mousedown', handleClickOutside);
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
+      clearDebounceTimer();
     };
-  }, [handleSelectionChange, containerRef]);
+  }, [handleSelectionChange, containerRef, clearDebounceTimer, clearSelectionState]);
 
   return selectionState;
 };
