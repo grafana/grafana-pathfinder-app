@@ -608,6 +608,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     transition: 'all 0.2s ease',
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: theme.spacing(0.5),
     '&:hover:not(:disabled)': {
       backgroundColor: theme.colors.action.hover,
@@ -692,15 +693,24 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   progressHeader: css({
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: theme.spacing(1),
   }),
   milestoneText: css({
-    flex: 1,
-    textAlign: 'center',
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
+    whiteSpace: 'nowrap',
+    flex: 1,
+    textAlign: 'center',
+  }),
+  milestoneActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flexWrap: 'wrap',
+    '& > *': {
+      flex: '1 1 auto',
+    },
   }),
   navButton: css({
     display: 'flex',

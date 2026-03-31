@@ -1663,6 +1663,77 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           className={styles.navButton}
                         />
                       </div>
+                      <div className={styles.milestoneActions}>
+                        {(() => {
+                          const url = activeTab.content?.url || activeTab.baseUrl;
+                          if (url) {
+                            const cleanUrl = cleanDocsUrl(url);
+                            return (
+                              <button
+                                className={styles.secondaryActionButton}
+                                aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
+                                onClick={() => {
+                                  reportAppInteraction(UserInteraction.OpenExtraResource, {
+                                    content_url: cleanUrl,
+                                    content_type: getContentTypeForAnalytics(
+                                      cleanUrl,
+                                      activeTab.type || 'learning-journey'
+                                    ),
+                                    link_text: activeTab.title,
+                                    source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                                    link_type: 'external_browser',
+                                    interaction_location: 'milestone_progress_bar',
+                                    current_milestone:
+                                      activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
+                                    total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
+                                  });
+                                  setTimeout(() => {
+                                    window.open(cleanUrl, '_blank', 'noopener,noreferrer');
+                                  }, 100);
+                                }}
+                              >
+                                <Icon name="external-link-alt" size="sm" />
+                                <span>{t('docsPanel.open', 'Open')}</span>
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
+                        {isDevMode && (
+                          <IconButton
+                            tooltip="Refresh tab (dev mode only)"
+                            name="sync"
+                            onClick={() => {
+                              if (activeTab) {
+                                reloadActiveTab(activeTab);
+                              }
+                            }}
+                          />
+                        )}
+                        {hasInteractiveProgress && (
+                          <button
+                            className={styles.secondaryActionButton}
+                            aria-label={t('docsPanel.resetGuide', 'Reset guide')}
+                            title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                            onClick={async () => {
+                              if (progressKey && activeTab) {
+                                await handleResetGuide(progressKey, activeTab);
+                              }
+                            }}
+                          >
+                            <Icon name="history-alt" size="sm" />
+                            <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
+                          </button>
+                        )}
+                        <FeedbackButton
+                          variant="secondary"
+                          contentUrl={activeTab.content?.url || activeTab.baseUrl}
+                          contentType={activeTab.type || 'learning-journey'}
+                          interactionLocation="milestone_progress_bar_feedback_button"
+                          currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
+                          totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
+                        />
+                      </div>
                       <div className={styles.progressBar}>
                         <div
                           className={styles.progressFill}
@@ -1676,46 +1747,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         />
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {/* Content Action Bar removed for docs to reclaim vertical space */}
-                {!isDocsLikeTab(activeTab.type) && (
-                  <div className={styles.contentActionBar}>
-                    <IconButton
-                      name="external-link-alt"
-                      size="xs"
-                      aria-label={`Open this journey in new tab`}
-                      onClick={() => {
-                        const url = activeTab.content?.url || activeTab.baseUrl;
-                        if (url) {
-                          // Strip /unstyled.html from URL for browser viewing (users want the styled docs page)
-                          const cleanUrl = url.replace(/\/unstyled\.html$/, '');
-
-                          reportAppInteraction(UserInteraction.OpenExtraResource, {
-                            content_url: cleanUrl,
-                            content_type: getContentTypeForAnalytics(cleanUrl, activeTab.type || 'learning-journey'),
-                            link_text: activeTab.title,
-                            source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                            link_type: 'external_browser',
-                            interaction_location: 'journey_content_action_bar',
-                            ...(!isDocsLikeTab(activeTab.type) &&
-                              activeTab.content?.metadata.learningJourney && {
-                                current_milestone: activeTab.content.metadata.learningJourney.currentMilestone,
-                                total_milestones: activeTab.content.metadata.learningJourney.totalMilestones,
-                                completion_percentage: getJourneyProgress(activeTab.content),
-                              }),
-                          });
-                          // Delay to ensure analytics event is sent before opening new tab
-                          setTimeout(() => {
-                            window.open(cleanUrl, '_blank', 'noopener,noreferrer');
-                          }, 100);
-                        }
-                      }}
-                      tooltip={`Open this journey in new tab`}
-                      tooltipPlacement="top"
-                      className={styles.actionButton}
-                    />
                   </div>
                 )}
 
@@ -1791,19 +1822,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         <Suspense fallback={null}>
           <TerminalPanel />
         </Suspense>
-      )}
-
-      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
-      {!isRecommendationsTab && !isDocsLikeTab(activeTab?.type) && (
-        <>
-          <FeedbackButton
-            contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
-            contentType={activeTab?.type || 'learning-journey'}
-            interactionLocation="docs_panel_footer_feedback_button"
-            currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
-            totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
-          />
-        </>
       )}
 
       {/* Live Session Modals */}
