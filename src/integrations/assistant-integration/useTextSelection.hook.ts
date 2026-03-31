@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback, RefObject } from 'react';
+import { useState, useEffect, useCallback, useRef, RefObject } from 'react';
 import { isValidSelection } from './assistant-context.utils';
 import type { TextSelectionState } from '../../types/hooks.types';
 
+/** Delay (ms) after user stops selecting before showing the popover */
+const SELECTION_DEBOUNCE_MS = 400;
+
 /**
- * Hook to detect and track text selection within a container
+ * Hook to detect and track text selection within a container.
+ * Debounces updates so the popover appears after the user finishes selecting,
+ * not while they are still dragging.
  */
 export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSelectionState => {
   const [selectionState, setSelectionState] = useState<TextSelectionState>({
@@ -11,6 +16,7 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
     position: null,
     isValid: false,
   });
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSelectionChange = useCallback(() => {
     try {
@@ -73,17 +79,23 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
         }
       }
 
-      setSelectionState({
-        selectedText: selectedText.trim(),
-        position: {
-          top: rect.top + window.scrollY,
-          left: rect.left + window.scrollX + rect.width / 2,
-          width: rect.width,
-          height: rect.height,
-          buttonPlacement,
-        },
-        isValid: true,
-      });
+      // Debounce: wait for user to finish selecting before showing popover
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = setTimeout(() => {
+        setSelectionState({
+          selectedText: selectedText.trim(),
+          position: {
+            top: rect.top + window.scrollY,
+            left: rect.left + window.scrollX + rect.width / 2,
+            width: rect.width,
+            height: rect.height,
+            buttonPlacement,
+          },
+          isValid: true,
+        });
+      }, SELECTION_DEBOUNCE_MS);
     } catch (error) {
       console.warn('[useTextSelection] Error handling selection change:', error);
       setSelectionState({
@@ -118,6 +130,9 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
       document.removeEventListener('selectionchange', handleSelectionChange);
       document.removeEventListener('mouseup', handleSelectionChange);
       document.removeEventListener('mousedown', handleClickOutside);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
     };
   }, [handleSelectionChange, containerRef]);
 
