@@ -129,11 +129,18 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const urlParams = new URLSearchParams(window.location.search);
   const docsParam = urlParams.get('doc');
   const pageParam = urlParams.get('page');
+  // Optional source override for analytics — allows callers to identify the origin
+  // of a ?doc= deep link (e.g. ?doc=foo&source=learning-hub)
+  const sourceParam = urlParams.get('source');
+
+  // Use the source param if provided, otherwise default to 'url_param'
+  const docOpenSource = sourceParam || 'url_param';
 
   if (docsParam && !shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     const url = new URL(window.location.href);
     url.searchParams.delete('doc');
     url.searchParams.delete('page');
+    url.searchParams.delete('source');
     window.history.replaceState({}, '', url.toString());
 
     import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
@@ -160,7 +167,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
             docsParam,
             '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
           );
-          sidebarState.setPendingOpenSource('url_param', 'auto-open');
+          sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
           attemptAutoOpen(200);
           setTimeout(() => {
             locationService.replace('/');
@@ -170,7 +177,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
         const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
 
-        sidebarState.setPendingOpenSource('url_param', 'auto-open');
+        sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
 
         if (needsRedirect) {
           locationService.replace(redirectTarget);
@@ -179,6 +186,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           const url = new URL(window.location.href);
           url.searchParams.delete('doc');
           url.searchParams.delete('page');
+          url.searchParams.delete('source');
           window.history.replaceState({}, '', url.toString());
           attemptAutoOpen(200);
         }
@@ -205,7 +213,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       })
       .catch((err) => {
         console.error('[Pathfinder] Failed to load find-doc-page chunk:', err);
-        sidebarState.setPendingOpenSource('url_param', 'auto-open');
+        sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
         attemptAutoOpen(200);
         setTimeout(() => {
           locationService.replace('/');
