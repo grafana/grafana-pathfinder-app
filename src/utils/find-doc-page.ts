@@ -14,6 +14,11 @@ export interface DocPage {
  * Extracted from module.tsx so that the require() / require.context() calls
  * for bundled JSON data land in a lazy chunk instead of the entry point.
  */
+/** Convert a URL slug like "grafana-13-tour-play" to "Grafana 13 Tour Play" */
+function formatSlug(str: string): string {
+  return str.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function findDocPage(param: string): DocPage | null {
   if (!param || param.trim() === '') {
     return null;
@@ -71,7 +76,7 @@ export function findDocPage(param: string): DocPage | null {
     const cleanedUrl = url.replace(/\/(content\.json|unstyled\.html)$/i, '');
     const parts = cleanedUrl.split('/').filter(Boolean);
     const slug = parts[parts.length - 1] || 'Interactive tutorial';
-    const title = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const title = formatSlug(slug);
 
     return {
       type: 'docs-page',
@@ -134,9 +139,7 @@ export function findDocPage(param: string): DocPage | null {
     );
     const pageTitle = meaningfulSegments[meaningfulSegments.length - 1] || 'Documentation';
 
-    const formatTitle = (str: string): string => str.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-    const title = `${formatTitle(pageTitle)} - ${formatTitle(product)} Docs`;
+    const title = `${formatSlug(pageTitle)} - ${formatSlug(product)} Docs`;
 
     return {
       type: 'docs-page',
