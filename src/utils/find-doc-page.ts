@@ -65,8 +65,13 @@ export function findDocPage(param: string): DocPage | null {
       return null;
     }
 
-    const parts = url.split('/');
-    const title = parts[parts.length - 1] || 'Interactive tutorial';
+    // Derive a readable title from the URL path.
+    // Strip trailing content.json / unstyled.html and use the last meaningful path segment.
+    // e.g. ".../guides/grafana-13-tour-play/content.json" → "Grafana 13 Tour Play"
+    const cleanedUrl = url.replace(/\/(content\.json|unstyled\.html)$/i, '');
+    const parts = cleanedUrl.split('/').filter(Boolean);
+    const slug = parts[parts.length - 1] || 'Interactive tutorial';
+    const title = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
     return {
       type: 'docs-page',
