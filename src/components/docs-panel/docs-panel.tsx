@@ -1556,7 +1556,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           }}
                         />
                       )}
-                      {hasInteractiveProgress && (
+                      {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                         <button
                           className={styles.secondaryActionButton}
                           aria-label={t('docsPanel.resetGuide', 'Reset guide')}
@@ -1710,7 +1710,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             }}
                           />
                         )}
-                        {hasInteractiveProgress && (
+                        {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                           <button
                             className={styles.secondaryActionButton}
                             aria-label={t('docsPanel.resetGuide', 'Reset guide')}
