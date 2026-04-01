@@ -861,14 +861,16 @@ export class NavigationManager {
     closeButton.setAttribute('aria-label', 'Close');
     closeButton.setAttribute('title', 'Exit (Esc)');
 
-    closeButton.addEventListener('click', (e) => {
+    const closeHandler = (e: Event) => {
       e.stopPropagation();
       if (onCancelCallback) {
         onCancelCallback();
       } else {
         this.clearAllHighlights();
       }
-    });
+    };
+    closeButton.addEventListener('click', closeHandler);
+    this.activeCleanupHandlers.push(() => closeButton.removeEventListener('click', closeHandler));
 
     content.appendChild(closeButton);
 
@@ -998,10 +1000,12 @@ export class NavigationManager {
           cancelButton.textContent = 'Cancel';
           cancelButton.setAttribute('aria-label', 'Cancel guided interaction');
 
-          cancelButton.addEventListener('click', (e) => {
+          const cancelHandler = (e: Event) => {
             e.stopPropagation();
             onCancelCallback();
-          });
+          };
+          cancelButton.addEventListener('click', cancelHandler);
+          this.activeCleanupHandlers.push(() => cancelButton.removeEventListener('click', cancelHandler));
 
           buttonContainer.appendChild(cancelButton);
         }
@@ -1018,10 +1022,12 @@ export class NavigationManager {
           skipButton.textContent = 'Skip →';
           skipButton.setAttribute('aria-label', 'Skip this step');
 
-          skipButton.addEventListener('click', (e) => {
+          const skipHandler = (e: Event) => {
             e.stopPropagation();
             onSkipCallback();
-          });
+          };
+          skipButton.addEventListener('click', skipHandler);
+          this.activeCleanupHandlers.push(() => skipButton.removeEventListener('click', skipHandler));
 
           buttonContainer.appendChild(skipButton);
         }
