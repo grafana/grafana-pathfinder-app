@@ -170,6 +170,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
             docsParam,
             '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
           );
+          // Strip stale params so they don't re-fire on refresh
+          const url = new URL(window.location.href);
+          url.searchParams.delete('doc');
+          url.searchParams.delete('page');
+          url.searchParams.delete('source');
+          window.history.replaceState({}, '', url.toString());
+
           sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
           attemptAutoOpen(200);
           return;
