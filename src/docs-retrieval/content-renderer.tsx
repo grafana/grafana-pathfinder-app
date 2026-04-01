@@ -96,9 +96,9 @@ interface ContentRendererProps {
 }
 
 // Style to hide default browser selection highlight
-const hideSelectionStyle = css`
+const selectionStyle = css`
   ::selection {
-    background-color: transparent;
+    background-color: rgba(255, 136, 0, 0.3);
     color: inherit;
   }
 `;
@@ -429,7 +429,7 @@ function ContentWithVariables({
   return (
     <div
       ref={activeRef}
-      className={`${className} ${hideSelectionStyle}`}
+      className={`${className} ${selectionStyle}`}
       data-pathfinder-content="true"
       style={{
         display: 'flex',
