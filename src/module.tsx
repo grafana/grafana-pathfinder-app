@@ -8,7 +8,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 // import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults, DocsPluginConfig, PLUGIN_BASE_URL } from './constants';
+import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { suggestionState } from './global-state/suggestion';
@@ -155,10 +155,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         const docsPage = findDocPage(docsParam);
 
         // Determine redirect target (only when doc param is present)
-        // Priority: explicit page param > bundled guide target > /
+        // Only redirect when an explicit page param or bundled guide target is provided.
+        // Without one, stay on the current page — the user may be on a specific dashboard
+        // and redirecting would break on instances where users aren't logged in (e.g., Play).
         // SECURITY: page is only processed when doc is also present,
         // preventing the plugin page from becoming a general-purpose redirector
-        const redirectTarget = validateRedirectPath(pageParam || docsPage?.targetPage || PLUGIN_BASE_URL);
+        const rawRedirectTarget = pageParam || docsPage?.targetPage;
+        const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
 
         // Warn if docsParam is present but no docsPage is found
         if (!docsPage) {
@@ -167,11 +170,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
             docsParam,
             '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
           );
+          // Strip stale params so they don't re-fire on refresh
+          const url = new URL(window.location.href);
+          url.searchParams.delete('doc');
+          url.searchParams.delete('page');
+          url.searchParams.delete('source');
+          window.history.replaceState({}, '', url.toString());
+
           sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
           attemptAutoOpen(200);
-          setTimeout(() => {
-            locationService.replace('/');
-          }, 300);
           return;
         }
 

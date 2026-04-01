@@ -189,11 +189,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     }, []);
 
     // Cleanup on unmount: cancel any running guided interaction and clear highlights
+    // guidedHandler.cancel() already calls cleanupListeners(true) which clears highlights
+    // via the handler's own navigationManager instance - no need to create a new one
     useEffect(() => {
       return () => {
         guidedHandler.cancel();
-        const navManager = new NavigationManager();
-        navManager.clearAllHighlights();
       };
     }, [guidedHandler]);
 
@@ -286,10 +286,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
 
-      const { NavigationManager } = await import('../../interactive-engine');
-      const navManager = new NavigationManager();
-      navManager.clearAllHighlights();
-
       // Progress persists between sessions - reset only via explicit "Restart section" button
 
       try {
@@ -307,20 +303,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             // Brief visual feedback before moving to next step
             await new Promise((resolve) => setTimeout(resolve, 500));
           } else if (result === 'timeout') {
-            // Clear highlights when timeout occurs so user can interact with page
-            navManager.clearAllHighlights();
             setCurrentStepStatus('timeout');
             setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
             return false;
           } else if (result === 'cancelled') {
-            // Clear highlights when cancelled
-            navManager.clearAllHighlights();
             return false;
           }
         }
-
-        // All steps completed - clear the final highlight
-        navManager.clearAllHighlights();
 
         // NEW: If NOT completeEarly, mark complete after actions (normal flow)
         if (!completeEarly) {
@@ -582,12 +571,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Handle cancel during guided execution
     const handleCancel = useCallback(async () => {
       // Cancel the current guided step
+      // guidedHandler.cancel() already clears highlights via its own navigationManager
       guidedHandler.cancel();
-
-      // Clear highlights
-      const { NavigationManager } = await import('../../interactive-engine');
-      const navManager = new NavigationManager();
-      navManager.clearAllHighlights();
 
       // Reset to initial state - simply revert to "Start guided interaction" button
       setIsExecuting(false);
