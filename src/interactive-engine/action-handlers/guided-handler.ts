@@ -1144,12 +1144,6 @@ export class GuidedHandler {
    * Cancel current guided step
    */
   cancel(): void {
-    // Clear pending timeouts
-    for (const timeoutId of this.pendingTimeouts) {
-      clearTimeout(timeoutId);
-    }
-    this.pendingTimeouts = [];
-
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
