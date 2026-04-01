@@ -20,9 +20,13 @@ export const updateInteractiveThemeColors = (theme: GrafanaTheme2): void => {
   const isDark = theme.isDark;
 
   // Background and text colors
+  // Use high-contrast text for tooltip readability (white in dark, near-black in light)
   root.style.setProperty('--pathfinder-comment-bg', theme.colors.background.primary);
-  root.style.setProperty('--pathfinder-comment-text', theme.colors.text.primary);
-  root.style.setProperty('--pathfinder-comment-text-secondary', theme.colors.text.secondary);
+  root.style.setProperty('--pathfinder-comment-text', isDark ? '#ffffff' : '#1f1f23');
+  root.style.setProperty(
+    '--pathfinder-comment-text-secondary',
+    isDark ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.65)'
+  );
   root.style.setProperty('--pathfinder-comment-border-weak', theme.colors.border.weak);
 
   // UI element colors (buttons, close icons, etc.)

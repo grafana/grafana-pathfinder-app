@@ -97,10 +97,10 @@ describe('updateInteractiveThemeColors', () => {
 
     it('updates theme-derived properties (text, border) from the new theme object', () => {
       updateInteractiveThemeColors(makeMockTheme(true));
-      expect(getProp('--pathfinder-comment-text')).toBe('#d9d9d9');
+      expect(getProp('--pathfinder-comment-text')).toBe('#ffffff');
 
       updateInteractiveThemeColors(makeMockTheme(false));
-      expect(getProp('--pathfinder-comment-text')).toBe('#1a1a1a');
+      expect(getProp('--pathfinder-comment-text')).toBe('#1f1f23');
       expect(getProp('--pathfinder-comment-border-weak')).toBe('#d0d0d0');
     });
   });
