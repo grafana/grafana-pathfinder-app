@@ -1035,22 +1035,31 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Auto-launch tutorial detection
   useEffect(() => {
     const handleAutoLaunchTutorial = (event: CustomEvent) => {
-      const { url, title, type } = event.detail;
+      const { url, title, type, source } = event.detail;
+
+      // Determine whether to open as learning journey or docs/interactive page.
+      // Only use learning journey when explicitly from learning-hub source OR type is learning-journey.
+      // Interactive guides from ?doc= should open as docs-like tabs (which auto-detect interactive content).
+      const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
 
       // Track auto-launch analytics - unified event for opening any resource
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
         content_url: url,
-        content_type: getContentTypeForAnalytics(url, type === 'docs-page' ? 'docs' : 'learning-journey'),
+        content_type: getContentTypeForAnalytics(url, openAsLearningJourney ? 'learning-journey' : 'docs'),
         trigger_source: 'auto_launch_tutorial',
         interaction_location: 'docs_panel',
-        ...(type === 'learning-journey' && {
+        ...(openAsLearningJourney && {
           completion_percentage: 0, // Auto-launch is always starting fresh
         }),
       });
 
       if (url && title) {
-        model.openLearningJourney(url, title);
+        if (openAsLearningJourney) {
+          model.openLearningJourney(url, title);
+        } else {
+          model.openDocsPage(url, title);
+        }
       }
 
       // send an event so we know the page has been loaded
@@ -1556,7 +1565,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           }}
                         />
                       )}
-                      {hasInteractiveProgress && (
+                      {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                         <button
                           className={styles.secondaryActionButton}
                           aria-label={t('docsPanel.resetGuide', 'Reset guide')}
@@ -1710,7 +1719,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             }}
                           />
                         )}
-                        {hasInteractiveProgress && (
+                        {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                           <button
                             className={styles.secondaryActionButton}
                             aria-label={t('docsPanel.resetGuide', 'Reset guide')}
