@@ -198,6 +198,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
                 url: docsPage.url,
                 title: docsPage.title,
                 type: docsPage.type,
+                source: docOpenSource,
               },
             });
             document.dispatchEvent(autoLaunchEvent);
