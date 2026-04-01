@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.5.2
+
+### Fixed
+
+- **Guided step zombie cleanup**: Eliminate orphaned timers, event listeners, and highlights after guided step cancellation (#725)
+  - Capture and clear 120s timeout promises that fired with stale closures after cancel
+  - Store comment box button listeners (Close, Cancel, Skip) in cleanup handlers
+  - Remove redundant NavigationManager instances in InteractiveGuided unmount
+  - Track success animation timeout for proper cancellation
+- **?doc= deep link improvements** (#724)
+  - Derive readable tab titles from URL path instead of showing "content.json"
+  - Intercept interactive-learning links inside content and open as sidebar tabs
+  - Use `interactive` type for interactive-learning URLs (not `docs-page`)
+  - Route interactive guides to `openDocsPage` (with reset button) instead of `openLearningJourney`
+  - Always show reset button for interactive guide tabs regardless of progress state
+  - Don't redirect away from current page on `?doc=` — stay on the user's dashboard
+  - Strip stale doc/page/source params from URL when doc can't be parsed
+  - Support `?source=learning-hub` to explicitly open as learning journey
+- **Assistant text selection UX**: Change button text to "Ask Assistant", orange text highlight, no-fill purple box, 400ms debounce (#722)
+- **Tooltip readability**: High-contrast text in tooltip popouts — white in dark mode, near-black in light mode
+
 ## 2.5.0
 
 ### Added
