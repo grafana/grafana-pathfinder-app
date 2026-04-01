@@ -1,7 +1,7 @@
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from '../security';
 
 export interface DocPage {
-  type: 'docs-page' | 'learning-journey';
+  type: 'docs-page' | 'learning-journey' | 'interactive';
   url: string;
   title: string;
   /** Optional target page path for deep link redirect (e.g., /explore) */
@@ -79,7 +79,7 @@ export function findDocPage(param: string): DocPage | null {
     const title = formatSlug(slug);
 
     return {
-      type: 'docs-page',
+      type: 'interactive',
       url: url,
       title: title,
     };
