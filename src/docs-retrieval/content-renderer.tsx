@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
@@ -33,6 +33,7 @@ import {
 } from './components/docs';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: docs-retrieval -> requirements-manager
 import { SequentialRequirementsManager } from '../requirements-manager';
+import { isInteractiveLearningUrl } from '../security';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> integrations
 import {
   useTextSelection,
@@ -417,6 +418,52 @@ function ContentWithVariables({
   // This avoids breaking JSON structure when user values contain special characters
   const { responses } = useGuideResponses();
 
+  // Intercept clicks on interactive-learning links inside content.
+  // Instead of navigating away, open the guide as a new tab in the sidebar.
+  const handleContentClick = useCallback((e: React.MouseEvent) => {
+    const anchor = (e.target as Element).closest?.('a[href]');
+    if (!anchor) {
+      return;
+    }
+    const href = anchor.getAttribute('href');
+    if (!href) {
+      return;
+    }
+
+    // Resolve relative URLs
+    let fullUrl: string;
+    try {
+      fullUrl = new URL(href, window.location.href).href;
+    } catch {
+      return;
+    }
+
+    if (!isInteractiveLearningUrl(fullUrl)) {
+      return;
+    }
+
+    e.preventDefault();
+
+    // Ensure URL ends with content.json for proper fetching
+    let contentUrl = fullUrl;
+    if (!contentUrl.endsWith('/content.json') && !contentUrl.endsWith('.json')) {
+      contentUrl = contentUrl.replace(/\/+$/, '') + '/content.json';
+    }
+
+    // Derive readable title from the path
+    const cleanedPath = fullUrl.replace(/\/(content\.json|unstyled\.html)$/i, '');
+    const segments = cleanedPath.split('/').filter(Boolean);
+    const slug = segments[segments.length - 1] || 'Interactive tutorial';
+    const title = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+    // Open as a new tab in the sidebar
+    document.dispatchEvent(
+      new CustomEvent('pathfinder-auto-open-docs', {
+        detail: { url: contentUrl, title, origin: 'content_link' },
+      })
+    );
+  }, []);
+
   const titleStyle = css`
     font-size: 28px;
     font-weight: 500;
@@ -431,6 +478,7 @@ function ContentWithVariables({
       ref={activeRef}
       className={`${className} ${hideSelectionStyle}`}
       data-pathfinder-content="true"
+      onClick={handleContentClick}
       style={{
         display: 'flex',
         flexDirection: 'column',
