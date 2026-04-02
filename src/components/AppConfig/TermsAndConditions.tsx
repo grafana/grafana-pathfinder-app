@@ -42,7 +42,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         ...getConfigWithDefaults(jsonData || {}),
         acceptedTermsAndConditions: isRecommenderEnabled,
         // Persist the current terms version when enabling; leave unchanged when disabling
-        termsVersion: isRecommenderEnabled ? TERMS_VERSION : jsonData?.termsVersion,
+        termsVersion: isRecommenderEnabled ? TERMS_VERSION : getConfigWithDefaults(jsonData || {}).termsVersion,
       };
 
       await updatePluginSettings(plugin.meta.id, {
