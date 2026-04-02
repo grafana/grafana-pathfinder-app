@@ -604,6 +604,7 @@ function findBestElementInHierarchy(
 function findNearbyFormControl(element: HTMLElement, maxDepth: number): HTMLElement | null {
   let current: HTMLElement | null = element;
   let depth = 0;
+  const originRect = element.getBoundingClientRect();
 
   while (current && depth < maxDepth) {
     // For radio/checkbox, look for labels first (better selectors with text)
@@ -613,7 +614,9 @@ function findNearbyFormControl(element: HTMLElement, maxDepth: number): HTMLElem
       if (forAttr) {
         const associatedInput = document.getElementById(forAttr);
         if (associatedInput instanceof HTMLInputElement && ['radio', 'checkbox'].includes(associatedInput.type)) {
-          return label; // Return the label for radio/checkbox
+          if (isVisuallyNear(originRect, label.getBoundingClientRect())) {
+            return label; // Return the label for radio/checkbox
+          }
         }
       }
     }
@@ -631,15 +634,18 @@ function findNearbyFormControl(element: HTMLElement, maxDepth: number): HTMLElem
           const inputId = formControl.id;
           if (inputId) {
             const associatedLabel = document.querySelector(`label[for='${inputId}']`);
-            if (associatedLabel instanceof HTMLElement) {
+            if (
+              associatedLabel instanceof HTMLElement &&
+              isVisuallyNear(originRect, associatedLabel.getBoundingClientRect())
+            ) {
               return associatedLabel;
             }
           }
           // No label found, continue searching
-        } else {
+        } else if (isVisuallyNear(originRect, formControl.getBoundingClientRect())) {
           return formControl; // Other input types are fine
         }
-      } else {
+      } else if (isVisuallyNear(originRect, formControl.getBoundingClientRect())) {
         return formControl; // Select/textarea are fine
       }
     }
@@ -649,6 +655,29 @@ function findNearbyFormControl(element: HTMLElement, maxDepth: number): HTMLElem
   }
 
   return null;
+}
+
+/** Maximum pixel distance between the clicked element and a "nearby" form control */
+const NEARBY_PROXIMITY_THRESHOLD = 100;
+
+/**
+ * Check if two elements are visually close to each other.
+ * Prevents the nearby form control search from returning unrelated inputs
+ * that happen to share a distant ancestor.
+ */
+function isVisuallyNear(originRect: DOMRect, candidateRect: DOMRect): boolean {
+  // If either rect has zero dimensions, fall back to allowing it (element may be hidden/not laid out)
+  if (originRect.width === 0 && originRect.height === 0) {
+    return true;
+  }
+  if (candidateRect.width === 0 && candidateRect.height === 0) {
+    return true;
+  }
+
+  // Check if bounding boxes overlap or are within the proximity threshold
+  const dx = Math.max(0, Math.max(originRect.left - candidateRect.right, candidateRect.left - originRect.right));
+  const dy = Math.max(0, Math.max(originRect.top - candidateRect.bottom, candidateRect.top - originRect.bottom));
+  return dx <= NEARBY_PROXIMITY_THRESHOLD && dy <= NEARBY_PROXIMITY_THRESHOLD;
 }
 
 /**
@@ -834,7 +863,10 @@ function getTestIdAttr(element: HTMLElement): string {
  * // Returns selector for the button at those coordinates
  * ```
  */
-export function generateBestSelector(element: HTMLElement, options?: { clickX?: number; clickY?: number }): string {
+export function generateBestSelector(
+  element: HTMLElement,
+  options?: { clickX?: number; clickY?: number; hoveredElement?: HTMLElement }
+): string {
   // First, walk up to find the best element in the hierarchy
   const bestElement = findBestElementInHierarchy(element, 5, options);
 

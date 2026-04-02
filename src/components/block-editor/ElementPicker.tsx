@@ -181,8 +181,8 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         return;
       }
 
-      // Generate selector
-      const result = generateSelectorFromEvent(target, event);
+      // Generate selector, passing target as hoveredElement to constrain generation
+      const result = generateSelectorFromEvent(target, event, target);
 
       if (result.warnings.length > 0) {
         console.warn('[ElementPicker] Selector warnings:', result.warnings);

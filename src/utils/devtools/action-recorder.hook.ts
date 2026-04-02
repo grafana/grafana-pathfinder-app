@@ -227,6 +227,12 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     excludeSelectors,
   });
 
+  // Keep a ref to the hovered element so click handlers can access it synchronously
+  const hoveredElementRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    hoveredElementRef.current = hoveredElement;
+  }, [hoveredElement]);
+
   const startRecording = useCallback(() => {
     setRecordingState('recording');
     recordingElementsRef.current.clear();
@@ -457,7 +463,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         event.preventDefault();
         event.stopPropagation();
 
-        const result = generateSelectorFromEvent(target, event);
+        const result = generateSelectorFromEvent(target, event, hoveredElementRef.current ?? undefined);
         const description = getActionDescription('hover', target);
 
         const newStep: RecordedStep = {
@@ -512,7 +518,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           if (tracked) {
             recordingElementsRef.current.delete(target);
 
-            const blurResult = generateSelectorFromEvent(target, event);
+            const blurResult = generateSelectorFromEvent(target, event, hoveredElementRef.current ?? undefined);
             const description = getActionDescription('formfill', target);
 
             // Prefer tracked value from input/change handlers; fall back to live DOM value
@@ -552,8 +558,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       // Recorded steps are stored in React state only and are not persisted.
       // Users should avoid navigating away while recording, or export steps frequently.
 
-      // Generate selector using shared utility
-      const result = generateSelectorFromEvent(target, event);
+      // Generate selector using shared utility, constrained by the hovered element
+      const result = generateSelectorFromEvent(target, event, hoveredElementRef.current ?? undefined);
       const selector = result.selector;
       const action = result.action;
       const selectorInfo = result.selectorInfo;
@@ -721,8 +727,8 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           return;
         }
 
-        // Generate selector using shared utility
-        const result = generateSelectorFromEvent(target, event);
+        // Generate selector using shared utility, constrained by the hovered element
+        const result = generateSelectorFromEvent(target, event, hoveredElementRef.current ?? undefined);
         const selector = result.selector;
         const action = result.action;
         const selectorInfo = result.selectorInfo;
