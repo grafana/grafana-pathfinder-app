@@ -1012,26 +1012,18 @@ export function generateBestSelector(
           const parentAlreadyMatchesText =
             parentSelector.includes(`:contains('${cleanText}')`) || parentSelector.includes(`:text('${cleanText}')`);
 
-          let fullSelector: string;
           if (parentAlreadyMatchesText) {
-            // Parent already scopes by this text — check if plain "button" is unique within it
             const plainDescendant = `${parentSelector} button`;
             const plainMatches = querySelectorAllEnhanced(plainDescendant);
             if (plainMatches.elements.length === 1 && plainMatches.elements[0] === bestElement) {
-              fullSelector = plainDescendant;
-            } else {
-              // Multiple buttons in the parent — still need text to disambiguate
-              fullSelector =
-                cleanText.length < 20
-                  ? `${parentSelector} button:text('${cleanText}')`
-                  : `${parentSelector} button:contains('${cleanText}')`;
+              return cleanDynamicAttributes(plainDescendant);
             }
-          } else {
-            fullSelector =
-              cleanText.length < 20
-                ? `${parentSelector} button:text('${cleanText}')`
-                : `${parentSelector} button:contains('${cleanText}')`;
           }
+
+          const fullSelector =
+            cleanText.length < 20
+              ? `${parentSelector} button:text('${cleanText}')`
+              : `${parentSelector} button:contains('${cleanText}')`;
           return cleanDynamicAttributes(fullSelector);
         }
 
