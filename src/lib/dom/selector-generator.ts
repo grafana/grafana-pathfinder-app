@@ -1006,6 +1006,20 @@ export function generateBestSelector(
         if (parent && (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label'))) {
           // Don't pass click coordinates to parent - they only apply to the clicked element
           const parentSelector = generateBestSelector(parent);
+
+          // Avoid redundant text matching: if the parent selector already contains/text-matches
+          // the same text, just use "button" as the descendant (the parent context is sufficient)
+          const parentAlreadyMatchesText =
+            parentSelector.includes(`:contains('${cleanText}')`) || parentSelector.includes(`:text('${cleanText}')`);
+
+          if (parentAlreadyMatchesText) {
+            const plainDescendant = `${parentSelector} button`;
+            const plainMatches = querySelectorAllEnhanced(plainDescendant);
+            if (plainMatches.elements.length === 1 && plainMatches.elements[0] === bestElement) {
+              return cleanDynamicAttributes(plainDescendant);
+            }
+          }
+
           const fullSelector =
             cleanText.length < 20
               ? `${parentSelector} button:text('${cleanText}')`

@@ -151,14 +151,19 @@ function handleComplexSelector(selector: string): SelectorResult {
  *
  * Supports combinators: " + " (adjacent sibling), " ~ " (general sibling),
  * " > " (child), and " " (descendant).
+ *
+ * Uses querySelectorAllEnhanced so trailing selectors containing custom
+ * pseudo-selectors like :contains() and :text() are handled correctly.
  */
+let trailingMarkerCounter = 0;
+
 function resolveTrailingSelector(elements: HTMLElement[], trailing: string): HTMLElement[] {
-  const marker = `__es_trail_${Date.now()}`;
+  const marker = `__es_trail_${++trailingMarkerCounter}`;
   try {
     elements.forEach((el) => el.setAttribute(marker, ''));
     const markerSelector = `[${marker}]${trailing}`;
-    const results = Array.from(document.querySelectorAll(markerSelector)) as HTMLElement[];
-    return results;
+    const result = querySelectorAllEnhanced(markerSelector);
+    return result.elements;
   } catch {
     return [];
   } finally {
@@ -787,9 +792,12 @@ function handleNthMatchSelector(selector: string): SelectorResult {
 
     if (afterMatch && afterMatch.trim()) {
       try {
-        const nestedElements = targetElement.querySelectorAll(afterMatch.trim());
+        // Use enhanced selector to support custom pseudo-selectors like :text() and :contains()
+        const nestedResult = querySelectorAllEnhanced(afterMatch.trim());
+        // Filter to only elements that are descendants of the target element
+        const nestedInTarget = nestedResult.elements.filter((el) => targetElement.contains(el) && targetElement !== el);
         return {
-          elements: Array.from(nestedElements) as HTMLElement[],
+          elements: nestedInTarget,
           usedFallback: true,
           originalSelector: selector,
           effectiveSelector: `${nthBaseSelector} (${index}th match) ${afterMatch}`,

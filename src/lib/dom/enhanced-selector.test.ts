@@ -341,6 +341,101 @@ describe('Enhanced Selector', () => {
       expect(result.elements.length).toBe(1);
       expect((result.elements[0] as HTMLInputElement).type).toBe('password');
     });
+
+    it('should handle :contains() in the trailing selector after :contains()', () => {
+      document.body.innerHTML = `
+        <div data-testid="data-testid Card heading">
+          <span>Application Observability</span>
+          <button>Application Observability</button>
+        </div>
+        <div data-testid="data-testid Card heading">
+          <span>Frontend Observability</span>
+          <button>Frontend Observability</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced(
+        "div[data-testid='data-testid Card heading']:contains('Application Observability') button:contains('Application Observability')"
+      );
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Application Observability');
+      expect(result.elements[0]!.tagName).toBe('BUTTON');
+    });
+
+    it('should handle :text() in the trailing selector after :contains()', () => {
+      document.body.innerHTML = `
+        <div class="panel">
+          <span>Settings</span>
+          <button>Save</button>
+          <button>Cancel</button>
+        </div>
+        <div class="panel">
+          <span>Other</span>
+          <button>Save</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced("div.panel:contains('Settings') button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+      // Should be inside the Settings panel, not the Other panel
+      expect(result.elements[0]!.parentElement?.textContent).toContain('Settings');
+    });
+  });
+
+  describe(':nth-match() with custom pseudo-selectors in remainder', () => {
+    it('should handle :text() after :nth-match()', () => {
+      document.body.innerHTML = `
+        <div data-testid="panel">
+          <button>OpenTelemetry</button>
+          <button>Prometheus</button>
+        </div>
+        <div data-testid="panel">
+          <button>OpenTelemetry</button>
+          <button>Loki</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced("div[data-testid='panel']:nth-match(2) button:text('OpenTelemetry')");
+
+      expect(result.elements.length).toBe(1);
+      // Should find the button inside the 2nd panel, not the 1st
+      expect(result.elements[0]!.parentElement?.textContent).toContain('Loki');
+    });
+
+    it('should handle :contains() after :nth-match()', () => {
+      document.body.innerHTML = `
+        <div data-testid="section">
+          <span>First section content</span>
+        </div>
+        <div data-testid="section">
+          <span>Second section target text here</span>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced('div[data-testid="section"]:nth-match(2) span:contains("target text")');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toContain('Second section');
+    });
+
+    it('should not return elements from outside the nth-matched parent', () => {
+      document.body.innerHTML = `
+        <div data-testid="card">
+          <button>Click me</button>
+        </div>
+        <div data-testid="card">
+          <button>Other</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced("div[data-testid='card']:nth-match(2) button:text('Click me')");
+
+      // "Click me" only exists in the 1st card, not the 2nd — should return empty
+      expect(result.elements.length).toBe(0);
+    });
   });
 
   describe('Edge cases', () => {
