@@ -35,8 +35,11 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
     setIsSaving(true);
 
     try {
+      // Spread full config with defaults to preserve fields managed by other tabs,
+      // then override with this form's fields. Prevents data loss if jsonData is
+      // incomplete after a plugin version update.
       const newJsonData = {
-        ...jsonData,
+        ...getConfigWithDefaults(jsonData || {}),
         acceptedTermsAndConditions: isRecommenderEnabled,
         // Persist the current terms version when enabling; leave unchanged when disabling
         termsVersion: isRecommenderEnabled ? TERMS_VERSION : jsonData?.termsVersion,

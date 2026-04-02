@@ -16,6 +16,7 @@ import {
   DEFAULT_PEERJS_SECURE,
   DEFAULT_ENABLE_CODA_TERMINAL,
   PLUGIN_BACKEND_URL,
+  getConfigWithDefaults,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -356,8 +357,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         shouldMarkRegistered = true;
       }
 
+      // Spread full config with defaults to preserve fields managed by other tabs,
+      // then override with this form's fields. Prevents data loss if jsonData is
+      // incomplete after a plugin version update.
       const newJsonData = {
-        ...jsonData,
+        ...getConfigWithDefaults(jsonData || {}),
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,

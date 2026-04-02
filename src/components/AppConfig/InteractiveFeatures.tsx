@@ -11,6 +11,7 @@ import {
   DEFAULT_DISABLE_AUTO_COLLAPSE,
   DEFAULT_ENABLE_KIOSK_MODE,
   DEFAULT_KIOSK_RULES_URL,
+  getConfigWithDefaults,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -115,8 +116,11 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setIsSaving(true);
 
     try {
+      // Spread full config with defaults to preserve fields managed by other tabs,
+      // then override with this form's fields. Prevents data loss if jsonData is
+      // incomplete after a plugin version update.
       const newJsonData = {
-        ...jsonData,
+        ...getConfigWithDefaults(jsonData || {}),
         enableAutoDetection: state.enableAutoDetection,
         requirementsCheckTimeout: state.requirementsCheckTimeout,
         guidedStepTimeout: state.guidedStepTimeout,
