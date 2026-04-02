@@ -229,23 +229,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       });
   }
 
-  // Mount kiosk mode overlay manager if enabled, user has dev mode access, and no ?doc= param
+  // Mount kiosk mode overlay manager if enabled and no ?doc= param
   // (skip kiosk in tabs opened via tile deep links so the overlay doesn't reappear)
   if (config.enableKioskMode && !docsParam) {
-    import('./utils/dev-mode')
-      .then(({ isDevModeEnabled }) => {
-        if (!isDevModeEnabled(jsonData)) {
-          return;
-        }
+    (window as any).__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
+    document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
 
-        (window as any).__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
-        document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
-
-        if (document.getElementById('pathfinder-kiosk-root')) {
-          return;
-        }
-
-        return import('react-dom/client').then(({ createRoot }) =>
+    if (!document.getElementById('pathfinder-kiosk-root')) {
+      import('react-dom/client')
+        .then(({ createRoot }) =>
           import('./components/kiosk/KioskModeManager').then(({ KioskModeManager }) => {
             if (document.getElementById('pathfinder-kiosk-root')) {
               return;
@@ -260,11 +252,11 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
               })
             );
           })
-        );
-      })
-      .catch((err) => {
-        console.error('[Pathfinder] Failed to load kiosk mode:', err);
-      });
+        )
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load kiosk mode:', err);
+        });
+    }
   }
 
   // Skip experiment auto-open when a ?doc= param is present — the doc-param

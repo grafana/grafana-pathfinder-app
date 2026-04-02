@@ -294,7 +294,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
                 Enable kiosk mode
               </Text>
               <Text variant="body" color="secondary">
-                Show a full-screen guide catalog overlay. Requires dev mode to be enabled.
+                Show a full-screen guide catalog overlay.
               </Text>
             </div>
           </div>
