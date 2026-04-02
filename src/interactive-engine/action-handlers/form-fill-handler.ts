@@ -75,13 +75,16 @@ export class FormFillHandler {
     const inputType = this.getInputType(refinedElement);
     const isMonacoEditor = this.isMonacoEditor(refinedElement);
 
+    // Detect combobox early so clear logic can branch on it
+    const isCombobox = this.isAriaCombobox(refinedElement);
+
     // Clear element if command detected
     if (shouldClear) {
+      if (isCombobox) {
+        await this.clearComboboxPills(refinedElement);
+      }
       await this.clearElement(refinedElement, tagName, isMonacoEditor);
     }
-
-    // Process remaining value (if any)
-    const isCombobox = this.isAriaCombobox(refinedElement);
     if (isCombobox) {
       await this.fillComboboxStaged(refinedElement, remainingValue);
       // Combobox flow handles its own events/enters; still dispatch final blur/change to settle state
@@ -210,6 +213,39 @@ export class FormFillHandler {
       element.dispatchEvent(new Event('change', { bubbles: true }));
     } else {
       element.textContent = '';
+    }
+  }
+
+  /**
+   * Clear existing filter pills/chips in a combobox container.
+   * Traverses up from the input to find remove buttons by their stable aria-label,
+   * then clicks each one sequentially, re-querying after each click since React re-renders the DOM.
+   */
+  private async clearComboboxPills(comboboxInput: HTMLElement): Promise<void> {
+    let container: HTMLElement | null = comboboxInput.parentElement;
+    const maxDepth = 5;
+    let depth = 0;
+
+    while (container && depth < maxDepth) {
+      const removeButtons = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Remove filter"]');
+      if (removeButtons.length > 0) {
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+        const delay = INTERACTIVE_CONFIG.delays.debouncing.stateSettling;
+
+        let safetyLimit = 50;
+        while (safetyLimit > 0) {
+          const currentButtons = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Remove filter"]');
+          if (currentButtons.length === 0) {
+            break;
+          }
+          currentButtons[0]!.click();
+          await sleep(delay);
+          safetyLimit--;
+        }
+        return;
+      }
+      container = container.parentElement;
+      depth++;
     }
   }
 
