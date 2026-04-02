@@ -146,6 +146,7 @@ export const InteractiveStep = forwardRef<
       validateInput = false, // Default to false - only validate form input if explicitly enabled
       lazyRender = false, // Default to false - only enable progressive scroll discovery if explicitly set
       scrollContainer, // CSS selector for scroll container when lazyRender is enabled
+      openGuide, // Guide to open in sidebar after navigation
       showMeText,
       title,
       description,
@@ -817,6 +818,7 @@ export const InteractiveStep = forwardRef<
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
         data-targetcomment={targetComment}
+        data-openguide={openGuide}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
         data-test-step-state={

@@ -79,11 +79,69 @@ export class NavigateHandler {
         return;
       }
 
+      // Strip doc= from the URL before navigation — we handle it via auto-launch event instead
+      const guideParam = this.resolveGuideParam(data, parsed);
+      if (guideParam) {
+        parsed.searchParams.delete('doc');
+      }
+
       // SECURITY: Navigate using validated pathname + original query/fragment.
       // Never push raw data.reftarget — even if the comparison above were bypassed,
       // locationService only receives the validated path.
       locationService.push(safePath + parsed.search + parsed.hash);
+
+      // After SPA navigation, open a guide if specified
+      if (guideParam) {
+        await this.openGuideAfterNavigation(guideParam);
+      }
     }
+  }
+
+  /**
+   * Resolve which guide to open after navigation.
+   * Priority: explicit openGuide field > doc= param in the URL.
+   */
+  private resolveGuideParam(data: InteractiveElementData, parsedUrl: URL): string | null {
+    // 1. Explicit openGuide field takes priority
+    if (data.openGuide) {
+      return data.openGuide;
+    }
+
+    // 2. Backward compat: extract doc= from the navigation URL
+    const docParam = parsedUrl.searchParams.get('doc');
+    if (docParam) {
+      return docParam;
+    }
+
+    return null;
+  }
+
+  /**
+   * Open a guide in the sidebar after SPA navigation completes.
+   * Uses the same auto-launch-tutorial event pattern as module.tsx.
+   */
+  private async openGuideAfterNavigation(guideParam: string): Promise<void> {
+    // Dynamic import to keep find-doc-page in a lazy chunk
+    const { findDocPage } = await import('../../utils/find-doc-page');
+    const docPage = findDocPage(guideParam);
+
+    if (!docPage) {
+      console.warn(`[NavigateHandler] Could not resolve guide param: ${guideParam}`);
+      return;
+    }
+
+    // Wait for navigation to settle before dispatching
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+      detail: {
+        url: docPage.url,
+        title: docPage.title,
+        type: docPage.type,
+        source: 'navigate-action',
+      },
+    });
+    document.dispatchEvent(autoLaunchEvent);
   }
 
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
