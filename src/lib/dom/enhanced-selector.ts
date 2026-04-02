@@ -151,14 +151,17 @@ function handleComplexSelector(selector: string): SelectorResult {
  *
  * Supports combinators: " + " (adjacent sibling), " ~ " (general sibling),
  * " > " (child), and " " (descendant).
+ *
+ * Uses querySelectorAllEnhanced so trailing selectors containing custom
+ * pseudo-selectors like :contains() and :text() are handled correctly.
  */
 function resolveTrailingSelector(elements: HTMLElement[], trailing: string): HTMLElement[] {
   const marker = `__es_trail_${Date.now()}`;
   try {
     elements.forEach((el) => el.setAttribute(marker, ''));
     const markerSelector = `[${marker}]${trailing}`;
-    const results = Array.from(document.querySelectorAll(markerSelector)) as HTMLElement[];
-    return results;
+    const result = querySelectorAllEnhanced(markerSelector);
+    return result.elements;
   } catch {
     return [];
   } finally {

@@ -341,6 +341,48 @@ describe('Enhanced Selector', () => {
       expect(result.elements.length).toBe(1);
       expect((result.elements[0] as HTMLInputElement).type).toBe('password');
     });
+
+    it('should handle :contains() in the trailing selector after :contains()', () => {
+      document.body.innerHTML = `
+        <div data-testid="data-testid Card heading">
+          <span>Application Observability</span>
+          <button>Application Observability</button>
+        </div>
+        <div data-testid="data-testid Card heading">
+          <span>Frontend Observability</span>
+          <button>Frontend Observability</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced(
+        "div[data-testid='data-testid Card heading']:contains('Application Observability') button:contains('Application Observability')"
+      );
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Application Observability');
+      expect(result.elements[0]!.tagName).toBe('BUTTON');
+    });
+
+    it('should handle :text() in the trailing selector after :contains()', () => {
+      document.body.innerHTML = `
+        <div class="panel">
+          <span>Settings</span>
+          <button>Save</button>
+          <button>Cancel</button>
+        </div>
+        <div class="panel">
+          <span>Other</span>
+          <button>Save</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced("div.panel:contains('Settings') button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+      // Should be inside the Settings panel, not the Other panel
+      expect(result.elements[0]!.parentElement?.textContent).toContain('Settings');
+    });
   });
 
   describe(':nth-match() with custom pseudo-selectors in remainder', () => {
