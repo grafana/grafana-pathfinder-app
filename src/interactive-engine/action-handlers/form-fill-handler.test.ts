@@ -506,6 +506,7 @@ describe('FormFillHandler', () => {
 
     it('should not attempt pill removal when @@CLEAR@@ is used on a regular input', async () => {
       const mockParent = {
+        getAttribute: jest.fn().mockReturnValue(null),
         querySelectorAll: jest.fn(),
         parentElement: null,
       };
