@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.6.0
+
+### Added
+
+- **Open guide after navigate step**: Navigate steps can now open a guide in the sidebar after SPA navigation completes (#732)
+  - New `openGuide` field in block editor for navigate actions (e.g., `bundled:my-guide`)
+  - Backward compatible: auto-detects `doc=` param in navigation URLs and dispatches guide opening
+  - Uses `auto-launch-tutorial` event pattern with dynamic `findDocPage()` import
+- **Kiosk mode available without dev mode**: Kiosk mode now only requires the `enableKioskMode` toggle in plugin settings (#733)
+
+### Fixed
+
+- **Selector picker scoping**: Constrain element picker to the hovered element's domain (#728)
+  - Added proximity check to `findNearbyFormControl` — only returns form controls within 100px of clicked element
+  - Thread `hoveredElement` from inspector through recorder to selector generator with fallback validation
+- **Enhanced selector nested queries**: Use `querySelectorAllEnhanced` for nested queries after `:nth-match()` and in `resolveTrailingSelector` (#730)
+  - Fixes `SyntaxError` when `:text()` or `:contains()` appear after `:nth-match()` or chained after `:contains()`
+  - Monotonic counter for trailing selector markers prevents collision on recursive re-entry
+- **Redundant button selector generation**: Avoid duplicate text matching when parent selector already contains the same `:contains()` or `:text()` clause (#731)
+- **Plugin settings data loss on Cloud deployment**: Preserve all plugin settings when saving from any config tab (#734)
+  - All config forms now spread `getConfigWithDefaults(jsonData || {})` instead of raw `jsonData`
+  - Dev mode toggle now fetches current settings before saving instead of wiping all other fields
+  - Fixes kiosk mode and coda settings being cleared after plugin version updates
+- **Clear filter pills with @@CLEAR@@**: `@@CLEAR@@` on combobox inputs now removes existing filter pills before filling new values (#727)
+
 ## 2.5.2
 
 ### Fixed
