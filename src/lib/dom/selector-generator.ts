@@ -1006,10 +1006,32 @@ export function generateBestSelector(
         if (parent && (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label'))) {
           // Don't pass click coordinates to parent - they only apply to the clicked element
           const parentSelector = generateBestSelector(parent);
-          const fullSelector =
-            cleanText.length < 20
-              ? `${parentSelector} button:text('${cleanText}')`
-              : `${parentSelector} button:contains('${cleanText}')`;
+
+          // Avoid redundant text matching: if the parent selector already contains/text-matches
+          // the same text, just use "button" as the descendant (the parent context is sufficient)
+          const parentAlreadyMatchesText =
+            parentSelector.includes(`:contains('${cleanText}')`) || parentSelector.includes(`:text('${cleanText}')`);
+
+          let fullSelector: string;
+          if (parentAlreadyMatchesText) {
+            // Parent already scopes by this text — check if plain "button" is unique within it
+            const plainDescendant = `${parentSelector} button`;
+            const plainMatches = querySelectorAllEnhanced(plainDescendant);
+            if (plainMatches.elements.length === 1 && plainMatches.elements[0] === bestElement) {
+              fullSelector = plainDescendant;
+            } else {
+              // Multiple buttons in the parent — still need text to disambiguate
+              fullSelector =
+                cleanText.length < 20
+                  ? `${parentSelector} button:text('${cleanText}')`
+                  : `${parentSelector} button:contains('${cleanText}')`;
+            }
+          } else {
+            fullSelector =
+              cleanText.length < 20
+                ? `${parentSelector} button:text('${cleanText}')`
+                : `${parentSelector} button:contains('${cleanText}')`;
+          }
           return cleanDynamicAttributes(fullSelector);
         }
 
