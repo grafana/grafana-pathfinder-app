@@ -1626,11 +1626,28 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
   const elementTag = element.tagName.toLowerCase();
 
   // Second pass: try testid parents from closest to farthest (prefer narrower scope)
+  // Track the best nth-match fallback so we can defer it until all parents are tried
+  let bestNthMatch: string | null = null;
+
   for (const parent of testIdParents) {
     const tag = parent.element.tagName.toLowerCase();
     const parentSelector = `${tag}[${parent.testIdAttr}='${parent.testId}']`;
-    const simpleDescendantSelector = `${parentSelector} ${elementTag}`;
 
+    // Try full baseSelector scoped to this parent first (preserves element's own testid/attrs)
+    if (baseSelector !== elementTag) {
+      try {
+        const fullScopedSelector = `${parentSelector} ${baseSelector}`;
+        const fullScopedResult = querySelectorAllEnhanced(fullScopedSelector);
+        if (fullScopedResult.elements.length === 1 && fullScopedResult.elements[0] === element) {
+          return fullScopedSelector;
+        }
+      } catch {
+        // Full baseSelector failed in this scope, try simplified
+      }
+    }
+
+    // Fall back to simplified tag-only descendant selector
+    const simpleDescendantSelector = `${parentSelector} ${elementTag}`;
     try {
       const descendantResult = querySelectorAllEnhanced(simpleDescendantSelector);
 
@@ -1639,10 +1656,12 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
         return simpleDescendantSelector;
       }
 
-      // If multiple matches but our element is included, use :nth-match within the testid context
-      const elementIndex = descendantResult.elements.indexOf(element);
-      if (elementIndex >= 0) {
-        return `${parentSelector} ${elementTag}:nth-match(${elementIndex + 1})`;
+      // Multiple matches — record nth-match as a fallback but keep trying farther parents
+      if (!bestNthMatch) {
+        const elementIndex = descendantResult.elements.indexOf(element);
+        if (elementIndex >= 0) {
+          bestNthMatch = `${parentSelector} ${elementTag}:nth-match(${elementIndex + 1})`;
+        }
       }
     } catch {
       // Try next parent
@@ -1680,7 +1699,8 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
     }
   }
 
-  return null;
+  // All unique-match strategies exhausted — return deferred nth-match if we found one
+  return bestNthMatch;
 }
 
 /**
