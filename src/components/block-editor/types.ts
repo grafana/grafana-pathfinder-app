@@ -19,6 +19,7 @@ export type BlockType =
   | 'markdown'
   | 'html'
   | 'image'
+  | 'callout'
   | 'video'
   | 'section'
   | 'conditional'

@@ -24,6 +24,7 @@ import {
   getDocumentStepPosition,
 } from '../components/interactive-tutorial';
 import {
+  CalloutBlock,
   CodeBlock,
   ExpandableTable,
   ImageRenderer,
@@ -1186,6 +1187,12 @@ function renderParsedElement(
           end={element.props.end}
           {...element.props}
         />
+      );
+    case 'callout-block':
+      return (
+        <CalloutBlock key={key} variant={element.props.variant} title={element.props.title}>
+          {renderChildren(element.children)}
+        </CalloutBlock>
       );
     case 'image-renderer':
       return (

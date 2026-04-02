@@ -1,4 +1,5 @@
 // Documentation components
+export { CalloutBlock } from './callout-block';
 export { CodeBlock } from './code-block';
 export { ExpandableTable } from './expandable-table';
 export { ImageRenderer } from './image-renderer';
@@ -8,6 +9,7 @@ export { SideJourneyLink } from './side-journey-link';
 export { ContentParsingError } from './content-parsing-error';
 
 // Types
+export type { CalloutBlockProps } from './callout-block';
 export type { CodeBlockProps } from './code-block';
 export type { ExpandableTableProps } from './expandable-table';
 export type { ImageRendererProps } from './image-renderer';

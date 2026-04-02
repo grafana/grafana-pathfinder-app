@@ -43,7 +43,8 @@ export type JsonBlock =
   | JsonInputBlock
   | JsonTerminalBlock
   | JsonTerminalConnectBlock
-  | JsonCodeBlockBlock;
+  | JsonCodeBlockBlock
+  | JsonCalloutBlock;
 
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
 
@@ -99,6 +100,20 @@ export interface JsonImageBlock {
   width?: number;
   /** Display height in pixels */
   height?: number;
+}
+
+/**
+ * Callout block for highlighted admonition messages.
+ * Used to draw attention to tips, warnings, or important notes.
+ */
+export interface JsonCalloutBlock {
+  type: 'callout';
+  /** Callout variant determines visual styling (color, icon) */
+  variant: 'info' | 'warning' | 'success' | 'error';
+  /** Markdown body text */
+  content: string;
+  /** Optional heading displayed at the top of the callout */
+  title?: string;
 }
 
 /**
@@ -595,6 +610,13 @@ export function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalC
  */
 export function isCodeBlockBlock(block: JsonBlock): block is JsonCodeBlockBlock {
   return block.type === 'code-block';
+}
+
+/**
+ * Type guard for JsonCalloutBlock
+ */
+export function isCalloutBlock(block: JsonBlock): block is JsonCalloutBlock {
+  return block.type === 'callout';
 }
 
 /**

@@ -36,6 +36,7 @@ const BLOCK_EDITOR_MODAL_ATTR = 'data-block-editor-modal';
 import { MarkdownBlockForm } from './forms/MarkdownBlockForm';
 import { HtmlBlockForm } from './forms/HtmlBlockForm';
 import { ImageBlockForm } from './forms/ImageBlockForm';
+import { CalloutBlockForm } from './forms/CalloutBlockForm';
 import { VideoBlockForm } from './forms/VideoBlockForm';
 import { SectionBlockForm } from './forms/SectionBlockForm';
 import { ConditionalBlockForm } from './forms/ConditionalBlockForm';
@@ -110,6 +111,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   markdown: MarkdownBlockForm,
   html: HtmlBlockForm,
   image: ImageBlockForm,
+  callout: CalloutBlockForm,
   video: VideoBlockForm,
   section: SectionBlockForm,
   conditional: ConditionalBlockForm,
