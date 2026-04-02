@@ -83,6 +83,7 @@ export function InteractiveBlockForm({
   const [verify, setVerify] = useState(initial?.verify ?? '');
   const [lazyRender, setLazyRender] = useState(initial?.lazyRender ?? false);
   const [scrollContainer, setScrollContainer] = useState(initial?.scrollContainer ?? '');
+  const [openGuide, setOpenGuide] = useState(initial?.openGuide ?? '');
 
   // On-demand alternative selectors (computed via "Show alternatives" button)
   const [alternatives, setAlternatives] = useState<string[]>([]);
@@ -152,6 +153,8 @@ export function InteractiveBlockForm({
         // Lazy render support for virtualized containers (not relevant for noop)
         ...(!isNoopAction && lazyRender && { lazyRender }),
         ...(!isNoopAction && lazyRender && scrollContainer.trim() && { scrollContainer: scrollContainer.trim() }),
+        // Navigate: guide to open after navigation
+        ...(action === 'navigate' && openGuide.trim() && { openGuide: openGuide.trim() }),
         // AI customization props
         ...(assistantEnabled && { assistantEnabled }),
         ...(assistantEnabled && assistantId.trim() && { assistantId: assistantId.trim() }),
@@ -176,6 +179,7 @@ export function InteractiveBlockForm({
       verify,
       lazyRender,
       scrollContainer,
+      openGuide,
       assistantEnabled,
       assistantId,
       assistantType,
@@ -248,13 +252,29 @@ export function InteractiveBlockForm({
 
       {/* Navigation path - for navigate actions only */}
       {isNavigate && (
-        <Field label="Navigation path" description="URL path to navigate to (e.g., /dashboards or /d/abc123)" required>
-          <Input
-            value={reftarget}
-            onChange={(e) => setReftarget(e.currentTarget.value)}
-            placeholder="e.g., /dashboards, /d/abc123, /explore"
-          />
-        </Field>
+        <>
+          <Field
+            label="Navigation path"
+            description="URL path to navigate to (e.g., /dashboards or /d/abc123)"
+            required
+          >
+            <Input
+              value={reftarget}
+              onChange={(e) => setReftarget(e.currentTarget.value)}
+              placeholder="e.g., /dashboards, /d/abc123, /explore"
+            />
+          </Field>
+          <Field
+            label="Open guide after navigation"
+            description="Guide to open in sidebar after navigating (e.g., bundled:my-guide-id or a docs URL)"
+          >
+            <Input
+              value={openGuide}
+              onChange={(e) => setOpenGuide(e.currentTarget.value)}
+              placeholder="e.g., bundled:my-guide, api:my-resource, https://grafana.com/docs/..."
+            />
+          </Field>
+        </>
       )}
 
       {/* Target Selector with DOM Picker - hidden for noop and navigate actions */}

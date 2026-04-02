@@ -43,6 +43,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
         'data-skippable',
         'data-lazyrender',
         'data-scrollcontainer',
+        'data-openguide',
       ].includes(attr.name)
     ) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
@@ -59,6 +60,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
   const lazyRender = element.getAttribute('data-lazyrender') === 'true'; // Default to false
   const scrollContainer = element.getAttribute('data-scrollcontainer') || undefined;
+  const openGuide = element.getAttribute('data-openguide') || undefined;
   const textContent = element.textContent?.trim() || undefined;
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
@@ -75,6 +77,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     skippable: skippable,
     lazyRender: lazyRender || undefined,
     scrollContainer: scrollContainer,
+    openGuide: openGuide,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,

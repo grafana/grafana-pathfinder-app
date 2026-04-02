@@ -40,6 +40,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   validateInput?: boolean; // Enable strict validation for formfill (require targetValue match). Default: false
   lazyRender?: boolean; // Enable progressive scroll discovery for virtualized containers
   scrollContainer?: string; // CSS selector for scroll container when lazyRender is enabled
+  openGuide?: string; // Guide to open in sidebar after navigation (e.g., "bundled:my-guide")
   title?: string;
   description?: string;
   children?: React.ReactNode;

@@ -222,6 +222,7 @@ export function sanitizeDocumentationHTML(html: string): string {
       'data-doit',
       'data-showme-text',
       'data-skippable',
+      'data-openguide',
       'data-requirements',
       'data-objectives',
       'data-hint',
