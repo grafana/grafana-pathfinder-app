@@ -34,16 +34,12 @@ import pluginJson from '../plugin.json';
  * fields managed by other config tabs when saving dev mode changes.
  */
 async function fetchCurrentJsonData(): Promise<DocsPluginConfig> {
-  try {
-    const response = getBackendSrv().fetch<{ jsonData?: DocsPluginConfig }>({
-      url: `/api/plugins/${pluginJson.id}/settings`,
-      method: 'GET',
-    });
-    const result = await lastValueFrom(response);
-    return result.data?.jsonData || {};
-  } catch {
-    return {};
-  }
+  const response = getBackendSrv().fetch<{ jsonData?: DocsPluginConfig }>({
+    url: `/api/plugins/${pluginJson.id}/settings`,
+    method: 'GET',
+  });
+  const result = await lastValueFrom(response);
+  return result.data?.jsonData || {};
 }
 
 /**
