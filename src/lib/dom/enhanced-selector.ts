@@ -787,9 +787,12 @@ function handleNthMatchSelector(selector: string): SelectorResult {
 
     if (afterMatch && afterMatch.trim()) {
       try {
-        const nestedElements = targetElement.querySelectorAll(afterMatch.trim());
+        // Use enhanced selector to support custom pseudo-selectors like :text() and :contains()
+        const nestedResult = querySelectorAllEnhanced(afterMatch.trim());
+        // Filter to only elements that are descendants of the target element
+        const nestedInTarget = nestedResult.elements.filter((el) => targetElement.contains(el) && targetElement !== el);
         return {
-          elements: Array.from(nestedElements) as HTMLElement[],
+          elements: nestedInTarget,
           usedFallback: true,
           originalSelector: selector,
           effectiveSelector: `${nthBaseSelector} (${index}th match) ${afterMatch}`,
