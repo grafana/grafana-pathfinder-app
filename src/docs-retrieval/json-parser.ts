@@ -564,6 +564,8 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
         // Lazy render support for virtualized containers
         lazyRender: block.lazyRender ?? false,
         scrollContainer: block.scrollContainer,
+        // Navigate: guide opening
+        openGuide: block.openGuide,
       },
       children,
     },

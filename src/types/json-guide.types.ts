@@ -259,6 +259,10 @@ export interface JsonInteractiveBlock extends AssistantProps {
   lazyRender?: boolean;
   /** CSS selector for the scroll container when lazyRender is enabled (default: ".scrollbar-view") */
   scrollContainer?: string;
+
+  // ---- Navigate: Guide Opening ----
+  /** Guide to open in sidebar after navigation completes (e.g., "bundled:my-guide" or a docs URL) */
+  openGuide?: string;
 }
 
 /**

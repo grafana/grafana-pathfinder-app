@@ -179,6 +179,7 @@ export const JsonInteractiveBlockSchema = z
     verify: z.string().optional(),
     lazyRender: z.boolean().optional(),
     scrollContainer: z.string().optional(),
+    openGuide: z.string().optional(),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
   })
