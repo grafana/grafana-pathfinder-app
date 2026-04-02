@@ -150,7 +150,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         enabled,
         pinned,
         jsonData: {
-          ...jsonData,
+          ...getConfigWithDefaults(jsonData || {}),
           enableAssistantDevMode: newValue,
         },
       });
@@ -260,7 +260,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           enabled,
           pinned,
           jsonData: {
-            ...jsonData,
+            ...getConfigWithDefaults(jsonData || {}),
             codaRegistered: true,
             codaApiUrl: apiUrl,
           },
