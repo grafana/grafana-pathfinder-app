@@ -155,8 +155,10 @@ function handleComplexSelector(selector: string): SelectorResult {
  * Uses querySelectorAllEnhanced so trailing selectors containing custom
  * pseudo-selectors like :contains() and :text() are handled correctly.
  */
+let trailingMarkerCounter = 0;
+
 function resolveTrailingSelector(elements: HTMLElement[], trailing: string): HTMLElement[] {
-  const marker = `__es_trail_${Date.now()}`;
+  const marker = `__es_trail_${++trailingMarkerCounter}`;
   try {
     elements.forEach((el) => el.setAttribute(marker, ''));
     const markerSelector = `[${marker}]${trailing}`;
