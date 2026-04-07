@@ -18,14 +18,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
   highlightBox: css({
     position: 'absolute',
     zIndex: theme.zIndex.portal - 1,
-    background: 'linear-gradient(90deg, rgba(204, 51, 204, 0.08) 0%, rgba(82, 82, 255, 0.08) 100%)', // Purple/blue gradient with transparency to match assistant
-    border: '2px solid rgb(143, 67, 179)', // Purple border color (middle of the gradient)
+    background: 'transparent',
+    border: '2px solid rgb(143, 67, 179)', // Purple to match assistant button
     borderRadius: theme.shape.radius.default,
-    boxShadow: '0 0 8px rgba(143, 67, 179, 0.3)', // Purple glow effect to match assistant button
-    pointerEvents: 'none', // Don't interfere with text selection
-    // Add padding to make box bigger than text (so border doesn't cover text)
+    boxShadow: '0 0 8px rgba(143, 67, 179, 0.3)',
+    pointerEvents: 'none',
     padding: '4px',
-    boxSizing: 'content-box', // Padding adds to size, not reduces content area
+    boxSizing: 'content-box',
   }),
   buttonContainer: css({
     position: 'absolute',
@@ -151,6 +150,7 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
           origin="grafana-pathfinder-app/text-selection"
           autoSend={true}
           size="sm"
+          title="Ask Assistant"
         />
       </div>
     </>

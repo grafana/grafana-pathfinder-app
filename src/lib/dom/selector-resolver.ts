@@ -63,6 +63,34 @@ export function resolveSelector(reftarget: string): string {
     }
   }
 
+  // panel: prefix - resolves to panel container by title
+  if (reftarget.startsWith('panel:')) {
+    return resolvePanelSelector(reftarget);
+  }
+
   // Return as-is if it's a regular CSS selector
   return reftarget;
+}
+
+/**
+ * Resolve a panel: prefix selector to a CSS selector targeting a Grafana panel by title.
+ * Format: "panel:Panel Title" or "panel:Panel Title > child-selector"
+ */
+function resolvePanelSelector(reftarget: string): string {
+  const panelPart = reftarget.substring(6); // Remove 'panel:'
+  const childSeparator = panelPart.indexOf(' > ');
+
+  let panelTitle: string;
+  let childSelector: string | null = null;
+
+  if (childSeparator !== -1) {
+    panelTitle = panelPart.substring(0, childSeparator);
+    childSelector = panelPart.substring(childSeparator + 3);
+  } else {
+    panelTitle = panelPart;
+  }
+
+  // Grafana panels use [data-viz-panel-key] and have title in header
+  const baseSelector = `[data-viz-panel-key]:has([data-testid*="Panel header ${panelTitle}"])`;
+  return childSelector ? `${baseSelector} ${childSelector}` : baseSelector;
 }

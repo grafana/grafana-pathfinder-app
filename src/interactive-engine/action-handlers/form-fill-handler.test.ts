@@ -393,6 +393,138 @@ describe('FormFillHandler', () => {
       expect(mockDispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'keyup', key: 'e' }));
     });
 
+    it('should clear combobox pills when @@CLEAR@@ is used on a combobox', async () => {
+      const mockRemoveButton1 = { click: jest.fn() } as unknown as HTMLButtonElement;
+      const mockRemoveButton2 = { click: jest.fn() } as unknown as HTMLButtonElement;
+
+      // Simulate DOM: first query finds pills (outer check), then inner loop
+      // re-queries after each click as pills disappear
+      let callCount = 0;
+      const mockContainer = {
+        querySelectorAll: jest.fn().mockImplementation((selector: string) => {
+          if (selector === 'button[aria-label^="Remove filter"]') {
+            callCount++;
+            // Call 1: outer check finds 2 pills
+            // Call 2: inner loop iteration 1 finds 2 pills, clicks first
+            if (callCount <= 2) {
+              return [mockRemoveButton1, mockRemoveButton2];
+            }
+            // Call 3: inner loop iteration 2 finds 1 pill, clicks it
+            if (callCount === 3) {
+              return [mockRemoveButton2];
+            }
+            // Call 4+: no more pills
+            return [];
+          }
+          return [];
+        }),
+        parentElement: null,
+      };
+
+      const comboboxElement = {
+        ...mockElement,
+        tagName: 'INPUT',
+        getAttribute: jest.fn().mockImplementation((attr: string) => {
+          if (attr === 'role') {
+            return 'combobox';
+          }
+          if (attr === 'aria-autocomplete') {
+            return 'list';
+          }
+          return null;
+        }),
+        parentElement: mockContainer,
+      } as unknown as HTMLElement;
+
+      mockQuerySelectorAll.mockReturnValue([comboboxElement]);
+
+      const clearData = { ...mockData, targetvalue: '@@CLEAR@@' };
+      await formFillHandler.execute(clearData, true);
+
+      expect(mockRemoveButton1.click).toHaveBeenCalled();
+      expect(mockRemoveButton2.click).toHaveBeenCalled();
+    });
+
+    it('should not clear combobox pills when @@CLEAR@@ is not used', async () => {
+      const mockRemoveButton = { click: jest.fn() } as unknown as HTMLButtonElement;
+      const mockContainer = {
+        querySelectorAll: jest.fn().mockReturnValue([mockRemoveButton]),
+        parentElement: null,
+      };
+
+      const comboboxElement = {
+        ...mockElement,
+        tagName: 'INPUT',
+        getAttribute: jest.fn().mockImplementation((attr: string) => {
+          if (attr === 'role') {
+            return 'combobox';
+          }
+          if (attr === 'aria-autocomplete') {
+            return 'list';
+          }
+          return null;
+        }),
+        parentElement: mockContainer,
+      } as unknown as HTMLElement;
+
+      mockQuerySelectorAll.mockReturnValue([comboboxElement]);
+
+      await formFillHandler.execute(mockData, true);
+
+      expect(mockRemoveButton.click).not.toHaveBeenCalled();
+    });
+
+    it('should handle @@CLEAR@@ on combobox with no existing pills', async () => {
+      const mockContainer = {
+        querySelectorAll: jest.fn().mockReturnValue([]),
+        parentElement: null,
+      };
+
+      const comboboxElement = {
+        ...mockElement,
+        tagName: 'INPUT',
+        getAttribute: jest.fn().mockImplementation((attr: string) => {
+          if (attr === 'role') {
+            return 'combobox';
+          }
+          if (attr === 'aria-autocomplete') {
+            return 'list';
+          }
+          return null;
+        }),
+        parentElement: mockContainer,
+      } as unknown as HTMLElement;
+
+      mockQuerySelectorAll.mockReturnValue([comboboxElement]);
+
+      const clearData = { ...mockData, targetvalue: '@@CLEAR@@' };
+      await formFillHandler.execute(clearData, true);
+
+      // Should complete without error
+      expect(mockStateManager.setState).toHaveBeenCalledWith(clearData, 'completed');
+    });
+
+    it('should not attempt pill removal when @@CLEAR@@ is used on a regular input', async () => {
+      const mockParent = {
+        getAttribute: jest.fn().mockReturnValue(null),
+        querySelectorAll: jest.fn(),
+        parentElement: null,
+      };
+
+      const regularInput = {
+        ...mockElement,
+        parentElement: mockParent,
+      } as unknown as HTMLElement;
+
+      mockQuerySelectorAll.mockReturnValue([regularInput]);
+
+      const clearData = { ...mockData, targetvalue: '@@CLEAR@@' };
+      await formFillHandler.execute(clearData, true);
+
+      // Should not query for remove buttons on a regular input
+      expect(mockParent.querySelectorAll).not.toHaveBeenCalled();
+    });
+
     it('should handle Monaco editor with empty value', async () => {
       const monacoElement = {
         ...mockElement,

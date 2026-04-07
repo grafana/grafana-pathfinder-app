@@ -1,5 +1,183 @@
 # Changelog
 
+## 2.6.0
+
+### Added
+
+- **Open guide after navigate step**: Navigate steps can now open a guide in the sidebar after SPA navigation completes (#732)
+  - New `openGuide` field in block editor for navigate actions (e.g., `bundled:my-guide`)
+  - Backward compatible: auto-detects `doc=` param in navigation URLs and dispatches guide opening
+  - Uses `auto-launch-tutorial` event pattern with dynamic `findDocPage()` import
+- **Kiosk mode available without dev mode**: Kiosk mode now only requires the `enableKioskMode` toggle in plugin settings (#733)
+
+### Fixed
+
+- **Selector picker scoping**: Constrain element picker to the hovered element's domain (#728)
+  - Added proximity check to `findNearbyFormControl` — only returns form controls within 100px of clicked element
+  - Thread `hoveredElement` from inspector through recorder to selector generator with fallback validation
+- **Enhanced selector nested queries**: Use `querySelectorAllEnhanced` for nested queries after `:nth-match()` and in `resolveTrailingSelector` (#730)
+  - Fixes `SyntaxError` when `:text()` or `:contains()` appear after `:nth-match()` or chained after `:contains()`
+  - Monotonic counter for trailing selector markers prevents collision on recursive re-entry
+- **Redundant button selector generation**: Avoid duplicate text matching when parent selector already contains the same `:contains()` or `:text()` clause (#731)
+- **Plugin settings data loss on Cloud deployment**: Preserve all plugin settings when saving from any config tab (#734)
+  - All config forms now spread `getConfigWithDefaults(jsonData || {})` instead of raw `jsonData`
+  - Dev mode toggle now fetches current settings before saving instead of wiping all other fields
+  - Fixes kiosk mode and coda settings being cleared after plugin version updates
+- **Clear filter pills with @@CLEAR@@**: `@@CLEAR@@` on combobox inputs now removes existing filter pills before filling new values (#727)
+
+## 2.5.2
+
+### Fixed
+
+- **Guided step zombie cleanup**: Eliminate orphaned timers, event listeners, and highlights after guided step cancellation (#725)
+  - Capture and clear 120s timeout promises that fired with stale closures after cancel
+  - Store comment box button listeners (Close, Cancel, Skip) in cleanup handlers
+  - Remove redundant NavigationManager instances in InteractiveGuided unmount
+  - Track success animation timeout for proper cancellation
+- **?doc= deep link improvements** (#724)
+  - Derive readable tab titles from URL path instead of showing "content.json"
+  - Intercept interactive-learning links inside content and open as sidebar tabs
+  - Use `interactive` type for interactive-learning URLs (not `docs-page`)
+  - Route interactive guides to `openDocsPage` (with reset button) instead of `openLearningJourney`
+  - Always show reset button for interactive guide tabs regardless of progress state
+  - Don't redirect away from current page on `?doc=` — stay on the user's dashboard
+  - Strip stale doc/page/source params from URL when doc can't be parsed
+  - Support `?source=learning-hub` to explicitly open as learning journey
+- **Assistant text selection UX**: Change button text to "Ask Assistant", orange text highlight, no-fill purple box, 400ms debounce (#722)
+- **Tooltip readability**: High-contrast text in tooltip popouts — white in dark mode, near-black in light mode
+
+## 2.5.0
+
+### Added
+
+- **Selector resilience engine**: Retry-with-wait, prefix matching, domain selectors, and strategy escalation pipeline for more robust interactive tutorials (#716)
+  - `resolveWithRetry()` with exponential backoff (200/600/1800ms) replaces single-pass resolution in all action handlers
+  - `:text()` exact match for short button labels (< 20 chars) eliminates false positives
+  - `data-testid` prefix matching fallback when exact match fails (uniqueness-guarded)
+  - `panel:` domain selector prefix resolves Grafana panels by title
+  - Unified `resolveSelectorPipeline()` with confidence scoring
+- **Selector Health Badge**: Inline quality indicator (green/yellow/red dot, stability score, method, match count) in the block editor form
+- **Test Selector Button**: Evaluates selector against live DOM and flash-highlights matched elements with numbered overlays
+- **Shift+Click hover capture**: Hold Shift during recording to capture hover steps without clicking through — prevents accidental navigation
+- **Alt+Click form capture**: Hold Alt during recording to force-capture any element as a form fill — element is focused for typing, step recorded on blur with typed value
+- **On-demand alternative selectors**: "Show alternatives" in block editor computes alternative selectors on-the-fly with stability scores and "Use this" swap buttons
+- **Auto-populate requirements**: Recorded steps auto-populate `exists-reftarget` and `navmenu-open` requirements
+
+## 2.4.2
+
+### Added
+
+- **Kiosk mode**: Full-screen overlay presenting interactive guide tiles over Grafana, gated behind dev mode and configured in the Interactive Features tab (#712)
+  - Fetches rules JSON from a configurable CDN URL with bundled fallback defaults
+  - HTML banner block at the top of the overlay for custom branding (sanitized via DOMPurify)
+  - Each tile opens the guide in a new tab via `?doc=` deep link with per-rule target URL
+  - Kiosk button in the sidebar header; overlay closes only via close button or Escape key
+  - Default banner themed for GrafanaCON 2026 with official stacked logo
+- **Comprehensive test ID audit**: Added ~100 new centralized `data-testid` selectors across all component areas and centralized ~20 hardcoded test ID strings into `testIds` constants (#711)
+  - New test ID namespaces: `editorPanel`, `learningPaths`, `liveSession`, `prTester`, `urlTester`, `codaTerminal`, `homePage`, `controlGroupPopup`, `feedbackButton`, `helpFooter`, `app`, `enableRecommender`, `kioskMode`
+
+### Fixed
+
+- **Sidebar dock toggle**: Prevent dock button from undocking an already-docked sidebar (#710)
+
+## 2.4.1
+
+### Added
+
+- **Custom guide deep links**: Support `?doc=api:<resourceName>` deep links for custom guides stored as App Platform CRDs (#696, #701)
+
+### Security
+
+- **Navigate handler path validation**: Internal navigation paths are now validated against denied routes (`/logout`, `/profile/password`, `/admin/*`, `/api/*`), closing a carry-forward from ASE25039 that becomes higher-impact under default enablement in Grafana 13 (#702)
+  - Role-aware validation: admin users can navigate to admin-only paths since guides legitimately steer admins there and Grafana RBAC enforces server-side access control
+
+## 2.4.0
+
+### Added
+
+- **Alloy scenario VM support**: New `alloy-scenario` VM template for Coda terminal, enabling guide authors to deploy Alloy-based sandbox environments (#688)
+  - Animated progress bar during VM provisioning with SSH connection status
+  - Quota cleanup with polling to auto-destroy stale VMs before creating new ones
+  - Persistent VM options in sessionStorage for auto-reconnect across page refresh
+- **Package recommender groundwork** (dormant): Frontend infrastructure for the v1 recommender API including response types, allowlist-based sanitizer, deduplication, and composite package resolver — production endpoint unchanged (#693)
+
+### Changed
+
+- **Agent context centralisation**: Concern-routed PR review and centralised agent context for improved review routing and impact analysis (#699)
+- **Documentation maintenance**: Updated Coda, workshop, CLI tools, and interactive requirements docs; indexed `CUSTOM_GUIDES.md` (#690, #691, #692)
+
+### Fixed
+
+- **Coda terminal UX**: Fixed VM replacement messages, error/disconnect retry loop, terminal panel not opening from guide connect blocks, connect button state during provisioning, and disconnect as a proper kill switch (#688)
+
+### Chore
+
+- Deduplicated `useSampleApps`/`useAlloyScenarios` into generic `useCodaOptions` hook (#688)
+
+## 2.3.7
+
+### Fixed
+
+- **Section requirement**: Fixed issue with section requirement checking not evaluating correctly
+- **Workshop PeerJS config**: Read PeerJS config from Grafana runtime instead of `PluginPropsContext`, which was always null when rendered via `plugin.addComponent()` outside the provider tree (#687)
+  - Made PeerJS TLS toggle explicitly configurable
+
+## 2.3.6
+
+### Added
+
+- **`pathfinder.enabled` feature flag**: Global kill-switch for cloud-wide rollout control, separate from A/B experiments. When disabled, the plugin dismounts and the native Grafana help menu takes over (#685)
+- **Workshop ECDSA presenter authentication**: Challenge-response authentication using ECDSA P-256 key pairs to prevent peer ID impersonation on the PeerJS signalling layer (#680)
+  - Public key embedded in join code; private key never leaves the presenter's browser
+  - Removed legacy unauthenticated join path entirely
+  - Follow mode gated behind feature flag pending security review
+- **CLI manifest pre-flight checks**: New `--package` and `--tier` flags for the e2e command with tier check, minVersion check, and plugin checks before spawning Playwright (#681)
+
+### Security
+
+- Updated `google.golang.org/grpc` to v1.79.3 (#683)
+
+### Chore
+
+- Updated npm to v11.11.1 (#675)
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v6.1.1 (#676)
+- Updated magefile/mage-action digest to 96c659d (#684)
+
+## 2.3.5
+
+### Fixed
+
+- **Pathfinder-suggest event buffering**: Early `pathfinder-suggest` events from faster-loading apps were lost because the handler was only registered after async experiment init. Added a synchronous buffer that replays events once the real handler is ready (#679)
+- **Auto-opened flag deferral**: Deferred the auto-opened localStorage flag write until the sidebar actually mounts, so the flag is never burned if the sidebar fails to open (#679)
+
+## 2.3.4
+
+_Patch release — version bump only._
+
+## 2.3.3
+
+### Added
+
+- **VM template selection**: Guide authors can now specify a custom VM template and sample app name when provisioning sandbox VMs through the `terminal-connect` block (#672)
+  - Backend: new sample-apps endpoint, `CreateVM` accepts config map, `resolveVMForUser` respects template/app when reusing or replacing VMs
+  - Frontend: `TerminalConnectBlock` form with VM template selector and dynamic sample-app dropdown
+  - Block palette hides Coda block types when Coda terminal is disabled
+
+## 2.3.2
+
+_Patch release — version bump only._
+
+## 2.3.1
+
+### Fixed
+
+- **Coda VM lifecycle**: Fixed VM lifecycle issues in the Coda terminal integration (#667)
+
+### Chore
+
+- Updated actions/upload-artifact action to v7 (#660)
+- Updated grafana/plugin-actions digest to 4698961 (#661)
+
 ## 2.3.0
 
 ### Added

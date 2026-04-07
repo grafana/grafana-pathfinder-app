@@ -197,7 +197,7 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version: '1.25'
 
@@ -207,14 +207,14 @@ jobs:
 
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@96c659d5f5f2baadfca2d4d01c3b90e823770ef6
+        uses: magefile/mage-action@35e1490c70b858aec34994e5a0e2546bffba9cca
         with:
           version: latest
           args: coverage
 
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@96c659d5f5f2baadfca2d4d01c3b90e823770ef6
+        uses: magefile/mage-action@35e1490c70b858aec34994e5a0e2546bffba9cca
         with:
           version: latest
           args: buildAll
@@ -332,7 +332,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download plugin
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: dist
           name: ${{ needs.build.outputs.plugin-id }}-${{ needs.build.outputs.plugin-version }}

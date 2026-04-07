@@ -73,5 +73,22 @@ describe('url-validation', () => {
         'https://grafana.com/unstyled.html/foo'
       );
     });
+
+    it('removes /content.json suffix from learning path URLs', () => {
+      expect(
+        cleanDocsUrl('https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/content.json')
+      ).toBe('https://grafana.com/docs/learning-paths/linux-server-integration/select-platform');
+    });
+
+    it('does not remove /content.json when not at end', () => {
+      expect(cleanDocsUrl('https://grafana.com/docs/content.json/page')).toBe(
+        'https://grafana.com/docs/content.json/page'
+      );
+    });
+
+    it('does not modify URLs without known suffixes', () => {
+      const url = 'https://grafana.com/docs/learning-paths/my-path';
+      expect(cleanDocsUrl(url)).toBe(url);
+    });
   });
 });

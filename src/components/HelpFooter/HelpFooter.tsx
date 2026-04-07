@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, LinkButton, useTheme2 } from '@grafana/ui';
 import { useHelpNavItem } from '@grafana/runtime';
 import { getHelpFooterStyles } from '../../styles/help-footer.styles';
+import { testIds } from '../../constants/testIds';
 
 interface HelpFooterProps {
   className?: string;
@@ -39,9 +40,9 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   }
 
   return (
-    <div className={`${styles.helpFooter} ${className || ''}`}>
+    <div className={`${styles.helpFooter} ${className || ''}`} data-testid={testIds.helpFooter.container}>
       <div className={styles.helpButtons}>
-        {helpButtons.map((button: any) => {
+        {helpButtons.map((button: any, index: number) => {
           if (button.href) {
             return (
               <LinkButton
@@ -51,6 +52,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                 icon={button.icon}
                 href={button.href}
                 target={button.target || '_blank'}
+                data-testid={testIds.helpFooter.link(index)}
               >
                 {button.label}
               </LinkButton>
@@ -58,7 +60,14 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
           }
 
           return (
-            <Button key={button.key} variant="secondary" size="sm" icon={button.icon} onClick={button.onClick}>
+            <Button
+              key={button.key}
+              variant="secondary"
+              size="sm"
+              icon={button.icon}
+              onClick={button.onClick}
+              data-testid={testIds.helpFooter.link(index)}
+            >
               {button.label}
             </Button>
           );

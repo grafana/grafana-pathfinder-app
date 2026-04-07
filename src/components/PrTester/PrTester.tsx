@@ -3,6 +3,7 @@ import { Box, Button, Icon, Input, Combobox, useStyles2, RadioButtonGroup, type 
 import { SelectableValue } from '@grafana/data';
 import { getPrTesterStyles } from './pr-tester.styles';
 import { fetchPrContentFilesFromUrl, isValidPrUrl, type PrContentFile } from './github-api';
+import { testIds } from '../../constants/testIds';
 
 const PR_URL_STORAGE_KEY = 'pathfinder-pr-tester-url';
 const SELECTED_FILE_STORAGE_KEY = 'pathfinder-pr-tester-selected';
@@ -490,7 +491,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
   };
 
   return (
-    <div className={styles.formGroup}>
+    <div className={styles.formGroup} data-testid={testIds.prTester.form}>
       {/* PR URL Input */}
       <label className={styles.label} htmlFor="prTesterInput">
         PR URL
@@ -501,6 +502,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         value={prUrl}
         onChange={handleUrlChange}
         placeholder="https://github.com/grafana/interactive-tutorials/pull/70"
+        data-testid={testIds.prTester.prNumberInput}
       />
       <p className={styles.helpText}>Paste a GitHub pull request URL. We will look for content.json files.</p>
 
@@ -512,6 +514,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
           onClick={handleFetchPr}
           disabled={!prUrl.trim() || isFetching}
           icon={isFetching ? 'fa fa-spinner' : undefined}
+          data-testid={testIds.prTester.loadButton}
         >
           {isFetching ? 'Fetching...' : hasFetched ? 'Re-fetch PR' : 'Fetch PR'}
         </Button>
@@ -529,7 +532,12 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
       {hasFetched && hasMultipleFiles && testMode === 'single' && (
         <div className={styles.selectContainer}>
           <label className={styles.label}>Guide to test</label>
-          <Combobox options={fileOptions} value={selectedFile} onChange={handleFileSelect} />
+          <Combobox
+            options={fileOptions}
+            value={selectedFile}
+            onChange={handleFileSelect}
+            data-testid={testIds.prTester.fileSelect}
+          />
         </div>
       )}
 

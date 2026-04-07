@@ -8,7 +8,8 @@
  */
 
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { querySelectorAllEnhanced, resolveSelector, resetValueTracker } from '../../lib/dom';
+import { resetValueTracker } from '../../lib/dom';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
 declare global {
   interface Window {
@@ -32,14 +33,13 @@ export interface CodeBlockInsertResult {
 
 export async function clearAndInsertCode(reftarget: string, code: string): Promise<CodeBlockInsertResult> {
   try {
-    const resolvedSelector = resolveSelector(reftarget);
-    const { elements } = querySelectorAllEnhanced(resolvedSelector);
+    const resolved = await resolveWithRetry(reftarget, 'codeblock');
 
-    if (elements.length === 0) {
-      return { success: false, error: `Code editor container not found: ${resolvedSelector}` };
+    if (!resolved) {
+      return { success: false, error: `Code editor container not found: ${reftarget}` };
     }
 
-    const container = elements[0]!;
+    const container = resolved.element;
 
     // Strategy 1: Try Monaco API (if available)
     const monacoResult = await tryMonacoApi(container, code);

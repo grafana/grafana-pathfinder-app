@@ -43,6 +43,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
         'data-skippable',
         'data-lazyrender',
         'data-scrollcontainer',
+        'data-openguide',
       ].includes(attr.name)
     ) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
@@ -59,6 +60,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
   const lazyRender = element.getAttribute('data-lazyrender') === 'true'; // Default to false
   const scrollContainer = element.getAttribute('data-scrollcontainer') || undefined;
+  const openGuide = element.getAttribute('data-openguide') || undefined;
   const textContent = element.textContent?.trim() || undefined;
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
@@ -75,6 +77,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     skippable: skippable,
     lazyRender: lazyRender || undefined,
     scrollContainer: scrollContainer,
+    openGuide: openGuide,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,
@@ -227,26 +230,14 @@ export async function reftargetExistsCheck(
     }
   }
 
-  // Retry configuration for element detection
-  const maxRetries = 2;
-  const retryDelay = 200;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    // Use enhanced selector to support complex selectors like :has() and :contains()
-    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-    const targetElement = enhancedResult.elements.length > 0 ? enhancedResult.elements[0] : null;
-
-    if (targetElement) {
-      return {
-        requirement: 'exists-reftarget',
-        pass: true,
-      };
-    }
-
-    // If this isn't the last attempt, wait before retrying
-    if (attempt < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    }
+  // Quick synchronous existence check — no retry. Requirement checks run frequently and must be fast.
+  // The action handlers do their own retry with backoff when they actually execute.
+  const existsResult = querySelectorAllEnhanced(resolvedSelector);
+  if (existsResult.elements.length > 0) {
+    return {
+      requirement: 'exists-reftarget',
+      pass: true,
+    };
   }
 
   // Element not found after retries - check for general navigation menu pattern

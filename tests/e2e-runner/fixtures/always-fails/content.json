@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "always-fails",
+  "title": "Always Fails (Synthetic Fixture)",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Synthetic Test Fixture: Always Fails\n\nThis guide is a deterministic test fixture for the E2E CLI and orchestration layer. It contains one passing step followed by one mandatory step that targets a nonexistent element, guaranteeing a predictable failure."
+    },
+    {
+      "type": "section",
+      "id": "failure-steps",
+      "title": "Failure Steps",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "content": "Step 1: Highlight the Dashboards nav item. This step passes to establish a baseline.",
+          "tooltip": "Deterministic pass — confirms the guide loaded and the CLI can execute steps."
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "#nonexistent-element-that-will-never-exist",
+          "content": "Step 2: Click a nonexistent element. This step always fails because the target cannot be found.",
+          "tooltip": "Deterministic failure — the selector does not match any element in the DOM."
+        }
+      ]
+    }
+  ]
+}

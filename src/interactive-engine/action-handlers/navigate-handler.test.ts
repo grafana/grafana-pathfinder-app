@@ -1,14 +1,54 @@
 import { NavigateHandler } from './navigate-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { locationService } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 
 // Mock dependencies
 jest.mock('../interactive-state-manager');
 jest.mock('@grafana/runtime', () => ({
+  config: {
+    bootData: {
+      user: {
+        orgRole: 'Viewer',
+        isGrafanaAdmin: false,
+      },
+    },
+  },
   locationService: {
     push: jest.fn(),
   },
+}));
+jest.mock('../../security/url-validator', () => ({
+  parseUrlSafely: jest.fn((url: string) => {
+    try {
+      return new URL(url);
+    } catch {
+      return null;
+    }
+  }),
+  validateRedirectPath: jest.fn((input: string, isAdmin?: boolean) => {
+    const alwaysDenied = ['/logout', '/profile/password'];
+    const adminOnly = ['/admin', '/api'];
+    if (!input || !input.startsWith('/') || input.startsWith('//')) {
+      return '/';
+    }
+    // Replicate real behavior: strip query strings and fragments (return pathname only)
+    let pathname: string;
+    try {
+      pathname = new URL(input, 'http://localhost').pathname;
+    } catch {
+      return '/';
+    }
+    if (alwaysDenied.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
+      return '/';
+    }
+    if (!isAdmin) {
+      if (adminOnly.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
+        return '/';
+      }
+    }
+    return pathname;
+  }),
 }));
 
 const mockStateManager = {
@@ -33,6 +73,9 @@ describe('NavigateHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Reset to non-admin Viewer before each test to avoid leaking state
+    (config as any).bootData.user.orgRole = 'Viewer';
+    (config as any).bootData.user.isGrafanaAdmin = false;
 
     navigateHandler = new NavigateHandler(mockStateManager, mockWaitForReactUpdates);
   });
@@ -100,12 +143,13 @@ describe('NavigateHandler', () => {
       expect(locationService.push).not.toHaveBeenCalled();
     });
 
-    it('should handle relative internal route correctly', async () => {
+    it('should block relative internal routes that fail path validation', async () => {
       const relativeData = { ...mockData, reftarget: './relative-path' };
 
       await navigateHandler.execute(relativeData, true);
 
-      expect(locationService.push).toHaveBeenCalledWith('./relative-path');
+      // validateRedirectPath rejects paths not starting with '/'
+      expect(locationService.push).not.toHaveBeenCalled();
       expect(mockWindowOpen).not.toHaveBeenCalled();
     });
 
@@ -212,6 +256,155 @@ describe('NavigateHandler', () => {
 
       // Step should still complete to avoid blocking guide progression
       expect(mockStateManager.setState).toHaveBeenCalledWith(maliciousData, 'completed');
+    });
+
+    it('should block navigation to /logout (F-1 / ASE26016)', async () => {
+      const logoutData = { ...mockData, reftarget: '/logout' };
+
+      await navigateHandler.execute(logoutData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block navigation to /admin/users (F-1 / ASE26016)', async () => {
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block navigation to /api/datasources (F-1 / ASE26016)', async () => {
+      const apiData = { ...mockData, reftarget: '/api/datasources' };
+
+      await navigateHandler.execute(apiData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block navigation to /profile/password (F-1 / ASE26016)', async () => {
+      const profileData = { ...mockData, reftarget: '/profile/password' };
+
+      await navigateHandler.execute(profileData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should allow safe internal paths like /explore', async () => {
+      const safeData = { ...mockData, reftarget: '/explore' };
+
+      await navigateHandler.execute(safeData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/explore');
+    });
+
+    it('should allow safe internal paths like /dashboards', async () => {
+      const safeData = { ...mockData, reftarget: '/dashboards' };
+
+      await navigateHandler.execute(safeData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/dashboards');
+    });
+
+    it('should allow Admin users to navigate to /admin/users', async () => {
+      (config as any).bootData.user.orgRole = 'Admin';
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/admin/users');
+    });
+
+    it('should allow Grafana Server Admin (isGrafanaAdmin) to navigate to /admin/users', async () => {
+      (config as any).bootData.user.orgRole = 'Viewer';
+      (config as any).bootData.user.isGrafanaAdmin = true;
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/admin/users');
+    });
+
+    it('should block Viewer users from navigating to /admin/users', async () => {
+      (config as any).bootData.user.orgRole = 'Viewer';
+      const adminData = { ...mockData, reftarget: '/admin/users' };
+
+      await navigateHandler.execute(adminData, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+    });
+
+    it('should allow internal paths with query strings (e.g., /explore?orgId=1)', async () => {
+      const queryData = { ...mockData, reftarget: '/explore?orgId=1' };
+
+      await navigateHandler.execute(queryData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/explore?orgId=1');
+    });
+
+    it('should allow internal paths with fragments (e.g., /dashboards#section)', async () => {
+      const fragmentData = { ...mockData, reftarget: '/dashboards#section' };
+
+      await navigateHandler.execute(fragmentData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/dashboards#section');
+    });
+
+    it('should allow internal paths with both query strings and fragments', async () => {
+      const bothData = { ...mockData, reftarget: '/connections/datasources?search=prom#config' };
+
+      await navigateHandler.execute(bothData, true);
+
+      expect(locationService.push).toHaveBeenCalledWith('/connections/datasources?search=prom#config');
+    });
+
+    it('should still block denied paths even with query strings', async () => {
+      const logoutQuery = { ...mockData, reftarget: '/logout?redirect=/' };
+
+      await navigateHandler.execute(logoutQuery, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+    });
+
+    it('should block protocol-relative URLs like //evil.com', async () => {
+      const protoRelative = { ...mockData, reftarget: '//evil.com' };
+
+      await navigateHandler.execute(protoRelative, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block protocol-relative URLs with paths like //evil.com/phish', async () => {
+      const protoRelativePath = { ...mockData, reftarget: '//evil.com/phish' };
+
+      await navigateHandler.execute(protoRelativePath, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should block inputs that do not start with /', async () => {
+      const noSlash = { ...mockData, reftarget: 'evil.com/foo' };
+
+      await navigateHandler.execute(noSlash, true);
+
+      expect(locationService.push).not.toHaveBeenCalled();
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should push validated path, not raw input, for internal routes', async () => {
+      const safeData = { ...mockData, reftarget: '/explore?orgId=1' };
+
+      await navigateHandler.execute(safeData, true);
+
+      // Validates that locationService receives the reconstructed URL from
+      // safePath + parsed.search + parsed.hash, not the raw reftarget.
+      expect(locationService.push).toHaveBeenCalledWith('/explore?orgId=1');
     });
   });
 });

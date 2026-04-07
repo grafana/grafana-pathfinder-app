@@ -264,6 +264,180 @@ describe('Enhanced Selector', () => {
     });
   });
 
+  describe(':text() pseudo-selector', () => {
+    it('should match element whose direct text equals the search text', () => {
+      document.body.innerHTML = '<button>Save</button><button>Cancel</button>';
+
+      const result = querySelectorAllEnhanced("button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+    });
+
+    it('should match when text is inside a child span (Grafana button pattern)', () => {
+      document.body.innerHTML = '<button><span>Save</span></button><button><span>Cancel</span></button>';
+
+      const result = querySelectorAllEnhanced("button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+    });
+
+    it('should match case-insensitively', () => {
+      document.body.innerHTML = '<button><span>Save Dashboard</span></button>';
+
+      const result = querySelectorAllEnhanced("button:text('save dashboard')");
+
+      expect(result.elements.length).toBe(1);
+    });
+
+    it('should require exact text match (not substring)', () => {
+      document.body.innerHTML = '<button>Save Dashboard</button><button>Save</button>';
+
+      const result = querySelectorAllEnhanced("button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+    });
+
+    it('should return empty for non-matching text', () => {
+      document.body.innerHTML = '<button>Save</button>';
+
+      const result = querySelectorAllEnhanced("button:text('Delete')");
+
+      expect(result.elements.length).toBe(0);
+    });
+
+    it('should apply trailing sibling combinator after :text()', () => {
+      document.body.innerHTML = '<label>Username</label><input type="text" />';
+
+      const result = querySelectorAllEnhanced("label:text('Username') + input");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.tagName).toBe('INPUT');
+    });
+
+    it('should apply trailing descendant selector after :contains()', () => {
+      document.body.innerHTML = '<div class="field"><span>Label</span><input type="text" /></div>';
+
+      // Verify DOM is set up correctly
+      expect(document.querySelector('div.field')).not.toBeNull();
+      expect(document.querySelector('div.field input')).not.toBeNull();
+
+      const result = querySelectorAllEnhanced("div.field:contains('Label') input");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.tagName).toBe('INPUT');
+    });
+  });
+
+  describe(':contains() with trailing selector', () => {
+    it('should apply trailing sibling combinator after :contains()', () => {
+      document.body.innerHTML =
+        '<label>Username</label><input type="text" /><label>Password</label><input type="password" />';
+
+      const result = querySelectorAllEnhanced("label:contains('Password') + input");
+
+      expect(result.elements.length).toBe(1);
+      expect((result.elements[0] as HTMLInputElement).type).toBe('password');
+    });
+
+    it('should handle :contains() in the trailing selector after :contains()', () => {
+      document.body.innerHTML = `
+        <div data-testid="data-testid Card heading">
+          <span>Application Observability</span>
+          <button>Application Observability</button>
+        </div>
+        <div data-testid="data-testid Card heading">
+          <span>Frontend Observability</span>
+          <button>Frontend Observability</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced(
+        "div[data-testid='data-testid Card heading']:contains('Application Observability') button:contains('Application Observability')"
+      );
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Application Observability');
+      expect(result.elements[0]!.tagName).toBe('BUTTON');
+    });
+
+    it('should handle :text() in the trailing selector after :contains()', () => {
+      document.body.innerHTML = `
+        <div class="panel">
+          <span>Settings</span>
+          <button>Save</button>
+          <button>Cancel</button>
+        </div>
+        <div class="panel">
+          <span>Other</span>
+          <button>Save</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced("div.panel:contains('Settings') button:text('Save')");
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toBe('Save');
+      // Should be inside the Settings panel, not the Other panel
+      expect(result.elements[0]!.parentElement?.textContent).toContain('Settings');
+    });
+  });
+
+  describe(':nth-match() with custom pseudo-selectors in remainder', () => {
+    it('should handle :text() after :nth-match()', () => {
+      document.body.innerHTML = `
+        <div data-testid="panel">
+          <button>OpenTelemetry</button>
+          <button>Prometheus</button>
+        </div>
+        <div data-testid="panel">
+          <button>OpenTelemetry</button>
+          <button>Loki</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced("div[data-testid='panel']:nth-match(2) button:text('OpenTelemetry')");
+
+      expect(result.elements.length).toBe(1);
+      // Should find the button inside the 2nd panel, not the 1st
+      expect(result.elements[0]!.parentElement?.textContent).toContain('Loki');
+    });
+
+    it('should handle :contains() after :nth-match()', () => {
+      document.body.innerHTML = `
+        <div data-testid="section">
+          <span>First section content</span>
+        </div>
+        <div data-testid="section">
+          <span>Second section target text here</span>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced('div[data-testid="section"]:nth-match(2) span:contains("target text")');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0]!.textContent).toContain('Second section');
+    });
+
+    it('should not return elements from outside the nth-matched parent', () => {
+      document.body.innerHTML = `
+        <div data-testid="card">
+          <button>Click me</button>
+        </div>
+        <div data-testid="card">
+          <button>Other</button>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced("div[data-testid='card']:nth-match(2) button:text('Click me')");
+
+      // "Click me" only exists in the 1st card, not the 2nd — should return empty
+      expect(result.elements.length).toBe(0);
+    });
+  });
+
   describe('Edge cases', () => {
     it('should return empty array for non-existent selector', () => {
       document.body.innerHTML = '<div id="test">Test</div>';

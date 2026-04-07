@@ -39,16 +39,44 @@ export interface SelectorGenerationResult {
  * }
  * ```
  */
-export function generateSelectorFromEvent(target: HTMLElement, event: MouseEvent | Event): SelectorGenerationResult {
+export function generateSelectorFromEvent(
+  target: HTMLElement,
+  event: MouseEvent | Event,
+  hoveredElement?: HTMLElement
+): SelectorGenerationResult {
   // Extract click coordinates if available (for coordinate-aware selector generation)
   const clickX = 'clientX' in event ? event.clientX : undefined;
   const clickY = 'clientY' in event ? event.clientY : undefined;
 
-  // Generate selector with coordinates if available
+  // Generate selector with coordinates and hovered element constraint if available
   let selector = generateBestSelector(
     target,
-    clickX !== undefined && clickY !== undefined ? { clickX, clickY } : undefined
+    clickX !== undefined && clickY !== undefined
+      ? { clickX, clickY, hoveredElement }
+      : hoveredElement
+        ? { hoveredElement }
+        : undefined
   );
+
+  // Validate the generated selector actually contains or matches the hovered element.
+  // If the selector resolves to an element that is NOT the hovered element or one of its
+  // ancestors/descendants, fall back to generating a selector directly from the hovered element.
+  if (hoveredElement) {
+    try {
+      const resolved = document.querySelector(selector);
+      if (
+        resolved &&
+        resolved !== hoveredElement &&
+        !hoveredElement.contains(resolved) &&
+        !resolved.contains(hoveredElement)
+      ) {
+        // Selector resolved to an unrelated element — regenerate from the hovered element
+        selector = generateBestSelector(hoveredElement);
+      }
+    } catch {
+      // Selector may use custom pseudo-selectors that querySelector doesn't support — skip validation
+    }
+  }
 
   // Detect action type
   let action = detectActionType(target, event);

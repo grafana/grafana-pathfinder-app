@@ -33,13 +33,13 @@ export function isGrafanaDocsUrl(url: string | undefined): boolean {
 }
 
 /**
- * Removes the /unstyled.html suffix from a URL for browser viewing.
- * Users want to see the styled docs page, not the unstyled version
- * used for embedding in the panel.
+ * Removes internal suffixes from a URL for browser viewing.
+ * Strips /unstyled.html (used by docs embedding) and /content.json
+ * (used by learning path rendering) so users see the canonical page.
  *
  * @param url - The URL to clean
- * @returns URL with /unstyled.html removed if present
+ * @returns URL with internal suffixes removed
  */
 export function cleanDocsUrl(url: string): string {
-  return url.replace(/\/unstyled\.html$/, '');
+  return url.replace(/\/(unstyled\.html|content\.json)$/, '');
 }

@@ -20,8 +20,8 @@ import {
 import { testIds } from '../../constants/testIds';
 import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../integrations/assistant-integration';
 import { CodeBlock } from '../../docs-retrieval';
-import { scrollUntilElementFound, querySelectorAllEnhanced, resolveSelector, findButtonByText } from '../../lib/dom';
-import { isCssSelector } from '../../lib/dom/selector-detector';
+import { scrollUntilElementFound } from '../../lib/dom';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
@@ -58,23 +58,11 @@ async function executeWithLazyScroll(
     return { success: true, elementFound: true };
   }
 
-  // DOM-targeting actions: always check if element exists (provides user feedback if missing)
-  // Resolve grafana: selectors
-  const resolvedSelector = resolveSelector(refTarget);
-
-  // Check if element exists
-  // For button actions with text (not CSS selectors), use findButtonByText instead of querySelectorAllEnhanced
-  let elementExists = false;
-
-  if (targetAction === 'button' && !isCssSelector(refTarget)) {
-    // Use text-based button matching (same as reftargetExistsCheck)
-    const buttons = findButtonByText(refTarget);
-    elementExists = buttons.length > 0;
-  } else {
-    // Use CSS selector matching for all other actions
-    const existingResult = querySelectorAllEnhanced(resolvedSelector);
-    elementExists = existingResult.elements.length > 0;
-  }
+  // DOM-targeting actions: quick synchronous check if element exists (provides user feedback if missing)
+  // Use resolveWithRetry with NO delays — the action handlers do their own retry with backoff,
+  // so retrying here would cause redundant 2.6s delays on every action.
+  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [] });
+  const elementExists = resolved !== null;
 
   if (elementExists) {
     // Element found - execute action immediately
@@ -158,6 +146,7 @@ export const InteractiveStep = forwardRef<
       validateInput = false, // Default to false - only validate form input if explicitly enabled
       lazyRender = false, // Default to false - only enable progressive scroll discovery if explicitly set
       scrollContainer, // CSS selector for scroll container when lazyRender is enabled
+      openGuide, // Guide to open in sidebar after navigation
       showMeText,
       title,
       description,
@@ -829,6 +818,7 @@ export const InteractiveStep = forwardRef<
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
         data-targetcomment={targetComment}
+        data-openguide={openGuide}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
         data-test-step-state={
@@ -1004,12 +994,13 @@ export const InteractiveStep = forwardRef<
 
         {/* Lazy scroll failure message with retry */}
         {!isCompletedWithObjectives && lazyScrollError && (
-          <div className="interactive-step-lazy-error" data-testid={`lazy-scroll-error-${renderedStepId}`}>
+          <div className="interactive-step-lazy-error">
             <span className="interactive-lazy-error-text">{lazyScrollError}</span>
             <button
               className="interactive-lazy-retry-btn"
               onClick={handleLazyScrollRetry}
               disabled={isShowRunning || isDoRunning}
+              data-testid={testIds.interactive.lazyScrollRetryButton(renderedStepId)}
             >
               Retry
             </button>

@@ -9,6 +9,9 @@ import {
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
   DEFAULT_DISABLE_AUTO_COLLAPSE,
+  DEFAULT_ENABLE_KIOSK_MODE,
+  DEFAULT_KIOSK_RULES_URL,
+  getConfigWithDefaults,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -19,6 +22,8 @@ type State = {
   requirementsCheckTimeout: number;
   guidedStepTimeout: number;
   disableAutoCollapse: boolean;
+  enableKioskMode: boolean;
+  kioskRulesUrl: string;
 };
 
 export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -34,6 +39,8 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
     guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
     disableAutoCollapse: jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
+    enableKioskMode: jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
+    kioskRulesUrl: jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
   }));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -78,12 +85,22 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     }
   };
 
+  const onToggleKioskMode = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, enableKioskMode: event.target.checked });
+  };
+
+  const onChangeKioskRulesUrl = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, kioskRulesUrl: event.target.value.trim() });
+  };
+
   const onResetDefaults = () => {
     setState({
       enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
       requirementsCheckTimeout: DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
       guidedStepTimeout: DEFAULT_GUIDED_STEP_TIMEOUT,
       disableAutoCollapse: DEFAULT_DISABLE_AUTO_COLLAPSE,
+      enableKioskMode: DEFAULT_ENABLE_KIOSK_MODE,
+      kioskRulesUrl: DEFAULT_KIOSK_RULES_URL,
     });
     setValidationErrors({});
   };
@@ -99,12 +116,17 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setIsSaving(true);
 
     try {
+      // Spread full config with defaults to preserve fields managed by other tabs,
+      // then override with this form's fields. Prevents data loss if jsonData is
+      // incomplete after a plugin version update.
       const newJsonData = {
-        ...jsonData,
+        ...getConfigWithDefaults(jsonData || {}),
         enableAutoDetection: state.enableAutoDetection,
         requirementsCheckTimeout: state.requirementsCheckTimeout,
         guidedStepTimeout: state.guidedStepTimeout,
         disableAutoCollapse: state.disableAutoCollapse,
+        enableKioskMode: state.enableKioskMode,
+        kioskRulesUrl: state.kioskRulesUrl,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -134,7 +156,9 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     state.enableAutoDetection !== (jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION) ||
     state.requirementsCheckTimeout !== (jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT) ||
     state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT) ||
-    state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE);
+    state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE) ||
+    state.enableKioskMode !== (jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE) ||
+    state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL);
 
   return (
     <form onSubmit={onSubmit}>
@@ -259,6 +283,38 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               max={120000}
             />
           </Field>
+        </div>
+
+        <div className={styles.divider} />
+
+        <div className={styles.section}>
+          <Text variant="h4" weight="medium">
+            Kiosk mode
+          </Text>
+          <div className={styles.toggleSection}>
+            <Switch id="enable-kiosk-mode" value={state.enableKioskMode} onChange={onToggleKioskMode} />
+            <div className={styles.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Enable kiosk mode
+              </Text>
+              <Text variant="body" color="secondary">
+                Show a full-screen guide catalog overlay.
+              </Text>
+            </div>
+          </div>
+
+          {state.enableKioskMode && (
+            <>
+              <Field label="Rules JSON URL" description="URL to a JSON file containing guide rules (optional)">
+                <Input
+                  id="kiosk-rules-url"
+                  value={state.kioskRulesUrl}
+                  onChange={onChangeKioskRulesUrl}
+                  placeholder="https://example.com/kiosk-rules.json"
+                />
+              </Field>
+            </>
+          )}
         </div>
 
         <div className={styles.buttonGroup}>

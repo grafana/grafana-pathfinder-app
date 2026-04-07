@@ -16,6 +16,7 @@ import {
   DEFAULT_PEERJS_SECURE,
   DEFAULT_ENABLE_CODA_TERMINAL,
   PLUGIN_BACKEND_URL,
+  getConfigWithDefaults,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -149,7 +150,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         enabled,
         pinned,
         jsonData: {
-          ...jsonData,
+          ...getConfigWithDefaults(jsonData || {}),
           enableAssistantDevMode: newValue,
         },
       });
@@ -259,7 +260,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           enabled,
           pinned,
           jsonData: {
-            ...jsonData,
+            ...getConfigWithDefaults(jsonData || {}),
             codaRegistered: true,
             codaApiUrl: apiUrl,
           },
@@ -356,8 +357,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         shouldMarkRegistered = true;
       }
 
+      // Spread full config with defaults to preserve fields managed by other tabs,
+      // then override with this form's fields. Prevents data loss if jsonData is
+      // incomplete after a plugin version update.
       const newJsonData = {
-        ...jsonData,
+        ...getConfigWithDefaults(jsonData || {}),
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
@@ -398,7 +402,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   };
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} data-testid={testIds.appConfig.form}>
       <FieldSet label="Plugin configuration" className={s.marginTopXl}>
         {/* Advanced configuration fields - only shown in dev mode */}
         {showAdvancedConfig && (
@@ -448,6 +452,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 <Input
                   type="checkbox"
                   id="dev-mode"
+                  data-testid={testIds.appConfig.devModeToggle}
                   checked={devModeEnabledForUser}
                   onChange={onChangeDevMode}
                   disabled={devModeToggling}
@@ -467,6 +472,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   <Input
                     type="checkbox"
                     id="assistant-dev-mode"
+                    data-testid={testIds.appConfig.assistantDevModeToggle}
                     checked={assistantDevModeEnabled}
                     onChange={onChangeAssistantDevMode}
                     disabled={assistantDevModeToggling}
@@ -509,6 +515,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           <div className={s.toggleSection}>
             <Switch
               id="enable-global-link-interception"
+              data-testid={testIds.appConfig.globalLinkInterception}
               value={state.interceptGlobalDocsLinks}
               onChange={onToggleGlobalLinkInterception}
             />
@@ -551,6 +558,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           <div className={s.toggleSection}>
             <Switch
               id="enable-open-panel-on-launch"
+              data-testid={testIds.appConfig.openPanelOnLaunch}
               value={state.openPanelOnLaunch}
               onChange={onToggleOpenPanelOnLaunch}
             />
@@ -588,7 +596,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             className={s.marginTopXl}
           >
             <div className={s.toggleSection}>
-              <Switch id="enable-live-sessions" value={state.enableLiveSessions} onChange={onToggleLiveSessions} />
+              <Switch
+                id="enable-live-sessions"
+                data-testid={testIds.appConfig.liveSessionsToggle}
+                value={state.enableLiveSessions}
+                onChange={onToggleLiveSessions}
+              />
               <div className={s.toggleLabels}>
                 <Text variant="body" weight="medium">
                   Enable live collaborative learning sessions (Experimental)
@@ -620,12 +633,18 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   </div>
 
                   <Field label="Server host" description="Hostname or IP address">
-                    <Input value={state.peerjsHost} onChange={onChangePeerjsHost} placeholder={DEFAULT_PEERJS_HOST} />
+                    <Input
+                      data-testid={testIds.appConfig.peerjsHost}
+                      value={state.peerjsHost}
+                      onChange={onChangePeerjsHost}
+                      placeholder={DEFAULT_PEERJS_HOST}
+                    />
                   </Field>
 
                   <Field label="Server port" description="Port number">
                     <Input
                       type="number"
+                      data-testid={testIds.appConfig.peerjsPort}
                       value={state.peerjsPort}
                       onChange={onChangePeerjsPort}
                       placeholder={String(DEFAULT_PEERJS_PORT)}
@@ -633,7 +652,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   </Field>
 
                   <Field label="API Key" description="Authentication key">
-                    <Input value={state.peerjsKey} onChange={onChangePeerjsKey} placeholder={DEFAULT_PEERJS_KEY} />
+                    <Input
+                      data-testid={testIds.appConfig.peerjsKey}
+                      value={state.peerjsKey}
+                      onChange={onChangePeerjsKey}
+                      placeholder={DEFAULT_PEERJS_KEY}
+                    />
                   </Field>
 
                   <Field label="Use TLS (wss://)" description="Enable for servers using HTTPS/WSS">
@@ -672,7 +696,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             className={s.marginTopXl}
           >
             <div className={s.toggleSection}>
-              <Switch id="enable-coda-terminal" value={state.enableCodaTerminal} onChange={onToggleCodaTerminal} />
+              <Switch
+                id="enable-coda-terminal"
+                data-testid={testIds.appConfig.codaTerminalToggle}
+                value={state.enableCodaTerminal}
+                onChange={onToggleCodaTerminal}
+              />
               <div className={s.toggleLabels}>
                 <Text variant="body" weight="medium">
                   Enable Coda terminal in sidebar (Experimental)
@@ -705,6 +734,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   >
                     <Input
                       width={60}
+                      data-testid={testIds.appConfig.codaApiUrl}
                       value={state.codaApiUrl}
                       onChange={onChangeCodaApiUrl}
                       placeholder="https://coda.example.com"
@@ -720,6 +750,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   >
                     <Input
                       width={60}
+                      data-testid={testIds.appConfig.codaRelayUrl}
                       value={state.codaRelayUrl}
                       onChange={onChangeCodaRelayUrl}
                       placeholder="wss://relay.example.com"
@@ -755,6 +786,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     <Input
                       type="password"
                       width={60}
+                      data-testid={testIds.appConfig.codaEnrollmentKey}
                       value={state.codaEnrollmentKey}
                       onChange={onChangeCodaEnrollmentKey}
                       placeholder={

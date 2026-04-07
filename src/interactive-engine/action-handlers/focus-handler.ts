@@ -2,7 +2,8 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { querySelectorAllEnhanced, isElementVisible, resolveSelector } from '../../lib/dom';
+import { isElementVisible } from '../../lib/dom';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
 export class FocusHandler {
   constructor(
@@ -15,21 +16,15 @@ export class FocusHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      // Resolve grafana: prefix if present
-      const resolvedSelector = resolveSelector(data.reftarget);
-
-      // Check if selector should return only one element (contains pseudo-selectors like :first-child, :last-child, etc.)
-      const shouldSelectSingle = this.shouldSelectSingleElement(resolvedSelector);
+      const resolved = await resolveWithRetry(data.reftarget, 'focus');
 
       let targetElements: HTMLElement[];
-      if (shouldSelectSingle) {
-        // Use enhanced selector for single element with complex selector support
-        const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-        targetElements = enhancedResult.elements.length > 0 ? [enhancedResult.elements[0]!] : [];
+      if (!resolved) {
+        targetElements = [];
       } else {
-        // Use enhanced selector for multiple elements with complex selector support
-        const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
-        targetElements = enhancedResult.elements;
+        // Check if selector should return only one element (contains pseudo-selectors like :first-child, :last-child, etc.)
+        const shouldSelectSingle = this.shouldSelectSingleElement(resolved.resolvedSelector);
+        targetElements = shouldSelectSingle ? [resolved.element] : resolved.elements;
       }
 
       if (!click) {

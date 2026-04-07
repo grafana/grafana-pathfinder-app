@@ -1,7 +1,7 @@
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from '../security';
 
 export interface DocPage {
-  type: 'docs-page' | 'learning-journey';
+  type: 'docs-page' | 'learning-journey' | 'interactive';
   url: string;
   title: string;
   /** Optional target page path for deep link redirect (e.g., /explore) */
@@ -14,9 +14,27 @@ export interface DocPage {
  * Extracted from module.tsx so that the require() / require.context() calls
  * for bundled JSON data land in a lazy chunk instead of the entry point.
  */
+/** Convert a URL slug like "grafana-13-tour-play" to "Grafana 13 Tour Play" */
+function formatSlug(str: string): string {
+  return str.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function findDocPage(param: string): DocPage | null {
   if (!param || param.trim() === '') {
     return null;
+  }
+
+  // Case: Custom guide stored in the Pathfinder backend (App Platform CRD)
+  if (param.startsWith('api:')) {
+    const resourceName = param.slice(4).trim();
+    if (!resourceName) {
+      return null;
+    }
+    return {
+      type: 'docs-page',
+      url: `backend-guide:${resourceName}`,
+      title: resourceName,
+    };
   }
 
   // Case 1: Bundled interactive
@@ -52,11 +70,16 @@ export function findDocPage(param: string): DocPage | null {
       return null;
     }
 
-    const parts = url.split('/');
-    const title = parts[parts.length - 1] || 'Interactive tutorial';
+    // Derive a readable title from the URL path.
+    // Strip trailing content.json / unstyled.html and use the last meaningful path segment.
+    // e.g. ".../guides/grafana-13-tour-play/content.json" → "Grafana 13 Tour Play"
+    const cleanedUrl = url.replace(/\/(content\.json|unstyled\.html)$/i, '');
+    const parts = cleanedUrl.split('/').filter(Boolean);
+    const slug = parts[parts.length - 1] || 'Interactive tutorial';
+    const title = formatSlug(slug);
 
     return {
-      type: 'docs-page',
+      type: 'interactive',
       url: url,
       title: title,
     };
@@ -116,9 +139,7 @@ export function findDocPage(param: string): DocPage | null {
     );
     const pageTitle = meaningfulSegments[meaningfulSegments.length - 1] || 'Documentation';
 
-    const formatTitle = (str: string): string => str.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-    const title = `${formatTitle(pageTitle)} - ${formatTitle(product)} Docs`;
+    const title = `${formatSlug(pageTitle)} - ${formatSlug(product)} Docs`;
 
     return {
       type: 'docs-page',

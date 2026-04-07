@@ -28,6 +28,7 @@ interface ActiveListener {
 
 export class GuidedHandler {
   private activeListeners: ActiveListener[] = [];
+  private pendingTimeouts: Array<ReturnType<typeof setTimeout>> = [];
   private currentAbortController: AbortController | null = null;
   private completedSteps: number[] = []; // Track completed steps for progress display
 
@@ -233,7 +234,8 @@ export class GuidedHandler {
         handler: handleContinue,
       });
 
-      setTimeout(() => resolve('timeout'), timeout);
+      const timeoutId = setTimeout(() => resolve('timeout'), timeout);
+      this.pendingTimeouts.push(timeoutId);
     });
   }
 
@@ -593,7 +595,8 @@ export class GuidedHandler {
 
     // Create timeout promise
     const timeoutPromise = new Promise<CompletionResult>((resolve) => {
-      setTimeout(() => resolve('timeout'), timeout);
+      const timeoutId = setTimeout(() => resolve('timeout'), timeout);
+      this.pendingTimeouts.push(timeoutId);
     });
 
     // Create cancellation promise
@@ -936,11 +939,12 @@ export class GuidedHandler {
       // Show success animation then complete
       const showSuccessAndComplete = () => {
         this.updateFormValidationFeedback(element, 'valid');
-        setTimeout(() => {
+        const successTimeoutId = setTimeout(() => {
           if (!isResolved) {
             cleanup('completed');
           }
         }, SUCCESS_ANIMATION_DELAY);
+        this.pendingTimeouts.push(successTimeoutId);
       };
 
       // Validate current value against expected
@@ -1114,6 +1118,12 @@ export class GuidedHandler {
    *                          Should be true when step completes, false when starting a new step.
    */
   private cleanupListeners(clearHighlights = false): void {
+    // Clear all pending timeouts to prevent zombie timer fires
+    for (const timeoutId of this.pendingTimeouts) {
+      clearTimeout(timeoutId);
+    }
+    this.pendingTimeouts = [];
+
     this.activeListeners.forEach(({ target, type, handler, options }) => {
       // Use stored options if available, otherwise no options
       if (options) {

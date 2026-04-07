@@ -59,6 +59,7 @@ export const JsonStepSchema = z
     action: JsonInteractiveActionSchema,
     // reftarget is optional for noop actions (informational steps)
     reftarget: z.string().optional(),
+
     targetvalue: z.string().optional(),
     requirements: z.array(z.string()).optional(),
     tooltip: z.string().optional(),
@@ -162,6 +163,7 @@ export const JsonInteractiveBlockSchema = z
     action: JsonInteractiveActionSchema,
     // reftarget is optional for noop actions (informational steps)
     reftarget: z.string().optional(),
+
     targetvalue: z.string().optional(),
     content: z.string().min(1, 'Interactive content is required'),
     tooltip: z.string().optional(),
@@ -177,6 +179,7 @@ export const JsonInteractiveBlockSchema = z
     verify: z.string().optional(),
     lazyRender: z.boolean().optional(),
     scrollContainer: z.string().optional(),
+    openGuide: z.string().optional(),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
   })
@@ -489,6 +492,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   _step: new Set([
     'action',
     'reftarget',
+
     'targetvalue',
     'requirements',
     'tooltip',
@@ -508,6 +512,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'type',
     'action',
     'reftarget',
+
     'targetvalue',
     'content',
     'tooltip',
@@ -582,6 +587,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   'code-block': new Set([
     'type',
     'reftarget',
+
     'language',
     'code',
     'content',

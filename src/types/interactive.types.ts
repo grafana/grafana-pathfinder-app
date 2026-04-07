@@ -22,6 +22,9 @@ export interface InteractiveElementData {
   lazyRender?: boolean; // Enable progressive scroll discovery
   scrollContainer?: string; // CSS selector for scroll container (default: ".scrollbar-view")
 
+  // Navigate: guide opening
+  openGuide?: string; // Guide to open in sidebar after navigation (e.g., "bundled:my-guide")
+
   // Element context
   tagName: string;
   className?: string;

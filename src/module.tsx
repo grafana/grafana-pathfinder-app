@@ -8,7 +8,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 // import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults, DocsPluginConfig, PLUGIN_BASE_URL } from './constants';
+import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { suggestionState } from './global-state/suggestion';
@@ -129,15 +129,22 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const urlParams = new URLSearchParams(window.location.search);
   const docsParam = urlParams.get('doc');
   const pageParam = urlParams.get('page');
+  // Optional source override for analytics — allows callers to identify the origin
+  // of a ?doc= deep link (e.g. ?doc=foo&source=learning-hub)
+  const sourceParam = urlParams.get('source');
+
+  // Use the source param if provided, otherwise default to 'url_param'
+  const docOpenSource = sourceParam || 'url_param';
 
   if (docsParam && !shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     const url = new URL(window.location.href);
     url.searchParams.delete('doc');
     url.searchParams.delete('page');
+    url.searchParams.delete('source');
     window.history.replaceState({}, '', url.toString());
 
     import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
-      showControlGroupDocPopup();
+      showControlGroupDocPopup(docOpenSource);
     });
     return;
   }
@@ -148,29 +155,36 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         const docsPage = findDocPage(docsParam);
 
         // Determine redirect target (only when doc param is present)
-        // Priority: explicit page param > bundled guide target > /
+        // Only redirect when an explicit page param or bundled guide target is provided.
+        // Without one, stay on the current page — the user may be on a specific dashboard
+        // and redirecting would break on instances where users aren't logged in (e.g., Play).
         // SECURITY: page is only processed when doc is also present,
         // preventing the plugin page from becoming a general-purpose redirector
-        const redirectTarget = validateRedirectPath(pageParam || docsPage?.targetPage || PLUGIN_BASE_URL);
+        const rawRedirectTarget = pageParam || docsPage?.targetPage;
+        const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
 
         // Warn if docsParam is present but no docsPage is found
         if (!docsPage) {
           console.warn(
             'Could not parse doc param:',
             docsParam,
-            '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
+            '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
           );
-          sidebarState.setPendingOpenSource('url_param', 'auto-open');
+          // Strip stale params so they don't re-fire on refresh
+          const url = new URL(window.location.href);
+          url.searchParams.delete('doc');
+          url.searchParams.delete('page');
+          url.searchParams.delete('source');
+          window.history.replaceState({}, '', url.toString());
+
+          sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
           attemptAutoOpen(200);
-          setTimeout(() => {
-            locationService.replace('/');
-          }, 300);
           return;
         }
 
         const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
 
-        sidebarState.setPendingOpenSource('url_param', 'auto-open');
+        sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
 
         if (needsRedirect) {
           locationService.replace(redirectTarget);
@@ -179,6 +193,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           const url = new URL(window.location.href);
           url.searchParams.delete('doc');
           url.searchParams.delete('page');
+          url.searchParams.delete('source');
           window.history.replaceState({}, '', url.toString());
           attemptAutoOpen(200);
         }
@@ -190,6 +205,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
                 url: docsPage.url,
                 title: docsPage.title,
                 type: docsPage.type,
+                source: docOpenSource,
               },
             });
             document.dispatchEvent(autoLaunchEvent);
@@ -205,12 +221,42 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       })
       .catch((err) => {
         console.error('[Pathfinder] Failed to load find-doc-page chunk:', err);
-        sidebarState.setPendingOpenSource('url_param', 'auto-open');
+        sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
         attemptAutoOpen(200);
         setTimeout(() => {
           locationService.replace('/');
         }, 300);
       });
+  }
+
+  // Mount kiosk mode overlay manager if enabled and no ?doc= param
+  // (skip kiosk in tabs opened via tile deep links so the overlay doesn't reappear)
+  if (config.enableKioskMode && !docsParam) {
+    (window as any).__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
+    document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
+
+    if (!document.getElementById('pathfinder-kiosk-root')) {
+      import('react-dom/client')
+        .then(({ createRoot }) =>
+          import('./components/kiosk/KioskModeManager').then(({ KioskModeManager }) => {
+            if (document.getElementById('pathfinder-kiosk-root')) {
+              return;
+            }
+            const container = document.createElement('div');
+            container.id = 'pathfinder-kiosk-root';
+            document.body.appendChild(container);
+            const root = createRoot(container);
+            root.render(
+              React.createElement(KioskModeManager, {
+                rulesUrl: config.kioskRulesUrl,
+              })
+            );
+          })
+        )
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load kiosk mode:', err);
+        });
+    }
   }
 
   // Skip experiment auto-open when a ?doc= param is present — the doc-param

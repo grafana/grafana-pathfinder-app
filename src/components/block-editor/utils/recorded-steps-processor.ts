@@ -7,6 +7,7 @@
 
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonStep } from '../../../types/json-guide.types';
 import type { RecordedStep } from '../../../utils/devtools';
+import { suggestDefaultRequirements } from '../forms/requirements-suggester';
 
 /**
  * Processed step - either a single step or a group of steps with same groupId
@@ -64,12 +65,14 @@ export function groupRecordedStepsByGroupId(steps: RecordedStep[]): ProcessedSte
  * Converts a single recorded step to an interactive block.
  */
 export function convertStepToInteractiveBlock(step: RecordedStep): JsonInteractiveBlock {
+  const suggestedRequirements = suggestDefaultRequirements(step.action, step.selector);
   return {
     type: 'interactive',
     action: step.action as JsonInteractiveBlock['action'],
     reftarget: step.selector,
     content: step.description || `${step.action} on element`,
     ...(step.value && { targetvalue: step.value }),
+    ...(suggestedRequirements.length > 0 && { requirements: suggestedRequirements }),
   };
 }
 
@@ -77,12 +80,16 @@ export function convertStepToInteractiveBlock(step: RecordedStep): JsonInteracti
  * Converts a group of recorded steps to a multistep block.
  */
 export function convertStepsToMultistepBlock(steps: RecordedStep[]): JsonMultistepBlock {
-  const multistepSteps: JsonStep[] = steps.map((step) => ({
-    action: step.action as JsonStep['action'],
-    reftarget: step.selector,
-    ...(step.value && { targetvalue: step.value }),
-    tooltip: step.description || `${step.action} on element`,
-  }));
+  const multistepSteps: JsonStep[] = steps.map((step) => {
+    const suggestedRequirements = suggestDefaultRequirements(step.action, step.selector);
+    return {
+      action: step.action as JsonStep['action'],
+      reftarget: step.selector,
+      ...(step.value && { targetvalue: step.value }),
+      tooltip: step.description || `${step.action} on element`,
+      ...(suggestedRequirements.length > 0 && { requirements: suggestedRequirements }),
+    };
+  });
 
   return {
     type: 'multistep',
