@@ -7,6 +7,15 @@ type AppTestFixture = {
 };
 
 export const test = base.extend<AppTestFixture>({
+  page: async ({ page }, use) => {
+    // Grafana 13+ shows a "What's new" modal on first login that blocks pointer
+    // events via a portal overlay. Register a handler so Playwright automatically
+    // dismisses it whenever it intercepts an action.
+    await page.addLocatorHandler(page.getByLabel("What's new in Grafana"), async () => {
+      await page.getByLabel("What's new in Grafana").getByLabel('Close').click();
+    });
+    await use(page);
+  },
   appConfigPage: async ({ gotoAppConfigPage }, use) => {
     const configPage = await gotoAppConfigPage({
       pluginId: pluginJson.id,
