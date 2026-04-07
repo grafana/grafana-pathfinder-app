@@ -92,6 +92,28 @@ export interface TestEnvironment {
 /** Valid package type values */
 export type PackageType = 'guide' | 'path' | 'journey';
 
+/** Rendering types that a package can map to */
+export type PackageRenderType = 'interactive' | 'learning-journey';
+
+/**
+ * Map a package manifest's `type` to the appropriate rendering type.
+ *
+ * Accepts the loosely-typed `Record<string, unknown>` shape that flows through
+ * `Recommendation.manifest` (not the fully-typed `ManifestJson`) so callers
+ * don't need to narrow first.
+ *
+ * - `path` / `journey` → `'learning-journey'` (milestone-based content)
+ * - `guide` / missing / other → `'interactive'` (single interactive guide)
+ */
+export function getPackageRenderType(manifest?: Record<string, unknown>): PackageRenderType {
+  if (manifest && typeof manifest.type === 'string') {
+    if (manifest.type === 'path' || manifest.type === 'journey') {
+      return 'learning-journey';
+    }
+  }
+  return 'interactive';
+}
+
 // ============ SHARED METADATA ============
 
 /**

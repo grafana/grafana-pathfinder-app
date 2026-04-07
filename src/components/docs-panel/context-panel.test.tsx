@@ -108,6 +108,126 @@ describe('RecommendationsSection', () => {
     );
   });
 
+  it('displays path-type package as learning path, not interactive guide', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Prometheus learning path',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+            type: 'package',
+            summary: 'Learn Prometheus step by step.',
+            manifest: { id: 'prometheus-lj', type: 'path', milestones: ['step-1', 'step-2'] },
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText('Learning path')).toBeInTheDocument();
+    expect(screen.queryByText('Interactive guide')).not.toBeInTheDocument();
+  });
+
+  it('still routes path-type packages through openDocsPage (not openLearningJourney)', () => {
+    const openDocsPage = jest.fn();
+    const openLearningJourney = jest.fn();
+
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Prometheus learning path',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+            type: 'package',
+            summary: 'Learn Prometheus.',
+            manifest: { id: 'prometheus-lj', type: 'path' },
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={openLearningJourney}
+        openDocsPage={openDocsPage}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+    expect(openDocsPage).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+      'Prometheus learning path',
+      {
+        packageId: 'prometheus-lj',
+        packageManifest: { id: 'prometheus-lj', type: 'path' },
+      }
+    );
+    expect(openLearningJourney).not.toHaveBeenCalled();
+  });
+
+  it('displays guide-type package as interactive guide', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            manifest: { id: 'alerting-101', type: 'guide' },
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText('Interactive guide')).toBeInTheDocument();
+    expect(screen.queryByText('Learning path')).not.toBeInTheDocument();
+  });
+
   it('calls toggleSummaryExpansion with contentUrl for package-backed recommendations', () => {
     const toggleSummaryExpansion = jest.fn();
 

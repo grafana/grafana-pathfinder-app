@@ -12,6 +12,7 @@ export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 
 const RECOMMENDER_PROD_URL = 'https://recommender.grafana.com';
 const RECOMMENDER_DEV_URL = 'https://recommender.grafana-dev.com';
+const KNOWN_RECOMMENDER_URLS = new Set([RECOMMENDER_PROD_URL, RECOMMENDER_DEV_URL]);
 
 /**
  * Derive the correct recommender URL from the Grafana instance hostname.
@@ -27,6 +28,15 @@ export function getDefaultRecommenderUrl(hostnameOverride?: string): string {
     // SSR / test environments where window is unavailable
   }
   return RECOMMENDER_PROD_URL;
+}
+
+/**
+ * True when the saved URL is one of the two managed recommender endpoints.
+ * Auto-detection should own these; only genuinely custom URLs (e.g. localhost)
+ * should bypass environment-based selection.
+ */
+export function isKnownRecommenderUrl(url: string): boolean {
+  return KNOWN_RECOMMENDER_URLS.has(url.replace(/\/+$/, ''));
 }
 
 export const DEFAULT_RECOMMENDER_SERVICE_URL = RECOMMENDER_PROD_URL;
@@ -133,7 +143,10 @@ export interface DocsPluginConfig {
 export const getConfigWithDefaults = (
   config: DocsPluginConfig
 ): Omit<Required<DocsPluginConfig>, 'devModeUserIds'> & { devModeUserIds: number[] } => ({
-  recommenderServiceUrl: config.recommenderServiceUrl || getDefaultRecommenderUrl(),
+  recommenderServiceUrl:
+    config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
+      ? config.recommenderServiceUrl
+      : getDefaultRecommenderUrl(),
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,

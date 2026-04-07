@@ -1,6 +1,7 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
 import { locationService } from '@grafana/runtime';
 import React, { lazy, Suspense, useEffect, useMemo } from 'react';
+import { createRoot } from 'react-dom/client';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 
@@ -236,23 +237,21 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
 
     if (!document.getElementById('pathfinder-kiosk-root')) {
-      import('react-dom/client')
-        .then(({ createRoot }) =>
-          import('./components/kiosk/KioskModeManager').then(({ KioskModeManager }) => {
-            if (document.getElementById('pathfinder-kiosk-root')) {
-              return;
-            }
-            const container = document.createElement('div');
-            container.id = 'pathfinder-kiosk-root';
-            document.body.appendChild(container);
-            const root = createRoot(container);
-            root.render(
-              React.createElement(KioskModeManager, {
-                rulesUrl: config.kioskRulesUrl,
-              })
-            );
-          })
-        )
+      import('./components/kiosk/KioskModeManager')
+        .then(({ KioskModeManager }) => {
+          if (document.getElementById('pathfinder-kiosk-root')) {
+            return;
+          }
+          const container = document.createElement('div');
+          container.id = 'pathfinder-kiosk-root';
+          document.body.appendChild(container);
+          const root = createRoot(container);
+          root.render(
+            React.createElement(KioskModeManager, {
+              rulesUrl: config.kioskRulesUrl,
+            })
+          );
+        })
         .catch((err) => {
           console.error('[Pathfinder] Failed to load kiosk mode:', err);
         });

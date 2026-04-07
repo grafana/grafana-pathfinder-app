@@ -97,6 +97,7 @@ import {
   CombinedPanelState,
   PackageOpenInfo,
 } from '../../types/content-panel.types';
+import { getPackageRenderType } from '../../types/package.types';
 import type { DocsPanelModelOperations } from './types';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
@@ -484,7 +485,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       content: null,
       isLoading: true,
       error: null,
-      type: 'docs',
+      type: packageInfo ? getPackageRenderType(packageInfo.packageManifest) : 'docs',
       packageInfo,
     };
 
@@ -542,10 +543,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                 error: null,
                 baseUrl: t.baseUrl || fetchedContent.url,
                 currentUrl: fetchedContent.url || url,
-                // Package-backed content is always interactive. For non-package tabs,
-                // upgrade to 'interactive' only when the fetched content says so
-                // (e.g., bundled interactives detected by fetchContent).
-                type: packageInfo != null || fetchedContent.type === 'interactive' ? 'interactive' : t.type,
+                type:
+                  packageInfo != null
+                    ? getPackageRenderType(packageInfo.packageManifest)
+                    : fetchedContent.type === 'interactive'
+                      ? 'interactive'
+                      : t.type,
               }
             : t
         );

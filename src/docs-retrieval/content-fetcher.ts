@@ -12,6 +12,7 @@ import {
   Milestone,
 } from '../types/content.types';
 import type { PackageResolver } from '../types';
+import { getPackageRenderType } from '../types/package.types';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
@@ -1372,9 +1373,7 @@ export async function fetchPackageContent(
     ...result,
     content: {
       ...result.content,
-      // Package content is always interactive regardless of what determineContentType()
-      // returns for the URL shape (e.g., CDN URLs would otherwise be 'single-doc').
-      type: 'interactive',
+      type: getPackageRenderType(packageManifest),
       metadata: {
         ...result.content.metadata,
         ...(packageManifest !== undefined && { packageManifest }),

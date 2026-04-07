@@ -111,9 +111,40 @@ describe('fetchPackageContent', () => {
     }
   });
 
-  it('overrides content type to interactive for package content', async () => {
-    // Package content.json files are always interactive regardless of URL shape
+  it('sets content type to interactive for guide-type packages', async () => {
+    const manifest = { id: 'first-dashboard', type: 'guide' };
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+    if (result.content) {
+      expect(result.content.type).toBe('interactive');
+    }
+  });
+
+  it('sets content type to learning-journey for path-type packages', async () => {
+    const manifest = { id: 'first-dashboard', type: 'path' };
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+    if (result.content) {
+      expect(result.content.type).toBe('learning-journey');
+    }
+  });
+
+  it('sets content type to learning-journey for journey-type packages', async () => {
+    const manifest = { id: 'first-dashboard', type: 'journey' };
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+    if (result.content) {
+      expect(result.content.type).toBe('learning-journey');
+    }
+  });
+
+  it('defaults content type to interactive when manifest is omitted', async () => {
     const result = await fetchPackageContent('bundled:first-dashboard/content.json');
+    if (result.content) {
+      expect(result.content.type).toBe('interactive');
+    }
+  });
+
+  it('defaults content type to interactive when manifest.type is missing', async () => {
+    const manifest = { id: 'first-dashboard' };
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
     if (result.content) {
       expect(result.content.type).toBe('interactive');
     }
