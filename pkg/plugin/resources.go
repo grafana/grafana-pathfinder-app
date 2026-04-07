@@ -356,7 +356,20 @@ func (a *App) handleAlloyScenarios(w http.ResponseWriter, r *http.Request) {
 }
 
 // docsProxyClient is a shared HTTP client for docs proxy requests.
-var docsProxyClient = &http.Client{Timeout: 10 * time.Second}
+// CheckRedirect re-validates every redirect target against the same
+// allowlist used for the initial URL, preventing SSRF via open redirects.
+var docsProxyClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if !isAllowedDocsProxyURL(req.URL.String()) {
+			return fmt.Errorf("redirect to disallowed URL: %s", req.URL)
+		}
+		if len(via) >= 3 {
+			return fmt.Errorf("too many redirects")
+		}
+		return nil
+	},
+}
 
 // isAllowedDocsProxyURL validates that a URL is a trusted grafana.com
 // docs index.json endpoint. Prevents SSRF by restricting scheme, host,

@@ -177,3 +177,41 @@ func TestHandleDocsProxy_UpstreamError(t *testing.T) {
 		t.Errorf("expected forbidden for test server host, got %d", rr.Code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CheckRedirect SSRF protection
+// ---------------------------------------------------------------------------
+
+func TestDocsProxyClient_RejectsRedirectToDisallowedHost(t *testing.T) {
+	// CheckRedirect should block redirects to non-grafana.com hosts
+	client := docsProxyClient
+	fakeReq, _ := http.NewRequest(http.MethodGet, "https://evil.com/steal-data", nil)
+	via := []*http.Request{{}}
+
+	err := client.CheckRedirect(fakeReq, via)
+	if err == nil {
+		t.Error("expected CheckRedirect to reject redirect to evil.com, got nil")
+	}
+}
+
+func TestDocsProxyClient_AllowsRedirectToSameHost(t *testing.T) {
+	client := docsProxyClient
+	fakeReq, _ := http.NewRequest(http.MethodGet, "https://grafana.com/docs/learning-paths/foo/index.json", nil)
+	via := []*http.Request{{}}
+
+	err := client.CheckRedirect(fakeReq, via)
+	if err != nil {
+		t.Errorf("expected CheckRedirect to allow redirect within grafana.com, got %v", err)
+	}
+}
+
+func TestDocsProxyClient_RejectsTooManyRedirects(t *testing.T) {
+	client := docsProxyClient
+	fakeReq, _ := http.NewRequest(http.MethodGet, "https://grafana.com/docs/foo/index.json", nil)
+	via := []*http.Request{{}, {}, {}}
+
+	err := client.CheckRedirect(fakeReq, via)
+	if err == nil {
+		t.Error("expected CheckRedirect to reject after 3 redirects, got nil")
+	}
+}

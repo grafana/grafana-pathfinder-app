@@ -23,6 +23,7 @@ export async function fetchDocsIndexJson(indexJsonUrl: string, signal?: AbortSig
         url: proxyUrl,
         method: 'GET',
         showErrorAlert: false,
+        ...(signal ? { abortSignal: signal } : {}),
       })
     );
 
