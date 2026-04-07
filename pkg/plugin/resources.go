@@ -3,9 +3,11 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // registerRoutes sets up the HTTP routes for the plugin.
@@ -20,6 +22,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)
 	mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)
 	mux.HandleFunc("/health", a.handleHealth)
+	mux.HandleFunc("/docs-proxy", a.handleDocsProxy)
 }
 
 // handleVMs handles POST /vms (create) and GET /vms (list).
@@ -350,6 +353,77 @@ func (a *App) handleAlloyScenarios(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.writeJSON(w, scenarios, http.StatusOK)
+}
+
+// docsProxyClient is a shared HTTP client for docs proxy requests.
+var docsProxyClient = &http.Client{Timeout: 10 * time.Second}
+
+// isAllowedDocsProxyURL validates that a URL is a trusted grafana.com
+// docs index.json endpoint. Prevents SSRF by restricting scheme, host,
+// path prefix, path suffix, and blocking path traversal.
+func isAllowedDocsProxyURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "https" {
+		return false
+	}
+	if u.Host != "grafana.com" {
+		return false
+	}
+	if !strings.HasPrefix(u.Path, "/docs/") {
+		return false
+	}
+	if !strings.HasSuffix(u.Path, "/index.json") {
+		return false
+	}
+	if strings.Contains(u.Path, "..") {
+		return false
+	}
+	return true
+}
+
+// handleDocsProxy proxies GET requests to grafana.com docs index.json
+// endpoints. This avoids browser CORS restrictions when the plugin
+// frontend fetches Hugo page listings (index.json) from grafana.com.
+func (a *App) handleDocsProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	targetURL := r.URL.Query().Get("url")
+	if targetURL == "" {
+		a.writeError(w, "Missing required 'url' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	if !isAllowedDocsProxyURL(targetURL) {
+		a.writeError(w, "URL is not an allowed grafana.com docs endpoint", http.StatusForbidden)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		a.writeError(w, "Failed to create upstream request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := docsProxyClient.Do(req)
+	if err != nil {
+		a.ctxLogger(r.Context()).Error("Docs proxy upstream request failed", "url", targetURL, "error", err)
+		a.writeError(w, "Failed to fetch from upstream", http.StatusBadGateway)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+
+	const maxBody = 2 * 1024 * 1024 // 2 MB
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, maxBody))
 }
 
 // handleHealth returns the plugin health status.

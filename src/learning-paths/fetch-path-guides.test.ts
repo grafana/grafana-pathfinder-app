@@ -2,16 +2,19 @@
  * Tests for fetchPathGuides
  *
  * Verifies that index.json is parsed correctly into guide IDs and metadata.
+ * The actual HTTP transport is handled by fetchDocsIndexJson (backend proxy);
+ * these tests mock that utility to focus on parsing and filtering logic.
  */
 
 import { fetchPathGuides } from './fetch-path-guides';
+import { fetchDocsIndexJson } from '../lib/fetch-docs-index';
 
-// Mock global fetch
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+jest.mock('../lib/fetch-docs-index');
+
+const mockFetchDocsIndexJson = fetchDocsIndexJson as jest.MockedFunction<typeof fetchDocsIndexJson>;
 
 beforeEach(() => {
-  mockFetch.mockClear();
+  mockFetchDocsIndexJson.mockClear();
 });
 
 const SAMPLE_INDEX_JSON = [
@@ -51,16 +54,13 @@ const SAMPLE_INDEX_JSON = [
 
 describe('fetchPathGuides', () => {
   it('fetches and parses index.json correctly', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => SAMPLE_INDEX_JSON,
-    });
+    mockFetchDocsIndexJson.mockResolvedValueOnce(SAMPLE_INDEX_JSON);
 
     const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
 
-    expect(mockFetch).toHaveBeenCalledWith(
+    expect(mockFetchDocsIndexJson).toHaveBeenCalledWith(
       'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
-      { signal: undefined }
+      undefined
     );
     expect(result).not.toBeNull();
     expect(result!.guides).toEqual(['select-platform', 'install-alloy', 'configure-alloy']);
@@ -68,115 +68,64 @@ describe('fetchPathGuides', () => {
   });
 
   it('filters out items with grafana.skip: true', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => SAMPLE_INDEX_JSON,
-    });
+    mockFetchDocsIndexJson.mockResolvedValueOnce(SAMPLE_INDEX_JSON);
 
     const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
 
     expect(result).not.toBeNull();
-    // "business-value" has grafana.skip: true and should be excluded
     expect(result!.guides).not.toContain('business-value');
     expect(result!.guideMetadata['business-value']).toBeUndefined();
   });
 
   it('uses menutitle over title when available', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => SAMPLE_INDEX_JSON,
-    });
+    mockFetchDocsIndexJson.mockResolvedValueOnce(SAMPLE_INDEX_JSON);
 
     const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
 
     expect(result).not.toBeNull();
-    // "select-platform" has both menutitle and title — should use menutitle
     expect(result!.guideMetadata['select-platform']!.title).toBe('Select distribution');
-    // "configure-alloy" has only title, no menutitle
     expect(result!.guideMetadata['configure-alloy']!.title).toBe(
       'Configure Grafana Alloy to use the Linux server integration'
     );
   });
 
-  it('returns null on fetch failure', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-    });
+  it('returns null when backend proxy returns null', async () => {
+    mockFetchDocsIndexJson.mockResolvedValueOnce(null);
 
     const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/nonexistent/');
 
     expect(result).toBeNull();
   });
 
-  it('returns null on network error', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Network error'));
-
-    const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
-
-    expect(result).toBeNull();
-  });
-
-  it('returns null for non-array response', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ not: 'an array' }),
-    });
-
-    const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
-
-    expect(result).toBeNull();
-  });
-
-  it('handles trailing slash correctly when building URL', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [],
-    });
-
-    await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
-      { signal: undefined }
-    );
-  });
-
   it('handles URL without trailing slash', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [],
-    });
+    mockFetchDocsIndexJson.mockResolvedValueOnce([]);
 
     await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration');
 
-    expect(mockFetch).toHaveBeenCalledWith(
+    expect(mockFetchDocsIndexJson).toHaveBeenCalledWith(
       'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
-      { signal: undefined }
+      undefined
     );
   });
 
-  it('passes AbortSignal to fetch', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [],
-    });
+  it('passes AbortSignal through to fetchDocsIndexJson', async () => {
+    mockFetchDocsIndexJson.mockResolvedValueOnce([]);
 
     const controller = new AbortController();
     await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/', controller.signal);
 
-    expect(mockFetch).toHaveBeenCalledWith(
+    expect(mockFetchDocsIndexJson).toHaveBeenCalledWith(
       'https://grafana.com/docs/learning-paths/linux-server-integration/index.json',
-      { signal: controller.signal }
+      controller.signal
     );
   });
 
-  it('returns null when fetch is aborted', async () => {
-    const abortError = new DOMException('Aborted', 'AbortError');
-    mockFetch.mockRejectedValueOnce(abortError);
+  it('returns empty guides for an empty index.json array', async () => {
+    mockFetchDocsIndexJson.mockResolvedValueOnce([]);
 
     const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result!.guides).toEqual([]);
   });
 });

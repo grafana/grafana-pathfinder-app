@@ -23,6 +23,7 @@ import {
   isGitHubRawUrl,
 } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { fetchDocsIndexJson } from '../lib/fetch-docs-index';
 import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { resolveRelativeUrls } from './resolve-relative-urls';
@@ -1179,63 +1180,44 @@ function getLearningJourneyBaseUrl(url: string): string {
 }
 
 async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Milestone[]> {
-  try {
-    const indexJsonUrl = `${baseUrl}/index.json`;
-    const response = await fetch(indexJsonUrl);
+  const indexJsonUrl = `${baseUrl}/index.json`;
+  const data = await fetchDocsIndexJson(indexJsonUrl);
 
-    if (response.ok) {
-      const data = await response.json();
-
-      // The actual structure is an array of Hugo/Jekyll page objects
-      if (Array.isArray(data)) {
-        // First, filter out milestones that should be skipped
-        const validItems = data.filter((item) => {
-          // Skip if grafana.skip is true
-          return !item.params?.grafana?.skip;
-        });
-
-        // Then map and renumber sequentially based on array position
-        const milestones = validItems.map((item, index) => {
-          // Use array index + 1 for sequential numbering (1, 2, 3, etc.)
-          // This ensures no gaps in numbering even when items are skipped
-          const milestone: Milestone = {
-            number: index + 1,
-            title: item.params?.title || item.params?.menutitle || `Step ${index + 1}`,
-            duration: '5-10 min', // Default duration as it's not in the data
-            url: `${new URL(baseUrl).origin}${item.permalink || item.params?.permalink || ''}`,
-            isActive: false,
-          };
-
-          // Add optional fields if they exist
-          if (item.params?.side_journeys) {
-            milestone.sideJourneys = item.params.side_journeys;
-          }
-
-          if (item.params?.related_journeys) {
-            milestone.relatedJourneys = item.params.related_journeys;
-          }
-
-          if (item.params?.cta?.image) {
-            milestone.conclusionImage = {
-              src: `${new URL(baseUrl).origin}${item.params.cta.image.src}`,
-              width: item.params.cta.image.width,
-              height: item.params.cta.image.height,
-            };
-          }
-
-          return milestone;
-        });
-
-        return milestones; // Already in sequential order, no need to sort
-      }
-    } else {
-      console.warn(`Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);
-    }
-  } catch (error) {
-    console.warn(`Failed to fetch learning journey metadata from ${baseUrl}/index.json:`, error);
+  if (!data) {
+    return [];
   }
 
-  return [];
+  // Filter out milestones that should be skipped
+  const validItems = data.filter((item: any) => !item.params?.grafana?.skip);
+
+  // Map and renumber sequentially based on array position
+  return validItems.map((item: any, index: number) => {
+    const milestone: Milestone = {
+      number: index + 1,
+      title: item.params?.title || item.params?.menutitle || `Step ${index + 1}`,
+      duration: '5-10 min',
+      url: `${new URL(baseUrl).origin}${item.permalink || item.params?.permalink || ''}`,
+      isActive: false,
+    };
+
+    if (item.params?.side_journeys) {
+      milestone.sideJourneys = item.params.side_journeys;
+    }
+
+    if (item.params?.related_journeys) {
+      milestone.relatedJourneys = item.params.related_journeys;
+    }
+
+    if (item.params?.cta?.image) {
+      milestone.conclusionImage = {
+        src: `${new URL(baseUrl).origin}${item.params.cta.image.src}`,
+        width: item.params.cta.image.width,
+        height: item.params.cta.image.height,
+      };
+    }
+
+    return milestone;
+  });
 }
 
 /**

@@ -2,12 +2,13 @@
  * Fetch Path Guides from index.json
  *
  * For URL-based learning paths, fetches the guide list from a remote
- * docs site index.json (Hugo/Jekyll page listing). Reuses the same
- * parsing pattern as fetchLearningJourneyMetadataFromJson in content-fetcher.ts
- * but returns guide IDs + metadata instead of milestones.
+ * docs site index.json (Hugo/Jekyll page listing) via the plugin backend
+ * proxy. The backend proxy avoids browser CORS restrictions — grafana.com
+ * serves index.json without Access-Control-Allow-Origin headers.
  */
 
 import type { GuideMetadataEntry } from '../types/learning-paths.types';
+import { fetchDocsIndexJson } from '../lib/fetch-docs-index';
 
 // ============================================================================
 // TYPES
@@ -49,48 +50,31 @@ export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Pr
   // SECURITY: constructed URL with URL API (F3)
   const indexJsonUrl = new URL('index.json', pathUrl.endsWith('/') ? pathUrl : `${pathUrl}/`);
 
-  try {
-    const response = await fetch(indexJsonUrl.toString(), { signal });
-
-    if (!response.ok) {
-      console.warn(`[fetchPathGuides] Failed to fetch (${response.status}): ${indexJsonUrl.toString()}`);
-      return null;
-    }
-
-    const data = await response.json();
-
-    if (!Array.isArray(data)) {
-      console.warn(`[fetchPathGuides] Unexpected response shape from ${indexJsonUrl.toString()}`);
-      return null;
-    }
-
-    // Filter out items that should be skipped in Grafana (e.g. cover pages)
-    const validItems = data.filter((item) => !item.params?.grafana?.skip);
-
-    const guides: string[] = [];
-    const guideMetadata: Record<string, GuideMetadataEntry> = {};
-
-    for (const item of validItems) {
-      const slug = slugFromPermalink(item.relpermalink || '');
-      if (!slug) {
-        continue;
-      }
-
-      const title = item.params?.menutitle || item.params?.title || slug;
-
-      guides.push(slug);
-      guideMetadata[slug] = {
-        title,
-        estimatedMinutes: 5,
-      };
-    }
-
-    return { guides, guideMetadata };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return null;
-    }
-    console.warn(`[fetchPathGuides] Failed to fetch guides from ${indexJsonUrl.toString()}:`, error);
+  const data = await fetchDocsIndexJson(indexJsonUrl.toString(), signal);
+  if (!data) {
     return null;
   }
+
+  // Filter out items that should be skipped in Grafana (e.g. cover pages)
+  const validItems = data.filter((item: any) => !item.params?.grafana?.skip);
+
+  const guides: string[] = [];
+  const guideMetadata: Record<string, GuideMetadataEntry> = {};
+
+  for (const item of validItems as any[]) {
+    const slug = slugFromPermalink(item.relpermalink || '');
+    if (!slug) {
+      continue;
+    }
+
+    const title = item.params?.menutitle || item.params?.title || slug;
+
+    guides.push(slug);
+    guideMetadata[slug] = {
+      title,
+      estimatedMinutes: 5,
+    };
+  }
+
+  return { guides, guideMetadata };
 }
