@@ -5,7 +5,6 @@ import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import {
   DocsPluginConfig,
-  DEFAULT_RECOMMENDER_SERVICE_URL,
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   DEFAULT_OPEN_PANEL_ON_LAUNCH,
@@ -17,6 +16,7 @@ import {
   DEFAULT_ENABLE_CODA_TERMINAL,
   PLUGIN_BACKEND_URL,
   getConfigWithDefaults,
+  getDefaultRecommenderUrl,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -51,7 +51,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
   // After save, page reload brings fresh jsonData - no sync needed
   const [state, setState] = useState<State>(() => ({
-    recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
+    recommenderServiceUrl: jsonData?.recommenderServiceUrl || getDefaultRecommenderUrl(),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
     openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
@@ -417,7 +417,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 id="recommender-service-url"
                 data-testid={testIds.appConfig.recommenderServiceUrl}
                 value={state.recommenderServiceUrl}
-                placeholder={DEFAULT_RECOMMENDER_SERVICE_URL}
+                placeholder={getDefaultRecommenderUrl()}
                 onChange={onChangeRecommenderServiceUrl}
               />
             </Field>
