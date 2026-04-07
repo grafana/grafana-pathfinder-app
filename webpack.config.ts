@@ -7,7 +7,7 @@ const config = async (env: Env): Promise<Configuration> => {
   const baseConfig = await grafanaConfig(env);
 
   return merge(baseConfig, {
-    externals: ['react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client'],
+    externals: ['react/jsx-runtime', 'react/jsx-dev-runtime'],
     resolve: {
       alias: {
         // Fix dual-package hazard: @grafana/i18n ships separate ESM and CJS entry points

@@ -64,31 +64,29 @@ function ControlGroupDocPopup({ onDismiss }: ControlGroupDocPopupProps) {
 
 /**
  * Mount the control group popup into a standalone React root on document.body.
- * Cleans up after dismiss. Dynamically imports react-dom/client so that hosts
- * which don't expose it as an external degrade gracefully instead of failing
- * the chunk resolution.
+ * Cleans up after dismiss. Uses createCompatRoot so the popup works on both
+ * React 18 hosts (legacy ReactDOM.render) and React 19 hosts (createRoot).
  */
-export function showControlGroupDocPopup(source = 'url_param'): void {
-  import('react-dom/client')
-    .then(({ createRoot }) => {
-      const container = document.createElement('div');
-      container.setAttribute('data-testid', testIds.controlGroupPopup.container);
-      document.body.appendChild(container);
+export async function showControlGroupDocPopup(source = 'url_param'): Promise<void> {
+  try {
+    const { createCompatRoot } = await import('../lib/create-root-compat');
+    const container = document.createElement('div');
+    container.setAttribute('data-testid', testIds.controlGroupPopup.container);
+    document.body.appendChild(container);
 
-      const root = createRoot(container);
+    const root = await createCompatRoot(container);
 
-      const cleanup = () => {
-        root.unmount();
-        container.remove();
-      };
+    const cleanup = () => {
+      root.unmount();
+      container.remove();
+    };
 
-      root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
+    root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
 
-      reportAppInteraction(UserInteraction.NoAccess, {
-        source,
-      });
-    })
-    .catch((err) => {
-      console.error('[Pathfinder] Failed to load control group popup:', err);
+    reportAppInteraction(UserInteraction.NoAccess, {
+      source,
     });
+  } catch (err) {
+    console.error('[Pathfinder] Failed to load control group popup:', err);
+  }
 }

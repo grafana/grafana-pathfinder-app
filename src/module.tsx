@@ -236,15 +236,16 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
 
     if (!document.getElementById('pathfinder-kiosk-root')) {
-      Promise.all([import('react-dom/client'), import('./components/kiosk/KioskModeManager')])
-        .then(([{ createRoot }, { KioskModeManager }]) => {
+      import('./components/kiosk/KioskModeManager')
+        .then(async ({ KioskModeManager }) => {
           if (document.getElementById('pathfinder-kiosk-root')) {
             return;
           }
+          const { createCompatRoot } = await import('./lib/create-root-compat');
           const container = document.createElement('div');
           container.id = 'pathfinder-kiosk-root';
           document.body.appendChild(container);
-          const root = createRoot(container);
+          const root = await createCompatRoot(container);
           root.render(
             React.createElement(KioskModeManager, {
               rulesUrl: config.kioskRulesUrl,
