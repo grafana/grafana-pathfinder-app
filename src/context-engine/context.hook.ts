@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
-import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
+import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
@@ -281,16 +281,18 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   );
 
   const toggleSummaryExpansion = useCallback((recommendationUrl: string) => {
+    const matches = (rec: Recommendation) => rec.url === recommendationUrl || rec.contentUrl === recommendationUrl;
+
     setContextData((prev) => ({
       ...prev,
       recommendations: prev.recommendations.map((rec) => {
-        if (rec.url === recommendationUrl) {
+        if (matches(rec)) {
           return { ...rec, summaryExpanded: !rec.summaryExpanded };
         }
         return rec;
       }),
       featuredRecommendations: prev.featuredRecommendations.map((rec) => {
-        if (rec.url === recommendationUrl) {
+        if (matches(rec)) {
           return { ...rec, summaryExpanded: !rec.summaryExpanded };
         }
         return rec;

@@ -107,4 +107,45 @@ describe('RecommendationsSection', () => {
       }
     );
   });
+
+  it('calls toggleSummaryExpansion with contentUrl for package-backed recommendations', () => {
+    const toggleSummaryExpansion = jest.fn();
+
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            manifest: { id: 'alerting-101', type: 'guide' },
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={toggleSummaryExpansion}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Summary' }));
+
+    expect(toggleSummaryExpansion).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/alerting-101/content.json'
+    );
+  });
 });
