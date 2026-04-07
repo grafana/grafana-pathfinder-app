@@ -5,7 +5,6 @@
  */
 
 import React, { useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import { testIds } from '../constants/testIds';
 import { Modal, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -65,23 +64,31 @@ function ControlGroupDocPopup({ onDismiss }: ControlGroupDocPopupProps) {
 
 /**
  * Mount the control group popup into a standalone React root on document.body.
- * Cleans up after dismiss.
+ * Cleans up after dismiss. Dynamically imports react-dom/client so that hosts
+ * which don't expose it as an external degrade gracefully instead of failing
+ * the chunk resolution.
  */
 export function showControlGroupDocPopup(source = 'url_param'): void {
-  const container = document.createElement('div');
-  container.setAttribute('data-testid', testIds.controlGroupPopup.container);
-  document.body.appendChild(container);
+  import('react-dom/client')
+    .then(({ createRoot }) => {
+      const container = document.createElement('div');
+      container.setAttribute('data-testid', testIds.controlGroupPopup.container);
+      document.body.appendChild(container);
 
-  const root = createRoot(container);
+      const root = createRoot(container);
 
-  const cleanup = () => {
-    root.unmount();
-    container.remove();
-  };
+      const cleanup = () => {
+        root.unmount();
+        container.remove();
+      };
 
-  root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
+      root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
 
-  reportAppInteraction(UserInteraction.NoAccess, {
-    source,
-  });
+      reportAppInteraction(UserInteraction.NoAccess, {
+        source,
+      });
+    })
+    .catch((err) => {
+      console.error('[Pathfinder] Failed to load control group popup:', err);
+    });
 }
