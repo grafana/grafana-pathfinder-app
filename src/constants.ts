@@ -9,7 +9,27 @@ export const PLUGIN_BACKEND_URL = `/api/plugins/${pluginJson.id}/resources`;
 
 // Default configuration values
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
-export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana.com';
+
+const RECOMMENDER_PROD_URL = 'https://recommender.grafana.com';
+const RECOMMENDER_DEV_URL = 'https://recommender.grafana-dev.com';
+
+/**
+ * Derive the correct recommender URL from the Grafana instance hostname.
+ * Instances on *.grafana-dev.net use the dev recommender; everything else uses prod.
+ */
+export function getDefaultRecommenderUrl(hostnameOverride?: string): string {
+  try {
+    const hostname = hostnameOverride ?? window.location.hostname;
+    if (hostname.endsWith('.grafana-dev.net')) {
+      return RECOMMENDER_DEV_URL;
+    }
+  } catch {
+    // SSR / test environments where window is unavailable
+  }
+  return RECOMMENDER_PROD_URL;
+}
+
+export const DEFAULT_RECOMMENDER_SERVICE_URL = RECOMMENDER_PROD_URL;
 export const DEFAULT_TERMS_ACCEPTED = false;
 export const DEFAULT_TUTORIAL_URL = '';
 export const TERMS_VERSION = '1.0.0';
@@ -113,7 +133,7 @@ export interface DocsPluginConfig {
 export const getConfigWithDefaults = (
   config: DocsPluginConfig
 ): Omit<Required<DocsPluginConfig>, 'devModeUserIds'> & { devModeUserIds: number[] } => ({
-  recommenderServiceUrl: config.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
+  recommenderServiceUrl: config.recommenderServiceUrl || getDefaultRecommenderUrl(),
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,

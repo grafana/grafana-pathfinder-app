@@ -43,7 +43,7 @@ export const TIER_2_ENGINES = Object.entries(TIER_MAP)
   .map(([dir]) => dir);
 
 export const EXCLUDED_TOP_LEVEL = new Set(['test-utils', 'cli', 'bundled-interactives', 'img', 'locales']);
-export const ROOT_LEVEL_ALLOWED_FILES = new Set(['constants.ts', 'module.tsx']);
+export const ROOT_LEVEL_ALLOWED_FILES = new Set(['constants.ts', 'constants.test.ts', 'module.tsx']);
 
 export function toPosixPath(filePath: string): string {
   return filePath.replace(/\\/g, '/');
