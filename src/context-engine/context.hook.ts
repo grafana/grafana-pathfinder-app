@@ -281,7 +281,13 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   );
 
   const toggleSummaryExpansion = useCallback((recommendationUrl: string) => {
-    const matches = (rec: Recommendation) => rec.url === recommendationUrl || rec.contentUrl === recommendationUrl;
+    if (!recommendationUrl) {
+      return;
+    }
+
+    const matches = (rec: Recommendation) =>
+      (rec.url !== '' && rec.url === recommendationUrl) ||
+      (rec.contentUrl !== '' && rec.contentUrl === recommendationUrl);
 
     setContextData((prev) => ({
       ...prev,
