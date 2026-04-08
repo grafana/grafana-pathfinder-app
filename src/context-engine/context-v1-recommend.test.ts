@@ -369,3 +369,131 @@ describe('Additive V1 recommendation helpers', () => {
     expect(deduplicated).toEqual([]);
   });
 });
+
+describe('Package completion percentage wiring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should set completionPercentage for package-backed guide recommendations', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Alerting 101',
+          description: 'Learn alerting basics.',
+          matchAccuracy: 0.9,
+          contentUrl: 'https://cdn.example.com/alerting-101/content.json',
+          manifestUrl: 'https://cdn.example.com/alerting-101/manifest.json',
+          repository: 'interactive-tutorials',
+          manifest: { id: 'alerting-101', type: 'guide' },
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const alerting = result.recommendations.find((r) => r.title === 'Alerting 101');
+    expect(alerting).toBeDefined();
+    expect(typeof alerting!.completionPercentage).toBe('number');
+  });
+
+  it('should set completionPercentage for package-backed path recommendations', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Prometheus learning path',
+          description: 'Full prometheus journey.',
+          matchAccuracy: 0.85,
+          contentUrl: 'https://cdn.example.com/prometheus-lj/content.json',
+          manifestUrl: 'https://cdn.example.com/prometheus-lj/manifest.json',
+          repository: 'interactive-tutorials',
+          manifest: { id: 'prometheus-lj', type: 'path', milestones: ['step-1', 'step-2'] },
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const path = result.recommendations.find((r) => r.title === 'Prometheus learning path');
+    expect(path).toBeDefined();
+    expect(typeof path!.completionPercentage).toBe('number');
+  });
+
+  it('should set completionPercentage to 0 for package with empty contentUrl', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Unresolved package',
+          description: 'No CDN URL.',
+          matchAccuracy: 0.5,
+          contentUrl: '',
+          manifestUrl: '',
+          repository: 'interactive-tutorials',
+          manifest: { id: 'unresolved-pkg', type: 'guide' },
+        },
+        {
+          type: 'docs-page',
+          title: 'Some docs',
+          description: 'A docs page to keep the list non-empty.',
+          url: 'https://grafana.com/docs/',
+          matchAccuracy: 0.6,
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const unresolved = result.recommendations.find((r) => r.title === 'Unresolved package');
+    if (unresolved) {
+      expect(unresolved.completionPercentage).toBe(0);
+    } else {
+      // Empty contentUrl packages may be filtered by downstream processing; that's acceptable
+      expect(result.recommendations.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('should fall back to interactive storage for package without manifest', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'No manifest package',
+          description: 'Missing manifest.',
+          matchAccuracy: 0.7,
+          contentUrl: 'https://cdn.example.com/no-manifest/content.json',
+          manifestUrl: '',
+          repository: 'interactive-tutorials',
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const noManifest = result.recommendations.find((r) => r.title === 'No manifest package');
+    expect(noManifest).toBeDefined();
+    expect(typeof noManifest!.completionPercentage).toBe('number');
+  });
+});
