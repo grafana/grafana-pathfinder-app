@@ -1509,8 +1509,9 @@ function escapeHtmlEntities(text: string): string {
 }
 
 /**
- * Minimal markdown-to-HTML for simple structures (paragraphs + unordered lists).
- * Not a full parser — just enough for the "what to expect" card body.
+ * Minimal markdown-to-HTML for cover page content (headings, paragraphs,
+ * unordered lists, and inline links). Not a full parser — just enough for
+ * the structures found in learning path cover pages.
  */
 function simpleMarkdownToHtml(md: string): string {
   const lines = md.split('\n');
@@ -1526,25 +1527,45 @@ function simpleMarkdownToHtml(md: string): string {
       }
       continue;
     }
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)/);
+    if (headingMatch) {
+      if (inList) {
+        parts.push('</ul>');
+        inList = false;
+      }
+      const level = headingMatch[1]!.length;
+      parts.push(`<h${level}>${inlineMarkdown(headingMatch[2]!)}</h${level}>`);
+      continue;
+    }
     const listMatch = trimmed.match(/^[-*]\s+(.*)/);
     if (listMatch) {
       if (!inList) {
         parts.push('<ul>');
         inList = true;
       }
-      parts.push(`<li>${escapeHtmlEntities(listMatch[1]!)}</li>`);
+      parts.push(`<li>${inlineMarkdown(listMatch[1]!)}</li>`);
     } else {
       if (inList) {
         parts.push('</ul>');
         inList = false;
       }
-      parts.push(`<p>${escapeHtmlEntities(trimmed)}</p>`);
+      parts.push(`<p>${inlineMarkdown(trimmed)}</p>`);
     }
   }
   if (inList) {
     parts.push('</ul>');
   }
   return parts.join('\n');
+}
+
+function inlineMarkdown(text: string): string {
+  // SECURITY: escape HTML entities first, then convert markdown links (F3, F4)
+  let escaped = escapeHtmlEntities(text);
+  escaped = escaped.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    (_, label: string, href: string) => `<a href="${href}">${label}</a>`
+  );
+  return escaped;
 }
 
 function wrapInOrangeOutlineList(heading: string, bodyMarkdown: string): string {
@@ -1570,19 +1591,42 @@ const NEXT_HEADING_RE = /^#{1,3}\s+/m;
  */
 function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: LearningJourneyMetadata): string {
   try {
-    const parsed = JSON.parse(jsonContent) as { blocks?: Array<{ type: string; content?: string }> };
+    const parsed = JSON.parse(jsonContent) as {
+      id?: string;
+      title?: string;
+      blocks?: Array<{ type: string; content?: string }>;
+    };
     if (!parsed.blocks || !Array.isArray(parsed.blocks)) {
       return jsonContent;
     }
 
-    const insertIndex = wrapExpectBlockInOrangeOutline(parsed.blocks);
+    wrapExpectBlockInOrangeOutline(parsed.blocks);
 
     const extrasHtml = generateJourneyContentWithExtras('', metadata);
-    if (extrasHtml.trim()) {
-      parsed.blocks.splice(insertIndex, 0, { type: 'html', content: extrasHtml });
+
+    const htmlParts: string[] = [];
+    for (const block of parsed.blocks) {
+      if (!block.content) {
+        continue;
+      }
+      if (block.type === 'html') {
+        htmlParts.push(block.content);
+      } else if (block.type === 'markdown') {
+        htmlParts.push(simpleMarkdownToHtml(block.content));
+      }
     }
 
-    return JSON.stringify(parsed);
+    if (extrasHtml.trim()) {
+      htmlParts.push(extrasHtml);
+    }
+
+    const merged = {
+      id: parsed.id,
+      title: parsed.title,
+      blocks: [{ type: 'html', content: htmlParts.join('\n') }],
+    };
+
+    return JSON.stringify(merged);
   } catch {
     return jsonContent;
   }
@@ -1595,12 +1639,8 @@ function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: Learnin
  *
  * Content after the next heading boundary is preserved as a separate markdown block.
  *
- * @returns The index where journey extras (Ready to begin, bottom nav) should be
- *          inserted — right after the card, before the remaining content. This
- *          ensures sticky positioning works (content after the button is needed).
- *          Falls back to blocks.length if no match is found.
  */
-function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: string }>): number {
+function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: string }>): void {
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
     if (block.type !== 'markdown' || !block.content) {
@@ -1632,17 +1672,13 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
 
     replacement.push({ type: 'html', content: wrapInOrangeOutlineList(headingText, cardBody || '') });
 
-    const extrasInsertIndex = i + replacement.length;
-
     if (remainder) {
       replacement.push({ type: 'markdown', content: remainder });
     }
 
     blocks.splice(i, 1, ...replacement);
-    return extrasInsertIndex;
+    return;
   }
-
-  return blocks.length;
 }
 
 function splitAtNextHeading(text: string): { body: string; remainder: string } {
