@@ -314,11 +314,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         // Save tabs to storage after content is loaded
         this.saveTabsToStorage();
 
-        // Update completion percentage for learning journeys
+        // Update completion percentage for learning journeys.
+        // Use learningJourney.baseUrl (the path's cover page URL) as the storage
+        // key so it matches the key used by context.service.ts when reading
+        // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
         const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
-          setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+          const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
+          setJourneyCompletionPercentage(completionKey, progress);
         }
       } else {
         // Fetch failed: set error from result
@@ -580,7 +584,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                     : fetchedContent.type === 'interactive'
                       ? 'interactive'
                       : t.type,
-                ...(pathContext !== undefined && { pathContext }),
+                pathContext,
               }
             : t
         );

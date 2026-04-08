@@ -1448,10 +1448,12 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
  *
  * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
  * @param packageManifest - Optional manifest metadata to attach to the result
+ * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
  */
 export async function fetchPackageContent(
   contentUrl: string,
-  packageManifest?: Record<string, unknown>
+  packageManifest?: Record<string, unknown>,
+  preResolvedMilestones?: Milestone[]
 ): Promise<ContentFetchResult> {
   const result = await fetchContent(contentUrl);
 
@@ -1468,8 +1470,11 @@ export async function fetchPackageContent(
     const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
     const milestoneIds = getManifestMilestoneIds(packageManifest);
 
-    if (milestoneIds.length > 0) {
-      const milestones = await resolvePackageMilestones(milestoneIds, pathSlug);
+    if (milestoneIds.length > 0 || (preResolvedMilestones && preResolvedMilestones.length > 0)) {
+      const milestones =
+        preResolvedMilestones && preResolvedMilestones.length > 0
+          ? preResolvedMilestones
+          : await resolvePackageMilestones(milestoneIds, pathSlug);
       if (milestones.length > 0) {
         const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;

@@ -4,7 +4,7 @@
  */
 
 import { SceneObject, SceneObjectState } from '@grafana/scenes';
-import { RawContent, LearningJourneyMetadata } from './content.types';
+import { RawContent, LearningJourneyMetadata, Milestone } from './content.types';
 import { DocsPluginConfig } from '../constants';
 
 /**
@@ -51,6 +51,8 @@ export interface PersistedTabData {
 export interface PackageOpenInfo {
   packageId?: string;
   packageManifest?: Record<string, unknown>;
+  /** Pre-resolved milestones from context panel to avoid redundant resolution in fetchPackageContent */
+  resolvedMilestones?: Milestone[];
 }
 
 export interface ContextPanelState extends SceneObjectState {
