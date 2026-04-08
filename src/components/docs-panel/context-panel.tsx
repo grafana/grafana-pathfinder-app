@@ -114,6 +114,27 @@ const getRecommendationContentUrl = (recommendation: Recommendation): string => 
   return recommendation.url;
 };
 
+/**
+ * Extract navigation arrays from a package recommendation's manifest.
+ * Returns empty arrays for non-package recommendations or missing data.
+ */
+function getManifestNavigation(recommendation: Recommendation): { recommends: string[]; suggests: string[] } {
+  if (recommendation.type !== 'package') {
+    return { recommends: [], suggests: [] };
+  }
+  const manifest = recommendation.manifest as Record<string, unknown> | undefined;
+  if (!manifest) {
+    return { recommends: [], suggests: [] };
+  }
+  const recommends = Array.isArray(manifest.recommends)
+    ? manifest.recommends.filter((s): s is string => typeof s === 'string')
+    : [];
+  const suggests = Array.isArray(manifest.suggests)
+    ? manifest.suggests.filter((s): s is string => typeof s === 'string')
+    : [];
+  return { recommends, suggests };
+}
+
 const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
   if (recommendation.type !== 'package') {
     return undefined;
@@ -481,6 +502,80 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   </div>
                                 )}
 
+                              {(() => {
+                                const nav = getManifestNavigation(recommendation);
+                                const hasNav = nav.recommends.length > 0 || nav.suggests.length > 0;
+                                if (!hasNav) {
+                                  return null;
+                                }
+                                return (
+                                  <div className={styles.milestonesSection}>
+                                    {nav.recommends.length > 0 && (
+                                      <>
+                                        <div className={styles.milestonesHeader}>
+                                          <h4 className={styles.milestonesTitle}>
+                                            {t('contextPanel.recommendedNext', 'Recommended next')}
+                                          </h4>
+                                        </div>
+                                        <div className={styles.milestonesList}>
+                                          {nav.recommends.map((pkgId) => (
+                                            <button
+                                              key={pkgId}
+                                              onClick={() => {
+                                                reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                                  content_title: pkgId,
+                                                  content_url: '',
+                                                  content_type: 'package-nav-link',
+                                                  interaction_location: 'featured_recommends_section',
+                                                });
+                                                openDocsPage('', pkgId, { packageId: pkgId });
+                                              }}
+                                              className={styles.milestoneItem}
+                                            >
+                                              <Icon name="arrow-right" size="sm" />
+                                              <div className={styles.milestoneContent}>
+                                                <div className={styles.milestoneTitle}>{pkgId}</div>
+                                              </div>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                    {nav.suggests.length > 0 && (
+                                      <>
+                                        <div className={styles.milestonesHeader}>
+                                          <h4 className={styles.milestonesTitle}>
+                                            {t('contextPanel.youMightAlsoLike', 'You might also like')}
+                                          </h4>
+                                        </div>
+                                        <div className={styles.milestonesList}>
+                                          {nav.suggests.map((pkgId) => (
+                                            <button
+                                              key={pkgId}
+                                              onClick={() => {
+                                                reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                                  content_title: pkgId,
+                                                  content_url: '',
+                                                  content_type: 'package-nav-link',
+                                                  interaction_location: 'featured_suggests_section',
+                                                });
+                                                openDocsPage('', pkgId, { packageId: pkgId });
+                                              }}
+                                              className={styles.milestoneItem}
+                                            >
+                                              <Icon name="link" size="sm" />
+                                              <div className={styles.milestoneContent}>
+                                                <div className={styles.milestoneTitle}>{pkgId}</div>
+                                              </div>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+
                               <div className={styles.summaryCta}>
                                 <button
                                   onClick={() => {
@@ -695,6 +790,80 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   </div>
                                 </div>
                               )}
+
+                            {(() => {
+                              const nav = getManifestNavigation(recommendation);
+                              const hasNav = nav.recommends.length > 0 || nav.suggests.length > 0;
+                              if (!hasNav) {
+                                return null;
+                              }
+                              return (
+                                <div className={styles.milestonesSection}>
+                                  {nav.recommends.length > 0 && (
+                                    <>
+                                      <div className={styles.milestonesHeader}>
+                                        <h4 className={styles.milestonesTitle}>
+                                          {t('contextPanel.recommendedNext', 'Recommended next')}
+                                        </h4>
+                                      </div>
+                                      <div className={styles.milestonesList}>
+                                        {nav.recommends.map((pkgId) => (
+                                          <button
+                                            key={pkgId}
+                                            onClick={() => {
+                                              reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                                content_title: pkgId,
+                                                content_url: '',
+                                                content_type: 'package-nav-link',
+                                                interaction_location: 'recommends_section',
+                                              });
+                                              openDocsPage('', pkgId, { packageId: pkgId });
+                                            }}
+                                            className={styles.milestoneItem}
+                                          >
+                                            <Icon name="arrow-right" size="sm" />
+                                            <div className={styles.milestoneContent}>
+                                              <div className={styles.milestoneTitle}>{pkgId}</div>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                                  {nav.suggests.length > 0 && (
+                                    <>
+                                      <div className={styles.milestonesHeader}>
+                                        <h4 className={styles.milestonesTitle}>
+                                          {t('contextPanel.youMightAlsoLike', 'You might also like')}
+                                        </h4>
+                                      </div>
+                                      <div className={styles.milestonesList}>
+                                        {nav.suggests.map((pkgId) => (
+                                          <button
+                                            key={pkgId}
+                                            onClick={() => {
+                                              reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                                content_title: pkgId,
+                                                content_url: '',
+                                                content_type: 'package-nav-link',
+                                                interaction_location: 'suggests_section',
+                                              });
+                                              openDocsPage('', pkgId, { packageId: pkgId });
+                                            }}
+                                            className={styles.milestoneItem}
+                                          >
+                                            <Icon name="link" size="sm" />
+                                            <div className={styles.milestoneContent}>
+                                              <div className={styles.milestoneTitle}>{pkgId}</div>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             <div className={styles.summaryCta}>
                               <button

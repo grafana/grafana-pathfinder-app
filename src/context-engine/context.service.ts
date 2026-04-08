@@ -834,6 +834,20 @@ export class ContextService {
             };
           }
         }
+
+        if (rec.type === 'package') {
+          const contentUrl = rec.contentUrl ?? '';
+          if (!contentUrl) {
+            return { ...rec, completionPercentage: 0 };
+          }
+          const manifestType = (rec.manifest as Record<string, unknown> | undefined)?.type;
+          const completionPercentage =
+            manifestType === 'path' || manifestType === 'journey'
+              ? await getJourneyCompletionPercentageAsync(contentUrl)
+              : await interactiveCompletionStorage.get(contentUrl);
+          return { ...rec, completionPercentage };
+        }
+
         return rec;
       })
     );

@@ -268,4 +268,127 @@ describe('RecommendationsSection', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json'
     );
   });
+
+  it('shows completion percentage for package with completionPercentage set', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            manifest: { id: 'alerting-101', type: 'guide' },
+            completionPercentage: 42,
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText('{{percent}}% complete')).toBeInTheDocument();
+  });
+
+  it('shows Resume button for package with partial completion', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            manifest: { id: 'alerting-101', type: 'guide' },
+            completionPercentage: 50,
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  });
+
+  it('renders recommended next links for package with manifest.recommends', () => {
+    const openDocsPage = jest.fn();
+
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            summaryExpanded: true,
+            manifest: {
+              id: 'alerting-101',
+              type: 'guide',
+              recommends: ['alerting-notifications', 'slo-quickstart'],
+              suggests: ['explore-drilldowns-101'],
+            },
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={openDocsPage}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText('Recommended next')).toBeInTheDocument();
+    expect(screen.getByText('alerting-notifications')).toBeInTheDocument();
+    expect(screen.getByText('slo-quickstart')).toBeInTheDocument();
+
+    expect(screen.getByText('You might also like')).toBeInTheDocument();
+    expect(screen.getByText('explore-drilldowns-101')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('alerting-notifications'));
+    expect(openDocsPage).toHaveBeenCalledWith('', 'alerting-notifications', { packageId: 'alerting-notifications' });
+  });
 });
