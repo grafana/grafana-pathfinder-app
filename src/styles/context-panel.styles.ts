@@ -152,7 +152,8 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
   }),
   // Interactive guide tag - orange color (action-oriented)
   categoryTagInteractive: css({
-    display: 'inline-block',
+    display: 'inline-flex',
+    alignItems: 'center',
     fontSize: '11px',
     fontWeight: theme.typography.fontWeightMedium,
     padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
@@ -162,6 +163,12 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.isDark ? 'rgba(255, 152, 48, 0.15)' : 'rgba(255, 152, 48, 0.15)',
     border: `1px solid ${theme.isDark ? 'rgba(255, 152, 48, 0.25)' : 'rgba(255, 152, 48, 0.25)'}`,
     color: theme.isDark ? '#ffb366' : '#b35c00',
+  }),
+  packagePillIcon: css({
+    display: 'inline-block',
+    fontSize: '10px',
+    lineHeight: 1,
+    marginRight: theme.spacing(0.5),
   }),
   // Learning journey tag - purple color (exploration)
   categoryTagJourney: css({
