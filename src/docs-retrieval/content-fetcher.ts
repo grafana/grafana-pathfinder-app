@@ -1531,7 +1531,7 @@ function escapeHtmlEntities(text: string): string {
  * unordered lists, and inline links). Not a full parser — just enough for
  * the structures found in learning path cover pages.
  */
-function simpleMarkdownToHtml(md: string): string {
+export function simpleMarkdownToHtml(md: string): string {
   const lines = md.split('\n');
   const parts: string[] = [];
   let inList = false;
@@ -1577,16 +1577,28 @@ function simpleMarkdownToHtml(md: string): string {
 }
 
 function inlineMarkdown(text: string): string {
-  // SECURITY: escape HTML entities first, then convert markdown links (F3, F4, F6)
-  let escaped = escapeHtmlEntities(text);
-  escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, href: string) => {
-    const safeHref = sanitizeHtmlUrl(href);
-    if (!safeHref) {
-      return label;
+  // SECURITY: process markdown links on raw text so hrefs are only escaped once
+  // by sanitizeHtmlUrl (which calls escapeHtml internally). Non-link segments
+  // are escaped separately via escapeHtmlEntities. (F3, F4, F6)
+  const linkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = linkRe.exec(text)) !== null) {
+    parts.push(escapeHtmlEntities(text.slice(lastIndex, match.index)));
+    const label = escapeHtmlEntities(match[1]!);
+    const safeHref = sanitizeHtmlUrl(match[2]!);
+    if (safeHref) {
+      parts.push(`<a href="${safeHref}">${label}</a>`);
+    } else {
+      parts.push(label);
     }
-    return `<a href="${safeHref}">${label}</a>`;
-  });
-  return escaped;
+    lastIndex = match.index + match[0].length;
+  }
+
+  parts.push(escapeHtmlEntities(text.slice(lastIndex)));
+  return parts.join('');
 }
 
 function wrapInOrangeOutlineList(heading: string, bodyMarkdown: string): string {
