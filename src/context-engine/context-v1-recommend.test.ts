@@ -80,6 +80,7 @@ jest.mock('../docs-retrieval', () => ({
     { number: 1, title: 'Milestone 1', duration: '5-10 min', url: 'bundled:ms-1/content.json', isActive: false },
     { number: 2, title: 'Milestone 2', duration: '5-10 min', url: 'bundled:ms-2/content.json', isActive: false },
   ]),
+  derivePathSlug: jest.fn().mockImplementation((id: string) => (id.endsWith('-lj') ? id.slice(0, -3) : id)),
 }));
 
 jest.mock('../lib/user-storage', () => ({

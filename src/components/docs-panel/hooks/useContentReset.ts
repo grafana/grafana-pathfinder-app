@@ -15,7 +15,7 @@ import {
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
-import { isDocsLikeTab } from '../utils';
+import { shouldUseDocsLoader } from '../utils';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
@@ -67,7 +67,7 @@ export function useContentReset({ model, setHasInteractiveProgress }: UseContent
         );
 
         // Step 5: Reload content to reset UI state
-        if (isDocsLikeTab(activeTab.type)) {
+        if (shouldUseDocsLoader(activeTab)) {
           await model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
           await model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);

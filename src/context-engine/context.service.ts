@@ -7,7 +7,12 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
-import { fetchContent, getJourneyCompletionPercentageAsync, resolvePackageMilestones } from '../docs-retrieval';
+import {
+  fetchContent,
+  getJourneyCompletionPercentageAsync,
+  resolvePackageMilestones,
+  derivePathSlug,
+} from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
@@ -849,8 +854,10 @@ export class ContextService {
 
           if (isPath && Array.isArray(manifest?.milestones)) {
             const milestoneIds = (manifest!.milestones as unknown[]).filter((s): s is string => typeof s === 'string');
+            const manifestId = typeof manifest?.id === 'string' ? manifest.id : '';
+            const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
             try {
-              const milestones = await resolvePackageMilestones(milestoneIds);
+              const milestones = await resolvePackageMilestones(milestoneIds, pathSlug);
               return {
                 ...rec,
                 completionPercentage,

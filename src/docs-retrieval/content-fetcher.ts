@@ -1373,7 +1373,7 @@ function buildMilestoneWebsiteUrl(pathSlug: string, milestoneId: string): string
  * Derive the path slug from a path-type manifest ID.
  * Strips the conventional `-lj` suffix if present.
  */
-function derivePathSlug(manifestId: string): string {
+export function derivePathSlug(manifestId: string): string {
   return manifestId.endsWith('-lj') ? manifestId.slice(0, -3) : manifestId;
 }
 

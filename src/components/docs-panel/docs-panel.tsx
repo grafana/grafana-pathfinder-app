@@ -80,6 +80,7 @@ import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './
 // Import extracted utilities
 import {
   isDocsLikeTab,
+  shouldUseDocsLoader,
   getTranslatedTitle,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
@@ -185,7 +186,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (activeTab && activeTab.id !== 'recommendations') {
       // If we have an active tab but no content, load it
       if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-        if (isDocsLikeTab(activeTab.type)) {
+        if (shouldUseDocsLoader(activeTab)) {
           this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
           this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
@@ -420,10 +421,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
-      if (isDocsLikeTab(tab.type) && !tab.content) {
-        this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
-      } else if (!isDocsLikeTab(tab.type) && !tab.content) {
-        this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
+      if (!tab.content) {
+        if (shouldUseDocsLoader(tab)) {
+          this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
+        } else {
+          this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
+        }
       }
     }
   }
@@ -929,7 +932,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Helper: Reload active tab content (DRY - was duplicated 3x)
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
-      if (isDocsLikeTab(tab.type)) {
+      if (shouldUseDocsLoader(tab)) {
         model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
       } else {
         model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);

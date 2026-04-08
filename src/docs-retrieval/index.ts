@@ -18,7 +18,13 @@ export * from './html-parser';
 export { fetchContent as fetchUnifiedContent } from './content-fetcher';
 
 // Package content integration (Phase 4g)
-export { fetchPackageContent, fetchPackageById, setPackageResolver, resolvePackageMilestones } from './content-fetcher';
+export {
+  fetchPackageContent,
+  fetchPackageById,
+  setPackageResolver,
+  resolvePackageMilestones,
+  derivePathSlug,
+} from './content-fetcher';
 
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
