@@ -56,6 +56,7 @@ import {
   markMilestoneDone,
   isLastMilestone,
   setPackageResolver,
+  injectJourneyExtrasIntoJsonGuide,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -282,15 +283,24 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         if (tab?.pathContext) {
           const currentMilestone = this.findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
+          const learningJourney = {
+            ...tab.pathContext.learningJourney,
+            currentMilestone,
+          };
+
+          if (currentMilestone === 0) {
+            content = {
+              ...content,
+              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
+            };
+          }
+
           content = {
             ...content,
             type: 'learning-journey',
             metadata: {
               ...content.metadata,
-              learningJourney: {
-                ...tab.pathContext.learningJourney,
-                currentMilestone,
-              },
+              learningJourney,
               ...(tab.packageInfo?.packageManifest != null && {
                 packageManifest: tab.packageInfo.packageManifest,
               }),

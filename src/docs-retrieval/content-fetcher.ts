@@ -1627,7 +1627,7 @@ const NEXT_HEADING_RE = /^#{1,3}\s+/m;
  * card styling into JSON guide content for path packages.
  * Falls back to returning the original content if parsing fails.
  */
-function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: LearningJourneyMetadata): string {
+export function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: LearningJourneyMetadata): string {
   try {
     const parsed = JSON.parse(jsonContent) as {
       id?: string;
