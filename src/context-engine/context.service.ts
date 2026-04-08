@@ -11,6 +11,7 @@ import {
   fetchContent,
   getJourneyCompletionPercentageAsync,
   resolvePackageMilestones,
+  resolvePackageNavLinks,
   derivePathSlug,
 } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
@@ -852,24 +853,45 @@ export class ContextService {
             ? await getJourneyCompletionPercentageAsync(contentUrl)
             : await interactiveCompletionStorage.get(contentUrl);
 
+          let enriched: Record<string, unknown> = { completionPercentage };
+
           if (isPath && Array.isArray(manifest?.milestones)) {
             const milestoneIds = (manifest!.milestones as unknown[]).filter((s): s is string => typeof s === 'string');
             const manifestId = typeof manifest?.id === 'string' ? manifest.id : '';
             const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
             try {
               const milestones = await resolvePackageMilestones(milestoneIds, pathSlug);
-              return {
-                ...rec,
-                completionPercentage,
-                milestones,
-                totalSteps: milestones.length,
-              };
+              enriched = { ...enriched, milestones, totalSteps: milestones.length };
             } catch {
-              return { ...rec, completionPercentage };
+              // keep enriched as-is
             }
           }
 
-          return { ...rec, completionPercentage };
+          const recommendIds = Array.isArray(manifest?.recommends)
+            ? (manifest!.recommends as unknown[]).filter((s): s is string => typeof s === 'string')
+            : [];
+          const suggestIds = Array.isArray(manifest?.suggests)
+            ? (manifest!.suggests as unknown[]).filter((s): s is string => typeof s === 'string')
+            : [];
+
+          if (recommendIds.length > 0 || suggestIds.length > 0) {
+            try {
+              const [resolvedRecommends, resolvedSuggests] = await Promise.all([
+                resolvePackageNavLinks(recommendIds),
+                resolvePackageNavLinks(suggestIds),
+              ]);
+              if (resolvedRecommends.length > 0) {
+                enriched = { ...enriched, resolvedRecommends };
+              }
+              if (resolvedSuggests.length > 0) {
+                enriched = { ...enriched, resolvedSuggests };
+              }
+            } catch {
+              // nav link resolution is best-effort
+            }
+          }
+
+          return { ...rec, ...enriched };
         }
 
         return rec;

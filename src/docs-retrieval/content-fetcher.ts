@@ -12,6 +12,7 @@ import {
   Milestone,
 } from '../types/content.types';
 import type { PackageResolver } from '../types';
+import type { ResolvedNavLink } from '../types/context.types';
 import { getPackageRenderType } from '../types/package.types';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
@@ -1419,6 +1420,47 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
   }
 
   return milestones;
+}
+
+/**
+ * Resolve bare package IDs (from manifest `recommends`/`suggests`) into
+ * {@link ResolvedNavLink} objects so the context panel can display
+ * human-readable titles and open packages with the correct type.
+ *
+ * Unresolvable IDs are silently skipped.
+ */
+export async function resolvePackageNavLinks(packageIds: string[]): Promise<ResolvedNavLink[]> {
+  if (!_packageResolver || packageIds.length === 0) {
+    return [];
+  }
+
+  const links: ResolvedNavLink[] = [];
+
+  for (const id of packageIds) {
+    try {
+      const resolution = await _packageResolver.resolve(id, { loadContent: true });
+      if (!resolution.ok) {
+        console.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
+        continue;
+      }
+
+      const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+      const manifest: Record<string, unknown> | undefined = resolution.manifest
+        ? (resolution.manifest as unknown as Record<string, unknown>)
+        : undefined;
+
+      links.push({
+        packageId: id,
+        title,
+        contentUrl: resolution.contentUrl,
+        manifest,
+      });
+    } catch (err) {
+      console.warn(`[resolvePackageNavLinks] Error resolving package ${id}:`, err);
+    }
+  }
+
+  return links;
 }
 
 function isPathManifest(manifest?: Record<string, unknown>): boolean {

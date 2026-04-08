@@ -23,6 +23,7 @@ export {
   fetchPackageById,
   setPackageResolver,
   resolvePackageMilestones,
+  resolvePackageNavLinks,
   derivePathSlug,
 } from './content-fetcher';
 

@@ -80,6 +80,16 @@ jest.mock('../docs-retrieval', () => ({
     { number: 1, title: 'Milestone 1', duration: '5-10 min', url: 'bundled:ms-1/content.json', isActive: false },
     { number: 2, title: 'Milestone 2', duration: '5-10 min', url: 'bundled:ms-2/content.json', isActive: false },
   ]),
+  resolvePackageNavLinks: jest.fn().mockImplementation((ids: string[]) =>
+    Promise.resolve(
+      ids.map((id) => ({
+        packageId: id,
+        title: `Resolved: ${id}`,
+        contentUrl: `bundled:${id}/content.json`,
+        manifest: { id, type: 'guide' },
+      }))
+    )
+  ),
   derivePathSlug: jest.fn().mockImplementation((id: string) => (id.endsWith('-lj') ? id.slice(0, -3) : id)),
 }));
 
@@ -651,5 +661,79 @@ describe('Path package milestone resolution in processLearningJourneys', () => {
     expect(guideRec).toBeDefined();
     expect(guideRec!.milestones).toBeUndefined();
     expect(guideRec!.totalSteps).toBeUndefined();
+  });
+});
+
+describe('Package recommends/suggests nav link resolution', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should resolve recommends and suggests into ResolvedNavLink arrays', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Alerting 101',
+          description: 'Learn alerting',
+          url: '',
+          matchAccuracy: 0.9,
+          contentUrl: 'https://cdn.example.com/packages/alerting-101/content.json',
+          manifest: {
+            id: 'alerting-101',
+            type: 'guide',
+            recommends: ['alerting-notifications', 'slo-quickstart'],
+            suggests: ['explore-drilldowns-101'],
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const rec = result.recommendations.find((r) => r.title === 'Alerting 101');
+    expect(rec).toBeDefined();
+    expect(rec!.resolvedRecommends).toHaveLength(2);
+    expect(rec!.resolvedRecommends![0]!.packageId).toBe('alerting-notifications');
+    expect(rec!.resolvedRecommends![0]!.title).toBe('Resolved: alerting-notifications');
+    expect(rec!.resolvedRecommends![0]!.contentUrl).toBe('bundled:alerting-notifications/content.json');
+    expect(rec!.resolvedSuggests).toHaveLength(1);
+    expect(rec!.resolvedSuggests![0]!.packageId).toBe('explore-drilldowns-101');
+  });
+
+  it('should not set resolvedRecommends/resolvedSuggests when manifest has no nav links', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Simple Guide',
+          description: 'No nav links',
+          url: '',
+          matchAccuracy: 0.8,
+          contentUrl: 'https://cdn.example.com/packages/simple/content.json',
+          manifest: {
+            id: 'simple-guide',
+            type: 'guide',
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const rec = result.recommendations.find((r) => r.title === 'Simple Guide');
+    expect(rec).toBeDefined();
+    expect(rec!.resolvedRecommends).toBeUndefined();
+    expect(rec!.resolvedSuggests).toBeUndefined();
   });
 });
