@@ -1575,11 +1575,11 @@ function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: Learnin
       return jsonContent;
     }
 
-    wrapExpectBlockInOrangeOutline(parsed.blocks);
+    const insertIndex = wrapExpectBlockInOrangeOutline(parsed.blocks);
 
     const extrasHtml = generateJourneyContentWithExtras('', metadata);
     if (extrasHtml.trim()) {
-      parsed.blocks.push({ type: 'html', content: extrasHtml });
+      parsed.blocks.splice(insertIndex, 0, { type: 'html', content: extrasHtml });
     }
 
     return JSON.stringify(parsed);
@@ -1594,8 +1594,13 @@ function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: Learnin
  * is converted to HTML via simpleMarkdownToHtml so list items render correctly.
  *
  * Content after the next heading boundary is preserved as a separate markdown block.
+ *
+ * @returns The index where journey extras (Ready to begin, bottom nav) should be
+ *          inserted — right after the card, before the remaining content. This
+ *          ensures sticky positioning works (content after the button is needed).
+ *          Falls back to blocks.length if no match is found.
  */
-function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: string }>): void {
+function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: string }>): number {
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
     if (block.type !== 'markdown' || !block.content) {
@@ -1627,13 +1632,17 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
 
     replacement.push({ type: 'html', content: wrapInOrangeOutlineList(headingText, cardBody || '') });
 
+    const extrasInsertIndex = i + replacement.length;
+
     if (remainder) {
       replacement.push({ type: 'markdown', content: remainder });
     }
 
     blocks.splice(i, 1, ...replacement);
-    return;
+    return extrasInsertIndex;
   }
+
+  return blocks.length;
 }
 
 function splitAtNextHeading(text: string): { body: string; remainder: string } {
