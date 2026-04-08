@@ -1350,11 +1350,71 @@ export function setPackageResolver(resolver: PackageResolver): void {
 }
 
 /**
+ * Resolve manifest milestone IDs into rich Milestone objects via the injected
+ * PackageResolver. Each milestone ID is resolved to obtain its contentUrl (used
+ * as the navigation URL) and its manifest title. Unresolvable milestones are
+ * silently skipped so partial data still renders.
+ *
+ * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
+ * @returns Milestone[] suitable for LearningJourneyMetadata and Recommendation.milestones
+ */
+export async function resolvePackageMilestones(milestoneIds: string[]): Promise<Milestone[]> {
+  if (!_packageResolver || milestoneIds.length === 0) {
+    return [];
+  }
+
+  const milestones: Milestone[] = [];
+  let sequenceNumber = 1;
+
+  for (const id of milestoneIds) {
+    try {
+      const resolution = await _packageResolver.resolve(id, { loadContent: true });
+      if (!resolution.ok) {
+        console.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
+        continue;
+      }
+
+      const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+
+      milestones.push({
+        number: sequenceNumber++,
+        title,
+        duration: '5-10 min',
+        url: resolution.contentUrl,
+        isActive: false,
+      });
+    } catch (err) {
+      console.warn(`[resolvePackageMilestones] Error resolving milestone ${id}:`, err);
+    }
+  }
+
+  return milestones;
+}
+
+function isPathManifest(manifest?: Record<string, unknown>): boolean {
+  if (!manifest || typeof manifest.type !== 'string') {
+    return false;
+  }
+  return manifest.type === 'path' || manifest.type === 'journey';
+}
+
+function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
+  if (!manifest || !Array.isArray(manifest.milestones)) {
+    return [];
+  }
+  return manifest.milestones.filter((s): s is string => typeof s === 'string');
+}
+
+/**
  * Fetch package content from a pre-resolved contentUrl (CDN or bundled).
  *
  * This is the primary fetch path for package-backed recommendations.
  * The v1 recommender response already carries a resolved contentUrl, so no
  * resolver call is needed — we fetch directly and enrich with manifest metadata.
+ *
+ * For path/journey packages, also resolves manifest milestones into
+ * LearningJourneyMetadata so the docs panel renders the milestone progress
+ * bar and arrow navigation.
  *
  * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
  * @param packageManifest - Optional manifest metadata to attach to the result
@@ -1369,14 +1429,34 @@ export async function fetchPackageContent(
     return result;
   }
 
+  const renderType = getPackageRenderType(packageManifest);
+  let learningJourney: LearningJourneyMetadata | undefined;
+
+  if (renderType === 'learning-journey' && isPathManifest(packageManifest)) {
+    const milestoneIds = getManifestMilestoneIds(packageManifest);
+    if (milestoneIds.length > 0) {
+      const milestones = await resolvePackageMilestones(milestoneIds);
+      if (milestones.length > 0) {
+        learningJourney = {
+          currentMilestone: 0,
+          totalMilestones: milestones.length,
+          milestones,
+          baseUrl: contentUrl,
+          summary: result.content.metadata.singleDoc?.summary,
+        };
+      }
+    }
+  }
+
   return {
     ...result,
     content: {
       ...result.content,
-      type: getPackageRenderType(packageManifest),
+      type: renderType,
       metadata: {
         ...result.content.metadata,
         ...(packageManifest !== undefined && { packageManifest }),
+        ...(learningJourney !== undefined && { learningJourney }),
       },
     },
   };

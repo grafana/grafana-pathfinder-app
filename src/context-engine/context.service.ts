@@ -7,7 +7,7 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
-import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
+import { fetchContent, getJourneyCompletionPercentageAsync, resolvePackageMilestones } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
@@ -840,11 +840,28 @@ export class ContextService {
           if (!contentUrl) {
             return { ...rec, completionPercentage: 0 };
           }
-          const manifestType = (rec.manifest as Record<string, unknown> | undefined)?.type;
-          const completionPercentage =
-            manifestType === 'path' || manifestType === 'journey'
-              ? await getJourneyCompletionPercentageAsync(contentUrl)
-              : await interactiveCompletionStorage.get(contentUrl);
+          const manifest = rec.manifest as Record<string, unknown> | undefined;
+          const manifestType = manifest?.type;
+          const isPath = manifestType === 'path' || manifestType === 'journey';
+          const completionPercentage = isPath
+            ? await getJourneyCompletionPercentageAsync(contentUrl)
+            : await interactiveCompletionStorage.get(contentUrl);
+
+          if (isPath && Array.isArray(manifest?.milestones)) {
+            const milestoneIds = (manifest!.milestones as unknown[]).filter((s): s is string => typeof s === 'string');
+            try {
+              const milestones = await resolvePackageMilestones(milestoneIds);
+              return {
+                ...rec,
+                completionPercentage,
+                milestones,
+                totalSteps: milestones.length,
+              };
+            } catch {
+              return { ...rec, completionPercentage };
+            }
+          }
+
           return { ...rec, completionPercentage };
         }
 

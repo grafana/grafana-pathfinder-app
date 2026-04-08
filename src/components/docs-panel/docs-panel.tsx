@@ -272,19 +272,40 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({ tabs: updatedTabs });
 
     try {
+      const tab = this.state.tabs.find((t) => t.id === tabId);
       const result = await fetchContent(url);
 
       // Check if fetch succeeded or failed
       if (result.content) {
+        let content = result.content;
+
+        if (tab?.pathContext) {
+          const currentMilestone = this.findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
+          content = {
+            ...content,
+            type: 'learning-journey',
+            metadata: {
+              ...content.metadata,
+              learningJourney: {
+                ...tab.pathContext.learningJourney,
+                currentMilestone,
+              },
+              ...(tab.packageInfo?.packageManifest != null && {
+                packageManifest: tab.packageInfo.packageManifest,
+              }),
+            },
+          };
+        }
+
         // Success: set content and clear error
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
             ? {
                 ...t,
-                content: result.content,
+                content,
                 isLoading: false,
                 error: null,
-                currentUrl: url, // Ensure currentUrl is set to the actual loaded URL
+                currentUrl: url,
               }
             : t
         );
@@ -332,6 +353,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Save tabs to storage even when there's an error
       this.saveTabsToStorage();
     }
+  }
+
+  private findCurrentMilestoneIndex(milestones: Array<{ url: string }>, currentUrl: string): number {
+    const index = milestones.findIndex((m) => m.url === currentUrl);
+    return index >= 0 ? index + 1 : 0;
   }
 
   public closeTab(tabId: string) {
@@ -534,6 +560,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       if (result.content) {
         // Success: set content and clear error
         const fetchedContent = result.content;
+
+        const pathContext = fetchedContent.metadata.learningJourney
+          ? { learningJourney: fetchedContent.metadata.learningJourney }
+          : undefined;
+
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
             ? {
@@ -549,6 +580,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                     : fetchedContent.type === 'interactive'
                       ? 'interactive'
                       : t.type,
+                ...(pathContext !== undefined && { pathContext }),
               }
             : t
         );

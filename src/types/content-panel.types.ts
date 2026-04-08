@@ -4,8 +4,17 @@
  */
 
 import { SceneObject, SceneObjectState } from '@grafana/scenes';
-import { RawContent } from './content.types';
+import { RawContent, LearningJourneyMetadata } from './content.types';
 import { DocsPluginConfig } from '../constants';
+
+/**
+ * Resolved milestone context for path-type packages.
+ * Stored on the tab so milestone arrow navigation can rebuild
+ * learningJourney metadata after fetching each milestone's content.
+ */
+export interface PathContext {
+  learningJourney: LearningJourneyMetadata;
+}
 
 /**
  * Learning Path or Documentation Tab
@@ -15,12 +24,15 @@ export interface LearningJourneyTab {
   id: string;
   title: string;
   baseUrl: string;
-  currentUrl: string; // The specific milestone/page URL currently loaded
-  content: RawContent | null; // Unified content type
+  currentUrl: string;
+  content: RawContent | null;
   isLoading: boolean;
   error: string | null;
   type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
   packageInfo?: PackageOpenInfo;
+  /** Cached milestone data from initial path package load, used to persist
+   *  learningJourney metadata across milestone arrow navigation. */
+  pathContext?: PathContext;
 }
 
 /**

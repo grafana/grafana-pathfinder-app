@@ -486,10 +486,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               content_url: contentUrl,
                                               interaction_location: 'featured_milestone_list',
                                             });
-                                            openLearningJourney(
-                                              milestone.url,
-                                              `${recommendation.title} - ${milestone.title}`
-                                            );
+                                            if (packageInfo) {
+                                              openDocsPage(contentUrl, recommendation.title, packageInfo);
+                                            } else {
+                                              openLearningJourney(
+                                                milestone.url,
+                                                `${recommendation.title} - ${milestone.title}`
+                                              );
+                                            }
                                           }}
                                           className={styles.milestoneItem}
                                         >
@@ -772,10 +776,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             content_url: contentUrl,
                                             interaction_location: 'milestone_list',
                                           });
-                                          openLearningJourney(
-                                            milestone.url,
-                                            `${recommendation.title} - ${milestone.title}`
-                                          );
+                                          if (packageInfo) {
+                                            openDocsPage(contentUrl, recommendation.title, packageInfo);
+                                          } else {
+                                            openLearningJourney(
+                                              milestone.url,
+                                              `${recommendation.title} - ${milestone.title}`
+                                            );
+                                          }
                                         }}
                                         className={styles.milestoneItem}
                                         data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
