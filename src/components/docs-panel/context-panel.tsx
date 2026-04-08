@@ -374,6 +374,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                         <div className={styles.cardTitleSection}>
                           <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
                           <span className={getCategoryTagStyle(styles, displayType)}>
+                            {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
                             {getCategoryLabel(displayType)}
                           </span>
                         </div>
@@ -651,6 +652,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                           {recommendation.title}
                         </h3>
                         <span className={getCategoryTagStyle(styles, displayType)}>
+                          {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
                           {getCategoryLabel(displayType)}
                         </span>
                       </div>
