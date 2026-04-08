@@ -487,7 +487,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               interaction_location: 'featured_milestone_list',
                                             });
                                             if (packageInfo) {
-                                              openDocsPage(contentUrl, recommendation.title, packageInfo);
+                                              openDocsPage(milestone.url, recommendation.title, packageInfo);
                                             } else {
                                               openLearningJourney(
                                                 milestone.url,
@@ -777,7 +777,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             interaction_location: 'milestone_list',
                                           });
                                           if (packageInfo) {
-                                            openDocsPage(contentUrl, recommendation.title, packageInfo);
+                                            openDocsPage(milestone.url, recommendation.title, packageInfo);
                                           } else {
                                             openLearningJourney(
                                               milestone.url,
