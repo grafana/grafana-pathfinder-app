@@ -59,6 +59,13 @@ export interface LearningJourneyMetadata {
 
   /** Base URL for the journey (without milestone paths) */
   baseUrl: string;
+
+  /**
+   * Public website URL for this journey (e.g., grafana.com/docs/learning-paths/...).
+   * Present for package-backed paths so the "Open" button can link to the
+   * canonical docs page rather than the CDN content URL.
+   */
+  websiteUrl?: string;
 }
 
 export interface SingleDocMetadata {
@@ -79,6 +86,8 @@ export interface Milestone {
   duration: string;
   url: string;
   isActive: boolean;
+  /** Canonical website URL for this milestone (e.g., grafana.com/docs/learning-paths/.../milestone-slug/) */
+  websiteUrl?: string;
   sideJourneys?: SideJourneys;
   relatedJourneys?: RelatedJourneys;
   conclusionImage?: ConclusionImage;

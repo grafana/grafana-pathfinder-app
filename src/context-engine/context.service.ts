@@ -7,7 +7,13 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
-import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
+import {
+  fetchContent,
+  getJourneyCompletionPercentageAsync,
+  resolvePackageMilestones,
+  resolvePackageNavLinks,
+  derivePathSlug,
+} from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
@@ -840,12 +846,52 @@ export class ContextService {
           if (!contentUrl) {
             return { ...rec, completionPercentage: 0 };
           }
-          const manifestType = (rec.manifest as Record<string, unknown> | undefined)?.type;
-          const completionPercentage =
-            manifestType === 'path' || manifestType === 'journey'
-              ? await getJourneyCompletionPercentageAsync(contentUrl)
-              : await interactiveCompletionStorage.get(contentUrl);
-          return { ...rec, completionPercentage };
+          const manifest = rec.manifest as Record<string, unknown> | undefined;
+          const manifestType = manifest?.type;
+          const isPath = manifestType === 'path' || manifestType === 'journey';
+          const completionPercentage = isPath
+            ? await getJourneyCompletionPercentageAsync(contentUrl)
+            : await interactiveCompletionStorage.get(contentUrl);
+
+          let enriched: Record<string, unknown> = { completionPercentage };
+
+          if (isPath && Array.isArray(manifest?.milestones)) {
+            const milestoneIds = (manifest!.milestones as unknown[]).filter((s): s is string => typeof s === 'string');
+            const manifestId = typeof manifest?.id === 'string' ? manifest.id : '';
+            const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
+            try {
+              const milestones = await resolvePackageMilestones(milestoneIds, pathSlug);
+              enriched = { ...enriched, milestones, totalSteps: milestones.length };
+            } catch {
+              // keep enriched as-is
+            }
+          }
+
+          const recommendIds = Array.isArray(manifest?.recommends)
+            ? (manifest!.recommends as unknown[]).filter((s): s is string => typeof s === 'string')
+            : [];
+          const suggestIds = Array.isArray(manifest?.suggests)
+            ? (manifest!.suggests as unknown[]).filter((s): s is string => typeof s === 'string')
+            : [];
+
+          if (recommendIds.length > 0 || suggestIds.length > 0) {
+            try {
+              const [resolvedRecommends, resolvedSuggests] = await Promise.all([
+                resolvePackageNavLinks(recommendIds),
+                resolvePackageNavLinks(suggestIds),
+              ]);
+              if (resolvedRecommends.length > 0) {
+                enriched = { ...enriched, resolvedRecommends };
+              }
+              if (resolvedSuggests.length > 0) {
+                enriched = { ...enriched, resolvedSuggests };
+              }
+            } catch {
+              // nav link resolution is best-effort
+            }
+          }
+
+          return { ...rec, ...enriched };
         }
 
         return rec;

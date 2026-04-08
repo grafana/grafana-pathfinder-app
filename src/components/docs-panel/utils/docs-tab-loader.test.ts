@@ -33,7 +33,8 @@ describe('loadDocsTabContentResult', () => {
 
     expect(mockFetchPackageContent).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
-      packageManifest
+      packageManifest,
+      undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();

@@ -13,6 +13,7 @@ import { locationService, config, getAppEvents } from '@grafana/runtime';
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
+import type { ResolvedNavLink } from '../../types/context.types';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
@@ -115,25 +116,42 @@ const getRecommendationContentUrl = (recommendation: Recommendation): string => 
 };
 
 /**
- * Extract navigation arrays from a package recommendation's manifest.
- * Returns empty arrays for non-package recommendations or missing data.
+ * Extract resolved navigation links from a package recommendation.
+ * Prefers pre-resolved data set by processLearningJourneys; falls back to
+ * wrapping raw manifest IDs so the UI still renders (with ID as title).
  */
-function getManifestNavigation(recommendation: Recommendation): { recommends: string[]; suggests: string[] } {
+function getManifestNavigation(recommendation: Recommendation): {
+  recommends: ResolvedNavLink[];
+  suggests: ResolvedNavLink[];
+} {
   if (recommendation.type !== 'package') {
     return { recommends: [], suggests: [] };
   }
+
+  const toFallback = (id: string): ResolvedNavLink => ({ packageId: id, title: id, contentUrl: '' });
+
+  if (recommendation.resolvedRecommends || recommendation.resolvedSuggests) {
+    return {
+      recommends: recommendation.resolvedRecommends ?? [],
+      suggests: recommendation.resolvedSuggests ?? [],
+    };
+  }
+
   const manifest = recommendation.manifest as Record<string, unknown> | undefined;
   if (!manifest) {
     return { recommends: [], suggests: [] };
   }
   const recommends = Array.isArray(manifest.recommends)
-    ? manifest.recommends.filter((s): s is string => typeof s === 'string')
+    ? manifest.recommends.filter((s): s is string => typeof s === 'string').map(toFallback)
     : [];
   const suggests = Array.isArray(manifest.suggests)
-    ? manifest.suggests.filter((s): s is string => typeof s === 'string')
+    ? manifest.suggests.filter((s): s is string => typeof s === 'string').map(toFallback)
     : [];
   return { recommends, suggests };
 }
+
+const getNavLinkIcon = (link: ResolvedNavLink): IconName =>
+  getPackageRenderType(link.manifest) === 'learning-journey' ? 'graph-bar' : 'link';
 
 const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
   if (recommendation.type !== 'package') {
@@ -147,6 +165,7 @@ const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOp
   return {
     packageId,
     packageManifest: recommendation.manifest,
+    resolvedMilestones: Array.isArray(recommendation.milestones) ? recommendation.milestones : undefined,
   };
 };
 
@@ -486,10 +505,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               content_url: contentUrl,
                                               interaction_location: 'featured_milestone_list',
                                             });
-                                            openLearningJourney(
-                                              milestone.url,
-                                              `${recommendation.title} - ${milestone.title}`
-                                            );
+                                            if (packageInfo) {
+                                              openDocsPage(milestone.url, recommendation.title, packageInfo);
+                                            } else {
+                                              openLearningJourney(
+                                                milestone.url,
+                                                `${recommendation.title} - ${milestone.title}`
+                                              );
+                                            }
                                           }}
                                           className={styles.milestoneItem}
                                         >
@@ -519,23 +542,26 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                           </h4>
                                         </div>
                                         <div className={styles.milestonesList}>
-                                          {nav.recommends.map((pkgId) => (
+                                          {nav.recommends.map((link) => (
                                             <button
-                                              key={pkgId}
+                                              key={link.packageId}
                                               onClick={() => {
                                                 reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                  content_title: pkgId,
-                                                  content_url: '',
+                                                  content_title: link.title,
+                                                  content_url: link.contentUrl,
                                                   content_type: 'package-nav-link',
                                                   interaction_location: 'featured_recommends_section',
                                                 });
-                                                openDocsPage('', pkgId, { packageId: pkgId });
+                                                openDocsPage(link.contentUrl, link.title, {
+                                                  packageId: link.packageId,
+                                                  packageManifest: link.manifest,
+                                                });
                                               }}
                                               className={styles.milestoneItem}
                                             >
                                               <Icon name="arrow-right" size="sm" />
                                               <div className={styles.milestoneContent}>
-                                                <div className={styles.milestoneTitle}>{pkgId}</div>
+                                                <div className={styles.milestoneTitle}>{link.title}</div>
                                               </div>
                                             </button>
                                           ))}
@@ -550,23 +576,26 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                           </h4>
                                         </div>
                                         <div className={styles.milestonesList}>
-                                          {nav.suggests.map((pkgId) => (
+                                          {nav.suggests.map((link) => (
                                             <button
-                                              key={pkgId}
+                                              key={link.packageId}
                                               onClick={() => {
                                                 reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                  content_title: pkgId,
-                                                  content_url: '',
+                                                  content_title: link.title,
+                                                  content_url: link.contentUrl,
                                                   content_type: 'package-nav-link',
                                                   interaction_location: 'featured_suggests_section',
                                                 });
-                                                openDocsPage('', pkgId, { packageId: pkgId });
+                                                openDocsPage(link.contentUrl, link.title, {
+                                                  packageId: link.packageId,
+                                                  packageManifest: link.manifest,
+                                                });
                                               }}
                                               className={styles.milestoneItem}
                                             >
-                                              <Icon name="link" size="sm" />
+                                              <Icon name={getNavLinkIcon(link)} size="sm" />
                                               <div className={styles.milestoneContent}>
-                                                <div className={styles.milestoneTitle}>{pkgId}</div>
+                                                <div className={styles.milestoneTitle}>{link.title}</div>
                                               </div>
                                             </button>
                                           ))}
@@ -772,10 +801,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             content_url: contentUrl,
                                             interaction_location: 'milestone_list',
                                           });
-                                          openLearningJourney(
-                                            milestone.url,
-                                            `${recommendation.title} - ${milestone.title}`
-                                          );
+                                          if (packageInfo) {
+                                            openDocsPage(milestone.url, recommendation.title, packageInfo);
+                                          } else {
+                                            openLearningJourney(
+                                              milestone.url,
+                                              `${recommendation.title} - ${milestone.title}`
+                                            );
+                                          }
                                         }}
                                         className={styles.milestoneItem}
                                         data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
@@ -809,23 +842,26 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                         </h4>
                                       </div>
                                       <div className={styles.milestonesList}>
-                                        {nav.recommends.map((pkgId) => (
+                                        {nav.recommends.map((link) => (
                                           <button
-                                            key={pkgId}
+                                            key={link.packageId}
                                             onClick={() => {
                                               reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                content_title: pkgId,
-                                                content_url: '',
+                                                content_title: link.title,
+                                                content_url: link.contentUrl,
                                                 content_type: 'package-nav-link',
                                                 interaction_location: 'recommends_section',
                                               });
-                                              openDocsPage('', pkgId, { packageId: pkgId });
+                                              openDocsPage(link.contentUrl, link.title, {
+                                                packageId: link.packageId,
+                                                packageManifest: link.manifest,
+                                              });
                                             }}
                                             className={styles.milestoneItem}
                                           >
                                             <Icon name="arrow-right" size="sm" />
                                             <div className={styles.milestoneContent}>
-                                              <div className={styles.milestoneTitle}>{pkgId}</div>
+                                              <div className={styles.milestoneTitle}>{link.title}</div>
                                             </div>
                                           </button>
                                         ))}
@@ -840,23 +876,26 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                         </h4>
                                       </div>
                                       <div className={styles.milestonesList}>
-                                        {nav.suggests.map((pkgId) => (
+                                        {nav.suggests.map((link) => (
                                           <button
-                                            key={pkgId}
+                                            key={link.packageId}
                                             onClick={() => {
                                               reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                content_title: pkgId,
-                                                content_url: '',
+                                                content_title: link.title,
+                                                content_url: link.contentUrl,
                                                 content_type: 'package-nav-link',
                                                 interaction_location: 'suggests_section',
                                               });
-                                              openDocsPage('', pkgId, { packageId: pkgId });
+                                              openDocsPage(link.contentUrl, link.title, {
+                                                packageId: link.packageId,
+                                                packageManifest: link.manifest,
+                                              });
                                             }}
                                             className={styles.milestoneItem}
                                           >
-                                            <Icon name="link" size="sm" />
+                                            <Icon name={getNavLinkIcon(link)} size="sm" />
                                             <div className={styles.milestoneContent}>
-                                              <div className={styles.milestoneTitle}>{pkgId}</div>
+                                              <div className={styles.milestoneTitle}>{link.title}</div>
                                             </div>
                                           </button>
                                         ))}

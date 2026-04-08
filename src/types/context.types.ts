@@ -53,6 +53,14 @@ export interface DashboardInfo {
   folderTitle?: string;
 }
 
+/** Resolved metadata for a package navigation link (recommends/suggests). */
+export interface ResolvedNavLink {
+  packageId: string;
+  title: string;
+  contentUrl: string;
+  manifest?: Record<string, unknown>;
+}
+
 export interface Recommendation {
   title: string;
   url: string;
@@ -74,6 +82,11 @@ export interface Recommendation {
   repository?: string;
   /** Package manifest metadata from v1 response (package-backed only) */
   manifest?: Record<string, unknown>;
+
+  /** Pre-resolved manifest.recommends nav links (package-backed only) */
+  resolvedRecommends?: ResolvedNavLink[];
+  /** Pre-resolved manifest.suggests nav links (package-backed only) */
+  resolvedSuggests?: ResolvedNavLink[];
 
   [key: string]: any;
 }

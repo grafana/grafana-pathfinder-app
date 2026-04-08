@@ -56,6 +56,7 @@ import {
   markMilestoneDone,
   isLastMilestone,
   setPackageResolver,
+  injectJourneyExtrasIntoJsonGuide,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -80,6 +81,7 @@ import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './
 // Import extracted utilities
 import {
   isDocsLikeTab,
+  shouldUseDocsLoader,
   getTranslatedTitle,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
@@ -185,7 +187,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (activeTab && activeTab.id !== 'recommendations') {
       // If we have an active tab but no content, load it
       if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-        if (isDocsLikeTab(activeTab.type)) {
+        if (shouldUseDocsLoader(activeTab)) {
           this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
           this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
@@ -272,19 +274,49 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({ tabs: updatedTabs });
 
     try {
+      const tab = this.state.tabs.find((t) => t.id === tabId);
       const result = await fetchContent(url);
 
       // Check if fetch succeeded or failed
       if (result.content) {
+        let content = result.content;
+
+        if (tab?.pathContext) {
+          const currentMilestone = this.findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
+          const learningJourney = {
+            ...tab.pathContext.learningJourney,
+            currentMilestone,
+          };
+
+          if (currentMilestone === 0) {
+            content = {
+              ...content,
+              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
+            };
+          }
+
+          content = {
+            ...content,
+            type: 'learning-journey',
+            metadata: {
+              ...content.metadata,
+              learningJourney,
+              ...(tab.packageInfo?.packageManifest != null && {
+                packageManifest: tab.packageInfo.packageManifest,
+              }),
+            },
+          };
+        }
+
         // Success: set content and clear error
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
             ? {
                 ...t,
-                content: result.content,
+                content,
                 isLoading: false,
                 error: null,
-                currentUrl: url, // Ensure currentUrl is set to the actual loaded URL
+                currentUrl: url,
               }
             : t
         );
@@ -293,11 +325,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         // Save tabs to storage after content is loaded
         this.saveTabsToStorage();
 
-        // Update completion percentage for learning journeys
+        // Update completion percentage for learning journeys.
+        // Use learningJourney.baseUrl (the path's cover page URL) as the storage
+        // key so it matches the key used by context.service.ts when reading
+        // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
         const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
-          setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+          const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
+          setJourneyCompletionPercentage(completionKey, progress);
         }
       } else {
         // Fetch failed: set error from result
@@ -332,6 +368,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Save tabs to storage even when there's an error
       this.saveTabsToStorage();
     }
+  }
+
+  private findCurrentMilestoneIndex(milestones: Array<{ url: string }>, currentUrl: string): number {
+    const index = milestones.findIndex((m) => m.url === currentUrl);
+    return index >= 0 ? index + 1 : 0;
   }
 
   public closeTab(tabId: string) {
@@ -390,10 +431,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
-      if (isDocsLikeTab(tab.type) && !tab.content) {
-        this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
-      } else if (!isDocsLikeTab(tab.type) && !tab.content) {
-        this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
+      if (!tab.content) {
+        if (shouldUseDocsLoader(tab)) {
+          this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
+        } else {
+          this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
+        }
       }
     }
   }
@@ -534,6 +577,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       if (result.content) {
         // Success: set content and clear error
         const fetchedContent = result.content;
+
+        const pathContext = fetchedContent.metadata.learningJourney
+          ? { learningJourney: fetchedContent.metadata.learningJourney }
+          : undefined;
+
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
             ? {
@@ -549,6 +597,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                     : fetchedContent.type === 'interactive'
                       ? 'interactive'
                       : t.type,
+                pathContext,
               }
             : t
         );
@@ -893,7 +942,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Helper: Reload active tab content (DRY - was duplicated 3x)
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
-      if (isDocsLikeTab(tab.type)) {
+      if (shouldUseDocsLoader(tab)) {
         model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
       } else {
         model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);
@@ -1706,7 +1755,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       </div>
                       <div className={styles.milestoneActions}>
                         {(() => {
-                          const url = activeTab.content?.url || activeTab.baseUrl;
+                          const lj = activeTab.content?.metadata.learningJourney;
+                          const currentMs = lj?.milestones.find((m) => m.number === (lj?.currentMilestone ?? 0));
+                          const websiteUrl = currentMs?.websiteUrl ?? lj?.websiteUrl;
+                          const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
+                          const url = websiteUrl || fallbackUrl;
                           if (url) {
                             const cleanUrl = cleanDocsUrl(url);
                             return (
@@ -1724,9 +1777,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                     source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                                     link_type: 'external_browser',
                                     interaction_location: 'milestone_progress_bar',
-                                    current_milestone:
-                                      activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                                    total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
+                                    current_milestone: lj?.currentMilestone || 0,
+                                    total_milestones: lj?.totalMilestones || 0,
                                   });
                                   setTimeout(() => {
                                     window.open(cleanUrl, '_blank', 'noopener,noreferrer');

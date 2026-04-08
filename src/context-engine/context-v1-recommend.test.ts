@@ -76,6 +76,21 @@ jest.mock('../docs-retrieval', () => ({
     content: { metadata: { learningJourney: { milestones: [], summary: '' } } },
   }),
   getJourneyCompletionPercentageAsync: jest.fn().mockResolvedValue(0),
+  resolvePackageMilestones: jest.fn().mockResolvedValue([
+    { number: 1, title: 'Milestone 1', duration: '5-10 min', url: 'bundled:ms-1/content.json', isActive: false },
+    { number: 2, title: 'Milestone 2', duration: '5-10 min', url: 'bundled:ms-2/content.json', isActive: false },
+  ]),
+  resolvePackageNavLinks: jest.fn().mockImplementation((ids: string[]) =>
+    Promise.resolve(
+      ids.map((id) => ({
+        packageId: id,
+        title: `Resolved: ${id}`,
+        contentUrl: `bundled:${id}/content.json`,
+        manifest: { id, type: 'guide' },
+      }))
+    )
+  ),
+  derivePathSlug: jest.fn().mockImplementation((id: string) => (id.endsWith('-lj') ? id.slice(0, -3) : id)),
 }));
 
 jest.mock('../lib/user-storage', () => ({
@@ -495,5 +510,230 @@ describe('Package completion percentage wiring', () => {
     const noManifest = result.recommendations.find((r) => r.title === 'No manifest package');
     expect(noManifest).toBeDefined();
     expect(typeof noManifest!.completionPercentage).toBe('number');
+  });
+});
+
+describe('V1 error handling and edge cases', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should fall back gracefully when v1 returns HTTP 500', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(result.errorType).toBe('other');
+  });
+
+  it('should fall back gracefully when v1 returns HTTP 403', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(result.errorType).toBe('other');
+  });
+
+  it('should return only bundled interactives when v1 returns empty recommendations', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ recommendations: [], featured: [] }),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(Array.isArray(result.recommendations)).toBe(true);
+    expect(result.error).toBeNull();
+  });
+
+  it('should pass through unrecognized recommendation types without crashing', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'unknown-future-type' as any,
+          title: 'Future content',
+          description: 'Some new type of recommendation',
+          url: 'https://grafana.com/docs/future/',
+          matchAccuracy: 0.7,
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    const futureRec = result.recommendations.find((r) => r.title === 'Future content');
+    expect(futureRec).toBeDefined();
+    expect(futureRec!.type).toBe('docs-page');
+  });
+
+  it('should fall back gracefully when fetch rejects with a network error', async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(result.errorType).toBe('unavailable');
+  });
+});
+
+describe('Path package milestone resolution in processLearningJourneys', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should populate milestones and totalSteps for path-type package recommendations', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Grafana Cloud Tour',
+          description: 'A tour of Grafana Cloud',
+          url: '',
+          matchAccuracy: 0.9,
+          contentUrl: 'https://cdn.example.com/packages/cloud-tour/content.json',
+          manifestUrl: 'https://cdn.example.com/packages/cloud-tour/manifest.json',
+          manifest: {
+            id: 'grafana-cloud-tour-lj',
+            type: 'path',
+            milestones: ['ms-1', 'ms-2'],
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const pathRec = result.recommendations.find((r) => r.title === 'Grafana Cloud Tour');
+    expect(pathRec).toBeDefined();
+    expect(pathRec!.milestones).toHaveLength(2);
+    expect(pathRec!.totalSteps).toBe(2);
+    expect(pathRec!.milestones![0]!.title).toBe('Milestone 1');
+  });
+
+  it('should not populate milestones for guide-type package recommendations', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'A Guide',
+          description: 'Just a guide',
+          url: '',
+          matchAccuracy: 0.8,
+          contentUrl: 'https://cdn.example.com/packages/guide/content.json',
+          manifest: {
+            id: 'some-guide',
+            type: 'guide',
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const guideRec = result.recommendations.find((r) => r.title === 'A Guide');
+    expect(guideRec).toBeDefined();
+    expect(guideRec!.milestones).toBeUndefined();
+    expect(guideRec!.totalSteps).toBeUndefined();
+  });
+});
+
+describe('Package recommends/suggests nav link resolution', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should resolve recommends and suggests into ResolvedNavLink arrays', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Alerting 101',
+          description: 'Learn alerting',
+          url: '',
+          matchAccuracy: 0.9,
+          contentUrl: 'https://cdn.example.com/packages/alerting-101/content.json',
+          manifest: {
+            id: 'alerting-101',
+            type: 'guide',
+            recommends: ['alerting-notifications', 'slo-quickstart'],
+            suggests: ['explore-drilldowns-101'],
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const rec = result.recommendations.find((r) => r.title === 'Alerting 101');
+    expect(rec).toBeDefined();
+    expect(rec!.resolvedRecommends).toHaveLength(2);
+    expect(rec!.resolvedRecommends![0]!.packageId).toBe('alerting-notifications');
+    expect(rec!.resolvedRecommends![0]!.title).toBe('Resolved: alerting-notifications');
+    expect(rec!.resolvedRecommends![0]!.contentUrl).toBe('bundled:alerting-notifications/content.json');
+    expect(rec!.resolvedSuggests).toHaveLength(1);
+    expect(rec!.resolvedSuggests![0]!.packageId).toBe('explore-drilldowns-101');
+  });
+
+  it('should not set resolvedRecommends/resolvedSuggests when manifest has no nav links', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Simple Guide',
+          description: 'No nav links',
+          url: '',
+          matchAccuracy: 0.8,
+          contentUrl: 'https://cdn.example.com/packages/simple/content.json',
+          manifest: {
+            id: 'simple-guide',
+            type: 'guide',
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const rec = result.recommendations.find((r) => r.title === 'Simple Guide');
+    expect(rec).toBeDefined();
+    expect(rec!.resolvedRecommends).toBeUndefined();
+    expect(rec!.resolvedSuggests).toBeUndefined();
   });
 });

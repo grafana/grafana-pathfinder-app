@@ -389,6 +389,73 @@ describe('RecommendationsSection', () => {
     expect(screen.getByText('explore-drilldowns-101')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('alerting-notifications'));
-    expect(openDocsPage).toHaveBeenCalledWith('', 'alerting-notifications', { packageId: 'alerting-notifications' });
+    expect(openDocsPage).toHaveBeenCalledWith('', 'alerting-notifications', {
+      packageId: 'alerting-notifications',
+      packageManifest: undefined,
+    });
+  });
+
+  it('renders resolved titles for recommends/suggests when pre-resolved data is available', () => {
+    const openDocsPage = jest.fn();
+
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Grafana Cloud Tour',
+            url: '',
+            contentUrl: 'https://cdn.example.com/packages/cloud-tour/content.json',
+            type: 'package',
+            summary: 'Tour Grafana Cloud.',
+            summaryExpanded: true,
+            manifest: {
+              id: 'grafana-cloud-tour-lj',
+              type: 'path',
+              suggests: ['visualization-metrics-lj', 'linux-server-integration-lj'],
+            },
+            resolvedSuggests: [
+              {
+                packageId: 'visualization-metrics-lj',
+                title: 'Visualize metrics',
+                contentUrl: 'bundled:visualization-metrics-lj/content.json',
+                manifest: { id: 'visualization-metrics-lj', type: 'path' },
+              },
+              {
+                packageId: 'linux-server-integration-lj',
+                title: 'Monitor a Linux server',
+                contentUrl: 'bundled:linux-server-integration-lj/content.json',
+                manifest: { id: 'linux-server-integration-lj', type: 'path' },
+              },
+            ],
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={openDocsPage}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText('You might also like')).toBeInTheDocument();
+    expect(screen.getByText('Visualize metrics')).toBeInTheDocument();
+    expect(screen.getByText('Monitor a Linux server')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Visualize metrics'));
+    expect(openDocsPage).toHaveBeenCalledWith('bundled:visualization-metrics-lj/content.json', 'Visualize metrics', {
+      packageId: 'visualization-metrics-lj',
+      packageManifest: { id: 'visualization-metrics-lj', type: 'path' },
+    });
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Tests for content fetcher security validation and JSON-first fetching
  */
-import { fetchContent } from './content-fetcher';
+import { fetchContent, simpleMarkdownToHtml } from './content-fetcher';
 
 // Mock AbortSignal.timeout for Node environments that don't support it
 if (!AbortSignal.timeout) {
@@ -307,57 +307,64 @@ describe('fetchContent security validation', () => {
   });
 });
 
-describe('fetchContent security validation', () => {
-  describe('URL validation at entry point', () => {
-    it('should allow grafana.com docs URLs', async () => {
-      // Note: This will fail to fetch (no network in tests), but should pass validation
-      const result = await fetchContent('https://grafana.com/docs/grafana/latest/');
-      // Should not reject with security error
-      expect(result.error).not.toContain('interactive learning URLs');
-    });
+// ---------------------------------------------------------------------------
+// simpleMarkdownToHtml / inlineMarkdown — covers the double-encoding fix
+// ---------------------------------------------------------------------------
 
-    it('should allow bundled content', async () => {
-      // This might fail if bundled content doesn't exist, but should pass validation
-      const result = await fetchContent('bundled:test-content');
-      // Should not reject with security error
-      expect(result.error).not.toContain('interactive learning URLs');
-    });
+describe('simpleMarkdownToHtml', () => {
+  it('converts a plain paragraph', () => {
+    expect(simpleMarkdownToHtml('Hello world')).toBe('<p>Hello world</p>');
+  });
 
-    it('should allow interactive learning URLs', async () => {
-      const result = await fetchContent('https://interactive-learning.grafana.net/tutorial/');
-      // Should not reject with security error
-      expect(result.error).not.toContain('interactive learning URLs');
-    });
+  it('converts headings', () => {
+    expect(simpleMarkdownToHtml('## Heading')).toBe('<h2>Heading</h2>');
+  });
 
-    it('should allow interactive learning dev URLs', async () => {
-      const result = await fetchContent('https://interactive-learning.grafana-dev.net/tutorial/');
-      // Should not reject with security error
-      expect(result.error).not.toContain('interactive learning URLs');
-    });
+  it('converts unordered list items', () => {
+    const md = '- Item 1\n- Item 2';
+    expect(simpleMarkdownToHtml(md)).toBe('<ul>\n<li>Item 1</li>\n<li>Item 2</li>\n</ul>');
+  });
 
-    it('should reject non-grafana.com URLs', async () => {
-      const result = await fetchContent('https://evil.com/docs/malicious/');
-      expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation');
-      expect(result.errorType).toBe('other');
-    });
+  it('converts markdown links to anchor tags', () => {
+    const md = 'Visit [Grafana](https://grafana.com) for more info.';
+    expect(simpleMarkdownToHtml(md)).toBe('<p>Visit <a href="https://grafana.com">Grafana</a> for more info.</p>');
+  });
 
-    it('should reject domain hijacking attempts', async () => {
-      const result = await fetchContent('https://grafana.com.evil.com/docs/');
-      expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation');
-    });
+  it('does not double-encode ampersands in link hrefs', () => {
+    const md = 'See [docs](https://example.com/page?a=1&b=2) here.';
+    const html = simpleMarkdownToHtml(md);
+    expect(html).toContain('href="https://example.com/page?a=1&amp;b=2"');
+    expect(html).not.toContain('&amp;amp;');
+  });
 
-    it('should reject URLs with docs-like paths but wrong domain', async () => {
-      const result = await fetchContent('https://example.com/tutorials/evil-tutorial/');
-      expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation');
-    });
+  it('does not double-encode ampersands in hrefs with multiple query params', () => {
+    const md = '[link](https://example.com?x=1&y=2&z=3)';
+    const html = simpleMarkdownToHtml(md);
+    expect(html).toContain('href="https://example.com?x=1&amp;y=2&amp;z=3"');
+    expect(html).not.toContain('&amp;amp;');
+  });
 
-    it('should reject interactive learning domain hijacking', async () => {
-      const result = await fetchContent('https://interactive-learning.grafana.net.evil.com/tutorial/');
-      expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation');
-    });
+  it('escapes HTML entities in plain text', () => {
+    const md = 'Use <b> tags & "quotes" carefully.';
+    const html = simpleMarkdownToHtml(md);
+    expect(html).toContain('&lt;b&gt;');
+    expect(html).toContain('&amp;');
+    expect(html).toContain('&quot;');
+    expect(html).not.toContain('<b>');
+  });
+
+  it('escapes HTML entities in link labels', () => {
+    const md = '[<script>alert(1)</script>](https://safe.com)';
+    const html = simpleMarkdownToHtml(md);
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('strips javascript: URLs from links', () => {
+    const md = '[click](javascript:alert(1))';
+    const html = simpleMarkdownToHtml(md);
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('<a');
+    expect(html).toContain('click');
   });
 });
