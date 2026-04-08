@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
-import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
+import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
+import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 
@@ -273,23 +274,31 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   );
 
   const openDocsPage = useCallback(
-    (url: string, title: string) => {
-      onOpenDocsPage?.(url, title);
+    (url: string, title: string, packageInfo?: PackageOpenInfo) => {
+      onOpenDocsPage?.(url, title, packageInfo);
     },
     [onOpenDocsPage]
   );
 
   const toggleSummaryExpansion = useCallback((recommendationUrl: string) => {
+    if (!recommendationUrl) {
+      return;
+    }
+
+    const matches = (rec: Recommendation) =>
+      (rec.url !== '' && rec.url === recommendationUrl) ||
+      (rec.contentUrl !== '' && rec.contentUrl === recommendationUrl);
+
     setContextData((prev) => ({
       ...prev,
       recommendations: prev.recommendations.map((rec) => {
-        if (rec.url === recommendationUrl) {
+        if (matches(rec)) {
           return { ...rec, summaryExpanded: !rec.summaryExpanded };
         }
         return rec;
       }),
       featuredRecommendations: prev.featuredRecommendations.map((rec) => {
-        if (rec.url === recommendationUrl) {
+        if (matches(rec)) {
           return { ...rec, summaryExpanded: !rec.summaryExpanded };
         }
         return rec;

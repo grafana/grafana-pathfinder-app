@@ -17,6 +17,7 @@ import {
   PLUGIN_BACKEND_URL,
   getConfigWithDefaults,
   getDefaultRecommenderUrl,
+  isKnownRecommenderUrl,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -51,7 +52,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
   // After save, page reload brings fresh jsonData - no sync needed
   const [state, setState] = useState<State>(() => ({
-    recommenderServiceUrl: jsonData?.recommenderServiceUrl || getDefaultRecommenderUrl(),
+    recommenderServiceUrl:
+      jsonData?.recommenderServiceUrl && !isKnownRecommenderUrl(jsonData.recommenderServiceUrl)
+        ? jsonData.recommenderServiceUrl
+        : getDefaultRecommenderUrl(),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
     openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,

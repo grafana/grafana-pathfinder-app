@@ -5,7 +5,6 @@
  */
 
 import React, { useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import { testIds } from '../constants/testIds';
 import { Modal, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -65,23 +64,29 @@ function ControlGroupDocPopup({ onDismiss }: ControlGroupDocPopupProps) {
 
 /**
  * Mount the control group popup into a standalone React root on document.body.
- * Cleans up after dismiss.
+ * Cleans up after dismiss. Uses createCompatRoot so the popup works on both
+ * React 18 hosts (legacy ReactDOM.render) and React 19 hosts (createRoot).
  */
-export function showControlGroupDocPopup(source = 'url_param'): void {
-  const container = document.createElement('div');
-  container.setAttribute('data-testid', testIds.controlGroupPopup.container);
-  document.body.appendChild(container);
+export async function showControlGroupDocPopup(source = 'url_param'): Promise<void> {
+  try {
+    const { createCompatRoot } = await import('../lib/create-root-compat');
+    const container = document.createElement('div');
+    container.setAttribute('data-testid', testIds.controlGroupPopup.container);
+    document.body.appendChild(container);
 
-  const root = createRoot(container);
+    const root = await createCompatRoot(container);
 
-  const cleanup = () => {
-    root.unmount();
-    container.remove();
-  };
+    const cleanup = () => {
+      root.unmount();
+      container.remove();
+    };
 
-  root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
+    root.render(<ControlGroupDocPopup onDismiss={cleanup} />);
 
-  reportAppInteraction(UserInteraction.NoAccess, {
-    source,
-  });
+    reportAppInteraction(UserInteraction.NoAccess, {
+      source,
+    });
+  } catch (err) {
+    console.error('[Pathfinder] Failed to load control group popup:', err);
+  }
 }

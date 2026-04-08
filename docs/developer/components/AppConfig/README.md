@@ -167,7 +167,7 @@ interface DocsPluginConfig {
 
 **Recommendations:**
 
-- Recommender Service: `https://grafana-recommender-93209135917.us-central1.run.app`
+- Recommender Service: `https://recommender.grafana.com` (auto-selected per environment; see `getDefaultRecommenderUrl()`)
 - Terms Accepted: `false`
 
 **Dev Mode:**

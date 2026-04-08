@@ -9,6 +9,18 @@ import { ContextService } from './context.service';
 import type { V1RecommenderResponse } from '../types/v1-recommender.types';
 import type { ContextData, Recommendation } from '../types/context.types';
 
+jest.mock('../bundled-interactives/index.json', () => ({
+  interactives: [
+    {
+      id: 'welcome-to-grafana',
+      title: 'Welcome to Grafana',
+      filename: 'welcome-to-grafana/content.json',
+      url: ['/'],
+      summary: 'Bundled version',
+    },
+  ],
+}));
+
 jest.mock('../utils/dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
   isDevModeEnabledGlobal: jest.fn(() => false),
@@ -112,12 +124,12 @@ function makeV1Response(overrides: Partial<V1RecommenderResponse> = {}): V1Recom
   };
 }
 
-describe('Legacy recommend branch isolation', () => {
+describe('V1 /api/v1/recommend endpoint integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should call the legacy /recommend endpoint (v1 gated behind dev mode)', async () => {
+  it('should call POST /api/v1/recommend', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(makeV1Response()),
@@ -126,16 +138,16 @@ describe('Legacy recommend branch isolation', () => {
     await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
 
     const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
-    expect(calledUrl).toBe('https://recommender.grafana.com/recommend');
+    expect(calledUrl).toBe('https://recommender.grafana.com/api/v1/recommend');
   });
 
-  it('should preserve summary from the legacy /recommend response', async () => {
-    const legacyResponse = {
+  it('should map description to summary from v1 response', async () => {
+    const v1Response = {
       recommendations: [
         {
           type: 'docs-page',
           title: 'Grafana Alerting',
-          summary: 'Legacy summary text',
+          description: 'Learn how to configure alerts in Grafana.',
           url: 'https://grafana.com/docs/alerting/',
           matchAccuracy: 0.85,
         },
@@ -144,23 +156,23 @@ describe('Legacy recommend branch isolation', () => {
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve(legacyResponse),
+      json: () => Promise.resolve(v1Response),
     });
 
     const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
 
     const urlBacked = result.recommendations.find((r) => r.type === 'docs-page');
     expect(urlBacked).toBeDefined();
-    expect(urlBacked!.summary).toBe('Legacy summary text');
+    expect(urlBacked!.summary).toBe('Learn how to configure alerts in Grafana.');
   });
 
-  it('should sanitize legacy recommendations without spreading raw properties', async () => {
-    const legacyResponse = {
+  it('should sanitize v1 recommendations and not pass through raw properties', async () => {
+    const v1Response = {
       recommendations: [
         {
           type: 'docs-page',
           title: 'Grafana Alerting<script>alert("xss")</script>',
-          summary: 'Docs for alerting',
+          description: 'Docs for alerting',
           url: 'https://grafana.com/docs/alerting/',
           matchAccuracy: 0.9,
           __proto__: { polluted: true },
@@ -172,7 +184,7 @@ describe('Legacy recommend branch isolation', () => {
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve(legacyResponse),
+      json: () => Promise.resolve(v1Response),
     });
 
     const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
@@ -180,8 +192,54 @@ describe('Legacy recommend branch isolation', () => {
     const rec = result.recommendations.find((r) => r.type === 'docs-page');
     expect(rec).toBeDefined();
     expect(rec!.title).not.toContain('<script>');
+    // contentUrl must not pass through for non-package types
     expect((rec as Recommendation).contentUrl).toBeUndefined();
     expect((rec as any).polluted).toBeUndefined();
+  });
+
+  it('should deduplicate package-backed v1 recommendations against bundled ones', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Welcome to Grafana',
+          description: 'Get started with Grafana.',
+          matchAccuracy: 0.95,
+          contentUrl: 'https://cdn.example.com/welcome-to-grafana/content.json',
+          manifestUrl: 'https://cdn.example.com/welcome-to-grafana/manifest.json',
+          repository: 'interactive-tutorials',
+          manifest: { id: 'welcome-to-grafana', type: 'guide' },
+        },
+        {
+          type: 'package',
+          title: 'Alerting 101',
+          description: 'Learn alerting basics.',
+          matchAccuracy: 0.9,
+          contentUrl: 'https://cdn.example.com/alerting-101/content.json',
+          manifestUrl: 'https://cdn.example.com/alerting-101/manifest.json',
+          repository: 'interactive-tutorials',
+          manifest: { id: 'alerting-101', type: 'guide' },
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    // welcome-to-grafana is mocked in the top-level jest.mock for index.json
+    const result = await ContextService.fetchRecommendations(makeContextData({ currentPath: '/' }), PLUGIN_CONFIG);
+
+    // alerting-101 should be present (remote-only)
+    const alerting = result.recommendations.find(
+      (r) => (r.manifest as Record<string, unknown> | undefined)?.id === 'alerting-101'
+    );
+    expect(alerting).toBeDefined();
+
+    // welcome-to-grafana should not appear twice (deduplication by title)
+    const welcomeRecs = result.recommendations.filter((r) => r.title.toLowerCase().includes('welcome to grafana'));
+    expect(welcomeRecs.length).toBe(1);
   });
 });
 

@@ -19,13 +19,27 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
 import { CustomGuidesSection } from './CustomGuidesSection';
 import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuides';
+import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
+import { getPackageRenderType } from '../../types/package.types';
+
+/**
+ * Resolve the effective display type for a recommendation.
+ * For packages, reads `manifest.type` to determine whether to display as
+ * `'interactive'` (guide) or `'learning-journey'` (path/journey).
+ * Non-package recommendations pass through unchanged.
+ */
+const getEffectiveDisplayType = (recommendation: Recommendation): Recommendation['type'] => {
+  if (recommendation.type === 'package') {
+    return getPackageRenderType(recommendation.manifest);
+  }
+  return recommendation.type;
+};
 
 /** Get icon name based on recommendation type */
 const getRecommendationIcon = (type?: string): IconName => {
   if (type === 'docs-page') {
     return 'file-alt';
   }
-  // Both interactive guides and learning paths use the rocket icon
   return 'rocket';
 };
 
@@ -34,11 +48,9 @@ const getRecommendationButtonText = (type?: string, completionPercentage?: numbe
   if (type === 'docs-page') {
     return t('contextPanel.view', 'View');
   }
-  // Show "Resume" if user has started but not completed
   if (completionPercentage && completionPercentage > 0 && completionPercentage < 100) {
     return t('contextPanel.resume', 'Resume');
   }
-  // Both learning paths and interactive guides use "Start"
   return t('contextPanel.start', 'Start');
 };
 
@@ -78,10 +90,44 @@ const getCategoryTagStyle = (styles: ReturnType<typeof getStyles>, type?: string
 /** Check if recommendation type is docs-only (static documentation, not action-oriented) */
 const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page';
 
-/** Check if recommendation should use openDocsPage (docs-like content: docs-page or interactive) */
-const shouldUseDocsPageOpener = (type?: string): boolean => type === 'docs-page' || type === 'interactive';
+/**
+ * Check if recommendation should use openDocsPage.
+ * All packages route through openDocsPage because it handles packageInfo;
+ * loadDocsTabContent sets the correct tab type based on the manifest.
+ */
+const shouldUseDocsPageOpener = (type?: string): boolean =>
+  type === 'docs-page' || type === 'interactive' || type === 'package';
 
-import { ContextPanelState } from '../../types/content-panel.types';
+/**
+ * Return the URL that should be used to open a recommendation's content.
+ * Package-backed recommendations carry the content URL in contentUrl (not url,
+ * which is left empty in sanitizeV1Recommendation).
+ */
+const getRecommendationContentUrl = (recommendation: Recommendation): string => {
+  if (recommendation.type === 'package') {
+    const url = recommendation.contentUrl ?? '';
+    if (!url && process.env.NODE_ENV !== 'production') {
+      console.warn('[context-panel] Package recommendation missing contentUrl:', recommendation.title);
+    }
+    return url;
+  }
+  return recommendation.url;
+};
+
+const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
+  if (recommendation.type !== 'package') {
+    return undefined;
+  }
+
+  const manifest = recommendation.manifest;
+  const packageId =
+    manifest && typeof manifest === 'object' && typeof manifest.id === 'string' ? manifest.id : undefined;
+
+  return {
+    packageId,
+    packageManifest: recommendation.manifest,
+  };
+};
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public static Component = ContextPanelRenderer;
@@ -92,7 +138,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 
   public constructor(
     onOpenLearningJourney?: (url: string, title: string) => void,
-    onOpenDocsPage?: (url: string, title: string) => void,
+    onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void,
     onOpenDevTools?: () => void
   ) {
     super({
@@ -108,9 +154,9 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
-  public openDocsPage(url: string, title: string) {
+  public openDocsPage(url: string, title: string, packageInfo?: PackageOpenInfo) {
     if (this.state.onOpenDocsPage) {
-      this.state.onOpenDocsPage(url, title);
+      this.state.onOpenDocsPage(url, title, packageInfo);
     } else {
       console.warn('No onOpenDocsPage callback available');
     }
@@ -141,7 +187,7 @@ interface RecommendationsSectionProps {
   otherDocsExpanded: boolean;
   showEnableRecommenderBanner: boolean;
   openLearningJourney: (url: string, title: string) => void;
-  openDocsPage: (url: string, title: string) => void;
+  openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
   toggleCustomGuidesExpansion: () => void;
   toggleSuggestedGuidesExpansion: () => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
@@ -284,28 +330,233 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               <h3 className={styles.featuredTitle}>{t('contextPanel.featured', 'Featured')}</h3>
             </div>
             <div className={styles.featuredGrid}>
-              {featuredRecommendations.map((recommendation, index) => (
+              {featuredRecommendations.map((recommendation, index) => {
+                const contentUrl = getRecommendationContentUrl(recommendation);
+                const packageInfo = getRecommendationPackageInfo(recommendation);
+                const displayType = getEffectiveDisplayType(recommendation);
+                return (
+                  <Card
+                    key={`featured-${index}`}
+                    className={`${styles.recommendationCard} ${styles.featuredCard} ${
+                      displayType === 'docs-page' ? styles.compactCard : ''
+                    }`}
+                    data-testid={`featured-recommendation-card-${index}`}
+                  >
+                    <div
+                      className={`${styles.recommendationCardContent} ${
+                        displayType === 'docs-page' ? styles.compactCardContent : ''
+                      }`}
+                    >
+                      <div
+                        className={`${styles.cardHeader} ${displayType === 'docs-page' ? styles.compactHeader : ''}`}
+                      >
+                        <div className={styles.cardTitleSection}>
+                          <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                          <span className={getCategoryTagStyle(styles, displayType)}>
+                            {getCategoryLabel(displayType)}
+                          </span>
+                        </div>
+                        <div
+                          className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
+                        >
+                          <button
+                            onClick={() => {
+                              reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                content_title: recommendation.title,
+                                content_url: contentUrl,
+                                content_type: getContentTypeForAnalytics(
+                                  contentUrl,
+                                  displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                ),
+                                interaction_location: 'featured_card_button',
+                                match_accuracy: recommendation.matchAccuracy || 0,
+                                ...(displayType !== 'docs-page' && {
+                                  total_milestones: recommendation.totalSteps || 0,
+                                  completion_percentage: recommendation.completionPercentage ?? 0,
+                                }),
+                              });
+
+                              if (shouldUseDocsPageOpener(recommendation.type)) {
+                                openDocsPage(contentUrl, recommendation.title, packageInfo);
+                              } else {
+                                openLearningJourney(contentUrl, recommendation.title);
+                              }
+                            }}
+                            className={styles.startButton}
+                          >
+                            <Icon name={getRecommendationIcon(displayType)} size="sm" />
+                            {getRecommendationButtonText(displayType, recommendation.completionPercentage)}
+                          </button>
+                        </div>
+                      </div>
+
+                      {(!isDocsOnlyRecommendation(displayType) || recommendation.summary) && (
+                        <>
+                          <div className={styles.cardMetadata}>
+                            <div className={styles.summaryInfo}>
+                              <button
+                                onClick={() => {
+                                  reportAppInteraction(UserInteraction.SummaryClick, {
+                                    content_title: recommendation.title,
+                                    content_url: contentUrl,
+                                    content_type: getContentTypeForAnalytics(
+                                      contentUrl,
+                                      displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                    ),
+                                    action: recommendation.summaryExpanded ? 'collapse' : 'expand',
+                                    match_accuracy: recommendation.matchAccuracy || 0,
+                                    ...(displayType !== 'docs-page' && {
+                                      total_milestones: recommendation.totalSteps || 0,
+                                    }),
+                                  });
+
+                                  toggleSummaryExpansion(contentUrl);
+                                }}
+                                className={styles.summaryButton}
+                              >
+                                <Icon name="info-circle" size="sm" />
+                                <span>{t('contextPanel.summary', 'Summary')}</span>
+                                <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
+                              </button>
+                              {!isDocsOnlyRecommendation(displayType) &&
+                                typeof recommendation.completionPercentage === 'number' && (
+                                  <div className={styles.completionInfo}>
+                                    <div
+                                      className={styles.completionPercentage}
+                                      data-completion={recommendation.completionPercentage}
+                                    >
+                                      {t('contextPanel.percentComplete', '{{percent}}% complete', {
+                                        percent: recommendation.completionPercentage,
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+
+                          {recommendation.summaryExpanded && (
+                            <div className={styles.summaryExpansion}>
+                              {recommendation.summary && (
+                                <div className={styles.summaryContent}>
+                                  <p className={styles.summaryText}>{recommendation.summary}</p>
+                                </div>
+                              )}
+
+                              {!isDocsOnlyRecommendation(displayType) &&
+                                (recommendation.totalSteps ?? 0) > 0 &&
+                                recommendation.milestones && (
+                                  <div className={styles.milestonesSection}>
+                                    <div className={styles.milestonesHeader}>
+                                      <h4 className={styles.milestonesTitle}>
+                                        {t('contextPanel.milestones', 'Milestones:')}
+                                      </h4>
+                                    </div>
+                                    <div className={styles.milestonesList}>
+                                      {recommendation.milestones.map((milestone, stepIndex) => (
+                                        <button
+                                          key={stepIndex}
+                                          onClick={() => {
+                                            reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
+                                              content_title: recommendation.title,
+                                              milestone_title: milestone.title,
+                                              milestone_number: milestone.number,
+                                              milestone_url: milestone.url,
+                                              content_url: contentUrl,
+                                              interaction_location: 'featured_milestone_list',
+                                            });
+                                            openLearningJourney(
+                                              milestone.url,
+                                              `${recommendation.title} - ${milestone.title}`
+                                            );
+                                          }}
+                                          className={styles.milestoneItem}
+                                        >
+                                          <div className={styles.milestoneNumber}>{milestone.number}</div>
+                                          <div className={styles.milestoneContent}>
+                                            <div className={styles.milestoneTitle}>{milestone.title}</div>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                              <div className={styles.summaryCta}>
+                                <button
+                                  onClick={() => {
+                                    reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                      content_title: recommendation.title,
+                                      content_url: contentUrl,
+                                      content_type: getContentTypeForAnalytics(
+                                        contentUrl,
+                                        displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                      ),
+                                      interaction_location: 'featured_summary_cta_button',
+                                      match_accuracy: recommendation.matchAccuracy || 0,
+                                      ...(displayType !== 'docs-page' && {
+                                        total_milestones: recommendation.totalSteps || 0,
+                                        completion_percentage: recommendation.completionPercentage ?? 0,
+                                      }),
+                                    });
+
+                                    if (shouldUseDocsPageOpener(recommendation.type)) {
+                                      openDocsPage(contentUrl, recommendation.title, packageInfo);
+                                    } else {
+                                      openLearningJourney(contentUrl, recommendation.title);
+                                    }
+                                  }}
+                                  className={styles.summaryCtaButton}
+                                >
+                                  <Icon name={getRecommendationIcon(displayType)} size="sm" />
+                                  {getRecommendationCtaText(displayType)}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
+        {suggestedGuidesExpanded && finalPrimaryRecommendations.length > 0 && (
+          <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
+            {finalPrimaryRecommendations.map((recommendation, index) => {
+              const contentUrl = getRecommendationContentUrl(recommendation);
+              const packageInfo = getRecommendationPackageInfo(recommendation);
+              const displayType = getEffectiveDisplayType(recommendation);
+              return (
                 <Card
-                  key={`featured-${index}`}
-                  className={`${styles.recommendationCard} ${styles.featuredCard} ${
-                    recommendation.type === 'docs-page' ? styles.compactCard : ''
+                  key={contentUrl || `rec-${index}`}
+                  className={`${styles.recommendationCard} ${
+                    isDocsOnlyRecommendation(displayType) ? styles.compactCard : ''
                   }`}
-                  data-testid={`featured-recommendation-card-${index}`}
+                  data-testid={testIds.contextPanel.recommendationCard(index)}
                 >
                   <div
                     className={`${styles.recommendationCardContent} ${
-                      recommendation.type === 'docs-page' ? styles.compactCardContent : ''
+                      isDocsOnlyRecommendation(displayType) ? styles.compactCardContent : ''
                     }`}
                   >
                     <div
                       className={`${styles.cardHeader} ${
-                        recommendation.type === 'docs-page' ? styles.compactHeader : ''
+                        isDocsOnlyRecommendation(displayType) ? styles.compactHeader : ''
                       }`}
                     >
                       <div className={styles.cardTitleSection}>
-                        <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
-                        <span className={getCategoryTagStyle(styles, recommendation.type)}>
-                          {getCategoryLabel(recommendation.type)}
+                        <h3
+                          className={styles.recommendationCardTitle}
+                          data-testid={testIds.contextPanel.recommendationTitle(index)}
+                        >
+                          {recommendation.title}
+                        </h3>
+                        <span className={getCategoryTagStyle(styles, displayType)}>
+                          {getCategoryLabel(displayType)}
                         </span>
                       </div>
                       <div
@@ -313,69 +564,66 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                       >
                         <button
                           onClick={() => {
-                            // Track analytics - unified event for opening any resource
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
                               content_title: recommendation.title,
-                              content_url: recommendation.url,
+                              content_url: contentUrl,
                               content_type: getContentTypeForAnalytics(
-                                recommendation.url,
-                                recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                contentUrl,
+                                displayType === 'docs-page' ? 'docs' : 'learning-journey'
                               ),
-                              interaction_location: 'featured_card_button',
+                              interaction_location: 'main_card_button',
                               match_accuracy: recommendation.matchAccuracy || 0,
-                              ...(recommendation.type !== 'docs-page' && {
+                              ...(displayType !== 'docs-page' && {
                                 total_milestones: recommendation.totalSteps || 0,
                                 completion_percentage: recommendation.completionPercentage ?? 0,
                               }),
                             });
 
-                            // Open the appropriate content type
                             if (shouldUseDocsPageOpener(recommendation.type)) {
-                              openDocsPage(recommendation.url, recommendation.title);
+                              openDocsPage(contentUrl, recommendation.title, packageInfo);
                             } else {
-                              openLearningJourney(recommendation.url, recommendation.title);
+                              openLearningJourney(contentUrl, recommendation.title);
                             }
                           }}
                           className={styles.startButton}
+                          data-testid={testIds.contextPanel.recommendationStartButton(index)}
                         >
-                          <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
-                          {getRecommendationButtonText(recommendation.type, recommendation.completionPercentage)}
+                          <Icon name={getRecommendationIcon(displayType)} size="sm" />
+                          {getRecommendationButtonText(displayType, recommendation.completionPercentage)}
                         </button>
                       </div>
                     </div>
 
-                    {/* Only show summary/milestones for learning paths or docs with summaries */}
-                    {(!isDocsOnlyRecommendation(recommendation.type) || recommendation.summary) && (
+                    {(!isDocsOnlyRecommendation(displayType) || recommendation.summary) && (
                       <>
                         <div className={styles.cardMetadata}>
                           <div className={styles.summaryInfo}>
                             <button
                               onClick={() => {
-                                // Track summary click analytics
                                 reportAppInteraction(UserInteraction.SummaryClick, {
                                   content_title: recommendation.title,
-                                  content_url: recommendation.url,
+                                  content_url: contentUrl,
                                   content_type: getContentTypeForAnalytics(
-                                    recommendation.url,
-                                    recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                    contentUrl,
+                                    displayType === 'docs-page' ? 'docs' : 'learning-journey'
                                   ),
                                   action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                   match_accuracy: recommendation.matchAccuracy || 0,
-                                  ...(recommendation.type !== 'docs-page' && {
+                                  ...(displayType !== 'docs-page' && {
                                     total_milestones: recommendation.totalSteps || 0,
                                   }),
                                 });
 
-                                toggleSummaryExpansion(recommendation.url);
+                                toggleSummaryExpansion(contentUrl);
                               }}
                               className={styles.summaryButton}
+                              data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
                             >
                               <Icon name="info-circle" size="sm" />
                               <span>{t('contextPanel.summary', 'Summary')}</span>
                               <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                             </button>
-                            {/* Show completion percentage for learning paths */}
-                            {!isDocsOnlyRecommendation(recommendation.type) &&
+                            {!isDocsOnlyRecommendation(displayType) &&
                               typeof recommendation.completionPercentage === 'number' && (
                                 <div className={styles.completionInfo}>
                                   <div
@@ -392,18 +640,23 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                         </div>
 
                         {recommendation.summaryExpanded && (
-                          <div className={styles.summaryExpansion}>
+                          <div
+                            className={styles.summaryExpansion}
+                            data-testid={testIds.contextPanel.recommendationSummaryContent(index)}
+                          >
                             {recommendation.summary && (
                               <div className={styles.summaryContent}>
                                 <p className={styles.summaryText}>{recommendation.summary}</p>
                               </div>
                             )}
 
-                            {/* Only show milestones for learning paths */}
-                            {!isDocsOnlyRecommendation(recommendation.type) &&
+                            {!isDocsOnlyRecommendation(displayType) &&
                               (recommendation.totalSteps ?? 0) > 0 &&
                               recommendation.milestones && (
-                                <div className={styles.milestonesSection}>
+                                <div
+                                  className={styles.milestonesSection}
+                                  data-testid={testIds.contextPanel.recommendationMilestones(index)}
+                                >
                                   <div className={styles.milestonesHeader}>
                                     <h4 className={styles.milestonesTitle}>
                                       {t('contextPanel.milestones', 'Milestones:')}
@@ -414,14 +667,13 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                       <button
                                         key={stepIndex}
                                         onClick={() => {
-                                          // Track milestone click analytics
                                           reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                             content_title: recommendation.title,
                                             milestone_title: milestone.title,
                                             milestone_number: milestone.number,
                                             milestone_url: milestone.url,
-                                            content_url: recommendation.url,
-                                            interaction_location: 'featured_milestone_list',
+                                            content_url: contentUrl,
+                                            interaction_location: 'milestone_list',
                                           });
                                           openLearningJourney(
                                             milestone.url,
@@ -429,10 +681,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                           );
                                         }}
                                         className={styles.milestoneItem}
+                                        data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
                                       >
                                         <div className={styles.milestoneNumber}>{milestone.number}</div>
                                         <div className={styles.milestoneContent}>
-                                          <div className={styles.milestoneTitle}>{milestone.title}</div>
+                                          <div className={styles.milestoneTitle}>
+                                            {milestone.title}
+                                            <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                          </div>
                                         </div>
                                       </button>
                                     ))}
@@ -440,37 +696,34 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 </div>
                               )}
 
-                            {/* Sticky CTA button at bottom of summary */}
                             <div className={styles.summaryCta}>
                               <button
                                 onClick={() => {
-                                  // Track analytics - unified event for opening any resource
                                   reportAppInteraction(UserInteraction.OpenResourceClick, {
                                     content_title: recommendation.title,
-                                    content_url: recommendation.url,
+                                    content_url: contentUrl,
                                     content_type: getContentTypeForAnalytics(
-                                      recommendation.url,
-                                      recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                      contentUrl,
+                                      displayType === 'docs-page' ? 'docs' : 'learning-journey'
                                     ),
-                                    interaction_location: 'featured_summary_cta_button',
+                                    interaction_location: 'summary_cta_button',
                                     match_accuracy: recommendation.matchAccuracy || 0,
-                                    ...(recommendation.type !== 'docs-page' && {
+                                    ...(displayType !== 'docs-page' && {
                                       total_milestones: recommendation.totalSteps || 0,
                                       completion_percentage: recommendation.completionPercentage ?? 0,
                                     }),
                                   });
 
-                                  // Open the appropriate content type
                                   if (shouldUseDocsPageOpener(recommendation.type)) {
-                                    openDocsPage(recommendation.url, recommendation.title);
+                                    openDocsPage(contentUrl, recommendation.title, packageInfo);
                                   } else {
-                                    openLearningJourney(recommendation.url, recommendation.title);
+                                    openLearningJourney(contentUrl, recommendation.title);
                                   }
                                 }}
                                 className={styles.summaryCtaButton}
                               >
-                                <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
-                                {getRecommendationCtaText(recommendation.type)}
+                                <Icon name={getRecommendationIcon(displayType)} size="sm" />
+                                {getRecommendationCtaText(displayType)}
                               </button>
                             </div>
                           </div>
@@ -479,227 +732,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                     )}
                   </div>
                 </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
-        {suggestedGuidesExpanded && finalPrimaryRecommendations.length > 0 && (
-          <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
-            {finalPrimaryRecommendations.map((recommendation, index) => (
-              <Card
-                key={recommendation.url}
-                className={`${styles.recommendationCard} ${
-                  isDocsOnlyRecommendation(recommendation.type) ? styles.compactCard : ''
-                }`}
-                data-testid={testIds.contextPanel.recommendationCard(index)}
-              >
-                <div
-                  className={`${styles.recommendationCardContent} ${
-                    isDocsOnlyRecommendation(recommendation.type) ? styles.compactCardContent : ''
-                  }`}
-                >
-                  <div
-                    className={`${styles.cardHeader} ${
-                      isDocsOnlyRecommendation(recommendation.type) ? styles.compactHeader : ''
-                    }`}
-                  >
-                    <div className={styles.cardTitleSection}>
-                      <h3
-                        className={styles.recommendationCardTitle}
-                        data-testid={testIds.contextPanel.recommendationTitle(index)}
-                      >
-                        {recommendation.title}
-                      </h3>
-                      <span className={getCategoryTagStyle(styles, recommendation.type)}>
-                        {getCategoryLabel(recommendation.type)}
-                      </span>
-                    </div>
-                    <div
-                      className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
-                    >
-                      <button
-                        onClick={() => {
-                          // Track analytics - unified event for opening any resource
-                          reportAppInteraction(UserInteraction.OpenResourceClick, {
-                            content_title: recommendation.title,
-                            content_url: recommendation.url,
-                            content_type: getContentTypeForAnalytics(
-                              recommendation.url,
-                              recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
-                            ),
-                            interaction_location: 'main_card_button',
-                            match_accuracy: recommendation.matchAccuracy || 0,
-                            ...(recommendation.type !== 'docs-page' && {
-                              total_milestones: recommendation.totalSteps || 0,
-                              completion_percentage: recommendation.completionPercentage ?? 0,
-                            }),
-                          });
-
-                          // Open the appropriate content type
-                          if (shouldUseDocsPageOpener(recommendation.type)) {
-                            openDocsPage(recommendation.url, recommendation.title);
-                          } else {
-                            openLearningJourney(recommendation.url, recommendation.title);
-                          }
-                        }}
-                        className={styles.startButton}
-                        data-testid={testIds.contextPanel.recommendationStartButton(index)}
-                      >
-                        <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
-                        {getRecommendationButtonText(recommendation.type, recommendation.completionPercentage)}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Only show summary/milestones for learning paths or docs with summaries */}
-                  {(!isDocsOnlyRecommendation(recommendation.type) || recommendation.summary) && (
-                    <>
-                      <div className={styles.cardMetadata}>
-                        <div className={styles.summaryInfo}>
-                          <button
-                            onClick={() => {
-                              // Track summary click analytics (for both LJ and docs)
-                              reportAppInteraction(UserInteraction.SummaryClick, {
-                                content_title: recommendation.title,
-                                content_url: recommendation.url,
-                                content_type: getContentTypeForAnalytics(
-                                  recommendation.url,
-                                  recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
-                                ),
-                                action: recommendation.summaryExpanded ? 'collapse' : 'expand',
-                                match_accuracy: recommendation.matchAccuracy || 0,
-                                ...(recommendation.type !== 'docs-page' && {
-                                  total_milestones: recommendation.totalSteps || 0,
-                                }),
-                              });
-
-                              toggleSummaryExpansion(recommendation.url);
-                            }}
-                            className={styles.summaryButton}
-                            data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
-                          >
-                            <Icon name="info-circle" size="sm" />
-                            <span>{t('contextPanel.summary', 'Summary')}</span>
-                            <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
-                          </button>
-                          {/* Show completion percentage for learning paths */}
-                          {!isDocsOnlyRecommendation(recommendation.type) &&
-                            typeof recommendation.completionPercentage === 'number' && (
-                              <div className={styles.completionInfo}>
-                                <div
-                                  className={styles.completionPercentage}
-                                  data-completion={recommendation.completionPercentage}
-                                >
-                                  {t('contextPanel.percentComplete', '{{percent}}% complete', {
-                                    percent: recommendation.completionPercentage,
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                        </div>
-                      </div>
-
-                      {recommendation.summaryExpanded && (
-                        <div
-                          className={styles.summaryExpansion}
-                          data-testid={testIds.contextPanel.recommendationSummaryContent(index)}
-                        >
-                          {recommendation.summary && (
-                            <div className={styles.summaryContent}>
-                              <p className={styles.summaryText}>{recommendation.summary}</p>
-                            </div>
-                          )}
-
-                          {/* Only show milestones for learning paths */}
-                          {!isDocsOnlyRecommendation(recommendation.type) &&
-                            (recommendation.totalSteps ?? 0) > 0 &&
-                            recommendation.milestones && (
-                              <div
-                                className={styles.milestonesSection}
-                                data-testid={testIds.contextPanel.recommendationMilestones(index)}
-                              >
-                                <div className={styles.milestonesHeader}>
-                                  <h4 className={styles.milestonesTitle}>
-                                    {t('contextPanel.milestones', 'Milestones:')}
-                                  </h4>
-                                </div>
-                                <div className={styles.milestonesList}>
-                                  {recommendation.milestones.map((milestone, stepIndex) => (
-                                    <button
-                                      key={stepIndex}
-                                      onClick={() => {
-                                        // Track milestone click analytics
-                                        reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
-                                          content_title: recommendation.title,
-                                          milestone_title: milestone.title,
-                                          milestone_number: milestone.number,
-                                          milestone_url: milestone.url,
-                                          content_url: recommendation.url,
-                                          interaction_location: 'milestone_list',
-                                        });
-                                        openLearningJourney(
-                                          milestone.url,
-                                          `${recommendation.title} - ${milestone.title}`
-                                        );
-                                      }}
-                                      className={styles.milestoneItem}
-                                      data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
-                                    >
-                                      <div className={styles.milestoneNumber}>{milestone.number}</div>
-                                      <div className={styles.milestoneContent}>
-                                        <div className={styles.milestoneTitle}>
-                                          {milestone.title}
-                                          <span className={styles.milestoneDuration}>({milestone.duration})</span>
-                                        </div>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                          {/* Sticky CTA button at bottom of summary */}
-                          <div className={styles.summaryCta}>
-                            <button
-                              onClick={() => {
-                                // Track analytics - unified event for opening any resource
-                                reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                  content_title: recommendation.title,
-                                  content_url: recommendation.url,
-                                  content_type: getContentTypeForAnalytics(
-                                    recommendation.url,
-                                    recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
-                                  ),
-                                  interaction_location: 'summary_cta_button',
-                                  match_accuracy: recommendation.matchAccuracy || 0,
-                                  ...(recommendation.type !== 'docs-page' && {
-                                    total_milestones: recommendation.totalSteps || 0,
-                                    completion_percentage: recommendation.completionPercentage ?? 0,
-                                  }),
-                                });
-
-                                // Open the appropriate content type
-                                if (shouldUseDocsPageOpener(recommendation.type)) {
-                                  openDocsPage(recommendation.url, recommendation.title);
-                                } else {
-                                  openLearningJourney(recommendation.url, recommendation.title);
-                                }
-                              }}
-                              className={styles.summaryCtaButton}
-                            >
-                              <Icon name={getRecommendationIcon(recommendation.type)} size="sm" />
-                              {getRecommendationCtaText(recommendation.type)}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -725,52 +759,55 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             {otherDocsExpanded && (
               <div className={styles.otherDocsExpansion}>
                 <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
-                  {secondaryDocs.map((item, index) => (
-                    <div
-                      key={item.url}
-                      className={styles.otherDocItem}
-                      data-testid={testIds.contextPanel.otherDocItem(index)}
-                    >
-                      <div className={styles.docIcon}>
-                        <Icon name={getRecommendationIcon(item.type)} size="sm" />
-                      </div>
-                      <div className={styles.docContent}>
-                        <button
-                          onClick={() => {
-                            // Track analytics - unified event for opening any resource
-                            reportAppInteraction(UserInteraction.OpenResourceClick, {
-                              content_title: item.title,
-                              content_url: item.url,
-                              content_type: getContentTypeForAnalytics(
-                                item.url,
-                                item.type === 'docs-page'
-                                  ? 'docs'
-                                  : item.type === 'interactive'
-                                    ? 'interactive'
-                                    : 'learning-journey'
-                              ),
-                              interaction_location: 'other_docs_list',
-                              match_accuracy: item.matchAccuracy || 0,
-                              ...(!isDocsOnlyRecommendation(item.type) && {
-                                total_milestones: item.totalSteps || 0,
-                                completion_percentage: item.completionPercentage ?? 0,
-                              }),
-                            });
+                  {secondaryDocs.map((item, index) => {
+                    const contentUrl = getRecommendationContentUrl(item);
+                    const packageInfo = getRecommendationPackageInfo(item);
+                    const displayType = getEffectiveDisplayType(item);
+                    return (
+                      <div
+                        key={contentUrl || `other-${index}`}
+                        className={styles.otherDocItem}
+                        data-testid={testIds.contextPanel.otherDocItem(index)}
+                      >
+                        <div className={styles.docIcon}>
+                          <Icon name={getRecommendationIcon(displayType)} size="sm" />
+                        </div>
+                        <div className={styles.docContent}>
+                          <button
+                            onClick={() => {
+                              reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                content_title: item.title,
+                                content_url: contentUrl,
+                                content_type: getContentTypeForAnalytics(
+                                  contentUrl,
+                                  displayType === 'docs-page'
+                                    ? 'docs'
+                                    : displayType === 'interactive'
+                                      ? 'interactive'
+                                      : 'learning-journey'
+                                ),
+                                interaction_location: 'other_docs_list',
+                                match_accuracy: item.matchAccuracy || 0,
+                                ...(!isDocsOnlyRecommendation(displayType) && {
+                                  total_milestones: item.totalSteps || 0,
+                                  completion_percentage: item.completionPercentage ?? 0,
+                                }),
+                              });
 
-                            // Open the appropriate content type
-                            if (item.type === 'docs-page') {
-                              openDocsPage(item.url, item.title);
-                            } else {
-                              openLearningJourney(item.url, item.title);
-                            }
-                          }}
-                          className={styles.docLink}
-                        >
-                          {item.title}
-                        </button>
+                              if (shouldUseDocsPageOpener(item.type)) {
+                                openDocsPage(contentUrl, item.title, packageInfo);
+                              } else {
+                                openLearningJourney(contentUrl, item.title);
+                              }
+                            }}
+                            className={styles.docLink}
+                          >
+                            {item.title}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
