@@ -497,3 +497,83 @@ describe('Package completion percentage wiring', () => {
     expect(typeof noManifest!.completionPercentage).toBe('number');
   });
 });
+
+describe('V1 error handling and edge cases', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should fall back gracefully when v1 returns HTTP 500', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(result.errorType).toBe('other');
+  });
+
+  it('should fall back gracefully when v1 returns HTTP 403', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(result.errorType).toBe('other');
+  });
+
+  it('should return only bundled interactives when v1 returns empty recommendations', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ recommendations: [], featured: [] }),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(Array.isArray(result.recommendations)).toBe(true);
+    expect(result.error).toBeNull();
+  });
+
+  it('should pass through unrecognized recommendation types without crashing', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'unknown-future-type' as any,
+          title: 'Future content',
+          description: 'Some new type of recommendation',
+          url: 'https://grafana.com/docs/future/',
+          matchAccuracy: 0.7,
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    const futureRec = result.recommendations.find((r) => r.title === 'Future content');
+    expect(futureRec).toBeDefined();
+    expect(futureRec!.type).toBe('docs-page');
+  });
+
+  it('should fall back gracefully when fetch rejects with a network error', async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(result.errorType).toBe('unavailable');
+  });
+});

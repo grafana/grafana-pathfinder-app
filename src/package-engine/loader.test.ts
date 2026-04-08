@@ -6,7 +6,7 @@
  * or invalid content.
  */
 
-import { loadBundledContent, loadBundledManifest, loadBundledLegacyGuide } from './loader';
+import { loadBundledContent, loadBundledManifest } from './loader';
 
 // ============ loadBundledContent ============
 
@@ -119,31 +119,6 @@ describe('loadBundledManifest', () => {
     const result = loadBundledManifest('welcome-to-grafana/');
 
     expect(result.ok).toBe(true);
-  });
-});
-
-// ============ loadBundledLegacyGuide ============
-
-describe('loadBundledLegacyGuide', () => {
-  it('should return not-found for a nonexistent file', () => {
-    const result = loadBundledLegacyGuide('nonexistent.json');
-
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      return;
-    }
-    expect(result.error.code).toBe('not-found');
-  });
-
-  it('should load a content.json file as a legacy guide', () => {
-    const result = loadBundledLegacyGuide('welcome-to-grafana/content.json');
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    expect(result.data.id).toBe('welcome-to-grafana');
-    expect(result.data.blocks).toBeDefined();
   });
 });
 

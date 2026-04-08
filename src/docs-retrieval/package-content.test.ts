@@ -273,6 +273,68 @@ describe('setPackageResolver', () => {
 // Static docs bypass — plain HTTPS URL still routes through normal fetch path
 // ---------------------------------------------------------------------------
 
+describe('fetchPackageContent error handling', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('returns an error result when CDN fetch rejects with a network error', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const result = await fetchPackageContent('https://interactive-learning.grafana.net/packages/test/content.json');
+
+    expect(result.content).toBeNull();
+    expect(result.error).toBeTruthy();
+  });
+
+  it('handles CDN returning non-JSON HTML error page without crashing', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve('<html><body>502 Bad Gateway</body></html>'),
+      headers: new Headers({ 'content-type': 'text/html' }),
+    });
+
+    const result = await fetchPackageContent('https://interactive-learning.grafana.net/packages/test/content.json');
+
+    // fetchContent wraps HTML as a JSON guide -- the key assertion is no unhandled exception
+    expect(result).toHaveProperty('content');
+  });
+});
+
+describe('fetchPackageById with resolved content', () => {
+  afterEach(() => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'reset',
+        error: { code: 'not-found', message: 'reset' },
+      })
+    );
+  });
+
+  it('calls resolver and delegates to fetchPackageContent with correct args', async () => {
+    const manifest = { id: 'first-dashboard', type: 'guide', category: 'dashboards' };
+    const resolver = makeResolver(
+      makeSuccessResolution({
+        id: 'first-dashboard',
+        contentUrl: 'bundled:first-dashboard/content.json',
+        manifestUrl: 'bundled:first-dashboard/manifest.json',
+      })
+    );
+    setPackageResolver(resolver);
+
+    const result = await fetchPackageById('first-dashboard', manifest);
+
+    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false });
+    if (result.content) {
+      expect(result.content.metadata.packageManifest).toEqual(manifest);
+      expect(result.content.type).toBe('interactive');
+    }
+  });
+});
+
 describe('static docs path is unchanged', () => {
   it('rejects untrusted domains as before', async () => {
     const result = await fetchContent('https://untrusted.example.com/some-doc');

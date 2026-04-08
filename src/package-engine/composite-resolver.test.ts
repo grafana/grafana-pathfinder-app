@@ -136,6 +136,61 @@ describe('CompositePackageResolver', () => {
   });
 });
 
+describe('CompositePackageResolver degradation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should propagate thrown errors from resolvers (not silently swallowed)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockRejectedValueOnce(new Error('Unexpected resolver crash'));
+
+    const composite = new CompositePackageResolver([mockBundledResolver, mockRecommenderResolver]);
+
+    await expect(composite.resolve('test-guide')).rejects.toThrow('Unexpected resolver crash');
+  });
+
+  it('should return network-error code when both resolvers fail with network-error', async () => {
+    const bundledNetworkError: PackageResolution = {
+      ok: false,
+      id: 'some-guide',
+      error: { code: 'not-found', message: 'not bundled' },
+    };
+    const recommenderNetworkError: PackageResolution = {
+      ok: false,
+      id: 'some-guide',
+      error: { code: 'network-error', message: 'recommender unreachable' },
+    };
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValueOnce(bundledNetworkError);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValueOnce(recommenderNetworkError);
+
+    const composite = new CompositePackageResolver([mockBundledResolver, mockRecommenderResolver]);
+    const result = await composite.resolve('some-guide');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('network-error');
+    }
+  });
+
+  it('should return bundled success even when recommender would fail', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValueOnce(SUCCESS_BUNDLED);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      id: 'test-guide',
+      error: { code: 'network-error', message: 'recommender down' },
+    });
+
+    const composite = new CompositePackageResolver([mockBundledResolver, mockRecommenderResolver]);
+    const result = await composite.resolve('test-guide');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repository).toBe('bundled');
+    }
+    expect(mockRecommenderResolver.resolve).not.toHaveBeenCalled();
+  });
+});
+
 describe('createCompositeResolver', () => {
   beforeEach(() => {
     jest.clearAllMocks();
