@@ -153,7 +153,7 @@ describe('CompositePackageResolver degradation', () => {
     const bundledNetworkError: PackageResolution = {
       ok: false,
       id: 'some-guide',
-      error: { code: 'not-found', message: 'not bundled' },
+      error: { code: 'network-error', message: 'bundled resolver unreachable' },
     };
     const recommenderNetworkError: PackageResolution = {
       ok: false,
