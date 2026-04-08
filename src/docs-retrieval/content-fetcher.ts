@@ -1504,28 +1504,24 @@ export async function fetchPackageContent(
 // SVG icon matching the grafana.com learning path "what to expect" card
 const LEARNING_PATH_ICON_SVG = `<svg width="30" height="30" viewBox="0 0 25 26" fill="none"><path d="M16.1401 14.4402C16.2141 14.4402 16.2852 14.4101 16.3373 14.3581c.1982-.2012 4.8531-4.95924 4.8531-9.3068C21.1904 2.26537 18.924.0 16.1391.0c-2.785.0-5.0513 2.26537-5.0513 5.0513.0 4.34756 4.6549 9.1056 4.8541 9.3068C15.9939 14.4111 16.065 14.4402 16.1401 14.4402zM13.5814 5.0513c0-1.41248 1.1452-2.55868 2.5587-2.55868 1.4135.0 2.5577 1.14519 2.5577 2.55868.0 1.41348-1.1452 2.55869-2.5577 2.55869-1.4125.0-2.5587-1.14521-2.5587-2.55869z" fill="#ff671d"/><path d="M24.9034 21.9305C24.0595 18.9113 17.9561 17.4147 12.5704 16.0933 9.54023 15.3496 5.76827 14.4246 5.73524 13.6037 5.72823 13.4225 5.97949 12.7398 9.52922 11.5516 9.80551 11.4585 9.96668 11.1842 9.91262 10.8989 9.85856 10.6136 9.60229 10.4164 9.318 10.4304 4.13956 10.6807.501743 12.1602.0482666 14.1993-.172966 15.1944.26149 16.749 3.58398 18.5009L4.29773 18.8763c2.24736 1.1782 3.87106 2.0301 3.88307 2.8229C8.19482 22.6502 5.93745 24.0507 3.72713 25.296 3.58398 25.3761 3.5139 25.5433 3.55495 25.7024 3.59699 25.8616 3.74014 25.9717 3.90431 25.9717H23.0354C23.1315 25.9717 23.2226 25.9337 23.2907 25.8656c1.4064-1.4075 1.949-2.7309 1.6127-3.9351z" fill="#fbc55a"/></svg>`;
 
-/**
- * Wrap a markdown block's content in the orange-outline-list card structure
- * used by the grafana.com/docs learning path pages. The CSS class
- * `.orange-outline-list` is already styled in content-html.styles.ts.
- */
-function wrapInOrangeOutlineList(heading: string, bodyMarkdown: string): string {
+function orangeOutlineOpen(heading: string): string {
   return [
     '<div class="orange-outline-list">',
     '  <div class="icon-heading">',
     `    <div class="icon-heading__container">${LEARNING_PATH_ICON_SVG}</div>`,
     `    <div class="no-anchor-heading"><h2>${escapeHtmlEntities(heading)}</h2></div>`,
     '  </div>',
-    bodyMarkdown,
-    '</div>',
   ].join('\n');
 }
+
+const ORANGE_OUTLINE_CLOSE = '</div>';
 
 function escapeHtmlEntities(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 const EXPECT_HEADING_RE = /^#{1,3}\s+(?:here[''\u2019]s\s+)?what\s+to\s+expect/im;
+const NEXT_HEADING_RE = /^#{1,3}\s+/m;
 
 /**
  * Inject "Ready to begin" button, bottom navigation, and orange-outline-list
@@ -1554,11 +1550,11 @@ function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: Learnin
 
 /**
  * Find a markdown block containing a "Here's what to expect" heading and wrap
- * it in the orange-outline-list HTML card. Mutates the blocks array in place.
+ * it in the orange-outline-list HTML card. Splits into three blocks so the body
+ * stays as markdown (rendered by ContentRenderer) while the card wrapper is HTML.
  *
- * Handles two layouts:
- * 1. Single block: heading + body in one markdown block
- * 2. Split blocks: heading in one block, body in the next
+ * If the block contains content after the next heading boundary, that trailing
+ * content is preserved as a separate markdown block outside the card.
  */
 function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: string }>): void {
   for (let i = 0; i < blocks.length; i++) {
@@ -1574,19 +1570,48 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
 
     const headingLine = match[0];
     const headingText = headingLine.replace(/^#{1,3}\s+/, '').trim();
+    const contentBeforeHeading = block.content.slice(0, match.index!).trim();
     const afterHeading = block.content.slice(match.index! + headingLine.length).trim();
 
-    if (afterHeading) {
-      blocks[i] = { type: 'html', content: wrapInOrangeOutlineList(headingText, afterHeading) };
-    } else if (i + 1 < blocks.length && blocks[i + 1]!.type === 'markdown' && blocks[i + 1]!.content) {
-      const bodyContent = blocks[i + 1]!.content!;
-      blocks[i] = { type: 'html', content: wrapInOrangeOutlineList(headingText, bodyContent) };
-      blocks.splice(i + 1, 1);
-    } else {
-      blocks[i] = { type: 'html', content: wrapInOrangeOutlineList(headingText, '') };
+    const { body, remainder } = splitAtNextHeading(afterHeading);
+    const replacement: Array<{ type: string; content: string }> = [];
+
+    if (contentBeforeHeading) {
+      replacement.push({ type: 'markdown', content: contentBeforeHeading });
     }
+
+    replacement.push({ type: 'html', content: orangeOutlineOpen(headingText) });
+
+    if (body) {
+      replacement.push({ type: 'markdown', content: body });
+    } else if (i + 1 < blocks.length && blocks[i + 1]!.type === 'markdown' && blocks[i + 1]!.content) {
+      replacement.push({ type: 'markdown', content: blocks[i + 1]!.content! });
+      blocks.splice(i + 1, 1);
+    }
+
+    replacement.push({ type: 'html', content: ORANGE_OUTLINE_CLOSE });
+
+    if (remainder) {
+      replacement.push({ type: 'markdown', content: remainder });
+    }
+
+    blocks.splice(i, 1, ...replacement);
     return;
   }
+}
+
+function splitAtNextHeading(text: string): { body: string; remainder: string } {
+  if (!text) {
+    return { body: '', remainder: '' };
+  }
+  const nextMatch = text.match(NEXT_HEADING_RE);
+  if (!nextMatch || nextMatch.index === 0) {
+    return { body: text, remainder: '' };
+  }
+  return {
+    body: text.slice(0, nextMatch.index!).trim(),
+    remainder: text.slice(nextMatch.index!).trim(),
+  };
 }
 
 /**
