@@ -1350,15 +1350,43 @@ export function setPackageResolver(resolver: PackageResolver): void {
 }
 
 /**
+ * Derive the grafana.com/docs/learning-paths/ website URL for a milestone.
+ * Convention: the milestone package ID shares a prefix with the path slug,
+ * and the remainder becomes the URL leaf segment.
+ *
+ * Example:
+ *   pathSlug = "grafana-cloud-tour"
+ *   milestoneId = "grafana-cloud-tour-business-value"
+ *   → "https://grafana.com/docs/learning-paths/grafana-cloud-tour/business-value/"
+ */
+function buildMilestoneWebsiteUrl(pathSlug: string, milestoneId: string): string | undefined {
+  const prefix = `${pathSlug}-`;
+  if (!milestoneId.startsWith(prefix)) {
+    return undefined;
+  }
+  const slug = milestoneId.slice(prefix.length);
+  return `https://grafana.com/docs/learning-paths/${pathSlug}/${slug}/`;
+}
+
+/**
+ * Derive the path slug from a path-type manifest ID.
+ * Strips the conventional `-lj` suffix if present.
+ */
+function derivePathSlug(manifestId: string): string {
+  return manifestId.endsWith('-lj') ? manifestId.slice(0, -3) : manifestId;
+}
+
+/**
  * Resolve manifest milestone IDs into rich Milestone objects via the injected
  * PackageResolver. Each milestone ID is resolved to obtain its contentUrl (used
  * as the navigation URL) and its manifest title. Unresolvable milestones are
  * silently skipped so partial data still renders.
  *
  * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
+ * @param pathSlug - Optional path slug for building website URLs
  * @returns Milestone[] suitable for LearningJourneyMetadata and Recommendation.milestones
  */
-export async function resolvePackageMilestones(milestoneIds: string[]): Promise<Milestone[]> {
+export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?: string): Promise<Milestone[]> {
   if (!_packageResolver || milestoneIds.length === 0) {
     return [];
   }
@@ -1382,6 +1410,7 @@ export async function resolvePackageMilestones(milestoneIds: string[]): Promise<
         duration: '5-10 min',
         url: resolution.contentUrl,
         isActive: false,
+        ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
       });
     } catch (err) {
       console.warn(`[resolvePackageMilestones] Error resolving milestone ${id}:`, err);
@@ -1431,11 +1460,15 @@ export async function fetchPackageContent(
 
   const renderType = getPackageRenderType(packageManifest);
   let learningJourney: LearningJourneyMetadata | undefined;
+  let contentString = result.content.content;
 
   if (renderType === 'learning-journey' && isPathManifest(packageManifest)) {
+    const manifestId = typeof packageManifest?.id === 'string' ? packageManifest.id : '';
+    const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
     const milestoneIds = getManifestMilestoneIds(packageManifest);
+
     if (milestoneIds.length > 0) {
-      const milestones = await resolvePackageMilestones(milestoneIds);
+      const milestones = await resolvePackageMilestones(milestoneIds, pathSlug);
       if (milestones.length > 0) {
         learningJourney = {
           currentMilestone: 0,
@@ -1443,7 +1476,12 @@ export async function fetchPackageContent(
           milestones,
           baseUrl: contentUrl,
           summary: result.content.metadata.singleDoc?.summary,
+          ...(pathSlug != null && {
+            websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
+          }),
         };
+
+        contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
       }
     }
   }
@@ -1452,6 +1490,7 @@ export async function fetchPackageContent(
     ...result,
     content: {
       ...result.content,
+      content: contentString,
       type: renderType,
       metadata: {
         ...result.content.metadata,
@@ -1460,6 +1499,29 @@ export async function fetchPackageContent(
       },
     },
   };
+}
+
+/**
+ * Inject "Ready to begin" button and bottom navigation into JSON guide content
+ * by parsing the blocks array and appending an HTML block with the extras.
+ * Falls back to returning the original content if parsing fails.
+ */
+function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: LearningJourneyMetadata): string {
+  try {
+    const parsed = JSON.parse(jsonContent) as { blocks?: Array<{ type: string; content?: string }> };
+    if (!parsed.blocks || !Array.isArray(parsed.blocks)) {
+      return jsonContent;
+    }
+
+    const extrasHtml = generateJourneyContentWithExtras('', metadata);
+    if (extrasHtml.trim()) {
+      parsed.blocks.push({ type: 'html', content: extrasHtml });
+    }
+
+    return JSON.stringify(parsed);
+  } catch {
+    return jsonContent;
+  }
 }
 
 /**

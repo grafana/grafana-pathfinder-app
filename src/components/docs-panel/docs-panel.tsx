@@ -1738,7 +1738,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       </div>
                       <div className={styles.milestoneActions}>
                         {(() => {
-                          const url = activeTab.content?.url || activeTab.baseUrl;
+                          const lj = activeTab.content?.metadata.learningJourney;
+                          const currentMs = lj?.milestones.find((m) => m.number === (lj?.currentMilestone ?? 0));
+                          const websiteUrl = currentMs?.websiteUrl ?? lj?.websiteUrl;
+                          const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
+                          const url = websiteUrl || fallbackUrl;
                           if (url) {
                             const cleanUrl = cleanDocsUrl(url);
                             return (
@@ -1756,9 +1760,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                     source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                                     link_type: 'external_browser',
                                     interaction_location: 'milestone_progress_bar',
-                                    current_milestone:
-                                      activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                                    total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
+                                    current_milestone: lj?.currentMilestone || 0,
+                                    total_milestones: lj?.totalMilestones || 0,
                                   });
                                   setTimeout(() => {
                                     window.open(cleanUrl, '_blank', 'noopener,noreferrer');
