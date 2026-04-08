@@ -23,6 +23,7 @@ import {
   isLocalhostUrl,
   isInteractiveLearningUrl,
   isGitHubRawUrl,
+  sanitizeHtmlUrl,
 } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
@@ -1470,18 +1471,35 @@ export async function fetchPackageContent(
     if (milestoneIds.length > 0) {
       const milestones = await resolvePackageMilestones(milestoneIds, pathSlug);
       if (milestones.length > 0) {
+        const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
+        const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
+
+        let baseUrl = contentUrl;
+        if (milestoneIndex >= 0 && manifestId && _packageResolver) {
+          try {
+            const pathResolution = await _packageResolver.resolve(manifestId, { loadContent: false });
+            if (pathResolution.ok) {
+              baseUrl = pathResolution.contentUrl;
+            }
+          } catch {
+            // keep contentUrl as fallback
+          }
+        }
+
         learningJourney = {
-          currentMilestone: 0,
+          currentMilestone,
           totalMilestones: milestones.length,
           milestones,
-          baseUrl: contentUrl,
+          baseUrl,
           summary: result.content.metadata.singleDoc?.summary,
           ...(pathSlug != null && {
             websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
           }),
         };
 
-        contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
+        if (currentMilestone === 0) {
+          contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
+        }
       }
     }
   }
@@ -1559,12 +1577,15 @@ function simpleMarkdownToHtml(md: string): string {
 }
 
 function inlineMarkdown(text: string): string {
-  // SECURITY: escape HTML entities first, then convert markdown links (F3, F4)
+  // SECURITY: escape HTML entities first, then convert markdown links (F3, F4, F6)
   let escaped = escapeHtmlEntities(text);
-  escaped = escaped.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    (_, label: string, href: string) => `<a href="${href}">${label}</a>`
-  );
+  escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, href: string) => {
+    const safeHref = sanitizeHtmlUrl(href);
+    if (!safeHref) {
+      return label;
+    }
+    return `<a href="${safeHref}">${label}</a>`;
+  });
   return escaped;
 }
 
@@ -1686,8 +1707,11 @@ function splitAtNextHeading(text: string): { body: string; remainder: string } {
     return { body: '', remainder: '' };
   }
   const nextMatch = text.match(NEXT_HEADING_RE);
-  if (!nextMatch || nextMatch.index === 0) {
+  if (!nextMatch) {
     return { body: text, remainder: '' };
+  }
+  if (nextMatch.index === 0) {
+    return { body: '', remainder: text };
   }
   return {
     body: text.slice(0, nextMatch.index!).trim(),
