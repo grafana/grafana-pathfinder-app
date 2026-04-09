@@ -648,22 +648,6 @@ export class ContextService {
   }
 
   /**
-   * SECURITY: Sanitize a legacy /recommend recommendation to prevent XSS and prototype
-   * pollution. Preserved for rollback: if the v1 endpoint is reverted to /recommend,
-   * restore its call site in getExternalRecommendations(). See Phase 8 cleanup in the
-   * package implementation plan for the scheduled removal.
-   */
-  static sanitizeLegacyRecommendation(rec: Recommendation): Recommendation {
-    return {
-      title: sanitizeTextForDisplay(rec.title || ''),
-      url: typeof rec.url === 'string' ? rec.url : '',
-      summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
-      type: ['docs-page', 'learning-journey', 'interactive'].includes(rec.type ?? '') ? rec.type : 'docs-page',
-      matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
-    };
-  }
-
-  /**
    * SECURITY: Sanitize a V1 recommendation to prevent XSS and prototype pollution.
    * Uses an explicit allowlist — no spread operator. Handles both URL-backed and
    * package-backed items based on `type`.
