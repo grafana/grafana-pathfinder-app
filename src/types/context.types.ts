@@ -88,6 +88,17 @@ export interface Recommendation {
   /** Pre-resolved manifest.suggests nav links (package-backed only) */
   resolvedSuggests?: ResolvedNavLink[];
 
+  /** Raw package IDs from manifest.recommends, deferred until summary expand */
+  pendingRecommendIds?: string[];
+  /** Raw package IDs from manifest.suggests, deferred until summary expand */
+  pendingSuggestIds?: string[];
+  /** Raw milestone package IDs from manifest.milestones, deferred until summary expand */
+  pendingMilestoneIds?: string[];
+  /** Path slug for milestone website URL building, stored alongside pendingMilestoneIds */
+  pendingPathSlug?: string;
+  /** True while nav links or milestones are being lazily resolved */
+  isResolvingDeferred?: boolean;
+
   [key: string]: any;
 }
 

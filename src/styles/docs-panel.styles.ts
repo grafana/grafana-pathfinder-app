@@ -601,7 +601,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.primary,
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     cursor: 'pointer',
@@ -678,7 +678,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
 
 export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   milestoneProgress: css({
-    padding: theme.spacing(1),
+    padding: theme.spacing(1.5),
     backgroundColor: theme.colors.background.canvas,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     flexShrink: 0,
@@ -686,7 +686,7 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   progressInfo: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(0.5),
+    gap: theme.spacing(1),
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
   }),
@@ -706,11 +706,10 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   milestoneActions: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
-    '& > *': {
-      flex: '1 1 auto',
-    },
+    justifyContent: 'flex-end',
+    gap: theme.spacing(0.75),
+    padding: theme.spacing(1, 0, 0),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
   }),
   navButton: css({
     display: 'flex',
@@ -760,6 +759,7 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.secondary,
     borderRadius: '2px',
     overflow: 'hidden',
+    marginTop: theme.spacing(0.5),
   }),
   progressFill: css({
     height: '100%',

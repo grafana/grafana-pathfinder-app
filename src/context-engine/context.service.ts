@@ -804,19 +804,27 @@ export class ContextService {
             };
           }
 
+          // Skip the expensive fetchContent call when V1 already provided a
+          // summary. Milestones are deferred to expand time anyway, so we
+          // only need completion percentage here.
+          const completionPercentage =
+            rec.type === 'interactive'
+              ? await interactiveCompletionStorage.get(rec.url)
+              : await getJourneyCompletionPercentageAsync(rec.url);
+
+          if (rec.summary) {
+            return {
+              ...rec,
+              totalSteps: 0,
+              milestones: [],
+              completionPercentage,
+            };
+          }
+
           try {
             const result = await fetchContent(rec.url);
-            // Use correct storage based on type:
-            // - Interactives store completion via step completion in interactiveCompletionStorage
-            // - Learning journeys use journeyCompletionStorage
-            const completionPercentage =
-              rec.type === 'interactive'
-                ? await interactiveCompletionStorage.get(rec.url)
-                : await getJourneyCompletionPercentageAsync(rec.url);
-
-            // Extract learning journey data from the unified content
             const milestones = result.content?.metadata.learningJourney?.milestones || [];
-            const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
+            const summary = result.content?.metadata.learningJourney?.summary || '';
 
             return {
               ...rec,
@@ -827,15 +835,11 @@ export class ContextService {
             };
           } catch (error) {
             console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
-            const completionPercentage =
-              rec.type === 'interactive'
-                ? await interactiveCompletionStorage.get(rec.url)
-                : await getJourneyCompletionPercentageAsync(rec.url);
             return {
               ...rec,
               totalSteps: 0,
               milestones: [],
-              summary: rec.summary || '',
+              summary: '',
               completionPercentage,
             };
           }
@@ -855,18 +859,23 @@ export class ContextService {
 
           let enriched: Record<string, unknown> = { completionPercentage };
 
+          // Defer milestone resolution to summary expand time (Tier 2 lazy-loading).
+          // Store raw IDs so the UI can show milestone count immediately while
+          // deferring the expensive per-ID resolve calls.
           if (isPath && Array.isArray(manifest?.milestones)) {
             const milestoneIds = (manifest!.milestones as unknown[]).filter((s): s is string => typeof s === 'string');
             const manifestId = typeof manifest?.id === 'string' ? manifest.id : '';
             const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
-            try {
-              const milestones = await resolvePackageMilestones(milestoneIds, pathSlug);
-              enriched = { ...enriched, milestones, totalSteps: milestones.length };
-            } catch {
-              // keep enriched as-is
-            }
+            enriched = {
+              ...enriched,
+              pendingMilestoneIds: milestoneIds,
+              ...(pathSlug != null && { pendingPathSlug: pathSlug }),
+              totalSteps: milestoneIds.length,
+            };
           }
 
+          // Defer nav link resolution to summary expand time (Tier 1 lazy-loading).
+          // Store raw IDs so the context panel can resolve on first expand.
           const recommendIds = Array.isArray(manifest?.recommends)
             ? (manifest!.recommends as unknown[]).filter((s): s is string => typeof s === 'string')
             : [];
@@ -874,21 +883,11 @@ export class ContextService {
             ? (manifest!.suggests as unknown[]).filter((s): s is string => typeof s === 'string')
             : [];
 
-          if (recommendIds.length > 0 || suggestIds.length > 0) {
-            try {
-              const [resolvedRecommends, resolvedSuggests] = await Promise.all([
-                resolvePackageNavLinks(recommendIds),
-                resolvePackageNavLinks(suggestIds),
-              ]);
-              if (resolvedRecommends.length > 0) {
-                enriched = { ...enriched, resolvedRecommends };
-              }
-              if (resolvedSuggests.length > 0) {
-                enriched = { ...enriched, resolvedSuggests };
-              }
-            } catch {
-              // nav link resolution is best-effort
-            }
+          if (recommendIds.length > 0) {
+            enriched = { ...enriched, pendingRecommendIds: recommendIds };
+          }
+          if (suggestIds.length > 0) {
+            enriched = { ...enriched, pendingSuggestIds: suggestIds };
           }
 
           return { ...rec, ...enriched };
@@ -897,6 +896,73 @@ export class ContextService {
         return rec;
       })
     );
+  }
+
+  /**
+   * Lazily resolve deferred nav links and milestones for a recommendation.
+   * Called on first summary expand to avoid upfront HTTP fan-out.
+   * Returns the recommendation with resolved fields populated and pending
+   * fields cleared, or the original recommendation if nothing needed resolving.
+   */
+  static async resolveDeferredData(rec: Recommendation): Promise<Recommendation> {
+    const hasPendingNavLinks =
+      (rec.pendingRecommendIds && rec.pendingRecommendIds.length > 0) ||
+      (rec.pendingSuggestIds && rec.pendingSuggestIds.length > 0);
+    const hasPendingMilestones = rec.pendingMilestoneIds && rec.pendingMilestoneIds.length > 0;
+
+    if (!hasPendingNavLinks && !hasPendingMilestones) {
+      return rec;
+    }
+
+    const updates: Partial<Recommendation> = {};
+
+    const promises: Array<Promise<void>> = [];
+
+    if (hasPendingNavLinks) {
+      promises.push(
+        (async () => {
+          try {
+            const [resolvedRecommends, resolvedSuggests] = await Promise.all([
+              resolvePackageNavLinks(rec.pendingRecommendIds ?? []),
+              resolvePackageNavLinks(rec.pendingSuggestIds ?? []),
+            ]);
+            if (resolvedRecommends.length > 0) {
+              updates.resolvedRecommends = resolvedRecommends;
+            }
+            if (resolvedSuggests.length > 0) {
+              updates.resolvedSuggests = resolvedSuggests;
+            }
+          } catch {
+            // best-effort
+          }
+        })()
+      );
+    }
+
+    if (hasPendingMilestones) {
+      promises.push(
+        (async () => {
+          try {
+            const milestones = await resolvePackageMilestones(rec.pendingMilestoneIds!, rec.pendingPathSlug);
+            updates.milestones = milestones;
+            updates.totalSteps = milestones.length;
+          } catch {
+            // keep existing values
+          }
+        })()
+      );
+    }
+
+    await Promise.all(promises);
+
+    return {
+      ...rec,
+      ...updates,
+      pendingRecommendIds: undefined,
+      pendingSuggestIds: undefined,
+      pendingMilestoneIds: undefined,
+      pendingPathSlug: undefined,
+    };
   }
 
   /**

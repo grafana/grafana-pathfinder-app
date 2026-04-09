@@ -255,6 +255,51 @@ describe('RecommenderPackageResolver', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('resolve with metadata-only', () => {
+    it('should skip content.json fetch and only load manifest', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(FIXTURE_RESOLUTION),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(FIXTURE_MANIFEST),
+      });
+
+      const result = await resolver.resolve('alerting-101', { loadContent: 'metadata-only' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.content).toBeUndefined();
+        expect(result.manifest).toMatchObject(FIXTURE_MANIFEST);
+      }
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1]![0]).toBe(FIXTURE_RESOLUTION.manifestUrl);
+    });
+
+    it('should succeed with no manifest when manifest fetch fails', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(FIXTURE_RESOLUTION),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+
+      const result = await resolver.resolve('alerting-101', { loadContent: 'metadata-only' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.content).toBeUndefined();
+        expect(result.manifest).toBeUndefined();
+      }
+    });
+  });
 });
 
 // Custom matcher for URL prefix checking

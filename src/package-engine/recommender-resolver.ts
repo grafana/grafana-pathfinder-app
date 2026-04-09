@@ -80,7 +80,8 @@ export class RecommenderPackageResolver implements PackageResolver {
     };
 
     if (options?.loadContent) {
-      const loaded = await this.loadFromCdn(resolutionData, packageId);
+      const metadataOnly = options.loadContent === 'metadata-only';
+      const loaded = await this.loadFromCdn(resolutionData, packageId, metadataOnly);
       if (!loaded.ok) {
         return loaded;
       }
@@ -93,17 +94,22 @@ export class RecommenderPackageResolver implements PackageResolver {
 
   private async loadFromCdn(
     resolutionData: V1PackageResolutionResponse,
-    packageId: string
-  ): Promise<{ ok: true; content: ContentJson; manifest?: ManifestJson } | PackageResolutionFailure> {
+    packageId: string,
+    metadataOnly = false
+  ): Promise<{ ok: true; content?: ContentJson; manifest?: ManifestJson } | PackageResolutionFailure> {
     try {
-      const contentResponse = await fetch(resolutionData.contentUrl);
-      if (!contentResponse.ok) {
-        return failure(packageId, 'network-error', `Failed to fetch content: HTTP ${contentResponse.status}`);
-      }
-      const rawContent = await contentResponse.json();
-      const contentResult = ContentJsonSchema.safeParse(rawContent);
-      if (!contentResult.success) {
-        return failure(packageId, 'validation-error', `Invalid content.json: ${contentResult.error.message}`);
+      let content: ContentJson | undefined;
+      if (!metadataOnly) {
+        const contentResponse = await fetch(resolutionData.contentUrl);
+        if (!contentResponse.ok) {
+          return failure(packageId, 'network-error', `Failed to fetch content: HTTP ${contentResponse.status}`);
+        }
+        const rawContent = await contentResponse.json();
+        const contentResult = ContentJsonSchema.safeParse(rawContent);
+        if (!contentResult.success) {
+          return failure(packageId, 'validation-error', `Invalid content.json: ${contentResult.error.message}`);
+        }
+        content = contentResult.data as ContentJson;
       }
 
       let manifest: ManifestJson | undefined;
@@ -122,7 +128,7 @@ export class RecommenderPackageResolver implements PackageResolver {
         }
       }
 
-      return { ok: true, content: contentResult.data as ContentJson, manifest };
+      return { ok: true, content, manifest };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'CDN fetch failed';
       return failure(packageId, 'network-error', message);

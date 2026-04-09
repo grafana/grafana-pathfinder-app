@@ -134,6 +134,51 @@ describe('CompositePackageResolver', () => {
       expect(result.ok).toBe(true);
     });
   });
+
+  describe('resolution caching', () => {
+    it('should return cached result for the same packageId and options', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = await composite.resolve('test-guide');
+      const second = await composite.resolve('test-guide');
+
+      expect(first).toBe(second);
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+
+    it('should cache separately for loadContent true vs false', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      await composite.resolve('test-guide', { loadContent: false });
+      await composite.resolve('test-guide', { loadContent: true });
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
+    });
+
+    it('should cache separately for different package IDs', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      await composite.resolve('guide-a');
+      await composite.resolve('guide-b');
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
+    });
+
+    it('should cache failures too (prevents repeated failed lookups)', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = await composite.resolve('missing');
+      const second = await composite.resolve('missing');
+
+      expect(first).toBe(second);
+      expect(first.ok).toBe(false);
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('createCompositeResolver', () => {
