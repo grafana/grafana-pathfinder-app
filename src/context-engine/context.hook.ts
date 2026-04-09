@@ -294,52 +294,62 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       (rec.pendingSuggestIds && rec.pendingSuggestIds.length > 0) ||
       (rec.pendingMilestoneIds && rec.pendingMilestoneIds.length > 0);
 
-    const updateRec = (rec: Recommendation): Recommendation => {
-      if (!matches(rec)) {
-        return rec;
-      }
-      const expanding = !rec.summaryExpanded;
-      return {
-        ...rec,
-        summaryExpanded: expanding,
-        ...(expanding && hasDeferredData(rec) ? { isResolvingDeferred: true } : {}),
-      };
-    };
+    let resolveTarget: Recommendation | undefined;
 
-    setContextData((prev) => ({
-      ...prev,
-      recommendations: prev.recommendations.map(updateRec),
-      featuredRecommendations: prev.featuredRecommendations.map(updateRec),
-    }));
-
-    // Lazily resolve deferred nav links and milestones on first expand
     setContextData((prev) => {
-      const target =
-        prev.recommendations.find((r) => matches(r) && r.isResolvingDeferred) ??
-        prev.featuredRecommendations.find((r) => matches(r) && r.isResolvingDeferred);
+      const updateRec = (rec: Recommendation): Recommendation => {
+        if (!matches(rec)) {
+          return rec;
+        }
+        const expanding = !rec.summaryExpanded;
+        if (expanding && hasDeferredData(rec) && !rec.isResolvingDeferred) {
+          resolveTarget = rec;
+        }
+        return {
+          ...rec,
+          summaryExpanded: expanding,
+          isResolvingDeferred: expanding && hasDeferredData(rec),
+        };
+      };
 
-      if (!target) {
-        return prev;
-      }
-
-      ContextService.resolveDeferredData(target).then((resolved) => {
-        setContextData((current) => {
-          const applyResolved = (rec: Recommendation): Recommendation => {
-            if (!matches(rec)) {
-              return rec;
-            }
-            return { ...rec, ...resolved, summaryExpanded: rec.summaryExpanded, isResolvingDeferred: false };
-          };
-          return {
-            ...current,
-            recommendations: current.recommendations.map(applyResolved),
-            featuredRecommendations: current.featuredRecommendations.map(applyResolved),
-          };
-        });
-      });
-
-      return prev;
+      return {
+        ...prev,
+        recommendations: prev.recommendations.map(updateRec),
+        featuredRecommendations: prev.featuredRecommendations.map(updateRec),
+      };
     });
+
+    if (resolveTarget) {
+      const clearResolving = () => {
+        setContextData((current) => ({
+          ...current,
+          recommendations: current.recommendations.map((rec) =>
+            matches(rec) ? { ...rec, isResolvingDeferred: false } : rec
+          ),
+          featuredRecommendations: current.featuredRecommendations.map((rec) =>
+            matches(rec) ? { ...rec, isResolvingDeferred: false } : rec
+          ),
+        }));
+      };
+
+      ContextService.resolveDeferredData(resolveTarget)
+        .then((resolved) => {
+          setContextData((current) => {
+            const applyResolved = (rec: Recommendation): Recommendation => {
+              if (!matches(rec)) {
+                return rec;
+              }
+              return { ...rec, ...resolved, summaryExpanded: rec.summaryExpanded, isResolvingDeferred: false };
+            };
+            return {
+              ...current,
+              recommendations: current.recommendations.map(applyResolved),
+              featuredRecommendations: current.featuredRecommendations.map(applyResolved),
+            };
+          });
+        })
+        .catch(clearResolving);
+    }
   }, []);
 
   const navigateToPath = useCallback((path: string) => {

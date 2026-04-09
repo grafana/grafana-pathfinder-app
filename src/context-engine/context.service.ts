@@ -804,15 +804,16 @@ export class ContextService {
             };
           }
 
-          // Skip the expensive fetchContent call when V1 already provided a
-          // summary. Milestones are deferred to expand time anyway, so we
-          // only need completion percentage here.
           const completionPercentage =
             rec.type === 'interactive'
               ? await interactiveCompletionStorage.get(rec.url)
               : await getJourneyCompletionPercentageAsync(rec.url);
 
-          if (rec.summary) {
+          // Skip the expensive fetchContent call when V1 already provided a
+          // summary AND the type doesn't need milestone data from content.
+          // Learning journeys extract milestones from content.json metadata,
+          // so they must always go through fetchContent.
+          if (rec.summary && rec.type !== 'learning-journey') {
             return {
               ...rec,
               totalSteps: 0,
