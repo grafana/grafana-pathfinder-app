@@ -20,12 +20,25 @@ import { RecommenderPackageResolver } from './recommender-resolver';
 
 export class CompositePackageResolver implements PackageResolver {
   private readonly resolvers: PackageResolver[];
+  private readonly cache = new Map<string, Promise<PackageResolution>>();
 
   constructor(resolvers: PackageResolver[]) {
     this.resolvers = resolvers;
   }
 
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
+    const cacheKey = `${packageId}:${options?.loadContent ?? false}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const promise = this.resolveUncached(packageId, options);
+    this.cache.set(cacheKey, promise);
+    return promise;
+  }
+
+  private async resolveUncached(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
     let lastFailure: PackageResolution | undefined;
 
     for (const resolver of this.resolvers) {

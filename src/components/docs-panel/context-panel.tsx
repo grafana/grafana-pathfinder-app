@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useState } from 'react';
+import { cx } from '@emotion/css';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Alert, Button } from '@grafana/ui';
@@ -12,6 +13,7 @@ import { locationService, config, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
+import { getSkeletonStyles } from '../../styles/skeleton.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
@@ -254,6 +256,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   toggleOtherDocsExpansion,
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
+  const skeletonStyles = useStyles2(getSkeletonStyles);
   const hasCustomGuidesContent = isLoadingCustomGuides || customGuides.length > 0;
   const suggestedGuidesCount = recommendations.length + featuredRecommendations.length;
 
@@ -480,6 +483,19 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                               {recommendation.summary && (
                                 <div className={styles.summaryContent}>
                                   <p className={styles.summaryText}>{recommendation.summary}</p>
+                                </div>
+                              )}
+
+                              {recommendation.isResolvingDeferred && !recommendation.milestones && (
+                                <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
+                                  {Array.from({
+                                    length: recommendation.totalSteps ? Math.min(recommendation.totalSteps, 3) : 2,
+                                  }).map((_, i) => (
+                                    <div key={i} className={styles.deferredSkeletonRow}>
+                                      <div className={styles.deferredSkeletonCircle}></div>
+                                      <div className={styles.deferredSkeletonBar}></div>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
 
@@ -773,6 +789,19 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             {recommendation.summary && (
                               <div className={styles.summaryContent}>
                                 <p className={styles.summaryText}>{recommendation.summary}</p>
+                              </div>
+                            )}
+
+                            {recommendation.isResolvingDeferred && !recommendation.milestones && (
+                              <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
+                                {Array.from({
+                                  length: recommendation.totalSteps ? Math.min(recommendation.totalSteps, 3) : 2,
+                                }).map((_, i) => (
+                                  <div key={i} className={styles.deferredSkeletonRow}>
+                                    <div className={styles.deferredSkeletonCircle}></div>
+                                    <div className={styles.deferredSkeletonBar}></div>
+                                  </div>
+                                ))}
                               </div>
                             )}
 

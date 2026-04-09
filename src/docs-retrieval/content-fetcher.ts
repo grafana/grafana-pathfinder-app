@@ -1393,30 +1393,38 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
     return [];
   }
 
+  const settled = await Promise.allSettled(
+    milestoneIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+  );
+
   const milestones: Milestone[] = [];
   let sequenceNumber = 1;
 
-  for (const id of milestoneIds) {
-    try {
-      const resolution = await _packageResolver.resolve(id, { loadContent: true });
-      if (!resolution.ok) {
-        console.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
-        continue;
-      }
+  for (let i = 0; i < milestoneIds.length; i++) {
+    const result = settled[i]!;
+    const id = milestoneIds[i]!;
 
-      const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
-
-      milestones.push({
-        number: sequenceNumber++,
-        title,
-        duration: '5-10 min',
-        url: resolution.contentUrl,
-        isActive: false,
-        ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
-      });
-    } catch (err) {
-      console.warn(`[resolvePackageMilestones] Error resolving milestone ${id}:`, err);
+    if (result.status === 'rejected') {
+      console.warn(`[resolvePackageMilestones] Error resolving milestone ${id}:`, result.reason);
+      continue;
     }
+
+    const resolution = result.value;
+    if (!resolution.ok) {
+      console.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
+      continue;
+    }
+
+    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+
+    milestones.push({
+      number: sequenceNumber++,
+      title,
+      duration: '5-10 min',
+      url: resolution.contentUrl,
+      isActive: false,
+      ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
+    });
   }
 
   return milestones;
@@ -1434,30 +1442,38 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
     return [];
   }
 
+  const settled = await Promise.allSettled(
+    packageIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+  );
+
   const links: ResolvedNavLink[] = [];
 
-  for (const id of packageIds) {
-    try {
-      const resolution = await _packageResolver.resolve(id, { loadContent: true });
-      if (!resolution.ok) {
-        console.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
-        continue;
-      }
+  for (let i = 0; i < packageIds.length; i++) {
+    const result = settled[i]!;
+    const id = packageIds[i]!;
 
-      const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
-      const manifest: Record<string, unknown> | undefined = resolution.manifest
-        ? (resolution.manifest as unknown as Record<string, unknown>)
-        : undefined;
-
-      links.push({
-        packageId: id,
-        title,
-        contentUrl: resolution.contentUrl,
-        manifest,
-      });
-    } catch (err) {
-      console.warn(`[resolvePackageNavLinks] Error resolving package ${id}:`, err);
+    if (result.status === 'rejected') {
+      console.warn(`[resolvePackageNavLinks] Error resolving package ${id}:`, result.reason);
+      continue;
     }
+
+    const resolution = result.value;
+    if (!resolution.ok) {
+      console.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
+      continue;
+    }
+
+    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const manifest: Record<string, unknown> | undefined = resolution.manifest
+      ? (resolution.manifest as unknown as Record<string, unknown>)
+      : undefined;
+
+    links.push({
+      packageId: id,
+      title,
+      contentUrl: resolution.contentUrl,
+      manifest,
+    });
   }
 
   return links;
@@ -1497,56 +1513,58 @@ export async function fetchPackageContent(
   packageManifest?: Record<string, unknown>,
   preResolvedMilestones?: Milestone[]
 ): Promise<ContentFetchResult> {
-  const result = await fetchContent(contentUrl);
+  const renderType = getPackageRenderType(packageManifest);
+  const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
+
+  const manifestId = needsMilestones && typeof packageManifest?.id === 'string' ? packageManifest.id : '';
+  const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
+  const milestoneIds = needsMilestones ? getManifestMilestoneIds(packageManifest) : [];
+  const shouldResolveMilestones =
+    needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
+
+  // Run content fetch, milestone resolution, and baseUrl resolution in
+  // parallel. These are independent: the page body doesn't need milestones
+  // and milestones don't need the page body.
+  const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
+    fetchContent(contentUrl),
+    shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
+    manifestId && _packageResolver
+      ? _packageResolver.resolve(manifestId, { loadContent: false }).catch(() => undefined)
+      : Promise.resolve(undefined),
+  ]);
 
   if (!result.content) {
     return result;
   }
 
-  const renderType = getPackageRenderType(packageManifest);
   let learningJourney: LearningJourneyMetadata | undefined;
   let contentString = result.content.content;
 
-  if (renderType === 'learning-journey' && isPathManifest(packageManifest)) {
-    const manifestId = typeof packageManifest?.id === 'string' ? packageManifest.id : '';
-    const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
-    const milestoneIds = getManifestMilestoneIds(packageManifest);
+  if (needsMilestones) {
+    const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
 
-    if (milestoneIds.length > 0 || (preResolvedMilestones && preResolvedMilestones.length > 0)) {
-      const milestones =
-        preResolvedMilestones && preResolvedMilestones.length > 0
-          ? preResolvedMilestones
-          : await resolvePackageMilestones(milestoneIds, pathSlug);
-      if (milestones.length > 0) {
-        const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
-        const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
+    if (milestones && milestones.length > 0) {
+      const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
+      const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
-        let baseUrl = contentUrl;
-        if (milestoneIndex >= 0 && manifestId && _packageResolver) {
-          try {
-            const pathResolution = await _packageResolver.resolve(manifestId, { loadContent: false });
-            if (pathResolution.ok) {
-              baseUrl = pathResolution.contentUrl;
-            }
-          } catch {
-            // keep contentUrl as fallback
-          }
-        }
+      let baseUrl = contentUrl;
+      if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
+        baseUrl = baseUrlResolution.contentUrl;
+      }
 
-        learningJourney = {
-          currentMilestone,
-          totalMilestones: milestones.length,
-          milestones,
-          baseUrl,
-          summary: result.content.metadata.singleDoc?.summary,
-          ...(pathSlug != null && {
-            websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
-          }),
-        };
+      learningJourney = {
+        currentMilestone,
+        totalMilestones: milestones.length,
+        milestones,
+        baseUrl,
+        summary: result.content.metadata.singleDoc?.summary,
+        ...(pathSlug != null && {
+          websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
+        }),
+      };
 
-        if (currentMilestone === 0) {
-          contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
-        }
+      if (currentMilestone === 0) {
+        contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
       }
     }
   }

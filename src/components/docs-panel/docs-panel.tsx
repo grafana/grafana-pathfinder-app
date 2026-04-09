@@ -3,7 +3,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -42,7 +42,6 @@ import {
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
 import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/user-storage';
-import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 import {
@@ -1522,13 +1521,66 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             );
           }
 
-          // Show loading state with skeleton
+          // Show loading state with skeleton.
+          // When a learning journey tab is reloading (milestone navigation), keep
+          // the milestone bar visible so the user doesn't lose navigation context.
           if (!isRecommendationsTab && activeTab?.isLoading) {
+            const ljMeta = activeTab.content?.metadata?.learningJourney;
+            const showBarWhileLoading =
+              ljMeta &&
+              activeTab.content?.type === 'learning-journey' &&
+              (activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type));
+
             return (
-              <LoadingIndicator
-                className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
-                contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'}
-              />
+              <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
+                {showBarWhileLoading && (
+                  <div className={styles.milestoneProgress}>
+                    <div className={styles.progressInfo}>
+                      <div className={styles.progressHeader}>
+                        <IconButton
+                          name="arrow-left"
+                          size="sm"
+                          aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
+                          onClick={() => model.navigateToPreviousMilestone()}
+                          tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
+                          tooltipPlacement="top"
+                          disabled={true}
+                          className={styles.navButton}
+                        />
+                        <span className={styles.milestoneText}>
+                          {ljMeta.currentMilestone === 0
+                            ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
+                                total: ljMeta.totalMilestones,
+                              })
+                            : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
+                                current: ljMeta.currentMilestone,
+                                total: ljMeta.totalMilestones,
+                              })}
+                        </span>
+                        <IconButton
+                          name="arrow-right"
+                          size="sm"
+                          aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
+                          onClick={() => model.navigateToNextMilestone()}
+                          tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
+                          tooltipPlacement="top"
+                          disabled={true}
+                          className={styles.navButton}
+                        />
+                      </div>
+                      <div className={styles.progressBar}>
+                        <div
+                          className={styles.progressFill}
+                          style={{
+                            width: `${((ljMeta.currentMilestone || 0) / (ljMeta.totalMilestones || 1)) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <LoadingIndicator contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'} />
+              </div>
             );
           }
 
@@ -1588,7 +1640,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   </div>
                 )}
 
-                {/* Content Meta for docs/interactive - now includes secondary open-in-new button */}
+                {/* Content Meta for docs/interactive - label left, primary actions + kebab right */}
                 {isDocsLikeTab(activeTab.type) && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
@@ -1598,17 +1650,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           : t('docsPanel.documentation', 'Documentation')}
                       </span>
                     </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: 8,
-                      }}
-                    >
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {(() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
                         if (isGrafanaDocsUrl(url)) {
                           const cleanUrl = cleanDocsUrl(url);
-
                           return (
                             <button
                               className={styles.secondaryActionButton}
@@ -1622,7 +1668,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                   link_type: 'external_browser',
                                   interaction_location: 'docs_content_meta_right',
                                 });
-                                // Delay to ensure analytics event is sent before opening new tab
                                 setTimeout(() => {
                                   window.open(cleanUrl, '_blank', 'noopener,noreferrer');
                                 }, 100);
@@ -1635,17 +1680,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         }
                         return null;
                       })()}
-                      {isDevMode && (
-                        <IconButton
-                          tooltip="Refresh tab (dev mode only)"
-                          name="sync"
-                          onClick={() => {
-                            if (activeTab) {
-                              reloadActiveTab(activeTab);
-                            }
-                          }}
-                        />
-                      )}
                       {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                         <button
                           className={styles.secondaryActionButton}
@@ -1661,14 +1695,50 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                         </button>
                       )}
-                      <FeedbackButton
-                        variant="secondary"
-                        contentUrl={activeTab.content?.url || activeTab.baseUrl}
-                        contentType={activeTab.type || 'learning-journey'}
-                        interactionLocation="docs_panel_header_feedback_button"
-                        currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
-                        totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
-                      />
+                      <Dropdown
+                        placement="bottom-end"
+                        overlay={
+                          <Menu>
+                            {isDevMode && (
+                              <Menu.Item
+                                label={t('docsPanel.refreshDev', 'Refresh (dev)')}
+                                icon="sync"
+                                onClick={() => {
+                                  if (activeTab) {
+                                    reloadActiveTab(activeTab);
+                                  }
+                                }}
+                              />
+                            )}
+                            <Menu.Item
+                              label={t('docsPanel.giveFeedback', 'Give feedback')}
+                              icon="comment-alt-message"
+                              onClick={() => {
+                                reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                                  interaction_location: 'docs_panel_header_feedback_menu',
+                                  panel_type: 'combined_learning_journey',
+                                  content_url: activeTab.content?.url || activeTab.baseUrl || '',
+                                  content_type: activeTab.type || 'docs',
+                                });
+                                setTimeout(() => {
+                                  window.open(
+                                    'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  );
+                                }, 100);
+                              }}
+                            />
+                          </Menu>
+                        }
+                      >
+                        <IconButton
+                          name="ellipsis-v"
+                          size="sm"
+                          aria-label={t('docsPanel.menuAriaLabel', 'More options')}
+                          tooltip={t('docsPanel.menuTooltip', 'More options')}
+                        />
+                      </Dropdown>
                     </div>
                   </div>
                 )}
@@ -1792,17 +1862,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           }
                           return null;
                         })()}
-                        {isDevMode && (
-                          <IconButton
-                            tooltip="Refresh tab (dev mode only)"
-                            name="sync"
-                            onClick={() => {
-                              if (activeTab) {
-                                reloadActiveTab(activeTab);
-                              }
-                            }}
-                          />
-                        )}
                         {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                           <button
                             className={styles.secondaryActionButton}
@@ -1818,14 +1877,50 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                           </button>
                         )}
-                        <FeedbackButton
-                          variant="secondary"
-                          contentUrl={activeTab.content?.url || activeTab.baseUrl}
-                          contentType={activeTab.type || 'learning-journey'}
-                          interactionLocation="milestone_progress_bar_feedback_button"
-                          currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
-                          totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
-                        />
+                        <Dropdown
+                          placement="bottom-end"
+                          overlay={
+                            <Menu>
+                              {isDevMode && (
+                                <Menu.Item
+                                  label={t('docsPanel.refreshDev', 'Refresh (dev)')}
+                                  icon="sync"
+                                  onClick={() => {
+                                    if (activeTab) {
+                                      reloadActiveTab(activeTab);
+                                    }
+                                  }}
+                                />
+                              )}
+                              <Menu.Item
+                                label={t('docsPanel.giveFeedback', 'Give feedback')}
+                                icon="comment-alt-message"
+                                onClick={() => {
+                                  reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                                    interaction_location: 'milestone_progress_bar_feedback_menu',
+                                    panel_type: 'combined_learning_journey',
+                                    content_url: activeTab.content?.url || activeTab.baseUrl || '',
+                                    content_type: activeTab.type || 'learning-journey',
+                                  });
+                                  setTimeout(() => {
+                                    window.open(
+                                      'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                                      '_blank',
+                                      'noopener,noreferrer'
+                                    );
+                                  }, 100);
+                                }}
+                              />
+                            </Menu>
+                          }
+                        >
+                          <IconButton
+                            name="ellipsis-v"
+                            size="sm"
+                            aria-label={t('docsPanel.menuAriaLabel', 'More options')}
+                            tooltip={t('docsPanel.menuTooltip', 'More options')}
+                          />
+                        </Dropdown>
                       </div>
                       <div className={styles.progressBar}>
                         <div
