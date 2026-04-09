@@ -825,7 +825,7 @@ export class ContextService {
           try {
             const result = await fetchContent(rec.url);
             const milestones = result.content?.metadata.learningJourney?.milestones || [];
-            const summary = result.content?.metadata.learningJourney?.summary || '';
+            const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
 
             return {
               ...rec,
@@ -840,7 +840,7 @@ export class ContextService {
               ...rec,
               totalSteps: 0,
               milestones: [],
-              summary: '',
+              summary: rec.summary || '',
               completionPercentage,
             };
           }
@@ -905,14 +905,14 @@ export class ContextService {
    * Returns the recommendation with resolved fields populated and pending
    * fields cleared, or the original recommendation if nothing needed resolving.
    */
-  static async resolveDeferredData(rec: Recommendation): Promise<Recommendation> {
+  static async resolveDeferredData(rec: Recommendation): Promise<Partial<Recommendation>> {
     const hasPendingNavLinks =
       (rec.pendingRecommendIds && rec.pendingRecommendIds.length > 0) ||
       (rec.pendingSuggestIds && rec.pendingSuggestIds.length > 0);
     const hasPendingMilestones = rec.pendingMilestoneIds && rec.pendingMilestoneIds.length > 0;
 
     if (!hasPendingNavLinks && !hasPendingMilestones) {
-      return rec;
+      return {};
     }
 
     const updates: Partial<Recommendation> = {};
@@ -957,7 +957,6 @@ export class ContextService {
     await Promise.all(promises);
 
     return {
-      ...rec,
       ...updates,
       pendingRecommendIds: undefined,
       pendingSuggestIds: undefined,
