@@ -53,6 +53,14 @@ export interface DashboardInfo {
   folderTitle?: string;
 }
 
+/** Resolved metadata for a package navigation link (recommends/suggests). */
+export interface ResolvedNavLink {
+  packageId: string;
+  title: string;
+  contentUrl: string;
+  manifest?: Record<string, unknown>;
+}
+
 export interface Recommendation {
   title: string;
   url: string;
@@ -74,6 +82,22 @@ export interface Recommendation {
   repository?: string;
   /** Package manifest metadata from v1 response (package-backed only) */
   manifest?: Record<string, unknown>;
+
+  /** Pre-resolved manifest.recommends nav links (package-backed only) */
+  resolvedRecommends?: ResolvedNavLink[];
+  /** Pre-resolved manifest.suggests nav links (package-backed only) */
+  resolvedSuggests?: ResolvedNavLink[];
+
+  /** Raw package IDs from manifest.recommends, deferred until summary expand */
+  pendingRecommendIds?: string[];
+  /** Raw package IDs from manifest.suggests, deferred until summary expand */
+  pendingSuggestIds?: string[];
+  /** Raw milestone package IDs from manifest.milestones, deferred until summary expand */
+  pendingMilestoneIds?: string[];
+  /** Path slug for milestone website URL building, stored alongside pendingMilestoneIds */
+  pendingPathSlug?: string;
+  /** True while nav links or milestones are being lazily resolved */
+  isResolvingDeferred?: boolean;
 
   [key: string]: any;
 }

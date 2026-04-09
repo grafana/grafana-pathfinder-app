@@ -64,7 +64,8 @@ export class BundledPackageResolver implements PackageResolver {
     };
 
     if (options?.loadContent) {
-      const loadResult = await this.loadPackageContent(basePath, packageId);
+      const metadataOnly = options.loadContent === 'metadata-only';
+      const loadResult = await this.loadPackageContent(basePath, packageId, metadataOnly);
       if (!loadResult.ok) {
         return loadResult;
       }
@@ -77,15 +78,20 @@ export class BundledPackageResolver implements PackageResolver {
 
   private async loadPackageContent(
     basePath: string,
-    packageId: string
-  ): Promise<{ ok: true; content: ContentJson; manifest?: ManifestJson } | PackageResolutionFailure> {
-    const contentResult = loadBundledContent(basePath);
-    if (!contentResult.ok) {
-      return {
-        ok: false,
-        id: packageId,
-        error: contentResult.error,
-      };
+    packageId: string,
+    metadataOnly = false
+  ): Promise<{ ok: true; content?: ContentJson; manifest?: ManifestJson } | PackageResolutionFailure> {
+    let content: ContentJson | undefined;
+    if (!metadataOnly) {
+      const contentResult = loadBundledContent(basePath);
+      if (!contentResult.ok) {
+        return {
+          ok: false,
+          id: packageId,
+          error: contentResult.error,
+        };
+      }
+      content = contentResult.data;
     }
 
     const manifestResult = loadBundledManifest(basePath);
@@ -96,7 +102,7 @@ export class BundledPackageResolver implements PackageResolver {
 
     return {
       ok: true,
-      content: contentResult.data,
+      content,
       manifest: manifestResult.ok ? manifestResult.data : undefined,
     };
   }

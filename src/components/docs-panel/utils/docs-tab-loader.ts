@@ -18,7 +18,7 @@ export async function loadDocsTabContentResult(
 
   if (packageInfo) {
     if (normalizedUrl) {
-      return fetchPackageContent(normalizedUrl, packageInfo.packageManifest);
+      return fetchPackageContent(normalizedUrl, packageInfo.packageManifest, packageInfo.resolvedMilestones);
     }
 
     if (packageInfo.packageId) {

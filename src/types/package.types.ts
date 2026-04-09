@@ -243,8 +243,14 @@ export type PackageResolution = PackageResolutionSuccess | PackageResolutionFail
  * Options for {@link PackageResolver.resolve}.
  */
 export interface ResolveOptions {
-  /** When true, fetch and populate manifest and content on the resolution result */
-  loadContent?: boolean;
+  /**
+   * Controls how much content to load alongside the resolution result.
+   * - `true`: fetch and populate both manifest and content (full payload)
+   * - `'metadata-only'`: fetch manifest only, skip the heavier content.json
+   *   (sufficient for obtaining title from manifest.description and contentUrl)
+   * - `false` / `undefined`: resolve URLs only, no content fetching
+   */
+  loadContent?: boolean | 'metadata-only';
 }
 
 /**

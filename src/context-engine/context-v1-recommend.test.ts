@@ -76,6 +76,21 @@ jest.mock('../docs-retrieval', () => ({
     content: { metadata: { learningJourney: { milestones: [], summary: '' } } },
   }),
   getJourneyCompletionPercentageAsync: jest.fn().mockResolvedValue(0),
+  resolvePackageMilestones: jest.fn().mockResolvedValue([
+    { number: 1, title: 'Milestone 1', duration: '5-10 min', url: 'bundled:ms-1/content.json', isActive: false },
+    { number: 2, title: 'Milestone 2', duration: '5-10 min', url: 'bundled:ms-2/content.json', isActive: false },
+  ]),
+  resolvePackageNavLinks: jest.fn().mockImplementation((ids: string[]) =>
+    Promise.resolve(
+      ids.map((id) => ({
+        packageId: id,
+        title: `Resolved: ${id}`,
+        contentUrl: `bundled:${id}/content.json`,
+        manifest: { id, type: 'guide' },
+      }))
+    )
+  ),
+  derivePathSlug: jest.fn().mockImplementation((id: string) => (id.endsWith('-lj') ? id.slice(0, -3) : id)),
 }));
 
 jest.mock('../lib/user-storage', () => ({
@@ -575,5 +590,189 @@ describe('V1 error handling and edge cases', () => {
 
     expect(result.recommendations).toBeDefined();
     expect(result.errorType).toBe('unavailable');
+  });
+});
+
+describe('Path package deferred milestone resolution', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should store pendingMilestoneIds and totalSteps for path-type package recommendations', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Grafana Cloud Tour',
+          description: 'A tour of Grafana Cloud',
+          url: '',
+          matchAccuracy: 0.9,
+          contentUrl: 'https://cdn.example.com/packages/cloud-tour/content.json',
+          manifestUrl: 'https://cdn.example.com/packages/cloud-tour/manifest.json',
+          manifest: {
+            id: 'grafana-cloud-tour-lj',
+            type: 'path',
+            milestones: ['ms-1', 'ms-2'],
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const pathRec = result.recommendations.find((r) => r.title === 'Grafana Cloud Tour');
+    expect(pathRec).toBeDefined();
+    expect(pathRec!.pendingMilestoneIds).toEqual(['ms-1', 'ms-2']);
+    expect(pathRec!.totalSteps).toBe(2);
+    expect(pathRec!.milestones).toBeUndefined();
+    expect(pathRec!.pendingPathSlug).toBe('grafana-cloud-tour');
+  });
+
+  it('should not set pendingMilestoneIds for guide-type package recommendations', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'A Guide',
+          description: 'Just a guide',
+          url: '',
+          matchAccuracy: 0.8,
+          contentUrl: 'https://cdn.example.com/packages/guide/content.json',
+          manifest: {
+            id: 'some-guide',
+            type: 'guide',
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const guideRec = result.recommendations.find((r) => r.title === 'A Guide');
+    expect(guideRec).toBeDefined();
+    expect(guideRec!.pendingMilestoneIds).toBeUndefined();
+    expect(guideRec!.totalSteps).toBeUndefined();
+  });
+
+  it('should resolve deferred milestones via resolveDeferredData', async () => {
+    const rec: Recommendation = {
+      title: 'Cloud Tour',
+      url: '',
+      type: 'package',
+      contentUrl: 'https://cdn.example.com/packages/cloud-tour/content.json',
+      pendingMilestoneIds: ['ms-1', 'ms-2'],
+      pendingPathSlug: 'cloud-tour',
+    };
+
+    const resolved = await ContextService.resolveDeferredData(rec);
+
+    expect(resolved.milestones).toHaveLength(2);
+    expect(resolved.milestones![0]!.title).toBe('Milestone 1');
+    expect(resolved.totalSteps).toBe(2);
+    expect(resolved.pendingMilestoneIds).toBeUndefined();
+    expect(resolved.pendingPathSlug).toBeUndefined();
+  });
+});
+
+describe('Package recommends/suggests deferred nav link resolution', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should store pendingRecommendIds and pendingSuggestIds instead of resolving eagerly', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Alerting 101',
+          description: 'Learn alerting',
+          url: '',
+          matchAccuracy: 0.9,
+          contentUrl: 'https://cdn.example.com/packages/alerting-101/content.json',
+          manifest: {
+            id: 'alerting-101',
+            type: 'guide',
+            recommends: ['alerting-notifications', 'slo-quickstart'],
+            suggests: ['explore-drilldowns-101'],
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const rec = result.recommendations.find((r) => r.title === 'Alerting 101');
+    expect(rec).toBeDefined();
+    expect(rec!.pendingRecommendIds).toEqual(['alerting-notifications', 'slo-quickstart']);
+    expect(rec!.pendingSuggestIds).toEqual(['explore-drilldowns-101']);
+    expect(rec!.resolvedRecommends).toBeUndefined();
+    expect(rec!.resolvedSuggests).toBeUndefined();
+  });
+
+  it('should not set pendingRecommendIds/pendingSuggestIds when manifest has no nav links', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'Simple Guide',
+          description: 'No nav links',
+          url: '',
+          matchAccuracy: 0.8,
+          contentUrl: 'https://cdn.example.com/packages/simple/content.json',
+          manifest: {
+            id: 'simple-guide',
+            type: 'guide',
+          },
+        } as any,
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const rec = result.recommendations.find((r) => r.title === 'Simple Guide');
+    expect(rec).toBeDefined();
+    expect(rec!.pendingRecommendIds).toBeUndefined();
+    expect(rec!.pendingSuggestIds).toBeUndefined();
+  });
+
+  it('should resolve deferred data via resolveDeferredData', async () => {
+    const rec: Recommendation = {
+      title: 'Alerting 101',
+      url: '',
+      type: 'package',
+      contentUrl: 'https://cdn.example.com/packages/alerting-101/content.json',
+      pendingRecommendIds: ['alerting-notifications', 'slo-quickstart'],
+      pendingSuggestIds: ['explore-drilldowns-101'],
+    };
+
+    const resolved = await ContextService.resolveDeferredData(rec);
+
+    expect(resolved.resolvedRecommends).toHaveLength(2);
+    expect(resolved.resolvedRecommends![0]!.packageId).toBe('alerting-notifications');
+    expect(resolved.resolvedRecommends![0]!.title).toBe('Resolved: alerting-notifications');
+    expect(resolved.resolvedSuggests).toHaveLength(1);
+    expect(resolved.resolvedSuggests![0]!.packageId).toBe('explore-drilldowns-101');
+    expect(resolved.pendingRecommendIds).toBeUndefined();
+    expect(resolved.pendingSuggestIds).toBeUndefined();
   });
 });

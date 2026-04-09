@@ -40,7 +40,7 @@ export const getFeedbackButtonStyles = (theme: GrafanaTheme2) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
     backgroundColor: 'transparent',
     color: theme.colors.text.primary,
     border: `1px solid ${theme.colors.border.medium}`,

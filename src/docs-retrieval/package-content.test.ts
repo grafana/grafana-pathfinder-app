@@ -9,7 +9,13 @@
  * - Manifest metadata passthrough via fetchPackageContent
  * - setPackageResolver injection and resolver-not-configured error
  */
-import { fetchPackageContent, fetchPackageById, setPackageResolver, fetchContent } from './content-fetcher';
+import {
+  fetchPackageContent,
+  fetchPackageById,
+  setPackageResolver,
+  fetchContent,
+  resolvePackageMilestones,
+} from './content-fetcher';
 import type { PackageResolver, PackageResolution } from '../types';
 
 // Mock AbortSignal.timeout for Node environments
@@ -331,6 +337,261 @@ describe('fetchPackageById with resolved content', () => {
     if (result.content) {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.type).toBe('interactive');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePackageMilestones — milestone ID to Milestone object resolution
+// ---------------------------------------------------------------------------
+
+describe('resolvePackageMilestones', () => {
+  afterEach(() => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'reset',
+        error: { code: 'not-found', message: 'reset' },
+      })
+    );
+  });
+
+  it('returns empty array when no resolver is configured', async () => {
+    const result = await resolvePackageMilestones(['milestone-1', 'milestone-2']);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array for empty milestone list', async () => {
+    setPackageResolver(makeResolver(makeSuccessResolution()));
+    const result = await resolvePackageMilestones([]);
+    expect(result).toEqual([]);
+  });
+
+  it('resolves milestone IDs to Milestone objects with sequential numbering', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['step-one', 'step-two', 'step-three']);
+
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual({
+      number: 1,
+      title: 'Title for step-one',
+      duration: '5-10 min',
+      url: 'bundled:step-one/content.json',
+      isActive: false,
+    });
+    expect(result[1]!.number).toBe(2);
+    expect(result[2]!.number).toBe(3);
+  });
+
+  it('skips unresolvable milestones and continues with remaining', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'missing') {
+          return Promise.resolve({
+            ok: false,
+            id,
+            error: { code: 'not-found' as const, message: 'not found' },
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['first', 'missing', 'third']);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]!.number).toBe(1);
+    expect(result[0]!.title).toBe('Title: first');
+    expect(result[1]!.number).toBe(2);
+    expect(result[1]!.title).toBe('Title: third');
+  });
+
+  it('falls back to description then ID when content title is missing', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'no-title',
+        contentUrl: 'bundled:no-title/content.json',
+        manifestUrl: 'bundled:no-title/manifest.json',
+        repository: 'bundled',
+        manifest: { id: 'no-title', description: 'A description', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['no-title']);
+    expect(result[0]!.title).toBe('A description');
+  });
+
+  it('falls back to package ID when manifest has no title or description', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'bare-id',
+        contentUrl: 'bundled:bare-id/content.json',
+        manifestUrl: 'bundled:bare-id/manifest.json',
+        repository: 'bundled',
+        manifest: { id: 'bare-id', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['bare-id']);
+    expect(result[0]!.title).toBe('bare-id');
+  });
+
+  it('skips milestones that throw during resolution', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'exploder') {
+          return Promise.reject(new Error('kaboom'));
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['good', 'exploder', 'also-good']);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]!.title).toBe('Title: good');
+    expect(result[1]!.title).toBe('Title: also-good');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchPackageContent — path-type package learningJourney enrichment
+// ---------------------------------------------------------------------------
+
+describe('fetchPackageContent path-type enrichment', () => {
+  afterEach(() => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'reset',
+        error: { code: 'not-found', message: 'reset' },
+      })
+    );
+  });
+
+  it('builds learningJourney metadata for path-type packages with milestones', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    if (result.content) {
+      expect(result.content.type).toBe('learning-journey');
+      expect(result.content.metadata.learningJourney).toBeDefined();
+      expect(result.content.metadata.learningJourney!.totalMilestones).toBe(2);
+      expect(result.content.metadata.learningJourney!.currentMilestone).toBe(0);
+      expect(result.content.metadata.learningJourney!.milestones).toHaveLength(2);
+      expect(result.content.metadata.learningJourney!.milestones[0]!.title).toBe('Milestone: step-1');
+    }
+  });
+
+  it('does not add learningJourney for guide-type packages', async () => {
+    const manifest = {
+      id: 'test-guide',
+      type: 'guide',
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    if (result.content) {
+      expect(result.content.type).toBe('interactive');
+      expect(result.content.metadata.learningJourney).toBeUndefined();
+    }
+  });
+
+  it('does not add learningJourney for path packages without milestones', async () => {
+    const manifest = {
+      id: 'empty-path',
+      type: 'path',
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    if (result.content) {
+      expect(result.content.type).toBe('learning-journey');
+      expect(result.content.metadata.learningJourney).toBeUndefined();
+    }
+  });
+
+  it('preserves packageManifest alongside learningJourney', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'ms-1',
+        contentUrl: 'bundled:ms-1/content.json',
+        manifestUrl: 'bundled:ms-1/manifest.json',
+        repository: 'bundled',
+        content: { id: 'ms-1', title: 'MS 1', blocks: [] },
+        manifest: { id: 'ms-1', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['ms-1'],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    if (result.content) {
+      expect(result.content.metadata.packageManifest).toEqual(manifest);
+      expect(result.content.metadata.learningJourney).toBeDefined();
     }
   });
 });

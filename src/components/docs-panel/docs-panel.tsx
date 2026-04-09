@@ -3,7 +3,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -42,7 +42,6 @@ import {
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
 import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/user-storage';
-import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 import {
@@ -56,6 +55,7 @@ import {
   markMilestoneDone,
   isLastMilestone,
   setPackageResolver,
+  injectJourneyExtrasIntoJsonGuide,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -80,6 +80,7 @@ import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './
 // Import extracted utilities
 import {
   isDocsLikeTab,
+  shouldUseDocsLoader,
   getTranslatedTitle,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
@@ -185,7 +186,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (activeTab && activeTab.id !== 'recommendations') {
       // If we have an active tab but no content, load it
       if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-        if (isDocsLikeTab(activeTab.type)) {
+        if (shouldUseDocsLoader(activeTab)) {
           this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
           this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
@@ -272,19 +273,49 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({ tabs: updatedTabs });
 
     try {
+      const tab = this.state.tabs.find((t) => t.id === tabId);
       const result = await fetchContent(url);
 
       // Check if fetch succeeded or failed
       if (result.content) {
+        let content = result.content;
+
+        if (tab?.pathContext) {
+          const currentMilestone = this.findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
+          const learningJourney = {
+            ...tab.pathContext.learningJourney,
+            currentMilestone,
+          };
+
+          if (currentMilestone === 0) {
+            content = {
+              ...content,
+              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
+            };
+          }
+
+          content = {
+            ...content,
+            type: 'learning-journey',
+            metadata: {
+              ...content.metadata,
+              learningJourney,
+              ...(tab.packageInfo?.packageManifest != null && {
+                packageManifest: tab.packageInfo.packageManifest,
+              }),
+            },
+          };
+        }
+
         // Success: set content and clear error
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
             ? {
                 ...t,
-                content: result.content,
+                content,
                 isLoading: false,
                 error: null,
-                currentUrl: url, // Ensure currentUrl is set to the actual loaded URL
+                currentUrl: url,
               }
             : t
         );
@@ -293,11 +324,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         // Save tabs to storage after content is loaded
         this.saveTabsToStorage();
 
-        // Update completion percentage for learning journeys
+        // Update completion percentage for learning journeys.
+        // Use learningJourney.baseUrl (the path's cover page URL) as the storage
+        // key so it matches the key used by context.service.ts when reading
+        // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
         const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
-          setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+          const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
+          setJourneyCompletionPercentage(completionKey, progress);
         }
       } else {
         // Fetch failed: set error from result
@@ -332,6 +367,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Save tabs to storage even when there's an error
       this.saveTabsToStorage();
     }
+  }
+
+  private findCurrentMilestoneIndex(milestones: Array<{ url: string }>, currentUrl: string): number {
+    const index = milestones.findIndex((m) => m.url === currentUrl);
+    return index >= 0 ? index + 1 : 0;
   }
 
   public closeTab(tabId: string) {
@@ -390,10 +430,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
-      if (isDocsLikeTab(tab.type) && !tab.content) {
-        this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
-      } else if (!isDocsLikeTab(tab.type) && !tab.content) {
-        this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
+      if (!tab.content) {
+        if (shouldUseDocsLoader(tab)) {
+          this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
+        } else {
+          this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
+        }
       }
     }
   }
@@ -534,6 +576,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       if (result.content) {
         // Success: set content and clear error
         const fetchedContent = result.content;
+
+        const pathContext = fetchedContent.metadata.learningJourney
+          ? { learningJourney: fetchedContent.metadata.learningJourney }
+          : undefined;
+
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
             ? {
@@ -549,6 +596,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                     : fetchedContent.type === 'interactive'
                       ? 'interactive'
                       : t.type,
+                pathContext,
               }
             : t
         );
@@ -893,7 +941,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Helper: Reload active tab content (DRY - was duplicated 3x)
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
-      if (isDocsLikeTab(tab.type)) {
+      if (shouldUseDocsLoader(tab)) {
         model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
       } else {
         model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);
@@ -1473,13 +1521,66 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             );
           }
 
-          // Show loading state with skeleton
+          // Show loading state with skeleton.
+          // When a learning journey tab is reloading (milestone navigation), keep
+          // the milestone bar visible so the user doesn't lose navigation context.
           if (!isRecommendationsTab && activeTab?.isLoading) {
+            const ljMeta = activeTab.content?.metadata?.learningJourney;
+            const showBarWhileLoading =
+              ljMeta &&
+              activeTab.content?.type === 'learning-journey' &&
+              (activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type));
+
             return (
-              <LoadingIndicator
-                className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
-                contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'}
-              />
+              <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
+                {showBarWhileLoading && (
+                  <div className={styles.milestoneProgress}>
+                    <div className={styles.progressInfo}>
+                      <div className={styles.progressHeader}>
+                        <IconButton
+                          name="arrow-left"
+                          size="sm"
+                          aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
+                          onClick={() => model.navigateToPreviousMilestone()}
+                          tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
+                          tooltipPlacement="top"
+                          disabled={true}
+                          className={styles.navButton}
+                        />
+                        <span className={styles.milestoneText}>
+                          {ljMeta.currentMilestone === 0
+                            ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
+                                total: ljMeta.totalMilestones,
+                              })
+                            : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
+                                current: ljMeta.currentMilestone,
+                                total: ljMeta.totalMilestones,
+                              })}
+                        </span>
+                        <IconButton
+                          name="arrow-right"
+                          size="sm"
+                          aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
+                          onClick={() => model.navigateToNextMilestone()}
+                          tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
+                          tooltipPlacement="top"
+                          disabled={true}
+                          className={styles.navButton}
+                        />
+                      </div>
+                      <div className={styles.progressBar}>
+                        <div
+                          className={styles.progressFill}
+                          style={{
+                            width: `${((ljMeta.currentMilestone || 0) / (ljMeta.totalMilestones || 1)) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <LoadingIndicator contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'} />
+              </div>
             );
           }
 
@@ -1539,7 +1640,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   </div>
                 )}
 
-                {/* Content Meta for docs/interactive - now includes secondary open-in-new button */}
+                {/* Content Meta for docs/interactive - label left, primary actions + kebab right */}
                 {isDocsLikeTab(activeTab.type) && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
@@ -1549,17 +1650,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           : t('docsPanel.documentation', 'Documentation')}
                       </span>
                     </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: 8,
-                      }}
-                    >
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {(() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
                         if (isGrafanaDocsUrl(url)) {
                           const cleanUrl = cleanDocsUrl(url);
-
                           return (
                             <button
                               className={styles.secondaryActionButton}
@@ -1573,7 +1668,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                   link_type: 'external_browser',
                                   interaction_location: 'docs_content_meta_right',
                                 });
-                                // Delay to ensure analytics event is sent before opening new tab
                                 setTimeout(() => {
                                   window.open(cleanUrl, '_blank', 'noopener,noreferrer');
                                 }, 100);
@@ -1586,17 +1680,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         }
                         return null;
                       })()}
-                      {isDevMode && (
-                        <IconButton
-                          tooltip="Refresh tab (dev mode only)"
-                          name="sync"
-                          onClick={() => {
-                            if (activeTab) {
-                              reloadActiveTab(activeTab);
-                            }
-                          }}
-                        />
-                      )}
                       {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                         <button
                           className={styles.secondaryActionButton}
@@ -1612,14 +1695,50 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                         </button>
                       )}
-                      <FeedbackButton
-                        variant="secondary"
-                        contentUrl={activeTab.content?.url || activeTab.baseUrl}
-                        contentType={activeTab.type || 'learning-journey'}
-                        interactionLocation="docs_panel_header_feedback_button"
-                        currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
-                        totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
-                      />
+                      <Dropdown
+                        placement="bottom-end"
+                        overlay={
+                          <Menu>
+                            {isDevMode && (
+                              <Menu.Item
+                                label={t('docsPanel.refreshDev', 'Refresh (dev)')}
+                                icon="sync"
+                                onClick={() => {
+                                  if (activeTab) {
+                                    reloadActiveTab(activeTab);
+                                  }
+                                }}
+                              />
+                            )}
+                            <Menu.Item
+                              label={t('docsPanel.giveFeedback', 'Give feedback')}
+                              icon="comment-alt-message"
+                              onClick={() => {
+                                reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                                  interaction_location: 'docs_panel_header_feedback_menu',
+                                  panel_type: 'combined_learning_journey',
+                                  content_url: activeTab.content?.url || activeTab.baseUrl || '',
+                                  content_type: activeTab.type || 'docs',
+                                });
+                                setTimeout(() => {
+                                  window.open(
+                                    'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  );
+                                }, 100);
+                              }}
+                            />
+                          </Menu>
+                        }
+                      >
+                        <IconButton
+                          name="ellipsis-v"
+                          size="sm"
+                          aria-label={t('docsPanel.menuAriaLabel', 'More options')}
+                          tooltip={t('docsPanel.menuTooltip', 'More options')}
+                        />
+                      </Dropdown>
                     </div>
                   </div>
                 )}
@@ -1706,7 +1825,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       </div>
                       <div className={styles.milestoneActions}>
                         {(() => {
-                          const url = activeTab.content?.url || activeTab.baseUrl;
+                          const lj = activeTab.content?.metadata.learningJourney;
+                          const currentMs = lj?.milestones.find((m) => m.number === (lj?.currentMilestone ?? 0));
+                          const websiteUrl = currentMs?.websiteUrl ?? lj?.websiteUrl;
+                          const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
+                          const url = websiteUrl || fallbackUrl;
                           if (url) {
                             const cleanUrl = cleanDocsUrl(url);
                             return (
@@ -1724,9 +1847,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                     source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                                     link_type: 'external_browser',
                                     interaction_location: 'milestone_progress_bar',
-                                    current_milestone:
-                                      activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                                    total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
+                                    current_milestone: lj?.currentMilestone || 0,
+                                    total_milestones: lj?.totalMilestones || 0,
                                   });
                                   setTimeout(() => {
                                     window.open(cleanUrl, '_blank', 'noopener,noreferrer');
@@ -1740,17 +1862,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           }
                           return null;
                         })()}
-                        {isDevMode && (
-                          <IconButton
-                            tooltip="Refresh tab (dev mode only)"
-                            name="sync"
-                            onClick={() => {
-                              if (activeTab) {
-                                reloadActiveTab(activeTab);
-                              }
-                            }}
-                          />
-                        )}
                         {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                           <button
                             className={styles.secondaryActionButton}
@@ -1766,14 +1877,50 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                           </button>
                         )}
-                        <FeedbackButton
-                          variant="secondary"
-                          contentUrl={activeTab.content?.url || activeTab.baseUrl}
-                          contentType={activeTab.type || 'learning-journey'}
-                          interactionLocation="milestone_progress_bar_feedback_button"
-                          currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
-                          totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
-                        />
+                        <Dropdown
+                          placement="bottom-end"
+                          overlay={
+                            <Menu>
+                              {isDevMode && (
+                                <Menu.Item
+                                  label={t('docsPanel.refreshDev', 'Refresh (dev)')}
+                                  icon="sync"
+                                  onClick={() => {
+                                    if (activeTab) {
+                                      reloadActiveTab(activeTab);
+                                    }
+                                  }}
+                                />
+                              )}
+                              <Menu.Item
+                                label={t('docsPanel.giveFeedback', 'Give feedback')}
+                                icon="comment-alt-message"
+                                onClick={() => {
+                                  reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                                    interaction_location: 'milestone_progress_bar_feedback_menu',
+                                    panel_type: 'combined_learning_journey',
+                                    content_url: activeTab.content?.url || activeTab.baseUrl || '',
+                                    content_type: activeTab.type || 'learning-journey',
+                                  });
+                                  setTimeout(() => {
+                                    window.open(
+                                      'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                                      '_blank',
+                                      'noopener,noreferrer'
+                                    );
+                                  }, 100);
+                                }}
+                              />
+                            </Menu>
+                          }
+                        >
+                          <IconButton
+                            name="ellipsis-v"
+                            size="sm"
+                            aria-label={t('docsPanel.menuAriaLabel', 'More options')}
+                            tooltip={t('docsPanel.menuTooltip', 'More options')}
+                          />
+                        </Dropdown>
                       </div>
                       <div className={styles.progressBar}>
                         <div

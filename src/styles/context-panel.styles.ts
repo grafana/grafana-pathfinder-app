@@ -485,6 +485,35 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
+// Skeleton placeholders shown while deferred milestones/nav links resolve
+export const getDeferredSkeletonStyles = (theme: GrafanaTheme2) => ({
+  deferredSkeleton: css({
+    paddingTop: theme.spacing(1.5),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+  }),
+  deferredSkeletonRow: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.75),
+  }),
+  deferredSkeletonCircle: css({
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    flexShrink: 0,
+  }),
+  deferredSkeletonBar: css({
+    height: '14px',
+    flex: 1,
+    maxWidth: '70%',
+    borderRadius: theme.shape.radius.default,
+  }),
+});
+
 // Steps section styles (for step-by-step expansion)
 export const getStepsStyles = (theme: GrafanaTheme2) => ({
   stepsSection: css({
@@ -861,6 +890,7 @@ export const getStyles = (theme: GrafanaTheme2) => ({
   ...getCardMetadataStyles(theme),
   ...getSummaryStyles(theme),
   ...getMilestoneStyles(theme),
+  ...getDeferredSkeletonStyles(theme),
   ...getStepsStyles(theme),
   ...getFeaturedStyles(theme),
   ...getCustomGuidesStyles(theme),

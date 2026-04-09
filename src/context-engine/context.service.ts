@@ -7,7 +7,13 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
-import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
+import {
+  fetchContent,
+  getJourneyCompletionPercentageAsync,
+  resolvePackageMilestones,
+  resolvePackageNavLinks,
+  derivePathSlug,
+} from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
@@ -782,17 +788,26 @@ export class ContextService {
             };
           }
 
+          const completionPercentage =
+            rec.type === 'interactive'
+              ? await interactiveCompletionStorage.get(rec.url)
+              : await getJourneyCompletionPercentageAsync(rec.url);
+
+          // Skip the expensive fetchContent call when V1 already provided a
+          // summary AND the type doesn't need milestone data from content.
+          // Learning journeys extract milestones from content.json metadata,
+          // so they must always go through fetchContent.
+          if (rec.summary && rec.type !== 'learning-journey') {
+            return {
+              ...rec,
+              totalSteps: 0,
+              milestones: [],
+              completionPercentage,
+            };
+          }
+
           try {
             const result = await fetchContent(rec.url);
-            // Use correct storage based on type:
-            // - Interactives store completion via step completion in interactiveCompletionStorage
-            // - Learning journeys use journeyCompletionStorage
-            const completionPercentage =
-              rec.type === 'interactive'
-                ? await interactiveCompletionStorage.get(rec.url)
-                : await getJourneyCompletionPercentageAsync(rec.url);
-
-            // Extract learning journey data from the unified content
             const milestones = result.content?.metadata.learningJourney?.milestones || [];
             const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
 
@@ -805,10 +820,6 @@ export class ContextService {
             };
           } catch (error) {
             console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
-            const completionPercentage =
-              rec.type === 'interactive'
-                ? await interactiveCompletionStorage.get(rec.url)
-                : await getJourneyCompletionPercentageAsync(rec.url);
             return {
               ...rec,
               totalSteps: 0,
@@ -824,17 +835,118 @@ export class ContextService {
           if (!contentUrl) {
             return { ...rec, completionPercentage: 0 };
           }
-          const manifestType = (rec.manifest as Record<string, unknown> | undefined)?.type;
-          const completionPercentage =
-            manifestType === 'path' || manifestType === 'journey'
-              ? await getJourneyCompletionPercentageAsync(contentUrl)
-              : await interactiveCompletionStorage.get(contentUrl);
-          return { ...rec, completionPercentage };
+          const manifest = rec.manifest as Record<string, unknown> | undefined;
+          const manifestType = manifest?.type;
+          const isPath = manifestType === 'path' || manifestType === 'journey';
+          const completionPercentage = isPath
+            ? await getJourneyCompletionPercentageAsync(contentUrl)
+            : await interactiveCompletionStorage.get(contentUrl);
+
+          let enriched: Record<string, unknown> = { completionPercentage };
+
+          // Defer milestone resolution to summary expand time (Tier 2 lazy-loading).
+          // Store raw IDs so the UI can show milestone count immediately while
+          // deferring the expensive per-ID resolve calls.
+          if (isPath && Array.isArray(manifest?.milestones)) {
+            const milestoneIds = (manifest!.milestones as unknown[]).filter((s): s is string => typeof s === 'string');
+            const manifestId = typeof manifest?.id === 'string' ? manifest.id : '';
+            const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
+            enriched = {
+              ...enriched,
+              pendingMilestoneIds: milestoneIds,
+              ...(pathSlug != null && { pendingPathSlug: pathSlug }),
+              totalSteps: milestoneIds.length,
+            };
+          }
+
+          // Defer nav link resolution to summary expand time (Tier 1 lazy-loading).
+          // Store raw IDs so the context panel can resolve on first expand.
+          const recommendIds = Array.isArray(manifest?.recommends)
+            ? (manifest!.recommends as unknown[]).filter((s): s is string => typeof s === 'string')
+            : [];
+          const suggestIds = Array.isArray(manifest?.suggests)
+            ? (manifest!.suggests as unknown[]).filter((s): s is string => typeof s === 'string')
+            : [];
+
+          if (recommendIds.length > 0) {
+            enriched = { ...enriched, pendingRecommendIds: recommendIds };
+          }
+          if (suggestIds.length > 0) {
+            enriched = { ...enriched, pendingSuggestIds: suggestIds };
+          }
+
+          return { ...rec, ...enriched };
         }
 
         return rec;
       })
     );
+  }
+
+  /**
+   * Lazily resolve deferred nav links and milestones for a recommendation.
+   * Called on first summary expand to avoid upfront HTTP fan-out.
+   * Returns the recommendation with resolved fields populated and pending
+   * fields cleared, or the original recommendation if nothing needed resolving.
+   */
+  static async resolveDeferredData(rec: Recommendation): Promise<Partial<Recommendation>> {
+    const hasPendingNavLinks =
+      (rec.pendingRecommendIds && rec.pendingRecommendIds.length > 0) ||
+      (rec.pendingSuggestIds && rec.pendingSuggestIds.length > 0);
+    const hasPendingMilestones = rec.pendingMilestoneIds && rec.pendingMilestoneIds.length > 0;
+
+    if (!hasPendingNavLinks && !hasPendingMilestones) {
+      return {};
+    }
+
+    const updates: Partial<Recommendation> = {};
+
+    const promises: Array<Promise<void>> = [];
+
+    if (hasPendingNavLinks) {
+      promises.push(
+        (async () => {
+          try {
+            const [resolvedRecommends, resolvedSuggests] = await Promise.all([
+              resolvePackageNavLinks(rec.pendingRecommendIds ?? []),
+              resolvePackageNavLinks(rec.pendingSuggestIds ?? []),
+            ]);
+            if (resolvedRecommends.length > 0) {
+              updates.resolvedRecommends = resolvedRecommends;
+            }
+            if (resolvedSuggests.length > 0) {
+              updates.resolvedSuggests = resolvedSuggests;
+            }
+          } catch {
+            // best-effort
+          }
+        })()
+      );
+    }
+
+    if (hasPendingMilestones) {
+      promises.push(
+        (async () => {
+          try {
+            const milestones = await resolvePackageMilestones(rec.pendingMilestoneIds!, rec.pendingPathSlug);
+            updates.milestones = milestones;
+            updates.totalSteps = milestones.length;
+          } catch {
+            // keep existing values
+          }
+        })()
+      );
+    }
+
+    await Promise.all(promises);
+
+    return {
+      ...updates,
+      pendingRecommendIds: undefined,
+      pendingSuggestIds: undefined,
+      pendingMilestoneIds: undefined,
+      pendingPathSlug: undefined,
+    };
   }
 
   /**

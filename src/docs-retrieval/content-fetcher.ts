@@ -12,6 +12,7 @@ import {
   Milestone,
 } from '../types/content.types';
 import type { PackageResolver } from '../types';
+import type { ResolvedNavLink } from '../types/context.types';
 import { getPackageRenderType } from '../types/package.types';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
@@ -23,6 +24,7 @@ import {
   isLocalhostUrl,
   isInteractiveLearningUrl,
   isGitHubRawUrl,
+  sanitizeHtmlUrl,
 } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
@@ -1350,35 +1352,447 @@ export function setPackageResolver(resolver: PackageResolver): void {
 }
 
 /**
+ * Derive the grafana.com/docs/learning-paths/ website URL for a milestone.
+ * Convention: the milestone package ID shares a prefix with the path slug,
+ * and the remainder becomes the URL leaf segment.
+ *
+ * Example:
+ *   pathSlug = "grafana-cloud-tour"
+ *   milestoneId = "grafana-cloud-tour-business-value"
+ *   → "https://grafana.com/docs/learning-paths/grafana-cloud-tour/business-value/"
+ */
+function buildMilestoneWebsiteUrl(pathSlug: string, milestoneId: string): string | undefined {
+  const prefix = `${pathSlug}-`;
+  if (!milestoneId.startsWith(prefix)) {
+    return undefined;
+  }
+  const slug = milestoneId.slice(prefix.length);
+  return `https://grafana.com/docs/learning-paths/${pathSlug}/${slug}/`;
+}
+
+/**
+ * Derive the path slug from a path-type manifest ID.
+ * Strips the conventional `-lj` suffix if present.
+ */
+export function derivePathSlug(manifestId: string): string {
+  return manifestId.endsWith('-lj') ? manifestId.slice(0, -3) : manifestId;
+}
+
+/**
+ * Resolve manifest milestone IDs into rich Milestone objects via the injected
+ * PackageResolver. Each milestone ID is resolved to obtain its contentUrl (used
+ * as the navigation URL) and its manifest title. Unresolvable milestones are
+ * silently skipped so partial data still renders.
+ *
+ * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
+ * @param pathSlug - Optional path slug for building website URLs
+ * @returns Milestone[] suitable for LearningJourneyMetadata and Recommendation.milestones
+ */
+export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?: string): Promise<Milestone[]> {
+  if (!_packageResolver || milestoneIds.length === 0) {
+    return [];
+  }
+
+  const settled = await Promise.allSettled(
+    milestoneIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+  );
+
+  const milestones: Milestone[] = [];
+  let sequenceNumber = 1;
+
+  for (let i = 0; i < milestoneIds.length; i++) {
+    const result = settled[i]!;
+    const id = milestoneIds[i]!;
+
+    if (result.status === 'rejected') {
+      console.warn(`[resolvePackageMilestones] Error resolving milestone ${id}:`, result.reason);
+      continue;
+    }
+
+    const resolution = result.value;
+    if (!resolution.ok) {
+      console.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
+      continue;
+    }
+
+    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+
+    milestones.push({
+      number: sequenceNumber++,
+      title,
+      duration: '5-10 min',
+      url: resolution.contentUrl,
+      isActive: false,
+      ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
+    });
+  }
+
+  return milestones;
+}
+
+/**
+ * Resolve bare package IDs (from manifest `recommends`/`suggests`) into
+ * {@link ResolvedNavLink} objects so the context panel can display
+ * human-readable titles and open packages with the correct type.
+ *
+ * Unresolvable IDs are silently skipped.
+ */
+export async function resolvePackageNavLinks(packageIds: string[]): Promise<ResolvedNavLink[]> {
+  if (!_packageResolver || packageIds.length === 0) {
+    return [];
+  }
+
+  const settled = await Promise.allSettled(
+    packageIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+  );
+
+  const links: ResolvedNavLink[] = [];
+
+  for (let i = 0; i < packageIds.length; i++) {
+    const result = settled[i]!;
+    const id = packageIds[i]!;
+
+    if (result.status === 'rejected') {
+      console.warn(`[resolvePackageNavLinks] Error resolving package ${id}:`, result.reason);
+      continue;
+    }
+
+    const resolution = result.value;
+    if (!resolution.ok) {
+      console.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
+      continue;
+    }
+
+    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const manifest: Record<string, unknown> | undefined = resolution.manifest
+      ? (resolution.manifest as unknown as Record<string, unknown>)
+      : undefined;
+
+    links.push({
+      packageId: id,
+      title,
+      contentUrl: resolution.contentUrl,
+      manifest,
+    });
+  }
+
+  return links;
+}
+
+function isPathManifest(manifest?: Record<string, unknown>): boolean {
+  if (!manifest || typeof manifest.type !== 'string') {
+    return false;
+  }
+  return manifest.type === 'path' || manifest.type === 'journey';
+}
+
+function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
+  if (!manifest || !Array.isArray(manifest.milestones)) {
+    return [];
+  }
+  return manifest.milestones.filter((s): s is string => typeof s === 'string');
+}
+
+/**
  * Fetch package content from a pre-resolved contentUrl (CDN or bundled).
  *
  * This is the primary fetch path for package-backed recommendations.
  * The v1 recommender response already carries a resolved contentUrl, so no
  * resolver call is needed — we fetch directly and enrich with manifest metadata.
  *
+ * For path/journey packages, also resolves manifest milestones into
+ * LearningJourneyMetadata so the docs panel renders the milestone progress
+ * bar and arrow navigation.
+ *
  * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
  * @param packageManifest - Optional manifest metadata to attach to the result
+ * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
  */
 export async function fetchPackageContent(
   contentUrl: string,
-  packageManifest?: Record<string, unknown>
+  packageManifest?: Record<string, unknown>,
+  preResolvedMilestones?: Milestone[]
 ): Promise<ContentFetchResult> {
-  const result = await fetchContent(contentUrl);
+  const renderType = getPackageRenderType(packageManifest);
+  const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
+
+  const manifestId = needsMilestones && typeof packageManifest?.id === 'string' ? packageManifest.id : '';
+  const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
+  const milestoneIds = needsMilestones ? getManifestMilestoneIds(packageManifest) : [];
+  const shouldResolveMilestones =
+    needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
+
+  // Run content fetch, milestone resolution, and baseUrl resolution in
+  // parallel. These are independent: the page body doesn't need milestones
+  // and milestones don't need the page body.
+  const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
+    fetchContent(contentUrl),
+    shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
+    manifestId && _packageResolver
+      ? _packageResolver.resolve(manifestId, { loadContent: false }).catch(() => undefined)
+      : Promise.resolve(undefined),
+  ]);
 
   if (!result.content) {
     return result;
+  }
+
+  let learningJourney: LearningJourneyMetadata | undefined;
+  let contentString = result.content.content;
+
+  if (needsMilestones) {
+    const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
+
+    if (milestones && milestones.length > 0) {
+      const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
+      const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
+
+      let baseUrl = contentUrl;
+      if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
+        baseUrl = baseUrlResolution.contentUrl;
+      }
+
+      learningJourney = {
+        currentMilestone,
+        totalMilestones: milestones.length,
+        milestones,
+        baseUrl,
+        summary: result.content.metadata.singleDoc?.summary,
+        ...(pathSlug != null && {
+          websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
+        }),
+      };
+
+      if (currentMilestone === 0) {
+        contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
+      }
+    }
   }
 
   return {
     ...result,
     content: {
       ...result.content,
-      type: getPackageRenderType(packageManifest),
+      content: contentString,
+      type: renderType,
       metadata: {
         ...result.content.metadata,
         ...(packageManifest !== undefined && { packageManifest }),
+        ...(learningJourney !== undefined && { learningJourney }),
       },
     },
+  };
+}
+
+// SVG icon matching the grafana.com learning path "what to expect" card
+const LEARNING_PATH_ICON_SVG = `<svg width="30" height="30" viewBox="0 0 25 26" fill="none"><path d="M16.1401 14.4402C16.2141 14.4402 16.2852 14.4101 16.3373 14.3581c.1982-.2012 4.8531-4.95924 4.8531-9.3068C21.1904 2.26537 18.924.0 16.1391.0c-2.785.0-5.0513 2.26537-5.0513 5.0513.0 4.34756 4.6549 9.1056 4.8541 9.3068C15.9939 14.4111 16.065 14.4402 16.1401 14.4402zM13.5814 5.0513c0-1.41248 1.1452-2.55868 2.5587-2.55868 1.4135.0 2.5577 1.14519 2.5577 2.55868.0 1.41348-1.1452 2.55869-2.5577 2.55869-1.4125.0-2.5587-1.14521-2.5587-2.55869z" fill="#ff671d"/><path d="M24.9034 21.9305C24.0595 18.9113 17.9561 17.4147 12.5704 16.0933 9.54023 15.3496 5.76827 14.4246 5.73524 13.6037 5.72823 13.4225 5.97949 12.7398 9.52922 11.5516 9.80551 11.4585 9.96668 11.1842 9.91262 10.8989 9.85856 10.6136 9.60229 10.4164 9.318 10.4304 4.13956 10.6807.501743 12.1602.0482666 14.1993-.172966 15.1944.26149 16.749 3.58398 18.5009L4.29773 18.8763c2.24736 1.1782 3.87106 2.0301 3.88307 2.8229C8.19482 22.6502 5.93745 24.0507 3.72713 25.296 3.58398 25.3761 3.5139 25.5433 3.55495 25.7024 3.59699 25.8616 3.74014 25.9717 3.90431 25.9717H23.0354C23.1315 25.9717 23.2226 25.9337 23.2907 25.8656c1.4064-1.4075 1.949-2.7309 1.6127-3.9351z" fill="#fbc55a"/></svg>`;
+
+function escapeHtmlEntities(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Minimal markdown-to-HTML for cover page content (headings, paragraphs,
+ * unordered lists, and inline links). Not a full parser — just enough for
+ * the structures found in learning path cover pages.
+ */
+export function simpleMarkdownToHtml(md: string): string {
+  const lines = md.split('\n');
+  const parts: string[] = [];
+  let inList = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (inList) {
+        parts.push('</ul>');
+        inList = false;
+      }
+      continue;
+    }
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)/);
+    if (headingMatch) {
+      if (inList) {
+        parts.push('</ul>');
+        inList = false;
+      }
+      const level = headingMatch[1]!.length;
+      parts.push(`<h${level}>${inlineMarkdown(headingMatch[2]!)}</h${level}>`);
+      continue;
+    }
+    const listMatch = trimmed.match(/^[-*]\s+(.*)/);
+    if (listMatch) {
+      if (!inList) {
+        parts.push('<ul>');
+        inList = true;
+      }
+      parts.push(`<li>${inlineMarkdown(listMatch[1]!)}</li>`);
+    } else {
+      if (inList) {
+        parts.push('</ul>');
+        inList = false;
+      }
+      parts.push(`<p>${inlineMarkdown(trimmed)}</p>`);
+    }
+  }
+  if (inList) {
+    parts.push('</ul>');
+  }
+  return parts.join('\n');
+}
+
+function inlineMarkdown(text: string): string {
+  // SECURITY: process markdown links on raw text so hrefs are only escaped once
+  // by sanitizeHtmlUrl (which calls escapeHtml internally). Non-link segments
+  // are escaped separately via escapeHtmlEntities. (F3, F4, F6)
+  const linkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = linkRe.exec(text)) !== null) {
+    parts.push(escapeHtmlEntities(text.slice(lastIndex, match.index)));
+    const label = escapeHtmlEntities(match[1]!);
+    const safeHref = sanitizeHtmlUrl(match[2]!);
+    if (safeHref) {
+      parts.push(`<a href="${safeHref}">${label}</a>`);
+    } else {
+      parts.push(label);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  parts.push(escapeHtmlEntities(text.slice(lastIndex)));
+  return parts.join('');
+}
+
+function wrapInOrangeOutlineList(heading: string, bodyMarkdown: string): string {
+  const bodyHtml = simpleMarkdownToHtml(bodyMarkdown);
+  return [
+    '<div class="orange-outline-list">',
+    '  <div class="icon-heading">',
+    `    <div class="icon-heading__container">${LEARNING_PATH_ICON_SVG}</div>`,
+    `    <div class="no-anchor-heading"><h2>${escapeHtmlEntities(heading)}</h2></div>`,
+    '  </div>',
+    bodyHtml,
+    '</div>',
+  ].join('\n');
+}
+
+const EXPECT_HEADING_RE = /^#{1,3}\s+(?:here[''\u2019]s\s+)?what\s+to\s+expect/im;
+const NEXT_HEADING_RE = /^#{1,3}\s+/m;
+
+/**
+ * Inject "Ready to begin" button, bottom navigation, and orange-outline-list
+ * card styling into JSON guide content for path packages.
+ * Falls back to returning the original content if parsing fails.
+ */
+export function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: LearningJourneyMetadata): string {
+  try {
+    const parsed = JSON.parse(jsonContent) as {
+      id?: string;
+      title?: string;
+      blocks?: Array<{ type: string; content?: string }>;
+    };
+    if (!parsed.blocks || !Array.isArray(parsed.blocks)) {
+      return jsonContent;
+    }
+
+    wrapExpectBlockInOrangeOutline(parsed.blocks);
+
+    const extrasHtml = generateJourneyContentWithExtras('', metadata);
+
+    const htmlParts: string[] = [];
+    for (const block of parsed.blocks) {
+      if (!block.content) {
+        continue;
+      }
+      if (block.type === 'html') {
+        htmlParts.push(block.content);
+      } else if (block.type === 'markdown') {
+        htmlParts.push(simpleMarkdownToHtml(block.content));
+      }
+    }
+
+    if (extrasHtml.trim()) {
+      htmlParts.push(extrasHtml);
+    }
+
+    const merged = {
+      id: parsed.id,
+      title: parsed.title,
+      blocks: [{ type: 'html', content: htmlParts.join('\n') }],
+    };
+
+    return JSON.stringify(merged);
+  } catch {
+    return jsonContent;
+  }
+}
+
+/**
+ * Find a markdown block containing a "Here's what to expect" heading and replace
+ * it with an HTML block wrapped in the orange-outline-list card. The markdown body
+ * is converted to HTML via simpleMarkdownToHtml so list items render correctly.
+ *
+ * Content after the next heading boundary is preserved as a separate markdown block.
+ *
+ */
+function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: string }>): void {
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]!;
+    if (block.type !== 'markdown' || !block.content) {
+      continue;
+    }
+
+    const match = block.content.match(EXPECT_HEADING_RE);
+    if (!match) {
+      continue;
+    }
+
+    const headingLine = match[0];
+    const headingText = headingLine.replace(/^#{1,3}\s+/, '').trim();
+    const contentBeforeHeading = block.content.slice(0, match.index!).trim();
+    const afterHeading = block.content.slice(match.index! + headingLine.length).trim();
+
+    const { body, remainder } = splitAtNextHeading(afterHeading);
+    const replacement: Array<{ type: string; content: string }> = [];
+
+    if (contentBeforeHeading) {
+      replacement.push({ type: 'markdown', content: contentBeforeHeading });
+    }
+
+    let cardBody = body;
+    if (!cardBody && i + 1 < blocks.length && blocks[i + 1]!.type === 'markdown' && blocks[i + 1]!.content) {
+      cardBody = blocks[i + 1]!.content!;
+      blocks.splice(i + 1, 1);
+    }
+
+    replacement.push({ type: 'html', content: wrapInOrangeOutlineList(headingText, cardBody || '') });
+
+    if (remainder) {
+      replacement.push({ type: 'markdown', content: remainder });
+    }
+
+    blocks.splice(i, 1, ...replacement);
+    return;
+  }
+}
+
+function splitAtNextHeading(text: string): { body: string; remainder: string } {
+  if (!text) {
+    return { body: '', remainder: '' };
+  }
+  const nextMatch = text.match(NEXT_HEADING_RE);
+  if (!nextMatch) {
+    return { body: text, remainder: '' };
+  }
+  if (nextMatch.index === 0) {
+    return { body: '', remainder: text };
+  }
+  return {
+    body: text.slice(0, nextMatch.index!).trim(),
+    remainder: text.slice(nextMatch.index!).trim(),
   };
 }
 
