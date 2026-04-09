@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.7.2
+
+### Added
+
+- **Lazy-load recommendation data**: Recommendation data is now lazily loaded and milestone UI polished for improved performance and visual consistency (#749)
+
+### Security
+
+- Updated `go.opentelemetry.io/otel/sdk` to v1.43.0 (#747)
+
+### Chore
+
+- Phase 8 cleanup: removed dead code and added package pipeline regression tests (#740)
+
+## 2.7.1
+
+### Fixed
+
+- **Package milestone rendering**: Fixed resolution and rendering of milestones for path-type packages (#743)
+
+## 2.7.0
+
+### Added
+
+- **Package engine integration**: Full package engine pipeline with composite resolver, package-aware content fetching, milestone resolution, and integration verification tests (#697)
+  - Package completion tracking and navigation links wired into the context panel (#741)
+  - Package pill icon distinguishes package-backed recommendations from plain interactive guides (#742)
+
+### Fixed
+
+- **Recommender URL auto-selection**: Automatically select the correct recommender API URL based on the Grafana instance hostname (#737)
+- **E2E "What's new" modal**: Dismiss the "What's new in Grafana" modal in E2E tests to prevent test flakiness (#738)
+
 ## 2.6.0
 
 ### Added
