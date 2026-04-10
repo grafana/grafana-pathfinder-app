@@ -623,7 +623,7 @@ These are explicitly out of scope for this design but are documented here for fu
 
 ### Multi-repository package discovery
 
-With bare IDs, the system needs a way to discover packages across multiple independently managed repositories. The [implementation plan](./PACKAGE-IMPLEMENTATION-PLAN.md) addresses this in phases: bundled content is migrated first as a local repository (Phase 2), the recommender microservice provides resolution routes that resolve bare IDs across repositories and return CDN URLs (Phase 4), and a dynamic registry (Phase 7) evolves the config-driven repository list into a production registry with webhook-triggered refresh. All implement the same `PackageResolver` interface (see [package resolution](./package/identity-and-resolution.md#package-resolution)).
+With bare IDs, the system needs a way to discover packages across multiple independently managed repositories. The completed implementation followed a phased approach: bundled content was migrated first as a local repository, the recommender microservice provides resolution routes that resolve bare IDs across repositories and return CDN URLs, and a [dynamic registry](https://github.com/grafana/grafana-pathfinder-app/issues/751) will evolve the config-driven repository list into a production registry with webhook-triggered refresh. All implement the same `PackageResolver` interface (see [package resolution](./package/identity-and-resolution.md#package-resolution)). The full implementation record is in [`docs/history/package-implementation-record.md`](../history/package-implementation-record.md).
 
 Until multi-repo is needed, the bundled repository is the only repository and resolution is handled by reading `repository.json` directly.
 
@@ -651,10 +651,11 @@ The format supports non-Grafana content by design (no Grafana-specific assumptio
 
 ---
 
-## Implementation plan
+## Implementation record
 
-The phased implementation plan for this design is maintained separately in
-[PACKAGE-IMPLEMENTATION-PLAN.md](./PACKAGE-IMPLEMENTATION-PLAN.md).
+The phased implementation of this design is complete. The full record of decisions, artifacts, and outcomes is preserved in [`docs/history/package-implementation-record.md`](../history/package-implementation-record.md).
+
+Remaining future work is tracked as GitHub issues: [#750 (Layer 4 test environment routing)](https://github.com/grafana/grafana-pathfinder-app/issues/750), [#751 (dynamic repository registry)](https://github.com/grafana/grafana-pathfinder-app/issues/751), [#752 (identity-and-resolution.md type alignment)](https://github.com/grafana/grafana-pathfinder-app/issues/752).
 
 ---
 

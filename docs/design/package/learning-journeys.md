@@ -1,7 +1,7 @@
 # Learning paths and journeys
 
 > Part of the [Pathfinder package design](../PATHFINDER-PACKAGE-DESIGN.md).
-> See also: [Dependencies](./dependencies.md) · [Identity and resolution](./identity-and-resolution.md) · [Standards alignment](./standards-alignment.md) · [Implementation plan](../PACKAGE-IMPLEMENTATION-PLAN.md)
+> See also: [Dependencies](./dependencies.md) · [Identity and resolution](./identity-and-resolution.md) · [Standards alignment](./standards-alignment.md)
 
 ---
 
@@ -235,7 +235,7 @@ Path and journey metapackages and curated learning paths (`paths.json`) coexist:
 
 **End-state:** `paths.json` will be retired after all migration work is complete. Path metapackages subsume its role — ordering comes from `milestones`, metadata comes from `manifest.json`, and dependency relationships come from the graph. During the transition, `paths.json` remains as a fallback and curated paths take priority over dependency-derived paths. A separate milestone will be needed to migrate everything that depends on `paths.json` (badges, icons, platform targeting, estimated time) into the package model before `paths.json` can be deleted.
 
-The reconciliation between these two mechanisms during transition is addressed in [the path and journey integration phase](../PACKAGE-IMPLEMENTATION-PLAN.md#phase-5-path-and-journey-integration).
+The reconciliation between these two mechanisms during transition — migrating `paths.json` dependents (badges, icons, platform targeting, estimated time) into the package model — is a future milestone not yet planned.
 
 ## Relationship to SCORM
 
