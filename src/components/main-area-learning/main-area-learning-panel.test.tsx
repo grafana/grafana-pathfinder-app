@@ -105,9 +105,6 @@ jest.mock('../docs-panel/components', () => ({
 jest.mock('../../global-state/sidebar', () => ({
   sidebarState: {
     getIsSidebarMounted: jest.fn(),
-    setPendingOpenSource: jest.fn(),
-    openSidebar: jest.fn(),
-    openWithGuide: jest.fn(),
   },
 }));
 
@@ -121,12 +118,6 @@ jest.mock('../../utils/chrome-control', () => ({
   expandNav: jest.fn(),
   closeExtensionSidebar: jest.fn(),
   restoreSidebar: jest.fn(),
-}));
-
-jest.mock('../../global-state/link-interception', () => ({
-  linkInterceptionState: {
-    addToQueue: jest.fn(),
-  },
 }));
 
 jest.mock('../../global-state/main-area-learning-state', () => ({
@@ -154,6 +145,19 @@ const {
   closeExtensionSidebar: mockCloseExtensionSidebar,
   restoreSidebar: mockRestoreSidebar,
 } = jest.requireMock('../../utils/chrome-control');
+
+jest.mock('../../styles/content-html.styles', () => ({
+  journeyContentHtml: () => 'journey-style',
+  docsContentHtml: () => 'docs-style',
+}));
+
+jest.mock('../../styles/interactive.styles', () => ({
+  getInteractiveStyles: () => 'interactive-style',
+}));
+
+jest.mock('../../styles/prism.styles', () => ({
+  getPrismStyles: () => 'prism-style',
+}));
 
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
@@ -379,7 +383,6 @@ describe('MainAreaLearningPanelRenderer', () => {
       render(<MainAreaLearningPanelRenderer />);
 
       expect(screen.getByTestId(testIds.mainAreaLearning.unsupportedFormatError)).toBeInTheDocument();
-      expect(screen.getByTestId(testIds.mainAreaLearning.openInSidebarButton)).toBeInTheDocument();
       expect(findDocPage).not.toHaveBeenCalled();
     });
 
@@ -507,28 +510,6 @@ describe('MainAreaLearningPanelRenderer', () => {
           error_message: 'Not found',
         });
       });
-    });
-  });
-
-  // --- Sidebar handoff -----------------------------------------------------
-
-  describe('sidebar handoff', () => {
-    it('"Open in sidebar" dispatches to sidebar when mounted', () => {
-      setUrlSearch('?doc=/docs/grafana/latest/');
-      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
-      const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
-
-      render(<MainAreaLearningPanelRenderer />);
-      screen.getByTestId(testIds.mainAreaLearning.openInSidebarButton).click();
-
-      expect(dispatchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'pathfinder-auto-open-docs',
-          detail: expect.objectContaining({ url: '/docs/grafana/latest/' }),
-        })
-      );
-
-      dispatchSpy.mockRestore();
     });
   });
 
@@ -789,31 +770,6 @@ describe('MainAreaLearningPanelRenderer', () => {
       });
 
       expect(screen.queryByTestId(testIds.mainAreaLearning.safetyGateWarning)).not.toBeInTheDocument();
-    });
-
-    it('safety gate "Open in sidebar" calls openWithGuide for bundled URLs', async () => {
-      setUrlSearch('?doc=bundled:unsafe-guide');
-      (findDocPage as jest.Mock).mockReturnValue({
-        type: 'docs-page',
-        url: 'bundled:unsafe-guide',
-        title: 'Unsafe Guide',
-      });
-      const rawContent = makeRawContent('bundled:unsafe-guide');
-      (fetchContent as jest.Mock).mockResolvedValue({ content: rawContent });
-      mockIsMainAreaSafe.mockReturnValue({ safe: false, unsafeActionTypes: ['button'] });
-
-      render(<MainAreaLearningPanelRenderer />);
-
-      await waitFor(() => {
-        expect(screen.getByTestId(testIds.mainAreaLearning.safetyGateOpenInSidebarButton)).toBeInTheDocument();
-      });
-
-      await act(async () => {
-        screen.getByTestId(testIds.mainAreaLearning.safetyGateOpenInSidebarButton).click();
-      });
-
-      expect(sidebarState.openWithGuide).toHaveBeenCalledWith('unsafe-guide');
-      expect(mockLocationPush).toHaveBeenCalledWith('/a/grafana-pathfinder-app');
     });
 
     it('safety gate resets when navigating to a new guide in-place', async () => {

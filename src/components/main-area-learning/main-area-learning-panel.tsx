@@ -37,7 +37,6 @@ import { MyLearningTab } from '../LearningPaths';
 import { MyLearningErrorBoundary } from '../docs-panel/components';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { sidebarState } from '../../global-state/sidebar';
-import { linkInterceptionState } from '../../global-state/link-interception';
 import { mainAreaLearningState } from '../../global-state/main-area-learning-state';
 import { testIds } from '../../constants/testIds';
 import { GuideProgressHeader } from './guide-progress-header';
@@ -364,36 +363,6 @@ export function MainAreaLearningPanelRenderer() {
     }
   }, [loadContent]);
 
-  const handleOpenInSidebar = useCallback((opts?: { navigateAway?: boolean }) => {
-    const { originalParam } = stateRef.current;
-    if (!originalParam) {
-      return;
-    }
-
-    // For safety gate + bundled URLs, use the direct openWithGuide API
-    if (opts?.navigateAway && originalParam.startsWith('bundled:')) {
-      sidebarState.openWithGuide(originalParam.slice('bundled:'.length));
-    } else {
-      const detail = { url: originalParam, title: 'Learning content' };
-      if (sidebarState.getIsSidebarMounted()) {
-        document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));
-      } else {
-        sidebarState.setPendingOpenSource('main_area_learning');
-        sidebarState.openSidebar('Interactive learning', {
-          url: detail.url,
-          title: detail.title,
-          timestamp: Date.now(),
-        });
-        linkInterceptionState.addToQueue({ ...detail, timestamp: Date.now() });
-      }
-    }
-
-    // Safety gate navigates away so the sidebar can render against the Grafana UI
-    if (opts?.navigateAway) {
-      locationService.push('/a/grafana-pathfinder-app');
-    }
-  }, []);
-
   // Load a guide in-place without page reload (SPA navigation)
   const handleOpenGuideInMainArea = useCallback(
     (url: string, _title: string) => {
@@ -437,14 +406,7 @@ export function MainAreaLearningPanelRenderer() {
           severity="error"
           data-testid={testIds.mainAreaLearning.unsupportedFormatError}
         >
-          <p>This content format is not supported in the learning view. Open it in the Pathfinder sidebar instead.</p>
-          <Button
-            variant="secondary"
-            onClick={() => handleOpenInSidebar()}
-            data-testid={testIds.mainAreaLearning.openInSidebarButton}
-          >
-            Open in sidebar
-          </Button>
+          <p>This content format is not supported in the learning view.</p>
         </Alert>
       )}
 
@@ -454,17 +416,7 @@ export function MainAreaLearningPanelRenderer() {
           severity="warning"
           data-testid={testIds.mainAreaLearning.safetyGateWarning}
         >
-          <p>
-            This guide includes interactive steps that need access to the Grafana UI. Open it in the Pathfinder sidebar
-            for the full experience.
-          </p>
-          <Button
-            variant="secondary"
-            onClick={() => handleOpenInSidebar({ navigateAway: true })}
-            data-testid={testIds.mainAreaLearning.safetyGateOpenInSidebarButton}
-          >
-            Open in sidebar
-          </Button>
+          <p>This guide includes interactive steps that need access to the Grafana UI.</p>
         </Alert>
       )}
 
@@ -492,7 +444,6 @@ export function MainAreaLearningPanelRenderer() {
               <GuideProgressHeader
                 title={state.content.metadata?.title || ''}
                 contentKey={state.content.url || ''}
-                onOpenInSidebar={() => handleOpenInSidebar()}
                 layoutWidth={layout}
               />
               <div

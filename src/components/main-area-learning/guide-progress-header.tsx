@@ -1,8 +1,8 @@
 /**
  * Guide Progress Header
  *
- * Displays guide title, completion progress, and an "Open in sidebar" action
- * above the content area in the main-area learning view.
+ * Displays guide title and completion progress above the content area
+ * in the main-area learning view.
  *
  * Progress updates via:
  * - Initial async read from interactiveCompletionStorage
@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Button, useStyles2 } from '@grafana/ui';
+import { useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
@@ -22,16 +22,10 @@ type LayoutWidth = 'default' | 'wide' | 'full';
 interface GuideProgressHeaderProps {
   title: string;
   contentKey: string;
-  onOpenInSidebar: () => void;
   layoutWidth?: LayoutWidth;
 }
 
-export function GuideProgressHeader({
-  title,
-  contentKey,
-  onOpenInSidebar,
-  layoutWidth = 'default',
-}: GuideProgressHeaderProps) {
+export function GuideProgressHeader({ title, contentKey, layoutWidth = 'default' }: GuideProgressHeaderProps) {
   const styles = useStyles2(getStyles);
   const headerMaxWidth = layoutWidth === 'full' ? 'none' : layoutWidth === 'wide' ? '72rem' : '48rem';
   const [progress, setProgress] = useState(0);
@@ -78,14 +72,6 @@ export function GuideProgressHeader({
         <h2 className={styles.title}>{title}</h2>
         <div className={styles.actions}>
           {roundedProgress > 0 && <span className={styles.progressText}>{roundedProgress}% complete</span>}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onOpenInSidebar}
-            data-testid={testIds.mainAreaLearning.openInSidebarHeaderButton}
-          >
-            Open in sidebar
-          </Button>
         </div>
       </div>
       <div className={styles.progressBar} data-testid={testIds.mainAreaLearning.progressBar}>

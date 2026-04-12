@@ -2,7 +2,7 @@
  * Tests for GuideProgressHeader.
  *
  * Validates title display, progress loading from storage, real-time event
- * updates, content key matching, and sidebar handoff button.
+ * updates, and content key matching.
  */
 
 import React from 'react';
@@ -66,7 +66,6 @@ describe('GuideProgressHeader', () => {
   const defaultProps = {
     title: 'Getting started with Prometheus',
     contentKey: 'bundled:prometheus-101',
-    onOpenInSidebar: jest.fn(),
   };
 
   it('renders the guide title', () => {
@@ -151,15 +150,6 @@ describe('GuideProgressHeader', () => {
     // Should still show 10%, not 90%
     expect(screen.getByText('10% complete')).toBeInTheDocument();
     expect(screen.queryByText('90% complete')).not.toBeInTheDocument();
-  });
-
-  it('calls onOpenInSidebar when button is clicked', () => {
-    const onOpenInSidebar = jest.fn();
-    render(<GuideProgressHeader {...defaultProps} onOpenInSidebar={onOpenInSidebar} />);
-
-    screen.getByTestId(testIds.mainAreaLearning.openInSidebarHeaderButton).click();
-
-    expect(onOpenInSidebar).toHaveBeenCalledTimes(1);
   });
 
   it('re-fetches progress when contentKey changes', async () => {
