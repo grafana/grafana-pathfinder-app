@@ -43,6 +43,8 @@ export function isMainAreaSafe(contentString: string): SafetyResult {
       unsafeActionTypes: [...unsafeActions],
     };
   } catch {
+    // Non-JSON content (HTML, markdown, future media formats) has no interactive
+    // blocks by definition — always safe for main-area rendering.
     return { safe: true, unsafeActionTypes: [] };
   }
 }

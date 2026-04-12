@@ -267,6 +267,42 @@ export function MainAreaLearningPanelRenderer() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // SPA navigation listener: catches late URL settlement (Scenes router may update
+  // the URL after the component mounts) and in-place navigation between docs.
+  // The initial computeInitialState handles the fast path; this is the fallback net.
+  useEffect(() => {
+    const history = locationService.getHistory();
+    const unlisten = history.listen((location: { search: string }) => {
+      const params = new URLSearchParams(location.search);
+      const docParam = params.get('doc');
+      const current = stateRef.current;
+
+      // Skip if the doc param hasn't changed (also ignores cleanUrlParams replaceState)
+      if (docParam === current.originalParam) {
+        return;
+      }
+
+      // No doc param — return to landing
+      if (!docParam) {
+        dispatch({ type: 'navigate_to_guide', docUrl: '', originalParam: '' });
+        return;
+      }
+
+      // Unsupported format — don't attempt to load
+      if (isUnsupportedFormat(docParam)) {
+        return;
+      }
+
+      const docPage = findDocPage(docParam);
+      if (docPage) {
+        dispatch({ type: 'navigate_to_guide', docUrl: docPage.url, originalParam: docParam });
+        loadContent(docPage.url);
+      }
+    });
+
+    return unlisten;
+  }, [loadContent]);
+
   // Chrome control: hide nav/sidebar on mount, restore on unmount
   useEffect(() => {
     const { hideNav, hideSidebar } = chromeParams;

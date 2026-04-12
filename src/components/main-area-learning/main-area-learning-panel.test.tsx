@@ -25,7 +25,10 @@ jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
   getAppEvents: jest.fn(() => ({ publish: jest.fn() })),
   config: { bootData: { user: { id: 1 } } },
-  locationService: { push: (...args: any[]) => mockLocationPush(...args) },
+  locationService: {
+    push: (...args: any[]) => mockLocationPush(...args),
+    getHistory: jest.fn(() => ({ listen: jest.fn(() => jest.fn()) })),
+  },
 }));
 
 jest.mock('@grafana/scenes', () => ({
