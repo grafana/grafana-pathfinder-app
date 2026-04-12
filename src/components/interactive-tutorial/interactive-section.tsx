@@ -1714,7 +1714,7 @@ export function InteractiveSection({
               Cancel
             </Button>
           </div>
-        ) : (
+        ) : nonNoopSteps.length === 0 ? null : (
           <Button
             onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
             disabled={
