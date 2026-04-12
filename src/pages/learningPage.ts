@@ -2,9 +2,10 @@ import { EmbeddedScene, SceneAppPage, SceneFlexItem, SceneFlexLayout } from '@gr
 import { prefixRoute } from '../utils/utils.routing';
 import { ROUTES } from '../constants';
 import { MainAreaLearningPanel } from '../components/main-area-learning/main-area-learning-panel';
+import { mainAreaLearningState } from '../global-state/main-area-learning-state';
 
 export const learningPage = new SceneAppPage({
-  title: 'Learning',
+  title: '',
   url: prefixRoute(ROUTES.Learning),
   // routePath must be relative (not prefixed) — Grafana 12's RRv6 routing strips the plugin base URL
   routePath: ROUTES.Learning,
@@ -12,6 +13,10 @@ export const learningPage = new SceneAppPage({
   // These params drive content loading and chrome control in MainAreaLearningPanel.
   preserveUrlKeys: ['doc', 'fullscreen', 'nav', 'sidebar', 'source'],
   getScene: learningScene,
+});
+
+mainAreaLearningState.onTitleChange((title) => {
+  learningPage.setState({ title });
 });
 
 function learningScene() {

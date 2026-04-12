@@ -10,6 +10,7 @@
 
 class MainAreaLearningState {
   private _isActive = false;
+  private _titleListener: ((title: string) => void) | null = null;
 
   getIsActive(): boolean {
     return this._isActive;
@@ -17,6 +18,23 @@ class MainAreaLearningState {
 
   setIsActive(active: boolean): void {
     this._isActive = active;
+  }
+
+  /** Notify the page title subscriber when the loaded guide title changes. */
+  setTitle(title: string): void {
+    this._titleListener?.(title);
+  }
+
+  /**
+   * Register a listener that is called whenever the guide title changes.
+   * Intended for use by learningPage to keep SceneAppPage.title in sync.
+   * Returns an unsubscribe function.
+   */
+  onTitleChange(listener: (title: string) => void): () => void {
+    this._titleListener = listener;
+    return () => {
+      this._titleListener = null;
+    };
   }
 }
 

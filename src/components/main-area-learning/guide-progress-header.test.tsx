@@ -64,14 +64,8 @@ beforeEach(() => {
 
 describe('GuideProgressHeader', () => {
   const defaultProps = {
-    title: 'Getting started with Prometheus',
     contentKey: 'bundled:prometheus-101',
   };
-
-  it('renders the guide title', () => {
-    render(<GuideProgressHeader {...defaultProps} />);
-    expect(screen.getByText('Getting started with Prometheus')).toBeInTheDocument();
-  });
 
   it('renders the progress header container', () => {
     render(<GuideProgressHeader {...defaultProps} />);
@@ -161,7 +155,7 @@ describe('GuideProgressHeader', () => {
       expect(screen.getByText('25% complete')).toBeInTheDocument();
     });
 
-    rerender(<GuideProgressHeader {...defaultProps} title="New guide" contentKey="bundled:new-guide" />);
+    rerender(<GuideProgressHeader {...defaultProps} contentKey="bundled:new-guide" />);
 
     await waitFor(() => {
       expect(screen.getByText('60% complete')).toBeInTheDocument();

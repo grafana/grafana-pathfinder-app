@@ -94,6 +94,8 @@ interface ContentRendererProps {
   onGuideComplete?: () => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement>;
+  /** Suppress the guide's own h1 title. Use when the rendering context provides its own title (e.g. main-area SceneAppPage chrome). */
+  hideTitle?: boolean;
 }
 
 // Style to hide default browser selection highlight
@@ -112,6 +114,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   onGuideComplete,
   className,
   containerRef,
+  hideTitle = false,
 }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
@@ -378,6 +381,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         baseUrl={content.url}
         title={content.metadata.title}
         isNativeJson={content.isNativeJson ?? false}
+        hideTitle={hideTitle}
         onContentReady={onContentReady}
         activeRef={activeRef}
         className={className}
@@ -395,6 +399,7 @@ interface ContentWithVariablesProps {
   baseUrl: string;
   title: string;
   isNativeJson: boolean;
+  hideTitle?: boolean;
   onContentReady?: () => void;
   activeRef: React.RefObject<HTMLDivElement>;
   className?: string;
@@ -408,6 +413,7 @@ function ContentWithVariables({
   baseUrl,
   title,
   isNativeJson,
+  hideTitle = false,
   onContentReady,
   activeRef,
   className,
@@ -487,7 +493,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && !hideTitle && <h1 className={titleStyle}>{title}</h1>}
       <ContentProcessor
         html={processedContent}
         contentType={contentType}

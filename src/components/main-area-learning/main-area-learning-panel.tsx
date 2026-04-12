@@ -254,6 +254,12 @@ export function MainAreaLearningPanelRenderer() {
     }
   }, []);
 
+  // Keep the SceneAppPage title in sync with the loaded guide title
+  useEffect(() => {
+    const title = state.status === 'content' ? (state.content?.metadata?.title ?? '') : '';
+    mainAreaLearningState.setTitle(title);
+  }, [state.status, state.content]);
+
   // Mount-time: fire analytics, clean URL, set active state, and kick off async fetch
   useEffect(() => {
     const { docUrl, originalParam } = stateRef.current;
@@ -441,11 +447,7 @@ export function MainAreaLearningPanelRenderer() {
                 : styles.contentBody;
           return (
             <>
-              <GuideProgressHeader
-                title={state.content.metadata?.title || ''}
-                contentKey={state.content.url || ''}
-                layoutWidth={layout}
-              />
+              <GuideProgressHeader contentKey={state.content.url || ''} layoutWidth={layout} />
               <div
                 id="main-area-docs-content"
                 className={bodyClass}
@@ -453,6 +455,7 @@ export function MainAreaLearningPanelRenderer() {
               >
                 <ContentRenderer
                   content={state.content}
+                  hideTitle
                   className={`${state.content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`}
                 />
               </div>

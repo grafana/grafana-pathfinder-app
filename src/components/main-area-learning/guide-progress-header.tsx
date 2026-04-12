@@ -20,12 +20,11 @@ import { testIds } from '../../constants/testIds';
 type LayoutWidth = 'default' | 'wide' | 'full';
 
 interface GuideProgressHeaderProps {
-  title: string;
   contentKey: string;
   layoutWidth?: LayoutWidth;
 }
 
-export function GuideProgressHeader({ title, contentKey, layoutWidth = 'default' }: GuideProgressHeaderProps) {
+export function GuideProgressHeader({ contentKey, layoutWidth = 'default' }: GuideProgressHeaderProps) {
   const styles = useStyles2(getStyles);
   const headerMaxWidth = layoutWidth === 'full' ? 'none' : layoutWidth === 'wide' ? '72rem' : '48rem';
   const [progress, setProgress] = useState(0);
@@ -68,12 +67,13 @@ export function GuideProgressHeader({ title, contentKey, layoutWidth = 'default'
       style={{ maxWidth: headerMaxWidth }}
       data-testid={testIds.mainAreaLearning.progressHeader}
     >
-      <div className={styles.headerRow}>
-        <h2 className={styles.title}>{title}</h2>
-        <div className={styles.actions}>
-          {roundedProgress > 0 && <span className={styles.progressText}>{roundedProgress}% complete</span>}
+      {roundedProgress > 0 && (
+        <div className={styles.headerRow}>
+          <div className={styles.actions}>
+            <span className={styles.progressText}>{roundedProgress}% complete</span>
+          </div>
         </div>
-      </div>
+      )}
       <div className={styles.progressBar} data-testid={testIds.mainAreaLearning.progressBar}>
         <div className={styles.progressFill} style={{ width: `${roundedProgress}%` }} />
       </div>
@@ -91,21 +91,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   headerRow: css({
     display: 'flex',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    gap: theme.spacing(2),
     marginBottom: theme.spacing(1),
-  }),
-  title: css({
-    fontSize: theme.typography.h3.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    color: theme.colors.text.primary,
-    margin: 0,
-    lineHeight: 1.3,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    flex: 1,
   }),
   actions: css({
     display: 'flex',
