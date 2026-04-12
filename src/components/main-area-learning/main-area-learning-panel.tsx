@@ -42,6 +42,9 @@ import { mainAreaLearningState } from '../../global-state/main-area-learning-sta
 import { testIds } from '../../constants/testIds';
 import { GuideProgressHeader } from './guide-progress-header';
 import type { RawContent } from '../../types/content.types';
+import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
+import { getInteractiveStyles } from '../../styles/interactive.styles';
+import { getPrismStyles } from '../../styles/prism.styles';
 
 // ============================================================================
 // HELPERS
@@ -186,6 +189,10 @@ function computeInitialState(): PanelState {
 
 export function MainAreaLearningPanelRenderer() {
   const styles = useStyles2(getStyles);
+  const journeyStyles = useStyles2(journeyContentHtml);
+  const docsStyles = useStyles2(docsContentHtml);
+  const interactiveStyles = useStyles2(getInteractiveStyles);
+  const prismStyles = useStyles2(getPrismStyles);
 
   const [state, dispatch] = useReducer(panelReducer, undefined, computeInitialState);
 
@@ -493,7 +500,10 @@ export function MainAreaLearningPanelRenderer() {
                 className={bodyClass}
                 data-testid={testIds.mainAreaLearning.contentContainer}
               >
-                <ContentRenderer content={state.content} />
+                <ContentRenderer
+                  content={state.content}
+                  className={`${state.content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`}
+                />
               </div>
             </>
           );

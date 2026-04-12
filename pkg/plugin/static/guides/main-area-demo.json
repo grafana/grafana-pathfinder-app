@@ -9,9 +9,9 @@
     },
     {
       "type": "image",
-      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Grafana_dashboard_for_MusicBrainz_Hetzner_Yamaoka_server_screenshot.webp/800px-Grafana_dashboard_for_MusicBrainz_Hetzner_Yamaoka_server_screenshot.webp.png",
-      "alt": "Grafana dashboard for a MusicBrainz server",
-      "width": 800
+      "src": "https://grafana.com/static/assets/img/grafana_logo.svg",
+      "alt": "Grafana Logo",
+      "width": 400
     },
     {
       "type": "section",
@@ -55,7 +55,7 @@
     },
     {
       "type": "video",
-      "src": "https://www.youtube.com/watch?v=QGbEA9NKQN0",
+      "src": "https://www.youtube.com/embed/QGbEA9NKQN0",
       "title": "What is Grafana? (Grafana for Beginners ep. 1)"
     },
     {
