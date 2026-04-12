@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "main-area-demo",
+  "title": "What is Grafana?",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "**Grafana** is an open-source analytics and visualization web application. It connects to time series databases and other data sources, allowing users to build dashboards that display metrics, logs, and traces. Grafana supports data sources including Prometheus, Graphite, InfluxDB, Elasticsearch, PostgreSQL, and MySQL.\n\nTorkel Odegaard released Grafana in January 2014 as an outgrowth of work on Graphite at Orbitz. The user interface was originally based on version 3 of Kibana. The company behind the project, initially named Raintank, rebranded as Grafana Labs and has raised over $500 million in venture capital funding, reaching a $6 billion valuation in 2024.\n\nSince 2021, Grafana has been licensed under the AGPLv3 (previously Apache 2.0). A commercial Grafana Enterprise edition adds features including LDAP team synchronization, data source permissions, and reporting."
+    },
+    {
+      "type": "image",
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Grafana_dashboard_for_MusicBrainz_Hetzner_Yamaoka_server_screenshot.webp/800px-Grafana_dashboard_for_MusicBrainz_Hetzner_Yamaoka_server_screenshot.webp.png",
+      "alt": "Grafana dashboard for a MusicBrainz server",
+      "width": 800
+    },
+    {
+      "type": "section",
+      "title": "History",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Grafana was first released in January 2014, initially targeting Graphite and InfluxDB as data sources. It later added support for relational databases including MySQL, PostgreSQL, and Microsoft SQL Server.\n\nGrafana Labs was founded in 2014 as Raintank and later adopted the Grafana name. The company raised $24 million in Series A funding in 2019, $50 million in Series B in 2020, $220 million in Series C in 2021 (at a $3 billion valuation), and $270 million in 2024 at a $6 billion valuation.\n\nGrafana Labs acquired several companies to expand its observability stack: Kausal (2018), k6 (2021, load testing), Pyroscope (2023, continuous profiling), Asserts.ai (2023, AI-assisted observability), and TailCtrl (2024, trace sampling)."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Architecture",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Grafana's backend is written in Go and its frontend in TypeScript using React. The application runs as a single binary that serves a web interface and connects to external data sources through a plugin system. Plugins fall into three categories: data source plugins (for querying backends), panel plugins (for visualization types), and app plugins (for bundled functionality).\n\nGrafana does not store metrics data itself. It queries external data sources at render time and can combine data from multiple sources in a single dashboard. Built-in data source support includes Prometheus, Graphite, InfluxDB, Elasticsearch, OpenSearch, Loki, MySQL, PostgreSQL, and Splunk.\n\nDashboards are defined as JSON documents and can be provisioned from files, version-controlled, and shared via Grafana's public dashboard library. Alerting rules can be defined against any data source, with notifications routed to email, Slack, PagerDuty, and other channels."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "title": "LGTM Stack",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Grafana Labs develops a set of open-source backends that are often deployed together as the \"LGTM stack\" (Loki, Grafana, Tempo, Mimir):\n\n- **Loki** — a log aggregation system, first released in 2019, that indexes metadata rather than full log text.\n- **Mimir** — a horizontally scalable, Prometheus-compatible metrics backend, released in 2022 as a replacement for Cortex.\n- **Tempo** — a distributed tracing backend, released in 2021.\n- **Pyroscope** — a continuous profiling backend, released in 2023."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Adoption",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Grafana is used by Wikimedia's infrastructure, NASA, and the Tour de France (for real-time race telemetry). As of 2025, Grafana Labs reported over 7,000 paying customers, including Nvidia, Anthropic, and Uber."
+        }
+      ]
+    },
+    {
+      "type": "video",
+      "src": "https://www.youtube.com/watch?v=QGbEA9NKQN0",
+      "title": "What is Grafana? (Grafana for Beginners ep. 1)"
+    },
+    {
+      "type": "quiz",
+      "question": "Which programming languages are used for Grafana's backend and frontend?",
+      "choices": [
+        {
+          "id": "a",
+          "text": "Python and JavaScript",
+          "hint": "Grafana's backend is not written in Python."
+        },
+        {
+          "id": "b",
+          "text": "Go and TypeScript",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Rust and React",
+          "hint": "React is a framework, not a language. And Grafana's backend isn't written in Rust."
+        },
+        {
+          "id": "d",
+          "text": "Java and Vue.js",
+          "hint": "Grafana doesn't use Java or Vue.js."
+        }
+      ],
+      "completionMode": "max-attempts",
+      "maxAttempts": 2
+    }
+  ]
+}

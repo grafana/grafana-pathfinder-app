@@ -77,6 +77,11 @@ export function findDocPage(param: string): DocPage | null {
           targetPage: Array.isArray(interactive.url) ? interactive.url[0] : undefined,
         };
       }
+      const allIds = indexData?.interactives?.map((item: any) => item.id) ?? [];
+      console.warn(
+        `[find-doc-page] Bundled interactive "${param.replace('bundled:', '')}" not found in index.json. Available IDs:`,
+        allIds
+      );
     } catch (e) {
       console.warn('Failed to load bundled interactives index', e);
     }

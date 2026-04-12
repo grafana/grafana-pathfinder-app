@@ -137,6 +137,7 @@ function getSceneApp() {
 }
 
 function App(props: AppRootProps) {
+  console.warn('[App] Mount URL:', window.location.href);
   const scene = useMemo(() => getSceneApp(), []);
 
   // Get configuration

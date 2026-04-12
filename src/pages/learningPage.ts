@@ -8,6 +8,9 @@ export const learningPage = new SceneAppPage({
   url: prefixRoute(ROUTES.Learning),
   // routePath must be relative (not prefixed) — Grafana 12's RRv6 routing strips the plugin base URL
   routePath: ROUTES.Learning,
+  // Scenes strips unknown query params unless explicitly preserved.
+  // These params drive content loading and chrome control in MainAreaLearningPanel.
+  preserveUrlKeys: ['doc', 'fullscreen', 'nav', 'sidebar', 'source'],
   getScene: learningScene,
 });
 

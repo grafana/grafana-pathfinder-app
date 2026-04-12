@@ -52,6 +52,12 @@
       "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
       "filename": "first-dashboard-cloud/content.json",
       "url": ["/a/grafana-setupguide-app/home"]
+    },
+    {
+      "id": "main-area-demo",
+      "title": "What is Grafana?",
+      "filename": "main-area-demo/content.json",
+      "unlisted": true
     }
   ]
 }

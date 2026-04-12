@@ -126,8 +126,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Check for doc query parameter to auto-open specific docs page.
   // Dynamically imports findDocPage so the bundled JSON data stays out of module.js.
+  //
+  // EXCEPTION: When the user is on the /learning route, the MainAreaLearningPanel
+  // owns the ?doc= param — skip the sidebar auto-open flow entirely.
+  const isLearningRoute = window.location.pathname.endsWith('/learning');
   const urlParams = new URLSearchParams(window.location.search);
-  const docsParam = urlParams.get('doc');
+  const docsParam = isLearningRoute ? null : urlParams.get('doc');
   const pageParam = urlParams.get('page');
   // Optional source override for analytics — allows callers to identify the origin
   // of a ?doc= deep link (e.g. ?doc=foo&source=learning-hub)

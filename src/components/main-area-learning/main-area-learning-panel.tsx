@@ -160,17 +160,20 @@ function computeInitialState(): PanelState {
   const docParam = urlParams.get('doc');
 
   if (!docParam) {
+    console.warn('[main-area-learning] No ?doc= param found in URL, showing landing page. URL:', window.location.href);
     return { status: 'landing', content: null, error: null, docUrl: null, originalParam: null };
   }
 
   // Format validation — MUST run before findDocPage() because findDocPage
   // resolves /docs/ paths (Case 4) which we explicitly don't support here
   if (isUnsupportedFormat(docParam)) {
+    console.warn('[main-area-learning] Unsupported format for doc param:', docParam);
     return { status: 'unsupported', content: null, error: null, docUrl: null, originalParam: docParam };
   }
 
   const docPage = findDocPage(docParam);
   if (!docPage) {
+    console.warn('[main-area-learning] findDocPage() returned null for doc param:', docParam);
     return { status: 'landing', content: null, error: null, docUrl: null, originalParam: null };
   }
 

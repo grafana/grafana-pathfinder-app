@@ -1,0 +1,16 @@
+{
+  "id": "main-area-demo",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "QA test fixture for main-area learning view. Non-interactive narrative content with image and video blocks.",
+  "category": "test",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}
