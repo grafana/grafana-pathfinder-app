@@ -1,5 +1,59 @@
 # Main-Area Education: Rendering Interactive Content Outside the Sidebar
 
+## Strategic Context and Design Rationale
+
+### Why this exists
+
+In a separate repository, we are developing AI skills that can write sophisticated
+Pathfinder packages automatically by consulting many different sources. The resulting
+packages are primarily **not interactive** — they are narrative and conceptual in form,
+with minimal or zero interactive sections (clicking buttons, performing multi-step
+actions, etc.). They are much more likely to contain things like images and video.
+
+The main-area learning view exists to **use Grafana Cloud as a proper shell for arbitrary
+educational content**. By dismissing the left nav and the right-hand sidebar, we reclaim
+the full viewport for content that doesn't need the Grafana UI alongside it.
+
+### The URL as integration primitive
+
+One of the core design decisions is a URL scheme where guides can be passed in and
+displayed in the learning area. This enables a critical integration point: the AI skill
+that writes content can subsequently **open Pathfinder at a particular URL and have that
+content displayed in the main app area**. The URL is the contract between the content
+authoring pipeline and the rendering surface.
+
+```
+/a/grafana-pathfinder-app/learning?doc=bundled:prometheus-grafana-101&fullscreen=true
+```
+
+### Future content forms
+
+This educational content surface is not limited to the current JSON guide format. Future
+content could include:
+
+- **PowerPoint / Google Slides** rendered as individual images inside Grafana Cloud
+- **Video-heavy guides** with narrative text and embedded media
+- **AI-generated narrative content** that is conceptual rather than procedural
+- **Mixed media presentations** combining text, images, diagrams, and code samples
+
+The architecture should accommodate these forms without requiring structural changes to
+the rendering pipeline.
+
+### Design principles
+
+1. **Grafana Cloud as a shell**: The learning view should be able to take over the full
+   viewport, using Grafana only as the host frame (authentication, routing, chrome).
+2. **URL-driven content**: Any content that can be addressed by URL should be displayable.
+   The URL is the integration seam between content authoring and content rendering.
+3. **Narrative-first**: The primary content type is read-and-learn, not click-and-do.
+   Interactive steps are a secondary concern, and content with DOM-targeting interactivity
+   is correctly routed to the sidebar.
+4. **Content pipeline independence**: The rendering surface should not need to know how
+   content was authored (AI skill, manual authoring, imported slides). It only needs a
+   URL and a content format it can render.
+
+---
+
 ## Overview
 
 Render interactive learning content (guides, quizzes, terminal steps, code blocks) in

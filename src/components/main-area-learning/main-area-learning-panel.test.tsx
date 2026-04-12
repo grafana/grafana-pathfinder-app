@@ -346,8 +346,8 @@ describe('MainAreaLearningPanelRenderer', () => {
   // --- URL cleanup ---------------------------------------------------------
 
   describe('URL cleanup', () => {
-    it('strips ?doc= param after processing', () => {
-      setUrlSearch('?doc=bundled:test-guide');
+    it('preserves ?doc= param but strips chrome-control params', () => {
+      setUrlSearch('?doc=bundled:test-guide&source=test&nav=false&sidebar=false&fullscreen=true');
       (findDocPage as jest.Mock).mockReturnValue({
         type: 'docs-page',
         url: 'bundled:test-guide',
@@ -358,6 +358,12 @@ describe('MainAreaLearningPanelRenderer', () => {
       render(<MainAreaLearningPanelRenderer />);
 
       expect(replaceStateSpy).toHaveBeenCalled();
+      const calledUrl = replaceStateSpy.mock.calls[0][2] as string;
+      expect(calledUrl).toContain('doc=bundled');
+      expect(calledUrl).not.toContain('source=');
+      expect(calledUrl).not.toContain('nav=');
+      expect(calledUrl).not.toContain('sidebar=');
+      expect(calledUrl).not.toContain('fullscreen=');
     });
   });
 
@@ -1007,6 +1013,109 @@ describe('MainAreaLearningPanelRenderer', () => {
       expect(calledUrl).not.toContain('nav=');
       expect(calledUrl).not.toContain('sidebar=');
       expect(calledUrl).not.toContain('fullscreen=');
+    });
+  });
+
+  // --- Layout width ----------------------------------------------------------
+
+  describe('layout width', () => {
+    it('applies default width for guides without layout field', async () => {
+      setUrlSearch('?doc=bundled:test-guide');
+      const rawContent = makeRawContent('bundled:test-guide');
+      rawContent.content = JSON.stringify({ id: 'test', title: 'Test', blocks: [] });
+      (findDocPage as jest.Mock).mockReturnValue({
+        type: 'docs-page',
+        url: 'bundled:test-guide',
+        title: 'Test Guide',
+      });
+      (fetchContent as jest.Mock).mockResolvedValue({ content: rawContent });
+
+      render(<MainAreaLearningPanelRenderer />);
+
+      await waitFor(() => {
+        const container = screen.getByTestId(testIds.mainAreaLearning.contentContainer);
+        expect(container.className).toBeTruthy();
+      });
+    });
+
+    it('applies different className for guides with layout: "wide"', async () => {
+      setUrlSearch('?doc=bundled:wide-guide');
+      const rawContent = makeRawContent('bundled:wide-guide');
+      rawContent.content = JSON.stringify({ id: 'wide', title: 'Wide', layout: 'wide', blocks: [] });
+      (findDocPage as jest.Mock).mockReturnValue({
+        type: 'docs-page',
+        url: 'bundled:wide-guide',
+        title: 'Wide Guide',
+      });
+      (fetchContent as jest.Mock).mockResolvedValue({ content: rawContent });
+
+      render(<MainAreaLearningPanelRenderer />);
+
+      await waitFor(() => {
+        const container = screen.getByTestId(testIds.mainAreaLearning.contentContainer);
+        expect(container.className).toBeTruthy();
+      });
+    });
+
+    it('applies different className for guides with layout: "full"', async () => {
+      setUrlSearch('?doc=bundled:full-guide');
+      const rawContent = makeRawContent('bundled:full-guide');
+      rawContent.content = JSON.stringify({ id: 'full', title: 'Full', layout: 'full', blocks: [] });
+      (findDocPage as jest.Mock).mockReturnValue({
+        type: 'docs-page',
+        url: 'bundled:full-guide',
+        title: 'Full Guide',
+      });
+      (fetchContent as jest.Mock).mockResolvedValue({ content: rawContent });
+
+      render(<MainAreaLearningPanelRenderer />);
+
+      await waitFor(() => {
+        const container = screen.getByTestId(testIds.mainAreaLearning.contentContainer);
+        expect(container.className).toBeTruthy();
+      });
+    });
+  });
+
+  // --- Remote URL support ----------------------------------------------------
+
+  describe('remote URL support', () => {
+    it('loads remote GitHub content when doc=remote:...', async () => {
+      const remoteUrl = 'https://raw.githubusercontent.com/grafana/repo/main/guide.json';
+      setUrlSearch(`?doc=remote:${remoteUrl}`);
+      (findDocPage as jest.Mock).mockReturnValue({
+        type: 'interactive',
+        url: remoteUrl,
+        title: 'Guide',
+      });
+      const rawContent = makeRawContent(remoteUrl);
+      (fetchContent as jest.Mock).mockResolvedValue({ content: rawContent });
+
+      render(<MainAreaLearningPanelRenderer />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId(testIds.mainAreaLearning.contentContainer)).toBeInTheDocument();
+      });
+
+      expect(fetchContent).toHaveBeenCalledWith(remoteUrl);
+    });
+
+    it('preserves remote doc param in URL after cleanup', () => {
+      const remoteUrl = 'https://raw.githubusercontent.com/grafana/repo/main/guide.json';
+      setUrlSearch(`?doc=remote:${remoteUrl}&nav=false`);
+      (findDocPage as jest.Mock).mockReturnValue({
+        type: 'interactive',
+        url: remoteUrl,
+        title: 'Guide',
+      });
+      (fetchContent as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+      render(<MainAreaLearningPanelRenderer />);
+
+      expect(replaceStateSpy).toHaveBeenCalled();
+      const calledUrl = replaceStateSpy.mock.calls[0][2] as string;
+      expect(calledUrl).toContain('doc=remote');
+      expect(calledUrl).not.toContain('nav=');
     });
   });
 });

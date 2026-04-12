@@ -321,6 +321,59 @@ export function isGitHubRawUrl(urlString: string): boolean {
 }
 
 /**
+ * Check if URL is a Grafana-org GitHub raw content URL (PRODUCTION SAFE)
+ *
+ * Unlike isGitHubRawUrl() which allows any GitHub org in dev mode only,
+ * this function restricts to the Grafana GitHub org and is safe for production.
+ * Used by the main-area learning view to fetch AI-authored guides from GitHub.
+ *
+ * Security guarantees:
+ * - HTTPS only
+ * - Exact hostname match (raw.githubusercontent.com)
+ * - Path must start with /grafana/ (restricts to Grafana GitHub org)
+ */
+export function isGrafanaGitHubRawUrl(urlString: string): boolean {
+  const url = parseUrlSafely(urlString);
+  if (!url) {
+    return false;
+  }
+
+  if (url.protocol !== 'https:') {
+    return false;
+  }
+
+  if (url.hostname !== 'raw.githubusercontent.com') {
+    return false;
+  }
+
+  // Restrict to Grafana org — GitHub raw URLs are /{owner}/{repo}/{ref}/{path}
+  return url.pathname.startsWith('/grafana/');
+}
+
+/**
+ * Check if URL is a valid GitHub redirect target (PRODUCTION SAFE)
+ *
+ * GitHub may redirect raw.githubusercontent.com to objects.githubusercontent.com
+ * for LFS/blob storage. This function validates the redirect target hostname.
+ *
+ * IMPORTANT: Only use in redirect validation — NOT in the initial trust gate.
+ * The caller must ensure the original request URL already passed isGrafanaGitHubRawUrl().
+ * No path check is applied because GitHub LFS redirects don't preserve the org path.
+ */
+export function isGrafanaGitHubRedirectUrl(urlString: string): boolean {
+  const url = parseUrlSafely(urlString);
+  if (!url) {
+    return false;
+  }
+
+  if (url.protocol !== 'https:') {
+    return false;
+  }
+
+  return url.hostname === 'objects.githubusercontent.com';
+}
+
+/**
  * Default redirect path used when validation fails or input is missing.
  * Always redirects to Grafana home page as a safe fallback.
  */

@@ -24,6 +24,8 @@ import {
   isLocalhostUrl,
   isInteractiveLearningUrl,
   isGitHubRawUrl,
+  isGrafanaGitHubRawUrl,
+  isGrafanaGitHubRedirectUrl,
   sanitizeHtmlUrl,
 } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
@@ -130,7 +132,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // In production: Only Grafana docs, interactive learning domains, and bundled content
     // In dev mode: Also allows localhost and GitHub raw URLs for testing
     const isDevMode = isDevModeEnabledGlobal();
-    const isTrustedSource = isAllowedContentUrl(url) || (isDevMode && (isLocalhostUrl(url) || isGitHubRawUrl(url)));
+    const isTrustedSource =
+      isAllowedContentUrl(url) ||
+      isGrafanaGitHubRawUrl(url) ||
+      (isDevMode && (isLocalhostUrl(url) || isGitHubRawUrl(url)));
 
     if (!isTrustedSource) {
       const errorMessage = isDevMode
@@ -737,6 +742,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
+            isGrafanaGitHubRawUrl(finalUrl) ||
+            isGrafanaGitHubRedirectUrl(finalUrl) ||
             (isDevMode && isLocalhostUrl(finalUrl)) ||
             (isDevMode && isGitHubRawUrl(finalUrl));
 
@@ -825,6 +832,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
+          isGrafanaGitHubRawUrl(finalUrl) ||
+          isGrafanaGitHubRedirectUrl(finalUrl) ||
           (isDevMode && isLocalhostUrl(finalUrl)) ||
           (isDevMode && isGitHubRawUrl(finalUrl));
 

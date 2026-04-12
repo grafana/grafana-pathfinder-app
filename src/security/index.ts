@@ -15,6 +15,8 @@ export {
   isGrafanaDocsUrl,
   isInteractiveLearningUrl,
   isGitHubRawUrl,
+  isGrafanaGitHubRawUrl,
+  isGrafanaGitHubRedirectUrl,
   isLocalhostUrl,
   isAllowedContentUrl,
   validateTutorialUrl,

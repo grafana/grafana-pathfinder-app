@@ -1,4 +1,4 @@
-import { isGrafanaDocsUrl, isInteractiveLearningUrl } from '../security';
+import { isGrafanaDocsUrl, isInteractiveLearningUrl, isGrafanaGitHubRawUrl } from '../security';
 
 export interface DocPage {
   type: 'docs-page' | 'learning-journey' | 'interactive';
@@ -34,6 +34,31 @@ export function findDocPage(param: string): DocPage | null {
       type: 'docs-page',
       url: `backend-guide:${resourceName}`,
       title: resourceName,
+    };
+  }
+
+  // Case: Remote GitHub-hosted content (AI-authored guides)
+  if (param.startsWith('remote:')) {
+    const rawUrl = param.slice('remote:'.length).trim();
+    if (!rawUrl) {
+      return null;
+    }
+
+    // SECURITY: Only allow whitelisted Grafana GitHub raw URLs
+    if (!isGrafanaGitHubRawUrl(rawUrl)) {
+      console.warn('Security: Rejected non-Grafana GitHub URL:', rawUrl);
+      return null;
+    }
+
+    const cleanedUrl = rawUrl.replace(/\.(json|html)$/i, '');
+    const parts = cleanedUrl.split('/').filter(Boolean);
+    const slug = parts[parts.length - 1] || 'Remote guide';
+    const title = formatSlug(slug);
+
+    return {
+      type: 'interactive',
+      url: rawUrl,
+      title: title,
     };
   }
 

@@ -10,6 +10,8 @@ import {
   validateTutorialUrl,
   validateRedirectPath,
   isGitHubRawUrl,
+  isGrafanaGitHubRawUrl,
+  isGrafanaGitHubRedirectUrl,
 } from './url-validator';
 
 // Mock the dev-mode module
@@ -451,6 +453,72 @@ describe('GitHub URL validators', () => {
     it('should reject invalid URLs', () => {
       expect(isGitHubRawUrl('not a url')).toBe(false);
       expect(isGitHubRawUrl('')).toBe(false);
+    });
+  });
+
+  describe('isGrafanaGitHubRawUrl', () => {
+    it('should accept Grafana org raw URLs', () => {
+      expect(isGrafanaGitHubRawUrl('https://raw.githubusercontent.com/grafana/repo/main/guide.json')).toBe(true);
+      expect(
+        isGrafanaGitHubRawUrl(
+          'https://raw.githubusercontent.com/grafana/pathfinder-guides/refs/heads/main/content.json'
+        )
+      ).toBe(true);
+      expect(isGrafanaGitHubRawUrl('https://raw.githubusercontent.com/grafana/deep/nested/path/file.html')).toBe(true);
+    });
+
+    it('should reject non-Grafana org URLs', () => {
+      expect(isGrafanaGitHubRawUrl('https://raw.githubusercontent.com/evil-org/repo/main/guide.json')).toBe(false);
+      expect(isGrafanaGitHubRawUrl('https://raw.githubusercontent.com/notgrafana/repo/main/guide.json')).toBe(false);
+    });
+
+    it('should be case-sensitive on org name', () => {
+      expect(isGrafanaGitHubRawUrl('https://raw.githubusercontent.com/Grafana/repo/main/guide.json')).toBe(false);
+      expect(isGrafanaGitHubRawUrl('https://raw.githubusercontent.com/GRAFANA/repo/main/guide.json')).toBe(false);
+    });
+
+    it('should reject non-HTTPS', () => {
+      expect(isGrafanaGitHubRawUrl('http://raw.githubusercontent.com/grafana/repo/main/guide.json')).toBe(false);
+    });
+
+    it('should reject domain hijack attempts', () => {
+      expect(isGrafanaGitHubRawUrl('https://raw.githubusercontent.com.evil.com/grafana/repo/main/guide.json')).toBe(
+        false
+      );
+      expect(isGrafanaGitHubRawUrl('https://a-raw.githubusercontent.com/grafana/repo/main/guide.json')).toBe(false);
+    });
+
+    it('should reject wrong hostname', () => {
+      expect(isGrafanaGitHubRawUrl('https://objects.githubusercontent.com/grafana/repo/main/guide.json')).toBe(false);
+      expect(isGrafanaGitHubRawUrl('https://github.com/grafana/repo/blob/main/file.json')).toBe(false);
+    });
+
+    it('should reject invalid inputs', () => {
+      expect(isGrafanaGitHubRawUrl('not a url')).toBe(false);
+      expect(isGrafanaGitHubRawUrl('')).toBe(false);
+    });
+  });
+
+  describe('isGrafanaGitHubRedirectUrl', () => {
+    it('should accept objects.githubusercontent.com URLs', () => {
+      expect(isGrafanaGitHubRedirectUrl('https://objects.githubusercontent.com/some-path')).toBe(true);
+      expect(
+        isGrafanaGitHubRedirectUrl('https://objects.githubusercontent.com/github-production-release-asset/123456')
+      ).toBe(true);
+    });
+
+    it('should reject non-HTTPS', () => {
+      expect(isGrafanaGitHubRedirectUrl('http://objects.githubusercontent.com/path')).toBe(false);
+    });
+
+    it('should reject wrong hostname', () => {
+      expect(isGrafanaGitHubRedirectUrl('https://raw.githubusercontent.com/grafana/repo/main/guide.json')).toBe(false);
+      expect(isGrafanaGitHubRedirectUrl('https://evil.com/objects.githubusercontent.com/path')).toBe(false);
+    });
+
+    it('should reject invalid inputs', () => {
+      expect(isGrafanaGitHubRedirectUrl('not a url')).toBe(false);
+      expect(isGrafanaGitHubRedirectUrl('')).toBe(false);
     });
   });
 });

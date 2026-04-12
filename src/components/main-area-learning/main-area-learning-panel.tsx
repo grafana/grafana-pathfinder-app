@@ -47,6 +47,24 @@ import type { RawContent } from '../../types/content.types';
 // HELPERS
 // ============================================================================
 
+type LayoutWidth = 'default' | 'wide' | 'full';
+
+/** Read the layout hint from a JSON guide's top-level properties. */
+function getLayoutWidth(content: RawContent): LayoutWidth {
+  try {
+    const parsed = JSON.parse(content.content);
+    if (parsed?.layout === 'wide') {
+      return 'wide';
+    }
+    if (parsed?.layout === 'full') {
+      return 'full';
+    }
+  } catch {
+    // Non-JSON or malformed — default prose width
+  }
+  return 'default';
+}
+
 /**
  * Returns true if the URL scheme is unsupported in the main-area learning view.
  * Raw /docs/ paths and Grafana.com doc URLs require the sidebar for proper rendering.
@@ -60,10 +78,9 @@ function isUnsupportedFormat(param: string): boolean {
   );
 }
 
-/** Strip handled params from current URL without navigation. */
+/** Strip ephemeral chrome-control params from URL; preserve ?doc= for bookmarking. */
 function cleanUrlParams(): void {
   const url = new URL(window.location.href);
-  url.searchParams.delete('doc');
   url.searchParams.delete('source');
   url.searchParams.delete('nav');
   url.searchParams.delete('sidebar');
@@ -407,22 +424,33 @@ export function MainAreaLearningPanelRenderer() {
         </Alert>
       )}
 
-      {state.status === 'content' && state.content && (
-        <>
-          <GuideProgressHeader
-            title={state.content.metadata?.title || ''}
-            contentKey={state.content.url || ''}
-            onOpenInSidebar={() => handleOpenInSidebar()}
-          />
-          <div
-            id="main-area-docs-content"
-            className={styles.contentBody}
-            data-testid={testIds.mainAreaLearning.contentContainer}
-          >
-            <ContentRenderer content={state.content} />
-          </div>
-        </>
-      )}
+      {state.status === 'content' &&
+        state.content &&
+        (() => {
+          const layout = getLayoutWidth(state.content);
+          const bodyClass =
+            layout === 'full'
+              ? styles.contentBodyFull
+              : layout === 'wide'
+                ? styles.contentBodyWide
+                : styles.contentBody;
+          return (
+            <>
+              <GuideProgressHeader
+                title={state.content.metadata?.title || ''}
+                contentKey={state.content.url || ''}
+                onOpenInSidebar={() => handleOpenInSidebar()}
+              />
+              <div
+                id="main-area-docs-content"
+                className={bodyClass}
+                data-testid={testIds.mainAreaLearning.contentContainer}
+              >
+                <ContentRenderer content={state.content} />
+              </div>
+            </>
+          );
+        })()}
 
       {state.status === 'landing' && (
         <div data-testid={testIds.mainAreaLearning.landingPage}>
@@ -453,6 +481,22 @@ const getStyles = (theme: GrafanaTheme2) => ({
     marginRight: 'auto',
     width: '100%',
     // Interactive components break out of prose width for better usability
+    '& [data-testid^="interactive-terminal-"], & [data-testid^="code-block-step-"]': {
+      maxWidth: 'none',
+    },
+  }),
+  contentBodyWide: css({
+    maxWidth: '72rem',
+    marginLeft: 'auto',
+    marginRight: 'auto',
+    width: '100%',
+    '& [data-testid^="interactive-terminal-"], & [data-testid^="code-block-step-"]': {
+      maxWidth: 'none',
+    },
+  }),
+  contentBodyFull: css({
+    maxWidth: 'none',
+    width: '100%',
     '& [data-testid^="interactive-terminal-"], & [data-testid^="code-block-step-"]': {
       maxWidth: 'none',
     },
