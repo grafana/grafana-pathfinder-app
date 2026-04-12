@@ -1,5 +1,6 @@
 import { getDocsLinkFromEvent } from 'global-state/utils.link-interception';
 import { sidebarState } from 'global-state/sidebar';
+import { mainAreaLearningState } from 'global-state/main-area-learning-state';
 import { reportAppInteraction, UserInteraction } from 'lib/analytics';
 
 export interface QueuedDocsLink {
@@ -25,6 +26,16 @@ class GlobalLinkInterceptionState {
     }
 
     event.preventDefault();
+
+    // If main area is active, route to it instead of the sidebar
+    if (mainAreaLearningState.getIsActive()) {
+      reportAppInteraction(UserInteraction.MainAreaLinkIntercepted, {
+        intercepted_url: docsLink.url,
+        link_title: docsLink.title,
+      });
+      document.dispatchEvent(new CustomEvent('pathfinder-open-in-main-area', { detail: docsLink }));
+      return;
+    }
 
     // Track the intercepted link
     reportAppInteraction(UserInteraction.GlobalDocsLinkIntercepted, {

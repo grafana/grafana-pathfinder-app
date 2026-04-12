@@ -323,6 +323,23 @@ export const testIds = {
     container: 'home-page-container',
   },
 
+  // Main-Area Learning
+  mainAreaLearning: {
+    container: 'main-area-learning-container',
+    contentContainer: 'main-area-docs-content',
+    loadingState: 'main-area-learning-loading',
+    errorState: 'main-area-learning-error',
+    retryButton: 'main-area-learning-retry',
+    unsupportedFormatError: 'main-area-learning-unsupported-format',
+    openInSidebarButton: 'main-area-learning-open-in-sidebar',
+    landingPage: 'main-area-learning-landing',
+    progressHeader: 'main-area-learning-progress-header',
+    progressBar: 'main-area-learning-progress-bar',
+    openInSidebarHeaderButton: 'main-area-learning-header-open-in-sidebar',
+    safetyGateWarning: 'main-area-learning-safety-gate-warning',
+    safetyGateOpenInSidebarButton: 'main-area-learning-safety-gate-open-in-sidebar',
+  },
+
   // Control Group Popup
   controlGroupPopup: {
     container: 'control-group-popup-container',
