@@ -29,10 +29,6 @@ class GlobalLinkInterceptionState {
 
     // If main area is active, route to it instead of the sidebar
     if (mainAreaLearningState.getIsActive()) {
-      reportAppInteraction(UserInteraction.MainAreaLinkIntercepted, {
-        intercepted_url: docsLink.url,
-        link_title: docsLink.title,
-      });
       document.dispatchEvent(new CustomEvent('pathfinder-open-in-main-area', { detail: docsLink }));
       return;
     }

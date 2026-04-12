@@ -158,11 +158,7 @@ jest.mock('../../lib/analytics', () => ({
     MainAreaPageView: 'main_area_page_view',
     MainAreaGuideLoaded: 'main_area_guide_loaded',
     MainAreaGuideLoadFailed: 'main_area_guide_load_failed',
-    MainAreaUnsupportedFormat: 'main_area_unsupported_format',
-    MainAreaGuideNavigatedInPlace: 'main_area_guide_navigated_in_place',
     MainAreaSafetyGateBlocked: 'main_area_safety_gate_blocked',
-    MainAreaOpenInSidebarClicked: 'main_area_open_in_sidebar_clicked',
-    MainAreaChromeControlApplied: 'main_area_chrome_control_applied',
   },
 }));
 
@@ -503,28 +499,6 @@ describe('MainAreaLearningPanelRenderer', () => {
         });
       });
     });
-
-    it('fires MainAreaUnsupportedFormat for /docs/ paths', () => {
-      setUrlSearch('?doc=/docs/grafana/latest/');
-
-      render(<MainAreaLearningPanelRenderer />);
-
-      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MainAreaUnsupportedFormat, {
-        guide_url: '/docs/grafana/latest/',
-        url_scheme: 'raw_docs_path',
-      });
-    });
-
-    it('fires MainAreaUnsupportedFormat for grafana.com URLs', () => {
-      setUrlSearch('?doc=https://grafana.com/docs/grafana/latest/');
-
-      render(<MainAreaLearningPanelRenderer />);
-
-      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MainAreaUnsupportedFormat, {
-        guide_url: 'https://grafana.com/docs/grafana/latest/',
-        url_scheme: 'grafana_docs_url',
-      });
-    });
   });
 
   // --- Sidebar handoff -----------------------------------------------------
@@ -621,34 +595,6 @@ describe('MainAreaLearningPanelRenderer', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('content-renderer')).toBeInTheDocument();
-      });
-    });
-
-    it('fires MainAreaGuideNavigatedInPlace on in-place navigation via event', async () => {
-      setUrlSearch('');
-      const rawContent = makeRawContent('bundled:nav-guide');
-      (findDocPage as jest.Mock).mockReturnValue({
-        type: 'docs-page',
-        url: 'bundled:nav-guide',
-        title: 'Nav Guide',
-      });
-      (fetchContent as jest.Mock).mockResolvedValue({ content: rawContent });
-
-      render(<MainAreaLearningPanelRenderer />);
-
-      await act(async () => {
-        document.dispatchEvent(
-          new CustomEvent('pathfinder-open-in-main-area', {
-            detail: { url: 'bundled:nav-guide', title: 'Nav Guide' },
-          })
-        );
-      });
-
-      await waitFor(() => {
-        expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MainAreaGuideNavigatedInPlace, {
-          new_url: 'bundled:nav-guide',
-          previous_url: '',
-        });
       });
     });
 
@@ -1048,29 +994,6 @@ describe('MainAreaLearningPanelRenderer', () => {
       });
 
       expect(mockCloseExtensionSidebar).not.toHaveBeenCalled();
-    });
-
-    it('fires MainAreaChromeControlApplied analytics when chrome params are active', () => {
-      setUrlSearch('?nav=false&sidebar=false');
-      mockIsNavVisible.mockReturnValue(true);
-      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
-
-      render(<MainAreaLearningPanelRenderer />);
-
-      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MainAreaChromeControlApplied, {
-        nav_hidden: true,
-        sidebar_hidden: true,
-      });
-    });
-
-    it('does not fire MainAreaChromeControlApplied when no chrome params', () => {
-      setUrlSearch('');
-      render(<MainAreaLearningPanelRenderer />);
-
-      expect(reportAppInteraction).not.toHaveBeenCalledWith(
-        UserInteraction.MainAreaChromeControlApplied,
-        expect.anything()
-      );
     });
 
     it('strips chrome params from URL after processing', () => {

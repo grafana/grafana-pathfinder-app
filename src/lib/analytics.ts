@@ -86,12 +86,7 @@ export enum UserInteraction {
   MainAreaPageView = 'main_area_page_view',
   MainAreaGuideLoaded = 'main_area_guide_loaded',
   MainAreaGuideLoadFailed = 'main_area_guide_load_failed',
-  MainAreaUnsupportedFormat = 'main_area_unsupported_format',
-  MainAreaLinkIntercepted = 'main_area_link_intercepted',
-  MainAreaGuideNavigatedInPlace = 'main_area_guide_navigated_in_place',
   MainAreaSafetyGateBlocked = 'main_area_safety_gate_blocked',
-  MainAreaOpenInSidebarClicked = 'main_area_open_in_sidebar_clicked',
-  MainAreaChromeControlApplied = 'main_area_chrome_control_applied',
 }
 
 // ============================================================================

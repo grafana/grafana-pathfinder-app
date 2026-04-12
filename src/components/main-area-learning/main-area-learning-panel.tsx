@@ -14,7 +14,7 @@
  * Falls back to MyLearningTab as a landing page when no ?doc= param is present.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useReducer, useState, useEffect, useCallback, useRef } from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
 import { Alert, Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
@@ -55,8 +55,6 @@ function isUnsupportedFormat(param: string): boolean {
   return (
     param.startsWith('/docs/') ||
     param.startsWith('/tutorials/') ||
-    param.startsWith('/docs/learning-journeys/') ||
-    param.startsWith('/docs/learning-paths/') ||
     param.startsWith('https://grafana.com/') ||
     param.startsWith('https://docs.grafana.com/')
   );
@@ -96,69 +94,94 @@ export class MainAreaLearningPanel extends SceneObjectBase<MainAreaLearningPanel
 }
 
 // ============================================================================
-// RENDERER
+// CONTENT STATE MACHINE
 // ============================================================================
 
-/**
- * Parse ?doc= param from the URL at render time.
- * Returns initial state synchronously so we avoid calling setState inside an effect.
- */
-function resolveDocParam(): {
-  docParam: string | null;
-  isUnsupported: boolean;
-  urlScheme: string;
-  resolvedUrl: string | null;
-  showLanding: boolean;
-} {
+type PanelStatus = 'landing' | 'loading' | 'content' | 'error' | 'unsupported' | 'unsafe';
+
+interface PanelState {
+  status: PanelStatus;
+  content: RawContent | null;
+  error: string | null;
+  docUrl: string | null;
+  originalParam: string | null;
+}
+
+type PanelAction =
+  | { type: 'navigate_to_guide'; docUrl: string; originalParam: string }
+  | { type: 'content_loaded'; content: RawContent }
+  | { type: 'load_failed'; error: string }
+  | { type: 'unsafe_detected' }
+  | { type: 'start_loading' };
+
+function panelReducer(state: PanelState, action: PanelAction): PanelState {
+  switch (action.type) {
+    case 'navigate_to_guide':
+      return {
+        status: 'loading',
+        content: null,
+        error: null,
+        docUrl: action.docUrl,
+        originalParam: action.originalParam,
+      };
+    case 'start_loading':
+      return { ...state, status: 'loading', error: null };
+    case 'content_loaded':
+      return { ...state, status: 'content', content: action.content };
+    case 'load_failed':
+      return { ...state, status: 'error', error: action.error };
+    case 'unsafe_detected':
+      return { ...state, status: 'unsafe' };
+    default:
+      return state;
+  }
+}
+
+/** Compute initial reducer state from URL params (synchronous, no side effects). */
+function computeInitialState(): PanelState {
   const urlParams = new URLSearchParams(window.location.search);
   const docParam = urlParams.get('doc');
 
   if (!docParam) {
-    return { docParam: null, isUnsupported: false, urlScheme: '', resolvedUrl: null, showLanding: true };
+    return { status: 'landing', content: null, error: null, docUrl: null, originalParam: null };
   }
 
   // Format validation — MUST run before findDocPage() because findDocPage
   // resolves /docs/ paths (Case 4) which we explicitly don't support here
   if (isUnsupportedFormat(docParam)) {
-    const urlScheme = docParam.startsWith('https://') ? 'grafana_docs_url' : 'raw_docs_path';
-    return { docParam, isUnsupported: true, urlScheme, resolvedUrl: null, showLanding: false };
+    return { status: 'unsupported', content: null, error: null, docUrl: null, originalParam: docParam };
   }
 
   const docPage = findDocPage(docParam);
   if (!docPage) {
-    return { docParam, isUnsupported: false, urlScheme: '', resolvedUrl: null, showLanding: true };
+    return { status: 'landing', content: null, error: null, docUrl: null, originalParam: null };
   }
 
-  return { docParam, isUnsupported: false, urlScheme: '', resolvedUrl: docPage.url, showLanding: false };
+  return { status: 'loading', content: null, error: null, docUrl: docPage.url, originalParam: docParam };
 }
+
+// ============================================================================
+// RENDERER
+// ============================================================================
 
 export function MainAreaLearningPanelRenderer() {
   const styles = useStyles2(getStyles);
 
-  // Compute initial state synchronously from URL params (avoids setState in effect).
-  // Individual state variables are mutable so in-place navigation can update them.
-  const [resolved] = useState(resolveDocParam);
+  const [state, dispatch] = useReducer(panelReducer, undefined, computeInitialState);
 
-  const [loading, setLoading] = useState(!!resolved.resolvedUrl);
-  const [content, setContent] = useState<RawContent | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showLanding, setShowLanding] = useState(resolved.showLanding);
-  const [unsupportedFormat, setUnsupportedFormat] = useState(resolved.isUnsupported);
-  const [unsafeGuide, setUnsafeGuide] = useState(false);
+  // Shadow state in a ref so callbacks can read current values without stale closures
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
 
   // Chrome control params (captured before cleanUrlParams strips them)
   const [chromeParams] = useState(resolveChromeParams);
   const navCollapsedByUs = useRef(false);
   const sidebarClosedByUs = useRef(false);
 
-  // Store resolved URL for retry and analytics context
-  const docUrlRef = useRef<string | null>(resolved.resolvedUrl);
-  // Store original ?doc= param for sidebar handoff on unsupported format
-  const originalParamRef = useRef<string | null>(resolved.docParam);
-
   const loadContent = useCallback(async (url: string, signal?: AbortSignal) => {
-    setLoading(true);
-    setError(null);
+    dispatch({ type: 'start_loading' });
 
     const startTime = performance.now();
     const result = await fetchContent(url);
@@ -172,8 +195,7 @@ export function MainAreaLearningPanelRenderer() {
     if (result.content) {
       const safetyResult = isMainAreaSafe(result.content.content);
       if (!safetyResult.safe) {
-        setUnsafeGuide(true);
-        setLoading(false);
+        dispatch({ type: 'unsafe_detected' });
         reportAppInteraction(UserInteraction.MainAreaSafetyGateBlocked, {
           guide_url: url,
           unsafe_action_types: safetyResult.unsafeActionTypes.join(','),
@@ -181,7 +203,7 @@ export function MainAreaLearningPanelRenderer() {
         return;
       }
 
-      setContent(result.content);
+      dispatch({ type: 'content_loaded', content: result.content });
       reportAppInteraction(UserInteraction.MainAreaGuideLoaded, {
         guide_url: url,
         guide_title: result.content.metadata?.title || '',
@@ -190,38 +212,29 @@ export function MainAreaLearningPanelRenderer() {
       });
     } else {
       const errorMessage = result.error || 'Failed to load content';
-      setError(errorMessage);
+      dispatch({ type: 'load_failed', error: errorMessage });
       reportAppInteraction(UserInteraction.MainAreaGuideLoadFailed, {
         guide_url: url,
         error_message: errorMessage,
       });
     }
-
-    setLoading(false);
   }, []);
 
   // Mount-time: fire analytics, clean URL, set active state, and kick off async fetch
   useEffect(() => {
     const abortController = new AbortController();
+    const { docUrl, originalParam } = stateRef.current;
 
     mainAreaLearningState.setIsActive(true);
 
     reportAppInteraction(UserInteraction.MainAreaPageView, {
-      has_doc_param: !!resolved.docParam,
+      has_doc_param: !!originalParam,
     });
 
     cleanUrlParams();
 
-    if (resolved.isUnsupported) {
-      reportAppInteraction(UserInteraction.MainAreaUnsupportedFormat, {
-        guide_url: resolved.docParam!,
-        url_scheme: resolved.urlScheme,
-      });
-    }
-
-    if (resolved.resolvedUrl) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: loadContent is async; all setState calls happen after await fetchContent()
-      loadContent(resolved.resolvedUrl, abortController.signal);
+    if (docUrl) {
+      loadContent(docUrl, abortController.signal);
     }
 
     return () => {
@@ -255,13 +268,6 @@ export function MainAreaLearningPanelRenderer() {
       window.addEventListener('pathfinder-sidebar-mounted', sidebarMountListener);
     }
 
-    if (hideNav || hideSidebar) {
-      reportAppInteraction(UserInteraction.MainAreaChromeControlApplied, {
-        nav_hidden: hideNav,
-        sidebar_hidden: hideSidebar,
-      });
-    }
-
     return () => {
       if (sidebarMountListener) {
         window.removeEventListener('pathfinder-sidebar-mounted', sidebarMountListener);
@@ -282,53 +288,23 @@ export function MainAreaLearningPanelRenderer() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRetry = useCallback(() => {
-    if (docUrlRef.current) {
-      loadContent(docUrlRef.current);
+    const { docUrl } = stateRef.current;
+    if (docUrl) {
+      loadContent(docUrl);
     }
   }, [loadContent]);
 
-  const handleOpenInSidebar = useCallback(() => {
-    const param = originalParamRef.current;
-    if (!param) {
+  const handleOpenInSidebar = useCallback((opts?: { navigateAway?: boolean }) => {
+    const { originalParam } = stateRef.current;
+    if (!originalParam) {
       return;
     }
 
-    const detail = { url: param, title: 'Learning content' };
-
-    reportAppInteraction(UserInteraction.MainAreaOpenInSidebarClicked, {
-      guide_url: param,
-      trigger: 'unsupported_format' as const,
-    });
-
-    if (sidebarState.getIsSidebarMounted()) {
-      document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));
+    // For safety gate + bundled URLs, use the direct openWithGuide API
+    if (opts?.navigateAway && originalParam.startsWith('bundled:')) {
+      sidebarState.openWithGuide(originalParam.slice('bundled:'.length));
     } else {
-      sidebarState.setPendingOpenSource('main_area_learning');
-      sidebarState.openSidebar('Interactive learning', {
-        url: detail.url,
-        title: detail.title,
-        timestamp: Date.now(),
-      });
-      linkInterceptionState.addToQueue({ ...detail, timestamp: Date.now() });
-    }
-  }, []);
-
-  const handleSafetyGateOpenInSidebar = useCallback(() => {
-    const param = originalParamRef.current;
-    if (!param) {
-      return;
-    }
-
-    reportAppInteraction(UserInteraction.MainAreaOpenInSidebarClicked, {
-      guide_url: param,
-      trigger: 'safety_gate' as const,
-    });
-
-    if (param.startsWith('bundled:')) {
-      const guideId = param.slice('bundled:'.length);
-      sidebarState.openWithGuide(guideId);
-    } else {
-      const detail = { url: param, title: 'Learning content' };
+      const detail = { url: originalParam, title: 'Learning content' };
       if (sidebarState.getIsSidebarMounted()) {
         document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));
       } else {
@@ -342,7 +318,10 @@ export function MainAreaLearningPanelRenderer() {
       }
     }
 
-    locationService.push('/a/grafana-pathfinder-app');
+    // Safety gate navigates away so the sidebar can render against the Grafana UI
+    if (opts?.navigateAway) {
+      locationService.push('/a/grafana-pathfinder-app');
+    }
   }, []);
 
   // Load a guide in-place without page reload (SPA navigation)
@@ -355,13 +334,7 @@ export function MainAreaLearningPanelRenderer() {
       if (!docPage) {
         return;
       }
-      setShowLanding(false);
-      setUnsupportedFormat(false);
-      setUnsafeGuide(false);
-      setError(null);
-      setContent(null);
-      docUrlRef.current = docPage.url;
-      originalParamRef.current = url;
+      dispatch({ type: 'navigate_to_guide', docUrl: docPage.url, originalParam: url });
       loadContent(docPage.url);
     },
     [loadContent]
@@ -371,13 +344,6 @@ export function MainAreaLearningPanelRenderer() {
   useEffect(() => {
     const handleOpenInMainArea = (event: Event) => {
       const { url, title } = (event as CustomEvent).detail;
-      const previousUrl = docUrlRef.current || '';
-
-      reportAppInteraction(UserInteraction.MainAreaGuideNavigatedInPlace, {
-        new_url: url,
-        previous_url: previousUrl,
-      });
-
       handleOpenGuideInMainArea(url, title);
     };
 
@@ -389,13 +355,13 @@ export function MainAreaLearningPanelRenderer() {
 
   return (
     <div className={styles.container} data-testid={testIds.mainAreaLearning.container}>
-      {loading && (
+      {state.status === 'loading' && (
         <div data-testid={testIds.mainAreaLearning.loadingState}>
           <SkeletonLoader />
         </div>
       )}
 
-      {unsupportedFormat && (
+      {state.status === 'unsupported' && (
         <Alert
           title="Unsupported content format"
           severity="error"
@@ -404,7 +370,7 @@ export function MainAreaLearningPanelRenderer() {
           <p>This content format is not supported in the learning view. Open it in the Pathfinder sidebar instead.</p>
           <Button
             variant="secondary"
-            onClick={handleOpenInSidebar}
+            onClick={() => handleOpenInSidebar()}
             data-testid={testIds.mainAreaLearning.openInSidebarButton}
           >
             Open in sidebar
@@ -412,7 +378,7 @@ export function MainAreaLearningPanelRenderer() {
         </Alert>
       )}
 
-      {unsafeGuide && !loading && (
+      {state.status === 'unsafe' && (
         <Alert
           title="This guide requires the sidebar"
           severity="warning"
@@ -424,7 +390,7 @@ export function MainAreaLearningPanelRenderer() {
           </p>
           <Button
             variant="secondary"
-            onClick={handleSafetyGateOpenInSidebar}
+            onClick={() => handleOpenInSidebar({ navigateAway: true })}
             data-testid={testIds.mainAreaLearning.safetyGateOpenInSidebarButton}
           >
             Open in sidebar
@@ -432,33 +398,33 @@ export function MainAreaLearningPanelRenderer() {
         </Alert>
       )}
 
-      {error && !loading && (
+      {state.status === 'error' && (
         <Alert title="Failed to load content" severity="error" data-testid={testIds.mainAreaLearning.errorState}>
-          <p>{error}</p>
+          <p>{state.error}</p>
           <Button variant="secondary" onClick={handleRetry} data-testid={testIds.mainAreaLearning.retryButton}>
             Try again
           </Button>
         </Alert>
       )}
 
-      {content && !loading && (
+      {state.status === 'content' && state.content && (
         <>
           <GuideProgressHeader
-            title={content.metadata?.title || ''}
-            contentKey={content.url || ''}
-            onOpenInSidebar={handleOpenInSidebar}
+            title={state.content.metadata?.title || ''}
+            contentKey={state.content.url || ''}
+            onOpenInSidebar={() => handleOpenInSidebar()}
           />
           <div
             id="main-area-docs-content"
             className={styles.contentBody}
             data-testid={testIds.mainAreaLearning.contentContainer}
           >
-            <ContentRenderer content={content} />
+            <ContentRenderer content={state.content} />
           </div>
         </>
       )}
 
-      {showLanding && !loading && (
+      {state.status === 'landing' && (
         <div data-testid={testIds.mainAreaLearning.landingPage}>
           <MyLearningErrorBoundary>
             <MyLearningTab onOpenGuide={handleOpenGuideInMainArea} />
