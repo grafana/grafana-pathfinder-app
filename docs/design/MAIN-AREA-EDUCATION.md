@@ -369,3 +369,149 @@ payloads. See the enum for the current set.
 
 - `locationService` is now imported in the panel (added for safety gate navigation).
   Phase 5 can reuse this import for chrome control navigation.
+
+---
+
+## Merge conflict guide
+
+This branch (`main-page-learning`) stays open while `main` continues to evolve.
+The following section maps every shared file touched by this branch to the intent
+behind each change, so that a future agent resolving merge conflicts can make
+semantically correct decisions rather than just accepting one side.
+
+### High-risk files
+
+#### `src/lib/analytics.ts` — `UserInteraction` enum
+
+**What we added:** Five new entries at the end of the enum, under the comment
+`// Main-Area Learning Surface`:
+
+```
+MainAreaPageView, MainAreaGuideLoaded, MainAreaGuideLoadFailed,
+MainAreaSafetyGateBlocked, MainAreaLinkIntercepted
+```
+
+**Merge rule:** Keep both sets of additions. Each group of enum values belongs to the
+feature that added it. There is no ordering dependency — append new groups after the
+last group. If the incoming change also adds entries at the end, accept both.
+
+---
+
+#### `src/module.tsx` — `?doc=` param guard for the learning route
+
+**What we added:** An `isLearningRoute` boolean that nulls out `docsParam` when the
+user is on the `/learning` route, and imports `ROUTES` from `./constants`.
+
+**Why:** `MainAreaLearningPanel` reads `?doc=` itself on mount. If the sidebar
+auto-open flow in `module.tsx` also reads it, both surfaces race to open the same
+guide, causing a double-load. The guard prevents that race.
+
+**Merge rule:** Preserve the `isLearningRoute` guard and the `ROUTES` import. If the
+incoming change refactors the `docsParam` block or moves param handling elsewhere,
+re-apply the same guard using `ROUTES.Learning`. The invariant is: the sidebar must
+not auto-open a guide when the user is on the learning route.
+
+---
+
+#### `src/components/App/App.tsx` — `learningPage` in `getSceneApp()`
+
+**What we added:** `learningPage` imported and inserted into the `pages` array in
+`getSceneApp()`.
+
+**Merge rule:** If the incoming change also adds a page to the array, accept both.
+The pages array is order-independent for routing purposes.
+
+---
+
+#### `src/docs-retrieval/content-fetcher.ts` — Grafana GitHub URL trust
+
+**What we added:** `isGrafanaGitHubRawUrl` and `isGrafanaGitHubRedirectUrl` checks
+inside the `isTrustedSource` / `isFinalUrlTrusted` conditionals in three functions:
+`fetchContent()`, `tryUrlVariations()`, and `fetchRawHtml()`.
+
+**Why these are separate from `isAllowedContentUrl`:** The main-area learning surface
+can load AI-authored guides hosted on `raw.githubusercontent.com` under the
+`grafana/*` org. `isAllowedContentUrl` covers grafana.com docs and
+interactive-learning.grafana.net — a separate trust boundary. Keeping them separate
+makes each boundary visible and independently auditable.
+
+**Merge rule:** If the incoming change modifies the `isTrustedSource` block (e.g.,
+adds a new allowed source), preserve the `isGrafanaGitHubRawUrl` and
+`isGrafanaGitHubRedirectUrl` lines. If `isAllowedContentUrl` is refactored to absorb
+GitHub URLs, remove these lines and verify the new function covers
+`raw.githubusercontent.com/grafana/*`.
+
+---
+
+#### `src/global-state/link-interception.ts` — Main-area link routing
+
+**What we added:** A guard at the top of `handleGlobalClick` that checks
+`mainAreaLearningState.getIsActive()` and, if true, dispatches a
+`pathfinder-open-in-main-area` custom event instead of opening the sidebar.
+
+**Why:** When the main-area surface is active, it exclusively owns the link-
+interception flow. The sidebar routing branch (below the guard) must not fire.
+These two surfaces are mutually exclusive — the main area replaces Grafana's content
+pane, so the sidebar's `openSidebar()` / queue flow would be invisible to the user.
+
+**Merge rule:** Preserve the `mainAreaLearningState.getIsActive()` guard and ensure
+it fires _before_ any sidebar routing. If the incoming change adds a new routing
+target (e.g., a third surface) to the same function, insert it as another `if` block
+_above_ the sidebar fallback. The priority order is: main-area → sidebar.
+
+---
+
+#### `src/utils/find-doc-page.ts` — `remote:` URL scheme
+
+**What we added:** A `remote:` case that accepts `remote:https://raw.githubusercontent.com/grafana/...`
+params, validates them against `isGrafanaGitHubRawUrl`, and returns an `interactive`
+DocPage.
+
+**Merge rule:** This case is positionally independent from the other cases. If the
+incoming change adds a new URL scheme (new `if (param.startsWith(...))` block), keep
+both. The `remote:` case belongs before `bundled:` because it is the more specific
+prefix. If the switch structure is refactored (e.g., to a lookup map), include
+`remote:` as an entry that calls `isGrafanaGitHubRawUrl` for validation.
+
+---
+
+#### `src/docs-retrieval/content-renderer.tsx` — `hideTitle` prop
+
+**What we added:** A `hideTitle?: boolean` prop on `ContentRenderer` and
+`ContentWithVariables` that suppresses the `<h1>` title when the rendering context
+provides its own title (e.g., the Grafana SceneAppPage page chrome).
+
+**Merge rule:** This is an additive, backward-compatible prop with a `false` default.
+If the incoming change modifies `ContentRenderer`'s props interface, include
+`hideTitle`. If the incoming change changes how the `<h1>` title is rendered, ensure
+the `hideTitle` condition still gates it.
+
+---
+
+#### `src/security/index.ts` — New barrel exports
+
+**What we added:** Two new exports: `isGrafanaGitHubRawUrl` and
+`isGrafanaGitHubRedirectUrl`, sourced from `./url-validator`.
+
+**Merge rule:** Barrel exports are additive. Accept both sides' additions. No
+ordering constraint.
+
+---
+
+#### `src/constants.ts` — `ROUTES.Learning`
+
+**What we added:** `Learning = 'learning'` entry in the `ROUTES` enum.
+
+**Merge rule:** Additive enum entry. If the incoming change adds other routes, keep
+both. If the incoming change renames an existing route, do not rename `Learning`.
+
+---
+
+### New files (no conflict risk)
+
+All files under `src/components/main-area-learning/`, `src/global-state/main-area-learning-state.ts`,
+`src/pages/learningPage.ts`, `src/utils/chrome-control.ts`, `src/utils/guide-safety.ts`,
+`src/security/url-validator.ts`, `src/bundled-interactives/main-area-demo/`, and
+`pkg/plugin/static/guides/main-area-demo.json` are entirely new. They will not conflict
+unless main adds a file at the same path (extremely unlikely). Accept all new files
+from this branch.

@@ -8,7 +8,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 // import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults, DocsPluginConfig } from './constants';
+import { getConfigWithDefaults, DocsPluginConfig, ROUTES } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { suggestionState } from './global-state/suggestion';
@@ -129,7 +129,8 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   //
   // EXCEPTION: When the user is on the /learning route, the MainAreaLearningPanel
   // owns the ?doc= param — skip the sidebar auto-open flow entirely.
-  const isLearningRoute = window.location.pathname.endsWith('/learning');
+  // Uses ROUTES.Learning so that renaming the route updates this guard automatically.
+  const isLearningRoute = window.location.pathname.endsWith(`/${ROUTES.Learning}`);
   const urlParams = new URLSearchParams(window.location.search);
   const docsParam = isLearningRoute ? null : urlParams.get('doc');
   const pageParam = urlParams.get('page');

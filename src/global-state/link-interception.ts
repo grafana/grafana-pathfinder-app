@@ -27,7 +27,12 @@ class GlobalLinkInterceptionState {
 
     event.preventDefault();
 
-    // If main area is active, route to it instead of the sidebar
+    // If the main-area learning surface is active, it owns intercepted link
+    // routing. We dispatch a custom event rather than opening the sidebar so
+    // that the MainAreaLearningPanel can load the new guide in-place without
+    // any sidebar involvement. The sidebar branch below must not fire when the
+    // main area is active — these two surfaces are mutually exclusive owners
+    // of the link-interception flow.
     if (mainAreaLearningState.getIsActive()) {
       reportAppInteraction(UserInteraction.MainAreaLinkIntercepted, {
         intercepted_url: docsLink.url,

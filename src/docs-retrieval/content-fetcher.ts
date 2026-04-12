@@ -131,6 +131,12 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Defense-in-depth: Even if callers validate, fetchContent provides final check
     // In production: Only Grafana docs, interactive learning domains, and bundled content
     // In dev mode: Also allows localhost and GitHub raw URLs for testing
+    //
+    // isGrafanaGitHubRawUrl is intentionally NOT folded into isAllowedContentUrl.
+    // It enables the main-area learning surface to load AI-authored guides from
+    // github.com/grafana/* repos (raw.githubusercontent.com). isAllowedContentUrl
+    // covers grafana.com docs and interactive-learning.grafana.net; GitHub is a
+    // separate trust boundary and should remain separately visible here.
     const isDevMode = isDevModeEnabledGlobal();
     const isTrustedSource =
       isAllowedContentUrl(url) ||
@@ -738,6 +744,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           // NOTE: response.url can be empty in proxied/intercepted environments
           // (e.g., Grafana Cloud). Fall back to the requested URL which was
           // already validated before entering this function.
+          // isGrafanaGitHubRawUrl / isGrafanaGitHubRedirectUrl are kept separate
+          // from isAllowedContentUrl — see the trust gate in fetchContent() for rationale.
           const finalUrl = response.url || urlVariation;
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
@@ -828,6 +836,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         // Per the Fetch API spec, synthetic Response objects have url === "".
         // When empty, fall back to the original request URL which was already
         // validated at the initial trust gate in fetchContent().
+        // isGrafanaGitHubRawUrl / isGrafanaGitHubRedirectUrl are kept separate
+        // from isAllowedContentUrl — see the trust gate in fetchContent() for rationale.
         const finalUrl = response.url || url;
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
