@@ -17,14 +17,23 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { interactiveCompletionStorage } from '../../lib/user-storage';
 import { testIds } from '../../constants/testIds';
 
+type LayoutWidth = 'default' | 'wide' | 'full';
+
 interface GuideProgressHeaderProps {
   title: string;
   contentKey: string;
   onOpenInSidebar: () => void;
+  layoutWidth?: LayoutWidth;
 }
 
-export function GuideProgressHeader({ title, contentKey, onOpenInSidebar }: GuideProgressHeaderProps) {
+export function GuideProgressHeader({
+  title,
+  contentKey,
+  onOpenInSidebar,
+  layoutWidth = 'default',
+}: GuideProgressHeaderProps) {
   const styles = useStyles2(getStyles);
+  const headerMaxWidth = layoutWidth === 'full' ? 'none' : layoutWidth === 'wide' ? '72rem' : '48rem';
   const [progress, setProgress] = useState(0);
 
   // Fetch initial progress from storage
@@ -60,7 +69,11 @@ export function GuideProgressHeader({ title, contentKey, onOpenInSidebar }: Guid
   const roundedProgress = Math.round(progress);
 
   return (
-    <div className={styles.header} data-testid={testIds.mainAreaLearning.progressHeader}>
+    <div
+      className={styles.header}
+      style={{ maxWidth: headerMaxWidth }}
+      data-testid={testIds.mainAreaLearning.progressHeader}
+    >
       <div className={styles.headerRow}>
         <h2 className={styles.title}>{title}</h2>
         <div className={styles.actions}>

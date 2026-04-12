@@ -192,18 +192,26 @@ export function MainAreaLearningPanelRenderer() {
     stateRef.current = state;
   });
 
+  // Abort controller for content fetches — replaced on each navigation to cancel stale requests
+  const fetchControllerRef = useRef<AbortController | null>(null);
+
   // Chrome control params (captured before cleanUrlParams strips them)
   const [chromeParams] = useState(resolveChromeParams);
   const navCollapsedByUs = useRef(false);
   const sidebarClosedByUs = useRef(false);
 
-  const loadContent = useCallback(async (url: string, signal?: AbortSignal) => {
+  const loadContent = useCallback(async (url: string) => {
+    // Cancel any in-flight fetch before starting a new one
+    fetchControllerRef.current?.abort();
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
+
     dispatch({ type: 'start_loading' });
 
     const startTime = performance.now();
     const result = await fetchContent(url);
 
-    if (signal?.aborted) {
+    if (controller.signal.aborted) {
       return;
     }
 
@@ -239,7 +247,6 @@ export function MainAreaLearningPanelRenderer() {
 
   // Mount-time: fire analytics, clean URL, set active state, and kick off async fetch
   useEffect(() => {
-    const abortController = new AbortController();
     const { docUrl, originalParam } = stateRef.current;
 
     mainAreaLearningState.setIsActive(true);
@@ -251,12 +258,12 @@ export function MainAreaLearningPanelRenderer() {
     cleanUrlParams();
 
     if (docUrl) {
-      loadContent(docUrl, abortController.signal);
+      loadContent(docUrl);
     }
 
     return () => {
       mainAreaLearningState.setIsActive(false);
-      abortController.abort();
+      fetchControllerRef.current?.abort();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -440,6 +447,7 @@ export function MainAreaLearningPanelRenderer() {
                 title={state.content.metadata?.title || ''}
                 contentKey={state.content.url || ''}
                 onOpenInSidebar={() => handleOpenInSidebar()}
+                layoutWidth={layout}
               />
               <div
                 id="main-area-docs-content"

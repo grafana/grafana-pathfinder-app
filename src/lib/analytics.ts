@@ -87,6 +87,7 @@ export enum UserInteraction {
   MainAreaGuideLoaded = 'main_area_guide_loaded',
   MainAreaGuideLoadFailed = 'main_area_guide_load_failed',
   MainAreaSafetyGateBlocked = 'main_area_safety_gate_blocked',
+  MainAreaLinkIntercepted = 'main_area_link_intercepted',
 }
 
 // ============================================================================
