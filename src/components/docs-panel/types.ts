@@ -54,6 +54,9 @@ export interface DocsPanelModelOperations {
   /** Open the dev tools tab (or switch to it if already open) */
   openDevToolsTab(): void;
 
+  /** Open the editor tab (or switch to it if already open) */
+  openEditorTab(): void;
+
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;
 }

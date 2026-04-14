@@ -13,6 +13,13 @@ const SelectorDebugPanel = lazy(() =>
   }))
 );
 
+// Lazy load BlockEditor for the editor tab (admin/editor users)
+const BlockEditor = lazy(() =>
+  import('../block-editor').then((module) => ({
+    default: module.BlockEditor,
+  }))
+);
+
 // Lazy load Coda Terminal to keep it out of production bundles
 // Only loaded when dev mode is enabled and terminal feature is enabled
 const TerminalPanel = lazy(() =>
@@ -132,7 +139,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       (url: string, title: string) => this.openLearningJourney(url, title),
       (url: string, title: string, packageInfo?: PackageOpenInfo) =>
         this.openDocsPage(url, title, undefined, packageInfo),
-      () => this.openDevToolsTab()
+      () => this.openEditorTab()
     );
 
     super({
@@ -510,6 +517,36 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.saveTabsToStorage();
   }
 
+  /**
+   * Open the Editor tab (or switch to it if already open)
+   */
+  public openEditorTab(): void {
+    const existingTab = this.state.tabs.find((t) => t.id === 'editor');
+    if (existingTab) {
+      this.setState({ activeTabId: 'editor' });
+      this.saveTabsToStorage();
+      return;
+    }
+
+    const newTab: LearningJourneyTab = {
+      id: 'editor',
+      title: 'Guide editor',
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+      type: 'editor',
+    };
+
+    this.setState({
+      tabs: [...this.state.tabs, newTab],
+      activeTabId: 'editor',
+    });
+
+    this.saveTabsToStorage();
+  }
+
   public async openDocsPage(
     url: string,
     title?: string,
@@ -654,6 +691,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
   const currentUserId = config.bootData.user?.id;
   const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+
+  const currentUser = config.bootData?.user;
+  const isEditorUser =
+    currentUser?.orgRole === 'Editor' || currentUser?.orgRole === 'Admin' || currentUser?.isGrafanaAdmin === true;
 
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
   // Stored in a ref so it never causes effect re-runs when isDevMode toggles.
@@ -825,6 +866,26 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       }
     }
   }, [isDevMode, tabs, model]);
+
+  // Ensure editor tab exists for admin/editor users (permanent tab)
+  React.useEffect(() => {
+    if (isEditorUser) {
+      const hasEditorTab = tabs.some((t) => t.id === 'editor');
+      if (!hasEditorTab) {
+        const editorTab: LearningJourneyTab = {
+          id: 'editor',
+          title: 'Guide editor',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+          type: 'editor',
+        };
+        model.setState({ tabs: [...tabs, editorTab] });
+      }
+    }
+  }, [isEditorUser, tabs, model]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
@@ -1324,6 +1385,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           >
             <Icon name="document-info" size="md" />
           </button>
+          {isEditorUser && (
+            <button
+              className={`${styles.iconTab} ${activeTabId === 'editor' ? styles.iconTabActive : ''}`}
+              onClick={() => model.setActiveTab('editor')}
+              title={t('docsPanel.guideEditor', 'Guide editor')}
+              data-testid={testIds.docsPanel.tab('editor')}
+            >
+              <Icon name="edit" size="md" />
+            </button>
+          )}
           {isDevMode && (
             <button
               className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
@@ -1337,14 +1408,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </div>
 
         {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
-          <div className={styles.tabDivider} />
-        )}
+        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools' && t.id !== 'editor').length >
+          0 && <div className={styles.tabDivider} />}
 
         {/* Guide tabs with titles */}
         <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
           {visibleTabs
-            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
+            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools' && tab.id !== 'editor')
             .map((tab) => {
               return (
                 <button
@@ -1521,6 +1591,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             );
           }
 
+          // Show editor tab (block editor for admin/editor users)
+          if (activeTabId === 'editor') {
+            return (
+              <div className={styles.devToolsContent} data-testid="editor-tab-content">
+                <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+                  <BlockEditor />
+                </Suspense>
+              </div>
+            );
+          }
+
           // Show loading state with skeleton.
           // When a learning journey tab is reloading (milestone navigation), keep
           // the milestone bar visible so the user doesn't lose navigation context.
@@ -1615,7 +1696,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     </div>
                     <button
                       className={styles.returnToEditorButton}
-                      onClick={() => model.openDevToolsTab()}
+                      onClick={() => model.openEditorTab()}
                       data-testid={testIds.devTools.returnToEditorButton}
                     >
                       <Icon name="arrow-left" size="sm" />

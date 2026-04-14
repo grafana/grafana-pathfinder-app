@@ -110,6 +110,21 @@ export async function restoreTabsFromStorage(
         return;
       }
 
+      // Handle editor tab specially - it has no URLs to validate
+      if (data.type === 'editor') {
+        tabs.push({
+          id: 'editor',
+          title: 'Guide editor',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+          type: 'editor',
+        });
+        return;
+      }
+
       // SECURITY: Validate URLs before restoring from storage
       // This prevents XSS attacks via storage injection
       const isValidBase = validateUrl(data.baseUrl);
