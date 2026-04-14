@@ -846,46 +846,42 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once after mount, tabs checked at mount time
 
-  // Ensure devtools tab exists when dev mode is enabled (permanent tab)
+  // Ensure permanent tabs (devtools, editor) exist when their gate is active.
+  // Merged into a single effect so both additions read from the same up-to-date
+  // tabs array, avoiding a stale-closure overwrite when both gates are true.
   React.useEffect(() => {
-    if (isDevMode) {
-      const hasDevToolsTab = tabs.some((t) => t.id === 'devtools');
-      if (!hasDevToolsTab) {
-        // Add devtools tab without switching to it
-        const devToolsTab: LearningJourneyTab = {
-          id: 'devtools',
-          title: 'Dev Tools',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-          type: 'devtools',
-        };
-        model.setState({ tabs: [...tabs, devToolsTab] });
-      }
-    }
-  }, [isDevMode, tabs, model]);
+    const missing: LearningJourneyTab[] = [];
 
-  // Ensure editor tab exists for admin/editor users (permanent tab)
-  React.useEffect(() => {
-    if (isEditorUser) {
-      const hasEditorTab = tabs.some((t) => t.id === 'editor');
-      if (!hasEditorTab) {
-        const editorTab: LearningJourneyTab = {
-          id: 'editor',
-          title: 'Guide editor',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-          type: 'editor',
-        };
-        model.setState({ tabs: [...tabs, editorTab] });
-      }
+    if (isDevMode && !tabs.some((t) => t.id === 'devtools')) {
+      missing.push({
+        id: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'devtools',
+      });
     }
-  }, [isEditorUser, tabs, model]);
+
+    if (isEditorUser && !tabs.some((t) => t.id === 'editor')) {
+      missing.push({
+        id: 'editor',
+        title: 'Guide editor',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'editor',
+      });
+    }
+
+    if (missing.length > 0) {
+      model.setState({ tabs: [...tabs, ...missing] });
+    }
+  }, [isDevMode, isEditorUser, tabs, model]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
@@ -984,6 +980,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     chevronButtonRef,
     dropdownOpenTimeRef,
   } = useTabOverflow(tabs, activeTabId);
+
+  const PERMANENT_TAB_IDS = React.useMemo(() => new Set(['recommendations', 'devtools', 'editor']), []);
+  const overflowGuideTabs = React.useMemo(
+    () => overflowedTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)),
+    [overflowedTabs, PERMANENT_TAB_IDS]
+  );
 
   // Content styles are applied at the component level via CSS classes
 
@@ -1470,7 +1472,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             })}
         </div>
 
-        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
+        {overflowGuideTabs.length > 0 && (
           <div className={styles.tabOverflow}>
             <button
               ref={chevronButtonRef}
@@ -1482,89 +1484,86 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 setIsDropdownOpen(!isDropdownOpen);
               }}
               aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
-                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length,
+                count: overflowGuideTabs.length,
               })}
               aria-expanded={isDropdownOpen}
               aria-haspopup="true"
               data-testid={testIds.docsPanel.tabOverflowButton}
             >
               <Icon name="angle-down" size="sm" />
-              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length}</span>
+              <span>+{overflowGuideTabs.length}</span>
             </button>
           </div>
         )}
 
-        {isDropdownOpen &&
-          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
-            <div
-              ref={dropdownRef}
-              className={styles.tabDropdown}
-              role="menu"
-              aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
-              data-testid={testIds.docsPanel.tabDropdown}
-            >
-              {overflowedTabs
-                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
-                .map((tab) => {
-                  return (
-                    <button
-                      key={tab.id}
-                      className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
-                      onClick={() => {
-                        model.setActiveTab(tab.id);
-                        setIsDropdownOpen(false);
-                      }}
-                      role="menuitem"
-                      aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
+        {isDropdownOpen && overflowGuideTabs.length > 0 && (
+          <div
+            ref={dropdownRef}
+            className={styles.tabDropdown}
+            role="menu"
+            aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
+            data-testid={testIds.docsPanel.tabDropdown}
+          >
+            {overflowGuideTabs.map((tab) => {
+              return (
+                <button
+                  key={tab.id}
+                  className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
+                  onClick={() => {
+                    model.setActiveTab(tab.id);
+                    setIsDropdownOpen(false);
+                  }}
+                  role="menuitem"
+                  aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
+                    title: getTranslatedTitle(tab.title),
+                  })}
+                  data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
+                >
+                  <div className={styles.dropdownItemContent}>
+                    {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
+                    <span className={styles.dropdownItemTitle}>
+                      {tab.isLoading ? (
+                        <>
+                          <Icon name="sync" size="xs" />
+                          <span>{t('docsPanel.loading', 'Loading...')}</span>
+                        </>
+                      ) : (
+                        getTranslatedTitle(tab.title)
+                      )}
+                    </span>
+                    <IconButton
+                      name="times"
+                      size="sm"
+                      aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
                         title: getTranslatedTitle(tab.title),
                       })}
-                      data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
-                    >
-                      <div className={styles.dropdownItemContent}>
-                        {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
-                        <span className={styles.dropdownItemTitle}>
-                          {tab.isLoading ? (
-                            <>
-                              <Icon name="sync" size="xs" />
-                              <span>{t('docsPanel.loading', 'Loading...')}</span>
-                            </>
-                          ) : (
-                            getTranslatedTitle(tab.title)
-                          )}
-                        </span>
-                        <IconButton
-                          name="times"
-                          size="sm"
-                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                            title: getTranslatedTitle(tab.title),
-                          })}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reportAppInteraction(UserInteraction.CloseTabClick, {
-                              content_type: getContentTypeForAnalytics(
-                                tab.currentUrl || tab.baseUrl,
-                                tab.type || 'learning-journey'
-                              ),
-                              tab_title: tab.title,
-                              content_url: tab.currentUrl || tab.baseUrl,
-                              close_location: 'dropdown',
-                              ...(tab.type === 'learning-journey' &&
-                                tab.content && {
-                                  completion_percentage: getJourneyProgress(tab.content),
-                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                                }),
-                            });
-                            model.closeTab(tab.id);
-                          }}
-                          className={styles.dropdownItemClose}
-                        />
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-          )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        reportAppInteraction(UserInteraction.CloseTabClick, {
+                          content_type: getContentTypeForAnalytics(
+                            tab.currentUrl || tab.baseUrl,
+                            tab.type || 'learning-journey'
+                          ),
+                          tab_title: tab.title,
+                          content_url: tab.currentUrl || tab.baseUrl,
+                          close_location: 'dropdown',
+                          ...(tab.type === 'learning-journey' &&
+                            tab.content && {
+                              completion_percentage: getJourneyProgress(tab.content),
+                              current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                              total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                            }),
+                        });
+                        model.closeTab(tab.id);
+                      }}
+                      className={styles.dropdownItemClose}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Menu and close actions */}
         <TabBarActions className={styles.tabBarActions} />
@@ -1592,7 +1591,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           }
 
           // Show editor tab (block editor for admin/editor users)
-          if (activeTabId === 'editor') {
+          if (activeTabId === 'editor' && isEditorUser) {
             return (
               <div className={styles.devToolsContent} data-testid="editor-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
