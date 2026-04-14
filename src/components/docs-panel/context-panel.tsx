@@ -181,12 +181,12 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public constructor(
     onOpenLearningJourney?: (url: string, title: string) => void,
     onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void,
-    onOpenDevTools?: () => void
+    onOpenEditor?: () => void
   ) {
     super({
       onOpenLearningJourney,
       onOpenDocsPage,
-      onOpenDevTools,
+      onOpenEditor,
     });
   }
 
@@ -204,9 +204,9 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
-  public openDevTools() {
-    if (this.state.onOpenDevTools) {
-      this.state.onOpenDevTools();
+  public openEditor() {
+    if (this.state.onOpenEditor) {
+      this.state.onOpenEditor();
     }
   }
 
