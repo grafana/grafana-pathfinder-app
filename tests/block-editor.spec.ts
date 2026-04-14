@@ -19,18 +19,18 @@ import { TIMEOUTS } from './constants';
 /**
  * Block Editor E2E Tests
  *
- * These tests verify the block editor functionality in dev mode.
- * Dev mode must be enabled via plugin settings API before tests run.
+ * These tests verify the block editor functionality available to admin/editor users.
+ * The block editor lives in its own "editor" tab, separate from the dev-mode-gated
+ * devtools tab. Dev mode is still enabled here because the recording test needs it
+ * for the recording overlay to function.
  *
  * Tests run serially to prevent race conditions from parallel execution
- * with shared Grafana dev mode state.
+ * with shared Grafana state.
  */
 
 test.describe.serial('Block Editor', () => {
-  // Enable dev mode before tests run
+  // Enable dev mode before tests run (needed for recording overlay tests)
   test.beforeAll(async ({ request }) => {
-    // Enable dev mode via plugin settings API
-    // Admin user ID is typically 1 in fresh Grafana instances
     await request.post('/api/plugins/grafana-pathfinder-app/settings', {
       data: {
         enabled: true,
@@ -61,13 +61,13 @@ test.describe.serial('Block Editor', () => {
     await clearBlockEditorState(page);
   });
 
-  test('should open block editor via dev tools tab', async ({ page }) => {
-    // Open dev tools panel using helper function
+  test('should open block editor via editor tab', async ({ page }) => {
+    // Open editor panel using helper function
     await openBlockEditor(page);
 
-    // Wait for dev tools content to load
-    const devToolsContent = page.getByTestId('devtools-tab-content');
-    await expect(devToolsContent).toBeVisible();
+    // Wait for editor content to load
+    const editorContent = page.getByTestId('editor-tab-content');
+    await expect(editorContent).toBeVisible();
 
     // Verify the block editor is visible
     const blockEditor = page.getByTestId(testIds.blockEditor.container);
