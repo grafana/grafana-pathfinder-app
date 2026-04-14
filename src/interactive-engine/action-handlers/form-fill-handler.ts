@@ -268,9 +268,13 @@ export class FormFillHandler {
   }
 
   private async fillComboboxStaged(element: HTMLElement, fullValue: string): Promise<void> {
-    // Ensure focused
+    // Ensure focused and dropdown is open.
+    // Comboboxes (e.g. downshift-based Grafana Combobox) don't open on programmatic
+    // focus + input events alone — they require a user-like click to trigger the menu.
     element.focus();
     element.dispatchEvent(new Event('focus', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     // Clear any existing text
     this.setNativeInputValue(element, '');
