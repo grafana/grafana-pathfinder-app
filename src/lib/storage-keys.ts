@@ -38,6 +38,10 @@ export const StorageKeys = {
   EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
   // External app suggestions for the featured zone (sessionStorage)
   SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
+  // Floating panel mode preference (sidebar vs floating)
+  PANEL_MODE: 'grafana-pathfinder-app-panel-mode',
+  // Floating panel position and size
+  FLOATING_PANEL_GEOMETRY: 'grafana-pathfinder-app-floating-panel-geometry',
 } as const;
 
 export type StorageKeyName = keyof typeof StorageKeys;
