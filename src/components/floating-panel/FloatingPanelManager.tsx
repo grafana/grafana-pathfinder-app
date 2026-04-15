@@ -88,7 +88,12 @@ function FloatingPanelInner() {
 
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
-      sidebarState.setIsSidebarMounted(false);
+      // Only clear if we're still the active owner — during dock-back the
+      // sidebar's ContextSidebar mounts in a separate React root and may
+      // have already set the flag to true before this cleanup runs.
+      if (panelModeManager.getMode() !== 'sidebar') {
+        sidebarState.setIsSidebarMounted(false);
+      }
     };
   }, [panel]);
 

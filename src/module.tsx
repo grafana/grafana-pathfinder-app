@@ -305,9 +305,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     }
   }
 
-  // Mount floating panel manager (independent of sidebar, responds to mode events)
+  // Mount floating panel manager — only eagerly when floating mode is already
+  // active (page refresh or ?panelMode=floating). For sidebar→floating transitions
+  // at runtime, a mode-change listener lazily loads and mounts the manager.
+  // This avoids unconditional chunk loads that prevent networkidle on older Grafana.
   if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
-    if (!document.getElementById('pathfinder-floating-root')) {
+    const mountFloatingPanel = () => {
+      if (document.getElementById('pathfinder-floating-root')) {
+        return;
+      }
       import('./components/floating-panel/FloatingPanelManager')
         .then(async ({ FloatingPanelManager }) => {
           if (document.getElementById('pathfinder-floating-root')) {
@@ -323,7 +329,17 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         .catch((err) => {
           console.error('[Pathfinder] Failed to load floating panel:', err);
         });
+    };
+
+    if (panelModeManager.getMode() === 'floating') {
+      mountFloatingPanel();
     }
+
+    document.addEventListener('pathfinder-panel-mode-change', ((e: CustomEvent<{ mode: string }>) => {
+      if (e.detail.mode === 'floating') {
+        mountFloatingPanel();
+      }
+    }) as EventListener);
   }
 
   // Skip experiment auto-open when a ?doc= param is present — the doc-param

@@ -91,10 +91,19 @@ export function FloatingPanel({
       });
   }, [guideUrl]);
 
-  // Keyboard: Escape minimizes
+  // Keyboard: Escape minimizes — only when the panel itself or document.body
+  // has focus. Skip if another component already handled the event (modals,
+  // dropdowns, select menus) or if focus is inside an unrelated overlay.
+  const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && panelState !== 'minimized') {
+      if (e.key !== 'Escape' || panelState === 'minimized' || e.defaultPrevented) {
+        return;
+      }
+      const target = e.target as Element | null;
+      const isInsidePanel = target && panelRef.current?.contains(target);
+      const isBodyOrDocument = target === document.body || target === document.documentElement;
+      if (isInsidePanel || isBodyOrDocument) {
         handleMinimize();
       }
     };
@@ -160,6 +169,7 @@ export function FloatingPanel({
         <MinimizedPill hasActiveGuide={hasActiveGuide} stepProgress={stepProgress} onRestore={handleRestore} />
       )}
       <div
+        ref={panelRef}
         className={`${styles.panel} ${isDodging ? styles.panelDodging : ''}`}
         style={{
           left: geometry.x,
