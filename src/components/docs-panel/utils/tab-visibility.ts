@@ -15,7 +15,7 @@ export interface TabVisibilityResult {
   overflowedTabs: LearningJourneyTab[];
 }
 
-const PERMANENT_TAB_IDS = new Set(['recommendations', 'devtools', 'editor']);
+export const PERMANENT_TAB_IDS = new Set(['recommendations', 'devtools', 'editor']);
 
 /**
  * Computes which tabs fit in the visible area and which move to overflow.

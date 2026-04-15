@@ -94,6 +94,7 @@ import {
   isGrafanaDocsUrl,
   cleanDocsUrl,
   loadDocsTabContentResult,
+  PERMANENT_TAB_IDS,
 } from './utils';
 // Import extracted hooks
 import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
@@ -190,14 +191,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private initializeRestoredActiveTab(): void {
     const activeTab = this.state.tabs.find((t) => t.id === this.state.activeTabId);
-    if (activeTab && activeTab.id !== 'recommendations') {
-      // If we have an active tab but no content, load it
-      if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-        if (shouldUseDocsLoader(activeTab)) {
-          this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        } else {
-          this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        }
+    if (!activeTab || PERMANENT_TAB_IDS.has(activeTab.id)) {
+      return;
+    }
+
+    if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
+      if (shouldUseDocsLoader(activeTab)) {
+        this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+      } else {
+        this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       }
     }
   }
@@ -407,12 +409,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
     }
 
-    // Check if only default/permanent tabs remain (recommendations, devtools, editor)
-    // If so, fall back to recommendations — unless the user is actively on the
-    // editor tab, which is a first-class content tab that shouldn't be yanked away.
-    const onlyDefaultTabsRemaining = newTabs.every(
-      (t) => t.id === 'recommendations' || t.id === 'devtools' || t.id === 'editor'
-    );
+    // If only permanent tabs remain, fall back to recommendations — unless the
+    // user is actively on the editor tab (a first-class content tab).
+    const onlyDefaultTabsRemaining = newTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
     if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations' && newActiveTabId !== 'editor') {
       newActiveTabId = 'recommendations';
     }
@@ -437,15 +436,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save active tab to storage
     this.saveTabsToStorage();
 
+    // Permanent tabs (recommendations, devtools, editor) render their own
+    // content and have no URL to load — skip the content-loading path.
+    if (PERMANENT_TAB_IDS.has(tabId)) {
+      return;
+    }
+
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
-    if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
-      if (!tab.content) {
-        if (shouldUseDocsLoader(tab)) {
-          this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
-        } else {
-          this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
-        }
+    if (tab && !tab.isLoading && !tab.error && !tab.content) {
+      if (shouldUseDocsLoader(tab)) {
+        this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
+      } else {
+        this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
       }
     }
   }
@@ -999,10 +1002,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     dropdownOpenTimeRef,
   } = useTabOverflow(tabs, activeTabId);
 
-  const PERMANENT_TAB_IDS = React.useMemo(() => new Set(['recommendations', 'devtools', 'editor']), []);
   const overflowGuideTabs = React.useMemo(
     () => overflowedTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)),
-    [overflowedTabs, PERMANENT_TAB_IDS]
+    [overflowedTabs]
   );
 
   // Content styles are applied at the component level via CSS classes
@@ -1428,13 +1430,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </div>
 
         {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools' && t.id !== 'editor').length >
-          0 && <div className={styles.tabDivider} />}
+        {visibleTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)).length > 0 && <div className={styles.tabDivider} />}
 
         {/* Guide tabs with titles */}
         <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
           {visibleTabs
-            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools' && tab.id !== 'editor')
+            .filter((tab) => !PERMANENT_TAB_IDS.has(tab.id))
             .map((tab) => {
               return (
                 <button
