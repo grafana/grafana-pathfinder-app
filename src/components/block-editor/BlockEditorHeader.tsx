@@ -87,8 +87,7 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
   }),
   guideTitleContainer: css({
     display: 'flex',
-    alignItems: 'baseline',
-    gap: theme.spacing(1),
+    flexDirection: 'column',
     minWidth: 0,
     flex: 1,
     '&:hover .guide-id': {
@@ -121,9 +120,9 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
     fontFamily: theme.typography.fontFamilyMonospace,
-    flexShrink: 0,
     opacity: 0,
     transition: 'opacity 0.15s',
+    padding: '0 2px',
   }),
   statusBadges: css({
     display: 'flex',

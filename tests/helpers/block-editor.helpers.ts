@@ -27,8 +27,8 @@ export async function waitForGrafanaReady(page: Page): Promise<void> {
 }
 
 /**
- * Open the block editor via the dev tools tab.
- * Assumes dev mode is enabled.
+ * Open the block editor via the editor tab.
+ * Available to admin and editor users (not gated by dev mode).
  */
 export async function openBlockEditor(page: Page): Promise<void> {
   // Wait for Grafana UI to be ready
@@ -46,14 +46,13 @@ export async function openBlockEditor(page: Page): Promise<void> {
   const panelContainer = page.getByTestId(testIds.docsPanel.container);
   await expect(panelContainer).toBeVisible();
 
-  // Wait for devtools tab to be visible (requires dev mode enabled)
-  // Use longer timeout as dev mode settings need to propagate
-  const devToolsTab = page.getByTestId(testIds.docsPanel.tab('devtools'));
-  await expect(devToolsTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
+  // Wait for editor tab to be visible (available to admin/editor users)
+  const editorTab = page.getByTestId(testIds.docsPanel.tab('editor'));
+  await expect(editorTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
 
   // Hover before click to dismiss any tooltips that may intercept pointer events
-  await devToolsTab.hover();
-  await devToolsTab.click();
+  await editorTab.hover();
+  await editorTab.click();
 
   // Wait for block editor to be visible
   const blockEditor = page.getByTestId(testIds.blockEditor.container);

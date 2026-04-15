@@ -28,7 +28,7 @@ export interface LearningJourneyTab {
   content: RawContent | null;
   isLoading: boolean;
   error: string | null;
-  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
+  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive' | 'editor';
   packageInfo?: PackageOpenInfo;
   /** Cached milestone data from initial path package load, used to persist
    *  learningJourney metadata across milestone arrow navigation. */
@@ -44,7 +44,7 @@ export interface PersistedTabData {
   title: string;
   baseUrl: string;
   currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
-  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive';
+  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive' | 'editor';
   packageInfo?: PackageOpenInfo;
 }
 
@@ -58,7 +58,7 @@ export interface PackageOpenInfo {
 export interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
   onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
-  onOpenDevTools?: () => void;
+  onOpenEditor?: () => void;
 }
 
 /**

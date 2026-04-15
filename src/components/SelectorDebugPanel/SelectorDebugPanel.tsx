@@ -1,19 +1,10 @@
-import React, { useState, useCallback, lazy, Suspense, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button, Badge, Icon, useStyles2, Stack } from '@grafana/ui';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { UrlTester } from 'components/UrlTester';
 import { PrTester } from 'components/PrTester';
-import { SkeletonLoader } from '../SkeletonLoader';
-
-// Lazy load BlockEditor to keep it out of main bundle when not needed
-const BlockEditor = lazy(() =>
-  import('../block-editor').then((module) => ({
-    default: module.BlockEditor,
-  }))
-);
 
 // localStorage keys for section expansion state
-const STORAGE_KEY_BLOCK_EDITOR = 'pathfinder-devtools-block-editor-expanded';
 const STORAGE_KEY_PR_TESTER = 'pathfinder-devtools-pr-tester-expanded';
 const STORAGE_KEY_URL_TESTER = 'pathfinder-devtools-url-tester-expanded';
 
@@ -41,20 +32,8 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
   const styles = useStyles2(getDebugPanelStyles);
 
   // Section expansion state - initialize from localStorage
-  const [blockEditorExpanded, setBlockEditorExpanded] = useState(() =>
-    getInitialExpanded(STORAGE_KEY_BLOCK_EDITOR, true)
-  );
   const [prTesterExpanded, setPrTesterExpanded] = useState(() => getInitialExpanded(STORAGE_KEY_PR_TESTER, false));
   const [UrlTesterExpanded, setUrlTesterExpanded] = useState(() => getInitialExpanded(STORAGE_KEY_URL_TESTER, false));
-
-  // Persist block editor expansion state
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_BLOCK_EDITOR, String(blockEditorExpanded));
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [blockEditorExpanded]);
 
   // Persist PR tester expansion state
   useEffect(() => {
@@ -113,24 +92,6 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
         <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times" fill="outline">
           Leave dev mode
         </Button>
-      </div>
-
-      {/* Block Editor */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setBlockEditorExpanded(!blockEditorExpanded)}>
-          <Stack direction="row" gap={1} alignItems="center">
-            <Icon name="edit" />
-            <h4 className={styles.sectionTitle}>Interactive guide editor</h4>
-          </Stack>
-          <Icon name={blockEditorExpanded ? 'angle-up' : 'angle-down'} />
-        </div>
-        {blockEditorExpanded && (
-          <div className={styles.sectionContent}>
-            <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-              <BlockEditor />
-            </Suspense>
-          </div>
-        )}
       </div>
 
       {/* PR tester */}

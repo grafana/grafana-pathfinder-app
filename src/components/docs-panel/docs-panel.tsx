@@ -13,6 +13,13 @@ const SelectorDebugPanel = lazy(() =>
   }))
 );
 
+// Lazy load BlockEditor for the editor tab (admin/editor users)
+const BlockEditor = lazy(() =>
+  import('../block-editor').then((module) => ({
+    default: module.BlockEditor,
+  }))
+);
+
 // Lazy load Coda Terminal to keep it out of production bundles
 // Only loaded when dev mode is enabled and terminal feature is enabled
 const TerminalPanel = lazy(() =>
@@ -87,6 +94,7 @@ import {
   isGrafanaDocsUrl,
   cleanDocsUrl,
   loadDocsTabContentResult,
+  PERMANENT_TAB_IDS,
 } from './utils';
 // Import extracted hooks
 import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
@@ -132,7 +140,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       (url: string, title: string) => this.openLearningJourney(url, title),
       (url: string, title: string, packageInfo?: PackageOpenInfo) =>
         this.openDocsPage(url, title, undefined, packageInfo),
-      () => this.openDevToolsTab()
+      () => this.openEditorTab()
     );
 
     super({
@@ -183,19 +191,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private initializeRestoredActiveTab(): void {
     const activeTab = this.state.tabs.find((t) => t.id === this.state.activeTabId);
-    if (activeTab && activeTab.id !== 'recommendations') {
-      // If we have an active tab but no content, load it
-      if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-        if (shouldUseDocsLoader(activeTab)) {
-          this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        } else {
-          this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        }
+    if (!activeTab || PERMANENT_TAB_IDS.has(activeTab.id)) {
+      return;
+    }
+
+    if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
+      if (shouldUseDocsLoader(activeTab)) {
+        this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+      } else {
+        this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       }
     }
   }
 
-  private async saveTabsToStorage(): Promise<void> {
+  public async saveTabsToStorage(): Promise<void> {
     try {
       // Save user-opened tabs and devtools tab (devtools persists across refreshes)
       // Recommendations is a permanent tab and doesn't need persistence
@@ -400,10 +409,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
     }
 
-    // Check if only default tabs remain (recommendations and possibly devtools)
-    // If so, always default to recommendations
-    const onlyDefaultTabsRemaining = newTabs.every((t) => t.id === 'recommendations' || t.id === 'devtools');
-    if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations') {
+    // If only permanent tabs remain, fall back to recommendations — unless the
+    // user is actively on the editor tab (a first-class content tab).
+    const onlyDefaultTabsRemaining = newTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
+    if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations' && newActiveTabId !== 'editor') {
       newActiveTabId = 'recommendations';
     }
 
@@ -427,15 +436,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save active tab to storage
     this.saveTabsToStorage();
 
+    // Permanent tabs (recommendations, devtools, editor) render their own
+    // content and have no URL to load — skip the content-loading path.
+    if (PERMANENT_TAB_IDS.has(tabId)) {
+      return;
+    }
+
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
-    if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
-      if (!tab.content) {
-        if (shouldUseDocsLoader(tab)) {
-          this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
-        } else {
-          this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
-        }
+    if (tab && !tab.isLoading && !tab.error && !tab.content) {
+      if (shouldUseDocsLoader(tab)) {
+        this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
+      } else {
+        this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
       }
     }
   }
@@ -507,6 +520,36 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     });
 
     // Save tabs to storage so devtools tab persists across page refreshes
+    this.saveTabsToStorage();
+  }
+
+  /**
+   * Open the Editor tab (or switch to it if already open)
+   */
+  public openEditorTab(): void {
+    const existingTab = this.state.tabs.find((t) => t.id === 'editor');
+    if (existingTab) {
+      this.setState({ activeTabId: 'editor' });
+      this.saveTabsToStorage();
+      return;
+    }
+
+    const newTab: LearningJourneyTab = {
+      id: 'editor',
+      title: 'Guide editor',
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+      type: 'editor',
+    };
+
+    this.setState({
+      tabs: [...this.state.tabs, newTab],
+      activeTabId: 'editor',
+    });
+
     this.saveTabsToStorage();
   }
 
@@ -654,6 +697,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
   const currentUserId = config.bootData.user?.id;
   const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+
+  const currentUser = config.bootData?.user;
+  const isEditorUser =
+    currentUser?.orgRole === 'Editor' || currentUser?.orgRole === 'Admin' || currentUser?.isGrafanaAdmin === true;
 
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
   // Stored in a ref so it never causes effect re-runs when isDevMode toggles.
@@ -805,26 +852,57 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once after mount, tabs checked at mount time
 
-  // Ensure devtools tab exists when dev mode is enabled (permanent tab)
+  // Ensure permanent tabs (devtools, editor) exist when their gate is active.
+  // Merged into a single effect so both additions read from the same up-to-date
+  // tabs array, avoiding a stale-closure overwrite when both gates are true.
   React.useEffect(() => {
-    if (isDevMode) {
-      const hasDevToolsTab = tabs.some((t) => t.id === 'devtools');
-      if (!hasDevToolsTab) {
-        // Add devtools tab without switching to it
-        const devToolsTab: LearningJourneyTab = {
-          id: 'devtools',
-          title: 'Dev Tools',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-          type: 'devtools',
-        };
-        model.setState({ tabs: [...tabs, devToolsTab] });
+    const missing: LearningJourneyTab[] = [];
+
+    if (isDevMode && !tabs.some((t) => t.id === 'devtools')) {
+      missing.push({
+        id: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'devtools',
+      });
+    }
+
+    if (isEditorUser && !tabs.some((t) => t.id === 'editor')) {
+      missing.push({
+        id: 'editor',
+        title: 'Guide editor',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'editor',
+      });
+    }
+
+    // Remove editor tab if the current user is not an editor/admin (e.g. role
+    // downgrade or different user logged in with a persisted editor tab).
+    const hasStaleEditorTab = !isEditorUser && tabs.some((t) => t.id === 'editor');
+
+    if (missing.length > 0 || hasStaleEditorTab) {
+      let updatedTabs = hasStaleEditorTab ? tabs.filter((t) => t.id !== 'editor') : tabs;
+      updatedTabs = [...updatedTabs, ...missing];
+
+      const patch: Partial<CombinedPanelState> = { tabs: updatedTabs };
+      if (hasStaleEditorTab && model.state.activeTabId === 'editor') {
+        patch.activeTabId = 'recommendations';
+      }
+      model.setState(patch);
+
+      if (hasStaleEditorTab) {
+        model.saveTabsToStorage();
       }
     }
-  }, [isDevMode, tabs, model]);
+  }, [isDevMode, isEditorUser, tabs, model]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
@@ -923,6 +1001,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     chevronButtonRef,
     dropdownOpenTimeRef,
   } = useTabOverflow(tabs, activeTabId);
+
+  const overflowGuideTabs = React.useMemo(
+    () => overflowedTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)),
+    [overflowedTabs]
+  );
 
   // Content styles are applied at the component level via CSS classes
 
@@ -1324,6 +1407,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           >
             <Icon name="document-info" size="md" />
           </button>
+          {isEditorUser && (
+            <button
+              className={`${styles.iconTab} ${activeTabId === 'editor' ? styles.iconTabActive : ''}`}
+              onClick={() => model.setActiveTab('editor')}
+              title={t('docsPanel.guideEditor', 'Guide editor')}
+              data-testid={testIds.docsPanel.tab('editor')}
+            >
+              <Icon name="edit" size="md" />
+            </button>
+          )}
           {isDevMode && (
             <button
               className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
@@ -1337,14 +1430,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </div>
 
         {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
-          <div className={styles.tabDivider} />
-        )}
+        {visibleTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)).length > 0 && <div className={styles.tabDivider} />}
 
         {/* Guide tabs with titles */}
         <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
           {visibleTabs
-            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
+            .filter((tab) => !PERMANENT_TAB_IDS.has(tab.id))
             .map((tab) => {
               return (
                 <button
@@ -1400,7 +1491,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             })}
         </div>
 
-        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
+        {overflowGuideTabs.length > 0 && (
           <div className={styles.tabOverflow}>
             <button
               ref={chevronButtonRef}
@@ -1412,89 +1503,86 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 setIsDropdownOpen(!isDropdownOpen);
               }}
               aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
-                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length,
+                count: overflowGuideTabs.length,
               })}
               aria-expanded={isDropdownOpen}
               aria-haspopup="true"
               data-testid={testIds.docsPanel.tabOverflowButton}
             >
               <Icon name="angle-down" size="sm" />
-              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length}</span>
+              <span>+{overflowGuideTabs.length}</span>
             </button>
           </div>
         )}
 
-        {isDropdownOpen &&
-          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'devtools').length > 0 && (
-            <div
-              ref={dropdownRef}
-              className={styles.tabDropdown}
-              role="menu"
-              aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
-              data-testid={testIds.docsPanel.tabDropdown}
-            >
-              {overflowedTabs
-                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
-                .map((tab) => {
-                  return (
-                    <button
-                      key={tab.id}
-                      className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
-                      onClick={() => {
-                        model.setActiveTab(tab.id);
-                        setIsDropdownOpen(false);
-                      }}
-                      role="menuitem"
-                      aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
+        {isDropdownOpen && overflowGuideTabs.length > 0 && (
+          <div
+            ref={dropdownRef}
+            className={styles.tabDropdown}
+            role="menu"
+            aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
+            data-testid={testIds.docsPanel.tabDropdown}
+          >
+            {overflowGuideTabs.map((tab) => {
+              return (
+                <button
+                  key={tab.id}
+                  className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
+                  onClick={() => {
+                    model.setActiveTab(tab.id);
+                    setIsDropdownOpen(false);
+                  }}
+                  role="menuitem"
+                  aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
+                    title: getTranslatedTitle(tab.title),
+                  })}
+                  data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
+                >
+                  <div className={styles.dropdownItemContent}>
+                    {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
+                    <span className={styles.dropdownItemTitle}>
+                      {tab.isLoading ? (
+                        <>
+                          <Icon name="sync" size="xs" />
+                          <span>{t('docsPanel.loading', 'Loading...')}</span>
+                        </>
+                      ) : (
+                        getTranslatedTitle(tab.title)
+                      )}
+                    </span>
+                    <IconButton
+                      name="times"
+                      size="sm"
+                      aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
                         title: getTranslatedTitle(tab.title),
                       })}
-                      data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
-                    >
-                      <div className={styles.dropdownItemContent}>
-                        {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
-                        <span className={styles.dropdownItemTitle}>
-                          {tab.isLoading ? (
-                            <>
-                              <Icon name="sync" size="xs" />
-                              <span>{t('docsPanel.loading', 'Loading...')}</span>
-                            </>
-                          ) : (
-                            getTranslatedTitle(tab.title)
-                          )}
-                        </span>
-                        <IconButton
-                          name="times"
-                          size="sm"
-                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                            title: getTranslatedTitle(tab.title),
-                          })}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reportAppInteraction(UserInteraction.CloseTabClick, {
-                              content_type: getContentTypeForAnalytics(
-                                tab.currentUrl || tab.baseUrl,
-                                tab.type || 'learning-journey'
-                              ),
-                              tab_title: tab.title,
-                              content_url: tab.currentUrl || tab.baseUrl,
-                              close_location: 'dropdown',
-                              ...(tab.type === 'learning-journey' &&
-                                tab.content && {
-                                  completion_percentage: getJourneyProgress(tab.content),
-                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                                }),
-                            });
-                            model.closeTab(tab.id);
-                          }}
-                          className={styles.dropdownItemClose}
-                        />
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-          )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        reportAppInteraction(UserInteraction.CloseTabClick, {
+                          content_type: getContentTypeForAnalytics(
+                            tab.currentUrl || tab.baseUrl,
+                            tab.type || 'learning-journey'
+                          ),
+                          tab_title: tab.title,
+                          content_url: tab.currentUrl || tab.baseUrl,
+                          close_location: 'dropdown',
+                          ...(tab.type === 'learning-journey' &&
+                            tab.content && {
+                              completion_percentage: getJourneyProgress(tab.content),
+                              current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                              total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                            }),
+                        });
+                        model.closeTab(tab.id);
+                      }}
+                      className={styles.dropdownItemClose}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Menu and close actions */}
         <TabBarActions className={styles.tabBarActions} />
@@ -1516,6 +1604,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
                     onOpenLearningJourney={(url: string, title: string) => model.openLearningJourney(url, title)}
                   />
+                </Suspense>
+              </div>
+            );
+          }
+
+          // Show editor tab (block editor for admin/editor users)
+          if (activeTabId === 'editor' && isEditorUser) {
+            return (
+              <div className={styles.devToolsContent} data-testid="editor-tab-content">
+                <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+                  <BlockEditor />
                 </Suspense>
               </div>
             );
@@ -1615,7 +1714,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     </div>
                     <button
                       className={styles.returnToEditorButton}
-                      onClick={() => model.openDevToolsTab()}
+                      onClick={() => model.openEditorTab()}
                       data-testid={testIds.devTools.returnToEditorButton}
                     >
                       <Icon name="arrow-left" size="sm" />
