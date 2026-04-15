@@ -143,16 +143,22 @@ export function FloatingPanel({
       setPanelState('compact');
     };
 
+    const handleRestorePosition = (e: CustomEvent<{ x: number; y: number }>) => {
+      setPosition(e.detail.x, e.detail.y);
+    };
+
     const handleRestoreFull = () => {
       setPanelState('full');
     };
 
     document.addEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
+    document.addEventListener('pathfinder-floating-restore-position', handleRestorePosition as EventListener);
     document.addEventListener('pathfinder-floating-compact', handleCompact);
     document.addEventListener('pathfinder-floating-restore-full', handleRestoreFull);
 
     return () => {
       document.removeEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
+      document.removeEventListener('pathfinder-floating-restore-position', handleRestorePosition as EventListener);
       document.removeEventListener('pathfinder-floating-compact', handleCompact);
       document.removeEventListener('pathfinder-floating-restore-full', handleRestoreFull);
       dodgeTimersRef.current.forEach(clearTimeout);

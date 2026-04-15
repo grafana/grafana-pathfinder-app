@@ -92,7 +92,7 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       if (highlights.length === 0) {
         if (previousPositionRef.current) {
           document.dispatchEvent(
-            new CustomEvent('pathfinder-floating-dodge', {
+            new CustomEvent('pathfinder-floating-restore-position', {
               detail: previousPositionRef.current,
             })
           );

@@ -135,6 +135,29 @@ function FloatingPanelInner() {
   const title = activeTab?.title || 'Interactive learning';
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations';
 
+  // Track interactive step progress from window globals set by the
+  // interactive engine. Poll on a short interval since these globals
+  // update outside React's state system.
+  const [stepProgress, setStepProgress] = useState<string | undefined>();
+  useEffect(() => {
+    if (!hasActiveGuide) {
+      setStepProgress(undefined);
+      return;
+    }
+    const update = () => {
+      const stepIndex = (window as any).__DocsPluginCurrentStepIndex as number | undefined;
+      const totalSteps = (window as any).__DocsPluginTotalSteps as number | undefined;
+      if (stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0) {
+        setStepProgress(`${stepIndex + 1}/${totalSteps}`);
+      } else {
+        setStepProgress(undefined);
+      }
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [hasActiveGuide]);
+
   // After restoration completes, if there's no guide to show and none
   // is being loaded, fall back to sidebar mode.
   useEffect(() => {
@@ -170,6 +193,7 @@ function FloatingPanelInner() {
       title={title}
       hasActiveGuide={hasActiveGuide}
       guideUrl={guideUrl}
+      stepProgress={stepProgress}
       onSwitchToSidebar={handleSwitchToSidebar}
       onClose={handleClose}
     >
