@@ -1817,6 +1817,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                         </button>
                       )}
+                      <button
+                        className={styles.secondaryActionButton}
+                        aria-label="Pop out to floating panel"
+                        title="Pop out guide to a floating panel"
+                        onClick={() => {
+                          document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
+                        }}
+                      >
+                        <Icon name="corner-up-right" size="sm" />
+                        <span>Pop out</span>
+                      </button>
                       <Dropdown
                         placement="bottom-end"
                         overlay={
@@ -1999,6 +2010,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                           </button>
                         )}
+                        <button
+                          className={styles.secondaryActionButton}
+                          aria-label="Pop out to floating panel"
+                          title="Pop out guide to a floating panel"
+                          onClick={() => {
+                            document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
+                          }}
+                        >
+                          <Icon name="corner-up-right" size="sm" />
+                          <span>Pop out</span>
+                        </button>
                         <Dropdown
                           placement="bottom-end"
                           overlay={

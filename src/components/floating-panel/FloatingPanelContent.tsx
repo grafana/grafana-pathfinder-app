@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
 import { ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -55,6 +55,13 @@ export function FloatingPanelContent({ content, onGuideComplete }: FloatingPanel
       return content;
     }
   }, [content, nav.hasInteractiveSections, nav.currentStep, nav.currentStepIndex]);
+
+  // Scroll to top when step changes
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [nav.currentStepIndex]);
 
   if (!content || !stepContent) {
     return (
