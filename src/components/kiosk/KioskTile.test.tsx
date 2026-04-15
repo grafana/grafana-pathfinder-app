@@ -94,6 +94,17 @@ describe('KioskTile', () => {
     );
   });
 
+  it('preserves sub-path in targetUrl when building the deep link', () => {
+    const ruleWithSubPath: KioskRule = { ...rule, targetUrl: 'https://example.com/grafana' };
+    render(<KioskTile rule={ruleWithSubPath} index={0} />);
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+
+    const openedUrl = new URL(mockOpen.mock.calls[0][0]);
+    expect(openedUrl.pathname).toBe('/grafana/');
+    expect(openedUrl.searchParams.get('doc')).toBe(rule.url);
+    expect(openedUrl.searchParams.get('kiosk_session')).toBe('00000000-0000-4000-a000-000000000001');
+  });
+
   it('generates a new session ID on each click', () => {
     let callCount = 0;
     mockRandomUUID.mockImplementation(() => {

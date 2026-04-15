@@ -25,7 +25,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index }) => {
       target_instance: rule.targetUrl || window.location.origin,
     });
 
-    const url = new URL('/', base);
+    const url = new URL(base + '/');
     url.searchParams.set('doc', rule.url);
     url.searchParams.set('kiosk_session', sessionId);
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
