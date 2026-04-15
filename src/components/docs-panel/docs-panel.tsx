@@ -119,6 +119,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    */
   private static _hasRestoredTabs = false;
 
+  /**
+   * Reset the tab restoration guard so a new model instance can restore tabs.
+   * Called when switching display modes (floating ↔ sidebar) because each mode
+   * creates its own model instance that needs to restore independently.
+   */
+  public static resetTabRestorationGuard(): void {
+    CombinedLearningJourneyPanel._hasRestoredTabs = false;
+  }
+
   public get renderBeforeActivation(): boolean {
     return true;
   }
@@ -1253,6 +1262,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         }
       }
 
+      // Snapshot sidebar tabs before switching — the floating panel's model
+      // will overwrite tabStorage via openDocsPage → saveTabsToStorage
+      panelModeManager.snapshotSidebarTabs();
       panelModeManager.setMode('floating');
     };
 

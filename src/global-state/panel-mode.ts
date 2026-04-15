@@ -18,6 +18,8 @@ export interface PendingGuide {
  */
 class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
+  private _sidebarTabSnapshot: string | null = null;
+  private _sidebarActiveTabSnapshot: string | null = null;
   /**
    * Get the current panel mode from localStorage.
    * Defaults to 'sidebar' for backward compatibility.
@@ -105,6 +107,33 @@ class PanelModeManager {
     const guide = this._pendingGuide;
     this._pendingGuide = null;
     return guide;
+  }
+
+  /**
+   * Snapshot the current sidebar tab state from localStorage.
+   * Called before switching to floating mode so the floating panel's
+   * model writes (via openDocsPage → saveTabsToStorage) don't
+   * permanently overwrite the sidebar's tab state.
+   */
+  public snapshotSidebarTabs(): void {
+    this._sidebarTabSnapshot = localStorage.getItem(StorageKeys.TABS) ?? null;
+    this._sidebarActiveTabSnapshot = localStorage.getItem(StorageKeys.ACTIVE_TAB) ?? null;
+  }
+
+  /**
+   * Restore the sidebar tab snapshot to localStorage.
+   * Called before switching back to sidebar mode so the sidebar's
+   * model restores the original tabs, not the floating panel's.
+   */
+  public restoreSidebarTabSnapshot(): void {
+    if (this._sidebarTabSnapshot !== null) {
+      localStorage.setItem(StorageKeys.TABS, this._sidebarTabSnapshot);
+    }
+    if (this._sidebarActiveTabSnapshot !== null) {
+      localStorage.setItem(StorageKeys.ACTIVE_TAB, this._sidebarActiveTabSnapshot);
+    }
+    this._sidebarTabSnapshot = null;
+    this._sidebarActiveTabSnapshot = null;
   }
 }
 

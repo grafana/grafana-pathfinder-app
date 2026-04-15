@@ -3,7 +3,6 @@ import { usePluginContext } from '@grafana/data';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { usePendingGuideLaunch } from '../../hooks';
-import { useUserStorage } from '../../lib/user-storage';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults } from '../../constants';
@@ -50,9 +49,9 @@ export function FloatingPanelManager() {
 function FloatingPanelInner() {
   const pluginContext = usePluginContext();
 
-  // Initialize user storage — must be called before any storage operations
-  // (same requirement as CombinedPanelRendererInner in the sidebar)
-  useUserStorage();
+  // Note: we do NOT call useUserStorage() here. That hook requires Grafana's
+  // plugin context (usePluginUserStorage), which isn't available in this
+  // standalone React root. Tab restoration works via localStorage fallback.
 
   // Poll for MCP guide launches (same as ContextPanel does for sidebar)
   usePendingGuideLaunch();
@@ -127,10 +126,19 @@ function FloatingPanelInner() {
   const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
 
   const handleSwitchToSidebar = useCallback(() => {
+    // Restore the sidebar's original tab state (snapshotted before pop-out)
+    // so the floating panel's tabStorage writes don't wipe the user's tabs
+    panelModeManager.restoreSidebarTabSnapshot();
+    // Reset the static guard so the sidebar's new model can restore tabs
+    CombinedLearningJourneyPanel.resetTabRestorationGuard();
+    panelModeManager.setMode('sidebar');
+    sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
     sidebarState.openSidebar('Interactive learning');
   }, []);
 
   const handleClose = useCallback(() => {
+    panelModeManager.restoreSidebarTabSnapshot();
+    CombinedLearningJourneyPanel.resetTabRestorationGuard();
     panelModeManager.setMode('sidebar');
   }, []);
 

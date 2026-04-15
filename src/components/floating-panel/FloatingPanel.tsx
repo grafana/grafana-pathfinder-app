@@ -157,11 +157,11 @@ export function FloatingPanel({
             />
           )}
           <IconButton
-            name="gf-layout-simple"
+            name="arrow-to-right"
             size="sm"
-            tooltip="Switch to sidebar"
+            tooltip="Dock to sidebar"
             onClick={handleSwitchToSidebar}
-            aria-label="Switch to sidebar"
+            aria-label="Dock to sidebar"
           />
           <IconButton name="minus" size="sm" tooltip="Minimize" onClick={handleMinimize} aria-label="Minimize panel" />
           <IconButton name="times" size="sm" tooltip="Close" onClick={onClose} aria-label="Close panel" />
