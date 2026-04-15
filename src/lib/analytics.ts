@@ -79,6 +79,12 @@ export enum UserInteraction {
   // Input Block Interactions
   InputBlockSubmit = 'input_block_submit',
 
+  // Floating Panel
+  FloatingPanelPopOut = 'floating_panel_pop_out',
+  FloatingPanelDock = 'floating_panel_dock',
+  FloatingPanelCopyLink = 'floating_panel_copy_link',
+  FloatingPanelMoved = 'floating_panel_moved',
+
   // Access Control
   NoAccess = 'no_access',
 

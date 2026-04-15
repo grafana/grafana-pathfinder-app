@@ -1254,13 +1254,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     const handlePopOut = () => {
       const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
       const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
+      const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
 
-      if (activeTab && activeTab.id !== 'recommendations') {
-        const guideUrl = activeTab.baseUrl || activeTab.currentUrl;
-        if (guideUrl) {
-          panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
-        }
+      if (activeTab && activeTab.id !== 'recommendations' && guideUrl) {
+        panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
       }
+
+      reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
+        guide_url: guideUrl || '',
+        guide_title: activeTab?.title || '',
+      });
 
       // Snapshot sidebar tabs before switching — the floating panel's model
       // will overwrite tabStorage via openDocsPage → saveTabsToStorage

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton, useStyles2 } from '@grafana/ui';
 import { panelModeManager } from '../../global-state/panel-mode';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
 import { useHighlightDodge } from './useHighlightDodge';
@@ -79,6 +80,9 @@ export function FloatingPanel({
       .then(() => {
         setLinkCopied(true);
         setTimeout(() => setLinkCopied(false), 2000);
+        reportAppInteraction(UserInteraction.FloatingPanelCopyLink, {
+          guide_url: guideUrl,
+        });
       })
       .catch(() => {
         // Clipboard may be unavailable
@@ -102,8 +106,15 @@ export function FloatingPanel({
     const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
       setIsDodging(true);
       setPosition(e.detail.x, e.detail.y);
-      // Clear dodging animation class after transition
-      setTimeout(() => setIsDodging(false), 250);
+      // Clear dodging animation class after transition, then report
+      setTimeout(() => {
+        setIsDodging(false);
+        reportAppInteraction(UserInteraction.FloatingPanelMoved, {
+          trigger: 'highlight_dodge',
+          x: e.detail.x,
+          y: e.detail.y,
+        });
+      }, 250);
     };
 
     const handleCompact = () => {
@@ -125,70 +136,82 @@ export function FloatingPanel({
     };
   }, [setPosition]);
 
-  if (panelState === 'minimized') {
-    return <MinimizedPill hasActiveGuide={hasActiveGuide} stepProgress={stepProgress} onRestore={handleRestore} />;
-  }
+  const isMinimized = panelState === 'minimized';
 
   const panelContent = (
-    <div
-      className={`${styles.panel} ${isDodging ? styles.panelDodging : ''}`}
-      style={{
-        left: geometry.x,
-        top: geometry.y,
-        width: geometry.width,
-        height: panelState === 'compact' ? 'auto' : geometry.height,
-      }}
-      data-pathfinder-content="true"
-      data-panel-state={panelState}
-      role="dialog"
-      aria-label="Pathfinder floating panel"
-    >
-      {/* Header — drag handle */}
-      <div
-        className={styles.header}
-        onPointerDown={drag.onPointerDown}
-        onPointerMove={drag.onPointerMove}
-        onPointerUp={drag.onPointerUp}
-      >
-        <span className={styles.headerTitle} title={title}>
-          {title}
-        </span>
-        {stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
-        <div className={styles.headerActions}>
-          {guideUrl && (
-            <IconButton
-              name={linkCopied ? 'check' : 'link'}
-              size="sm"
-              tooltip={linkCopied ? 'Copied!' : 'Copy workshop link'}
-              onClick={handleCopyWorkshopLink}
-              aria-label="Copy workshop link"
-            />
-          )}
-          <IconButton
-            name="arrow-to-right"
-            size="sm"
-            tooltip="Dock to sidebar"
-            onClick={handleSwitchToSidebar}
-            aria-label="Dock to sidebar"
-          />
-          <IconButton name="minus" size="sm" tooltip="Minimize" onClick={handleMinimize} aria-label="Minimize panel" />
-          <IconButton name="times" size="sm" tooltip="Close" onClick={onClose} aria-label="Close panel" />
-        </div>
-      </div>
-
-      {/* Content area */}
-      {panelState === 'full' && <div className={styles.content}>{children}</div>}
-
-      {/* Resize handle */}
-      {panelState === 'full' && (
-        <div
-          className={styles.resizeHandle}
-          onPointerDown={resize.onPointerDown}
-          onPointerMove={resize.onPointerMove}
-          onPointerUp={resize.onPointerUp}
-        />
+    <>
+      {isMinimized && (
+        <MinimizedPill hasActiveGuide={hasActiveGuide} stepProgress={stepProgress} onRestore={handleRestore} />
       )}
-    </div>
+      <div
+        className={`${styles.panel} ${isDodging ? styles.panelDodging : ''}`}
+        style={{
+          left: geometry.x,
+          top: geometry.y,
+          width: geometry.width,
+          height: panelState === 'compact' ? 'auto' : geometry.height,
+          // Keep mounted but hidden when minimized so ContentRenderer
+          // and the interactive engine continue tracking progress
+          display: isMinimized ? 'none' : undefined,
+        }}
+        data-pathfinder-content="true"
+        data-panel-state={panelState}
+        role="dialog"
+        aria-label="Pathfinder floating panel"
+      >
+        {/* Header — drag handle */}
+        <div
+          className={styles.header}
+          onPointerDown={drag.onPointerDown}
+          onPointerMove={drag.onPointerMove}
+          onPointerUp={drag.onPointerUp}
+        >
+          <span className={styles.headerTitle} title={title}>
+            {title}
+          </span>
+          {stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
+          <div className={styles.headerActions}>
+            {guideUrl && (
+              <IconButton
+                name={linkCopied ? 'check' : 'link'}
+                size="sm"
+                tooltip={linkCopied ? 'Copied!' : 'Copy workshop link'}
+                onClick={handleCopyWorkshopLink}
+                aria-label="Copy workshop link"
+              />
+            )}
+            <IconButton
+              name="arrow-to-right"
+              size="sm"
+              tooltip="Dock to sidebar"
+              onClick={handleSwitchToSidebar}
+              aria-label="Dock to sidebar"
+            />
+            <IconButton
+              name="minus"
+              size="sm"
+              tooltip="Minimize"
+              onClick={handleMinimize}
+              aria-label="Minimize panel"
+            />
+            <IconButton name="times" size="sm" tooltip="Close" onClick={onClose} aria-label="Close panel" />
+          </div>
+        </div>
+
+        {/* Content area — always mounted for progress tracking */}
+        <div className={styles.content}>{children}</div>
+
+        {/* Resize handle */}
+        {panelState === 'full' && (
+          <div
+            className={styles.resizeHandle}
+            onPointerDown={resize.onPointerDown}
+            onPointerMove={resize.onPointerMove}
+            onPointerUp={resize.onPointerUp}
+          />
+        )}
+      </div>
+    </>
   );
 
   return createPortal(panelContent, document.body);

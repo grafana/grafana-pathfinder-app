@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { panelModeManager } from '../../global-state/panel-mode';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import {
   type FloatingPanelGeometry,
   FLOATING_PANEL_MIN_WIDTH,
@@ -73,6 +74,11 @@ export function useDrag(
     dragStartRef.current = null;
     setGeometry((prev) => {
       panelModeManager.setPanelGeometry(prev);
+      reportAppInteraction(UserInteraction.FloatingPanelMoved, {
+        trigger: 'manual_drag',
+        x: prev.x,
+        y: prev.y,
+      });
       return prev;
     });
   }, [setGeometry]);

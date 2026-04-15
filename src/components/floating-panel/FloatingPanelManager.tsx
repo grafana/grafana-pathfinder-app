@@ -6,6 +6,7 @@ import { usePendingGuideLaunch } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults } from '../../constants';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
 
@@ -126,6 +127,10 @@ function FloatingPanelInner() {
   const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
 
   const handleSwitchToSidebar = useCallback(() => {
+    reportAppInteraction(UserInteraction.FloatingPanelDock, {
+      guide_url: guideUrl || '',
+      guide_title: title,
+    });
     // Restore the sidebar's original tab state (snapshotted before pop-out)
     // so the floating panel's tabStorage writes don't wipe the user's tabs
     panelModeManager.restoreSidebarTabSnapshot();
@@ -134,7 +139,7 @@ function FloatingPanelInner() {
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
     sidebarState.openSidebar('Interactive learning');
-  }, []);
+  }, [guideUrl, title]);
 
   const handleClose = useCallback(() => {
     panelModeManager.restoreSidebarTabSnapshot();
