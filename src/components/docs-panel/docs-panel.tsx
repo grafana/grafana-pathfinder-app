@@ -407,12 +407,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
     }
 
-    // Check if only default tabs remain (recommendations and permanent utility tabs)
-    // If so, always default to recommendations
+    // Check if only default/permanent tabs remain (recommendations, devtools, editor)
+    // If so, fall back to recommendations — unless the user is actively on the
+    // editor tab, which is a first-class content tab that shouldn't be yanked away.
     const onlyDefaultTabsRemaining = newTabs.every(
       (t) => t.id === 'recommendations' || t.id === 'devtools' || t.id === 'editor'
     );
-    if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations') {
+    if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations' && newActiveTabId !== 'editor') {
       newActiveTabId = 'recommendations';
     }
 
@@ -880,8 +881,18 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       });
     }
 
-    if (missing.length > 0) {
-      model.setState({ tabs: [...tabs, ...missing] });
+    // Remove editor tab if the current user is not an editor/admin (e.g. role
+    // downgrade or different user logged in with a persisted editor tab).
+    const hasStaleEditorTab = !isEditorUser && tabs.some((t) => t.id === 'editor');
+
+    if (missing.length > 0 || hasStaleEditorTab) {
+      let updatedTabs = hasStaleEditorTab ? tabs.filter((t) => t.id !== 'editor') : tabs;
+      updatedTabs = [...updatedTabs, ...missing];
+      model.setState({ tabs: updatedTabs });
+
+      if (hasStaleEditorTab && model.state.activeTabId === 'editor') {
+        model.setState({ activeTabId: 'recommendations' });
+      }
     }
   }, [isDevMode, isEditorUser, tabs, model]);
 
