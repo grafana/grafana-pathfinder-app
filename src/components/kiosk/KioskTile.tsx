@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
 import type { KioskRule } from './kiosk-rules';
 
@@ -14,9 +15,21 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index }) => {
 
   const handleClick = useCallback(() => {
     const base = (rule.targetUrl || window.location.origin).replace(/\/+$/, '');
-    const docParam = encodeURIComponent(rule.url);
-    window.open(`${base}/?doc=${docParam}`, '_blank', 'noopener,noreferrer');
-  }, [rule.targetUrl, rule.url]);
+    const sessionId = crypto.randomUUID();
+
+    reportAppInteraction(UserInteraction.KioskDemoStarted, {
+      kiosk_session_id: sessionId,
+      guide_url: rule.url,
+      guide_title: rule.title,
+      guide_type: rule.type,
+      target_instance: rule.targetUrl || window.location.origin,
+    });
+
+    const url = new URL('/', base);
+    url.searchParams.set('doc', rule.url);
+    url.searchParams.set('kiosk_session', sessionId);
+    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+  }, [rule.targetUrl, rule.url, rule.title, rule.type]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

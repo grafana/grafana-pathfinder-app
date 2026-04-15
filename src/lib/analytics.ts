@@ -81,6 +81,9 @@ export enum UserInteraction {
 
   // Access Control
   NoAccess = 'no_access',
+
+  // Kiosk Mode
+  KioskDemoStarted = 'kiosk_demo_started',
 }
 
 // ============================================================================
@@ -216,6 +219,8 @@ export function reportAppInteraction(
     const experiments = shouldEnrichWithExperiments ? getExperimentsForAnalytics() : null;
     const variant = shouldEnrichWithExperiments ? getExperimentVariant() : null;
 
+    const kioskSessionId = (window as any).__pathfinderKioskSessionId as string | undefined;
+
     // Add global attributes to all events
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
@@ -224,6 +229,7 @@ export function reportAppInteraction(
       ...(variant && { variant }),
       // Include experiments array if available (null check for graceful degradation)
       ...(experiments && { experiments }),
+      ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
     };
 
     reportInteraction(interactionName, enrichedProperties);
