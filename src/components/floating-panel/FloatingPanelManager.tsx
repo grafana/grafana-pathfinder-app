@@ -80,23 +80,18 @@ function FloatingPanelInner() {
 
   // Restore tabs from storage on mount (same as CombinedPanelRendererInner).
   // This handles the page-refresh case where mode is persisted but guide state
-  // lives in tabStorage. If no tabs restore AND no pending guide was opened,
-  // fall back to sidebar mode — an empty floating panel is never useful.
+  // lives in tabStorage.
   const { tabs, activeTabId } = panel.useState();
+  const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
     const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
     if (hasOnlyDefaultTabs) {
       panel.restoreTabsAsync().then(() => {
-        // After restoration, check if we actually have a guide to show
-        const restored = panel.state.tabs;
-        const restoredActive = restored.find((t) => t.id === panel.state.activeTabId);
-        const hasGuide = restoredActive && restoredActive.id !== 'recommendations';
-        if (!hasGuide) {
-          // Nothing to show — fall back to sidebar mode
-          panelModeManager.setMode('sidebar');
-        }
+        setRestorationDone(true);
       });
+    } else {
+      setRestorationDone(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
@@ -119,6 +114,16 @@ function FloatingPanelInner() {
   const content = activeTab?.content ?? null;
   const title = activeTab?.title || 'Interactive learning';
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations';
+
+  // After restoration completes, if there's no guide to show, fall back
+  // to sidebar mode. An empty floating panel is never useful.
+  // This runs reactively (not in the async callback) so it sees the
+  // latest React state after Scenes model updates have propagated.
+  useEffect(() => {
+    if (restorationDone && !hasActiveGuide) {
+      panelModeManager.setMode('sidebar');
+    }
+  }, [restorationDone, hasActiveGuide]);
   const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
 
   const handleSwitchToSidebar = useCallback(() => {
