@@ -65,6 +65,8 @@ export function FloatingPanel({
     onSwitchToSidebar();
   }, [onSwitchToSidebar]);
 
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const handleCopyWorkshopLink = useCallback(() => {
     if (!guideUrl) {
       return;
@@ -72,9 +74,15 @@ export function FloatingPanel({
     const url = new URL(window.location.href);
     url.searchParams.set('doc', guideUrl);
     url.searchParams.set('panelMode', 'floating');
-    navigator.clipboard.writeText(url.toString()).catch(() => {
-      // Fallback: silently fail — clipboard may be unavailable
-    });
+    navigator.clipboard
+      .writeText(url.toString())
+      .then(() => {
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+      })
+      .catch(() => {
+        // Clipboard may be unavailable
+      });
   }, [guideUrl]);
 
   // Keyboard: Escape minimizes
@@ -149,9 +157,9 @@ export function FloatingPanel({
         <div className={styles.headerActions}>
           {guideUrl && (
             <IconButton
-              name="link"
+              name={linkCopied ? 'check' : 'link'}
               size="sm"
-              tooltip="Copy workshop link"
+              tooltip={linkCopied ? 'Copied!' : 'Copy workshop link'}
               onClick={handleCopyWorkshopLink}
               aria-label="Copy workshop link"
             />

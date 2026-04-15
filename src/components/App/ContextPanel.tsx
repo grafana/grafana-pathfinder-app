@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { Button } from '@grafana/ui';
 import { CombinedLearningJourneyPanel } from 'components/docs-panel/docs-panel';
 import { getConfigWithDefaults } from '../../constants';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
@@ -22,21 +21,21 @@ export default function MemoizedContextPanel() {
     };
   }, []);
 
-  // When floating mode is active, show a prompt instead of the full sidebar
+  // If the sidebar mounts while floating mode is active (user clicked
+  // the help icon, or Grafana restored docked state), switch to sidebar
+  // mode. The user opened the sidebar so they want it — don't fight it.
+  useEffect(() => {
+    if (mode === 'floating') {
+      panelModeManager.restoreSidebarTabSnapshot();
+      CombinedLearningJourneyPanel.resetTabRestorationGuard();
+      panelModeManager.setMode('sidebar');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
+
   if (mode === 'floating') {
-    return (
-      <div style={{ padding: 16, textAlign: 'center' }}>
-        <p style={{ marginBottom: 8 }}>Guide is in floating panel mode.</p>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="gf-layout-simple"
-          onClick={() => panelModeManager.setMode('sidebar')}
-        >
-          Switch to sidebar
-        </Button>
-      </div>
-    );
+    // Render nothing while the mode switch propagates
+    return null;
   }
 
   return <SidebarContent pluginJsonData={pluginContext?.meta?.jsonData} />;
