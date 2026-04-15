@@ -58,7 +58,7 @@ export interface PackageOpenInfo {
 export interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
   onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
-  onOpenDevTools?: () => void;
+  onOpenEditor?: () => void;
 }
 
 /**

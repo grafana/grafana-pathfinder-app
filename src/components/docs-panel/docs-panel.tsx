@@ -407,9 +407,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
     }
 
-    // Check if only default tabs remain (recommendations and possibly devtools)
+    // Check if only default tabs remain (recommendations and permanent utility tabs)
     // If so, always default to recommendations
-    const onlyDefaultTabsRemaining = newTabs.every((t) => t.id === 'recommendations' || t.id === 'devtools');
+    const onlyDefaultTabsRemaining = newTabs.every(
+      (t) => t.id === 'recommendations' || t.id === 'devtools' || t.id === 'editor'
+    );
     if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations') {
       newActiveTabId = 'recommendations';
     }
