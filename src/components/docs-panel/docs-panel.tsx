@@ -202,7 +202,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  private async saveTabsToStorage(): Promise<void> {
+  public async saveTabsToStorage(): Promise<void> {
     try {
       // Save user-opened tabs and devtools tab (devtools persists across refreshes)
       // Recommendations is a permanent tab and doesn't need persistence
@@ -888,10 +888,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     if (missing.length > 0 || hasStaleEditorTab) {
       let updatedTabs = hasStaleEditorTab ? tabs.filter((t) => t.id !== 'editor') : tabs;
       updatedTabs = [...updatedTabs, ...missing];
-      model.setState({ tabs: updatedTabs });
 
+      const patch: Partial<CombinedPanelState> = { tabs: updatedTabs };
       if (hasStaleEditorTab && model.state.activeTabId === 'editor') {
-        model.setState({ activeTabId: 'recommendations' });
+        patch.activeTabId = 'recommendations';
+      }
+      model.setState(patch);
+
+      if (hasStaleEditorTab) {
+        model.saveTabsToStorage();
       }
     }
   }, [isDevMode, isEditorUser, tabs, model]);
