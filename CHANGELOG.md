@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.8.0
+
+### Added
+
+- **Block editor available without dev mode**: Moved the block editor out of dev tools into a dedicated editor tab, making it accessible to all users without enabling dev mode (#758)
+- **Kiosk session ID tracking**: Added session ID tracking for kiosk mode analytics (#760)
+
+### Fixed
+
+- **Combobox formfill**: Open combobox dropdown before formfill token entry to fix interactive step completion (#756)
+
+### Chore
+
+- Updated dependency sass to v1.99.0 (#735)
+- Updated dev-tools (#748)
+- Updated actions/upload-artifact digest to 043fb46 (#754)
+- Updated magefile/mage-action digest to 07f03e2 (#736)
+
 ## 2.7.2
 
 ### Added
