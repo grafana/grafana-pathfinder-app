@@ -172,7 +172,11 @@ export function FloatingPanel({
       </div>
 
       {/* Content area */}
-      {panelState === 'full' && <div className={styles.content}>{children}</div>}
+      {panelState === 'full' && (
+        <div className={styles.content} data-floating-panel-scroll>
+          {children}
+        </div>
+      )}
 
       {/* Footer — step navigation */}
       {panelState === 'full' && footer && <div className={styles.footer}>{footer}</div>}

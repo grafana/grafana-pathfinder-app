@@ -56,10 +56,12 @@ export function FloatingPanelContent({ content, onGuideComplete }: FloatingPanel
     }
   }, [content, nav.hasInteractiveSections, nav.currentStep, nav.currentStepIndex]);
 
-  // Scroll to top when step changes
+  // Scroll to top when step changes — target the outer scroll container
+  // (FloatingPanel's styles.content div, marked with data-floating-panel-scroll)
   useEffect(() => {
-    if (contentRef.current) {
-      contentRef.current.scrollTop = 0;
+    const scrollContainer = contentRef.current?.closest('[data-floating-panel-scroll]');
+    if (scrollContainer) {
+      scrollContainer.scrollTop = 0;
     }
   }, [nav.currentStepIndex]);
 
@@ -73,7 +75,7 @@ export function FloatingPanelContent({ content, onGuideComplete }: FloatingPanel
 
   return (
     <>
-      <div ref={contentRef} style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div ref={contentRef}>
         <ContentRenderer
           key={stepContent.url}
           content={stepContent}
