@@ -3,6 +3,7 @@ import { usePluginContext } from '@grafana/data';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { usePendingGuideLaunch } from '../../hooks';
+import { useUserStorage } from '../../lib/user-storage';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults } from '../../constants';
@@ -49,6 +50,10 @@ export function FloatingPanelManager() {
 function FloatingPanelInner() {
   const pluginContext = usePluginContext();
 
+  // Initialize user storage — must be called before any storage operations
+  // (same requirement as CombinedPanelRendererInner in the sidebar)
+  useUserStorage();
+
   // Poll for MCP guide launches (same as ContextPanel does for sidebar)
   usePendingGuideLaunch();
 
@@ -73,6 +78,29 @@ function FloatingPanelInner() {
     };
   }, [panel]);
 
+  // Restore tabs from storage on mount (same as CombinedPanelRendererInner).
+  // This handles the page-refresh case where mode is persisted but guide state
+  // lives in tabStorage. If no tabs restore AND no pending guide was opened,
+  // fall back to sidebar mode — an empty floating panel is never useful.
+  const { tabs, activeTabId } = panel.useState();
+
+  useEffect(() => {
+    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
+    if (hasOnlyDefaultTabs) {
+      panel.restoreTabsAsync().then(() => {
+        // After restoration, check if we actually have a guide to show
+        const restored = panel.state.tabs;
+        const restoredActive = restored.find((t) => t.id === panel.state.activeTabId);
+        const hasGuide = restoredActive && restoredActive.id !== 'recommendations';
+        if (!hasGuide) {
+          // Nothing to show — fall back to sidebar mode
+          panelModeManager.setMode('sidebar');
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
+
   // Listen for auto-launch-tutorial events (same as docs-panel)
   useEffect(() => {
     const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string }>) => {
@@ -87,7 +115,6 @@ function FloatingPanelInner() {
   }, [panel]);
 
   // Get active tab content
-  const { tabs, activeTabId } = panel.useState();
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const content = activeTab?.content ?? null;
   const title = activeTab?.title || 'Interactive learning';
