@@ -132,6 +132,11 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Optional source override for analytics — allows callers to identify the origin
   // of a ?doc= deep link (e.g. ?doc=foo&source=learning-hub)
   const sourceParam = urlParams.get('source');
+  const kioskSessionParam = urlParams.get('kiosk_session');
+
+  if (kioskSessionParam) {
+    (window as any).__pathfinderKioskSessionId = kioskSessionParam;
+  }
 
   // Use the source param if provided, otherwise default to 'url_param'
   const docOpenSource = sourceParam || 'url_param';
@@ -141,6 +146,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     url.searchParams.delete('doc');
     url.searchParams.delete('page');
     url.searchParams.delete('source');
+    url.searchParams.delete('kiosk_session');
     window.history.replaceState({}, '', url.toString());
 
     import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
@@ -175,6 +181,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           url.searchParams.delete('doc');
           url.searchParams.delete('page');
           url.searchParams.delete('source');
+          url.searchParams.delete('kiosk_session');
           window.history.replaceState({}, '', url.toString());
 
           sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
@@ -194,6 +201,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           url.searchParams.delete('doc');
           url.searchParams.delete('page');
           url.searchParams.delete('source');
+          url.searchParams.delete('kiosk_session');
           window.history.replaceState({}, '', url.toString());
           attemptAutoOpen(200);
         }
