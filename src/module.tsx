@@ -138,6 +138,18 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     (window as any).__pathfinderKioskSessionId = kioskSessionParam;
   }
 
+  // Check for panelMode param (e.g. ?panelMode=floating for workshop links)
+  const panelModeParam = urlParams.get('panelMode');
+  if (panelModeParam === 'floating') {
+    import('./global-state/panel-mode').then(({ panelModeManager }) => {
+      panelModeManager.setMode('floating');
+    });
+    // Strip the param so it doesn't persist across navigation
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('panelMode');
+    window.history.replaceState({}, '', cleanUrl.toString());
+  }
+
   // Use the source param if provided, otherwise default to 'url_param'
   const docOpenSource = sourceParam || 'url_param';
 
@@ -220,10 +232,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           }, 500);
         };
 
+        // Listen for either sidebar or floating panel mount
         window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
+        document.addEventListener('pathfinder-panel-mounted', dispatchAutoLaunch, { once: true });
 
         if (sidebarState.getIsSidebarMounted()) {
           window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
+          document.removeEventListener('pathfinder-panel-mounted', dispatchAutoLaunch);
           dispatchAutoLaunch();
         }
       })
@@ -262,6 +277,27 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         })
         .catch((err) => {
           console.error('[Pathfinder] Failed to load kiosk mode:', err);
+        });
+    }
+  }
+
+  // Mount floating panel manager (independent of sidebar, responds to mode events)
+  if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+    if (!document.getElementById('pathfinder-floating-root')) {
+      import('./components/floating-panel/FloatingPanelManager')
+        .then(async ({ FloatingPanelManager }) => {
+          if (document.getElementById('pathfinder-floating-root')) {
+            return;
+          }
+          const { createCompatRoot } = await import('./lib/create-root-compat');
+          const container = document.createElement('div');
+          container.id = 'pathfinder-floating-root';
+          document.body.appendChild(container);
+          const root = await createCompatRoot(container);
+          root.render(React.createElement(FloatingPanelManager));
+        })
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load floating panel:', err);
         });
     }
   }

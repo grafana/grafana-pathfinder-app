@@ -2,6 +2,7 @@ import { getAppEvents } from '@grafana/runtime';
 import { BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import pluginJson from '../plugin.json';
+import { panelModeManager } from './panel-mode';
 
 interface OpenExtensionSidebarPayload {
   pluginId: string;
@@ -65,6 +66,12 @@ class GlobalSidebarState {
 
   // Sidebar management
   public openSidebar(componentTitle: string, props?: Record<string, unknown>): void {
+    // In floating mode, notify the floating panel instead of the Grafana sidebar
+    if (panelModeManager.getMode() === 'floating') {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-open'));
+      return;
+    }
+
     this.setIsSidebarMounted(true);
 
     getAppEvents().publish(
@@ -104,11 +111,12 @@ class GlobalSidebarState {
     };
 
     if (this.getIsSidebarMounted()) {
-      // Sidebar is already open — dispatch directly (typical case from polling hook)
+      // Sidebar or floating panel is already open — dispatch directly
       dispatch();
     } else {
-      // Sidebar needs to open first — wait for mount before dispatching
+      // Wait for either sidebar or floating panel to mount before dispatching
       window.addEventListener('pathfinder-sidebar-mounted', dispatch, { once: true });
+      document.addEventListener('pathfinder-panel-mounted', dispatch, { once: true });
       this.openSidebar('Interactive learning');
     }
   }
