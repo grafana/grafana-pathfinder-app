@@ -66,9 +66,9 @@ class GlobalSidebarState {
 
   // Sidebar management
   public openSidebar(componentTitle: string, props?: Record<string, unknown>): void {
-    // In floating mode, notify the floating panel instead of the Grafana sidebar
+    // In floating mode, the panel is already mounted and listening for
+    // auto-launch-tutorial events. No sidebar open needed.
     if (panelModeManager.getMode() === 'floating') {
-      document.dispatchEvent(new CustomEvent('pathfinder-floating-open'));
       return;
     }
 
@@ -95,7 +95,15 @@ class GlobalSidebarState {
   public openWithGuide(guideId: string): void {
     this.setPendingOpenSource('mcp_launch', 'auto-open');
 
+    let dispatched = false;
     const dispatch = () => {
+      if (dispatched) {
+        return;
+      }
+      dispatched = true;
+      // Clean up both listeners
+      window.removeEventListener('pathfinder-sidebar-mounted', dispatch);
+      document.removeEventListener('pathfinder-panel-mounted', dispatch);
       // Small delay so docs-panel's useEffect listener is registered after mount
       setTimeout(() => {
         document.dispatchEvent(
@@ -111,10 +119,8 @@ class GlobalSidebarState {
     };
 
     if (this.getIsSidebarMounted()) {
-      // Sidebar or floating panel is already open — dispatch directly
       dispatch();
     } else {
-      // Wait for either sidebar or floating panel to mount before dispatching
       window.addEventListener('pathfinder-sidebar-mounted', dispatch, { once: true });
       document.addEventListener('pathfinder-panel-mounted', dispatch, { once: true });
       this.openSidebar('Interactive learning');

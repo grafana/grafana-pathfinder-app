@@ -112,10 +112,8 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
     },
   }),
 
-  /** Minimized pill state */
+  /** Minimized pill state — wrapper div handles fixed positioning */
   pill: css({
-    position: 'fixed',
-    zIndex: INTERACTIVE_Z_INDEX.FLOATING_PANEL,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -156,41 +154,5 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
 
   pillWrapper: css({
     position: 'relative',
-  }),
-
-  /** Tab dropdown in floating panel header */
-  tabDropdown: css({
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    zIndex: INTERACTIVE_Z_INDEX.FLOATING_PANEL_DROPDOWN,
-    backgroundColor: theme.colors.background.primary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.default,
-    boxShadow: theme.shadows.z3,
-    maxHeight: 200,
-    overflow: 'auto',
-  }),
-
-  tabDropdownItem: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    fontSize: theme.typography.bodySmall.fontSize,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-
-  tabDropdownItemActive: css({
-    backgroundColor: theme.colors.action.selected,
-    fontWeight: theme.typography.fontWeightMedium,
   }),
 });

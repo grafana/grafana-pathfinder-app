@@ -1,7 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton, useStyles2 } from '@grafana/ui';
-import { panelModeManager } from '../../global-state/panel-mode';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
@@ -62,11 +61,13 @@ export function FloatingPanel({
   }, []);
 
   const handleSwitchToSidebar = useCallback(() => {
-    panelModeManager.setMode('sidebar');
+    // Don't call setMode here — the manager (onSwitchToSidebar) handles
+    // the full teardown: restore tab snapshot, reset guard, THEN set mode.
     onSwitchToSidebar();
   }, [onSwitchToSidebar]);
 
   const [linkCopied, setLinkCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const handleCopyWorkshopLink = useCallback(() => {
     if (!guideUrl) {
@@ -79,7 +80,8 @@ export function FloatingPanel({
       .writeText(url.toString())
       .then(() => {
         setLinkCopied(true);
-        setTimeout(() => setLinkCopied(false), 2000);
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
         reportAppInteraction(UserInteraction.FloatingPanelCopyLink, {
           guide_url: guideUrl,
         });
@@ -100,24 +102,32 @@ export function FloatingPanel({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [panelState, handleMinimize]);
 
-  // Expose setPosition and setIsDodging for the dodge hook
-  // via a custom event interface on the panel element
+  // Dodge event handlers with timer cleanup
+  const dodgeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+
   useEffect(() => {
     const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
       setIsDodging(true);
       setPosition(e.detail.x, e.detail.y);
+      // Clear any pending dodge timers from a previous dodge
+      dodgeTimersRef.current.forEach(clearTimeout);
+      dodgeTimersRef.current = [];
       // Report move after the position transition completes
-      setTimeout(() => {
-        reportAppInteraction(UserInteraction.FloatingPanelMoved, {
-          trigger: 'highlight_dodge',
-          x: e.detail.x,
-          y: e.detail.y,
-        });
-      }, 250);
+      dodgeTimersRef.current.push(
+        setTimeout(() => {
+          reportAppInteraction(UserInteraction.FloatingPanelMoved, {
+            trigger: 'highlight_dodge',
+            x: e.detail.x,
+            y: e.detail.y,
+          });
+        }, 250)
+      );
       // Keep the border flash visible for 1s so the user notices the move
-      setTimeout(() => {
-        setIsDodging(false);
-      }, 1000);
+      dodgeTimersRef.current.push(
+        setTimeout(() => {
+          setIsDodging(false);
+        }, 1000)
+      );
     };
 
     const handleCompact = () => {
@@ -136,6 +146,9 @@ export function FloatingPanel({
       document.removeEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
       document.removeEventListener('pathfinder-floating-compact', handleCompact);
       document.removeEventListener('pathfinder-floating-restore-full', handleRestoreFull);
+      dodgeTimersRef.current.forEach(clearTimeout);
+      dodgeTimersRef.current = [];
+      clearTimeout(copyTimerRef.current);
     };
   }, [setPosition]);
 

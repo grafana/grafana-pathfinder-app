@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Portal, Badge, useStyles2 } from '@grafana/ui';
+import { Badge, useStyles2 } from '@grafana/ui';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import logoSvg from '../../img/logo.svg';
 
@@ -63,26 +63,26 @@ export function MinimizedPill({ hasActiveGuide, stepProgress, onRestore }: Minim
     }
   }, [onRestore]);
 
+  // No <Portal> needed — the parent (FloatingPanel) already renders
+  // via createPortal into document.body
   return (
-    <Portal>
-      <div className={styles.pillWrapper} style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 9990 }}>
-        <button
-          className={`${styles.pill} ${hasActiveGuide ? styles.pillActive : ''}`}
-          style={{ position: 'relative' }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          aria-label="Restore floating panel"
-          title="Click to restore floating panel"
-        >
-          <img src={logoSvg} alt="Pathfinder" className={styles.pillLogo} />
-        </button>
-        {stepProgress && (
-          <div className={styles.pillBadge}>
-            <Badge text={stepProgress} color="blue" />
-          </div>
-        )}
-      </div>
-    </Portal>
+    <div className={styles.pillWrapper} style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 9990 }}>
+      <button
+        className={`${styles.pill} ${hasActiveGuide ? styles.pillActive : ''}`}
+        style={{ position: 'relative' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        aria-label="Restore floating panel"
+        title="Click to restore floating panel"
+      >
+        <img src={logoSvg} alt="Pathfinder" className={styles.pillLogo} />
+      </button>
+      {stepProgress && (
+        <div className={styles.pillBadge}>
+          <Badge text={stepProgress} color="blue" />
+        </div>
+      )}
+    </div>
   );
 }

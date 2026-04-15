@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { FLOATING_PANEL_DODGE_MARGIN, type FloatingPanelGeometry } from '../../constants/floating-panel';
 
 /** Selectors for interactive overlay elements that the panel should dodge. */
@@ -30,7 +30,6 @@ function findDodgePosition(
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // Candidate positions: four corners of the viewport
   const candidates = [
     { x: vw - panelWidth - margin, y: vh - panelHeight - margin }, // bottom-right
     { x: margin, y: vh - panelHeight - margin }, // bottom-left
@@ -48,7 +47,6 @@ function findDodgePosition(
       height: panelHeight,
     };
 
-    // Expand highlight rect by dodge margin for clearance
     const expandedHighlight: Rect = {
       left: highlightRect.left - margin,
       top: highlightRect.top - margin,
@@ -63,7 +61,7 @@ function findDodgePosition(
     }
   }
 
-  return null; // No clear position found
+  return null;
 }
 
 /**
@@ -71,14 +69,17 @@ function findDodgePosition(
  * the floating panel to avoid overlapping them.
  *
  * Uses a MutationObserver on document.body to detect when highlight elements
- * are added/removed. When a highlight appears and overlaps the panel, it
- * dispatches events to reposition the panel to a clear quadrant.
- *
- * Decoupled from the interactive engine — the engine doesn't know about
- * the floating panel.
+ * are added/removed. Geometry is read from a ref so the observer doesn't
+ * need to be recreated when the panel moves.
  */
 export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: boolean) {
   const previousPositionRef = useRef<{ x: number; y: number } | null>(null);
+  // Store geometry in a ref so the observer callback always reads current values
+  // without the effect needing to depend on geometry (which changes during drag)
+  const geometryRef = useRef(geometry);
+  useLayoutEffect(() => {
+    geometryRef.current = geometry;
+  });
 
   useEffect(() => {
     if (isMinimized) {
@@ -86,9 +87,9 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
     }
 
     const checkAndDodge = () => {
+      const geo = geometryRef.current;
       const highlights = document.querySelectorAll(HIGHLIGHT_SELECTOR);
       if (highlights.length === 0) {
-        // No highlights — restore previous position if we dodged
         if (previousPositionRef.current) {
           document.dispatchEvent(
             new CustomEvent('pathfinder-floating-dodge', {
@@ -101,7 +102,6 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
         return;
       }
 
-      // Compute union bounding rect of all highlights
       const highlightArray = Array.from(highlights);
       const rects = highlightArray.map((el) => el.getBoundingClientRect());
       const firstRect = rects[0];
@@ -129,26 +129,24 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       union.width = union.right - union.left;
       union.height = union.bottom - union.top;
 
-      // Check if current panel position overlaps the highlight
       const panelRect: Rect = {
-        left: geometry.x,
-        top: geometry.y,
-        right: geometry.x + geometry.width,
-        bottom: geometry.y + geometry.height,
-        width: geometry.width,
-        height: geometry.height,
+        left: geo.x,
+        top: geo.y,
+        right: geo.x + geo.width,
+        bottom: geo.y + geo.height,
+        width: geo.width,
+        height: geo.height,
       };
 
       if (!rectsOverlap(panelRect, union)) {
-        return; // No overlap, nothing to do
+        return;
       }
 
-      // Save original position for later restoration
       if (!previousPositionRef.current) {
-        previousPositionRef.current = { x: geometry.x, y: geometry.y };
+        previousPositionRef.current = { x: geo.x, y: geo.y };
       }
 
-      const dodgePos = findDodgePosition(geometry.width, geometry.height, union, FLOATING_PANEL_DODGE_MARGIN);
+      const dodgePos = findDodgePosition(geo.width, geo.height, union, FLOATING_PANEL_DODGE_MARGIN);
 
       if (dodgePos) {
         document.dispatchEvent(
@@ -157,12 +155,10 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
           })
         );
       } else {
-        // No clear quadrant — collapse to compact mode
         document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
       }
     };
 
-    // Watch for highlight elements being added/removed
     const observer = new MutationObserver((mutations) => {
       let relevant = false;
       for (const mutation of mutations) {
@@ -185,19 +181,16 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
         }
       }
       if (relevant) {
-        // Small delay to let the highlight element finish positioning
         requestAnimationFrame(checkAndDodge);
       }
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
-
-    // Initial check in case highlights already exist
     checkAndDodge();
 
     return () => {
       observer.disconnect();
       previousPositionRef.current = null;
     };
-  }, [geometry.x, geometry.y, geometry.width, geometry.height, isMinimized]);
+  }, [isMinimized]); // Stable deps — geometry read from ref
 }

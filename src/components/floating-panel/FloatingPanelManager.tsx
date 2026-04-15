@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { usePluginContext } from '@grafana/data';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { usePendingGuideLaunch } from '../../hooks';
@@ -48,19 +47,23 @@ export function FloatingPanelManager() {
  * Only mounted when mode is 'floating'.
  */
 function FloatingPanelInner() {
-  const pluginContext = usePluginContext();
-
-  // Note: we do NOT call useUserStorage() here. That hook requires Grafana's
-  // plugin context (usePluginUserStorage), which isn't available in this
-  // standalone React root. Tab restoration works via localStorage fallback.
+  // Note: usePluginContext() and useUserStorage() are NOT available here.
+  // This component is rendered in a standalone React root (createCompatRoot)
+  // outside Grafana's plugin context provider tree. Read config from the
+  // global set by module.tsx instead.
 
   // Poll for MCP guide launches (same as ContextPanel does for sidebar)
   usePendingGuideLaunch();
 
   const panel = useMemo(() => {
-    const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+    const globalConfig = (window as any).__pathfinderPluginConfig;
+    const config = getConfigWithDefaults(globalConfig || {});
     return new CombinedLearningJourneyPanel(config);
-  }, [pluginContext?.meta?.jsonData]);
+  }, []); // Config is read from window global, stable for the session
+
+  // Track whether a guide open is in-flight (pending guide consumed or auto-launch received).
+  // Prevents the fallback from firing before the guide has loaded.
+  const guideOpenInFlightRef = useRef(false);
 
   // Fire panel-mounted event so auto-launch and MCP flows work
   useEffect(() => {
@@ -70,6 +73,7 @@ function FloatingPanelInner() {
     // If a guide was handed off from the sidebar (pop-out), open it now
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
+      guideOpenInFlightRef.current = true;
       panel.openDocsPage(pendingGuide.url, pendingGuide.title);
     }
 
@@ -99,6 +103,7 @@ function FloatingPanelInner() {
   // Listen for auto-launch-tutorial events (same as docs-panel)
   useEffect(() => {
     const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string }>) => {
+      guideOpenInFlightRef.current = true;
       const { url, title } = e.detail;
       panel.openDocsPage(url, title);
     };
@@ -115,12 +120,10 @@ function FloatingPanelInner() {
   const title = activeTab?.title || 'Interactive learning';
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations';
 
-  // After restoration completes, if there's no guide to show, fall back
-  // to sidebar mode. An empty floating panel is never useful.
-  // This runs reactively (not in the async callback) so it sees the
-  // latest React state after Scenes model updates have propagated.
+  // After restoration completes, if there's no guide to show and none
+  // is being loaded, fall back to sidebar mode.
   useEffect(() => {
-    if (restorationDone && !hasActiveGuide) {
+    if (restorationDone && !hasActiveGuide && !guideOpenInFlightRef.current) {
       panelModeManager.setMode('sidebar');
     }
   }, [restorationDone, hasActiveGuide]);
@@ -147,11 +150,6 @@ function FloatingPanelInner() {
     panelModeManager.setMode('sidebar');
   }, []);
 
-  const handleGuideComplete = useCallback(() => {
-    // Guide completion is handled by ContentRenderer's internal tracking
-    // and persisted via interactiveStepStorage. Nothing extra needed here.
-  }, []);
-
   return (
     <FloatingPanel
       title={title}
@@ -160,7 +158,7 @@ function FloatingPanelInner() {
       onSwitchToSidebar={handleSwitchToSidebar}
       onClose={handleClose}
     >
-      <FloatingPanelContent content={content} onGuideComplete={handleGuideComplete} />
+      <FloatingPanelContent content={content} />
     </FloatingPanel>
   );
 }
