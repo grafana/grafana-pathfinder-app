@@ -88,34 +88,6 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(1),
   }),
 
-  /** Step navigation footer */
-  footer: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    backgroundColor: theme.colors.background.secondary,
-    flexShrink: 0,
-  }),
-
-  /** Progress bar in footer */
-  progressBar: css({
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.background.canvas,
-    margin: `0 ${theme.spacing(1)}`,
-    overflow: 'hidden',
-  }),
-
-  progressFill: css({
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: theme.colors.primary.main,
-    transition: 'width 200ms ease-out',
-  }),
-
   /** Resize handle in bottom-right corner */
   resizeHandle: css({
     position: 'absolute',

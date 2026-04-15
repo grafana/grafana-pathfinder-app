@@ -24,8 +24,6 @@ export interface FloatingPanelProps {
   onClose: () => void;
   /** Content to render inside the panel */
   children: React.ReactNode;
-  /** Footer content (step navigation) */
-  footer?: React.ReactNode;
 }
 
 /**
@@ -45,7 +43,6 @@ export function FloatingPanel({
   onSwitchToSidebar,
   onClose,
   children,
-  footer,
 }: FloatingPanelProps) {
   const styles = useStyles2(getFloatingPanelStyles);
   const [panelState, setPanelState] = useState<FloatingPanelState>('full');
@@ -172,14 +169,7 @@ export function FloatingPanel({
       </div>
 
       {/* Content area */}
-      {panelState === 'full' && (
-        <div className={styles.content} data-floating-panel-scroll>
-          {children}
-        </div>
-      )}
-
-      {/* Footer — step navigation */}
-      {panelState === 'full' && footer && <div className={styles.footer}>{footer}</div>}
+      {panelState === 'full' && <div className={styles.content}>{children}</div>}
 
       {/* Resize handle */}
       {panelState === 'full' && (
