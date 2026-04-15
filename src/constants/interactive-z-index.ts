@@ -8,6 +8,8 @@
  * 4. These elements are appended to document.body, outside the normal stacking context
  */
 export const INTERACTIVE_Z_INDEX = {
+  /** Floating panel for guide content — above Grafana UI, below interactive overlays */
+  FLOATING_PANEL: 9990,
   /** Overlay that blocks interaction with specific elements during guides */
   BLOCKING_OVERLAY: 9999,
   /** Visual highlight outline around target elements */

@@ -2,6 +2,7 @@ import { getAppEvents } from '@grafana/runtime';
 import { BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import pluginJson from '../plugin.json';
+import { panelModeManager } from './panel-mode';
 
 interface OpenExtensionSidebarPayload {
   pluginId: string;
@@ -65,6 +66,12 @@ class GlobalSidebarState {
 
   // Sidebar management
   public openSidebar(componentTitle: string, props?: Record<string, unknown>): void {
+    // In floating mode, the panel is already mounted and listening for
+    // auto-launch-tutorial events. No sidebar open needed.
+    if (panelModeManager.getMode() === 'floating') {
+      return;
+    }
+
     this.setIsSidebarMounted(true);
 
     getAppEvents().publish(
@@ -88,7 +95,15 @@ class GlobalSidebarState {
   public openWithGuide(guideId: string): void {
     this.setPendingOpenSource('mcp_launch', 'auto-open');
 
+    let dispatched = false;
     const dispatch = () => {
+      if (dispatched) {
+        return;
+      }
+      dispatched = true;
+      // Clean up both listeners
+      window.removeEventListener('pathfinder-sidebar-mounted', dispatch);
+      document.removeEventListener('pathfinder-panel-mounted', dispatch);
       // Small delay so docs-panel's useEffect listener is registered after mount
       setTimeout(() => {
         document.dispatchEvent(
@@ -104,12 +119,18 @@ class GlobalSidebarState {
     };
 
     if (this.getIsSidebarMounted()) {
-      // Sidebar is already open — dispatch directly (typical case from polling hook)
       dispatch();
     } else {
-      // Sidebar needs to open first — wait for mount before dispatching
-      window.addEventListener('pathfinder-sidebar-mounted', dispatch, { once: true });
-      this.openSidebar('Interactive learning');
+      const isFloating = panelModeManager.getMode() === 'floating';
+      if (isFloating) {
+        // In floating mode, only the panel-mounted event is relevant —
+        // openSidebar is a no-op so pathfinder-sidebar-mounted won't fire.
+        document.addEventListener('pathfinder-panel-mounted', dispatch, { once: true });
+      } else {
+        window.addEventListener('pathfinder-sidebar-mounted', dispatch, { once: true });
+        document.addEventListener('pathfinder-panel-mounted', dispatch, { once: true });
+        this.openSidebar('Interactive learning');
+      }
     }
   }
 

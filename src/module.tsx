@@ -11,6 +11,7 @@ import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
+import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
 import { validateRedirectPath } from './security/url-validator';
 
@@ -61,7 +62,9 @@ const { pathfinderEnabled, mainConfig, mainVariant, after24hVariant } = experime
 
 createExperimentDebugger(mainConfig);
 
-// Check if Pathfinder was already docked (browser restore scenario)
+// Check if Pathfinder was already docked (browser restore scenario).
+// If floating mode is active, clear the docked state so Grafana doesn't
+// auto-open the sidebar on page load — the floating panel handles display.
 try {
   const dockedValue = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
   if (dockedValue) {
@@ -75,7 +78,12 @@ try {
       isPathfinderDocked = dockedValue === pluginJson.id || dockedValue === 'Interactive learning';
     }
     if (isPathfinderDocked) {
-      sidebarState.setPendingOpenSource('browser_restore', 'restore');
+      if (panelModeManager.getMode() === 'floating') {
+        // Don't restore sidebar — floating panel is active
+        localStorage.removeItem('grafana.navigation.extensionSidebarDocked');
+      } else {
+        sidebarState.setPendingOpenSource('browser_restore', 'restore');
+      }
     }
   }
 } catch {
@@ -138,6 +146,16 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     (window as any).__pathfinderKioskSessionId = kioskSessionParam;
   }
 
+  // Check for panelMode param (e.g. ?panelMode=floating for workshop links).
+  // Set synchronously so mode is active before any components mount.
+  const panelModeParam = urlParams.get('panelMode');
+  if (panelModeParam === 'floating') {
+    panelModeManager.setMode('floating');
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('panelMode');
+    window.history.replaceState({}, '', cleanUrl.toString());
+  }
+
   // Use the source param if provided, otherwise default to 'url_param'
   const docOpenSource = sourceParam || 'url_param';
 
@@ -190,40 +208,61 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         }
 
         const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
+        const isFloatingMode = panelModeManager.getMode() === 'floating';
 
         sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
 
         if (needsRedirect) {
           locationService.replace(redirectTarget);
-          attemptAutoOpen(500);
-        } else {
+        }
+
+        if (!needsRedirect) {
           const url = new URL(window.location.href);
           url.searchParams.delete('doc');
           url.searchParams.delete('page');
           url.searchParams.delete('source');
           url.searchParams.delete('kiosk_session');
           window.history.replaceState({}, '', url.toString());
-          attemptAutoOpen(200);
         }
 
+        // In floating mode, the panel mounts on its own — don't open the sidebar.
+        // In sidebar mode, open the sidebar so the guide has somewhere to render.
+        if (!isFloatingMode) {
+          attemptAutoOpen(needsRedirect ? 500 : 200);
+        }
+
+        // Guard: ensure auto-launch only fires once even if multiple mount events fire
+        let autoLaunched = false;
         const dispatchAutoLaunch = () => {
+          if (autoLaunched) {
+            return;
+          }
+          autoLaunched = true;
+          // Clean up both listeners
+          window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
+          document.removeEventListener('pathfinder-panel-mounted', dispatchAutoLaunch);
+          // Signal synchronously so the floating panel knows a guide is incoming
+          // before its fallback-to-sidebar effect can fire
+          document.dispatchEvent(new CustomEvent('pathfinder-auto-launch-pending'));
           setTimeout(() => {
-            const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-              detail: {
-                url: docsPage.url,
-                title: docsPage.title,
-                type: docsPage.type,
-                source: docOpenSource,
-              },
-            });
-            document.dispatchEvent(autoLaunchEvent);
+            document.dispatchEvent(
+              new CustomEvent('auto-launch-tutorial', {
+                detail: {
+                  url: docsPage.url,
+                  title: docsPage.title,
+                  type: docsPage.type,
+                  source: docOpenSource,
+                },
+              })
+            );
           }, 500);
         };
 
+        // Listen for whichever panel type mounts first
         window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
+        document.addEventListener('pathfinder-panel-mounted', dispatchAutoLaunch, { once: true });
 
         if (sidebarState.getIsSidebarMounted()) {
-          window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
           dispatchAutoLaunch();
         }
       })
@@ -264,6 +303,43 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           console.error('[Pathfinder] Failed to load kiosk mode:', err);
         });
     }
+  }
+
+  // Mount floating panel manager — only eagerly when floating mode is already
+  // active (page refresh or ?panelMode=floating). For sidebar→floating transitions
+  // at runtime, a mode-change listener lazily loads and mounts the manager.
+  // This avoids unconditional chunk loads that prevent networkidle on older Grafana.
+  if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+    const mountFloatingPanel = () => {
+      if (document.getElementById('pathfinder-floating-root')) {
+        return;
+      }
+      import('./components/floating-panel/FloatingPanelManager')
+        .then(async ({ FloatingPanelManager }) => {
+          if (document.getElementById('pathfinder-floating-root')) {
+            return;
+          }
+          const { createCompatRoot } = await import('./lib/create-root-compat');
+          const container = document.createElement('div');
+          container.id = 'pathfinder-floating-root';
+          document.body.appendChild(container);
+          const root = await createCompatRoot(container);
+          root.render(React.createElement(FloatingPanelManager));
+        })
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load floating panel:', err);
+        });
+    };
+
+    if (panelModeManager.getMode() === 'floating') {
+      mountFloatingPanel();
+    }
+
+    document.addEventListener('pathfinder-panel-mode-change', ((e: CustomEvent<{ mode: string }>) => {
+      if (e.detail.mode === 'floating') {
+        mountFloatingPanel();
+      }
+    }) as EventListener);
   }
 
   // Skip experiment auto-open when a ?doc= param is present — the doc-param

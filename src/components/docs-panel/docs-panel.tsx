@@ -80,6 +80,7 @@ import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } 
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
+import { panelModeManager } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
@@ -117,6 +118,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * even across model instances (which can be recreated by Scenes framework).
    */
   private static _hasRestoredTabs = false;
+
+  /**
+   * Reset the tab restoration guard so a new model instance can restore tabs.
+   * Called when switching display modes (floating ↔ sidebar) because each mode
+   * creates its own model instance that needs to restore independently.
+   */
+  public static resetTabRestorationGuard(): void {
+    CombinedLearningJourneyPanel._hasRestoredTabs = false;
+  }
 
   public get renderBeforeActivation(): boolean {
     return true;
@@ -1239,6 +1249,34 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     };
   }, [model]);
 
+  // Pop-out to floating panel: hand off the active guide before switching modes
+  useEffect(() => {
+    const handlePopOut = () => {
+      const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
+      const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
+      const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
+
+      if (activeTab && activeTab.id !== 'recommendations' && guideUrl) {
+        panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
+      }
+
+      reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
+        guide_url: guideUrl || '',
+        guide_title: activeTab?.title || '',
+      });
+
+      // Snapshot sidebar tabs before switching — the floating panel's model
+      // will overwrite tabStorage via openDocsPage → saveTabsToStorage
+      panelModeManager.snapshotSidebarTabs();
+      panelModeManager.setMode('floating');
+    };
+
+    document.addEventListener('pathfinder-request-pop-out', handlePopOut);
+    return () => {
+      document.removeEventListener('pathfinder-request-pop-out', handlePopOut);
+    };
+  }, [model]);
+
   // Scroll tracking
   useEffect(() => {
     // Only set up scroll tracking for actual content tabs (not recommendations)
@@ -1794,6 +1832,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                         </button>
                       )}
+                      <button
+                        className={styles.secondaryActionButton}
+                        aria-label="Pop out to floating panel"
+                        title="Pop out guide to a floating panel"
+                        onClick={() => {
+                          document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
+                        }}
+                      >
+                        <Icon name="corner-up-right" size="sm" />
+                        <span>Pop out</span>
+                      </button>
                       <Dropdown
                         placement="bottom-end"
                         overlay={
@@ -1976,6 +2025,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                           </button>
                         )}
+                        <button
+                          className={styles.secondaryActionButton}
+                          aria-label="Pop out to floating panel"
+                          title="Pop out guide to a floating panel"
+                          onClick={() => {
+                            document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
+                          }}
+                        >
+                          <Icon name="corner-up-right" size="sm" />
+                          <span>Pop out</span>
+                        </button>
                         <Dropdown
                           placement="bottom-end"
                           overlay={
