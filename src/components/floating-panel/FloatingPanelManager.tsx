@@ -62,10 +62,16 @@ function FloatingPanelInner() {
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
 
+    // If a guide was handed off from the sidebar (pop-out), open it now
+    const pendingGuide = panelModeManager.consumePendingGuide();
+    if (pendingGuide) {
+      panel.openDocsPage(pendingGuide.url, pendingGuide.title);
+    }
+
     return () => {
       sidebarState.setIsSidebarMounted(false);
     };
-  }, []);
+  }, [panel]);
 
   // Listen for auto-launch-tutorial events (same as docs-panel)
   useEffect(() => {

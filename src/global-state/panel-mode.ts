@@ -4,6 +4,11 @@ import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../
 
 export type PanelMode = 'sidebar' | 'floating';
 
+export interface PendingGuide {
+  url: string;
+  title: string;
+}
+
 /**
  * Global state manager for the panel display mode.
  *
@@ -12,6 +17,7 @@ export type PanelMode = 'sidebar' | 'floating';
  * to localStorage and coordinates mode transitions by dispatching events.
  */
 class PanelModeManager {
+  private _pendingGuide: PendingGuide | null = null;
   /**
    * Get the current panel mode from localStorage.
    * Defaults to 'sidebar' for backward compatibility.
@@ -81,6 +87,24 @@ class PanelModeManager {
    */
   public setPanelGeometry(geometry: FloatingPanelGeometry): void {
     localStorage.setItem(StorageKeys.FLOATING_PANEL_GEOMETRY, JSON.stringify(geometry));
+  }
+
+  /**
+   * Store a guide to be opened when the floating panel mounts.
+   * Called before setMode('floating') to hand off the active guide
+   * from the sidebar to the floating panel.
+   */
+  public setPendingGuide(guide: PendingGuide): void {
+    this._pendingGuide = guide;
+  }
+
+  /**
+   * Consume and clear the pending guide. Returns null if none was set.
+   */
+  public consumePendingGuide(): PendingGuide | null {
+    const guide = this._pendingGuide;
+    this._pendingGuide = null;
+    return guide;
   }
 }
 

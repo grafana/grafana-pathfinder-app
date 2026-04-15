@@ -76,6 +76,16 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
     document.dispatchEvent(new CustomEvent('pathfinder-open-kiosk'));
   };
 
+  const handlePopOut = () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'pop_out',
+      source: 'header_pop_out_button',
+    });
+    // Dispatch event so the parent (docs-panel), which owns the model,
+    // can grab the active guide URL before switching to floating mode
+    document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
+  };
+
   return (
     <div className={className}>
       {kioskEnabled && (
@@ -127,6 +137,13 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
           tooltip={t('docsPanel.menuTooltip', 'More options')}
         />
       </Dropdown>
+      <IconButton
+        name="external-link-alt"
+        size="sm"
+        tooltip="Pop out to floating panel"
+        onClick={handlePopOut}
+        aria-label="Pop out to floating panel"
+      />
       <IconButton
         name="times"
         size="sm"

@@ -80,6 +80,7 @@ import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } 
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
+import { panelModeManager } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
@@ -1236,6 +1237,28 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
     return () => {
       document.removeEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
+    };
+  }, [model]);
+
+  // Pop-out to floating panel: hand off the active guide before switching modes
+  useEffect(() => {
+    const handlePopOut = () => {
+      const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
+      const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
+
+      if (activeTab && activeTab.id !== 'recommendations') {
+        const guideUrl = activeTab.baseUrl || activeTab.currentUrl;
+        if (guideUrl) {
+          panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
+        }
+      }
+
+      panelModeManager.setMode('floating');
+    };
+
+    document.addEventListener('pathfinder-request-pop-out', handlePopOut);
+    return () => {
+      document.removeEventListener('pathfinder-request-pop-out', handlePopOut);
     };
   }, [model]);
 
