@@ -106,15 +106,18 @@ export function FloatingPanel({
     const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
       setIsDodging(true);
       setPosition(e.detail.x, e.detail.y);
-      // Clear dodging animation class after transition, then report
+      // Report move after the position transition completes
       setTimeout(() => {
-        setIsDodging(false);
         reportAppInteraction(UserInteraction.FloatingPanelMoved, {
           trigger: 'highlight_dodge',
           x: e.detail.x,
           y: e.detail.y,
         });
       }, 250);
+      // Keep the border flash visible for 1s so the user notices the move
+      setTimeout(() => {
+        setIsDodging(false);
+      }, 1000);
     };
 
     const handleCompact = () => {

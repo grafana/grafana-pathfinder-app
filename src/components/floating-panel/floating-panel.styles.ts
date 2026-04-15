@@ -23,7 +23,7 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     boxShadow: theme.shadows.z3,
     overflow: 'hidden',
-    transition: 'box-shadow 0.2s ease',
+    transition: 'box-shadow 300ms ease, border-color 300ms ease',
 
     '&:hover': {
       boxShadow: `${theme.shadows.z3}, 0 0 0 1px ${theme.colors.border.medium}`,
@@ -32,7 +32,9 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
 
   /** Animated position transition used during highlight dodge */
   panelDodging: css({
-    transition: 'left 200ms ease-out, top 200ms ease-out, box-shadow 0.2s ease',
+    transition: 'left 200ms ease-out, top 200ms ease-out, box-shadow 300ms ease, border-color 300ms ease',
+    borderColor: theme.colors.warning.border,
+    boxShadow: `${theme.shadows.z3}, 0 0 6px ${theme.colors.warning.transparent}`,
   }),
 
   /** Header bar — drag handle */
