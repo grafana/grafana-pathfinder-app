@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { FLOATING_PANEL_DODGE_MARGIN } from '../../constants/floating-panel';
-import type { FloatingPanelGeometry } from '../../constants/floating-panel';
+import { FLOATING_PANEL_DODGE_MARGIN, type FloatingPanelGeometry } from '../../constants/floating-panel';
 
 /** Selectors for interactive overlay elements that the panel should dodge. */
 const HIGHLIGHT_SELECTOR = '.interactive-highlight-outline, .interactive-comment-box';
@@ -103,26 +102,32 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       }
 
       // Compute union bounding rect of all highlights
-      let union: Rect | null = null;
-      highlights.forEach((el) => {
-        const r = el.getBoundingClientRect();
-        if (!union) {
-          union = { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
-        } else {
-          union.left = Math.min(union.left, r.left);
-          union.top = Math.min(union.top, r.top);
-          union.right = Math.max(union.right, r.right);
-          union.bottom = Math.max(union.bottom, r.bottom);
-        }
-      });
-      if (union) {
-        union.width = union.right - union.left;
-        union.height = union.bottom - union.top;
-      }
-
-      if (!union) {
+      const highlightArray = Array.from(highlights);
+      const rects = highlightArray.map((el) => el.getBoundingClientRect());
+      const firstRect = rects[0];
+      if (!firstRect) {
         return;
       }
+      const union: Rect = {
+        left: firstRect.left,
+        top: firstRect.top,
+        right: firstRect.right,
+        bottom: firstRect.bottom,
+        width: firstRect.width,
+        height: firstRect.height,
+      };
+      for (let i = 1; i < rects.length; i++) {
+        const r = rects[i];
+        if (!r) {
+          continue;
+        }
+        union.left = Math.min(union.left, r.left);
+        union.top = Math.min(union.top, r.top);
+        union.right = Math.max(union.right, r.right);
+        union.bottom = Math.max(union.bottom, r.bottom);
+      }
+      union.width = union.right - union.left;
+      union.height = union.bottom - union.top;
 
       // Check if current panel position overlaps the highlight
       const panelRect: Rect = {

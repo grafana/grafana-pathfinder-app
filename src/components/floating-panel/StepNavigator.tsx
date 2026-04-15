@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { isJsonGuideContent, parseJsonGuide } from '../../docs-retrieval/json-parser';
+import { isJsonGuideContent } from '../../docs-retrieval';
 import type { RawContent } from '../../types/content.types';
 import type { JsonGuide, JsonBlock } from '../../types/json-guide.types';
 

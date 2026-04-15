@@ -1,12 +1,12 @@
 import React, { useRef, useMemo } from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
-import { ContentRenderer } from '../../docs-retrieval/content-renderer';
+import { ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { useStepNavigator } from './StepNavigator';
 import type { RawContent } from '../../types/content.types';
-import type { JsonGuide, JsonBlock } from '../../types/json-guide.types';
+import type { JsonGuide } from '../../types/json-guide.types';
 
 interface FloatingPanelContentProps {
   /** The guide content to render */
