@@ -86,6 +86,7 @@ function FloatingPanelInner() {
   const content = activeTab?.content ?? null;
   const title = activeTab?.title || 'Interactive learning';
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations';
+  const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
 
   const handleSwitchToSidebar = useCallback(() => {
     sidebarState.openSidebar('Interactive learning');
@@ -104,6 +105,7 @@ function FloatingPanelInner() {
     <FloatingPanel
       title={title}
       hasActiveGuide={hasActiveGuide}
+      guideUrl={guideUrl}
       onSwitchToSidebar={handleSwitchToSidebar}
       onClose={handleClose}
     >

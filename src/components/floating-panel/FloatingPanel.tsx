@@ -16,6 +16,8 @@ export interface FloatingPanelProps {
   hasActiveGuide: boolean;
   /** Step progress info for the pill badge */
   stepProgress?: string;
+  /** URL of the currently active guide (for workshop link) */
+  guideUrl?: string;
   /** Called when user clicks dock-to-sidebar button */
   onSwitchToSidebar: () => void;
   /** Called when user closes the floating panel entirely */
@@ -38,6 +40,7 @@ export interface FloatingPanelProps {
 export function FloatingPanel({
   title,
   hasActiveGuide,
+  guideUrl,
   stepProgress,
   onSwitchToSidebar,
   onClose,
@@ -64,6 +67,18 @@ export function FloatingPanel({
     panelModeManager.setMode('sidebar');
     onSwitchToSidebar();
   }, [onSwitchToSidebar]);
+
+  const handleCopyWorkshopLink = useCallback(() => {
+    if (!guideUrl) {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set('doc', guideUrl);
+    url.searchParams.set('panelMode', 'floating');
+    navigator.clipboard.writeText(url.toString()).catch(() => {
+      // Fallback: silently fail — clipboard may be unavailable
+    });
+  }, [guideUrl]);
 
   // Keyboard: Escape minimizes
   useEffect(() => {
@@ -135,6 +150,15 @@ export function FloatingPanel({
         </span>
         {stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
         <div className={styles.headerActions}>
+          {guideUrl && (
+            <IconButton
+              name="link"
+              size="sm"
+              tooltip="Copy workshop link"
+              onClick={handleCopyWorkshopLink}
+              aria-label="Copy workshop link"
+            />
+          )}
           <IconButton
             name="gf-layout-simple"
             size="sm"
