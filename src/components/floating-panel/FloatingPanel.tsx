@@ -7,7 +7,7 @@ import { useDragResize } from './useDragResize';
 import { useHighlightDodge } from './useHighlightDodge';
 import { MinimizedPill } from './MinimizedPill';
 
-export type FloatingPanelState = 'full' | 'compact' | 'minimized';
+type FloatingPanelState = 'full' | 'compact' | 'minimized';
 
 export interface FloatingPanelProps {
   /** Title of the currently active guide/tab */

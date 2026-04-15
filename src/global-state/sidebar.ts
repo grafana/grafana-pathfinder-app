@@ -121,9 +121,16 @@ class GlobalSidebarState {
     if (this.getIsSidebarMounted()) {
       dispatch();
     } else {
-      window.addEventListener('pathfinder-sidebar-mounted', dispatch, { once: true });
-      document.addEventListener('pathfinder-panel-mounted', dispatch, { once: true });
-      this.openSidebar('Interactive learning');
+      const isFloating = panelModeManager.getMode() === 'floating';
+      if (isFloating) {
+        // In floating mode, only the panel-mounted event is relevant —
+        // openSidebar is a no-op so pathfinder-sidebar-mounted won't fire.
+        document.addEventListener('pathfinder-panel-mounted', dispatch, { once: true });
+      } else {
+        window.addEventListener('pathfinder-sidebar-mounted', dispatch, { once: true });
+        document.addEventListener('pathfinder-panel-mounted', dispatch, { once: true });
+        this.openSidebar('Interactive learning');
+      }
     }
   }
 

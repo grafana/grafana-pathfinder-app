@@ -28,7 +28,7 @@ function clampToViewport(x: number, y: number, width: number, height: number): {
  * Uses pointer capture for smooth cross-element tracking.
  * Persists final position to PanelModeManager on release.
  */
-export function useDrag(
+function useDrag(
   geometry: FloatingPanelGeometry,
   setGeometry: React.Dispatch<React.SetStateAction<FloatingPanelGeometry>>
 ) {
@@ -92,7 +92,7 @@ export function useDrag(
  * Enforces min/max dimension constraints from constants.
  * Persists final geometry to PanelModeManager on release.
  */
-export function useResize(
+function useResize(
   geometry: FloatingPanelGeometry,
   setGeometry: React.Dispatch<React.SetStateAction<FloatingPanelGeometry>>
 ) {

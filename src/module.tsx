@@ -241,6 +241,9 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           // Clean up both listeners
           window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
           document.removeEventListener('pathfinder-panel-mounted', dispatchAutoLaunch);
+          // Signal synchronously so the floating panel knows a guide is incoming
+          // before its fallback-to-sidebar effect can fire
+          document.dispatchEvent(new CustomEvent('pathfinder-auto-launch-pending'));
           setTimeout(() => {
             document.dispatchEvent(
               new CustomEvent('auto-launch-tutorial', {

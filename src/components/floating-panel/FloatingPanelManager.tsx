@@ -67,6 +67,15 @@ function FloatingPanelInner() {
 
   // Fire panel-mounted event so auto-launch and MCP flows work
   useEffect(() => {
+    // Catch the synchronous signal from module.tsx's dispatchAutoLaunch —
+    // this fires within the same microtask as pathfinder-panel-mounted,
+    // preventing the fallback-to-sidebar effect from racing the 500ms
+    // delayed auto-launch-tutorial event.
+    const handlePending = () => {
+      guideOpenInFlightRef.current = true;
+    };
+    document.addEventListener('pathfinder-auto-launch-pending', handlePending, { once: true });
+
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
 
@@ -78,6 +87,7 @@ function FloatingPanelInner() {
     }
 
     return () => {
+      document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
       sidebarState.setIsSidebarMounted(false);
     };
   }, [panel]);
