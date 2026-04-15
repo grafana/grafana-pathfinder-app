@@ -4,6 +4,7 @@ import { IconButton, useStyles2 } from '@grafana/ui';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
+import { useHighlightDodge } from './useHighlightDodge';
 import { MinimizedPill } from './MinimizedPill';
 
 export type FloatingPanelState = 'full' | 'compact' | 'minimized';
@@ -47,6 +48,9 @@ export function FloatingPanel({
   const [panelState, setPanelState] = useState<FloatingPanelState>('full');
   const [isDodging, setIsDodging] = useState(false);
   const { geometry, setPosition, drag, resize } = useDragResize();
+
+  // Auto-reposition when interactive highlights overlap the panel
+  useHighlightDodge(geometry, panelState === 'minimized');
 
   const handleMinimize = useCallback(() => {
     setPanelState('minimized');
