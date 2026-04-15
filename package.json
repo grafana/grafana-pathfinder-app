@@ -48,7 +48,7 @@
   "license": "AGPL-3.0",
   "devDependencies": {
     "@grafana/eslint-config": "^9.0.0",
-    "@grafana/faro-webpack-plugin": "^0.10.0",
+    "@grafana/faro-webpack-plugin": "^0.11.0",
     "@grafana/plugin-e2e": "^3.4.0",
     "@grafana/tsconfig": "^2.0.1",
     "@jest/test-sequencer": "^30.2.0",
@@ -87,7 +87,7 @@
     "jest-environment-jsdom": "^30.2.0",
     "lint-staged": "^16.2.7",
     "peer": "^1.0.2",
-    "prettier": "3.8.1",
+    "prettier": "3.8.2",
     "replace-in-file-webpack-plugin": "^1.0.6",
     "sass": "1.98.0",
     "sass-loader": "16.0.7",
