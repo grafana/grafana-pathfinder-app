@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.9.0
+
+### Added
+
+- **Floating panel mode**: Pop guides out of the sidebar into a free-floating, resizable panel that can be repositioned anywhere on screen (#764)
+
 ## 2.8.0
 
 ### Added
