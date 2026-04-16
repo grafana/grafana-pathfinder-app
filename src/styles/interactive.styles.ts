@@ -1507,7 +1507,7 @@ export const addGlobalInteractiveStyles = () => {
     }
     /* Global interactive highlight styles */
     .interactive-highlight-outline {
-      position: absolute;
+      position: fixed;
       top: var(--highlight-top);
       left: var(--highlight-left);
       width: var(--highlight-width);
@@ -1544,7 +1544,7 @@ export const addGlobalInteractiveStyles = () => {
 
     /* Hover highlight for element inspector (watch/record mode) */
     .interactive-hover-highlight-outline {
-      position: absolute;
+      position: fixed;
       top: var(--highlight-top);
       left: var(--highlight-left);
       width: var(--highlight-width);
@@ -1621,7 +1621,7 @@ export const addGlobalInteractiveStyles = () => {
      * Threshold defined in INTERACTIVE_CONFIG.highlighting.minDimensionForBox
      */
     .interactive-highlight-dot {
-      position: absolute;
+      position: fixed;
       top: var(--highlight-top);
       left: var(--highlight-left);
       width: 16px;
@@ -1757,7 +1757,7 @@ export const addGlobalInteractiveStyles = () => {
      * top and left are set directly in JS via inline styles
      */
     .interactive-comment-box {
-      position: absolute;
+      position: fixed;
       /* top and left are set via inline styles in navigation-manager.ts */
       width: 420px;
       max-width: calc(100vw - 32px);

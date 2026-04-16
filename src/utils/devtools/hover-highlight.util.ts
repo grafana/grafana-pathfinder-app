@@ -37,12 +37,10 @@ export function createHoverHighlight(element: HTMLElement): HTMLElement {
  */
 export function updateHoverHighlight(highlight: HTMLElement, element: HTMLElement): void {
   const rect = element.getBoundingClientRect();
-  const scrollTop = window.scrollY || document.documentElement.scrollTop;
-  const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
-  // Set CSS custom properties for positioning
-  highlight.style.setProperty('--highlight-top', `${rect.top + scrollTop}px`);
-  highlight.style.setProperty('--highlight-left', `${rect.left + scrollLeft}px`);
+  // Set CSS custom properties for positioning (viewport coords for position:fixed)
+  highlight.style.setProperty('--highlight-top', `${rect.top}px`);
+  highlight.style.setProperty('--highlight-left', `${rect.left}px`);
   highlight.style.setProperty('--highlight-width', `${rect.width}px`);
   highlight.style.setProperty('--highlight-height', `${rect.height}px`);
 }
