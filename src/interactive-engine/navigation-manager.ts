@@ -159,23 +159,20 @@ export class NavigationManager {
       const highlightTop = parseFloat(highlightStyle.getPropertyValue('--highlight-top')) || 0;
       const highlightLeft = parseFloat(highlightStyle.getPropertyValue('--highlight-left')) || 0;
 
-      // Calculate highlight center (accounting for scroll)
-      const scrollTop = window.scrollY || document.documentElement.scrollTop;
-      const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
-
+      // Calculate highlight center in viewport coords (position:fixed, no scroll offsets)
       let highlightCenterX: number;
       let highlightCenterY: number;
 
       if (this.driftDetectionIsDotMode) {
         // For dot mode, highlight position IS the center (dot is centered at that point)
-        highlightCenterX = highlightLeft - scrollLeft;
-        highlightCenterY = highlightTop - scrollTop;
+        highlightCenterX = highlightLeft;
+        highlightCenterY = highlightTop;
       } else {
         // For bounding box, calculate center from dimensions
         const highlightWidth = parseFloat(highlightStyle.getPropertyValue('--highlight-width')) || 0;
         const highlightHeight = parseFloat(highlightStyle.getPropertyValue('--highlight-height')) || 0;
-        highlightCenterX = highlightLeft - scrollLeft + highlightWidth / 2;
-        highlightCenterY = highlightTop - scrollTop + highlightHeight / 2;
+        highlightCenterX = highlightLeft + highlightWidth / 2;
+        highlightCenterY = highlightTop + highlightHeight / 2;
       }
 
       // Calculate drift distance
@@ -186,27 +183,22 @@ export class NavigationManager {
       // If drift exceeds threshold, update position immediately
       if (totalDrift > driftThreshold) {
         if (this.driftDetectionIsDotMode) {
-          // Update dot position at element center
-          const dotTop = elementRect.top + scrollTop + elementRect.height / 2;
-          const dotLeft = elementRect.left + scrollLeft + elementRect.width / 2;
+          // Update dot position at element center (viewport coords)
+          const dotTop = elementRect.top + elementRect.height / 2;
+          const dotLeft = elementRect.left + elementRect.width / 2;
           highlightStyle.setProperty('--highlight-top', `${dotTop}px`);
           highlightStyle.setProperty('--highlight-left', `${dotLeft}px`);
         } else {
-          // Update bounding box position
-          highlightStyle.setProperty('--highlight-top', `${elementRect.top + scrollTop - 4}px`);
-          highlightStyle.setProperty('--highlight-left', `${elementRect.left + scrollLeft - 4}px`);
+          // Update bounding box position (viewport coords)
+          highlightStyle.setProperty('--highlight-top', `${elementRect.top - 4}px`);
+          highlightStyle.setProperty('--highlight-left', `${elementRect.left - 4}px`);
           highlightStyle.setProperty('--highlight-width', `${elementRect.width + 8}px`);
           highlightStyle.setProperty('--highlight-height', `${elementRect.height + 8}px`);
         }
 
-        // Update comment box position (always body-attached, always absolute)
+        // Update comment box position (body-attached, position:fixed)
         if (this.driftDetectionComment) {
-          const highlightRect = this.calculateHighlightRect(
-            elementRect,
-            scrollTop,
-            scrollLeft,
-            this.driftDetectionIsDotMode
-          );
+          const highlightRect = this.calculateHighlightRect(elementRect, this.driftDetectionIsDotMode);
 
           const commentHeight = this.driftDetectionComment.offsetHeight;
           const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
@@ -241,33 +233,29 @@ export class NavigationManager {
   }
 
   /**
-   * Calculate highlight rect in absolute document coordinates.
+   * Calculate highlight rect in viewport coordinates (for position:fixed overlays).
    * For dot mode, returns a zero-dimension rect at element center.
    * For bounding box, returns padded rect around element.
    *
-   * @param rect - The element's bounding client rect
-   * @param scrollTop - Current vertical scroll offset
-   * @param scrollLeft - Current horizontal scroll offset
+   * @param rect - The element's bounding client rect (already in viewport coords)
    * @param isDotMode - Whether using dot indicator (true) or bounding box (false)
-   * @returns Highlight rect with top, left, width, height in document coordinates
+   * @returns Highlight rect with top, left, width, height in viewport coordinates
    */
   private calculateHighlightRect(
     rect: DOMRect,
-    scrollTop: number,
-    scrollLeft: number,
     isDotMode: boolean
   ): { top: number; left: number; width: number; height: number } {
     if (isDotMode) {
       return {
-        top: rect.top + scrollTop + rect.height / 2,
-        left: rect.left + scrollLeft + rect.width / 2,
+        top: rect.top + rect.height / 2,
+        left: rect.left + rect.width / 2,
         width: 0,
         height: 0,
       };
     }
     return {
-      top: rect.top + scrollTop - 4,
-      left: rect.left + scrollLeft - 4,
+      top: rect.top - 4,
+      left: rect.left - 4,
       width: rect.width + 8,
       height: rect.height + 8,
     };
@@ -310,13 +298,13 @@ export class NavigationManager {
         }
 
         const rect = element.getBoundingClientRect();
-        const scrollTop = window.scrollY || document.documentElement.scrollTop;
-        const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
         // Check for invalid positions:
         // 1. Element has collapsed to 0,0 (disappeared)
         // 2. Element is at top-left corner (0,0) with no scroll offset
         // 3. Element has zero or near-zero dimensions (skip for dot mode - dots work with any dimensions)
+        const scrollTop = window.scrollY || document.documentElement.scrollTop;
+        const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
         const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
         const hasNoDimensions = rect.width < 1 || rect.height < 1;
 
@@ -336,24 +324,24 @@ export class NavigationManager {
           commentBox.style.display = '';
         }
 
-        // Update highlight position based on mode
+        // Update highlight position based on mode (viewport coords for position:fixed)
         if (isDotMode) {
           // For dots, position at element's center
-          const dotTop = rect.top + scrollTop + rect.height / 2;
-          const dotLeft = rect.left + scrollLeft + rect.width / 2;
+          const dotTop = rect.top + rect.height / 2;
+          const dotLeft = rect.left + rect.width / 2;
           highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
           highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
         } else {
           // For bounding box, position with 4px padding
-          highlightElement.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-          highlightElement.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+          highlightElement.style.setProperty('--highlight-top', `${rect.top - 4}px`);
+          highlightElement.style.setProperty('--highlight-left', `${rect.left - 4}px`);
           highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
           highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
         }
 
-        // Update comment box position (always body-attached, always absolute)
+        // Update comment box position (body-attached, position:fixed)
         if (commentBox) {
-          const highlightRect = this.calculateHighlightRect(rect, scrollTop, scrollLeft, isDotMode);
+          const highlightRect = this.calculateHighlightRect(rect, isDotMode);
 
           const commentHeight = commentBox.offsetHeight;
           const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
@@ -661,17 +649,15 @@ export class NavigationManager {
     const highlightTarget = getVisibleHighlightTarget(element);
 
     // Position the outline around the target element using CSS custom properties
+    // All overlay elements use position:fixed, so coordinates are viewport-relative
+    // (no scroll offsets needed — getBoundingClientRect already returns viewport coords)
     const rect = highlightTarget.getBoundingClientRect();
-    const scrollTop = window.scrollY || document.documentElement.scrollTop;
-    const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
     // Check if element has no valid position at all (truly invalid)
     const hasNoPosition = rect.top === 0 && rect.left === 0 && rect.width === 0 && rect.height === 0;
     if (hasNoPosition) {
       console.warn('Cannot highlight element: invalid position or dimensions', {
         rect,
-        scrollTop,
-        scrollLeft,
       });
       return element;
     }
@@ -695,17 +681,17 @@ export class NavigationManager {
 
     if (useDotIndicator) {
       highlightElement.className = 'interactive-highlight-dot';
-      // Position at element's center
-      const dotTop = rect.top + scrollTop + rect.height / 2;
-      const dotLeft = rect.left + scrollLeft + rect.width / 2;
+      // Position at element's center (viewport coords for position:fixed)
+      const dotTop = rect.top + rect.height / 2;
+      const dotLeft = rect.left + rect.width / 2;
       highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
       highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
     } else {
       highlightElement.className = 'interactive-highlight-outline';
       // Note: We always show the highlight draw animation (looks good)
       // skipAnimations only affects the comment box transition
-      highlightElement.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-      highlightElement.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+      highlightElement.style.setProperty('--highlight-top', `${rect.top - 4}px`);
+      highlightElement.style.setProperty('--highlight-left', `${rect.left - 4}px`);
       highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
       highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
     }
@@ -725,8 +711,8 @@ export class NavigationManager {
       onNextCallback ||
       onPreviousCallback
     ) {
-      // Calculate highlight rect in absolute document coordinates
-      const highlightRect = this.calculateHighlightRect(rect, scrollTop, scrollLeft, useDotIndicator);
+      // Calculate highlight rect in viewport coordinates (position:fixed)
+      const highlightRect = this.calculateHighlightRect(rect, useDotIndicator);
 
       commentBox = this.createCommentBox(
         effectiveComment || '',
@@ -1072,13 +1058,13 @@ export class NavigationManager {
     // Calculate position offsets relative to highlight
     const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
 
-    // Convert to absolute document coordinates (always body-attached)
-    const absoluteTop = highlightRect.top + offsetY;
-    const absoluteLeft = highlightRect.left + offsetX;
+    // Convert to viewport coordinates (position:fixed overlay)
+    const fixedTop = highlightRect.top + offsetY;
+    const fixedLeft = highlightRect.left + offsetX;
 
-    commentBox.style.position = 'absolute';
-    commentBox.style.top = `${absoluteTop}px`;
-    commentBox.style.left = `${absoluteLeft}px`;
+    commentBox.style.position = 'fixed';
+    commentBox.style.top = `${fixedTop}px`;
+    commentBox.style.left = `${fixedLeft}px`;
     commentBox.setAttribute('data-position', position);
 
     return commentBox;

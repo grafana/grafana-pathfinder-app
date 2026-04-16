@@ -15,6 +15,7 @@ export { InputBlock } from './input-block';
 export { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 export { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 export { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
+export { GrotGuideBlock } from './grot-guide-block';
 
 // Shared types from centralized location
 export type {

@@ -109,6 +109,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Code block',
     description: 'Code snippet with copy and insert into editor',
   },
+  'grot-guide': {
+    type: 'grot-guide',
+    icon: '🗺️',
+    grafanaIcon: 'map-marker',
+    name: 'Grot guide',
+    description: 'Choose-your-own-adventure decision tree',
+  },
 };
 
 /**
@@ -129,6 +136,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'code-block',
   'quiz',
   'input',
+  'grot-guide',
 ];
 
 /**

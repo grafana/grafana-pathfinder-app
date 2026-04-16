@@ -17,7 +17,7 @@ import type { JsonBlock } from '../../../types/json-guide.types';
 /**
  * Container types excluded from conversion (they have nested blocks).
  */
-const CONTAINER_TYPES: ReadonlySet<BlockType> = new Set(['section', 'conditional']);
+const CONTAINER_TYPES: ReadonlySet<BlockType> = new Set(['section', 'conditional', 'grot-guide']);
 
 /**
  * All non-container block types that support conversion.

@@ -12,6 +12,7 @@ import {
   JsonQuizBlockSchema,
   JsonAssistantBlockSchema,
   JsonInputBlockSchema,
+  JsonGrotGuideBlockSchema,
   KNOWN_FIELDS,
   type InferredJsonGuide,
 } from '../types/json-guide.schema';
@@ -146,5 +147,9 @@ describe('KNOWN_FIELDS sync', () => {
 
   it('should match input schema fields', () => {
     verifyFields(JsonInputBlockSchema, 'input');
+  });
+
+  it('should match grot-guide schema fields', () => {
+    verifyFieldsFromEffects(JsonGrotGuideBlockSchema, 'grot-guide');
   });
 });
