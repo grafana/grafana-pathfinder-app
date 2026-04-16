@@ -24,10 +24,15 @@ function isGrotGuideBlock(block: JsonBlock): block is JsonGrotGuideBlock {
  * and extracts only the welcome and screens fields.
  */
 function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
-  const parsed = yaml.load(yamlContent) as any;
+  // Grot Guide YAML files use --- frontmatter delimiters which create multiple
+  // YAML documents. Parse all documents and find the one with welcome/screens.
+  const documents: any[] = [];
+  yaml.loadAll(yamlContent, (doc) => documents.push(doc));
+
+  const parsed = documents.find((doc) => doc && typeof doc === 'object' && (doc.welcome || doc.screens));
 
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Invalid YAML: expected an object');
+    throw new Error('Invalid YAML: no document found with "welcome" or "screens" fields');
   }
 
   const welcome = parsed.welcome;
