@@ -80,7 +80,7 @@ function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
           ? screen.links.map((link: any) => ({
               type: link.type,
               title: link.title ?? '',
-              linkText: link.link_text ?? link.linkText ?? '',
+              linkText: link.link_text ?? link.linkText ?? link.text ?? '',
               href: link.href ?? '',
             }))
           : undefined,

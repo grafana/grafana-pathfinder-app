@@ -405,14 +405,6 @@ export const JsonGrotGuideBlockSchema = z
   })
   .refine(
     (block) => {
-      // Validate no duplicate screen IDs
-      const ids = block.screens.map((s) => s.id);
-      return new Set(ids).size === ids.length;
-    },
-    { error: 'Screen IDs must be unique' }
-  )
-  .refine(
-    (block) => {
       // Validate all screenId references resolve to existing screens
       const screenIds = new Set(block.screens.map((s) => s.id));
       for (const cta of block.welcome.ctas) {

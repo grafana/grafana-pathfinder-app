@@ -551,7 +551,7 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(false);
     });
 
-    it('should reject grot-guide with duplicate screen IDs', () => {
+    it('should accept grot-guide with duplicate screen IDs (last-wins in component)', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Test',
@@ -571,7 +571,7 @@ describe('JsonGuideSchema', () => {
         ],
       });
       const result = validateGuideFromString(guide);
-      expect(result.isValid).toBe(false);
+      expect(result.isValid).toBe(true);
     });
 
     it('should reject grot-guide with empty screens array', () => {
