@@ -24,7 +24,6 @@ function isGrotGuideBlock(block: JsonBlock): block is JsonGrotGuideBlock {
  * and extracts only the welcome and screens fields.
  */
 function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parsed = yaml.load(yamlContent) as any;
 
   if (!parsed || typeof parsed !== 'object') {
@@ -45,7 +44,7 @@ function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
   const convertedWelcome = {
     title: welcome.title ?? '',
     body: welcome.body ?? '',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     ctas: (welcome.ctas ?? []).map((cta: any) => ({
       text: cta.text ?? '',
       screenId: cta.screen_id ?? cta.screenId ?? '',
@@ -53,14 +52,14 @@ function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
   };
 
   // Convert screens
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const convertedScreens = screens.map((screen: any) => {
     if (screen.type === 'question') {
       return {
         type: 'question' as const,
         id: screen.id ?? '',
         title: screen.title ?? '',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         options: (screen.options ?? []).map((opt: any) => ({
           text: opt.text ?? '',
           screenId: opt.screen_id ?? opt.screenId ?? '',
@@ -73,8 +72,7 @@ function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
         title: screen.title ?? '',
         body: screen.body ?? '',
         links: screen.links
-          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            screen.links.map((link: any) => ({
+          ? screen.links.map((link: any) => ({
               type: link.type,
               title: link.title ?? '',
               linkText: link.link_text ?? link.linkText ?? '',

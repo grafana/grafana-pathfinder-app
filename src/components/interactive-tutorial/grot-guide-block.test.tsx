@@ -1,7 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { GrotGuideBlock } from './grot-guide-block';
-import type { GrotGuideBlockProps } from './grot-guide-block';
+import { GrotGuideBlock, type GrotGuideBlockProps } from './grot-guide-block';
 
 // Minimal mock for @grafana/ui
 jest.mock('@grafana/ui', () => ({

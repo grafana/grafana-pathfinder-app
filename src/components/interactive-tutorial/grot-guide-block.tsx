@@ -120,6 +120,7 @@ interface WelcomeScreenProps {
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ welcome, sub, onNavigate, styles }) => (
   <div>
     <h3 className={styles.title}>{sub(welcome.title)}</h3>
+    {/* eslint-disable-next-line no-restricted-syntax -- bodyHtml is pre-sanitized at parse time via DOMPurify + sanitizeDocumentationHTML */}
     <div className={styles.body} dangerouslySetInnerHTML={{ __html: sub(welcome.bodyHtml) }} />
     <div className={styles.ctaGroup}>
       {welcome.ctas.map((cta, i) => (
@@ -176,6 +177,7 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, onBack, onStar
       </button>
     )}
     <h3 className={styles.title}>{sub(screen.title)}</h3>
+    {/* eslint-disable-next-line no-restricted-syntax -- bodyHtml is pre-sanitized at parse time via DOMPurify + sanitizeDocumentationHTML */}
     <div className={styles.body} dangerouslySetInnerHTML={{ __html: sub(screen.bodyHtml) }} />
     {screen.links && screen.links.length > 0 && (
       <div className={styles.links}>
