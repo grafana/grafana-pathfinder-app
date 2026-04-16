@@ -534,11 +534,11 @@ func TestToolValidateGuideJSON_InvalidBlockType(t *testing.T) {
 
 func TestToolValidateGuideJSON_AllValidBlockTypes(t *testing.T) {
 	app := newTestApp(t)
-	// All 13 canonical block types must pass validation
+	// All 14 canonical block types must pass validation
 	blockTypes := []string{
 		"markdown", "html", "section", "conditional", "interactive",
 		"multistep", "guided", "image", "video", "quiz", "assistant",
-		"input", "terminal",
+		"input", "terminal", "grot-guide",
 	}
 	for _, bt := range blockTypes {
 		guide := `{"schemaVersion":"1.0.0","id":"t","title":"T","blocks":[{"type":"` + bt + `"}]}`

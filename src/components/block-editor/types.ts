@@ -29,7 +29,8 @@ export type BlockType =
   | 'input'
   | 'terminal'
   | 'terminal-connect'
-  | 'code-block';
+  | 'code-block'
+  | 'grot-guide';
 
 /**
  * Block metadata for the palette

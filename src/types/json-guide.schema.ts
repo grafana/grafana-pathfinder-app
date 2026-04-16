@@ -319,6 +319,113 @@ export const JsonCodeBlockBlockSchema = z.object({
   hint: z.string().optional(),
 });
 
+// ============ GROT GUIDE BLOCK SCHEMA ============
+
+/**
+ * Schema for a grot guide CTA button.
+ * @coupling Type: GrotGuideCta
+ */
+export const GrotGuideCtaSchema = z.object({
+  text: z.string().min(1, 'CTA text is required'),
+  screenId: z.string().min(1, 'CTA screenId is required'),
+});
+
+/**
+ * Schema for the grot guide welcome screen.
+ * @coupling Type: GrotGuideWelcome
+ */
+export const GrotGuideWelcomeSchema = z.object({
+  title: z.string().min(1, 'Welcome title is required'),
+  body: z.string().min(1, 'Welcome body is required'),
+  ctas: z.array(GrotGuideCtaSchema).min(1, 'At least one CTA is required'),
+});
+
+/**
+ * Schema for a grot guide option.
+ * @coupling Type: GrotGuideOption
+ */
+export const GrotGuideOptionSchema = z.object({
+  text: z.string().min(1, 'Option text is required'),
+  screenId: z.string().min(1, 'Option screenId is required'),
+});
+
+/**
+ * Schema for a grot guide question screen.
+ * @coupling Type: GrotGuideQuestionScreen
+ */
+export const GrotGuideQuestionScreenSchema = z.object({
+  type: z.literal('question'),
+  id: z.string().min(1, 'Screen id is required'),
+  title: z.string().min(1, 'Question title is required'),
+  options: z.array(GrotGuideOptionSchema).min(1, 'At least one option is required'),
+});
+
+/**
+ * Schema for a grot guide link item.
+ * @coupling Type: GrotGuideLinkItem
+ */
+export const GrotGuideLinkItemSchema = z.object({
+  type: z.string().optional(),
+  title: z.string().min(1, 'Link title is required'),
+  linkText: z.string().min(1, 'Link text is required'),
+  href: SafeUrlSchema,
+});
+
+/**
+ * Schema for a grot guide result screen.
+ * @coupling Type: GrotGuideResultScreen
+ */
+export const GrotGuideResultScreenSchema = z.object({
+  type: z.literal('result'),
+  id: z.string().min(1, 'Screen id is required'),
+  title: z.string().min(1, 'Result title is required'),
+  body: z.string().min(1, 'Result body is required'),
+  links: z.array(GrotGuideLinkItemSchema).optional(),
+});
+
+/**
+ * Schema for grot guide screens (discriminated union).
+ * @coupling Type: GrotGuideScreen
+ */
+export const GrotGuideScreenSchema = z.discriminatedUnion('type', [
+  GrotGuideQuestionScreenSchema,
+  GrotGuideResultScreenSchema,
+]);
+
+/**
+ * Schema for grot guide block — a self-contained decision tree.
+ * Validates that all screenId references point to existing screen IDs.
+ * @coupling Type: JsonGrotGuideBlock
+ */
+export const JsonGrotGuideBlockSchema = z
+  .object({
+    type: z.literal('grot-guide'),
+    welcome: GrotGuideWelcomeSchema,
+    screens: z.array(GrotGuideScreenSchema).min(1, 'At least one screen is required'),
+  })
+  .refine(
+    (block) => {
+      // Validate all screenId references resolve to existing screens
+      const screenIds = new Set(block.screens.map((s) => s.id));
+      for (const cta of block.welcome.ctas) {
+        if (!screenIds.has(cta.screenId)) {
+          return false;
+        }
+      }
+      for (const screen of block.screens) {
+        if (screen.type === 'question') {
+          for (const option of screen.options) {
+            if (!screenIds.has(option.screenId)) {
+              return false;
+            }
+          }
+        }
+      }
+      return true;
+    },
+    { error: 'All screenId references must point to existing screen IDs' }
+  );
+
 // ============ BLOCK UNION (Non-recursive blocks) ============
 
 /**
@@ -338,6 +445,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonTerminalBlockSchema,
   JsonTerminalConnectBlockSchema,
   JsonCodeBlockBlockSchema,
+  JsonGrotGuideBlockSchema,
 ]);
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
@@ -596,6 +704,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'hint',
   ]),
+  'grot-guide': new Set(['type', 'welcome', 'screens']),
   _manifest: new Set([
     'schemaVersion',
     'id',
@@ -638,4 +747,5 @@ export const VALID_BLOCK_TYPES = new Set([
   'terminal',
   'terminal-connect',
   'code-block',
+  'grot-guide',
 ]);

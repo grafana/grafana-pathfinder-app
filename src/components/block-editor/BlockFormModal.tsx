@@ -47,6 +47,7 @@ import { InputBlockForm } from './forms/InputBlockForm';
 import { TerminalBlockForm } from './forms/TerminalBlockForm';
 import { TerminalConnectBlockForm } from './forms/TerminalConnectBlockForm';
 import { CodeBlockForm } from './forms/CodeBlockForm';
+import { GrotGuideBlockForm } from './forms/GrotGuideBlockForm';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   modal: css({
@@ -121,6 +122,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   terminal: TerminalBlockForm,
   'terminal-connect': TerminalConnectBlockForm,
   'code-block': CodeBlockForm,
+  'grot-guide': GrotGuideBlockForm,
 };
 
 /**

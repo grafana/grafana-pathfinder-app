@@ -73,6 +73,28 @@ describe('JsonGuideSchema', () => {
             type: 'assistant',
             blocks: [{ type: 'markdown', content: 'AI content' }],
           },
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'Welcome',
+              body: 'Pick something.',
+              ctas: [{ text: 'Go', screenId: 'q1' }],
+            },
+            screens: [
+              {
+                type: 'question',
+                id: 'q1',
+                title: 'What?',
+                options: [{ text: 'Option A', screenId: 'r1' }],
+              },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'Result',
+                body: 'Done.',
+              },
+            ],
+          },
         ],
       });
       const result = validateGuideFromString(guide);
@@ -450,6 +472,132 @@ describe('JsonGuideSchema', () => {
             prompt: 'Test prompt',
             inputType: 'text',
             variableName: '123invalid',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+  });
+
+  describe('grot-guide block validation', () => {
+    it('should validate a valid grot-guide block', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'Welcome',
+              body: 'Pick something.',
+              ctas: [{ text: 'Go', screenId: 'q1' }],
+            },
+            screens: [
+              { type: 'question', id: 'q1', title: 'What?', options: [{ text: 'A', screenId: 'r1' }] },
+              { type: 'result', id: 'r1', title: 'Result', body: 'Done.' },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject grot-guide with broken screenId reference in welcome CTA', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'Welcome',
+              body: 'Hi',
+              ctas: [{ text: 'Go', screenId: 'nonexistent' }],
+            },
+            screens: [{ type: 'result', id: 'r1', title: 'R', body: 'Done.' }],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject grot-guide with broken screenId reference in question options', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'Welcome',
+              body: 'Hi',
+              ctas: [{ text: 'Go', screenId: 'q1' }],
+            },
+            screens: [
+              {
+                type: 'question',
+                id: 'q1',
+                title: 'What?',
+                options: [{ text: 'A', screenId: 'missing_screen' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should accept grot-guide with duplicate screen IDs (last-wins in component)', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'Welcome',
+              body: 'Hi',
+              ctas: [{ text: 'Go', screenId: 'dup' }],
+            },
+            screens: [
+              { type: 'result', id: 'dup', title: 'R1', body: 'One.' },
+              { type: 'result', id: 'dup', title: 'R2', body: 'Two.' },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject grot-guide with empty screens array', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'x' }] },
+            screens: [],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject grot-guide without welcome', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            screens: [{ type: 'result', id: 'r1', title: 'R', body: 'Done.' }],
           },
         ],
       });
