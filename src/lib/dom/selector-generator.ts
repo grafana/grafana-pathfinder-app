@@ -299,6 +299,11 @@ const UNSTABLE_DATA_ATTR_PATTERNS: RegExp[] = [
   /^data-test-id$/,
   /^data-qa$/,
   /^data-test-subj$/,
+  /^data-mprt$/,
+  /^data-uri$/,
+  /^data-keybinding-context$/,
+  /^data-mode-id$/,
+  /^data-rfd-/,
 ];
 
 function getStableDataAttr(element: HTMLElement): { name: string; value: string } | null {
@@ -313,6 +318,9 @@ function getStableDataAttr(element: HTMLElement): { name: string; value: string 
       continue;
     }
     if (attr.value === 'true' || attr.value === 'false') {
+      continue;
+    }
+    if (/^\d+$/.test(attr.value)) {
       continue;
     }
     return { name: attr.name, value: attr.value };
@@ -646,7 +654,8 @@ function candidateCompound(element: HTMLElement): Candidate | null {
       !UNSTABLE_DATA_ATTR_PATTERNS.some((p) => p.test(attr.name)) &&
       attr.value.length < SELECTOR_CONFIG.maxTextLength &&
       attr.value !== 'true' &&
-      attr.value !== 'false'
+      attr.value !== 'false' &&
+      !/^\d+$/.test(attr.value)
     ) {
       parts.push(`[${attr.name}='${attr.value}']`);
       break;
