@@ -10,7 +10,7 @@
  */
 
 import { findButtonByText } from './dom-utils';
-import { querySelectorAllEnhanced } from './enhanced-selector';
+import { querySelectorAllEnhanced, querySelectorAllEnhancedVisible } from './enhanced-selector';
 
 // ============================================================================
 // Types
@@ -725,14 +725,16 @@ function generateCandidates(element: HTMLElement): Candidate[] {
 function testUniqueness(
   selector: string,
   element: HTMLElement,
-  method: string
+  method: string,
+  inOverlay = false
 ): { matchCount: number; containsTarget: boolean } {
   try {
     if (method === 'button-text') {
       const buttons = findButtonByText(selector);
       return { matchCount: buttons.length, containsTarget: buttons.includes(element as HTMLButtonElement) };
     }
-    const matches = querySelectorAllEnhanced(selector);
+    const matchFn = inOverlay ? querySelectorAllEnhancedVisible : querySelectorAllEnhanced;
+    const matches = matchFn(selector);
     return { matchCount: matches.elements.length, containsTarget: matches.elements.includes(element) };
   } catch {
     return { matchCount: 0, containsTarget: false };
@@ -798,7 +800,8 @@ function findDirectChildBranch(ancestor: HTMLElement, descendant: HTMLElement): 
 function disambiguate(
   candidate: Candidate,
   element: HTMLElement,
-  ancestorScopes: AncestorScope[] = findAllAncestorScopes(element)
+  ancestorScopes: AncestorScope[] = findAllAncestorScopes(element),
+  inOverlay = false
 ): Candidate[] {
   const results: Candidate[] = [];
 
@@ -806,7 +809,7 @@ function disambiguate(
   for (const scope of ancestorScopes) {
     // 1a: Simple descendant scoping
     const scoped = `${scope.selector} ${candidate.selector}`;
-    const { matchCount, containsTarget } = testUniqueness(scoped, element, candidate.method);
+    const { matchCount, containsTarget } = testUniqueness(scoped, element, candidate.method, inOverlay);
     if (matchCount === 1 && containsTarget) {
       const penalty =
         scope.type === 'testid' ? DISAMBIGUATION_PENALTIES.parentTestId : DISAMBIGUATION_PENALTIES.parentStableAttr;
@@ -815,7 +818,7 @@ function disambiguate(
         score: candidate.score + penalty,
         method: candidate.method,
       });
-      break; // Closest unique scope wins, no need to try farther ancestors
+      break;
     }
 
     // 1b: Scoped nth-child within this ancestor
@@ -826,7 +829,7 @@ function disambiguate(
         const childTag = branch.tagName.toLowerCase();
         const suffix = branch === element ? '' : ` ${candidate.selector}`;
         const nthChildScoped = `${scope.selector} > ${childTag}:nth-child(${childIndex})${suffix}`;
-        const nthResult = testUniqueness(nthChildScoped, element, candidate.method);
+        const nthResult = testUniqueness(nthChildScoped, element, candidate.method, inOverlay);
         if (nthResult.matchCount === 1 && nthResult.containsTarget) {
           results.push({
             selector: cleanDynamicAttributes(nthChildScoped),
@@ -839,13 +842,13 @@ function disambiguate(
     }
   }
 
-  // Strategy 2: Overlay scoping
+  // Strategy 2: Overlay scoping (always use visibility matching here)
   if (results.length === 0) {
     const overlay = findOverlayContext(element);
     if (overlay) {
       const overlayScoped = buildOverlayScopedSelector(overlay, candidate.selector);
       if (overlayScoped !== candidate.selector) {
-        const { matchCount, containsTarget } = testUniqueness(overlayScoped, element, candidate.method);
+        const { matchCount, containsTarget } = testUniqueness(overlayScoped, element, candidate.method, true);
         if (matchCount === 1 && containsTarget) {
           results.push({
             selector: cleanDynamicAttributes(overlayScoped),
@@ -860,7 +863,8 @@ function disambiguate(
   // Strategy 3: nth-match (last resort)
   if (results.length === 0) {
     try {
-      const allMatches = querySelectorAllEnhanced(candidate.selector);
+      const matchFn = inOverlay ? querySelectorAllEnhancedVisible : querySelectorAllEnhanced;
+      const allMatches = matchFn(candidate.selector);
       const idx = allMatches.elements.indexOf(element);
       if (idx >= 0) {
         results.push({
@@ -884,23 +888,22 @@ interface ScoredCandidate extends Candidate {
 function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCandidate {
   const scored: ScoredCandidate[] = [];
   const ancestorScopes = findAllAncestorScopes(element);
+  const inOverlay = findOverlayContext(element) !== null;
 
   for (const candidate of candidates) {
-    const { matchCount, containsTarget } = testUniqueness(candidate.selector, element, candidate.method);
+    const { matchCount, containsTarget } = testUniqueness(candidate.selector, element, candidate.method, inOverlay);
 
     if (matchCount === 0 || !containsTarget) {
       continue;
     }
 
     if (matchCount === 1) {
-      // Bare unique candidate
       scored.push({ ...candidate, matchCount });
 
-      // Also try parent-scoped version for stability (prefer closest unique scope)
       if (candidate.method !== 'button-text' && candidate.method !== 'scoped-testid') {
         for (const scope of ancestorScopes) {
           const scoped = `${scope.selector} ${candidate.selector}`;
-          const scopedResult = testUniqueness(scoped, element, candidate.method);
+          const scopedResult = testUniqueness(scoped, element, candidate.method, inOverlay);
           if (scopedResult.matchCount === 1 && scopedResult.containsTarget) {
             scored.push({
               selector: cleanDynamicAttributes(scoped),
@@ -908,19 +911,18 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
               method: candidate.method,
               matchCount: 1,
             });
-            break; // Closest unique scope is best
+            break;
           }
         }
       }
       continue;
     }
 
-    // Non-unique: plain text selectors can't be disambiguated with CSS scoping
     if (candidate.method === 'button-text') {
       continue;
     }
 
-    const disambiguated = disambiguate(candidate, element, ancestorScopes);
+    const disambiguated = disambiguate(candidate, element, ancestorScopes, inOverlay);
     for (const d of disambiguated) {
       scored.push({ ...d, matchCount: 1 });
     }
@@ -937,7 +939,7 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
       }
     }
     const fallbackSelector = `${tag}:nth-of-type(${nthIndex})`;
-    const { matchCount, containsTarget } = testUniqueness(fallbackSelector, element, 'fallback');
+    const { matchCount, containsTarget } = testUniqueness(fallbackSelector, element, 'fallback', inOverlay);
     return {
       selector: fallbackSelector,
       score: CANDIDATE_SCORES.nthMatch,
