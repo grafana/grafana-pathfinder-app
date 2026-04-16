@@ -4,6 +4,7 @@ import { Button, Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 import { substituteVariables } from '../../utils/variable-substitution';
+import { escapeHtml } from '../../security/html-sanitizer';
 import type {
   GrotGuideWelcome,
   GrotGuideQuestionScreen,
@@ -46,10 +47,31 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
     return map;
   }, [screens]);
 
-  // Variable substitution helper
+  // Variable substitution helper for plain text (used in React text nodes)
   const sub = useCallback(
     (text: string): string => {
       return substituteVariables(text, responses as Record<string, string | boolean | number>, {
+        preserveUnmatched: true,
+      });
+    },
+    [responses]
+  );
+
+  // Variable substitution helper for HTML content (escapes substituted values)
+  const subHtml = useCallback(
+    (html: string): string => {
+      // SECURITY: Escape HTML in variable values before substituting into pre-sanitized HTML
+      // to prevent XSS when user responses contain HTML characters (F1, F4)
+      const escapedResponses: Record<string, string | boolean | number> = {};
+      for (const [key, value] of Object.entries(responses)) {
+        if (typeof value === 'string') {
+          escapedResponses[key] = escapeHtml(value);
+        } else if (typeof value === 'number' || typeof value === 'boolean') {
+          escapedResponses[key] = value;
+        }
+        // Skip unknown types
+      }
+      return substituteVariables(html, escapedResponses, {
         preserveUnmatched: true,
       });
     },
@@ -68,10 +90,13 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
   // Go back
   const goBack = useCallback(() => {
     setHistory((prev) => {
-      const newHistory = [...prev];
-      const previous = newHistory.pop();
+      if (prev.length === 0) {
+        return prev;
+      }
+
+      const previous = prev[prev.length - 1];
       setCurrentScreenId(previous === WELCOME_SENTINEL ? null : (previous ?? null));
-      return newHistory;
+      return prev.slice(0, -1);
     });
   }, []);
 
@@ -86,7 +111,7 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
   return (
     <div className={styles.container}>
       {currentScreenId === null ? (
-        <WelcomeScreen welcome={welcome} sub={sub} onNavigate={navigateTo} styles={styles} />
+        <WelcomeScreen welcome={welcome} sub={sub} subHtml={subHtml} onNavigate={navigateTo} styles={styles} />
       ) : currentScreen?.type === 'question' ? (
         <QuestionScreen
           screen={currentScreen}
@@ -99,6 +124,7 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
         <ResultScreen
           screen={currentScreen as ResultScreenWithHtml}
           sub={sub}
+          subHtml={subHtml}
           onBack={history.length > 0 ? goBack : undefined}
           onStartOver={startOver}
           styles={styles}
@@ -113,15 +139,16 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
 interface WelcomeScreenProps {
   welcome: WelcomeWithHtml;
   sub: (text: string) => string;
+  subHtml: (html: string) => string;
   onNavigate: (screenId: string) => void;
   styles: ReturnType<typeof getStyles>;
 }
 
-const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ welcome, sub, onNavigate, styles }) => (
+const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ welcome, sub, subHtml, onNavigate, styles }) => (
   <div>
     <h3 className={styles.title}>{sub(welcome.title)}</h3>
-    {/* eslint-disable-next-line no-restricted-syntax -- bodyHtml is pre-sanitized at parse time via DOMPurify + sanitizeDocumentationHTML */}
-    <div className={styles.body} dangerouslySetInnerHTML={{ __html: sub(welcome.bodyHtml) }} />
+    {/* eslint-disable-next-line no-restricted-syntax -- bodyHtml is pre-sanitized at parse time via DOMPurify + sanitizeDocumentationHTML, and variable values are HTML-escaped */}
+    <div className={styles.body} dangerouslySetInnerHTML={{ __html: subHtml(welcome.bodyHtml) }} />
     <div className={styles.ctaGroup}>
       {welcome.ctas.map((cta, i) => (
         <Button key={i} variant="primary" onClick={() => onNavigate(cta.screenId)} fullWidth>
@@ -163,12 +190,13 @@ const QuestionScreen: React.FC<QuestionScreenProps> = ({ screen, sub, onNavigate
 interface ResultScreenProps {
   screen: ResultScreenWithHtml;
   sub: (text: string) => string;
+  subHtml: (html: string) => string;
   onBack?: () => void;
   onStartOver: () => void;
   styles: ReturnType<typeof getStyles>;
 }
 
-const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, onBack, onStartOver, styles }) => (
+const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, subHtml, onBack, onStartOver, styles }) => (
   <div>
     {onBack && (
       <button className={styles.backButton} onClick={onBack}>
@@ -177,8 +205,8 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, onBack, onStar
       </button>
     )}
     <h3 className={styles.title}>{sub(screen.title)}</h3>
-    {/* eslint-disable-next-line no-restricted-syntax -- bodyHtml is pre-sanitized at parse time via DOMPurify + sanitizeDocumentationHTML */}
-    <div className={styles.body} dangerouslySetInnerHTML={{ __html: sub(screen.bodyHtml) }} />
+    {/* eslint-disable-next-line no-restricted-syntax -- bodyHtml is pre-sanitized at parse time via DOMPurify + sanitizeDocumentationHTML, and variable values are HTML-escaped */}
+    <div className={styles.body} dangerouslySetInnerHTML={{ __html: subHtml(screen.bodyHtml) }} />
     {screen.links && screen.links.length > 0 && (
       <div className={styles.links}>
         {screen.links.map((link: GrotGuideLinkItem, i: number) => {

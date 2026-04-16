@@ -11,12 +11,8 @@ import { css } from '@emotion/css';
 import yaml from 'js-yaml';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
-import type { BlockFormProps, JsonBlock } from '../types';
-import type { JsonGrotGuideBlock } from '../../../types/json-guide.types';
-
-function isGrotGuideBlock(block: JsonBlock): block is JsonGrotGuideBlock {
-  return block.type === 'grot-guide';
-}
+import type { BlockFormProps } from '../types';
+import { isGrotGuideBlock, type JsonGrotGuideBlock } from '../../../types/json-guide.types';
 
 /**
  * Convert a Grot Guide YAML definition to the Pathfinder JSON block format.
