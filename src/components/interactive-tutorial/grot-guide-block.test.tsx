@@ -88,9 +88,28 @@ describe('GrotGuideBlock', () => {
     render(<GrotGuideBlock {...makeProps()} />);
     fireEvent.click(screen.getByText("Let's go!"));
     fireEvent.click(screen.getByText('Option A'));
-    const link = screen.getByText('Visit docs').closest('a');
-    expect(link).toHaveAttribute('href', 'https://grafana.com/docs/');
-    expect(link).toHaveAttribute('target', '_blank');
+    expect(screen.getByText('Docs Link')).toBeInTheDocument();
+    expect(screen.getByText('Visit docs')).toBeInTheDocument();
+  });
+
+  it('docs links dispatch pathfinder-auto-open-docs event', () => {
+    const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+    render(<GrotGuideBlock {...makeProps()} />);
+    fireEvent.click(screen.getByText("Let's go!"));
+    fireEvent.click(screen.getByText('Option A'));
+
+    // Click the main link area (should open in sidebar for docs links)
+    fireEvent.click(screen.getByText('Visit docs'));
+
+    const event = dispatchSpy.mock.calls.find(
+      ([e]) => e instanceof CustomEvent && e.type === 'pathfinder-auto-open-docs'
+    );
+    expect(event).toBeDefined();
+    const detail = (event![0] as CustomEvent).detail;
+    expect(detail.url).toBe('https://grafana.com/docs/');
+    expect(detail.title).toBe('Docs Link');
+
+    dispatchSpy.mockRestore();
   });
 
   it('back button returns to previous screen', () => {

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { css } from '@emotion/css';
-import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { Button, Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 import { substituteVariables } from '../../utils/variable-substitution';
@@ -181,15 +181,50 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, onBack, onStar
     <div className={styles.body} dangerouslySetInnerHTML={{ __html: sub(screen.bodyHtml) }} />
     {screen.links && screen.links.length > 0 && (
       <div className={styles.links}>
-        {screen.links.map((link: GrotGuideLinkItem, i: number) => (
-          <a key={i} href={link.href} target="_blank" rel="noopener noreferrer" className={styles.link}>
-            <div className={styles.linkContent}>
-              <span className={styles.linkTitle}>{sub(link.title)}</span>
-              <span className={styles.linkText}>{sub(link.linkText)}</span>
+        {screen.links.map((link: GrotGuideLinkItem, i: number) => {
+          const isDocsLink = link.type === 'docs';
+          const href = sub(link.href);
+          const title = sub(link.title);
+
+          const openInSidebar = () => {
+            document.dispatchEvent(
+              new CustomEvent('pathfinder-auto-open-docs', {
+                detail: { url: href, title, origin: 'grot_guide_result' },
+              })
+            );
+          };
+
+          const openInNewTab = () => {
+            window.open(href, '_blank', 'noopener,noreferrer');
+          };
+
+          return (
+            <div key={i} className={styles.link}>
+              <button
+                className={styles.linkButton}
+                onClick={isDocsLink ? openInSidebar : openInNewTab}
+                title={isDocsLink ? 'Open in Pathfinder' : 'Open in new tab'}
+              >
+                <div className={styles.linkContent}>
+                  <span className={styles.linkTitle}>{title}</span>
+                  <span className={styles.linkText}>{sub(link.linkText)}</span>
+                </div>
+                {!isDocsLink && <Icon name="external-link-alt" size="sm" className={styles.linkIcon} />}
+              </button>
+              {isDocsLink && (
+                <Tooltip content="Open in new tab">
+                  <IconButton
+                    name="external-link-alt"
+                    size="md"
+                    aria-label="Open in new tab"
+                    onClick={openInNewTab}
+                    className={styles.linkExternalButton}
+                  />
+                </Tooltip>
+              )}
             </div>
-            <Icon name="external-link-alt" size="sm" className={styles.linkIcon} />
-          </a>
-        ))}
+          );
+        })}
       </div>
     )}
     <div className={styles.footer}>
@@ -302,18 +337,28 @@ const getStyles = (theme: GrafanaTheme2) => ({
   link: css({
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing(1.5),
-    padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
     background: theme.colors.background.primary,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
-    textDecoration: 'none',
     transition: 'all 0.15s ease',
     '&:hover': {
       borderColor: theme.colors.primary.border,
       background: theme.colors.primary.transparent,
     },
+  }),
+
+  linkButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(1.5),
+    padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
+    flex: 1,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    textAlign: 'left',
+    color: 'inherit',
   }),
 
   linkContent: css({
@@ -336,6 +381,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
   linkIcon: css({
     color: theme.colors.text.secondary,
     flexShrink: 0,
+  }),
+
+  linkExternalButton: css({
+    flexShrink: 0,
+    marginRight: theme.spacing(1),
+    color: theme.colors.text.secondary,
   }),
 
   footer: css({
