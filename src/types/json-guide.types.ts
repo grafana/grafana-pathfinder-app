@@ -43,7 +43,8 @@ export type JsonBlock =
   | JsonInputBlock
   | JsonTerminalBlock
   | JsonTerminalConnectBlock
-  | JsonCodeBlockBlock;
+  | JsonCodeBlockBlock
+  | JsonGrotGuideBlock;
 
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
 
@@ -490,6 +491,100 @@ export interface JsonCodeBlockBlock {
   hint?: string;
 }
 
+// ============ GROT GUIDE BLOCK ============
+
+/**
+ * CTA button on the grot guide welcome screen.
+ */
+export interface GrotGuideCta {
+  /** Button text */
+  text: string;
+  /** Screen ID to navigate to */
+  screenId: string;
+}
+
+/**
+ * Welcome screen for a grot guide.
+ */
+export interface GrotGuideWelcome {
+  /** Welcome screen title */
+  title: string;
+  /** Welcome screen body text (supports markdown) */
+  body: string;
+  /** Call-to-action buttons */
+  ctas: GrotGuideCta[];
+}
+
+/**
+ * Single option within a question screen.
+ */
+export interface GrotGuideOption {
+  /** Option display text */
+  text: string;
+  /** Screen ID to navigate to when selected */
+  screenId: string;
+}
+
+/**
+ * Question screen in a grot guide.
+ */
+export interface GrotGuideQuestionScreen {
+  type: 'question';
+  /** Unique screen identifier */
+  id: string;
+  /** Question title */
+  title: string;
+  /** Answer options */
+  options: GrotGuideOption[];
+}
+
+/**
+ * Link within a grot guide result screen.
+ */
+export interface GrotGuideLinkItem {
+  /** Link category (e.g., 'docs', 'tutorial', 'video') */
+  type?: string;
+  /** Display title for the link */
+  title: string;
+  /** Button/link text */
+  linkText: string;
+  /** URL target */
+  href: string;
+}
+
+/**
+ * Result screen in a grot guide (terminal node).
+ */
+export interface GrotGuideResultScreen {
+  type: 'result';
+  /** Unique screen identifier */
+  id: string;
+  /** Result title */
+  title: string;
+  /** Result body text (supports markdown) */
+  body: string;
+  /** Links to related resources */
+  links?: GrotGuideLinkItem[];
+}
+
+/**
+ * Discriminated union of grot guide screen types.
+ */
+export type GrotGuideScreen = GrotGuideQuestionScreen | GrotGuideResultScreen;
+
+/**
+ * Grot guide block — a self-contained choose-your-own-adventure decision tree.
+ * Users start at the welcome screen, answer questions, and arrive at result screens.
+ * @coupling Zod schema: JsonGrotGuideBlockSchema in json-guide.schema.ts
+ */
+export interface JsonGrotGuideBlock {
+  type: 'grot-guide';
+  /** Welcome screen shown at start */
+  welcome: GrotGuideWelcome;
+  /** All screens (questions and results) in the guide */
+  screens: GrotGuideScreen[];
+}
+
 // ============ TYPE GUARDS ============
 
 /**
@@ -595,6 +690,13 @@ export function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalC
  */
 export function isCodeBlockBlock(block: JsonBlock): block is JsonCodeBlockBlock {
   return block.type === 'code-block';
+}
+
+/**
+ * Type guard for JsonGrotGuideBlock
+ */
+export function isGrotGuideBlock(block: JsonBlock): block is JsonGrotGuideBlock {
+  return block.type === 'grot-guide';
 }
 
 /**
