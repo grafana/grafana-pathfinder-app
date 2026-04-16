@@ -831,9 +831,11 @@ function disambiguate(
         const nthChildScoped = `${scope.selector} > ${childTag}:nth-child(${childIndex})${suffix}`;
         const nthResult = testUniqueness(nthChildScoped, element, candidate.method, inOverlay);
         if (nthResult.matchCount === 1 && nthResult.containsTarget) {
+          const penalty =
+            scope.type === 'testid' ? DISAMBIGUATION_PENALTIES.parentTestId : DISAMBIGUATION_PENALTIES.parentStableAttr;
           results.push({
             selector: cleanDynamicAttributes(nthChildScoped),
-            score: candidate.score + DISAMBIGUATION_PENALTIES.parentStableAttr,
+            score: candidate.score + penalty,
             method: candidate.method,
           });
           break;
@@ -898,22 +900,27 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
     }
 
     if (matchCount === 1) {
-      scored.push({ ...candidate, matchCount });
-
       if (candidate.method !== 'button-text' && candidate.method !== 'scoped-testid') {
+        let foundScope = false;
         for (const scope of ancestorScopes) {
           const scoped = `${scope.selector} ${candidate.selector}`;
           const scopedResult = testUniqueness(scoped, element, candidate.method, inOverlay);
           if (scopedResult.matchCount === 1 && scopedResult.containsTarget) {
             scored.push({
               selector: cleanDynamicAttributes(scoped),
-              score: candidate.score + 2,
+              score: candidate.score,
               method: candidate.method,
               matchCount: 1,
             });
+            foundScope = true;
             break;
           }
         }
+        if (!foundScope) {
+          scored.push({ ...candidate, matchCount });
+        }
+      } else {
+        scored.push({ ...candidate, matchCount });
       }
       continue;
     }
