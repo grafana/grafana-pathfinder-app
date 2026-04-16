@@ -73,6 +73,15 @@ describe('Selector Generator — Pipeline', () => {
       expect(retargetElement(span)).toBe(div);
     });
 
+    it('keeps interactive elements as-is even inside interactive ancestors', () => {
+      const wrapper = document.createElement('div');
+      wrapper.setAttribute('role', 'button');
+      const button = document.createElement('button');
+      wrapper.appendChild(button);
+      document.body.appendChild(wrapper);
+      expect(retargetElement(button)).toBe(button);
+    });
+
     it('keeps non-interactive containers as-is', () => {
       const section = document.createElement('section');
       section.setAttribute('data-testid', 'panel');

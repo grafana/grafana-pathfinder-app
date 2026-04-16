@@ -394,11 +394,18 @@ function getOverlayRole(overlay: HTMLElement | null): string | undefined {
  */
 export function retargetElement(element: HTMLElement): HTMLElement {
   const tag = element.tagName.toLowerCase();
+  const role = element.getAttribute('role');
 
   if ((SELECTOR_CONFIG.formControlTags as readonly string[]).includes(tag)) {
     return element;
   }
   if ((element as HTMLElement & { isContentEditable: boolean }).isContentEditable) {
+    return element;
+  }
+  if ((SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(tag)) {
+    return element;
+  }
+  if (role && (SELECTOR_CONFIG.interactiveRoles as readonly string[]).includes(role)) {
     return element;
   }
 
@@ -771,9 +778,12 @@ function findDirectChildBranch(ancestor: HTMLElement, descendant: HTMLElement): 
   return current;
 }
 
-function disambiguate(candidate: Candidate, element: HTMLElement): Candidate[] {
+function disambiguate(
+  candidate: Candidate,
+  element: HTMLElement,
+  ancestorScopes: AncestorScope[] = findAllAncestorScopes(element)
+): Candidate[] {
   const results: Candidate[] = [];
-  const ancestorScopes = findAllAncestorScopes(element);
 
   // Strategy 1: Try each ancestor scope from closest to farthest
   for (const scope of ancestorScopes) {
@@ -891,7 +901,7 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
       continue;
     }
 
-    const disambiguated = disambiguate(candidate, element);
+    const disambiguated = disambiguate(candidate, element, ancestorScopes);
     for (const d of disambiguated) {
       scored.push({ ...d, matchCount: 1 });
     }
@@ -1050,21 +1060,6 @@ export function generateFallbackSelectors(element: HTMLElement, primarySelector:
  */
 export function clearSelectorCache(): void {
   // No-op
-}
-
-/**
- * Try a selector for uniqueness, falling back to a builder function if not unique.
- */
-export function tryUniqueSelectorWithFallback(
-  selector: string,
-  element: HTMLElement,
-  buildFallback: () => string
-): string {
-  const { matchCount, containsTarget } = testUniqueness(selector, element, 'css');
-  if (matchCount === 1 && containsTarget) {
-    return cleanDynamicAttributes(selector);
-  }
-  return cleanDynamicAttributes(buildFallback());
 }
 
 // ============================================================================
