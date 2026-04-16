@@ -19,6 +19,7 @@ import {
   TerminalStep,
   TerminalConnectStep,
   CodeBlockStep,
+  GrotGuideBlock,
   resetInteractiveCounters,
   registerSectionSteps,
   getDocumentStepPosition,
@@ -1141,6 +1142,15 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </CodeBlockStep>
+      );
+    case 'grot-guide':
+      return (
+        <GrotGuideBlock
+          key={key}
+          welcome={element.props.welcome}
+          screens={element.props.screens}
+          responses={responses}
+        />
       );
     case 'input-block':
       return (

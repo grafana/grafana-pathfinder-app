@@ -30,6 +30,7 @@ import {
   type JsonTerminalBlock,
   type JsonTerminalConnectBlock,
   type JsonCodeBlockBlock,
+  type JsonGrotGuideBlock,
   type JsonStep,
   type AssistantProps,
 } from '../types/json-guide.types';
@@ -248,6 +249,8 @@ function convertBlockByType(
       return convertTerminalConnectBlock(block, path);
     case 'code-block':
       return convertCodeBlockBlock(block, path);
+    case 'grot-guide':
+      return convertGrotGuideBlock(block as JsonGrotGuideBlock);
     case 'assistant':
       // Legacy wrapper format - pass surrounding context for better AI understanding
       return convertAssistantBlock(block, path, baseUrl, surroundingContext);
@@ -824,6 +827,36 @@ function convertCodeBlockBlock(block: JsonCodeBlockBlock, _path: string): Conver
   };
 }
 
+function convertGrotGuideBlock(block: JsonGrotGuideBlock): ConversionResult {
+  // Pre-render markdown body fields to sanitized HTML at parse time.
+  // This avoids circular dependencies from the component back to the parser.
+  const welcomeBodyHtml = markdownToHtml(block.welcome.body);
+
+  const screens = block.screens.map((screen) => {
+    if (screen.type === 'result') {
+      return {
+        ...screen,
+        bodyHtml: markdownToHtml(screen.body),
+      };
+    }
+    return screen;
+  });
+
+  return {
+    element: {
+      type: 'grot-guide',
+      props: {
+        welcome: {
+          ...block.welcome,
+          bodyHtml: welcomeBodyHtml,
+        },
+        screens,
+      },
+      children: [],
+    },
+  };
+}
+
 /**
  * Extract the customizable default value from a block based on its type.
  * This value is what gets stored in localStorage and customized by the assistant.
@@ -870,6 +903,8 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
     case 'video':
       // Videos have title which could be customized
       return block.title || '';
+    case 'grot-guide':
+      return block.welcome.title;
     default:
       return '';
   }
