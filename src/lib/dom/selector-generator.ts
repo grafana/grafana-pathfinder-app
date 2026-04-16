@@ -1,57 +1,65 @@
 /**
  * Smart selector generation for DOM elements
- * Creates robust, human-readable selectors while avoiding auto-generated classes
  *
- * This utility is generic and can be used in any context where you need to
- * programmatically generate CSS selectors for DOM elements.
- *
- * Key features:
- * - Walks up DOM hierarchy to find best selectable parent
- * - Prioritizes stable attributes (data-testid, id, aria-label)
- * - Filters out auto-generated classes (Emotion, CSS modules, etc.)
- * - Handles nested elements (clicks on icons/spans find parent button/link)
- * - Context-aware (includes parent selectors when needed)
+ * Three-phase pipeline architecture:
+ * 1. Retarget — walk up to the intent element (interactive ancestor or keep clicked element)
+ * 2. Generate candidates — produce all possible selectors with stability scores
+ * 3. Rank and select — disambiguate non-unique candidates and pick the best one
  *
  * @module selector-generator
  */
 
 import { findButtonByText } from './dom-utils';
-import { querySelectorAllEnhanced, querySelectorAllEnhancedVisible } from './enhanced-selector';
+import { querySelectorAllEnhanced } from './enhanced-selector';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export type StabilityFlag =
+  | 'i18n-sensitive'
+  | 'session-unstable'
+  | 'environment-unstable'
+  | 'structural'
+  | 'portal-scoped';
+
+export type SelectorQuality = 'good' | 'medium' | 'poor';
+
+export interface SelectorInfo {
+  selector: string;
+  method: string;
+  isUnique: boolean;
+  matchCount: number;
+  contextStrategy?: string;
+  stabilityScore: number;
+  warnings: string[];
+  quality: SelectorQuality;
+  flags: StabilityFlag[];
+  isPortalScoped: boolean;
+  overlayRole?: string;
+  visibleMatchCount?: number;
+}
+
+interface Candidate {
+  selector: string;
+  score: number;
+  method: string;
+}
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-/**
- * Centralized configuration for selector generation algorithm.
- * All magic numbers and repeated arrays are defined here for easy tuning.
- */
 const SELECTOR_CONFIG = {
-  /** Maximum total DOM levels to traverse when searching for parent context */
-  maxTotalDepth: 20,
-  /** Maximum parents WITH identifying attributes to try before giving up */
-  maxMeaningfulDepth: 5,
-  /** Maximum depth when walking up hierarchy to find best element */
-  maxHierarchyDepth: 5,
-  /** Maximum depth when searching for nearby form controls */
-  maxNearbyFormControlDepth: 3,
-  /** Maximum text length for text-based selectors */
-  maxTextLength: 50,
-  /** Maximum text length for longer content (e.g., :contains fallback) */
-  maxLongTextLength: 100,
-  /** Supported test ID attribute names in priority order */
   testIdAttrs: ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'] as const,
-  /** Semantic ARIA roles that indicate interactive elements */
-  semanticRoles: ['button', 'link', 'menuitem', 'option', 'tab', 'checkbox', 'radio', 'switch', 'combobox'] as const,
-  /** HTML tags that are typically interactive */
-  interactiveTags: ['input', 'select', 'textarea', 'button', 'a', 'label'] as const,
-  /** HTML tags that are form controls */
+  interactiveTags: ['button', 'a'] as const,
+  interactiveRoles: ['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'option', 'switch', 'combobox'] as const,
   formControlTags: ['input', 'select', 'textarea'] as const,
-  /** Structural tags that act as component boundaries (panels, sections, etc.) */
-  scopingTags: ['section', 'article', 'main', 'aside', 'nav', 'form', 'header'] as const,
-  /** Maximum depth to search for a scoping ancestor */
+  semanticRoles: ['button', 'link', 'menuitem', 'option', 'tab', 'checkbox', 'radio', 'switch', 'combobox'] as const,
+  maxTextLength: 50,
+  maxRetargetDepth: 10,
+  maxDisambiguationDepth: 15,
   maxScopingDepth: 8,
-  /** Generic button words that need parent context for disambiguation */
   genericButtonWords: [
     'new',
     'add',
@@ -77,268 +85,134 @@ const SELECTOR_CONFIG = {
   ] as const,
 } as const;
 
-/**
- * Stability scores for different selector methods.
- * Higher scores indicate more stable, reliable selectors.
- */
-const STABILITY_SCORES: Record<string, number> = {
-  'data-testid': 100,
-  id: 90,
-  'aria-label': 85,
-  placeholder: 80,
-  title: 80,
-  name: 75,
-  href: 70,
-  'button-text': 65,
-  contains: 55,
-  sibling: 50,
-  compound: 40,
-  'nth-of-type': 25,
-  'nth-match': 15,
-};
+const CANDIDATE_SCORES = {
+  testId: 10,
+  scopedTestId: 15,
+  cssId: 50,
+  roleText: 100,
+  roleContains: 110,
+  ariaLabel: 120,
+  buttonText: 130,
+  placeholder: 140,
+  title: 150,
+  labelText: 160,
+  name: 170,
+  href: 180,
+  compound: 500,
+  nthOfType: 10000,
+  nthMatch: 50000,
+} as const;
 
-// ============================================================================
-// Stability Flag Types
-// ============================================================================
+const DISAMBIGUATION_PENALTIES = {
+  parentTestId: 50,
+  parentStableAttr: 70,
+  overlayScope: 75,
+  nthMatch: 1000,
+} as const;
 
-/**
- * Stability flags indicate potential sources of selector fragility.
- * These provide structured metadata for programmatic use.
- */
-export type StabilityFlag =
-  | 'i18n-sensitive' // Uses translatable attributes (aria-label, title, placeholder)
-  | 'session-unstable' // Uses framework-generated IDs
-  | 'environment-unstable' // Uses instance-specific data (UIDs, service names)
-  | 'structural' // Relies on DOM position (nth-of-type, nth-match)
-  | 'portal-scoped'; // Only valid within overlay context
-
-/**
- * Quality rating for selectors.
- * - good: i18n-stable, session-stable attribute selectors
- * - medium: translatable text, session-specific values, or structural scoping
- * - poor: CSS path fallback (fragile)
- */
-export type SelectorQuality = 'good' | 'medium' | 'poor';
-
-/**
- * ARIA roles that indicate overlay/portal contexts.
- * Selectors inside these containers may need scoping for uniqueness.
- */
 const OVERLAY_ROLES = ['dialog', 'alertdialog', 'menu', 'listbox', 'tooltip', 'combobox'] as const;
 
-/**
- * Clear the selector cache.
- * @deprecated Caching has been removed - this is now a no-op for backward compatibility
- */
-export function clearSelectorCache(): void {
-  // No-op - caching has been removed per feedback that it caused issues
-  // with multi-step forms where elements are accessed over longer periods
-}
-
 // ============================================================================
-// Helper Functions
+// Helpers
 // ============================================================================
 
-/**
- * Check if an ID appears to be auto-generated
- */
 function isAutoGeneratedId(id: string): boolean {
-  // IDs with random hashes or UUIDs
   if (id.length > 20) {
     return true;
   }
   if (/^[a-f0-9]{8,}/.test(id)) {
     return true;
-  } // Hex hashes
+  }
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return true;
-  } // UUID
+  }
   if (/^id-\d+/.test(id)) {
     return true;
-  } // Auto-incremented IDs
+  }
   if (/^react-/.test(id)) {
     return true;
-  } // React-generated IDs
-
+  }
   return false;
 }
 
-/**
- * Check if a test ID is valid and useful
- * Filters out broken interpolations like "[object Object]"
- */
 function isValidTestId(value: string | null): boolean {
   if (!value) {
     return false;
   }
-
-  // Critical fix for Grafana UI bugs
   if (value.includes('[object Object]')) {
     return false;
   }
   if (value.trim() === '') {
     return false;
   }
-
   return true;
 }
 
-// ============================================================================
-// Portal/Overlay Detection
-// ============================================================================
+function normalizeText(text: string): string {
+  return text
+    .replace(/[\u200e\u200f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-/**
- * Find the nearest overlay/portal ancestor for an element.
- * Used to scope selectors to their containing overlay context.
- *
- * @param element - The element to check
- * @returns The overlay element if found, null otherwise
- */
-function findOverlayContext(element: HTMLElement): HTMLElement | null {
-  // Start from parent — the element itself should not be its own overlay context
-  let current: HTMLElement | null = element.parentElement;
-
-  while (current) {
-    const role = current.getAttribute('role');
-
-    // Check for ARIA overlay roles
-    if (role && (OVERLAY_ROLES as readonly string[]).includes(role)) {
-      return current;
+function normalizeHref(href: string): string {
+  try {
+    const hashIndex = href.indexOf('#');
+    const queryIndex = href.indexOf('?');
+    let endIndex = href.length;
+    if (hashIndex > 0) {
+      endIndex = hashIndex;
     }
-
-    // Check for common overlay patterns without explicit role
-    if (current.classList.contains('modal') || current.hasAttribute('aria-modal') || current.tagName === 'DIALOG') {
-      return current;
+    if (queryIndex > 0 && queryIndex < endIndex) {
+      endIndex = queryIndex;
     }
-
-    // Check for Grafana-specific overlay patterns
-    if (
-      current.classList.contains('dropdown-menu') ||
-      current.classList.contains('portal') ||
-      current.getAttribute('data-popper-placement')
-    ) {
-      return current;
-    }
-
-    current = current.parentElement;
+    return href.substring(0, endIndex);
+  } catch {
+    return href;
   }
+}
 
+function getAnyTestId(element: HTMLElement): string | null {
+  for (const attr of SELECTOR_CONFIG.testIdAttrs) {
+    if (element.hasAttribute(attr)) {
+      const value = element.getAttribute(attr);
+      if (isValidTestId(value)) {
+        return value;
+      }
+    }
+  }
   return null;
 }
 
-/**
- * Build a selector scoped to an overlay context.
- * Adds the overlay's role or tag as a prefix for disambiguation.
- *
- * @param overlay - The overlay element
- * @param baseSelector - The base selector to scope
- * @returns Scoped selector string
- */
-function buildOverlayScopedSelector(overlay: HTMLElement, baseSelector: string): string {
-  const role = overlay.getAttribute('role');
-
-  // Prefer role-based scoping (most semantic)
-  if (role) {
-    return `[role="${role}"] ${baseSelector}`;
-  }
-
-  // Use dialog tag for native dialogs
-  if (overlay.tagName === 'DIALOG') {
-    return `dialog ${baseSelector}`;
-  }
-
-  // Use aria-modal for modal dialogs without role
-  if (overlay.hasAttribute('aria-modal')) {
-    return `[aria-modal="true"] ${baseSelector}`;
-  }
-
-  // Fallback: use a generic overlay class if present
-  if (overlay.classList.contains('modal')) {
-    return `.modal ${baseSelector}`;
-  }
-
-  // Last resort: return base selector without scoping
-  return baseSelector;
+function getTestIdAttr(element: HTMLElement): string {
+  return SELECTOR_CONFIG.testIdAttrs.find((attr) => element.hasAttribute(attr)) || 'data-testid';
 }
 
-/**
- * Get the role of an overlay element for metadata purposes.
- *
- * @param overlay - The overlay element
- * @returns The overlay's role or a descriptive string
- */
-function getOverlayRole(overlay: HTMLElement | null): string | undefined {
-  if (!overlay) {
-    return undefined;
-  }
+const STABLE_CLASS_PATTERNS = [/^[a-z][a-z0-9-]*(__[a-z0-9-]+)?(--[a-z0-9-]+)?$/, /^[a-z][a-z0-9-]+$/];
 
-  const role = overlay.getAttribute('role');
-  if (role) {
-    return role;
-  }
-
-  if (overlay.tagName === 'DIALOG') {
-    return 'dialog';
-  }
-
-  if (overlay.hasAttribute('aria-modal')) {
-    return 'modal';
-  }
-
-  return 'overlay';
-}
-
-/**
- * Patterns for stable, semantic CSS classes that should be kept
- */
-const STABLE_CLASS_PATTERNS = [
-  /^[a-z][a-z0-9-]*(__[a-z0-9-]+)?(--[a-z0-9-]+)?$/, // BEM: block__element--modifier
-  /^[a-z][a-z0-9-]+$/, // Simple kebab-case (min 2 chars to avoid 'p', 'm', etc.)
-];
-
-/**
- * Check if a class matches stable naming patterns
- */
 function isStableClass(className: string): boolean {
   return STABLE_CLASS_PATTERNS.some((pattern) => pattern.test(className));
 }
 
-/**
- * Check if a class appears to be auto-generated or utility-only
- */
 function isAutoGeneratedClass(className: string): boolean {
-  // First check if it matches stable patterns (allowlist)
   if (isStableClass(className)) {
     return false;
   }
-
-  // Emotion/styled-components classes
   if (className.startsWith('css-')) {
     return true;
   }
-
-  // More Grafana-specific patterns - be more aggressive
-  if (/^css-/.test(className)) {
-    return true;
-  } // Any css- prefix (emotion/styled-components)
   if (/^[a-z]+-[a-z0-9]{6,}/.test(className)) {
     return true;
-  } // emotion-style hashes
+  }
   if (className.match(/^_[a-zA-Z0-9]{5,}$/)) {
     return true;
-  } // webpack module hashes
-
-  // Classes with long hash patterns (6+ alphanumeric to catch more)
+  }
   if (/[a-zA-Z0-9]{6,}/.test(className) && className.includes('-')) {
     return true;
   }
-
-  // Theme classes (dynamic light/dark)
   if (className.startsWith('theme-')) {
     return true;
   }
-
-  // Common utility classes that don't help identify elements
   const utilityClasses = [
     'flex',
     'flex-row',
@@ -369,321 +243,42 @@ function isAutoGeneratedClass(className: string): boolean {
     'font-normal',
     'font-light',
   ];
-
   if (utilityClasses.includes(className)) {
     return true;
   }
-
-  // Grafana-specific utility patterns
   if (className.match(/^(theme|color|bg|border|rounded|shadow)-/)) {
     return true;
   }
-
   return false;
 }
 
-/**
- * Get unique, meaningful classes from an element
- */
 function getMeaningfulClasses(element: HTMLElement): string[] {
-  if (!element.className) {
+  if (!element.className || typeof element.className !== 'string') {
     return [];
   }
-
-  const classes = element.className.split(/\s+/).filter(Boolean);
-  return classes.filter((cls) => !isAutoGeneratedClass(cls));
+  return element.className
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((cls) => !isAutoGeneratedClass(cls));
 }
 
-/**
- * Normalize text by removing RTL/LTR marks and collapsing whitespace
- */
-function normalizeText(text: string): string {
-  return text
-    .replace(/[\u200e\u200f]/g, '') // Remove RTL/LTR marks
-    .replace(/\s+/g, ' ') // Collapse whitespace
-    .trim();
+const DYNAMIC_ATTRIBUTE_PATTERNS = [
+  /\[data-new-gr-c-s-check-loaded="[^"]*"\]/,
+  /\[data-gr-ext-installed="[^"]*"\]/,
+  /\[data-gr-ext-disabled="[^"]*"\]/,
+  /\[data-testid="data-testid [^"]*"\]\[data-testid="data-testid [^"]*"\]/,
+];
+
+function cleanDynamicAttributes(selector: string): string {
+  let cleaned = selector;
+  for (const pattern of DYNAMIC_ATTRIBUTE_PATTERNS) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+  cleaned = cleaned.replace(/\.theme-(?:dark|light)/g, '');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return cleaned;
 }
 
-/**
- * Normalize href by removing query strings and hashes while preserving relative/absolute path
- * Keeps the original path format (relative vs absolute) for exact attribute matching
- */
-function normalizeHref(href: string): string {
-  try {
-    // For URLs with query strings or hashes, strip them
-    const hashIndex = href.indexOf('#');
-    const queryIndex = href.indexOf('?');
-
-    let endIndex = href.length;
-    if (hashIndex > 0) {
-      endIndex = hashIndex;
-    }
-    if (queryIndex > 0 && queryIndex < endIndex) {
-      endIndex = queryIndex;
-    }
-
-    // Return the path portion, preserving relative vs absolute format
-    return href.substring(0, endIndex);
-  } catch {
-    return href; // Invalid URL, return as-is
-  }
-}
-
-/**
- * Get test ID from any supported test ID attribute
- * Supports multiple conventions: data-testid, data-cy, data-test-id, data-qa, data-test-subj
- * Filters out malformed testid values (e.g., "data-testid Panel header")
- */
-function getAnyTestId(element: HTMLElement): string | null {
-  for (const attr of SELECTOR_CONFIG.testIdAttrs) {
-    if (element.hasAttribute(attr)) {
-      const value = element.getAttribute(attr);
-      if (isValidTestId(value)) {
-        return value;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Check if button text is unique enough to use as a selector
- * Also filters out overly generic words that shouldn't be used alone
- */
-function isUniqueButtonText(text: string): boolean {
-  if (!text || text.length < 2) {
-    return false;
-  }
-
-  // Too short or too generic - always need more context
-  const lowerText = text.toLowerCase();
-  if (
-    text.length < 4 ||
-    SELECTOR_CONFIG.genericButtonWords.includes(lowerText as (typeof SELECTOR_CONFIG.genericButtonWords)[number])
-  ) {
-    return false; // Always need parent context for these
-  }
-
-  // Use findButtonByText to check uniqueness
-  const buttons = findButtonByText(text);
-  return buttons.length === 1;
-}
-
-// Note: buildCompoundSelector was replaced by buildCompoundSelectorWithContext
-// which provides better specificity by including parent context
-
-/**
- * Find the best element in the hierarchy - SIMPLIFIED
- *
- * Core principle: Find the actual interactive element (input, button, link)
- * with the best testid or id, not wrapper divs.
- */
-
-/**
- * Find a structural scoping ancestor with a testid.
- *
- * Walks up the DOM looking for section/article/main/etc. elements that have
- * a testid. These represent component boundaries (e.g., Grafana panels) and
- * provide stable scoping context even when the child testid happens to be
- * unique on the current page.
- *
- * Returns a CSS selector string for the scoping ancestor, or null if none found.
- */
-function findScopingAncestorSelector(element: HTMLElement): string | null {
-  let current = element.parentElement;
-  let depth = 0;
-  let bestDataAttrAncestor: string | null = null;
-
-  while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
-    const tag = current.tagName.toLowerCase();
-
-    // Priority 1: Semantic scoping tags with testid (original behavior)
-    if ((SELECTOR_CONFIG.scopingTags as readonly string[]).includes(tag)) {
-      const testId = getAnyTestId(current);
-      if (testId) {
-        const testIdAttr = getTestIdAttr(current);
-        return `${tag}[${testIdAttr}='${testId}']`;
-      }
-    }
-
-    // Priority 2: Any element with a testid (including divs)
-    const testId = getAnyTestId(current);
-    if (testId) {
-      const testIdAttr = getTestIdAttr(current);
-      return `${tag}[${testIdAttr}='${testId}']`;
-    }
-
-    // Priority 3: Capture first ancestor with stable data-* attribute (as fallback)
-    if (!bestDataAttrAncestor) {
-      const stableAttr = getStableDataAttr(current);
-      if (stableAttr) {
-        bestDataAttrAncestor = `${tag}[${stableAttr.name}='${stableAttr.value}']`;
-      }
-    }
-
-    current = current.parentElement;
-    depth++;
-  }
-
-  // Return data-attr ancestor only if no testid ancestor was found
-  return bestDataAttrAncestor;
-}
-
-function findBestElementInHierarchy(
-  element: HTMLElement,
-  maxDepth = 5,
-  options?: { clickX?: number; clickY?: number }
-): HTMLElement {
-  // STEP 1: Search siblings and nearby elements for form controls
-  // When user clicks SVG/icon near an input, find that input!
-  // BUT: Skip this if the element is already inside a button or link —
-  // the user clicked the button itself, not an icon near an input.
-  const closestInteractive = element.closest('button, a');
-  const nearbyInput = closestInteractive ? null : findNearbyFormControl(element, 3);
-  if (nearbyInput) {
-    return nearbyInput;
-  }
-
-  // STEP 2: If element itself is interactive with testid/id, use it
-  const tag = element.tagName.toLowerCase();
-  const hasGoodAttribute =
-    getAnyTestId(element) || (element.id && !isAutoGeneratedId(element.id)) || element.hasAttribute('aria-label');
-
-  // ADDED: Check for semantic roles
-  const role = element.getAttribute('role');
-  const isSemanticRole = role && (SELECTOR_CONFIG.semanticRoles as readonly string[]).includes(role);
-
-  if ((hasGoodAttribute || isSemanticRole) && (SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(tag)) {
-    return element;
-  }
-
-  // STEP 3: Walk up to find element with testid/id (max 5 levels)
-  let current: HTMLElement | null = element;
-  let depth = 0;
-
-  while (current && depth < maxDepth) {
-    const currentTag = current.tagName.toLowerCase();
-    const currentTestId = getAnyTestId(current);
-    const currentId = current.id && !isAutoGeneratedId(current.id);
-    const currentRole = current.getAttribute('role');
-
-    // Prefer actual interactive elements with good attributes
-    if ((currentTestId || currentId) && (SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(currentTag)) {
-      return current;
-    }
-
-    // ADDED: Stop at semantic roles (fixes dropdown option selection)
-    if (currentRole && (SELECTOR_CONFIG.semanticRoles as readonly string[]).includes(currentRole)) {
-      return current;
-    }
-
-    // For buttons/links without testid, still prefer them over divs
-    if (['button', 'a'].includes(currentTag)) {
-      return current;
-    }
-
-    // Take first element with testid (even if it's a div)
-    if (currentTestId) {
-      return current;
-    }
-
-    current = current.parentElement;
-    depth++;
-  }
-
-  // STEP 4: Fall back to original element
-  return element;
-}
-
-/**
- * Find nearby form control (input, select, textarea) when user clicks icon/wrapper
- * This handles cases like clicking SVG dropdown arrow next to an input
- * For radio/checkbox, prefers the label over the input
- */
-function findNearbyFormControl(element: HTMLElement, maxDepth: number): HTMLElement | null {
-  let current: HTMLElement | null = element;
-  let depth = 0;
-  const originRect = element.getBoundingClientRect();
-
-  while (current && depth < maxDepth) {
-    // For radio/checkbox, look for labels first (better selectors with text)
-    const label = current.querySelector('label[for]');
-    if (label instanceof HTMLElement) {
-      const forAttr = label.getAttribute('for');
-      if (forAttr) {
-        const associatedInput = document.getElementById(forAttr);
-        if (associatedInput instanceof HTMLInputElement && ['radio', 'checkbox'].includes(associatedInput.type)) {
-          if (isVisuallyNear(originRect, label.getBoundingClientRect())) {
-            return label; // Return the label for radio/checkbox
-          }
-        }
-      }
-    }
-
-    // Look for form controls with testid or id (but not radio/checkbox inputs)
-    const formControl = current.querySelector(
-      'input[data-testid], select[data-testid], textarea[data-testid], input[id], select[id], textarea[id]'
-    );
-    if (formControl instanceof HTMLElement) {
-      // Skip radio/checkbox inputs - we want their labels instead
-      if (formControl.tagName === 'INPUT') {
-        const inputType = (formControl as HTMLInputElement).type;
-        if (inputType === 'radio' || inputType === 'checkbox') {
-          // Look for its label
-          const inputId = formControl.id;
-          if (inputId) {
-            const associatedLabel = document.querySelector(`label[for='${inputId}']`);
-            if (
-              associatedLabel instanceof HTMLElement &&
-              isVisuallyNear(originRect, associatedLabel.getBoundingClientRect())
-            ) {
-              return associatedLabel;
-            }
-          }
-          // No label found, continue searching
-        } else if (isVisuallyNear(originRect, formControl.getBoundingClientRect())) {
-          return formControl; // Other input types are fine
-        }
-      } else if (isVisuallyNear(originRect, formControl.getBoundingClientRect())) {
-        return formControl; // Select/textarea are fine
-      }
-    }
-
-    current = current.parentElement;
-    depth++;
-  }
-
-  return null;
-}
-
-/** Maximum pixel distance between the clicked element and a "nearby" form control */
-const NEARBY_PROXIMITY_THRESHOLD = 100;
-
-/**
- * Check if two elements are visually close to each other.
- * Prevents the nearby form control search from returning unrelated inputs
- * that happen to share a distant ancestor.
- */
-function isVisuallyNear(originRect: DOMRect, candidateRect: DOMRect): boolean {
-  // If either rect has zero dimensions, fall back to allowing it (element may be hidden/not laid out)
-  if (originRect.width === 0 && originRect.height === 0) {
-    return true;
-  }
-  if (candidateRect.width === 0 && candidateRect.height === 0) {
-    return true;
-  }
-
-  // Check if bounding boxes overlap or are within the proximity threshold
-  const dx = Math.max(0, Math.max(originRect.left - candidateRect.right, candidateRect.left - originRect.right));
-  const dy = Math.max(0, Math.max(originRect.top - candidateRect.bottom, candidateRect.top - originRect.bottom));
-  return dx <= NEARBY_PROXIMITY_THRESHOLD && dy <= NEARBY_PROXIMITY_THRESHOLD;
-}
-
-/**
- * Patterns for data-* attributes that are dynamic/unstable and should NOT be used
- * as parent scoping context. These change between sessions, locales, or interactions.
- */
 const UNSTABLE_DATA_ATTR_PATTERNS: RegExp[] = [
   /^data-emotion/,
   /^data-react/,
@@ -699,7 +294,6 @@ const UNSTABLE_DATA_ATTR_PATTERNS: RegExp[] = [
   /^data-headlessui-/,
   /^data-new-gr-/,
   /^data-gr-/,
-  // Already handled by getAnyTestId — avoid double-matching
   /^data-testid$/,
   /^data-cy$/,
   /^data-test-id$/,
@@ -707,11 +301,6 @@ const UNSTABLE_DATA_ATTR_PATTERNS: RegExp[] = [
   /^data-test-subj$/,
 ];
 
-/**
- * Find the first stable (non-dynamic) data-* attribute on an element.
- * Returns the attribute name and value, or null if none found.
- * Skips attributes that are in the unstable denylist or look like state flags.
- */
 function getStableDataAttr(element: HTMLElement): { name: string; value: string } | null {
   for (const attr of Array.from(element.attributes)) {
     if (!attr.name.startsWith('data-')) {
@@ -723,7 +312,6 @@ function getStableDataAttr(element: HTMLElement): { name: string; value: string 
     if (!attr.value || attr.value.length > SELECTOR_CONFIG.maxTextLength) {
       continue;
     }
-    // Skip boolean-like values that are likely state attributes
     if (attr.value === 'true' || attr.value === 'false') {
       continue;
     }
@@ -732,512 +320,441 @@ function getStableDataAttr(element: HTMLElement): { name: string; value: string 
   return null;
 }
 
-/**
- * List of dynamic/unstable attribute patterns to remove from selectors
- */
-const DYNAMIC_ATTRIBUTE_PATTERNS = [
-  /\[data-new-gr-c-s-check-loaded="[^"]*"\]/, // Grammarly extension
-  /\[data-gr-ext-installed="[^"]*"\]/, // Grammarly extension
-  /\[data-gr-ext-disabled="[^"]*"\]/, // Grammarly extension
-  /\[data-testid="data-testid [^"]*"\]\[data-testid="data-testid [^"]*"\]/, // Duplicate testids
-];
-
-/**
- * Clean selector by removing dynamic/unstable attributes
- */
-function cleanDynamicAttributes(selector: string): string {
-  let cleaned = selector;
-
-  // Remove dynamic attribute patterns
-  for (const pattern of DYNAMIC_ATTRIBUTE_PATTERNS) {
-    cleaned = cleaned.replace(pattern, '');
-  }
-
-  // Remove theme classes (theme-dark, theme-light)
-  cleaned = cleaned.replace(/\.theme-(?:dark|light)/g, '');
-
-  // Remove body tag with only dynamic attributes
-  if (cleaned.match(/^body[^:>\s]*:nth-of-type\(1\)$/)) {
-    // Body with only nth-of-type is useless - this shouldn't happen
-    return 'body';
-  }
-
-  // Clean up multiple spaces and trailing combinators
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  cleaned = cleaned.replace(/\s+>/g, '>').replace(/>\s+/g, '>');
-
-  return cleaned;
-}
-
 // ============================================================================
-// Selector Testing Helpers
+// Overlay / Portal Detection
 // ============================================================================
 
-/**
- * Result of attempting to find a unique selector
- */
-interface TrySelectorResult {
-  success: boolean;
-  selector: string;
-}
-
-/**
- * Try a selector and check if it uniquely identifies the element.
- * Returns success: true if the selector matches exactly one element (the target).
- */
-function tryUniqueSelector(selector: string, element: HTMLElement, useVisibilityMatching = false): TrySelectorResult {
-  try {
-    // Use visibility-aware matching for overlay contexts
-    const matchFn = useVisibilityMatching ? querySelectorAllEnhancedVisible : querySelectorAllEnhanced;
-    const matches = matchFn(selector);
-    if (matches.elements.length === 1 && matches.elements[0] === element) {
-      return { success: true, selector: cleanDynamicAttributes(selector) };
+function findOverlayContext(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element.parentElement;
+  while (current) {
+    const role = current.getAttribute('role');
+    if (role && (OVERLAY_ROLES as readonly string[]).includes(role)) {
+      return current;
     }
-  } catch {
-    /* ignore selector errors */
+    if (current.classList.contains('modal') || current.hasAttribute('aria-modal') || current.tagName === 'DIALOG') {
+      return current;
+    }
+    if (
+      current.classList.contains('dropdown-menu') ||
+      current.classList.contains('portal') ||
+      current.getAttribute('data-popper-placement')
+    ) {
+      return current;
+    }
+    current = current.parentElement;
   }
-  return { success: false, selector };
+  return null;
 }
 
+function buildOverlayScopedSelector(overlay: HTMLElement, baseSelector: string): string {
+  const role = overlay.getAttribute('role');
+  if (role) {
+    return `[role="${role}"] ${baseSelector}`;
+  }
+  if (overlay.tagName === 'DIALOG') {
+    return `dialog ${baseSelector}`;
+  }
+  if (overlay.hasAttribute('aria-modal')) {
+    return `[aria-modal="true"] ${baseSelector}`;
+  }
+  if (overlay.classList.contains('modal')) {
+    return `.modal ${baseSelector}`;
+  }
+  return baseSelector;
+}
+
+function getOverlayRole(overlay: HTMLElement | null): string | undefined {
+  if (!overlay) {
+    return undefined;
+  }
+  const role = overlay.getAttribute('role');
+  if (role) {
+    return role;
+  }
+  if (overlay.tagName === 'DIALOG') {
+    return 'dialog';
+  }
+  if (overlay.hasAttribute('aria-modal')) {
+    return 'modal';
+  }
+  return 'overlay';
+}
+
+// ============================================================================
+// Phase 1: Retarget
+// ============================================================================
+
 /**
- * Try a selector for uniqueness, falling back to a builder function if not unique.
- * Exported for use in advanced selector building scenarios.
+ * Walk up the DOM to find the user's "intent element."
+ *
+ * Rules (confirmed by design):
+ * - Form controls (input/select/textarea/contentEditable) → keep as-is
+ * - Non-interactive child of an interactive ancestor → retarget to the ancestor
+ * - Non-interactive element with no interactive ancestor → keep as-is
  */
-export function tryUniqueSelectorWithFallback(
+export function retargetElement(element: HTMLElement): HTMLElement {
+  const tag = element.tagName.toLowerCase();
+
+  if ((SELECTOR_CONFIG.formControlTags as readonly string[]).includes(tag)) {
+    return element;
+  }
+  if ((element as HTMLElement & { isContentEditable: boolean }).isContentEditable) {
+    return element;
+  }
+
+  let current: HTMLElement | null = element.parentElement;
+  let depth = 0;
+
+  while (current && depth < SELECTOR_CONFIG.maxRetargetDepth) {
+    const currentTag = current.tagName.toLowerCase();
+    const currentRole = current.getAttribute('role');
+
+    if ((SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(currentTag)) {
+      return current;
+    }
+    if (currentRole && (SELECTOR_CONFIG.interactiveRoles as readonly string[]).includes(currentRole)) {
+      return current;
+    }
+
+    current = current.parentElement;
+    depth++;
+  }
+
+  return element;
+}
+
+// ============================================================================
+// Phase 2: Candidate Generators
+// ============================================================================
+
+function candidateTestId(element: HTMLElement): Candidate | null {
+  const testId = getAnyTestId(element);
+  if (!testId) {
+    return null;
+  }
+  const tag = element.tagName.toLowerCase();
+  const attr = getTestIdAttr(element);
+  return { selector: `${tag}[${attr}='${testId}']`, score: CANDIDATE_SCORES.testId, method: 'data-testid' };
+}
+
+function candidateScopedTestId(element: HTMLElement): Candidate | null {
+  const testId = getAnyTestId(element);
+  if (!testId) {
+    return null;
+  }
+  const tag = element.tagName.toLowerCase();
+  const attr = getTestIdAttr(element);
+  const base = `${tag}[${attr}='${testId}']`;
+
+  let current = element.parentElement;
+  let depth = 0;
+  while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
+    const parentTestId = getAnyTestId(current);
+    if (parentTestId) {
+      const pTag = current.tagName.toLowerCase();
+      const pAttr = getTestIdAttr(current);
+      return {
+        selector: `${pTag}[${pAttr}='${parentTestId}'] ${base}`,
+        score: CANDIDATE_SCORES.scopedTestId,
+        method: 'scoped-testid',
+      };
+    }
+    current = current.parentElement;
+    depth++;
+  }
+  return null;
+}
+
+function candidateTestIdPlusHref(element: HTMLElement): Candidate | null {
+  if (element.tagName !== 'A') {
+    return null;
+  }
+  const testId = getAnyTestId(element);
+  const rawHref = element.getAttribute('href');
+  if (!testId || !rawHref) {
+    return null;
+  }
+  const attr = getTestIdAttr(element);
+  const href = normalizeHref(rawHref);
+  return {
+    selector: `a[${attr}='${testId}'][href='${href}']`,
+    score: CANDIDATE_SCORES.testId + 2,
+    method: 'testid-href',
+  };
+}
+
+function candidateId(element: HTMLElement): Candidate | null {
+  if (!element.id || isAutoGeneratedId(element.id)) {
+    return null;
+  }
+  return { selector: `#${element.id}`, score: CANDIDATE_SCORES.cssId, method: 'id' };
+}
+
+function candidateRoleName(element: HTMLElement): Candidate | null {
+  const role = element.getAttribute('role');
+  if (!role || !(SELECTOR_CONFIG.semanticRoles as readonly string[]).includes(role)) {
+    return null;
+  }
+  const text = normalizeText(element.textContent || '');
+  if (text.length === 0 || text.length > SELECTOR_CONFIG.maxTextLength) {
+    const tag = element.tagName.toLowerCase();
+    return { selector: `${tag}[role='${role}']`, score: CANDIDATE_SCORES.roleContains + 50, method: 'role' };
+  }
+  if (text.length < 20) {
+    return { selector: `[role='${role}']:text('${text}')`, score: CANDIDATE_SCORES.roleText, method: 'role-text' };
+  }
+  return {
+    selector: `[role='${role}']:contains('${text}')`,
+    score: CANDIDATE_SCORES.roleContains,
+    method: 'role-contains',
+  };
+}
+
+function candidateAriaLabel(element: HTMLElement): Candidate | null {
+  const ariaLabel = element.getAttribute('aria-label');
+  if (!ariaLabel || ariaLabel.length > SELECTOR_CONFIG.maxTextLength) {
+    return null;
+  }
+  const tag = element.tagName.toLowerCase();
+  return { selector: `${tag}[aria-label='${ariaLabel}']`, score: CANDIDATE_SCORES.ariaLabel, method: 'aria-label' };
+}
+
+function candidateButtonText(element: HTMLElement): Candidate[] {
+  const candidates: Candidate[] = [];
+  if (element.tagName !== 'BUTTON' && element.getAttribute('role') !== 'button') {
+    return candidates;
+  }
+  const text = normalizeText(element.textContent || '');
+  if (text.length === 0 || text.length > SELECTOR_CONFIG.maxTextLength) {
+    return candidates;
+  }
+
+  const lowerText = text.toLowerCase();
+  const isGeneric =
+    text.length < 4 ||
+    SELECTOR_CONFIG.genericButtonWords.includes(lowerText as (typeof SELECTOR_CONFIG.genericButtonWords)[number]);
+
+  if (!isGeneric) {
+    const buttons = findButtonByText(text);
+    if (buttons.length === 1) {
+      candidates.push({ selector: text, score: CANDIDATE_SCORES.buttonText, method: 'button-text' });
+    }
+  }
+
+  const tag = element.tagName.toLowerCase();
+  if (text.length < 20) {
+    candidates.push({
+      selector: `${tag}:text('${text}')`,
+      score: CANDIDATE_SCORES.buttonText + 5,
+      method: 'button-css-text',
+    });
+  } else {
+    candidates.push({
+      selector: `${tag}:contains('${text}')`,
+      score: CANDIDATE_SCORES.buttonText + 10,
+      method: 'button-css-contains',
+    });
+  }
+  return candidates;
+}
+
+function candidatePlaceholder(element: HTMLElement): Candidate | null {
+  if (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA') {
+    return null;
+  }
+  const placeholder = element.getAttribute('placeholder');
+  if (!placeholder || placeholder.length === 0 || placeholder.length > SELECTOR_CONFIG.maxTextLength) {
+    return null;
+  }
+  const tag = element.tagName.toLowerCase();
+  return {
+    selector: `${tag}[placeholder='${placeholder}']`,
+    score: CANDIDATE_SCORES.placeholder,
+    method: 'placeholder',
+  };
+}
+
+function candidateTitle(element: HTMLElement): Candidate | null {
+  const title = element.getAttribute('title');
+  if (!title || title.length === 0 || title.length > SELECTOR_CONFIG.maxTextLength) {
+    return null;
+  }
+  const tag = element.tagName.toLowerCase();
+  return { selector: `${tag}[title='${title}']`, score: CANDIDATE_SCORES.title, method: 'title' };
+}
+
+function candidateLabelText(element: HTMLElement): Candidate | null {
+  if (element.tagName !== 'LABEL') {
+    return null;
+  }
+  const text = normalizeText(element.textContent || '');
+  if (text.length === 0 || text.length > SELECTOR_CONFIG.maxTextLength) {
+    return null;
+  }
+  return { selector: `label:contains('${text}')`, score: CANDIDATE_SCORES.labelText, method: 'label-text' };
+}
+
+function candidateName(element: HTMLElement): Candidate | null {
+  const tag = element.tagName.toLowerCase();
+  if (!['input', 'textarea', 'select'].includes(tag)) {
+    return null;
+  }
+  const name = element.getAttribute('name');
+  if (!name) {
+    return null;
+  }
+  if (tag === 'input') {
+    const inputType = (element as HTMLInputElement).type?.toLowerCase();
+    if (inputType === 'radio' || inputType === 'checkbox') {
+      return null;
+    }
+  }
+  return { selector: `${tag}[name='${name}']`, score: CANDIDATE_SCORES.name, method: 'name' };
+}
+
+function candidateHref(element: HTMLElement): Candidate | null {
+  if (element.tagName !== 'A') {
+    return null;
+  }
+  const rawHref = element.getAttribute('href');
+  if (!rawHref) {
+    return null;
+  }
+  const href = normalizeHref(rawHref);
+  return { selector: `a[href='${href}']`, score: CANDIDATE_SCORES.href, method: 'href' };
+}
+
+function candidateCompound(element: HTMLElement): Candidate | null {
+  const tag = element.tagName.toLowerCase();
+  const parts: string[] = [tag];
+
+  const meaningfulClasses = getMeaningfulClasses(element);
+  if (meaningfulClasses.length > 0) {
+    parts.push(`.${meaningfulClasses[0]}`);
+  }
+
+  for (const attr of Array.from(element.attributes)) {
+    if (
+      attr.name.startsWith('data-') &&
+      !UNSTABLE_DATA_ATTR_PATTERNS.some((p) => p.test(attr.name)) &&
+      attr.value.length < SELECTOR_CONFIG.maxTextLength &&
+      attr.value !== 'true' &&
+      attr.value !== 'false'
+    ) {
+      parts.push(`[${attr.name}='${attr.value}']`);
+      break;
+    }
+  }
+
+  if (tag === 'a' && element.hasAttribute('href')) {
+    const href = normalizeHref(element.getAttribute('href')!);
+    parts.push(`[href='${href}']`);
+  }
+
+  if (parts.length <= 1) {
+    return null;
+  }
+  return { selector: cleanDynamicAttributes(parts.join('')), score: CANDIDATE_SCORES.compound, method: 'compound' };
+}
+
+function candidateNthOfType(element: HTMLElement): Candidate | null {
+  if (!element.parentElement) {
+    return null;
+  }
+  const tag = element.tagName.toLowerCase();
+  const siblings = Array.from(element.parentElement.children).filter((el) => el.tagName === element.tagName);
+  const index = siblings.indexOf(element) + 1;
+  if (index <= 0) {
+    return null;
+  }
+  const meaningfulClasses = getMeaningfulClasses(element);
+  const classStr = meaningfulClasses.length > 0 ? `.${meaningfulClasses[0]}` : '';
+  return {
+    selector: `${tag}${classStr}:nth-of-type(${index})`,
+    score: CANDIDATE_SCORES.nthOfType,
+    method: 'nth-of-type',
+  };
+}
+
+function generateCandidates(element: HTMLElement): Candidate[] {
+  const candidates: Candidate[] = [];
+  const push = (c: Candidate | null) => {
+    if (c) {
+      candidates.push(c);
+    }
+  };
+
+  push(candidateTestId(element));
+  push(candidateScopedTestId(element));
+  push(candidateTestIdPlusHref(element));
+  push(candidateId(element));
+  push(candidateRoleName(element));
+  push(candidateAriaLabel(element));
+  candidates.push(...candidateButtonText(element));
+  push(candidatePlaceholder(element));
+  push(candidateTitle(element));
+  push(candidateLabelText(element));
+  push(candidateName(element));
+  push(candidateHref(element));
+  push(candidateCompound(element));
+  push(candidateNthOfType(element));
+
+  return candidates;
+}
+
+// ============================================================================
+// Phase 3: Disambiguate and Rank
+// ============================================================================
+
+function testUniqueness(
   selector: string,
   element: HTMLElement,
-  buildFallback: () => string
-): string {
-  const result = tryUniqueSelector(selector, element);
-  if (result.success) {
-    return result.selector;
-  }
-  return cleanDynamicAttributes(buildFallback());
-}
-
-/**
- * Get the test ID attribute name used by an element.
- * Returns the first matching attribute from SELECTOR_CONFIG.testIdAttrs.
- */
-function getTestIdAttr(element: HTMLElement): string {
-  return SELECTOR_CONFIG.testIdAttrs.find((attr) => element.hasAttribute(attr)) || 'data-testid';
-}
-
-/**
- * Generate the best CSS selector for a given DOM element
- *
- * This is the main entry point for selector generation. It automatically:
- * - Walks up the DOM tree to find the most semantically meaningful parent
- * - Prioritizes stable attributes over fragile ones
- * - Handles edge cases like clicking icons inside buttons/links
- * - Returns production-ready selectors suitable for test automation
- *
- * Priority order:
- * 1. data-testid attribute (most stable for testing)
- * 2. Non-auto-generated ID
- * 3. aria-label (semantic and accessible)
- * 4. name attribute (for form inputs)
- * 5. href attribute (for links)
- * 6. Unique button text (using findButtonByText)
- * 7. Compound selector with parent context
- * 8. Fallback to :nth-of-type
- *
- * @param element - Any HTMLElement from the DOM
- * @param options - Optional click coordinates for coordinate-aware selection
- * @returns A CSS selector string that can be used with querySelector/querySelectorAll
- *
- * @example
- * ```typescript
- * // Clicking a span inside a navigation link
- * const span = document.querySelector('a[href="/dashboards"] > span');
- * const selector = generateBestSelector(span);
- * // Returns: "a[data-testid='Nav menu item'][href='/dashboards']"
- *
- * // Clicking a button with unique text
- * const button = document.querySelector('button');
- * const selector = generateBestSelector(button);
- * // Returns: "Save Dashboard" (uses button text matching)
- *
- * // With click coordinates to find button inside card
- * const selector = generateBestSelector(cardElement, { clickX: 100, clickY: 200 });
- * // Returns selector for the button at those coordinates
- * ```
- */
-export function generateBestSelector(
-  element: HTMLElement,
-  options?: { clickX?: number; clickY?: number; hoveredElement?: HTMLElement }
-): string {
-  // First, walk up to find the best element in the hierarchy
-  const bestElement = findBestElementInHierarchy(element, 5, options);
-
-  // 1. Check any test ID attribute (most stable)
-  const testId = getAnyTestId(bestElement);
-  if (testId) {
-    const tag = bestElement.tagName.toLowerCase();
-
-    // SPECIAL HANDLING: Navigation items often have generic test IDs ("Nav menu item")
-    // For these, we ALWAYS use testId + href combination for specificity
-    // This prevents matching any random link with the same href elsewhere in the app
-    if (tag === 'a' && testId.includes('Nav menu') && bestElement.hasAttribute('href')) {
-      const href = normalizeHref(bestElement.getAttribute('href')!);
-      const testIdAttr = getTestIdAttr(bestElement);
-
-      // Always combine testId + href for nav menu items
-      const combinedSelector = `${tag}[${testIdAttr}='${testId}'][href='${href}']`;
-      return cleanDynamicAttributes(combinedSelector);
-    }
-
-    // Determine which attribute was used
-    const testIdAttr = getTestIdAttr(bestElement);
-
-    // Simple test ID selector - check if it's unique first
-    const baseSelector = `${tag}[${testIdAttr}='${testId}']`;
-    const matches = querySelectorAllEnhanced(baseSelector);
-
-    // Try structural scoping (section/article/main with testid) for stability.
-    // This works for BOTH unique and non-unique testids:
-    // - Unique: adds panel context so selector stays stable if page changes
-    // - Non-unique: scopes to the right panel/section to disambiguate
-    const scopingSelector = findScopingAncestorSelector(bestElement);
-    if (scopingSelector) {
-      const scopedSelector = `${scopingSelector} ${baseSelector}`;
-      try {
-        const scopedMatches = querySelectorAllEnhanced(scopedSelector);
-        if (scopedMatches.elements.length === 1 && scopedMatches.elements[0] === bestElement) {
-          return cleanDynamicAttributes(scopedSelector);
-        }
-      } catch {
-        // Scoped selector failed, fall through
-      }
-    }
-
-    if (matches.elements.length === 1) {
-      // Test ID is unique and no scoping parent worked — use simple selector
-      return cleanDynamicAttributes(baseSelector);
-    }
-
-    // Not unique - try parent context first (most stable strategy)
-    const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-
-    // Check if parent context made it unique
-    const contextMatches = querySelectorAllEnhanced(contextualSelector);
-    if (contextMatches.elements.length === 1) {
-      return cleanDynamicAttributes(contextualSelector);
-    }
-
-    // For links, if parent context didn't work, try adding href as last resort
-    if (tag === 'a' && bestElement.hasAttribute('href')) {
-      const href = normalizeHref(bestElement.getAttribute('href')!);
-      const hrefSelector = `${tag}[${testIdAttr}='${testId}'][href='${href}']`;
-
-      const hrefMatches = querySelectorAllEnhanced(hrefSelector);
-      if (hrefMatches.elements.length === 1) {
-        return cleanDynamicAttributes(hrefSelector);
-      }
-
-      // If even href isn't unique, combine with parent context
-      const contextWithHrefSelector = buildContextualSelector(bestElement, hrefSelector);
-      return cleanDynamicAttributes(contextWithHrefSelector);
-    }
-
-    // Return contextual selector (may include :nth-match as last resort)
-    return cleanDynamicAttributes(contextualSelector);
-  }
-
-  // NEW STRATEGY: Semantic Roles (High Priority for Accessibility)
-  // This is excellent for menus, lists, and options where TestIDs are often missing or duplicated
-  const role = bestElement.getAttribute('role');
-  if (role && (SELECTOR_CONFIG.semanticRoles as readonly string[]).includes(role)) {
-    const text = normalizeText(bestElement.textContent || '');
-
-    // If we have meaningful text, use role + contains strategy
-    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-      const roleSelector =
-        text.length < 20 ? `[role='${role}']:text('${text}')` : `[role='${role}']:contains('${text}')`;
-
-      // Check uniqueness
-      const matches = querySelectorAllEnhanced(roleSelector);
-      if (matches.elements.length === 1) {
-        return cleanDynamicAttributes(roleSelector);
-      }
-
-      // If not unique, try adding parent context
-      const contextualSelector = buildContextualSelector(bestElement, roleSelector);
-      return cleanDynamicAttributes(contextualSelector);
-    }
-
-    // For elements with semantic role but no text (e.g., combobox inputs),
-    // use the role as a base selector and add context
-    const tag = bestElement.tagName.toLowerCase();
-    const roleBaseSelector = `${tag}[role='${role}']`;
-    const roleMatches = querySelectorAllEnhanced(roleBaseSelector);
-    if (roleMatches.elements.length === 1) {
-      return cleanDynamicAttributes(roleBaseSelector);
-    }
-    // Not unique — use context to disambiguate
-    const contextualSelector = buildContextualSelector(bestElement, roleBaseSelector);
-    return cleanDynamicAttributes(contextualSelector);
-  }
-
-  // 2. Check ID (if not auto-generated)
-  if (bestElement.id && !isAutoGeneratedId(bestElement.id)) {
-    const baseSelector = `#${bestElement.id}`;
-
-    // IDs should be unique - check first
-    const matches = querySelectorAllEnhanced(baseSelector);
-    if (matches.elements.length === 1) {
-      return cleanDynamicAttributes(baseSelector); // Simple and unique!
-    }
-
-    // Not unique (rare for IDs) - add context
-    const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-    return cleanDynamicAttributes(contextualSelector);
-  }
-
-  // 3. For buttons, prioritize visible text over aria-label (users interact with what they see)
-  if (bestElement.tagName === 'BUTTON') {
-    const text = bestElement.textContent;
-    if (text && text.length > 0) {
-      const cleanText = normalizeText(text);
-
-      if (cleanText.length > 0 && cleanText.length < SELECTOR_CONFIG.maxTextLength) {
-        // Strategy A: Parent context + :contains (preferred for most buttons)
-        const parent = bestElement.parentElement;
-        if (parent && (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label'))) {
-          // Don't pass click coordinates to parent - they only apply to the clicked element
-          const parentSelector = generateBestSelector(parent);
-
-          // Avoid redundant text matching: if the parent selector already contains/text-matches
-          // the same text, just use "button" as the descendant (the parent context is sufficient)
-          const parentAlreadyMatchesText =
-            parentSelector.includes(`:contains('${cleanText}')`) || parentSelector.includes(`:text('${cleanText}')`);
-
-          if (parentAlreadyMatchesText) {
-            const plainDescendant = `${parentSelector} button`;
-            const plainMatches = querySelectorAllEnhanced(plainDescendant);
-            if (plainMatches.elements.length === 1 && plainMatches.elements[0] === bestElement) {
-              return cleanDynamicAttributes(plainDescendant);
-            }
-          }
-
-          const fullSelector =
-            cleanText.length < 20
-              ? `${parentSelector} button:text('${cleanText}')`
-              : `${parentSelector} button:contains('${cleanText}')`;
-          return cleanDynamicAttributes(fullSelector);
-        }
-
-        // Strategy B: Standalone text ONLY if unique AND not generic
-        if (isUniqueButtonText(cleanText)) {
-          return cleanText; // Will use findButtonByText
-        }
-
-        // Strategy C: Standalone :contains as fallback (with validation)
-        const baseSelector = cleanText.length < 20 ? `button:text('${cleanText}')` : `button:contains('${cleanText}')`;
-        const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-        return cleanDynamicAttributes(contextualSelector);
-      }
-    }
-  }
-
-  // 4. Check aria-label (semantic and stable) - but after button text
-  if (bestElement.hasAttribute('aria-label')) {
-    const ariaLabel = bestElement.getAttribute('aria-label');
-    const tag = bestElement.tagName.toLowerCase();
-    const baseSelector = `${tag}[aria-label='${ariaLabel}']`;
-    const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-    return cleanDynamicAttributes(contextualSelector);
-  }
-
-  // 4.5. For inputs with placeholder, use placeholder attribute
-  if (bestElement.tagName === 'INPUT' && bestElement.hasAttribute('placeholder')) {
-    const placeholder = bestElement.getAttribute('placeholder');
-    if (placeholder && placeholder.length > 0 && placeholder.length < SELECTOR_CONFIG.maxTextLength) {
-      const baseSelector = `input[placeholder='${placeholder}']`;
-      const result = tryUniqueSelector(baseSelector, bestElement);
-      if (result.success) {
-        return result.selector;
-      }
-      const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-      return cleanDynamicAttributes(contextualSelector);
-    }
-  }
-
-  // 4.6. For elements with title attribute (common on icon buttons)
-  if (bestElement.hasAttribute('title')) {
-    const title = bestElement.getAttribute('title');
-    if (title && title.length > 0 && title.length < SELECTOR_CONFIG.maxTextLength) {
-      const tag = bestElement.tagName.toLowerCase();
-      const baseSelector = `${tag}[title='${title}']`;
-      const result = tryUniqueSelector(baseSelector, bestElement);
-      if (result.success) {
-        return result.selector;
-      }
-      const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-      return cleanDynamicAttributes(contextualSelector);
-    }
-  }
-
-  // 5. For labels, use text content (best for radio/checkbox) or 'for' attribute prefix
-  if (bestElement.tagName === 'LABEL') {
-    const text = normalizeText(bestElement.textContent || '');
-    const forAttr = bestElement.getAttribute('for');
-
-    // Strategy A: For radio buttons, use text content with :contains() - most stable!
-    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-      // Check if this is a radio/checkbox label by looking at associated input
-      const associatedInput = forAttr ? document.getElementById(forAttr) : null;
-      const isRadioOrCheckbox =
-        associatedInput &&
-        (associatedInput as HTMLInputElement).type &&
-        ['radio', 'checkbox'].includes((associatedInput as HTMLInputElement).type);
-
-      if (isRadioOrCheckbox) {
-        // For radio/checkbox, prefer text-based selection
-        const textSelector = `label:contains('${text}')`;
-        const matches = querySelectorAllEnhanced(textSelector);
-        if (matches.elements.length === 1) {
-          return cleanDynamicAttributes(textSelector);
-        }
-
-        // If not unique by text alone, add parent context
-        const contextualSelector = buildContextualSelector(bestElement, textSelector);
-        return cleanDynamicAttributes(contextualSelector);
-      }
-    }
-
-    // Strategy B: Use 'for' attribute with prefix match (handles auto-generated IDs)
-    if (forAttr) {
-      // Try to find a stable prefix (e.g., "option-lines-radiogroup-34" -> "option-lines-")
-      const prefixMatch = forAttr.match(/^([a-z-]+(?:-[a-z]+)?)-/);
-      if (prefixMatch) {
-        const prefix = prefixMatch[1];
-        const prefixSelector = `label[for^='${prefix}-']`;
-
-        // If text content exists, combine prefix with text for best specificity
-        if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-          const combinedSelector = `${prefixSelector}:contains('${text}')`;
-          const matches = querySelectorAllEnhanced(combinedSelector);
-          if (matches.elements.length === 1) {
-            return cleanDynamicAttributes(combinedSelector);
-          }
-        }
-      }
-
-      // Strategy C: Full 'for' attribute as fallback
-      const baseSelector = `label[for='${forAttr}']`;
-      const matches = querySelectorAllEnhanced(baseSelector);
-      if (matches.elements.length === 1) {
-        return cleanDynamicAttributes(baseSelector);
-      }
-
-      const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-      return cleanDynamicAttributes(contextualSelector);
-    }
-
-    // Strategy D: Text-only label (no 'for' attribute)
-    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-      const textSelector = `label:contains('${text}')`;
-      const contextualSelector = buildContextualSelector(bestElement, textSelector);
-      return cleanDynamicAttributes(contextualSelector);
-    }
-  }
-
-  // 6. For inputs, check id first (better than name for radio/checkbox)
-  if (
-    (bestElement.tagName === 'INPUT' || bestElement.tagName === 'TEXTAREA' || bestElement.tagName === 'SELECT') &&
-    bestElement.hasAttribute('id') &&
-    !isAutoGeneratedId(bestElement.id)
-  ) {
-    const id = bestElement.id;
-    const tag = bestElement.tagName.toLowerCase();
-    const baseSelector = `${tag}[id='${id}']`;
-
-    // IDs should be unique
-    const matches = querySelectorAllEnhanced(baseSelector);
-    if (matches.elements.length === 1) {
-      return cleanDynamicAttributes(baseSelector); // Simple and unique!
-    }
-
-    const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-    return cleanDynamicAttributes(contextualSelector);
-  }
-
-  // 7. For inputs, check name attribute (but NOT for radio/checkbox - they share names!)
-  if (
-    (bestElement.tagName === 'INPUT' || bestElement.tagName === 'TEXTAREA' || bestElement.tagName === 'SELECT') &&
-    bestElement.hasAttribute('name')
-  ) {
-    const tag = bestElement.tagName.toLowerCase();
-
-    // Skip name attribute for radio/checkbox - all options share the same name!
-    // Better to use their associated label with text
-    if (tag === 'input') {
-      const inputType = (bestElement as HTMLInputElement).type?.toLowerCase();
-      if (inputType === 'radio' || inputType === 'checkbox') {
-        // Try to find associated label instead
-        const inputId = bestElement.id;
-        if (inputId) {
-          const label = document.querySelector(`label[for='${inputId}']`);
-          if (label instanceof HTMLElement) {
-            // Recursively generate selector for the label (which has better text-based selection)
-            return generateBestSelector(label);
-          }
-        }
-        // If no label found, skip to compound selector (don't use name attribute)
-      } else {
-        // For other input types (text, email, etc.), name is fine
-        const name = bestElement.getAttribute('name');
-        const baseSelector = `${tag}[name='${name}']`;
-        const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-        return cleanDynamicAttributes(contextualSelector);
-      }
-    } else {
-      // For textarea/select, name is fine
-      const name = bestElement.getAttribute('name');
-      const baseSelector = `${tag}[name="${name}"]`;
-      const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-      return cleanDynamicAttributes(contextualSelector);
-    }
-  }
-
-  // 8. For links with href, use normalized pathname
-  if (bestElement.tagName === 'A' && bestElement.hasAttribute('href')) {
-    const href = normalizeHref(bestElement.getAttribute('href')!);
-    const baseSelector = `a[href='${href}']`;
-    const contextualSelector = buildContextualSelector(bestElement, baseSelector);
-    return cleanDynamicAttributes(contextualSelector);
-  }
-
-  // 9. Build compound selector with tag + attributes + parent context
-  const compoundSelector = buildCompoundSelectorWithContext(bestElement);
-  const contextualSelector = buildContextualSelector(bestElement, compoundSelector);
-
-  // 10. Post-process: Clean dynamic attributes
-  const cleanedSelector = cleanDynamicAttributes(contextualSelector);
-
-  // 11. FINAL VALIDATION: Check if selector matches anything
+  method: string
+): { matchCount: number; containsTarget: boolean } {
   try {
-    const matches = querySelectorAllEnhanced(cleanedSelector);
-    if (matches.elements.length === 0) {
-      console.warn(`Generated selector has 0 matches: "${cleanedSelector}"`);
+    if (method === 'button-text') {
+      const buttons = findButtonByText(selector);
+      return { matchCount: buttons.length, containsTarget: buttons.includes(element as HTMLButtonElement) };
     }
-  } catch (error) {
-    console.warn('Selector validation error:', error);
+    const matches = querySelectorAllEnhanced(selector);
+    return { matchCount: matches.elements.length, containsTarget: matches.elements.includes(element) };
+  } catch {
+    return { matchCount: 0, containsTarget: false };
   }
-
-  return cleanedSelector;
 }
 
-/**
- * Find sibling-based context for an element.
- * Useful for form inputs that follow labels or other identifiable siblings.
- */
+function findAncestorScopeSelector(element: HTMLElement): string | null {
+  let current = element.parentElement;
+  let depth = 0;
+
+  while (current && depth < SELECTOR_CONFIG.maxDisambiguationDepth) {
+    const testId = getAnyTestId(current);
+    if (testId) {
+      const tag = current.tagName.toLowerCase();
+      const attr = getTestIdAttr(current);
+      return `${tag}[${attr}='${testId}']`;
+    }
+
+    if (current.id && !isAutoGeneratedId(current.id)) {
+      return `#${current.id}`;
+    }
+
+    const stableAttr = getStableDataAttr(current);
+    if (stableAttr) {
+      const tag = current.tagName.toLowerCase();
+      return `${tag}[${stableAttr.name}='${stableAttr.value}']`;
+    }
+
+    current = current.parentElement;
+    depth++;
+  }
+  return null;
+}
+
 /**
  * Find the direct child of `ancestor` that is an ancestor-or-self of `descendant`.
- * Used to determine which branch of the ancestor's children tree the descendant lives in.
  */
-function findDirectChildAncestor(ancestor: HTMLElement, descendant: HTMLElement): HTMLElement | null {
+function findDirectChildBranch(ancestor: HTMLElement, descendant: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = descendant;
   while (current && current.parentElement !== ancestor) {
     current = current.parentElement;
@@ -1245,716 +762,178 @@ function findDirectChildAncestor(ancestor: HTMLElement, descendant: HTMLElement)
   return current;
 }
 
-/**
- * Find a scoped :nth-child selector within a meaningful parent.
- * Instead of a global :nth-match(N) (fragile — any page change breaks it),
- * builds parentSelector > tag:nth-child(N) baseSelector (scoped to a stable parent).
- *
- * Example output: [data-intercom-target="env-site-selectors"] > div:nth-child(1) input[role="combobox"]
- */
-function findScopedNthChild(element: HTMLElement, baseSelector: string): string | null {
-  let current = element.parentElement;
-  let depth = 0;
+function disambiguate(candidate: Candidate, element: HTMLElement): Candidate[] {
+  const results: Candidate[] = [];
 
-  while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
-    // Try to identify this parent
-    let parentSelector: string | null = null;
-    const tag = current.tagName.toLowerCase();
-
-    const testId = getAnyTestId(current);
-    const id = current.id && !isAutoGeneratedId(current.id) ? current.id : null;
-    const stableAttr = getStableDataAttr(current);
-
-    if (testId) {
-      const testIdAttr = getTestIdAttr(current);
-      parentSelector = `${tag}[${testIdAttr}='${testId}']`;
-    } else if (id) {
-      parentSelector = `#${id}`;
-    } else if (stableAttr) {
-      parentSelector = `${tag}[${stableAttr.name}='${stableAttr.value}']`;
-    }
-
-    if (parentSelector) {
-      // Find which direct child of this parent contains the target element
-      const directChild = findDirectChildAncestor(current, element);
-      if (directChild) {
-        const siblings = Array.from(current.children);
-        const childIndex = siblings.indexOf(directChild) + 1;
-        if (childIndex > 0) {
-          const childTag = directChild.tagName.toLowerCase();
-
-          // Try: parentSelector > tag:nth-child(N) baseSelector
-          const nthChildSelector = `${parentSelector} > ${childTag}:nth-child(${childIndex}) ${baseSelector}`;
-          const result = tryUniqueSelector(nthChildSelector, element);
-          if (result.success) {
-            return result.selector;
-          }
-
-          // Try without child tag constraint
-          const nthChildSelector2 = `${parentSelector} > :nth-child(${childIndex}) ${baseSelector}`;
-          const result2 = tryUniqueSelector(nthChildSelector2, element);
-          if (result2.success) {
-            return result2.selector;
-          }
-        }
-      }
-
-      // Fallback: scoped nth-match (still better than global nth-match)
-      try {
-        const scopedSelector = `${parentSelector} ${baseSelector}`;
-        const scopedMatches = querySelectorAllEnhanced(scopedSelector);
-        const idx = scopedMatches.elements.indexOf(element);
-        if (idx >= 0) {
-          const scopedNthSelector = `${parentSelector} ${baseSelector}:nth-match(${idx + 1})`;
-          const verifyResult = tryUniqueSelector(scopedNthSelector, element);
-          if (verifyResult.success) {
-            return verifyResult.selector;
-          }
-        }
-      } catch {
-        // Continue to next parent
-      }
-    }
-
-    current = current.parentElement;
-    depth++;
-  }
-  return null;
-}
-
-/**
- * Find label-scoped context for form elements.
- * Walks up from the element to find a container with a <label> child,
- * then uses that label's text (and optionally the container's attributes) for scoping.
- *
- * Handles Grafana's InlineField pattern where a wrapper div contains
- * a <label> and a form control (e.g., MultiSelect, input).
- */
-function findLabelScopedContext(element: HTMLElement, baseSelector: string): string | null {
-  let current = element.parentElement;
-  let depth = 0;
-
-  while (current && depth < SELECTOR_CONFIG.maxScopingDepth) {
-    // Look for a <label> that is a direct child of this ancestor
-    const labels = current.querySelectorAll(':scope > label');
-    for (const label of Array.from(labels)) {
-      if (!(label instanceof HTMLElement)) {
-        continue;
-      }
-      const labelText = normalizeText(label.textContent || '');
-      if (labelText.length === 0 || labelText.length >= SELECTOR_CONFIG.maxTextLength) {
-        continue;
-      }
-
-      // Try to identify the container by its attributes
-      const tag = current.tagName.toLowerCase();
-      const testId = getAnyTestId(current);
-      const id = current.id && !isAutoGeneratedId(current.id) ? current.id : null;
-      const stableAttr = getStableDataAttr(current);
-
-      let parentPart: string | null = null;
-      if (testId) {
-        const testIdAttr = getTestIdAttr(current);
-        parentPart = `${tag}[${testIdAttr}='${testId}']`;
-      } else if (id) {
-        parentPart = `#${id}`;
-      } else if (stableAttr) {
-        parentPart = `${tag}[${stableAttr.name}='${stableAttr.value}']`;
-      }
-
-      if (parentPart) {
-        // Container has stable identifier — combine with descendant selector
-        const candidateSelector = `${parentPart} ${baseSelector}`;
-        const result = tryUniqueSelector(candidateSelector, element);
-        if (result.success) {
-          return result.selector;
-        }
-      }
-
-      // Container has no stable id — use :has(> label) to identify it by label text
-      const textPseudo = labelText.length < 20 ? `:text('${labelText}')` : `:contains('${labelText}')`;
-      const hasLabelSelector = `${tag}:has(> label${textPseudo}) ${baseSelector}`;
-      const result = tryUniqueSelector(hasLabelSelector, element);
-      if (result.success) {
-        return result.selector;
-      }
-    }
-    current = current.parentElement;
-    depth++;
-  }
-  return null;
-}
-
-function findSiblingContext(element: HTMLElement, baseSelector: string): string | null {
-  // Try previous sibling with testid (common for labels before inputs)
-  const prevSibling = element.previousElementSibling;
-  if (prevSibling instanceof HTMLElement) {
-    const siblingTestId = getAnyTestId(prevSibling);
-    if (siblingTestId) {
-      const siblingTag = prevSibling.tagName.toLowerCase();
-      const testIdAttr = getTestIdAttr(prevSibling);
-      const siblingSelector = `${siblingTag}[${testIdAttr}='${siblingTestId}'] + ${element.tagName.toLowerCase()}`;
-      const result = tryUniqueSelector(siblingSelector, element);
-      if (result.success) {
-        return result.selector;
-      }
-    }
-
-    // Try sibling's text content for labels
-    if (prevSibling.tagName === 'LABEL') {
-      const labelText = normalizeText(prevSibling.textContent || '');
-      if (labelText.length > 0 && labelText.length < SELECTOR_CONFIG.maxTextLength) {
-        const siblingSelector = `label:contains('${labelText}') + ${element.tagName.toLowerCase()}`;
-        const result = tryUniqueSelector(siblingSelector, element);
-        if (result.success) {
-          return result.selector;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Build contextual selector - SIMPLIFIED
- * Only add context if base selector is ambiguous
- * Priority: parent context > sibling context > text content > nth-match
- */
-function buildContextualSelector(element: HTMLElement, baseSelector: string): string {
-  try {
-    // Check if element is inside an overlay - use visibility-aware matching if so
-    const overlayContext = findOverlayContext(element);
-    const matchFn = overlayContext ? querySelectorAllEnhancedVisible : querySelectorAllEnhanced;
-
-    const matches = matchFn(baseSelector);
-
-    // Already unique or no matches - return as-is
-    if (matches.elements.length <= 1) {
-      return baseSelector;
-    }
-
-    // Strategy 1: Try simple parent context
-    const parentContext = findSimpleParentContext(element, baseSelector);
-    if (parentContext) {
-      return parentContext;
-    }
-
-    // Strategy 1.5: Try label-scoped context (for form fields with associated labels)
-    const labelContext = findLabelScopedContext(element, baseSelector);
-    if (labelContext) {
-      return labelContext;
-    }
-
-    // Strategy 2: Try sibling context (common for form inputs after labels)
-    const siblingContext = findSiblingContext(element, baseSelector);
-    if (siblingContext) {
-      return siblingContext;
-    }
-
-    // Strategy 3: Try overlay scoping (for elements inside dialogs, menus, etc.)
-    if (overlayContext) {
-      const overlayScopedSelector = buildOverlayScopedSelector(overlayContext, baseSelector);
-      try {
-        // Use visibility-aware matching for overlay contexts
-        const overlayMatches = querySelectorAllEnhancedVisible(overlayScopedSelector);
-        if (overlayMatches.elements.length === 1 && overlayMatches.elements[0] === element) {
-          return overlayScopedSelector;
-        }
-      } catch (e) {
-        // Overlay scoping failed, try next strategy
-      }
-    }
-
-    // Strategy 4: Try text content with :contains() - much more stable than position!
-    const text = normalizeText(element.textContent || '');
-    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxLongTextLength) {
-      const textSelector = `${baseSelector}:contains('${text}')`;
-      try {
-        const textMatches = matchFn(textSelector);
-        if (textMatches.elements.length === 1 && textMatches.elements[0] === element) {
-          return textSelector;
-        }
-      } catch (e) {
-        // :contains() failed, try next strategy
-      }
-    }
-
-    // Strategy 5: For overlays, try overlay-scoped with text content
-    if (overlayContext) {
-      const text = normalizeText(element.textContent || '');
-      if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-        const overlayScopedWithText = buildOverlayScopedSelector(overlayContext, `${baseSelector}:contains('${text}')`);
-        try {
-          const combinedMatches = querySelectorAllEnhancedVisible(overlayScopedWithText);
-          if (combinedMatches.elements.length === 1 && combinedMatches.elements[0] === element) {
-            return overlayScopedWithText;
-          }
-        } catch (e) {
-          // Combined strategy failed
-        }
-      }
-    }
-
-    // Strategy 5.5: Try scoped :nth-child within a meaningful parent
-    const scopedNthChild = findScopedNthChild(element, baseSelector);
-    if (scopedNthChild) {
-      return scopedNthChild;
-    }
-
-    // Strategy 6: Last resort - Use :nth-match() (fragile, but better than nothing)
-    // For overlays, scope the nth-match to the overlay
-    const index = matches.elements.indexOf(element);
-    if (index >= 0) {
-      if (overlayContext) {
-        return buildOverlayScopedSelector(overlayContext, `${baseSelector}:nth-match(${index + 1})`);
-      }
-      return `${baseSelector}:nth-match(${index + 1})`;
-    }
-
-    return baseSelector;
-  } catch (error) {
-    console.warn(`Context validation failed for "${baseSelector}":`, error);
-    return baseSelector;
-  }
-}
-
-/** Parent element with testid information for context building */
-interface TestIdParent {
-  element: HTMLElement;
-  depth: number;
-  testId: string;
-  testIdAttr: string;
-}
-
-/** Parent element with ID information for context building */
-interface IdParent {
-  element: HTMLElement;
-  depth: number;
-  id: string;
-}
-
-/** Parent element with ARIA label for context building */
-interface AriaLabelParent {
-  element: HTMLElement;
-  depth: number;
-  labelText: string;
-}
-
-/** Parent element with a stable data-* attribute for context building */
-interface DataAttrParent {
-  element: HTMLElement;
-  depth: number;
-  attrName: string;
-  attrValue: string;
-}
-
-/**
- * Try to add simple parent context (no complex :has() selectors)
- *
- * IMPROVED: Two-pass algorithm that prefers narrower (closer) testid scope:
- * 1. First pass: Collect all parents with identifying attributes
- * 2. Second pass: Try from closest to farthest, preferring narrower scope
- *
- * This ensures we use the most specific testid context available,
- * which produces more stable and readable selectors.
- */
-function findSimpleParentContext(element: HTMLElement, baseSelector: string): string | null {
-  // Collect all potential parent contexts in first pass
-  const testIdParents: TestIdParent[] = [];
-  const idParents: IdParent[] = [];
-  const ariaLabelParents: AriaLabelParent[] = [];
-  const dataAttrParents: DataAttrParent[] = [];
-
-  let current = element.parentElement;
-  let totalDepth = 0;
-  let meaningfulDepth = 0;
-
-  // First pass: collect all meaningful parents
-  while (
-    current &&
-    totalDepth < SELECTOR_CONFIG.maxTotalDepth &&
-    meaningfulDepth < SELECTOR_CONFIG.maxMeaningfulDepth
-  ) {
-    const testId = getAnyTestId(current);
-    const id = current.id && !isAutoGeneratedId(current.id) ? current.id : null;
-    const stableAttr = getStableDataAttr(current);
-    const hasMeaningfulAttribute = testId || id || current.hasAttribute('aria-label') || stableAttr;
-
-    if (testId) {
-      const testIdAttr = getTestIdAttr(current);
-      testIdParents.push({ element: current, depth: totalDepth, testId, testIdAttr });
-    }
-
-    if (id) {
-      idParents.push({ element: current, depth: totalDepth, id });
-    }
-
-    // Collect stable data-* attributes (e.g., data-intercom-target, data-feature, etc.)
-    if (stableAttr) {
-      dataAttrParents.push({
-        element: current,
-        depth: totalDepth,
-        attrName: stableAttr.name,
-        attrValue: stableAttr.value,
+  const ancestorScope = findAncestorScopeSelector(element);
+  if (ancestorScope) {
+    // Strategy 1a: Simple descendant scoping
+    const scoped = `${ancestorScope} ${candidate.selector}`;
+    const { matchCount, containsTarget } = testUniqueness(scoped, element, candidate.method);
+    if (matchCount === 1 && containsTarget) {
+      results.push({
+        selector: cleanDynamicAttributes(scoped),
+        score: candidate.score + DISAMBIGUATION_PENALTIES.parentTestId,
+        method: candidate.method,
       });
     }
 
-    // Check for semantic section/article/main tags with ARIA labels
-    if (current.tagName === 'SECTION' || current.tagName === 'ARTICLE' || current.tagName === 'MAIN') {
-      let labelText = '';
-      if (current.hasAttribute('aria-labelledby')) {
-        const labelId = current.getAttribute('aria-labelledby');
-        const labelEl = labelId ? document.getElementById(labelId) : null;
-        if (labelEl) {
-          labelText = labelEl.textContent || '';
+    // Strategy 1b: Scoped nth-child — find which child branch of ancestor
+    // contains the element and use > childTag:nth-child(N)
+    if (matchCount !== 1 || !containsTarget) {
+      const ancestorEl = findAncestorElement(element);
+      if (ancestorEl) {
+        const branch = findDirectChildBranch(ancestorEl, element);
+        if (branch) {
+          const childIndex = Array.from(ancestorEl.children).indexOf(branch) + 1;
+          if (childIndex > 0) {
+            const childTag = branch.tagName.toLowerCase();
+            // If the element IS the direct child, don't nest the candidate inside itself
+            const suffix = branch === element ? '' : ` ${candidate.selector}`;
+            const nthChildScoped = `${ancestorScope} > ${childTag}:nth-child(${childIndex})${suffix}`;
+            const nthResult = testUniqueness(nthChildScoped, element, candidate.method);
+            if (nthResult.matchCount === 1 && nthResult.containsTarget) {
+              results.push({
+                selector: cleanDynamicAttributes(nthChildScoped),
+                score: candidate.score + DISAMBIGUATION_PENALTIES.parentStableAttr,
+                method: candidate.method,
+              });
+            }
+          }
         }
-      } else if (current.hasAttribute('aria-label')) {
-        labelText = current.getAttribute('aria-label') || '';
-      }
-      if (labelText) {
-        ariaLabelParents.push({ element: current, depth: totalDepth, labelText });
       }
     }
+  }
 
-    if (hasMeaningfulAttribute) {
-      meaningfulDepth++;
+  // Strategy 2: Overlay scoping
+  const overlay = findOverlayContext(element);
+  if (overlay) {
+    const overlayScoped = buildOverlayScopedSelector(overlay, candidate.selector);
+    if (overlayScoped !== candidate.selector) {
+      const { matchCount, containsTarget } = testUniqueness(overlayScoped, element, candidate.method);
+      if (matchCount === 1 && containsTarget) {
+        results.push({
+          selector: cleanDynamicAttributes(overlayScoped),
+          score: candidate.score + DISAMBIGUATION_PENALTIES.overlayScope,
+          method: candidate.method,
+        });
+      }
+    }
+  }
+
+  // Strategy 3: nth-match (last resort)
+  try {
+    const allMatches = querySelectorAllEnhanced(candidate.selector);
+    const idx = allMatches.elements.indexOf(element);
+    if (idx >= 0) {
+      results.push({
+        selector: cleanDynamicAttributes(`${candidate.selector}:nth-match(${idx + 1})`),
+        score: candidate.score + DISAMBIGUATION_PENALTIES.nthMatch,
+        method: candidate.method,
+      });
+    }
+  } catch {
+    /* custom pseudo may not support nested nth-match */
+  }
+
+  return results;
+}
+
+/**
+ * Walk up from an element to find the actual ancestor node that
+ * `findAncestorScopeSelector` matched (testid, id, or stable data-attr).
+ */
+function findAncestorElement(element: HTMLElement): HTMLElement | null {
+  let current = element.parentElement;
+  let depth = 0;
+  while (current && depth < SELECTOR_CONFIG.maxDisambiguationDepth) {
+    if (getAnyTestId(current)) {
+      return current;
+    }
+    if (current.id && !isAutoGeneratedId(current.id)) {
+      return current;
+    }
+    if (getStableDataAttr(current)) {
+      return current;
     }
     current = current.parentElement;
-    totalDepth++;
+    depth++;
   }
-
-  const elementTag = element.tagName.toLowerCase();
-
-  // Second pass: try testid parents from closest to farthest (prefer narrower scope)
-  // Track the best nth-match fallback so we can defer it until all parents are tried
-  let bestNthMatch: string | null = null;
-
-  for (const parent of testIdParents) {
-    const tag = parent.element.tagName.toLowerCase();
-    const parentSelector = `${tag}[${parent.testIdAttr}='${parent.testId}']`;
-
-    // Try full baseSelector scoped to this parent first (preserves element's own testid/attrs)
-    if (baseSelector !== elementTag) {
-      try {
-        const fullScopedSelector = `${parentSelector} ${baseSelector}`;
-        const fullScopedResult = querySelectorAllEnhanced(fullScopedSelector);
-        if (fullScopedResult.elements.length === 1 && fullScopedResult.elements[0] === element) {
-          return fullScopedSelector;
-        }
-      } catch {
-        // Full baseSelector failed in this scope, try simplified
-      }
-    }
-
-    // Fall back to simplified tag-only descendant selector
-    const simpleDescendantSelector = `${parentSelector} ${elementTag}`;
-    try {
-      const descendantResult = querySelectorAllEnhanced(simpleDescendantSelector);
-
-      // If exactly 1 match and it's our element - perfect!
-      if (descendantResult.elements.length === 1 && descendantResult.elements[0] === element) {
-        return simpleDescendantSelector;
-      }
-
-      // Multiple matches — record nth-match as a fallback but keep trying farther parents
-      if (!bestNthMatch) {
-        const elementIndex = descendantResult.elements.indexOf(element);
-        if (elementIndex >= 0) {
-          bestNthMatch = `${parentSelector} ${elementTag}:nth-match(${elementIndex + 1})`;
-        }
-      }
-    } catch {
-      // Try next parent
-    }
-  }
-
-  // Try ID-based parents from closest to farthest
-  for (const parent of idParents) {
-    const candidateSelector = `#${parent.id} ${baseSelector}`;
-    const result = tryUniqueSelector(candidateSelector, element);
-    if (result.success) {
-      return result.selector;
-    }
-  }
-
-  // Try ARIA label parents from closest to farthest
-  for (const parent of ariaLabelParents) {
-    const tag = parent.element.tagName.toLowerCase();
-    const parentSelector = `${tag}[aria-label='${parent.labelText}']`;
-    const candidateSelector = `${parentSelector} ${baseSelector}`;
-    const result = tryUniqueSelector(candidateSelector, element);
-    if (result.success) {
-      return result.selector;
-    }
-  }
-
-  // Try stable data-* attribute parents from closest to farthest
-  for (const parent of dataAttrParents) {
-    const tag = parent.element.tagName.toLowerCase();
-    const parentSelector = `${tag}[${parent.attrName}='${parent.attrValue}']`;
-    const candidateSelector = `${parentSelector} ${baseSelector}`;
-    const result = tryUniqueSelector(candidateSelector, element);
-    if (result.success) {
-      return result.selector;
-    }
-  }
-
-  // All unique-match strategies exhausted — return deferred nth-match if we found one
-  return bestNthMatch;
+  return null;
 }
 
-/**
- * Build compound selector with parent context for better specificity
- * Uses parent selectors and :contains() when appropriate
- */
-function buildCompoundSelectorWithContext(element: HTMLElement): string {
-  const tag = element.tagName.toLowerCase();
-  const parts: string[] = [tag];
-
-  // Add meaningful classes
-  const meaningfulClasses = getMeaningfulClasses(element);
-  if (meaningfulClasses.length > 0) {
-    parts.push(`.${meaningfulClasses[0]}`);
-  }
-
-  // Add data attributes (except auto-generated and state-related ones)
-  Array.from(element.attributes).forEach((attr) => {
-    if (
-      attr.name.startsWith('data-') &&
-      !attr.name.includes('emotion') &&
-      !attr.name.includes('react') &&
-      !attr.name.includes('state') && // Exclude data-state (changes dynamically)
-      !attr.name.includes('focus') && // Exclude focus states
-      !attr.name.includes('hover') && // Exclude hover states
-      !attr.name.includes('active') && // Exclude active states
-      !attr.name.includes('selected') && // Exclude selected states
-      !attr.name.includes('disabled') && // Exclude disabled states
-      !attr.name.includes('checked') && // Exclude checked states
-      attr.value.length < SELECTOR_CONFIG.maxTextLength
-    ) {
-      parts.push(`[${attr.name}='${attr.value}']`);
-    }
-  });
-
-  // Add normalized href for links
-  if (tag === 'a' && element.hasAttribute('href')) {
-    const href = normalizeHref(element.getAttribute('href')!);
-    parts.push(`[href='${href}']`);
-  }
-
-  // If we still don't have enough specificity, try these strategies:
-
-  // Strategy 1: Use parent context if parent has good identifiers
-  if (parts.length <= 2 && element.parentElement) {
-    const parent = element.parentElement;
-
-    // Check if parent has good identifying attributes
-    if (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label')) {
-      const parentSelector = generateBestSelector(parent);
-
-      // For buttons with text, use :text/:contains for better readability
-      if (tag === 'button' && element.textContent) {
-        const text = normalizeText(element.textContent);
-        if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-          return text.length < 20
-            ? `${parentSelector} button:text('${text}')`
-            : `${parentSelector} button:contains('${text}')`;
-        }
-      }
-
-      return `${parentSelector} ${parts.join('')}`;
-    }
-  }
-
-  // Strategy 2: Use :text/:contains as fallback for LEAF elements only (buttons/links with short text)
-  if ((tag === 'button' || tag === 'a') && element.textContent) {
-    const text = normalizeText(element.textContent);
-    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-      return text.length < 20 ? `${tag}:text('${text}')` : `${tag}:contains('${text}')`;
-    }
-  }
-
-  // Strategy 3 removed - let buildContextualSelector handle text-based context via :has()
-  // This prevents container divs from using their full nested text content
-
-  // Strategy 4: Add :nth-of-type with parent context as last resort
-  if (element.parentElement) {
-    const siblings = Array.from(element.parentElement.children).filter((el) => el.tagName === element.tagName);
-    const index = siblings.indexOf(element) + 1;
-    if (index > 0) {
-      parts.push(`:nth-of-type(${index})`);
-
-      // Try to add parent context for better specificity
-      const parent = element.parentElement;
-      if (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label')) {
-        const parentSelector = generateBestSelector(parent);
-        return `${parentSelector} > ${parts.join('')}`;
-      }
-    }
-  }
-
-  // Absolute last resort: just return what we have
-  return parts.length > 0 ? parts.join('') : `${tag}`;
-}
-
-/**
- * Information about a generated selector, including quality metrics.
- */
-export interface SelectorInfo {
-  /** The generated CSS selector */
-  selector: string;
-  /** The method used to generate the selector (e.g., 'data-testid', 'id', 'aria-label') */
-  method: string;
-  /** Whether the selector uniquely identifies exactly one element */
-  isUnique: boolean;
-  /** Number of elements matched by the selector */
+interface ScoredCandidate extends Candidate {
   matchCount: number;
-  /** Context strategy used (e.g., 'parent-context', 'nth-match', 'sibling') */
-  contextStrategy?: string;
-  /** Stability score from 0-100 (higher = more stable/reliable) */
-  stabilityScore: number;
-  /** Warnings about potential selector fragility */
-  warnings: string[];
-  /** Overall quality rating: good, medium, or poor */
-  quality: SelectorQuality;
-  /** Stability flags indicating potential sources of fragility */
-  flags: StabilityFlag[];
-  /** Whether the selector is scoped to a portal/overlay context */
-  isPortalScoped: boolean;
-  /** The ARIA role of the containing overlay, if any */
-  overlayRole?: string;
-  /** Number of visible matches (useful for overlay debugging) */
-  visibleMatchCount?: number;
+}
+
+function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCandidate {
+  const scored: ScoredCandidate[] = [];
+
+  for (const candidate of candidates) {
+    const { matchCount, containsTarget } = testUniqueness(candidate.selector, element, candidate.method);
+
+    if (matchCount === 0 || !containsTarget) {
+      continue;
+    }
+    if (matchCount === 1) {
+      scored.push({ ...candidate, matchCount });
+      continue;
+    }
+
+    // Plain text selectors can't be disambiguated with CSS scoping
+    if (candidate.method === 'button-text') {
+      continue;
+    }
+
+    const disambiguated = disambiguate(candidate, element);
+    for (const d of disambiguated) {
+      scored.push({ ...d, matchCount: 1 });
+    }
+  }
+
+  if (scored.length === 0) {
+    const tag = element.tagName.toLowerCase();
+    return { selector: `${tag}:nth-of-type(1)`, score: CANDIDATE_SCORES.nthMatch, method: 'fallback', matchCount: 0 };
+  }
+
+  scored.sort((a, b) => a.score - b.score);
+  return scored[0]!;
 }
 
 // ============================================================================
-// Stability Flag Computation
+// Public API
 // ============================================================================
 
 /**
- * Compute stability flags for a selector based on its characteristics.
- * Flags indicate potential sources of fragility.
+ * Generate the best CSS selector for a DOM element.
  *
- * @param selector - The CSS selector to analyze
- * @param method - The primary method used to generate the selector
- * @returns Array of stability flags
+ * Three-phase pipeline:
+ * 1. Retarget to the intent element (interactive ancestor or clicked element)
+ * 2. Generate all candidate selectors with stability scores
+ * 3. Disambiguate non-unique candidates and return the best one
  */
-function computeStabilityFlags(selector: string, method: string): StabilityFlag[] {
-  const flags: StabilityFlag[] = [];
-
-  // i18n-sensitive: uses translatable attributes
-  if (
-    selector.includes('aria-label') ||
-    selector.includes('placeholder') ||
-    selector.includes("title='") ||
-    selector.includes('title="') ||
-    selector.includes(':contains(') ||
-    selector.includes(':text(')
-  ) {
-    flags.push('i18n-sensitive');
-  }
-
-  // session-unstable: uses framework-generated IDs or session-specific values
-  // Check for patterns that suggest framework-generated IDs
-  if (
-    /react-[a-z0-9]+/i.test(selector) ||
-    /radix-[a-z0-9]+/i.test(selector) ||
-    /headlessui-[a-z0-9]+/i.test(selector) ||
-    /mui-[a-z0-9]+/i.test(selector) ||
-    /:r[0-9a-z]+:/i.test(selector) || // React useId pattern
-    /id-\d+/.test(selector)
-  ) {
-    flags.push('session-unstable');
-  }
-
-  // structural: relies on DOM position
-  if (
-    selector.includes(':nth-of-type') ||
-    selector.includes(':nth-match') ||
-    selector.includes(':nth-child') ||
-    method === 'nth-of-type' ||
-    method === 'nth-match'
-  ) {
-    flags.push('structural');
-  }
-
-  // portal-scoped: scoped to overlay context
-  if (
-    selector.includes('[role="dialog"]') ||
-    selector.includes('[role="alertdialog"]') ||
-    selector.includes('[role="menu"]') ||
-    selector.includes('[role="listbox"]') ||
-    selector.includes('[role="tooltip"]') ||
-    selector.includes('[role="combobox"]') ||
-    selector.includes('[aria-modal="true"]') ||
-    selector.includes('dialog ')
-  ) {
-    flags.push('portal-scoped');
-  }
-
-  // environment-unstable: contains UIDs, dynamic paths, or instance-specific data
-  if (
-    /[a-f0-9]{8,}/i.test(selector) || // Hex hash (8+ chars)
-    /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(selector) || // UUID
-    selector.includes('/d/') || // Dashboard UID path
-    selector.includes('orgId=') || // Org-specific
-    selector.includes('uid=') // Generic UID parameter
-  ) {
-    flags.push('environment-unstable');
-  }
-
-  return flags;
+export function generateBestSelector(
+  element: HTMLElement,
+  _options?: { clickX?: number; clickY?: number; hoveredElement?: HTMLElement }
+): string {
+  const target = retargetElement(element);
+  const candidates = generateCandidates(target);
+  const winner = rankAndSelect(candidates, target);
+  return winner.selector;
 }
 
 /**
- * Compute the overall quality rating for a selector.
- *
- * Quality levels:
- * - good: High stability score with no structural dependency
- * - medium: Medium stability or has structural/i18n concerns
- * - poor: Low stability score or heavily position-dependent
- *
- * @param stabilityScore - The numeric stability score (0-100)
- * @param flags - The computed stability flags
- * @returns Quality rating
- */
-function computeQuality(stabilityScore: number, flags: StabilityFlag[]): SelectorQuality {
-  // Poor quality: low score or heavily structural
-  if (stabilityScore < 40 || (flags.includes('structural') && stabilityScore < 60)) {
-    return 'poor';
-  }
-
-  // Good quality: high score without problematic flags
-  if (stabilityScore >= 80 && !flags.includes('structural') && !flags.includes('session-unstable')) {
-    return 'good';
-  }
-
-  // Medium quality: everything else
-  return 'medium';
-}
-
-/**
- * Get information about the generated selector for debugging
- * Returns the selector along with metadata about how it was generated
- *
- * @param element - The DOM element to analyze
- * @returns Object containing selector, generation method, uniqueness, match count, stability score, and warnings
- *
- * @example
- * ```typescript
- * const info = getSelectorInfo(myElement);
- * console.warn(info.selector); // "button[data-testid='save']"
- * console.warn(info.method);   // "data-testid"
- * console.warn(info.isUnique); // true
- * console.warn(info.stabilityScore); // 100
- * console.warn(info.warnings); // []
- * ```
+ * Get detailed information about the selector generated for an element.
  */
 export function getSelectorInfo(element: HTMLElement): SelectorInfo {
-  const selector = generateBestSelector(element);
+  const target = retargetElement(element);
+  const candidates = generateCandidates(target);
+  const winner = rankAndSelect(candidates, target);
 
-  // Detect overlay context for the element
-  const overlayContext = findOverlayContext(element);
+  const { selector, method, matchCount } = winner;
+  const isUnique = matchCount === 1;
+
+  const overlayContext = findOverlayContext(target);
   const isPortalScoped =
     overlayContext !== null ||
     selector.includes('[role="dialog"]') ||
@@ -1962,124 +941,43 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     selector.includes('[aria-modal="true"]');
   const overlayRole = getOverlayRole(overlayContext);
 
-  // Determine which method was used
-  let method = 'compound';
-  if (selector.includes('data-testid') || selector.includes('data-cy') || selector.includes('data-test-id')) {
-    method = 'data-testid';
-  } else if (selector.startsWith('#')) {
-    method = 'id';
-  } else if (selector.includes('aria-label')) {
-    method = 'aria-label';
-  } else if (selector.includes('[placeholder=')) {
-    method = 'placeholder';
-  } else if (selector.includes('[title=')) {
-    method = 'title';
-  } else if (selector.includes('[name=')) {
-    method = 'name';
-  } else if (selector.includes('[href=')) {
-    method = 'href';
-  } else if (!selector.includes('[') && !selector.includes('.') && !selector.includes('#') && !selector.includes(':')) {
-    method = 'button-text';
-  } else if (selector.includes(':nth-of-type')) {
-    method = 'nth-of-type';
-  } else if (selector.includes(':nth-match')) {
-    method = 'nth-match';
-  } else if (selector.includes(':contains(') || selector.includes(':text(')) {
-    method = 'contains';
-  } else if (selector.includes(' + ')) {
-    method = 'sibling';
-  }
-
-  // Determine context strategy used
   let contextStrategy: string | undefined;
-  if (selector.includes(':has(')) {
-    contextStrategy = 'child-has';
-  } else if (selector.includes(':nth-match(')) {
+  if (selector.includes(':nth-match(')) {
     contextStrategy = 'nth-match';
   } else if (selector.includes(' + ')) {
     contextStrategy = 'sibling';
   } else if (isPortalScoped) {
     contextStrategy = 'portal-scoped';
   } else if (selector.includes(' ') && !selector.includes(':contains(') && !selector.includes(':text(')) {
-    // Has descendant combinator (space) but not just :contains
     contextStrategy = 'parent-context';
   }
 
-  // Check uniqueness using enhanced selector for :contains() and :has() support
-  let matchCount = 0;
-  let visibleMatchCount: number | undefined;
-
-  try {
-    if (method === 'button-text') {
-      matchCount = findButtonByText(selector).length;
-    } else if (method === 'contains' || selector.includes(':has(') || selector.includes(':nth-match(')) {
-      // Use enhanced selector for complex pseudo-selectors
-      const result = querySelectorAllEnhanced(selector);
-      matchCount = result.elements.length;
-
-      // For overlay contexts, also count visible matches
-      if (overlayContext) {
-        const visibleResult = querySelectorAllEnhancedVisible(selector);
-        visibleMatchCount = visibleResult.elements.length;
-      }
-    } else {
-      matchCount = document.querySelectorAll(selector).length;
-
-      // For overlay contexts, also count visible matches
-      if (overlayContext) {
-        const visibleResult = querySelectorAllEnhancedVisible(selector);
-        visibleMatchCount = visibleResult.elements.length;
-      }
-    }
-  } catch (error) {
-    matchCount = 0;
-  }
-
-  const isUnique = matchCount === 1;
-
-  // Calculate stability score based on method used
-  const stabilityScore = STABILITY_SCORES[method] ?? 50;
-
-  // Compute stability flags
+  const stabilityScore =
+    winner.score <= 20 ? 100 : winner.score <= 60 ? 90 : winner.score <= 150 ? 70 : winner.score <= 500 ? 50 : 20;
   const flags = computeStabilityFlags(selector, method);
-
-  // Compute quality rating
   const quality = computeQuality(stabilityScore, flags);
 
-  // Generate warnings based on selector characteristics
   const warnings: string[] = [];
-
   if (stabilityScore < 30) {
     warnings.push('Selector depends on element position and may break if page structure changes');
   }
-
   if (selector.includes(':nth-match(') || selector.includes(':nth-of-type(')) {
     warnings.push('Consider adding a data-testid to this element for more stable selection');
   }
-
   if (!isUnique) {
-    warnings.push(`Selector matches ${matchCount} elements - may cause unexpected behavior`);
+    warnings.push(`Selector matches ${matchCount} elements — may cause unexpected behavior`);
   }
-
   if (matchCount === 0) {
-    warnings.push('Selector does not match any elements - element may have been removed');
+    warnings.push('Selector does not match any elements — element may have been removed');
   }
-
-  if (selector.length > 200) {
-    warnings.push('Selector is very long - consider adding identifiers to intermediate elements');
-  }
-
-  // Add warnings based on flags
   if (flags.includes('i18n-sensitive')) {
-    warnings.push('Selector uses translatable text - may break in different locales');
+    warnings.push('Selector uses translatable text — may break in different locales');
   }
-
   if (flags.includes('session-unstable')) {
-    warnings.push('Selector uses framework-generated ID - may change between sessions');
+    warnings.push('Selector uses framework-generated ID — may change between sessions');
   }
-
   if (flags.includes('environment-unstable')) {
-    warnings.push('Selector contains instance-specific data - may not work in different environments');
+    warnings.push('Selector contains instance-specific data — may not work in different environments');
   }
 
   return {
@@ -2094,128 +992,146 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     flags,
     isPortalScoped,
     overlayRole,
-    visibleMatchCount,
   };
 }
 
-// ============================================================================
-// Fallback Selector Generation
-// ============================================================================
-
 /**
- * Generate fallback selectors for an element, ordered by stability score.
- * Only includes selectors with stability >= 65 and match count 1-3 (not too generic).
- * Never includes positional selectors (:nth-match, :nth-of-type).
+ * Generate fallback/alternative selectors for an element, ordered by stability.
  */
 export function generateFallbackSelectors(element: HTMLElement, primarySelector: string): string[] {
-  const bestElement = findBestElementInHierarchy(element);
-  const tag = bestElement.tagName.toLowerCase();
+  const target = retargetElement(element);
+  const candidates = generateCandidates(target);
+  const scored: ScoredCandidate[] = [];
 
-  interface FallbackCandidate {
-    selector: string;
-    score: number;
-  }
-
-  const candidates: FallbackCandidate[] = [];
-
-  // Helper to test a candidate and add it if valid
-  function tryCandidate(selector: string, method: string): void {
-    if (selector === primarySelector) {
-      return;
-    }
-
-    const score = STABILITY_SCORES[method];
-    if (score === undefined || score < 65) {
-      return;
-    }
-
-    try {
-      const matches = querySelectorAllEnhanced(selector);
-      if (matches.elements.length >= 1 && matches.elements.length <= 3) {
-        candidates.push({ selector, score });
-      }
-    } catch {
-      // Invalid selector, skip
-    }
-  }
-
-  // 1. data-testid
-  const testId = getAnyTestId(bestElement);
-  if (testId) {
-    const testIdAttr = getTestIdAttr(bestElement);
-    tryCandidate(`${tag}[${testIdAttr}='${testId}']`, 'data-testid');
-  }
-
-  // 2. id (non-auto-generated)
-  if (bestElement.id && !isAutoGeneratedId(bestElement.id)) {
-    tryCandidate(`#${bestElement.id}`, 'id');
-  }
-
-  // 3. aria-label
-  if (bestElement.hasAttribute('aria-label')) {
-    const ariaLabel = bestElement.getAttribute('aria-label');
-    if (ariaLabel) {
-      tryCandidate(`${tag}[aria-label='${ariaLabel}']`, 'aria-label');
-    }
-  }
-
-  // 4. placeholder
-  if (bestElement.hasAttribute('placeholder')) {
-    const placeholder = bestElement.getAttribute('placeholder');
-    if (placeholder) {
-      tryCandidate(`${tag}[placeholder='${placeholder}']`, 'placeholder');
-    }
-  }
-
-  // 5. title
-  if (bestElement.hasAttribute('title')) {
-    const title = bestElement.getAttribute('title');
-    if (title) {
-      tryCandidate(`${tag}[title='${title}']`, 'title');
-    }
-  }
-
-  // 6. name
-  if (bestElement.hasAttribute('name')) {
-    const name = bestElement.getAttribute('name');
-    if (name) {
-      tryCandidate(`${tag}[name='${name}']`, 'name');
-    }
-  }
-
-  // 7. href (for links)
-  if (tag === 'a' && bestElement.hasAttribute('href')) {
-    const href = normalizeHref(bestElement.getAttribute('href')!);
-    tryCandidate(`a[href='${href}']`, 'href');
-  }
-
-  // 8. button text
-  if (tag === 'button' || bestElement.getAttribute('role') === 'button') {
-    const text = normalizeText(bestElement.textContent || '');
-    if (text.length > 0 && text.length < SELECTOR_CONFIG.maxTextLength) {
-      if (text.length < 20) {
-        tryCandidate(`${tag}:text('${text}')`, 'button-text');
-      } else {
-        tryCandidate(`${tag}:contains('${text}')`, 'contains');
-      }
-    }
-  }
-
-  // Sort by stability score descending
-  candidates.sort((a, b) => b.score - a.score);
-
-  // Deduplicate and return max 4
-  const seen = new Set<string>();
-  const result: string[] = [];
   for (const candidate of candidates) {
-    if (!seen.has(candidate.selector)) {
-      seen.add(candidate.selector);
-      result.push(candidate.selector);
+    if (candidate.selector === primarySelector) {
+      continue;
+    }
+    const { matchCount, containsTarget } = testUniqueness(candidate.selector, target, candidate.method);
+    if (matchCount === 0 || !containsTarget) {
+      continue;
+    }
+    if (matchCount === 1) {
+      scored.push({ ...candidate, matchCount });
+      continue;
+    }
+    if (candidate.method !== 'button-text') {
+      const disambiguated = disambiguate(candidate, target);
+      for (const d of disambiguated) {
+        scored.push({ ...d, matchCount: 1 });
+      }
+    }
+  }
+
+  scored.sort((a, b) => a.score - b.score);
+
+  const seen = new Set<string>([primarySelector]);
+  const result: string[] = [];
+  for (const s of scored) {
+    if (!seen.has(s.selector)) {
+      seen.add(s.selector);
+      result.push(s.selector);
       if (result.length >= 4) {
         break;
       }
     }
   }
-
   return result;
+}
+
+/**
+ * @deprecated Caching has been removed — this is a no-op for backward compatibility.
+ */
+export function clearSelectorCache(): void {
+  // No-op
+}
+
+/**
+ * Try a selector for uniqueness, falling back to a builder function if not unique.
+ */
+export function tryUniqueSelectorWithFallback(
+  selector: string,
+  element: HTMLElement,
+  buildFallback: () => string
+): string {
+  const { matchCount, containsTarget } = testUniqueness(selector, element, 'css');
+  if (matchCount === 1 && containsTarget) {
+    return cleanDynamicAttributes(selector);
+  }
+  return cleanDynamicAttributes(buildFallback());
+}
+
+// ============================================================================
+// Stability Analysis (internal)
+// ============================================================================
+
+function computeStabilityFlags(selector: string, method: string): StabilityFlag[] {
+  const flags: StabilityFlag[] = [];
+
+  if (
+    selector.includes('aria-label') ||
+    selector.includes('placeholder') ||
+    selector.includes("title='") ||
+    selector.includes('title="') ||
+    selector.includes(':contains(') ||
+    selector.includes(':text(')
+  ) {
+    flags.push('i18n-sensitive');
+  }
+
+  if (
+    /react-[a-z0-9]+/i.test(selector) ||
+    /radix-[a-z0-9]+/i.test(selector) ||
+    /headlessui-[a-z0-9]+/i.test(selector) ||
+    /mui-[a-z0-9]+/i.test(selector) ||
+    /:r[0-9a-z]+:/i.test(selector) ||
+    /id-\d+/.test(selector)
+  ) {
+    flags.push('session-unstable');
+  }
+
+  if (
+    selector.includes(':nth-of-type') ||
+    selector.includes(':nth-match') ||
+    selector.includes(':nth-child') ||
+    method === 'nth-of-type' ||
+    method === 'nth-match'
+  ) {
+    flags.push('structural');
+  }
+
+  if (
+    selector.includes('[role="dialog"]') ||
+    selector.includes('[role="alertdialog"]') ||
+    selector.includes('[role="menu"]') ||
+    selector.includes('[role="listbox"]') ||
+    selector.includes('[role="tooltip"]') ||
+    selector.includes('[role="combobox"]') ||
+    selector.includes('[aria-modal="true"]') ||
+    selector.includes('dialog ')
+  ) {
+    flags.push('portal-scoped');
+  }
+
+  if (
+    /[a-f0-9]{8,}/i.test(selector) ||
+    /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(selector) ||
+    selector.includes('/d/') ||
+    selector.includes('orgId=') ||
+    selector.includes('uid=')
+  ) {
+    flags.push('environment-unstable');
+  }
+
+  return flags;
+}
+
+function computeQuality(stabilityScore: number, flags: StabilityFlag[]): SelectorQuality {
+  if (stabilityScore < 40 || (flags.includes('structural') && stabilityScore < 60)) {
+    return 'poor';
+  }
+  if (stabilityScore >= 80 && !flags.includes('structural') && !flags.includes('session-unstable')) {
+    return 'good';
+  }
+  return 'medium';
 }

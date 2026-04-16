@@ -18,101 +18,45 @@ export interface SelectorGenerationResult {
 }
 
 /**
- * Generate and validate a selector from a DOM event
+ * Generate and validate a selector from a DOM event.
  *
- * This function handles:
- * - Coordinate-aware selector generation (for click events)
- * - Action type detection and normalization
- * - Selector validation and cleaning
- * - Selector info extraction
- *
- * @param target - The DOM element that triggered the event
- * @param event - The event that triggered the selector generation (MouseEvent, Event, etc.)
- * @returns Structured result with selector, action, info, and warnings
- *
- * @example
- * ```typescript
- * const handleClick = (event: MouseEvent) => {
- *   const result = generateSelectorFromEvent(event.target as HTMLElement, event);
- *   console.log('Selector:', result.selector);
- *   console.log('Action:', result.action);
- * }
- * ```
+ * Pipeline:
+ * 1. generateBestSelector (retarget → candidates → rank)
+ * 2. detectActionType
+ * 3. validateAndCleanSelector (safety net)
+ * 4. Action normalization (plain-text → button, CSS → highlight)
  */
 export function generateSelectorFromEvent(
   target: HTMLElement,
   event: MouseEvent | Event,
-  hoveredElement?: HTMLElement
+  _hoveredElement?: HTMLElement
 ): SelectorGenerationResult {
-  // Extract click coordinates if available (for coordinate-aware selector generation)
-  const clickX = 'clientX' in event ? event.clientX : undefined;
-  const clickY = 'clientY' in event ? event.clientY : undefined;
+  let selector = generateBestSelector(target);
 
-  // Generate selector with coordinates and hovered element constraint if available
-  let selector = generateBestSelector(
-    target,
-    clickX !== undefined && clickY !== undefined
-      ? { clickX, clickY, hoveredElement }
-      : hoveredElement
-        ? { hoveredElement }
-        : undefined
-  );
-
-  // Validate the generated selector actually contains or matches the hovered element.
-  // If the selector resolves to an element that is NOT the hovered element or one of its
-  // ancestors/descendants, fall back to generating a selector directly from the hovered element.
-  if (hoveredElement) {
-    try {
-      const resolved = document.querySelector(selector);
-      if (
-        resolved &&
-        resolved !== hoveredElement &&
-        !hoveredElement.contains(resolved) &&
-        !resolved.contains(hoveredElement)
-      ) {
-        // Selector resolved to an unrelated element — regenerate from the hovered element
-        selector = generateBestSelector(hoveredElement);
-      }
-    } catch {
-      // Selector may use custom pseudo-selectors that querySelector doesn't support — skip validation
-    }
-  }
-
-  // Detect action type
   let action = detectActionType(target, event);
 
-  // FINAL VALIDATION: Apply all quality rules as a safety net
   const validated = validateAndCleanSelector(selector, action);
   selector = validated.selector;
 
-  // Check for fragility (nth-match/nth-of-type)
   if (selector.includes(':nth-match') || selector.includes(':nth-of-type')) {
     validated.warnings.push(
       'Generated selector is fragile (depends on order). Try adding stable attributes to the component.'
     );
   }
 
-  // Apply action type normalization AFTER validation (using cleaned selector)
-  // This ensures we normalize based on the final cleaned selector, not the original
-  // If selector is plain text (no CSS syntax), force button action for text-based matching
-  // Otherwise, use highlight with the CSS selector
   const isPlainText =
     !selector.includes('[') && !selector.includes('.') && !selector.includes('#') && !selector.includes(':');
   if (isPlainText) {
-    // Plain text selector - use button action for text matching
     action = 'button';
   } else if (validated.action === 'button') {
-    // Has CSS selector - use highlight instead of button
     action = 'highlight';
   } else {
-    // Use validated action for other cases
     const validDetectedActions: DetectedAction[] = ['highlight', 'button', 'formfill', 'navigate', 'hover'];
     if (validDetectedActions.includes(validated.action as DetectedAction)) {
       action = validated.action as DetectedAction;
     }
   }
 
-  // Get selector metadata
   const info = getSelectorInfo(target);
   const selectorInfo: SelectorInfo = {
     method: info.method,

@@ -88,12 +88,10 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
 
-  // Get the element under the cursor, ignoring our picker UI and modal elements
   const getElementUnderCursor = useCallback((x: number, y: number): HTMLElement | null => {
-    // Selectors for elements to temporarily hide
     const hideSelectors = [
       '[data-element-picker]',
-      '#grafana-portal-container > *', // Modal portals
+      '#grafana-portal-container > *',
       '.ReactModal__Overlay',
       '.modal-backdrop',
       '[class*="ReactModal"]',
@@ -101,7 +99,6 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
 
     const originalStyles: Array<{ el: HTMLElement; pointerEvents: string; visibility: string }> = [];
 
-    // Hide all interfering elements
     hideSelectors.forEach((selector) => {
       document.querySelectorAll(selector).forEach((el) => {
         const htmlEl = el as HTMLElement;
@@ -115,16 +112,13 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
       });
     });
 
-    // Find the element at the cursor position
     const elementUnder = document.elementFromPoint(x, y) as HTMLElement | null;
 
-    // Restore all elements
     originalStyles.forEach(({ el, pointerEvents, visibility }) => {
       el.style.pointerEvents = pointerEvents;
       el.style.visibility = visibility;
     });
 
-    // Filter out any portal container elements that might still be detected
     if (elementUnder) {
       const isPortalElement = elementUnder.closest('#grafana-portal-container') !== null;
       if (isPortalElement) {
@@ -135,7 +129,6 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     return elementUnder;
   }, []);
 
-  // Handle mouse move to track hovered element
   const handleMouseMove = useCallback(
     (event: MouseEvent) => {
       const { clientX, clientY } = event;
@@ -154,13 +147,10 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     [getElementUnderCursor]
   );
 
-  // Handle click to select element
   const handleClick = useCallback(
     (event: MouseEvent) => {
       const clickedElement = event.target as HTMLElement;
 
-      // If clicking on picker banner or button, let the event through normally
-      // (but NOT the overlay - that should trigger a pick)
       const pickerAttr = clickedElement.closest('[data-element-picker]')?.getAttribute('data-element-picker');
       if (pickerAttr && pickerAttr !== 'overlay') {
         return;
@@ -168,12 +158,10 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
 
       const { clientX, clientY } = event;
 
-      // Prevent ALL default behavior
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      // Get the actual element under the cursor
       const target = getElementUnderCursor(clientX, clientY);
 
       if (!target) {
@@ -181,22 +169,17 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         return;
       }
 
-      // Generate selector, passing target as hoveredElement to constrain generation
-      const result = generateSelectorFromEvent(target, event, target);
+      const result = generateSelectorFromEvent(target, event);
 
       if (result.warnings.length > 0) {
         console.warn('[ElementPicker] Selector warnings:', result.warnings);
       }
 
-      console.log('[ElementPicker] Selected:', result.selector);
-
-      // Return the selector
       onSelect(result.selector);
     },
     [onSelect, getElementUnderCursor]
   );
 
-  // Handle escape key
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -206,14 +189,11 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     [onCancel]
   );
 
-  // Set up event listeners
   useEffect(() => {
-    // Use capture phase for click to intercept before anything else
     document.addEventListener('click', handleClick, { capture: true });
     document.addEventListener('mousemove', handleMouseMove, { capture: true });
     document.addEventListener('keydown', handleKeyDown);
 
-    // Prevent scrolling while picking
     document.body.style.overflow = 'hidden';
 
     return () => {
@@ -224,16 +204,12 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     };
   }, [handleClick, handleMouseMove, handleKeyDown]);
 
-  // Generate full DOM path with data-testid highlighting
   const domPath = hoveredElement ? generateFullDomPath(hoveredElement) : '';
 
-  // Render directly to document.body to bypass any modal overlays
   return createPortal(
     <>
-      {/* Invisible overlay to capture all interactions */}
       <div className={styles.overlay} data-element-picker="overlay" />
 
-      {/* Element highlight */}
       {highlightRect && (
         <div
           className={styles.highlight}
@@ -247,7 +223,6 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         />
       )}
 
-      {/* Top banner */}
       <div className={styles.banner} data-element-picker="banner">
         <span className={styles.bannerIcon}>🎯</span>
         <span className={styles.bannerText}>Click any element to capture its selector</span>
@@ -256,7 +231,6 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         </button>
       </div>
 
-      {/* DOM path tooltip - uses existing component with testid highlighting */}
       {cursorPosition && <DomPathTooltip domPath={domPath} position={cursorPosition} visible={!!domPath} />}
     </>,
     document.body
