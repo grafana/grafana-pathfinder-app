@@ -447,7 +447,7 @@ var guideSchemas = map[string]interface{}{
 							"enum": []string{
 								"markdown", "html", "section", "conditional", "interactive",
 								"multistep", "guided", "image", "video", "quiz", "assistant",
-								"input", "terminal",
+								"input", "terminal", "grot-guide",
 							},
 						},
 					},
@@ -623,6 +623,7 @@ func (a *App) toolValidateGuideJSON(w http.ResponseWriter, id json.RawMessage, r
 				"markdown": true, "html": true, "section": true, "conditional": true,
 				"interactive": true, "multistep": true, "guided": true, "image": true,
 				"video": true, "quiz": true, "assistant": true, "input": true, "terminal": true,
+				"grot-guide": true,
 			}
 			for i, block := range blocks {
 				blockMap, ok := block.(map[string]interface{})
