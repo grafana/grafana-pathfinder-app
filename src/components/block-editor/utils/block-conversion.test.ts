@@ -40,12 +40,12 @@ describe('getAvailableConversions', () => {
       expect(result).toContain('input');
     });
 
-    it('should return 11 options for any non-container type', () => {
-      // 12 non-container types minus 1 (the source type) = 11
-      expect(getAvailableConversions('markdown')).toHaveLength(11);
-      expect(getAvailableConversions('html')).toHaveLength(11);
-      expect(getAvailableConversions('quiz')).toHaveLength(11);
-      expect(getAvailableConversions('interactive')).toHaveLength(11);
+    it('should return 12 options for any non-container type', () => {
+      // 13 non-container types minus 1 (the source type) = 12
+      expect(getAvailableConversions('markdown')).toHaveLength(12);
+      expect(getAvailableConversions('html')).toHaveLength(12);
+      expect(getAvailableConversions('quiz')).toHaveLength(12);
+      expect(getAvailableConversions('interactive')).toHaveLength(12);
     });
   });
 });

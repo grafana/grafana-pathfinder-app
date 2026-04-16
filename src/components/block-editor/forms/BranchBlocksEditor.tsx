@@ -267,6 +267,8 @@ function createDefaultBlock(type: BlockType): JsonBlock {
       return { type: 'multistep', content: '', steps: [] };
     case 'guided':
       return { type: 'guided', content: '', steps: [] };
+    case 'callout':
+      return { type: 'callout', variant: 'info', content: '' };
     default:
       return { type: 'markdown', content: '' };
   }

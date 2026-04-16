@@ -23,6 +23,7 @@ import {
   type JsonMultistepBlock,
   type JsonGuidedBlock,
   type JsonImageBlock,
+  type JsonCalloutBlock,
   type JsonVideoBlock,
   type JsonQuizBlock,
   type JsonAssistantBlock,
@@ -236,6 +237,8 @@ function convertBlockByType(
       return convertGuidedBlock(block, path);
     case 'image':
       return convertImageBlock(block, path, baseUrl);
+    case 'callout':
+      return convertCalloutBlock(block, path, baseUrl);
     case 'video':
       return convertVideoBlock(block, path);
     case 'quiz':
@@ -664,6 +667,21 @@ function convertImageBlock(block: JsonImageBlock, path: string, baseUrl?: string
   };
 }
 
+function convertCalloutBlock(block: JsonCalloutBlock, path: string, baseUrl?: string): ConversionResult {
+  const children = parseMarkdownToElements(block.content, baseUrl);
+
+  return {
+    element: {
+      type: 'callout-block',
+      props: {
+        variant: block.variant,
+        title: block.title,
+      },
+      children,
+    },
+  };
+}
+
 function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResult {
   const isYouTube = block.provider === 'youtube' || block.src.includes('youtube.com') || block.src.includes('youtu.be');
 
@@ -864,6 +882,8 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
     case 'section':
       // Sections contain nested blocks - extract from title if available
       return block.title || '';
+    case 'callout':
+      return block.content;
     case 'image':
       // Images have alt text which could be customized
       return block.alt || '';

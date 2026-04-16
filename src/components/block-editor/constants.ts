@@ -32,6 +32,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Image',
     description: 'Embedded image with optional dimensions',
   },
+  callout: {
+    type: 'callout',
+    icon: '📢',
+    grafanaIcon: 'info-circle',
+    name: 'Callout',
+    description: 'Highlighted message box (info, warning, success, error)',
+  },
   video: {
     type: 'video',
     icon: '🎬',
@@ -117,6 +124,7 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
  */
 export const BLOCK_TYPE_ORDER: BlockType[] = [
   'markdown',
+  'callout',
   'image',
   'video',
   'section',
