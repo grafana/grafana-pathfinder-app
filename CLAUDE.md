@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-See `AGENTS.md` — the primary agent reference for this repository.
+@AGENTS.md — the primary agent reference for this repository.
 
 ## Additional context for Claude Code
 
