@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { css } from '@emotion/css';
 import { Button, Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -37,12 +37,6 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
   // State: null = welcome screen, string = screen ID
   const [currentScreenId, setCurrentScreenId] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
-
-  // Ref to track history for pure state updates
-  const historyRef = useRef<string[]>([]);
-  useEffect(() => {
-    historyRef.current = history;
-  }, [history]);
 
   // Build a screen lookup map
   const screenMap = useMemo(() => {
@@ -95,18 +89,15 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
 
   // Go back
   const goBack = useCallback(() => {
-    // Read current history from ref to compute new screen outside updater
-    const currentHistory = historyRef.current;
-    if (currentHistory.length === 0) {
-      return;
-    }
+    setHistory((prev) => {
+      if (prev.length === 0) {
+        return prev;
+      }
 
-    const previous = currentHistory[currentHistory.length - 1];
-    const newScreenId = previous === WELCOME_SENTINEL ? null : (previous ?? null);
-
-    // Update both states separately (keeps updaters pure)
-    setHistory((prev) => prev.slice(0, -1));
-    setCurrentScreenId(newScreenId);
+      const previous = prev[prev.length - 1];
+      setCurrentScreenId(previous === WELCOME_SENTINEL ? null : (previous ?? null));
+      return prev.slice(0, -1);
+    });
   }, []);
 
   // Start over
