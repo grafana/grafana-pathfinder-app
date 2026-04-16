@@ -395,6 +395,12 @@ describe('Selector Generator — Pipeline', () => {
       expect(generateBestSelector(link)).toBe("a[data-testid='nav-link']");
     });
 
+    it('fallback reports actual matchCount instead of hardcoded 0', () => {
+      const info = getSelectorInfo(document.body);
+      expect(info.matchCount).toBeGreaterThan(0);
+      expect(info.warnings).not.toContain(expect.stringContaining('does not match any elements'));
+    });
+
     it('keeps radio input as-is (no redirect to label)', () => {
       const label = document.createElement('label');
       label.setAttribute('for', 'opt-1');

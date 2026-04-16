@@ -909,7 +909,9 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
 
   if (scored.length === 0) {
     const tag = element.tagName.toLowerCase();
-    return { selector: `${tag}:nth-of-type(1)`, score: CANDIDATE_SCORES.nthMatch, method: 'fallback', matchCount: 0 };
+    const fallbackSelector = `${tag}:nth-of-type(1)`;
+    const { matchCount } = testUniqueness(fallbackSelector, element, 'fallback');
+    return { selector: fallbackSelector, score: CANDIDATE_SCORES.nthMatch, method: 'fallback', matchCount };
   }
 
   scored.sort((a, b) => a.score - b.score);
