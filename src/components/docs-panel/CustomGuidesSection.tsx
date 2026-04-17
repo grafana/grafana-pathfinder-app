@@ -57,7 +57,7 @@ export function CustomGuidesSection({
           <span>{t('contextPanel.customGuides', 'Custom guides')}</span>
           <span className={styles.customGuidesCount}>
             <Icon name="list-ul" size="xs" />
-            {t('contextPanel.items', normalizedGuides.length === 1 ? '{{count}} item' : '{{count}} items', {
+            {t('contextPanel.items', '{{count}} items', {
               count: normalizedGuides.length,
             })}
           </span>

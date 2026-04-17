@@ -358,7 +358,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               <span>{t('contextPanel.suggestedGuides', 'Suggested guides')}</span>
               <span className={styles.suggestedGuidesCount}>
                 <Icon name="list-ul" size="xs" />
-                {t('contextPanel.items', suggestedGuidesCount === 1 ? '{{count}} item' : '{{count}} items', {
+                {t('contextPanel.items', '{{count}} items', {
                   count: suggestedGuidesCount,
                 })}
               </span>
@@ -991,7 +991,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                 <span>{t('contextPanel.otherDocumentation', 'Other Documentation')}</span>
                 <span className={styles.otherDocsCount}>
                   <Icon name="list-ul" size="xs" />
-                  {t('contextPanel.items', secondaryDocs.length === 1 ? '{{count}} item' : '{{count}} items', {
+                  {t('contextPanel.items', '{{count}} items', {
                     count: secondaryDocs.length,
                   })}
                 </span>
