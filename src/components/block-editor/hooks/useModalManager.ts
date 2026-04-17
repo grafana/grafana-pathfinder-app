@@ -13,7 +13,7 @@ import { useState, useCallback } from 'react';
 /**
  * Modal names managed by this hook.
  */
-export type ModalName = 'metadata' | 'newGuideConfirm' | 'import' | 'githubPr' | 'tour';
+export type ModalName = 'metadata' | 'newGuideConfirm' | 'import' | 'githubPr' | 'tour' | 'generateGuide';
 
 /**
  * Return type for useModalManager hook

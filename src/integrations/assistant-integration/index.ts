@@ -50,6 +50,20 @@ export type {
 
 export { getIsAssistantAvailable, getOpenAssistant, useMockInlineAssistant } from './assistant-dev-mode';
 
+export { useAssistantAvailability } from './useAssistantAvailability.hook';
+
+export {
+  buildGuideSystemPrompt,
+  extractJsonFromResponse,
+  GUIDE_SCHEMA_SUMMARY,
+  SELECTOR_BEST_PRACTICES,
+  SELECTOR_PLACEHOLDER,
+} from './guide-generation.utils';
+export type { BuildGuideSystemPromptOptions } from './guide-generation.utils';
+
+export { buildElementContext, buildSelectorSystemPrompt, selectorStillMatches } from './selector-generation.utils';
+export type { ElementContext, AncestorSummary, BuildSelectorSystemPromptOptions } from './selector-generation.utils';
+
 // Custom tools for inline assistant
 export {
   // Tools

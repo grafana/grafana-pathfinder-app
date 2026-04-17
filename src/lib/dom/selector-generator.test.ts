@@ -552,4 +552,137 @@ describe('Selector Generator — Pipeline', () => {
       expect(m3.elements).toContain(inputs[2]);
     });
   });
+
+  // ==========================================================================
+  // Form-control candidates (radios, dynamic ids, label associations)
+  // ==========================================================================
+
+  describe('form-control candidates', () => {
+    it('targets a radio input by its value attribute scoped to a test-id ancestor', () => {
+      document.body.innerHTML = `
+        <div data-testid="QueryEditorModeToggle">
+          <div role="radiogroup">
+            <div><input type="radio" id="option-builder-:ra6:" name=":ra6:" value="builder" /></div>
+            <div><input type="radio" id="option-code-:ra6:" name=":ra6:" value="code" /></div>
+          </div>
+        </div>
+        <!-- unrelated radios elsewhere to force disambiguation -->
+        <form>
+          <input type="radio" value="builder" name="other" />
+          <input type="radio" value="code" name="other" />
+        </form>
+      `;
+
+      const builder = document.querySelector<HTMLElement>(
+        '[data-testid="QueryEditorModeToggle"] input[value="builder"]'
+      )!;
+
+      const selector = generateBestSelector(builder);
+      expect(selector).not.toMatch(/:nth-match/);
+      expect(selector).not.toMatch(/:nth-of-type/);
+
+      const matches = querySelectorAllEnhanced(selector);
+      expect(matches.elements).toContain(builder);
+      expect(matches.elements.length).toBe(1);
+    });
+
+    it('uses a globally-unique input[value] directly when no sibling ambiguity exists', () => {
+      document.body.innerHTML = `
+        <form>
+          <input type="radio" value="unique-mode" name="mode" />
+        </form>
+      `;
+      const input = document.querySelector<HTMLInputElement>('input')!;
+      const selector = generateBestSelector(input);
+      expect(selector).toContain("value='unique-mode'");
+      const matches = querySelectorAllEnhanced(selector);
+      expect(matches.elements).toContain(input);
+      expect(matches.elements.length).toBe(1);
+    });
+
+    it("uses [id^='prefix-'] when the id has a dynamic :rXX: suffix", () => {
+      document.body.innerHTML = `
+        <div>
+          <input type="text" id="field-name-:r7a:" />
+        </div>
+      `;
+      const input = document.querySelector<HTMLInputElement>('input')!;
+      const info = getSelectorInfo(input);
+      // At minimum we must avoid nth-based selectors entirely.
+      expect(info.selector).not.toMatch(/:nth-match/);
+      expect(info.selector).not.toMatch(/:nth-of-type/);
+      const matches = querySelectorAllEnhanced(info.selector);
+      expect(matches.elements).toContain(input);
+    });
+
+    it('emits a sibling-label selector for a text input with an adjacent <label>', () => {
+      document.body.innerHTML = `
+        <div data-testid="settings-form">
+          <div>
+            <label>Dashboard title</label>
+            <input type="text" />
+          </div>
+          <div>
+            <label>Folder</label>
+            <input type="text" />
+          </div>
+        </div>
+      `;
+      const input = document.querySelectorAll<HTMLInputElement>('input')[0]!;
+      const selector = generateBestSelector(input);
+      // Must not fall back to positional — a label-based selector is available
+      expect(selector).not.toMatch(/:nth-match/);
+      const matches = querySelectorAllEnhanced(selector);
+      expect(matches.elements).toContain(input);
+      expect(matches.elements.length).toBe(1);
+    });
+
+    it('emits select[name=...] for a stable-looking name', () => {
+      document.body.innerHTML = `
+        <form>
+          <select name="datasource"><option>p</option></select>
+          <select name="panel"><option>a</option></select>
+        </form>
+      `;
+      const select = document.querySelector<HTMLSelectElement>('select[name="datasource"]')!;
+      const selector = generateBestSelector(select);
+      expect(selector).toContain("name='datasource'");
+      const matches = querySelectorAllEnhanced(selector);
+      expect(matches.elements).toContain(select);
+      expect(matches.elements.length).toBe(1);
+    });
+
+    it('skips name-based selectors when the name is dynamic (React 18 :rXX:)', () => {
+      document.body.innerHTML = `
+        <form>
+          <input type="text" name=":r5a:" />
+        </form>
+      `;
+      const input = document.querySelector<HTMLInputElement>('input')!;
+      const selector = generateBestSelector(input);
+      expect(selector).not.toContain(':r5a:');
+      const matches = querySelectorAllEnhanced(selector);
+      expect(matches.elements).toContain(input);
+    });
+
+    it('prefers the scoped low-score candidate over a compound 500+ candidate when both exist', () => {
+      // A radio with both a compound-worthy attribute and a cheaper input-value candidate.
+      // The input-value scoped to the testid ancestor should win.
+      document.body.innerHTML = `
+        <div data-testid="toolbar">
+          <input type="radio" value="left" name="align" />
+          <input type="radio" value="right" name="align" />
+        </div>
+        <input type="radio" value="left" name="other" />
+      `;
+      const left = document.querySelector<HTMLInputElement>('[data-testid="toolbar"] input[value="left"]')!;
+      const selector = generateBestSelector(left);
+      const info = getSelectorInfo(left);
+      expect(['input-value', 'id-prefix', 'scoped-testid', 'compound']).toContain(info.method);
+      expect(selector).not.toMatch(/:nth-match/);
+      const matches = querySelectorAllEnhanced(selector);
+      expect(matches.elements).toContain(left);
+      expect(matches.elements.length).toBe(1);
+    });
+  });
 });

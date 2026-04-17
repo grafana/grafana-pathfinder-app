@@ -61,6 +61,10 @@ export interface BlockEditorHeaderProps {
   onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
+  /** Callback to open the assistant-powered generate guide modal; omit to hide the button */
+  onOpenGenerateGuide?: () => void;
+  /** Whether the Grafana Assistant is available (controls visibility of the generate button) */
+  isAssistantAvailable?: boolean;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -186,6 +190,8 @@ export function BlockEditorHeader({
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
+  onOpenGenerateGuide,
+  isAssistantAvailable = false,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -414,6 +420,18 @@ export function BlockEditorHeader({
           >
             New
           </Button>
+          {onOpenGenerateGuide && isAssistantAvailable && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="ai"
+              onClick={onOpenGenerateGuide}
+              tooltip="Generate a draft guide from a prompt using Grafana Assistant"
+              data-testid={testIds.blockEditor.generateGuideButton}
+            >
+              Generate with AI
+            </Button>
+          )}
           {isBackendAvailable && (
             <Button
               variant="secondary"

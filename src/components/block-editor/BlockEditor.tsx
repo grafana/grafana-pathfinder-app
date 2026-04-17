@@ -22,6 +22,7 @@ import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
 import { useGuideOperations } from './hooks/useGuideOperations';
 import { useBackendGuides } from './hooks/useBackendGuides';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
+import { useAssistantAvailability } from '../../integrations/assistant-integration';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
@@ -133,6 +134,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Backend availability — read once from boot-time feature toggles
   const backendAvailable = isBackendApiAvailable();
+
+  // Grafana Assistant availability — gates the "Generate with AI" button
+  const isAssistantAvailable = useAssistantAvailability();
 
   // Backend guides management
   const backendGuides = useBackendGuides();
@@ -721,6 +725,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
+        onOpenGenerateGuide={() => modals.open('generateGuide')}
+        isAssistantAvailable={isAssistantAvailable}
       />
 
       {/* Content */}
@@ -766,6 +772,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onUpdateGuideMetadata={editor.updateGuideMetadata}
         onNewGuideConfirm={guideOps.handleNewGuide}
         onImportGuide={guideOps.handleImportGuide}
+        onGenerateGuide={guideOps.handleGenerateGuide}
       />
 
       {/* Guide Library Modal */}

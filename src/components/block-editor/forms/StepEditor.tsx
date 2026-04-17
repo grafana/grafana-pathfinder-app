@@ -42,6 +42,7 @@ import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
+import { RegenerateSelectorButton } from './RegenerateSelectorButton';
 import type { JsonStep, JsonInteractiveAction } from '../types';
 
 // Exclude our overlay UI from being recorded as steps
@@ -694,6 +695,13 @@ export function StepEditor({
                             >
                               Pick
                             </Button>
+                            <div style={{ marginTop: '22px' }}>
+                              <RegenerateSelectorButton
+                                currentSelector={editReftarget}
+                                action={editAction}
+                                onRegenerated={(next) => setEditReftarget(next)}
+                              />
+                            </div>
                           </>
                         )}
                       </div>
@@ -966,6 +974,13 @@ export function StepEditor({
                 <Button variant="secondary" onClick={startPicker} icon="crosshair" style={{ marginTop: '22px' }}>
                   Pick
                 </Button>
+                <div style={{ marginTop: '22px' }}>
+                  <RegenerateSelectorButton
+                    currentSelector={newReftarget}
+                    action={newAction}
+                    onRegenerated={(next) => setNewReftarget(next)}
+                  />
+                </div>
               </>
             )}
           </div>
