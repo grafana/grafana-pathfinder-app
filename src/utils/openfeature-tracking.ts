@@ -11,31 +11,37 @@ import { pathfinderFeatureFlags, type FeatureFlagName } from './openfeature';
 const reportedFlags = new Set<string>();
 
 /**
- * OpenFeature hook that tracks feature flag evaluations to analytics
+ * Variants for which we emit a FeatureFlagEvaluated exposure event.
  *
- * This hook fires after each flag evaluation and reports the flag key,
- * evaluated value, and tracking key to Rudder Stack via reportAppInteraction.
+ * We intentionally skip 'excluded' (user isn't in the experiment) so the
+ * event stream only contains real experiment exposures (control + treatment),
+ * which is what downstream A/B analysis needs.
+ */
+const TRACKED_EXPERIMENT_VARIANTS = new Set(['control', 'treatment']);
+
+/**
+ * OpenFeature hook that tracks experiment exposures to analytics.
  *
- * Only flags that have a `trackingKey` defined in pathfinderFeatureFlags
- * will be tracked. Each flag is only reported once per page load to avoid
- * duplicate events from multiple evaluations.
+ * Fires `pathfinder_feature_flag_evaluated` once per experiment flag per page
+ * load, but only when the user is actually assigned to an experiment arm
+ * (variant === 'control' or 'treatment'). Non-experiment flags (boolean
+ * kill-switches, auto-open toggles) and excluded users do NOT generate events.
  *
  * @example
- * const client = OpenFeature.getClient(OPENFEATURE_DOMAIN);
- * client.addHooks(new TrackingHook());
+ * OpenFeature.addHooks(new TrackingHook());
  */
 export class TrackingHook implements Hook {
   /**
-   * Called after a flag is successfully evaluated
+   * Called after a flag is successfully evaluated.
    *
-   * Only processes flags with the 'pathfinder.' prefix to avoid intercepting
-   * other plugins' flag evaluations when using API-level hooks.
-   *
-   * @param hookContext - Context about the flag evaluation
-   * @param evaluationDetails - Details about the evaluated flag value
+   * Filtering rules (in order):
+   *   1. Flag key must start with 'pathfinder.' (ignore other plugins' flags)
+   *   2. Flag must be defined in pathfinderFeatureFlags with a trackingKey
+   *   3. Flag must be an experiment flag (valueType === 'object' with a variant)
+   *   4. Variant must be 'control' or 'treatment' (skip 'excluded')
+   *   5. Flag must not have been reported yet this page load
    */
   after(hookContext: HookContext, evaluationDetails: EvaluationDetails<JsonValue>): void {
-    // Only process pathfinder flags - ignore other plugins' flags
     if (!hookContext.flagKey.startsWith('pathfinder.')) {
       return;
     }
@@ -43,22 +49,45 @@ export class TrackingHook implements Hook {
     const flagKey = hookContext.flagKey as FeatureFlagName;
     const flagDef = pathfinderFeatureFlags[flagKey];
 
-    // Only track flags that have a trackingKey defined
-    if (flagDef && 'trackingKey' in flagDef && flagDef.trackingKey) {
-      // Skip if already reported this page load
-      if (reportedFlags.has(flagKey)) {
-        return;
-      }
-
-      // Mark as reported and send analytics
-      reportedFlags.add(flagKey);
-
-      reportAppInteraction(UserInteraction.FeatureFlagEvaluated, {
-        flag_key: hookContext.flagKey,
-        flag_value: this.stringifyValue(evaluationDetails.value),
-        tracking_key: flagDef.trackingKey,
-      });
+    if (!flagDef || !('trackingKey' in flagDef) || !flagDef.trackingKey) {
+      return;
     }
+
+    // Only experiment flags (object-valued with a `variant` field) are exposures.
+    // Boolean flags like pathfinder.enabled / auto-open-sidebar are config, not
+    // experiment arms, so they don't generate exposure events.
+    if (flagDef.valueType !== 'object') {
+      return;
+    }
+
+    const variant = this.extractVariant(evaluationDetails.value);
+    if (!variant || !TRACKED_EXPERIMENT_VARIANTS.has(variant)) {
+      return;
+    }
+
+    if (reportedFlags.has(flagKey)) {
+      return;
+    }
+    reportedFlags.add(flagKey);
+
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, {
+      flag_key: hookContext.flagKey,
+      flag_value: this.stringifyValue(evaluationDetails.value),
+      tracking_key: flagDef.trackingKey,
+      variant,
+    });
+  }
+
+  /**
+   * Safely extract a string `variant` field from a JSON flag value.
+   * Returns null if the value isn't an object or has no string variant.
+   */
+  private extractVariant(value: JsonValue): string | null {
+    if (value && typeof value === 'object' && !Array.isArray(value) && 'variant' in value) {
+      const raw = (value as { variant: unknown }).variant;
+      return typeof raw === 'string' ? raw : null;
+    }
+    return null;
   }
 
   /**
