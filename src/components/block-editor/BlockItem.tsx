@@ -4,11 +4,13 @@
  * Individual block wrapper with drag handle, type indicator, preview, and actions.
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { IconButton, useStyles2, Badge, Checkbox } from '@grafana/ui';
+import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import { IconButton, useStyles2, Badge, Checkbox, Button } from '@grafana/ui';
 import { getBlockItemStyles } from './block-editor.styles';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { BLOCK_TYPE_METADATA } from './constants';
+import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
+import { createHoverHighlight, removeHoverHighlight } from '../../utils/devtools/hover-highlight.util';
 import type { EditorBlock, BlockType } from './types';
 import {
   isSectionBlock,
@@ -90,10 +92,23 @@ export function BlockItem({
     description: 'Unknown block type',
   };
   const preview = useMemo(() => getBlockPreview(block.block), [block.block]);
+  const highlightRef = useRef<HTMLElement | null>(null);
+  const [isHighlighted, setIsHighlighted] = useState(false);
+  const [matchCount, setMatchCount] = useState<number>(-1);
 
   const isSection = isSectionBlock(block.block);
   const isConditional = isConditionalBlock(block.block);
   void totalBlocks;
+
+  // Cleanup highlight on unmount
+  useEffect(() => {
+    return () => {
+      if (highlightRef.current) {
+        removeHoverHighlight(highlightRef.current);
+        setIsHighlighted(false);
+      }
+    };
+  }, []);
 
   const handleEdit = useCallback(
     (e: React.MouseEvent) => {
@@ -137,6 +152,56 @@ export function BlockItem({
       onToggleCollapse?.();
     },
     [onToggleCollapse]
+  );
+
+  // Toggle highlight for interactive blocks
+  const handleTestSelector = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+
+      // If already highlighted, remove it
+      if (highlightRef.current) {
+        removeHoverHighlight(highlightRef.current);
+        highlightRef.current = null;
+        setIsHighlighted(false);
+        setMatchCount(-1);
+        return;
+      }
+
+      if (!isInteractiveBlock(block.block) || !block.block.reftarget) {
+        return;
+      }
+
+      const selector = block.block.reftarget;
+
+      try {
+        const result = querySelectorAllEnhanced(selector);
+        const elements = result.elements;
+
+        setMatchCount(elements.length);
+
+        if (elements.length === 0) {
+          console.warn('[BlockItem] No elements found for selector:', selector);
+          return;
+        }
+
+        // Highlight the first matching element
+        const firstElement = elements[0]!;
+        highlightRef.current = createHoverHighlight(firstElement);
+        setIsHighlighted(true);
+
+        // Scroll the element into view
+        firstElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        if (elements.length > 1) {
+          console.warn(`[BlockItem] Multiple elements (${elements.length}) match selector:`, selector, elements);
+        }
+      } catch (error) {
+        console.error('[BlockItem] Invalid selector:', selector, error);
+        setMatchCount(0);
+      }
+    },
+    [block.block]
   );
 
   // Allow selection of interactive, multistep, and guided blocks (for merging)
@@ -212,6 +277,34 @@ export function BlockItem({
             {preview}
           </div>
         )}
+        {isInteractiveBlock(block.block) &&
+          block.block.reftarget &&
+          block.block.action !== 'navigate' &&
+          block.block.action !== 'noop' && (
+            <div style={{ marginTop: '8px' }}>
+              <Button
+                size="sm"
+                variant={isHighlighted ? 'primary' : 'secondary'}
+                onClick={handleTestSelector}
+                data-testid="test-selector-button"
+              >
+                {isHighlighted ? 'Remove highlight' : 'Test and highlight selector'}
+              </Button>
+              {matchCount === 0 && (
+                <div style={{ marginTop: '4px', fontSize: '12px', color: '#ff6b6b' }}>
+                  Error: No elements found matching this selector
+                </div>
+              )}
+              {matchCount === 1 && (
+                <div style={{ marginTop: '4px', fontSize: '12px', color: '#52c41a' }}>✓ Unique element found</div>
+              )}
+              {matchCount > 1 && (
+                <div style={{ marginTop: '4px', fontSize: '12px', color: '#ff6b6b' }}>
+                  Error: {matchCount} elements match this selector. The first one is highlighted.
+                </div>
+              )}
+            </div>
+          )}
       </div>
 
       {/* Actions */}
