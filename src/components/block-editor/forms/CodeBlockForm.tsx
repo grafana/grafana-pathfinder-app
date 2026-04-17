@@ -12,6 +12,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { RegenerateSelectorButton } from './RegenerateSelectorButton';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonCodeBlockBlock } from '../../../types/json-guide.types';
@@ -140,6 +141,11 @@ export function CodeBlockForm({
           >
             Pick element
           </Button>
+          <RegenerateSelectorButton
+            currentSelector={reftarget}
+            action="highlight"
+            onRegenerated={(next) => setReftarget(next)}
+          />
         </div>
       </Field>
 

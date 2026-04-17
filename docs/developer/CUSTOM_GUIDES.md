@@ -27,6 +27,17 @@ A custom guide moves through three states:
 
 > **Tip:** Content is auto-saved to localStorage as you work, so a browser refresh won't lose your progress. This local save is separate from the backend — the status badge in the header reflects both.
 
+### Generate with AI
+
+When Grafana Assistant is available, the header shows a **Generate with AI** button next to **New**. Click it to describe the guide you want in natural language and have the assistant draft a validated JSON guide for you.
+
+- The assistant generates a guide that matches the Pathfinder JSON schema. The output is parsed and validated before touching the editor, so invalid responses are never loaded.
+- Selectors the assistant does not know are left as the placeholder string `REPLACE_WITH_SELECTOR` with `action: "noop"` so the guide validates. Pick each placeholder using the element picker or **Regenerate with AI** once you've drafted the outline.
+- If you already have content in the editor you will be asked to confirm before the generated guide replaces it.
+- If validation fails, the modal surfaces the specific errors and offers a **Retry** that re-sends the prompt with those errors appended so the assistant can fix them.
+
+The button is hidden when the assistant is not available in the current Grafana environment.
+
 ---
 
 ## Saving and publishing
@@ -99,6 +110,22 @@ The badge in the top-right of the header reflects the backend sync state:
 | **Published (modified)** (orange) | Local changes not yet pushed to the live guide. |
 
 When the backend is unavailable the badge area instead shows a **Saved** / **Saving…** indicator reflecting the localStorage auto-save state.
+
+---
+
+## Regenerate selectors with the assistant
+
+Every form that accepts a DOM selector (interactive, multistep/guided steps, code-block, conditional branches) shows a **Regenerate with AI** button next to **Pick element** when Grafana Assistant is available.
+
+Use it when a picked selector is fragile — for example, a deep compound selector or one that uses `:nth-child`. The workflow is:
+
+1. Pick the element once with the crosshair picker (or paste in a selector you already have).
+2. Click **Regenerate with AI**. The app resolves the current selector, walks the element's attributes and ancestry, and asks the deterministic generator for up to four grounded candidates.
+3. That structured context plus Pathfinder's selector best practices is sent to Grafana Assistant. The assistant returns a single selector string.
+4. The returned selector is validated, and the app confirms it still resolves to the same element before writing it back into the form.
+5. If the assistant's answer does not resolve (or is worse than the current one) the app falls back to the top grounded candidate and shows a toast explaining what happened.
+
+The button is hidden when the assistant is unavailable and is disabled while a previous regeneration is in flight.
 
 ---
 

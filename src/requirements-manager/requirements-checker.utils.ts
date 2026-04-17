@@ -1206,7 +1206,82 @@ async function dashboardExistsCheck(check: string): Promise<CheckResultError> {
  * Difference from has-datasource:
  * - has-datasource: checks if data source exists/is installed
  * - datasource-configured: checks if data source exists AND connection test passes
+ *
+ * Caching:
+ * - Successful `/test` responses are cached for DATASOURCE_TEST_SUCCESS_TTL_MS (30s).
+ * - Failures (both "error" status and thrown 4xx/5xx) are cached for
+ *   DATASOURCE_TEST_FAILURE_TTL_MS (15s) to avoid spamming the datasource API
+ *   when many steps reference the same requirement and the backend is
+ *   returning 404/403/etc.
+ * - Concurrent callers for the same UID share a single in-flight promise.
+ * - Tests can call `__clearDatasourceTestCache` to reset state.
  */
+
+type DatasourceTestOutcome = { kind: 'result'; response: unknown } | { kind: 'error'; error: unknown };
+
+interface DatasourceTestCacheEntry {
+  timestamp: number;
+  outcome: DatasourceTestOutcome;
+}
+
+const DATASOURCE_TEST_SUCCESS_TTL_MS = 30_000;
+const DATASOURCE_TEST_FAILURE_TTL_MS = 15_000;
+
+const datasourceTestCache = new Map<string, DatasourceTestCacheEntry>();
+const datasourceTestInFlight = new Map<string, Promise<DatasourceTestOutcome>>();
+
+/** Clear the datasource connection-test cache. Intended for tests only. */
+export function __clearDatasourceTestCache(): void {
+  datasourceTestCache.clear();
+  datasourceTestInFlight.clear();
+}
+
+function isCacheEntryFresh(entry: DatasourceTestCacheEntry, now: number): boolean {
+  const age = now - entry.timestamp;
+  const ttl =
+    entry.outcome.kind === 'error' || (entry.outcome.response as { status?: string } | undefined)?.status !== 'success'
+      ? DATASOURCE_TEST_FAILURE_TTL_MS
+      : DATASOURCE_TEST_SUCCESS_TTL_MS;
+  return age < ttl;
+}
+
+/**
+ * Execute or reuse a pending `/api/datasources/uid/{uid}/test` POST. Concurrent
+ * callers share the same network round-trip; repeat callers within the TTL
+ * reuse the cached outcome.
+ */
+async function performDatasourceTest(uid: string): Promise<DatasourceTestOutcome> {
+  const now = Date.now();
+
+  const cached = datasourceTestCache.get(uid);
+  if (cached && isCacheEntryFresh(cached, now)) {
+    return cached.outcome;
+  }
+
+  const pending = datasourceTestInFlight.get(uid);
+  if (pending) {
+    return pending;
+  }
+
+  const request = (async (): Promise<DatasourceTestOutcome> => {
+    try {
+      const response = await getBackendSrv().post(`/api/datasources/uid/${uid}/test`);
+      const outcome: DatasourceTestOutcome = { kind: 'result', response };
+      datasourceTestCache.set(uid, { timestamp: Date.now(), outcome });
+      return outcome;
+    } catch (error) {
+      const outcome: DatasourceTestOutcome = { kind: 'error', error };
+      datasourceTestCache.set(uid, { timestamp: Date.now(), outcome });
+      return outcome;
+    } finally {
+      datasourceTestInFlight.delete(uid);
+    }
+  })();
+
+  datasourceTestInFlight.set(uid, request);
+  return request;
+}
+
 async function datasourceConfiguredCheck(check: string): Promise<CheckResultError> {
   try {
     const dsRequirement = check.replace('datasource-configured:', '').toLowerCase();
@@ -1257,37 +1332,15 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
       };
     }
 
-    try {
-      // Use the data source test API
-      const testResult = await getBackendSrv().post(`/api/datasources/uid/${targetDataSource.uid}/test`);
+    const outcome = await performDatasourceTest(targetDataSource.uid);
 
-      const isConfigured = testResult && testResult.status === 'success';
-
-      return {
-        requirement: check,
-        pass: isConfigured,
-        error: isConfigured
-          ? undefined
-          : `Data source '${targetDataSource.name}' test failed: ${testResult?.message || 'Unknown error'}`,
-        context: {
-          searched: dsRequirement,
-          testedDataSource: {
-            id: targetDataSource.id,
-            name: targetDataSource.name,
-            type: targetDataSource.type,
-          },
-          testResult: testResult?.status || 'unknown',
-          suggestion: isConfigured
-            ? undefined
-            : `Data source '${targetDataSource.name}' exists but configuration test failed. Check connection settings.`,
-        },
-      };
-    } catch (testError) {
-      // If test fails, it might still be configured but unreachable
+    if (outcome.kind === 'error') {
+      // The test API itself threw (e.g. 404 / 403). Cached for a short window
+      // so we do not re-hit the endpoint on every step re-check.
       return {
         requirement: check,
         pass: false,
-        error: `Data source configuration test failed: ${testError}`,
+        error: `Data source configuration test failed: ${outcome.error}`,
         context: {
           searched: dsRequirement,
           testedDataSource: {
@@ -1295,11 +1348,34 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
             name: targetDataSource.name,
             type: targetDataSource.type,
           },
-          testError: String(testError),
+          testError: String(outcome.error),
           suggestion: `Test API call failed for '${targetDataSource.name}'. Check data source permissions and connectivity.`,
         },
       };
     }
+
+    const testResult = outcome.response as { status?: string; message?: string } | undefined;
+    const isConfigured = !!testResult && testResult.status === 'success';
+
+    return {
+      requirement: check,
+      pass: isConfigured,
+      error: isConfigured
+        ? undefined
+        : `Data source '${targetDataSource.name}' test failed: ${testResult?.message || 'Unknown error'}`,
+      context: {
+        searched: dsRequirement,
+        testedDataSource: {
+          id: targetDataSource.id,
+          name: targetDataSource.name,
+          type: targetDataSource.type,
+        },
+        testResult: testResult?.status || 'unknown',
+        suggestion: isConfigured
+          ? undefined
+          : `Data source '${targetDataSource.name}' exists but configuration test failed. Check connection settings.`,
+      },
+    };
   } catch (error) {
     return {
       requirement: check,

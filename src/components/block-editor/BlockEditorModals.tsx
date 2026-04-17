@@ -16,6 +16,7 @@ import React from 'react';
 import { ConfirmModal } from '@grafana/ui';
 import { GuideMetadataForm } from './GuideMetadataForm';
 import { ImportGuideModal } from './ImportGuideModal';
+import { GenerateGuideModal } from './GenerateGuideModal';
 import { GitHubPRModal } from './GitHubPRModal';
 import { BlockEditorTour } from './BlockEditorTour';
 import type { JsonGuide } from './types';
@@ -42,6 +43,9 @@ export interface BlockEditorModalsProps {
 
   /** Import handlers */
   onImportGuide: (guide: JsonGuide) => void;
+
+  /** Called when the assistant generates a valid guide and the user confirms using it */
+  onGenerateGuide: (guide: JsonGuide) => void;
 }
 
 export function BlockEditorModals({
@@ -53,6 +57,7 @@ export function BlockEditorModals({
   onUpdateGuideMetadata,
   onNewGuideConfirm,
   onImportGuide,
+  onGenerateGuide,
 }: BlockEditorModalsProps) {
   return (
     <>
@@ -77,6 +82,16 @@ export function BlockEditorModals({
         isOpen={isModalOpen('import')}
         onImport={onImportGuide}
         onClose={() => closeModal('import')}
+        hasUnsavedChanges={isDirty || hasBlocks}
+      />
+
+      <GenerateGuideModal
+        isOpen={isModalOpen('generateGuide')}
+        onGenerated={(generated) => {
+          onGenerateGuide(generated);
+          closeModal('generateGuide');
+        }}
+        onClose={() => closeModal('generateGuide')}
         hasUnsavedChanges={isDirty || hasBlocks}
       />
 

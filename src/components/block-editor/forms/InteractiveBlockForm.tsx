@@ -28,6 +28,7 @@ import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector } 
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import { SelectorTestOverlay } from '../SelectorTestOverlay';
 import { useSelectorTest } from '../useSelectorTest';
+import { RegenerateSelectorButton } from './RegenerateSelectorButton';
 import type { BlockFormProps, JsonBlock, JsonInteractiveAction } from '../types';
 import type { JsonInteractiveBlock } from '../../../types/json-guide.types';
 
@@ -307,6 +308,11 @@ export function InteractiveBlockForm({
               >
                 Test
               </Button>
+              <RegenerateSelectorButton
+                currentSelector={reftarget}
+                action={action}
+                onRegenerated={(next) => setReftarget(next)}
+              />
             </div>
           </Field>
 

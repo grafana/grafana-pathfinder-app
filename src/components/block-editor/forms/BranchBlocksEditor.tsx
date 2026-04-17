@@ -39,6 +39,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { RegenerateSelectorButton } from './RegenerateSelectorButton';
 import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from '../types';
 import {
   isMarkdownBlock,
@@ -614,6 +615,11 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
                       aria-label="Pick element"
                     />
                   )}
+                  <RegenerateSelectorButton
+                    currentSelector={formReftarget}
+                    action={formAction}
+                    onRegenerated={(next) => setFormReftarget(next)}
+                  />
                 </div>
               </Field>
             </div>
