@@ -1,6 +1,13 @@
 /**
  * Tests for content fetcher security validation and JSON-first fetching
  */
+
+let __mockDevMode = false;
+jest.mock('../utils/dev-mode', () => ({
+  ...jest.requireActual('../utils/dev-mode'),
+  isDevModeEnabledGlobal: () => __mockDevMode,
+}));
+
 import { fetchContent, simpleMarkdownToHtml } from './content-fetcher';
 
 // Mock AbortSignal.timeout for Node environments that don't support it
@@ -304,6 +311,137 @@ describe('fetchContent security validation', () => {
       expect(result.content).toBeNull();
       expect(result.error).toContain('Only Grafana.com documentation');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchContent('url-package:...') — dev-mode URL package loading
+// ---------------------------------------------------------------------------
+
+describe('url-package: scheme (dev-mode URL packages)', () => {
+  const baseUrl = 'http://localhost:8080/my-package/';
+  const packageUrl = `url-package:${baseUrl}`;
+
+  const validContent = {
+    schemaVersion: '1.0',
+    id: 'my-package',
+    title: 'My Package Guide',
+    blocks: [{ type: 'markdown', content: 'Hello world' }],
+  };
+
+  const validManifest = {
+    id: 'my-package',
+    type: 'guide',
+  };
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+    __mockDevMode = true;
+  });
+
+  afterEach(() => {
+    __mockDevMode = false;
+    jest.restoreAllMocks();
+  });
+
+  it('loads content.json and manifest.json from the base URL', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.endsWith('content.json')) {
+        return Promise.resolve({ ok: true, json: async () => validContent });
+      }
+      if (url.endsWith('manifest.json')) {
+        return Promise.resolve({ ok: true, json: async () => validManifest });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const result = await fetchContent(packageUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(result.content?.isNativeJson).toBe(true);
+    expect(result.content?.url).toBe(baseUrl);
+    expect(result.content?.metadata.title).toBe('My Package Guide');
+    expect(result.content?.metadata.packageManifest).toBeDefined();
+
+    const parsed = JSON.parse(result.content!.content);
+    expect(parsed.id).toBe('my-package');
+    expect(parsed.blocks).toHaveLength(1);
+  });
+
+  it('succeeds when manifest.json is missing (404)', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.endsWith('content.json')) {
+        return Promise.resolve({ ok: true, json: async () => validContent });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const result = await fetchContent(packageUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(result.content?.metadata.title).toBe('My Package Guide');
+    expect(result.content?.metadata.packageManifest).toBeUndefined();
+  });
+
+  it('returns error when content.json is missing (404)', async () => {
+    (global.fetch as jest.Mock).mockImplementation(() => Promise.resolve({ ok: false, status: 404 }));
+
+    const result = await fetchContent(packageUrl);
+
+    expect(result.content).toBeNull();
+    expect(result.error).toContain('content.json');
+    expect(result.errorType).toBe('not-found');
+  });
+
+  it('returns error when content.json fails schema validation', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.endsWith('content.json')) {
+        return Promise.resolve({ ok: true, json: async () => ({ invalid: true }) });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const result = await fetchContent(packageUrl);
+
+    expect(result.content).toBeNull();
+    expect(result.error).toContain('Invalid content.json');
+  });
+
+  it('returns error when dev mode is disabled', async () => {
+    __mockDevMode = false;
+
+    const result = await fetchContent(packageUrl);
+
+    expect(result.content).toBeNull();
+    expect(result.error).toContain('dev mode');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('continues without manifest when manifest.json is invalid', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.endsWith('content.json')) {
+        return Promise.resolve({ ok: true, json: async () => validContent });
+      }
+      if (url.endsWith('manifest.json')) {
+        return Promise.resolve({ ok: true, json: async () => ({ not: 'a manifest' }) });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const result = await fetchContent(packageUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(result.content?.metadata.packageManifest).toBeUndefined();
+  });
+
+  it('handles network errors gracefully', async () => {
+    (global.fetch as jest.Mock).mockRejectedValue(new Error('Connection refused'));
+
+    const result = await fetchContent(packageUrl);
+
+    expect(result.content).toBeNull();
+    expect(result.error).toContain('Connection refused');
+    expect(result.errorType).toBe('network');
   });
 });
 

@@ -11,9 +11,10 @@ import {
   SingleDocMetadata,
   Milestone,
 } from '../types/content.types';
-import type { PackageResolver } from '../types';
+import type { PackageResolver, ManifestJson } from '../types';
 import type { ResolvedNavLink } from '../types/context.types';
 import { getPackageRenderType } from '../types/package.types';
+import { ContentJsonSchema, ManifestJsonObjectSchema } from '../types/package.schema';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
@@ -125,6 +126,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Handle custom guides stored in backend CRDs
     if (url.startsWith('backend-guide:')) {
       return await fetchBackendInteractive(url);
+    }
+    // Handle dev-mode URL packages (content.json + manifest.json from directory URL)
+    if (url.startsWith('url-package:')) {
+      return await fetchUrlPackage(url.slice('url-package:'.length));
     }
 
     // SECURITY: Validate URL is from a trusted source before fetching
@@ -376,6 +381,74 @@ async function fetchBackendInteractive(url: string): Promise<ContentFetchResult>
       statusCode: (error as { status?: number })?.status,
     };
   }
+}
+
+/**
+ * Fetch a two-file package (content.json + manifest.json) from a directory URL.
+ * Dev-mode only — used by the `url:` doc param scheme for local testing.
+ */
+async function fetchUrlPackage(baseUrl: string): Promise<ContentFetchResult> {
+  if (!isDevModeEnabledGlobal()) {
+    return { content: null, error: 'URL packages are only available in dev mode', errorType: 'other' };
+  }
+
+  // SECURITY: Construct URLs safely using URL API (F3)
+  const contentUrl = new URL('content.json', baseUrl).toString();
+  const manifestUrl = new URL('manifest.json', baseUrl).toString();
+
+  let contentResponse: Response;
+  let manifestResponse: Response | null;
+  try {
+    [contentResponse, manifestResponse] = await Promise.all([fetch(contentUrl), fetch(manifestUrl).catch(() => null)]);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Network error';
+    return { content: null, error: `Failed to fetch package from ${baseUrl}: ${message}`, errorType: 'network' };
+  }
+
+  if (!contentResponse.ok) {
+    return {
+      content: null,
+      error: `Failed to fetch ${contentUrl} (HTTP ${contentResponse.status})`,
+      errorType: contentResponse.status === 404 ? 'not-found' : 'network',
+    };
+  }
+
+  const rawContent = await contentResponse.json();
+  const contentResult = ContentJsonSchema.safeParse(rawContent);
+  if (!contentResult.success) {
+    return { content: null, error: `Invalid content.json: ${contentResult.error.message}`, errorType: 'other' };
+  }
+
+  let manifest: ManifestJson | undefined;
+  if (manifestResponse?.ok) {
+    try {
+      const rawManifest = await manifestResponse.json();
+      const manifestResult = ManifestJsonObjectSchema.loose().safeParse(rawManifest);
+      if (manifestResult.success) {
+        manifest = manifestResult.data as ManifestJson;
+      } else {
+        console.warn('[fetchUrlPackage] Invalid manifest.json (continuing without it):', manifestResult.error.message);
+      }
+    } catch {
+      console.warn('[fetchUrlPackage] Failed to parse manifest.json (continuing without it)');
+    }
+  }
+
+  const contentJson = contentResult.data;
+
+  return {
+    content: {
+      content: JSON.stringify(rawContent),
+      metadata: {
+        title: contentJson.title || manifest?.description || 'Dev package',
+        ...(manifest && { packageManifest: manifest as unknown as Record<string, unknown> }),
+      },
+      type: getPackageRenderType(manifest as unknown as Record<string, unknown> | undefined),
+      url: baseUrl,
+      lastFetched: new Date().toISOString(),
+      isNativeJson: true,
+    },
+  };
 }
 
 /**

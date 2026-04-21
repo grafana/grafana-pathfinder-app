@@ -4,6 +4,29 @@ jest.mock('../security', () => ({
   isGrafanaGitHubRawUrl: jest.fn(() => false),
 }));
 
+jest.mock('../security/url-validator', () => ({
+  parseUrlSafely: jest.fn((url: string) => {
+    try {
+      return new URL(url);
+    } catch {
+      return null;
+    }
+  }),
+  isLocalhostUrl: jest.fn((url: string) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+    } catch {
+      return false;
+    }
+  }),
+}));
+
+const mockIsDevModeEnabledGlobal = jest.fn(() => false);
+jest.mock('./dev-mode', () => ({
+  isDevModeEnabledGlobal: () => mockIsDevModeEnabledGlobal(),
+}));
+
 import { findDocPage } from './find-doc-page';
 import { isGrafanaGitHubRawUrl } from '../security';
 
@@ -88,6 +111,66 @@ describe('findDocPage', () => {
     it('returns null when URL fails security validation', () => {
       (isGrafanaGitHubRawUrl as jest.Mock).mockReturnValue(false);
       expect(findDocPage('remote:https://raw.githubusercontent.com/evil-org/repo/main/guide.json')).toBeNull();
+    });
+  });
+
+  describe('url: prefix (dev-mode URL packages)', () => {
+    afterEach(() => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(false);
+    });
+
+    it('returns url-package DocPage for valid localhost URL in dev mode', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      expect(findDocPage('url:http://localhost:8080/my-package/')).toEqual({
+        type: 'interactive',
+        url: 'url-package:http://localhost:8080/my-package/',
+        title: 'My Package',
+      });
+    });
+
+    it('normalizes URL by appending trailing slash', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      const result = findDocPage('url:http://localhost:8080/my-package');
+      expect(result?.url).toBe('url-package:http://localhost:8080/my-package/');
+    });
+
+    it('preserves existing trailing slash', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      const result = findDocPage('url:http://localhost:8080/my-package/');
+      expect(result?.url).toBe('url-package:http://localhost:8080/my-package/');
+    });
+
+    it('derives title from last path segment', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      expect(findDocPage('url:http://localhost:3333/grafana-101-tour/')?.title).toBe('Grafana 101 Tour');
+    });
+
+    it('returns null when dev mode is disabled', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(false);
+      expect(findDocPage('url:http://localhost:8080/my-package/')).toBeNull();
+    });
+
+    it('returns null for non-localhost URL even in dev mode', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      expect(findDocPage('url:https://evil.com/my-package/')).toBeNull();
+    });
+
+    it('returns null for url: with empty URL', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      expect(findDocPage('url:')).toBeNull();
+      expect(findDocPage('url:   ')).toBeNull();
+    });
+
+    it('returns null for invalid URL format', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      expect(findDocPage('url:not-a-url')).toBeNull();
+    });
+
+    it('accepts 127.0.0.1 as localhost', () => {
+      mockIsDevModeEnabledGlobal.mockReturnValue(true);
+      const result = findDocPage('url:http://127.0.0.1:9000/pkg/');
+      expect(result).not.toBeNull();
+      expect(result?.url).toBe('url-package:http://127.0.0.1:9000/pkg/');
     });
   });
 

@@ -1,4 +1,6 @@
 import { isGrafanaDocsUrl, isInteractiveLearningUrl, isGrafanaGitHubRawUrl } from '../security';
+import { parseUrlSafely, isLocalhostUrl } from '../security/url-validator';
+import { isDevModeEnabledGlobal } from './dev-mode';
 
 export interface DocPage {
   type: 'docs-page' | 'learning-journey' | 'interactive';
@@ -59,6 +61,31 @@ export function findDocPage(param: string): DocPage | null {
       type: 'interactive',
       url: rawUrl,
       title: title,
+    };
+  }
+
+  // Case: Dev-mode URL package (directory with content.json + manifest.json)
+  if (param.startsWith('url:')) {
+    if (!isDevModeEnabledGlobal()) {
+      console.warn('Security: url: doc scheme is only available in dev mode');
+      return null;
+    }
+    const rawUrl = param.slice('url:'.length).trim();
+    if (!rawUrl) {
+      return null;
+    }
+    const baseUrl = rawUrl.endsWith('/') ? rawUrl : rawUrl + '/';
+    const url = parseUrlSafely(baseUrl);
+    if (!url || !isLocalhostUrl(baseUrl)) {
+      console.warn('Security: url: scheme only allows localhost URLs in dev mode:', rawUrl);
+      return null;
+    }
+    const parts = baseUrl.split('/').filter(Boolean);
+    const slug = parts[parts.length - 1] || 'Dev package';
+    return {
+      type: 'interactive',
+      url: `url-package:${baseUrl}`,
+      title: formatSlug(slug),
     };
   }
 
