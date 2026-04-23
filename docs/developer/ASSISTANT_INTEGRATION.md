@@ -387,9 +387,42 @@ System Prompt: You are a Grafana prometheus query expert...
 </assistant>
 ```
 
+## Block editor integrations
+
+Beyond the `<assistant>` customization tag, the block editor uses Grafana Assistant in two additional places. Both flows use `useInlineAssistant` and route untrusted output through the existing validators before it reaches editor state.
+
+### Generate guide with AI
+
+Entry point: **Generate with AI** button in the block editor header, next to **New**.
+
+- Implemented in [`src/components/block-editor/GenerateGuideModal.tsx`](../../src/components/block-editor/GenerateGuideModal.tsx).
+- System prompt built by [`buildGuideSystemPrompt`](../../src/integrations/assistant-integration/guide-generation.utils.ts) — embeds a condensed JSON guide schema summary and the selector best-practices priority list so the model does not need to infer structure.
+- The assistant response passes through `extractJsonFromResponse` (strips code fences + prose) and then `parseAndValidateGuide` (Zod). Only validated guides can reach `editor.loadGuide()`.
+- If validation fails, the modal shows the errors and offers a **Retry** that re-sends the prompt with those errors appended so the assistant can correct itself.
+- Unknown selectors are emitted as the placeholder string `REPLACE_WITH_SELECTOR` with `action: "noop"` so the guide still validates.
+
+### Regenerate selector with AI
+
+Entry point: **Regenerate with AI** button next to **Pick element** in every selector-capable form (interactive, multistep/guided step, code-block, conditional branches).
+
+- Implemented in [`src/components/block-editor/forms/RegenerateSelectorButton.tsx`](../../src/components/block-editor/forms/RegenerateSelectorButton.tsx).
+- On click, resolves the current selector via `querySelectorAllEnhanced`. If it matches zero or multiple elements the button shows a toast and bails without calling the assistant.
+- For a unique match, [`buildElementContext`](../../src/integrations/assistant-integration/selector-generation.utils.ts) assembles a structured summary (tag, role, text, stable attrs, ancestry) plus up to four grounded candidates from `generateFallbackSelectors`.
+- [`buildSelectorSystemPrompt`](../../src/integrations/assistant-integration/selector-generation.utils.ts) wraps the context with the selector priority list and asks for a single selector string — no prose, no fences.
+- The returned selector is passed through `validateAndCleanSelector`, then confirmed to still match the same element via `selectorStillMatches`. If it doesn't, the button falls back to the top grounded candidate and surfaces a toast explaining the fallback.
+
+### Availability gating
+
+Both features read assistant availability via [`useAssistantAvailability`](../../src/integrations/assistant-integration/useAssistantAvailability.hook.ts), a small wrapper over `isAssistantAvailable()` (with the existing dev-mode mock). Buttons and entry points are hidden when the assistant is unavailable.
+
+### SDK version
+
+The plugin targets `@grafana/assistant ^0.1.24`. The block-editor integrations only use APIs that have been stable since 0.1.19 (`useInlineAssistant`, `isAssistantAvailable`, `createAssistantContextItem`, `createTool`), so the bump is a safe point release.
+
 ## Related Documentation
 
 - [Prometheus Advanced Queries](../../src/bundled-interactives/prometheus-advanced-queries.json) - Real tutorial with customizable queries
 - [Authoring Interactive Journeys](./interactive-examples/authoring-interactive-journeys.md) - Creating interactive steps
 - [Dev Mode](./DEV_MODE.md) - Local development setup
 - [Assistant Integration Code](../../src/integrations/assistant-integration/) - Implementation details
+- [Custom Guides](./CUSTOM_GUIDES.md) - Block editor guide authoring, including AI generation and selector regeneration

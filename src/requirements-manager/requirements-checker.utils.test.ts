@@ -3,6 +3,7 @@ import {
   checkPostconditions,
   RequirementsCheckOptions,
   validateInteractiveRequirements,
+  __clearDatasourceTestCache,
 } from './requirements-checker.utils';
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
 import { ContextService } from '../context-engine';
@@ -210,6 +211,8 @@ describe('requirements-checker.utils', () => {
       (getBackendSrv as jest.Mock).mockReturnValue({
         post: jest.fn(),
       });
+      // Clear the TTL cache so each test exercises a fresh /test call.
+      __clearDatasourceTestCache();
     });
 
     it('should test specific data source configuration', async () => {
@@ -262,6 +265,60 @@ describe('requirements-checker.utils', () => {
       expect(result.pass).toBe(false);
       expect(result.error[0]!.pass).toBe(false);
       expect(result.error[0]!.error).toContain('not found');
+    });
+
+    it('caches the /test POST so repeated checks do not spam the datasource API', async () => {
+      (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
+        { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
+      ]);
+      const post = jest.fn().mockResolvedValue({ status: 'success' });
+      (getBackendSrv as jest.Mock).mockReturnValue({ post });
+
+      const options: RequirementsCheckOptions = { requirements: 'datasource-configured:prometheus' };
+
+      for (let i = 0; i < 5; i++) {
+        const result = await checkRequirements(options);
+        expect(result.pass).toBe(true);
+      }
+
+      expect(post).toHaveBeenCalledTimes(1);
+    });
+
+    it('caches /test failures so the same 404 does not recur on every step re-check', async () => {
+      (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
+        { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
+      ]);
+      const post = jest.fn().mockRejectedValue(new Error('404 page not found'));
+      (getBackendSrv as jest.Mock).mockReturnValue({ post });
+
+      const options: RequirementsCheckOptions = { requirements: 'datasource-configured:prometheus' };
+
+      for (let i = 0; i < 5; i++) {
+        const result = await checkRequirements(options);
+        expect(result.pass).toBe(false);
+      }
+
+      expect(post).toHaveBeenCalledTimes(1);
+    });
+
+    it('dedupes concurrent callers into a single /test request', async () => {
+      (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
+        { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
+      ]);
+      const post = jest
+        .fn()
+        .mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ status: 'success' }), 10)));
+      (getBackendSrv as jest.Mock).mockReturnValue({ post });
+
+      const options: RequirementsCheckOptions = { requirements: 'datasource-configured:prometheus' };
+      const results = await Promise.all([
+        checkRequirements(options),
+        checkRequirements(options),
+        checkRequirements(options),
+      ]);
+
+      expect(results.every((r) => r.pass)).toBe(true);
+      expect(post).toHaveBeenCalledTimes(1);
     });
   });
 
