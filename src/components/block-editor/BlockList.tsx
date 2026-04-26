@@ -25,11 +25,12 @@ import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinat
 import { getBlockListStyles } from './block-editor.styles';
 import { getNestedStyles, getConditionalStyles } from './BlockList.styles';
 import { BlockItem } from './BlockItem';
+import { BlockPreview } from './BlockPreview';
 import { BlockPalette } from './BlockPalette';
 import { SortableBlock, DroppableInsertZone, DragData, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
 import { SectionNestedBlocks } from './SectionNestedBlocks';
 import { ConditionalBranches } from './ConditionalBranches';
-import type { EditorBlock, JsonBlock, BlockOperations } from './types';
+import type { EditorBlock, JsonBlock, BlockOperations, JsonGuide, PreviewTarget } from './types';
 import {
   isSectionBlock as checkIsSectionBlock,
   isConditionalBlock as checkIsConditionalBlock,
@@ -42,12 +43,33 @@ export interface BlockListProps {
   blocks: EditorBlock[];
   /** All block operations - consolidated interface */
   operations: BlockOperations;
+  /** Optional single-block preview guide (used in edit mode) */
+  previewGuide?: JsonGuide | null;
+  /** Current preview placement target (for inline anchor positioning) */
+  previewTarget?: PreviewTarget | null;
+  /** Section previews that remain visible while other previews are opened */
+  pinnedSectionPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
+  /** Clear the inline preview */
+  onClearPreview?: () => void;
+  /** Optional classes for inline preview container */
+  previewClasses?: {
+    container: string;
+    actions: string;
+  };
 }
 
 /**
  * Block list component with @dnd-kit drag-and-drop
  */
-export function BlockList({ blocks, operations }: BlockListProps) {
+export function BlockList({
+  blocks,
+  operations,
+  previewGuide,
+  previewTarget,
+  pinnedSectionPreviews = [],
+  onClearPreview,
+  previewClasses,
+}: BlockListProps) {
   // Destructure operations for convenience
   const {
     onBlockEdit,
@@ -78,6 +100,8 @@ export function BlockList({ blocks, operations }: BlockListProps) {
     onUnnestBlockFromConditional,
     onMoveBlockBetweenConditionalBranches,
     onMoveBlockBetweenSections,
+    onBlockPreview,
+    onNestedSectionBlockPreview,
   } = operations;
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
@@ -626,6 +650,21 @@ export function BlockList({ blocks, operations }: BlockListProps) {
           {blocks.map((block, index) => {
             const isSection = checkIsSectionBlock(block.block);
             const isConditional = checkIsConditionalBlock(block.block);
+            const isRootPreviewActive = previewTarget?.type === 'root' && previewTarget.blockId === block.id;
+            const activeSectionPreviewGuide =
+              previewTarget?.type === 'section' && previewTarget.sectionId === block.id ? (previewGuide ?? null) : null;
+            const pinnedSectionPreviewGuide =
+              pinnedSectionPreviews.find(
+                (preview) => preview.target.type === 'section' && preview.target.sectionId === block.id
+              )?.guide ?? null;
+            const sectionPreviewTarget =
+              (previewTarget?.type === 'section' && previewTarget.sectionId === block.id
+                ? previewTarget
+                : pinnedSectionPreviews.find(
+                    (preview) => preview.target.type === 'section' && preview.target.sectionId === block.id
+                  )?.target) ?? null;
+            const sectionPreviewGuideToRender = activeSectionPreviewGuide ?? pinnedSectionPreviewGuide;
+            const isSectionPreviewActive = Boolean(sectionPreviewGuideToRender);
             const sectionBlocks: JsonBlock[] = isSection ? (block.block as JsonSectionBlock).blocks : [];
             const conditionalChildCount = isConditional
               ? (block.block as JsonConditionalBlock).whenTrue.length +
@@ -669,6 +708,18 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     childCount={isSection ? sectionBlocks.length : conditionalChildCount}
                     isJustDropped={justDroppedId === block.id}
                     isLastModified={lastModifiedId === block.id}
+                    onPreview={
+                      onBlockPreview
+                        ? () => {
+                            if (isRootPreviewActive) {
+                              onClearPreview?.();
+                              return;
+                            }
+                            onBlockPreview(block);
+                          }
+                        : undefined
+                    }
+                    isPreviewActive={isRootPreviewActive || isSectionPreviewActive}
                   />
                 </SortableBlock>
 
@@ -730,7 +781,31 @@ export function BlockList({ blocks, operations }: BlockListProps) {
                     onInsertBlockInSection={onInsertBlockInSection}
                     justDroppedId={justDroppedId}
                     lastModifiedId={lastModifiedId}
+                    onPreviewSection={onNestedSectionBlockPreview}
+                    previewTarget={sectionPreviewTarget}
                   />
+                )}
+
+                {previewGuide &&
+                  previewTarget &&
+                  previewClasses &&
+                  ((previewTarget.type === 'root' && previewTarget.blockId === block.id) ||
+                    (previewTarget.type === 'section' && previewTarget.sectionId === block.id)) && (
+                    <div className={previewClasses.container}>
+                      <BlockPreview
+                        guide={
+                          previewTarget.type === 'section'
+                            ? (sectionPreviewGuideToRender ?? previewGuide)
+                            : previewGuide
+                        }
+                      />
+                    </div>
+                  )}
+
+                {!activeSectionPreviewGuide && sectionPreviewGuideToRender && previewClasses && (
+                  <div className={previewClasses.container}>
+                    <BlockPreview guide={sectionPreviewGuideToRender} />
+                  </div>
                 )}
 
                 {activeId !== null && !isRootZoneRedundant(index + 1) && (

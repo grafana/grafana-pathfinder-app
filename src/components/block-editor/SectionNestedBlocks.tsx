@@ -12,7 +12,7 @@ import { getNestedStyles } from './BlockList.styles';
 import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
 import { SortableBlock, DragData, DroppableInsertZone, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
-import type { EditorBlock, BlockType, JsonBlock } from './types';
+import type { EditorBlock, BlockType, JsonBlock, PreviewTarget } from './types';
 import { testIds } from '../../constants/testIds';
 
 export interface SectionNestedBlocksProps {
@@ -37,6 +37,10 @@ export interface SectionNestedBlocksProps {
   justDroppedId?: string | null;
   /** ID of the last modified block (for persistent highlight) */
   lastModifiedId?: string | null;
+  /** Optional handler to preview this section (used by nested block preview) */
+  onPreviewSection?: (sectionId: string, nestedIndex: number) => void;
+  /** Current preview placement target (for inline anchor positioning) */
+  previewTarget?: PreviewTarget | null;
 }
 
 export function SectionNestedBlocks({
@@ -57,6 +61,8 @@ export function SectionNestedBlocks({
   onInsertBlockInSection,
   justDroppedId,
   lastModifiedId,
+  onPreviewSection,
+  previewTarget,
 }: SectionNestedBlocksProps) {
   const nestedBlockIds = useMemo(
     () => sectionBlocks.map((_, i) => `${block.id}-nested-${i}`),
@@ -84,6 +90,11 @@ export function SectionNestedBlocks({
             const isZoneRedundant = isInsertZoneRedundant(activeDragData, 'section-insert', nestedIndex, block.id);
             const nestedBlockId = `${block.id}-nested-${nestedIndex}`;
             const isJustDroppedCheck = justDroppedId === nestedBlockId;
+            const isPreviewActive =
+              previewTarget?.type === 'section' &&
+              previewTarget.sectionId === block.id &&
+              previewTarget.source === 'nested' &&
+              previewTarget.nestedIndex === nestedIndex;
             return (
               <React.Fragment key={`${block.id}-nested-${nestedIndex}`}>
                 {/* Insert zone before each block (during drag only, skip redundant zones) */}
@@ -124,6 +135,14 @@ export function SectionNestedBlocks({
                       }
                       isJustDropped={isJustDroppedCheck}
                       isLastModified={lastModifiedId === nestedBlockId}
+                      onPreview={
+                        onPreviewSection
+                          ? () => {
+                              onPreviewSection(block.id, nestedIndex);
+                            }
+                          : undefined
+                      }
+                      isPreviewActive={isPreviewActive}
                     />
                   </div>
                 </SortableBlock>

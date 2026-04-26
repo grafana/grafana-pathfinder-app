@@ -12,7 +12,15 @@ import { Button } from '@grafana/ui';
 import { BlockJsonEditor } from './BlockJsonEditor';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
-import type { EditorBlock, BlockOperations, JsonGuide, ViewMode, JsonModeState, PositionedError } from './types';
+import type {
+  EditorBlock,
+  BlockOperations,
+  JsonGuide,
+  ViewMode,
+  JsonModeState,
+  PositionedError,
+  PreviewTarget,
+} from './types';
 import { testIds } from '../../constants/testIds';
 
 export interface BlockEditorContentProps {
@@ -34,6 +42,8 @@ export interface BlockEditorContentProps {
     emptyState: string;
     emptyStateIcon: string;
     emptyStateText: string;
+    blockPreviewContainer: string;
+    blockPreviewActions: string;
   };
   /** Selection mode toggle */
   onToggleSelectionMode: () => void;
@@ -56,6 +66,14 @@ export interface BlockEditorContentProps {
   canJsonUndo?: boolean;
   /** Called when user clicks the undo button in JSON mode */
   onJsonUndo?: () => void;
+  /** Optional single-block preview guide (used in edit mode) */
+  previewGuide?: JsonGuide | null;
+  /** Current preview placement target (for inline anchor positioning) */
+  previewTarget?: PreviewTarget | null;
+  /** Pinned section previews that should stay visible */
+  pinnedSectionPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
+  /** Clear the single-block preview */
+  onClearPreview?: () => void;
 }
 
 export function BlockEditorContent({
@@ -77,6 +95,10 @@ export function BlockEditorContent({
   isJsonValid,
   canJsonUndo,
   onJsonUndo,
+  previewGuide,
+  previewTarget,
+  pinnedSectionPreviews,
+  onClearPreview,
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
@@ -154,7 +176,20 @@ export function BlockEditorContent({
       ) : viewMode === 'preview' ? (
         <BlockPreview guide={guide} />
       ) : viewMode === 'edit' && hasBlocks ? (
-        <BlockList blocks={blocks} operations={operations} />
+        <>
+          <BlockList
+            blocks={blocks}
+            operations={operations}
+            previewGuide={previewGuide}
+            previewTarget={previewTarget ?? null}
+            pinnedSectionPreviews={pinnedSectionPreviews ?? []}
+            onClearPreview={onClearPreview}
+            previewClasses={{
+              container: styles.blockPreviewContainer,
+              actions: styles.blockPreviewActions,
+            }}
+          />
+        </>
       ) : viewMode === 'edit' ? (
         <div className={styles.emptyState}>
           <div className={styles.emptyStateIcon}>📄</div>

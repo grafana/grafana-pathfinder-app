@@ -92,6 +92,21 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '300px',
   }),
 
+  // Inline single-block preview rendered directly below the targeted block in edit mode
+  blockPreviewContainer: css({
+    marginTop: theme.spacing(1.5),
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    padding: theme.spacing(1),
+    backgroundColor: theme.colors.background.secondary,
+  }),
+
+  blockPreviewActions: css({
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginTop: theme.spacing(0.5),
+  }),
+
   // Footer with add block button - entire area is clickable
   footer: css({
     display: 'flex',

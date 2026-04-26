@@ -54,6 +54,22 @@ export interface EditorBlock {
 }
 
 /**
+ * Target for block preview UI.
+ * Supports both root-level preview and section-scoped preview triggered from nested blocks.
+ */
+export type PreviewTarget =
+  | {
+      type: 'root';
+      blockId: string;
+    }
+  | {
+      type: 'section';
+      sectionId: string;
+      source: 'root' | 'nested';
+      nestedIndex?: number;
+    };
+
+/**
  * Editor state
  */
 export interface BlockEditorState {
@@ -261,6 +277,12 @@ export interface BlockOperations {
   onSectionRecord: (sectionId: string) => void;
   /** Start/stop recording into a conditional branch */
   onConditionalBranchRecord: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
+
+  // ============ PREVIEW ============
+  /** Preview a single root-level block */
+  onBlockPreview?: (block: EditorBlock) => void;
+  /** Preview a nested block via its parent section */
+  onNestedSectionBlockPreview?: (sectionId: string, nestedIndex: number) => void;
 }
 
 /**
