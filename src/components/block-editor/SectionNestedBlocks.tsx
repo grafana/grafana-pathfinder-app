@@ -37,6 +37,10 @@ export interface SectionNestedBlocksProps {
   justDroppedId?: string | null;
   /** ID of the last modified block (for persistent highlight) */
   lastModifiedId?: string | null;
+  /** Optional handler to preview this section (used by nested block preview) */
+  onPreviewSection?: (sectionId: string, nestedIndex: number) => void;
+  /** Set of nested-block indices that currently have a pinned preview open. */
+  pinnedNestedIndices?: ReadonlySet<number>;
 }
 
 export function SectionNestedBlocks({
@@ -57,6 +61,8 @@ export function SectionNestedBlocks({
   onInsertBlockInSection,
   justDroppedId,
   lastModifiedId,
+  onPreviewSection,
+  pinnedNestedIndices,
 }: SectionNestedBlocksProps) {
   const nestedBlockIds = useMemo(
     () => sectionBlocks.map((_, i) => `${block.id}-nested-${i}`),
@@ -84,6 +90,7 @@ export function SectionNestedBlocks({
             const isZoneRedundant = isInsertZoneRedundant(activeDragData, 'section-insert', nestedIndex, block.id);
             const nestedBlockId = `${block.id}-nested-${nestedIndex}`;
             const isJustDroppedCheck = justDroppedId === nestedBlockId;
+            const isPreviewActive = pinnedNestedIndices?.has(nestedIndex) ?? false;
             return (
               <React.Fragment key={`${block.id}-nested-${nestedIndex}`}>
                 {/* Insert zone before each block (during drag only, skip redundant zones) */}
@@ -124,6 +131,14 @@ export function SectionNestedBlocks({
                       }
                       isJustDropped={isJustDroppedCheck}
                       isLastModified={lastModifiedId === nestedBlockId}
+                      onPreview={
+                        onPreviewSection
+                          ? () => {
+                              onPreviewSection(block.id, nestedIndex);
+                            }
+                          : undefined
+                      }
+                      isPreviewActive={isPreviewActive}
                     />
                   </div>
                 </SortableBlock>

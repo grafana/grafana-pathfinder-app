@@ -12,7 +12,15 @@ import { Button } from '@grafana/ui';
 import { BlockJsonEditor } from './BlockJsonEditor';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
-import type { EditorBlock, BlockOperations, JsonGuide, ViewMode, JsonModeState, PositionedError } from './types';
+import type {
+  EditorBlock,
+  BlockOperations,
+  JsonGuide,
+  ViewMode,
+  JsonModeState,
+  PositionedError,
+  PreviewTarget,
+} from './types';
 import { testIds } from '../../constants/testIds';
 
 export interface BlockEditorContentProps {
@@ -34,6 +42,7 @@ export interface BlockEditorContentProps {
     emptyState: string;
     emptyStateIcon: string;
     emptyStateText: string;
+    blockPreviewContainer: string;
   };
   /** Selection mode toggle */
   onToggleSelectionMode: () => void;
@@ -56,6 +65,8 @@ export interface BlockEditorContentProps {
   canJsonUndo?: boolean;
   /** Called when user clicks the undo button in JSON mode */
   onJsonUndo?: () => void;
+  /** Pinned block previews that stay visible until toggled off via the eye button */
+  pinnedPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
 }
 
 export function BlockEditorContent({
@@ -77,6 +88,7 @@ export function BlockEditorContent({
   isJsonValid,
   canJsonUndo,
   onJsonUndo,
+  pinnedPreviews,
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
@@ -154,7 +166,14 @@ export function BlockEditorContent({
       ) : viewMode === 'preview' ? (
         <BlockPreview guide={guide} />
       ) : viewMode === 'edit' && hasBlocks ? (
-        <BlockList blocks={blocks} operations={operations} />
+        <>
+          <BlockList
+            blocks={blocks}
+            operations={operations}
+            pinnedPreviews={pinnedPreviews ?? []}
+            previewClasses={{ container: styles.blockPreviewContainer }}
+          />
+        </>
       ) : viewMode === 'edit' ? (
         <div className={styles.emptyState}>
           <div className={styles.emptyStateIcon}>📄</div>

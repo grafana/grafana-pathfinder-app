@@ -27,7 +27,8 @@ import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { GuideLibraryModal } from './GuideLibraryModal';
 import { useActionRecorder } from '../../utils/devtools';
-import type { JsonGuide, JsonBlock, BlockOperations } from './types';
+import type { JsonGuide, JsonBlock, BlockOperations, BlockType, EditorBlock, PreviewTarget } from './types';
+import type { JsonSectionBlock } from '../../types/json-guide.types';
 import { BlockEditorFooter } from './BlockEditorFooter';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
@@ -36,6 +37,11 @@ import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditor
 import { ConfirmModal } from './NotificationModals';
 import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
 import { testIds } from '../../constants/testIds';
+import {
+  assignNestedInstanceId,
+  findSectionNestedBlockByInstanceId,
+  readNestedInstanceId,
+} from './nestedBlockInstanceId';
 
 /** Converts a guide title to a URL-safe kebab-case slug */
 function slugifyTitle(title: string): string {
@@ -100,9 +106,141 @@ export interface BlockEditorProps {
  * Inner component that uses the context.
  * Separated from the provider wrapper for clean hook usage.
  */
+function buildPreviewGuideForTarget(
+  guide: Pick<JsonGuide, 'id' | 'title'>,
+  blocks: EditorBlock[],
+  target: PreviewTarget
+): JsonGuide | null {
+  if (target.type === 'section') {
+    if (target.source === 'nested') {
+      let nestedIndex: number;
+      let section: JsonSectionBlock;
+      let sectionEditorId: string;
+
+      if (target.nestedBlockInstanceId) {
+        const located = findSectionNestedBlockByInstanceId(blocks, target.nestedBlockInstanceId);
+        if (!located) {
+          return null;
+        }
+        const sectionBlock = blocks.find((block) => block.id === located.sectionId);
+        if (!sectionBlock || sectionBlock.block.type !== 'section') {
+          return null;
+        }
+        section = sectionBlock.block as JsonSectionBlock;
+        nestedIndex = located.nestedIndex;
+        sectionEditorId = located.sectionId;
+      } else if (typeof target.nestedIndex === 'number') {
+        const sectionBlock = blocks.find((block) => block.id === target.sectionId);
+        if (!sectionBlock || sectionBlock.block.type !== 'section') {
+          return null;
+        }
+        section = sectionBlock.block as JsonSectionBlock;
+        nestedIndex = target.nestedIndex;
+        sectionEditorId = target.sectionId;
+        if (!section.blocks[nestedIndex]) {
+          return null;
+        }
+      } else {
+        return null;
+      }
+
+      const nestedBlock = section.blocks[nestedIndex];
+      if (!nestedBlock) {
+        return null;
+      }
+      return {
+        id: `${guide.id}-section-${sectionEditorId}-nested-${nestedIndex}`,
+        title: section.title || guide.title,
+        blocks: [nestedBlock],
+      };
+    }
+
+    const sectionBlock = blocks.find((block) => block.id === target.sectionId);
+    if (!sectionBlock || sectionBlock.block.type !== 'section') {
+      return null;
+    }
+
+    const section = sectionBlock.block as JsonSectionBlock;
+    return {
+      id: `${guide.id}-section-${target.sectionId}`,
+      title: section.title || guide.title,
+      blocks: section.blocks,
+    };
+  }
+
+  const editorBlock = blocks.find((block) => block.id === target.blockId);
+  if (!editorBlock) {
+    return null;
+  }
+
+  return {
+    id: `${guide.id}-block-${editorBlock.id}`,
+    title: guide.title,
+    blocks: [editorBlock.block],
+  };
+}
+
+function resolvePreviewTarget(blocks: EditorBlock[], target: PreviewTarget): PreviewTarget | null {
+  if (target.type === 'root') {
+    return blocks.some((b) => b.id === target.blockId) ? target : null;
+  }
+  if (target.source === 'nested' && target.nestedBlockInstanceId) {
+    const located = findSectionNestedBlockByInstanceId(blocks, target.nestedBlockInstanceId);
+    if (!located) {
+      return null;
+    }
+    return {
+      type: 'section',
+      sectionId: located.sectionId,
+      source: 'nested',
+      nestedBlockInstanceId: target.nestedBlockInstanceId,
+      nestedIndex: located.nestedIndex,
+    };
+  }
+
+  const sectionBlock = blocks.find((b) => b.id === target.sectionId);
+  if (!sectionBlock || sectionBlock.block.type !== 'section') {
+    return null;
+  }
+  if (target.source === 'root') {
+    return target;
+  }
+  if (typeof target.nestedIndex === 'number') {
+    const section = sectionBlock.block as JsonSectionBlock;
+    if (target.nestedIndex < 0 || target.nestedIndex >= section.blocks.length) {
+      return null;
+    }
+    return target;
+  }
+  return null;
+}
+
+function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
+  if (a.type !== b.type) {
+    return false;
+  }
+  if (a.type === 'root' && b.type === 'root') {
+    return a.blockId === b.blockId;
+  }
+  if (a.type === 'section' && b.type === 'section') {
+    if (a.source !== b.source) {
+      return false;
+    }
+    if (a.source === 'nested' && b.source === 'nested') {
+      if (a.nestedBlockInstanceId && b.nestedBlockInstanceId) {
+        return a.nestedBlockInstanceId === b.nestedBlockInstanceId;
+      }
+      return a.sectionId === b.sectionId && a.nestedIndex === b.nestedIndex;
+    }
+    return a.sectionId === b.sectionId;
+  }
+  return false;
+}
+
 function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
+  const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
 
   // Block editor context - replaces window globals for section/conditional editing
@@ -127,6 +265,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const { recordingIntoSection, recordingIntoConditionalBranch, recordingStartUrl } = recordingState;
   // Multi-step grouping toggle for section recording
   const [isSectionMultiStepGroupingEnabled, setIsSectionMultiStepGroupingEnabled] = useState(true);
+
+  // All block previews are pinned independently — opening a new preview never closes another.
+  // Click the eye on the same target again to toggle it off.
+  const [pinnedPreviewTargets, setPinnedPreviewTargets] = useState<PreviewTarget[]>([]);
 
   // Block selection mode state (for merging blocks)
   const selection = useBlockSelection();
@@ -259,6 +401,87 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     formState,
   });
 
+  const previewableBlockTypes: ReadonlySet<BlockType> = useMemo(
+    () =>
+      new Set<BlockType>([
+        'markdown',
+        'html',
+        'image',
+        'video',
+        'section',
+        'quiz',
+        'input',
+        'terminal',
+        'code-block',
+        'interactive',
+      ]),
+    []
+  );
+
+  const togglePinnedPreview = useCallback(
+    (target: PreviewTarget) => {
+      setPinnedPreviewTargets((prev) => {
+        const pruned = prev
+          .map((t) => resolvePreviewTarget(state.blocks, t))
+          .filter((t): t is PreviewTarget => t !== null);
+        const resolvedToggle = resolvePreviewTarget(state.blocks, target);
+        const canonical = resolvedToggle ?? target;
+        const exists = pruned.some((existing) => isSamePreviewTarget(existing, canonical));
+        return exists ? pruned.filter((existing) => !isSamePreviewTarget(existing, canonical)) : [...pruned, canonical];
+      });
+    },
+    [state.blocks]
+  );
+
+  const handleRootBlockPreview = useCallback(
+    (block: EditorBlock) => {
+      const blockType = block.block.type as BlockType;
+      if (!previewableBlockTypes.has(blockType)) {
+        notify('info', 'Block preview not available', 'This block can only be previewed as part of the full guide.');
+        return;
+      }
+
+      const target: PreviewTarget =
+        blockType === 'section'
+          ? { type: 'section', sectionId: block.id, source: 'root' }
+          : { type: 'root', blockId: block.id };
+      togglePinnedPreview(target);
+    },
+    [previewableBlockTypes, togglePinnedPreview]
+  );
+
+  const handleNestedSectionBlockPreview = useCallback(
+    (sectionId: string, nestedIndex: number) => {
+      const sectionBlock = state.blocks.find((b) => b.id === sectionId);
+      if (!sectionBlock || sectionBlock.block.type !== 'section') {
+        return;
+      }
+      const section = sectionBlock.block as JsonSectionBlock;
+      const nested = section.blocks[nestedIndex];
+      if (!nested) {
+        return;
+      }
+
+      let instanceId = readNestedInstanceId(nested);
+      if (!instanceId) {
+        instanceId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `pf-nested-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        editor.updateNestedBlock(sectionId, nestedIndex, assignNestedInstanceId(nested, instanceId));
+      }
+
+      togglePinnedPreview({
+        type: 'section',
+        sectionId,
+        source: 'nested',
+        nestedBlockInstanceId: instanceId,
+        nestedIndex,
+      });
+    },
+    [editor, state.blocks, togglePinnedPreview]
+  );
+
   // Create BlockOperations for child components
   // REACT: memoize object dependencies (R3)
   const blockOperations: BlockOperations = useMemo(
@@ -302,8 +525,20 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       recordingIntoConditionalBranch,
       onSectionRecord: recordingActions.toggleSectionRecording,
       onConditionalBranchRecord: recordingActions.toggleConditionalRecording,
+      // Preview
+      onBlockPreview: handleRootBlockPreview,
+      onNestedSectionBlockPreview: handleNestedSectionBlockPreview,
     }),
-    [formState, editor, selection, recordingIntoSection, recordingIntoConditionalBranch, recordingActions]
+    [
+      formState,
+      editor,
+      selection,
+      recordingIntoSection,
+      recordingIntoConditionalBranch,
+      recordingActions,
+      handleRootBlockPreview,
+      handleNestedSectionBlockPreview,
+    ]
   );
 
   // Memoized callback for persistence save - prevents unnecessary effect triggers
@@ -674,7 +909,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     ]
   );
 
-  const { state } = editor;
   const hasBlocks = state.blocks.length > 0;
 
   // hasUnsyncedChanges: local content differs from last backend save (draft or published)
@@ -684,6 +918,23 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // ID is locked once it has been set (i.e. diverged from the default placeholder)
   const isIdLocked = state.guide.id !== DEFAULT_GUIDE_METADATA.id;
+
+  const pinnedPreviews = useMemo(
+    () =>
+      pinnedPreviewTargets
+        .map((t) => resolvePreviewTarget(state.blocks, t))
+        .filter((t): t is PreviewTarget => t !== null)
+        .map((target) => ({
+          target,
+          guide: buildPreviewGuideForTarget(state.guide, state.blocks, target),
+        }))
+        .filter((preview): preview is { target: PreviewTarget; guide: JsonGuide } => Boolean(preview.guide)),
+    [pinnedPreviewTargets, state.guide, state.blocks]
+  );
+
+  // Invalid preview targets (deleted block, etc.) are dropped above. Nested pins use a stable
+  // instance id so reordering does not swap preview content. Legacy index-only pins may still
+  // mis-associate until the user toggles preview again. Orphan entries are pruned on the next toggle.
 
   const handleTitleCommit = useCallback(
     (title: string) => {
@@ -737,6 +988,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           emptyState: styles.emptyState,
           emptyStateIcon: styles.emptyStateIcon,
           emptyStateText: styles.emptyStateText,
+          blockPreviewContainer: styles.blockPreviewContainer,
         }}
         onToggleSelectionMode={selection.toggleSelectionMode}
         onMergeToMultistep={handleMergeToMultistep}
@@ -751,6 +1003,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isJsonValid={jsonMode.isJsonValid}
         canJsonUndo={jsonMode.canUndo}
         onJsonUndo={jsonMode.handleJsonUndo}
+        pinnedPreviews={pinnedPreviews}
       />
 
       {/* Footer with add block button (only in edit mode) */}

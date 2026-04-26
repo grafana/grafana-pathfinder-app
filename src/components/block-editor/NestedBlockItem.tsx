@@ -26,6 +26,10 @@ export interface NestedBlockItemProps {
   isJustDropped?: boolean;
   /** Whether this block was the last one modified (persistent highlight) */
   isLastModified?: boolean;
+  /** Called to preview this block (typically via its parent section) */
+  onPreview?: () => void;
+  /** Whether this nested block preview is currently open */
+  isPreviewActive?: boolean;
 }
 
 /**
@@ -43,6 +47,8 @@ export function NestedBlockItem({
   onToggleSelect,
   isJustDropped = false,
   isLastModified = false,
+  onPreview,
+  isPreviewActive = false,
 }: NestedBlockItemProps) {
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
@@ -132,6 +138,24 @@ export function NestedBlockItem({
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
         <div className={styles.actionGroup}>
+          {onPreview && (
+            <IconButton
+              name={isPreviewActive ? 'eye-slash' : 'eye'}
+              size="md"
+              aria-label={
+                isPreviewActive
+                  ? `Hide preview for ${meta?.name ?? block.type} block`
+                  : `Preview ${meta?.name ?? block.type} block`
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview();
+              }}
+              className={styles.actionButton}
+              tooltip={isPreviewActive ? 'Hide preview' : 'Preview block'}
+              data-testid="nested-block-preview-button"
+            />
+          )}
           <IconButton
             name="edit"
             size="md"
