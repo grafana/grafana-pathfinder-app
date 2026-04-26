@@ -161,6 +161,7 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
 function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
+  const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
 
   // Block editor context - replaces window globals for section/conditional editing
@@ -338,12 +339,16 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     []
   );
 
-  const togglePinnedPreview = useCallback((target: PreviewTarget) => {
-    setPinnedPreviewTargets((prev) => {
-      const exists = prev.some((existing) => isSamePreviewTarget(existing, target));
-      return exists ? prev.filter((existing) => !isSamePreviewTarget(existing, target)) : [...prev, target];
-    });
-  }, []);
+  const togglePinnedPreview = useCallback(
+    (target: PreviewTarget) => {
+      setPinnedPreviewTargets((prev) => {
+        const pruned = prev.filter((t) => buildPreviewGuideForTarget(state.guide, state.blocks, t) !== null);
+        const exists = pruned.some((existing) => isSamePreviewTarget(existing, target));
+        return exists ? pruned.filter((existing) => !isSamePreviewTarget(existing, target)) : [...pruned, target];
+      });
+    },
+    [state.guide, state.blocks]
+  );
 
   const handleRootBlockPreview = useCallback(
     (block: EditorBlock) => {
@@ -796,7 +801,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     ]
   );
 
-  const { state } = editor;
   const hasBlocks = state.blocks.length > 0;
 
   // hasUnsyncedChanges: local content differs from last backend save (draft or published)
@@ -818,13 +822,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     [pinnedPreviewTargets, state.guide, state.blocks]
   );
 
-  // Remove pinned targets that no longer resolve (e.g. block deleted or nested index out of range).
-  useEffect(() => {
-    setPinnedPreviewTargets((prev) => {
-      const next = prev.filter((target) => buildPreviewGuideForTarget(state.guide, state.blocks, target) !== null);
-      return next.length === prev.length ? prev : next;
-    });
-  }, [state.guide, state.blocks]);
+  // Invalid preview targets (deleted block, etc.) are dropped in pinnedPreviews above, so the UI
+  // never shows a ghost. Orphan ids are pruned the next time any preview is toggled.
 
   const handleTitleCommit = useCallback(
     (title: string) => {
