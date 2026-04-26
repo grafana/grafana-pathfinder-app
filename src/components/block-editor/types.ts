@@ -66,6 +66,8 @@ export type PreviewTarget =
       type: 'section';
       sectionId: string;
       source: 'root' | 'nested';
+      /** Stable id for nested pins; survives reorder and section moves within the guide. */
+      nestedBlockInstanceId?: string;
       nestedIndex?: number;
     };
 

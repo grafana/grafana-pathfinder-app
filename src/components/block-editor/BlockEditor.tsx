@@ -37,6 +37,11 @@ import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditor
 import { ConfirmModal } from './NotificationModals';
 import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
 import { testIds } from '../../constants/testIds';
+import {
+  assignNestedInstanceId,
+  findSectionNestedBlockByInstanceId,
+  readNestedInstanceId,
+} from './nestedBlockInstanceId';
 
 /** Converts a guide title to a URL-safe kebab-case slug */
 function slugifyTitle(title: string): string {
@@ -107,25 +112,55 @@ function buildPreviewGuideForTarget(
   target: PreviewTarget
 ): JsonGuide | null {
   if (target.type === 'section') {
+    if (target.source === 'nested') {
+      let nestedIndex: number;
+      let section: JsonSectionBlock;
+      let sectionEditorId: string;
+
+      if (target.nestedBlockInstanceId) {
+        const located = findSectionNestedBlockByInstanceId(blocks, target.nestedBlockInstanceId);
+        if (!located) {
+          return null;
+        }
+        const sectionBlock = blocks.find((block) => block.id === located.sectionId);
+        if (!sectionBlock || sectionBlock.block.type !== 'section') {
+          return null;
+        }
+        section = sectionBlock.block as JsonSectionBlock;
+        nestedIndex = located.nestedIndex;
+        sectionEditorId = located.sectionId;
+      } else if (typeof target.nestedIndex === 'number') {
+        const sectionBlock = blocks.find((block) => block.id === target.sectionId);
+        if (!sectionBlock || sectionBlock.block.type !== 'section') {
+          return null;
+        }
+        section = sectionBlock.block as JsonSectionBlock;
+        nestedIndex = target.nestedIndex;
+        sectionEditorId = target.sectionId;
+        if (!section.blocks[nestedIndex]) {
+          return null;
+        }
+      } else {
+        return null;
+      }
+
+      const nestedBlock = section.blocks[nestedIndex];
+      if (!nestedBlock) {
+        return null;
+      }
+      return {
+        id: `${guide.id}-section-${sectionEditorId}-nested-${nestedIndex}`,
+        title: section.title || guide.title,
+        blocks: [nestedBlock],
+      };
+    }
+
     const sectionBlock = blocks.find((block) => block.id === target.sectionId);
     if (!sectionBlock || sectionBlock.block.type !== 'section') {
       return null;
     }
 
     const section = sectionBlock.block as JsonSectionBlock;
-    if (target.source === 'nested' && typeof target.nestedIndex === 'number') {
-      const nestedBlock = section.blocks[target.nestedIndex];
-      if (!nestedBlock) {
-        return null;
-      }
-
-      return {
-        id: `${guide.id}-section-${target.sectionId}-nested-${target.nestedIndex}`,
-        title: section.title || guide.title,
-        blocks: [nestedBlock],
-      };
-    }
-
     return {
       id: `${guide.id}-section-${target.sectionId}`,
       title: section.title || guide.title,
@@ -145,6 +180,41 @@ function buildPreviewGuideForTarget(
   };
 }
 
+function resolvePreviewTarget(blocks: EditorBlock[], target: PreviewTarget): PreviewTarget | null {
+  if (target.type === 'root') {
+    return blocks.some((b) => b.id === target.blockId) ? target : null;
+  }
+  if (target.source === 'nested' && target.nestedBlockInstanceId) {
+    const located = findSectionNestedBlockByInstanceId(blocks, target.nestedBlockInstanceId);
+    if (!located) {
+      return null;
+    }
+    return {
+      type: 'section',
+      sectionId: located.sectionId,
+      source: 'nested',
+      nestedBlockInstanceId: target.nestedBlockInstanceId,
+      nestedIndex: located.nestedIndex,
+    };
+  }
+
+  const sectionBlock = blocks.find((b) => b.id === target.sectionId);
+  if (!sectionBlock || sectionBlock.block.type !== 'section') {
+    return null;
+  }
+  if (target.source === 'root') {
+    return target;
+  }
+  if (typeof target.nestedIndex === 'number') {
+    const section = sectionBlock.block as JsonSectionBlock;
+    if (target.nestedIndex < 0 || target.nestedIndex >= section.blocks.length) {
+      return null;
+    }
+    return target;
+  }
+  return null;
+}
+
 function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
   if (a.type !== b.type) {
     return false;
@@ -153,7 +223,16 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
     return a.blockId === b.blockId;
   }
   if (a.type === 'section' && b.type === 'section') {
-    return a.sectionId === b.sectionId && a.source === b.source && a.nestedIndex === b.nestedIndex;
+    if (a.source !== b.source) {
+      return false;
+    }
+    if (a.source === 'nested' && b.source === 'nested') {
+      if (a.nestedBlockInstanceId && b.nestedBlockInstanceId) {
+        return a.nestedBlockInstanceId === b.nestedBlockInstanceId;
+      }
+      return a.sectionId === b.sectionId && a.nestedIndex === b.nestedIndex;
+    }
+    return a.sectionId === b.sectionId;
   }
   return false;
 }
@@ -342,12 +421,16 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const togglePinnedPreview = useCallback(
     (target: PreviewTarget) => {
       setPinnedPreviewTargets((prev) => {
-        const pruned = prev.filter((t) => buildPreviewGuideForTarget(state.guide, state.blocks, t) !== null);
-        const exists = pruned.some((existing) => isSamePreviewTarget(existing, target));
-        return exists ? pruned.filter((existing) => !isSamePreviewTarget(existing, target)) : [...pruned, target];
+        const pruned = prev
+          .map((t) => resolvePreviewTarget(state.blocks, t))
+          .filter((t): t is PreviewTarget => t !== null);
+        const resolvedToggle = resolvePreviewTarget(state.blocks, target);
+        const canonical = resolvedToggle ?? target;
+        const exists = pruned.some((existing) => isSamePreviewTarget(existing, canonical));
+        return exists ? pruned.filter((existing) => !isSamePreviewTarget(existing, canonical)) : [...pruned, canonical];
       });
     },
-    [state.guide, state.blocks]
+    [state.blocks]
   );
 
   const handleRootBlockPreview = useCallback(
@@ -369,9 +452,34 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   const handleNestedSectionBlockPreview = useCallback(
     (sectionId: string, nestedIndex: number) => {
-      togglePinnedPreview({ type: 'section', sectionId, source: 'nested', nestedIndex });
+      const sectionBlock = state.blocks.find((b) => b.id === sectionId);
+      if (!sectionBlock || sectionBlock.block.type !== 'section') {
+        return;
+      }
+      const section = sectionBlock.block as JsonSectionBlock;
+      const nested = section.blocks[nestedIndex];
+      if (!nested) {
+        return;
+      }
+
+      let instanceId = readNestedInstanceId(nested);
+      if (!instanceId) {
+        instanceId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `pf-nested-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        editor.updateNestedBlock(sectionId, nestedIndex, assignNestedInstanceId(nested, instanceId));
+      }
+
+      togglePinnedPreview({
+        type: 'section',
+        sectionId,
+        source: 'nested',
+        nestedBlockInstanceId: instanceId,
+        nestedIndex,
+      });
     },
-    [togglePinnedPreview]
+    [editor, state.blocks, togglePinnedPreview]
   );
 
   // Create BlockOperations for child components
@@ -814,6 +922,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const pinnedPreviews = useMemo(
     () =>
       pinnedPreviewTargets
+        .map((t) => resolvePreviewTarget(state.blocks, t))
+        .filter((t): t is PreviewTarget => t !== null)
         .map((target) => ({
           target,
           guide: buildPreviewGuideForTarget(state.guide, state.blocks, target),
@@ -822,8 +932,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     [pinnedPreviewTargets, state.guide, state.blocks]
   );
 
-  // Invalid preview targets (deleted block, etc.) are dropped in pinnedPreviews above, so the UI
-  // never shows a ghost. Orphan ids are pruned the next time any preview is toggled.
+  // Invalid preview targets (deleted block, etc.) are dropped above. Nested pins use a stable
+  // instance id so reordering does not swap preview content. Legacy index-only pins may still
+  // mis-associate until the user toggles preview again. Orphan entries are pruned on the next toggle.
 
   const handleTitleCommit = useCallback(
     (title: string) => {

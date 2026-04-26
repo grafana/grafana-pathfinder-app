@@ -58,7 +58,7 @@ function previewKey(target: PreviewTarget): string {
   if (target.type === 'root') {
     return `root:${target.blockId}`;
   }
-  return `section:${target.sectionId}:${target.source}:${target.nestedIndex ?? 'whole'}`;
+  return `section:${target.sectionId}:${target.source}:${target.nestedBlockInstanceId ?? target.nestedIndex ?? 'whole'}`;
 }
 
 /**

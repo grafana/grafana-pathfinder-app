@@ -16,6 +16,7 @@ import type {
   JsonStep,
 } from '../../../types/json-guide.types';
 import { DEFAULT_GUIDE_METADATA } from '../constants';
+import { copyNestedInstanceId } from '../nestedBlockInstanceId';
 
 /**
  * Type guard for section blocks
@@ -527,7 +528,8 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        sectionBlocksCopy[nestedIndex] = block;
+        const prevNested = sectionBlocksCopy[nestedIndex];
+        sectionBlocksCopy[nestedIndex] = copyNestedInstanceId(prevNested, block);
 
         const newBlocks = [...prev.blocks];
         newBlocks[sectionIndex] = {
