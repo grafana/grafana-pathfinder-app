@@ -225,26 +225,24 @@ describe('BlockList', () => {
       expect(onBlockPreview).toHaveBeenCalledWith(blocks[0]);
     });
 
-    it('toggles root preview off when active block is clicked again', () => {
-      const blocks: EditorBlock[] = [createMarkdownBlock('block-1', 'Preview me')];
-      const onClearPreview = jest.fn();
+    it('marks the targeted block as preview-active when its target is pinned', () => {
+      const blocks: EditorBlock[] = [
+        createMarkdownBlock('block-1', 'First block'),
+        createMarkdownBlock('block-2', 'Second block'),
+      ];
 
       render(
         <BlockList
           blocks={blocks}
-          operations={{
-            ...defaultOperations,
-            onBlockPreview: jest.fn(),
-          }}
-          previewGuide={previewGuide}
-          previewTarget={{ type: 'root', blockId: 'block-1' }}
-          onClearPreview={onClearPreview}
-          previewClasses={{ container: 'preview-container', actions: 'preview-actions' }}
+          operations={defaultOperations}
+          pinnedPreviews={[{ target: { type: 'root', blockId: 'block-1' }, guide: previewGuide }]}
+          previewClasses={{ container: 'preview-container' }}
         />
       );
 
-      screen.getByTestId('block-item').click();
-      expect(onClearPreview).toHaveBeenCalledTimes(1);
+      const blockItems = screen.getAllByTestId('block-item');
+      expect(blockItems[0]).toHaveAttribute('data-preview-active', 'true');
+      expect(blockItems[1]).toHaveAttribute('data-preview-active', 'false');
     });
 
     it('renders inline preview directly below the targeted root block', () => {
@@ -252,15 +250,14 @@ describe('BlockList', () => {
         createMarkdownBlock('block-1', 'First block'),
         createMarkdownBlock('block-2', 'Second block'),
       ];
-      const previewTarget: PreviewTarget = { type: 'root', blockId: 'block-1' };
+      const target: PreviewTarget = { type: 'root', blockId: 'block-1' };
 
       render(
         <BlockList
           blocks={blocks}
           operations={defaultOperations}
-          previewGuide={previewGuide}
-          previewTarget={previewTarget}
-          previewClasses={{ container: 'preview-container', actions: 'preview-actions' }}
+          pinnedPreviews={[{ target, guide: previewGuide }]}
+          previewClasses={{ container: 'preview-container' }}
         />
       );
 
@@ -272,6 +269,62 @@ describe('BlockList', () => {
       const secondBlockPos = blockItems[1]!.compareDocumentPosition(preview);
       expect(firstBlockPos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(secondBlockPos & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    });
+
+    it('renders multiple pinned previews simultaneously without closing earlier ones', () => {
+      const blocks: EditorBlock[] = [
+        createMarkdownBlock('block-1', 'First block'),
+        createMarkdownBlock('block-2', 'Second block'),
+      ];
+      const guideA: JsonGuide = { id: 'preview-a', title: 'A', blocks: [{ type: 'markdown', content: 'A' }] };
+      const guideB: JsonGuide = { id: 'preview-b', title: 'B', blocks: [{ type: 'markdown', content: 'B' }] };
+
+      render(
+        <BlockList
+          blocks={blocks}
+          operations={defaultOperations}
+          pinnedPreviews={[
+            { target: { type: 'root', blockId: 'block-1' }, guide: guideA },
+            { target: { type: 'root', blockId: 'block-2' }, guide: guideB },
+          ]}
+          previewClasses={{ container: 'preview-container' }}
+        />
+      );
+
+      expect(screen.getByTestId('inline-preview-preview-a')).toBeInTheDocument();
+      expect(screen.getByTestId('inline-preview-preview-b')).toBeInTheDocument();
+      const blockItems = screen.getAllByTestId('block-item');
+      expect(blockItems[0]).toHaveAttribute('data-preview-active', 'true');
+      expect(blockItems[1]).toHaveAttribute('data-preview-active', 'true');
+    });
+
+    it('does not mark the section row eye active when only a nested block preview is pinned', () => {
+      const blocks: EditorBlock[] = [
+        createSectionBlock('section-1', 'My Section', [{ type: 'markdown', content: 'Nested' }]),
+      ];
+      const nestedTarget: PreviewTarget = {
+        type: 'section',
+        sectionId: 'section-1',
+        source: 'nested',
+        nestedIndex: 0,
+      };
+      const guide: JsonGuide = {
+        id: 'pv-nested',
+        title: 'P',
+        blocks: [{ type: 'markdown', content: 'x' }],
+      };
+
+      render(
+        <BlockList
+          blocks={blocks}
+          operations={defaultOperations}
+          pinnedPreviews={[{ target: nestedTarget, guide }]}
+          previewClasses={{ container: 'preview-container' }}
+        />
+      );
+
+      expect(screen.getByTestId('block-item')).toHaveAttribute('data-preview-active', 'false');
+      expect(screen.getByTestId('nested-block-item')).toHaveAttribute('data-preview-active', 'true');
     });
 
     it('wires nested preview clicks to section child target', () => {

@@ -43,33 +43,28 @@ export interface BlockListProps {
   blocks: EditorBlock[];
   /** All block operations - consolidated interface */
   operations: BlockOperations;
-  /** Optional single-block preview guide (used in edit mode) */
-  previewGuide?: JsonGuide | null;
-  /** Current preview placement target (for inline anchor positioning) */
-  previewTarget?: PreviewTarget | null;
-  /** Section previews that remain visible while other previews are opened */
-  pinnedSectionPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
-  /** Clear the inline preview */
-  onClearPreview?: () => void;
+  /** Pinned block previews — every entry renders inline below its anchor block. */
+  pinnedPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
   /** Optional classes for inline preview container */
   previewClasses?: {
     container: string;
-    actions: string;
   };
+}
+
+/**
+ * Stable key for a pinned preview, used as React key when rendering.
+ */
+function previewKey(target: PreviewTarget): string {
+  if (target.type === 'root') {
+    return `root:${target.blockId}`;
+  }
+  return `section:${target.sectionId}:${target.source}:${target.nestedIndex ?? 'whole'}`;
 }
 
 /**
  * Block list component with @dnd-kit drag-and-drop
  */
-export function BlockList({
-  blocks,
-  operations,
-  previewGuide,
-  previewTarget,
-  pinnedSectionPreviews = [],
-  onClearPreview,
-  previewClasses,
-}: BlockListProps) {
+export function BlockList({ blocks, operations, pinnedPreviews = [], previewClasses }: BlockListProps) {
   // Destructure operations for convenience
   const {
     onBlockEdit,
@@ -650,21 +645,27 @@ export function BlockList({
           {blocks.map((block, index) => {
             const isSection = checkIsSectionBlock(block.block);
             const isConditional = checkIsConditionalBlock(block.block);
-            const isRootPreviewActive = previewTarget?.type === 'root' && previewTarget.blockId === block.id;
-            const activeSectionPreviewGuide =
-              previewTarget?.type === 'section' && previewTarget.sectionId === block.id ? (previewGuide ?? null) : null;
-            const pinnedSectionPreviewGuide =
-              pinnedSectionPreviews.find(
-                (preview) => preview.target.type === 'section' && preview.target.sectionId === block.id
-              )?.guide ?? null;
-            const sectionPreviewTarget =
-              (previewTarget?.type === 'section' && previewTarget.sectionId === block.id
-                ? previewTarget
-                : pinnedSectionPreviews.find(
-                    (preview) => preview.target.type === 'section' && preview.target.sectionId === block.id
-                  )?.target) ?? null;
-            const sectionPreviewGuideToRender = activeSectionPreviewGuide ?? pinnedSectionPreviewGuide;
-            const isSectionPreviewActive = Boolean(sectionPreviewGuideToRender);
+            const previewsForBlock = pinnedPreviews.filter(
+              (preview) =>
+                (preview.target.type === 'root' && preview.target.blockId === block.id) ||
+                (preview.target.type === 'section' && preview.target.sectionId === block.id)
+            );
+            // Section row eye toggles only whole-section preview; do not conflate with nested pin state.
+            const isBlockItemPreviewActive = isSection
+              ? previewsForBlock.some((p) => p.target.type === 'section' && p.target.source === 'root')
+              : previewsForBlock.some((p) => p.target.type === 'root' && p.target.blockId === block.id);
+            const pinnedNestedIndices = new Set<number>(
+              pinnedPreviews
+                .map((preview) =>
+                  preview.target.type === 'section' &&
+                  preview.target.sectionId === block.id &&
+                  preview.target.source === 'nested' &&
+                  typeof preview.target.nestedIndex === 'number'
+                    ? preview.target.nestedIndex
+                    : null
+                )
+                .filter((nestedIndex): nestedIndex is number => nestedIndex !== null)
+            );
             const sectionBlocks: JsonBlock[] = isSection ? (block.block as JsonSectionBlock).blocks : [];
             const conditionalChildCount = isConditional
               ? (block.block as JsonConditionalBlock).whenTrue.length +
@@ -708,18 +709,8 @@ export function BlockList({
                     childCount={isSection ? sectionBlocks.length : conditionalChildCount}
                     isJustDropped={justDroppedId === block.id}
                     isLastModified={lastModifiedId === block.id}
-                    onPreview={
-                      onBlockPreview
-                        ? () => {
-                            if (isRootPreviewActive) {
-                              onClearPreview?.();
-                              return;
-                            }
-                            onBlockPreview(block);
-                          }
-                        : undefined
-                    }
-                    isPreviewActive={isRootPreviewActive || isSectionPreviewActive}
+                    onPreview={onBlockPreview ? () => onBlockPreview(block) : undefined}
+                    isPreviewActive={isBlockItemPreviewActive}
                   />
                 </SortableBlock>
 
@@ -782,31 +773,16 @@ export function BlockList({
                     justDroppedId={justDroppedId}
                     lastModifiedId={lastModifiedId}
                     onPreviewSection={onNestedSectionBlockPreview}
-                    previewTarget={sectionPreviewTarget}
+                    pinnedNestedIndices={pinnedNestedIndices}
                   />
                 )}
 
-                {previewGuide &&
-                  previewTarget &&
-                  previewClasses &&
-                  ((previewTarget.type === 'root' && previewTarget.blockId === block.id) ||
-                    (previewTarget.type === 'section' && previewTarget.sectionId === block.id)) && (
-                    <div className={previewClasses.container}>
-                      <BlockPreview
-                        guide={
-                          previewTarget.type === 'section'
-                            ? (sectionPreviewGuideToRender ?? previewGuide)
-                            : previewGuide
-                        }
-                      />
+                {previewClasses &&
+                  previewsForBlock.map((preview) => (
+                    <div key={previewKey(preview.target)} className={previewClasses.container}>
+                      <BlockPreview guide={preview.guide} />
                     </div>
-                  )}
-
-                {!activeSectionPreviewGuide && sectionPreviewGuideToRender && previewClasses && (
-                  <div className={previewClasses.container}>
-                    <BlockPreview guide={sectionPreviewGuideToRender} />
-                  </div>
-                )}
+                  ))}
 
                 {activeId !== null && !isRootZoneRedundant(index + 1) && (
                   <DroppableInsertZone

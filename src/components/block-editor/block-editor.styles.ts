@@ -101,12 +101,6 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.secondary,
   }),
 
-  blockPreviewActions: css({
-    display: 'flex',
-    justifyContent: 'flex-end',
-    marginTop: theme.spacing(0.5),
-  }),
-
   // Footer with add block button - entire area is clickable
   footer: css({
     display: 'flex',

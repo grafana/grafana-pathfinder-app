@@ -186,9 +186,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Multi-step grouping toggle for section recording
   const [isSectionMultiStepGroupingEnabled, setIsSectionMultiStepGroupingEnabled] = useState(true);
 
-  // Active preview is for non-section blocks; section previews are pinned per section anchor.
-  const [activePreviewTarget, setActivePreviewTarget] = useState<PreviewTarget | null>(null);
-  const [pinnedSectionPreviewTargets, setPinnedSectionPreviewTargets] = useState<PreviewTarget[]>([]);
+  // All block previews are pinned independently — opening a new preview never closes another.
+  // Click the eye on the same target again to toggle it off.
+  const [pinnedPreviewTargets, setPinnedPreviewTargets] = useState<PreviewTarget[]>([]);
 
   // Block selection mode state (for merging blocks)
   const selection = useBlockSelection();
@@ -338,6 +338,13 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     []
   );
 
+  const togglePinnedPreview = useCallback((target: PreviewTarget) => {
+    setPinnedPreviewTargets((prev) => {
+      const exists = prev.some((existing) => isSamePreviewTarget(existing, target));
+      return exists ? prev.filter((existing) => !isSamePreviewTarget(existing, target)) : [...prev, target];
+    });
+  }, []);
+
   const handleRootBlockPreview = useCallback(
     (block: EditorBlock) => {
       const blockType = block.block.type as BlockType;
@@ -346,38 +353,21 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         return;
       }
 
-      if (blockType === 'section') {
-        const sectionTarget: PreviewTarget = { type: 'section', sectionId: block.id, source: 'root' };
-        setPinnedSectionPreviewTargets((prev) => {
-          const existing = prev.find((target) => target.type === 'section' && target.sectionId === block.id);
-          if (existing) {
-            return prev.filter((target) => !(target.type === 'section' && target.sectionId === block.id));
-          }
-          return [...prev, sectionTarget];
-        });
-        return;
-      }
-
-      setActivePreviewTarget((prev) => {
-        const next: PreviewTarget = { type: 'root', blockId: block.id };
-        return prev && isSamePreviewTarget(prev, next) ? null : next;
-      });
+      const target: PreviewTarget =
+        blockType === 'section'
+          ? { type: 'section', sectionId: block.id, source: 'root' }
+          : { type: 'root', blockId: block.id };
+      togglePinnedPreview(target);
     },
-    [previewableBlockTypes]
+    [previewableBlockTypes, togglePinnedPreview]
   );
 
-  const handleNestedSectionBlockPreview = useCallback((sectionId: string, nestedIndex: number) => {
-    const target: PreviewTarget = { type: 'section', sectionId, source: 'nested', nestedIndex };
-    setPinnedSectionPreviewTargets((prev) => {
-      const existing = prev.find((preview) => preview.type === 'section' && preview.sectionId === sectionId);
-      if (existing && isSamePreviewTarget(existing, target)) {
-        return prev.filter((preview) => !(preview.type === 'section' && preview.sectionId === sectionId));
-      }
-
-      const withoutSection = prev.filter((preview) => !(preview.type === 'section' && preview.sectionId === sectionId));
-      return [...withoutSection, target];
-    });
-  }, []);
+  const handleNestedSectionBlockPreview = useCallback(
+    (sectionId: string, nestedIndex: number) => {
+      togglePinnedPreview({ type: 'section', sectionId, source: 'nested', nestedIndex });
+    },
+    [togglePinnedPreview]
+  );
 
   // Create BlockOperations for child components
   // REACT: memoize object dependencies (R3)
@@ -817,23 +807,24 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // ID is locked once it has been set (i.e. diverged from the default placeholder)
   const isIdLocked = state.guide.id !== DEFAULT_GUIDE_METADATA.id;
 
-  const activePreviewGuide = useMemo(() => {
-    if (!activePreviewTarget) {
-      return null;
-    }
-    return buildPreviewGuideForTarget(state.guide, state.blocks, activePreviewTarget);
-  }, [activePreviewTarget, state.blocks, state.guide]);
-
-  const pinnedSectionPreviews = useMemo(
+  const pinnedPreviews = useMemo(
     () =>
-      pinnedSectionPreviewTargets
+      pinnedPreviewTargets
         .map((target) => ({
           target,
           guide: buildPreviewGuideForTarget(state.guide, state.blocks, target),
         }))
         .filter((preview): preview is { target: PreviewTarget; guide: JsonGuide } => Boolean(preview.guide)),
-    [pinnedSectionPreviewTargets, state.guide, state.blocks]
+    [pinnedPreviewTargets, state.guide, state.blocks]
   );
+
+  // Remove pinned targets that no longer resolve (e.g. block deleted or nested index out of range).
+  useEffect(() => {
+    setPinnedPreviewTargets((prev) => {
+      const next = prev.filter((target) => buildPreviewGuideForTarget(state.guide, state.blocks, target) !== null);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [state.guide, state.blocks]);
 
   const handleTitleCommit = useCallback(
     (title: string) => {
@@ -888,7 +879,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           emptyStateIcon: styles.emptyStateIcon,
           emptyStateText: styles.emptyStateText,
           blockPreviewContainer: styles.blockPreviewContainer,
-          blockPreviewActions: styles.blockPreviewActions,
         }}
         onToggleSelectionMode={selection.toggleSelectionMode}
         onMergeToMultistep={handleMergeToMultistep}
@@ -903,10 +893,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isJsonValid={jsonMode.isJsonValid}
         canJsonUndo={jsonMode.canUndo}
         onJsonUndo={jsonMode.handleJsonUndo}
-        previewGuide={activePreviewGuide}
-        previewTarget={activePreviewTarget}
-        pinnedSectionPreviews={pinnedSectionPreviews}
-        onClearPreview={() => setActivePreviewTarget(null)}
+        pinnedPreviews={pinnedPreviews}
       />
 
       {/* Footer with add block button (only in edit mode) */}

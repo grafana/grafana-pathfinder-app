@@ -43,7 +43,6 @@ export interface BlockEditorContentProps {
     emptyStateIcon: string;
     emptyStateText: string;
     blockPreviewContainer: string;
-    blockPreviewActions: string;
   };
   /** Selection mode toggle */
   onToggleSelectionMode: () => void;
@@ -66,14 +65,8 @@ export interface BlockEditorContentProps {
   canJsonUndo?: boolean;
   /** Called when user clicks the undo button in JSON mode */
   onJsonUndo?: () => void;
-  /** Optional single-block preview guide (used in edit mode) */
-  previewGuide?: JsonGuide | null;
-  /** Current preview placement target (for inline anchor positioning) */
-  previewTarget?: PreviewTarget | null;
-  /** Pinned section previews that should stay visible */
-  pinnedSectionPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
-  /** Clear the single-block preview */
-  onClearPreview?: () => void;
+  /** Pinned block previews that stay visible until toggled off via the eye button */
+  pinnedPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
 }
 
 export function BlockEditorContent({
@@ -95,10 +88,7 @@ export function BlockEditorContent({
   isJsonValid,
   canJsonUndo,
   onJsonUndo,
-  previewGuide,
-  previewTarget,
-  pinnedSectionPreviews,
-  onClearPreview,
+  pinnedPreviews,
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
@@ -180,14 +170,8 @@ export function BlockEditorContent({
           <BlockList
             blocks={blocks}
             operations={operations}
-            previewGuide={previewGuide}
-            previewTarget={previewTarget ?? null}
-            pinnedSectionPreviews={pinnedSectionPreviews ?? []}
-            onClearPreview={onClearPreview}
-            previewClasses={{
-              container: styles.blockPreviewContainer,
-              actions: styles.blockPreviewActions,
-            }}
+            pinnedPreviews={pinnedPreviews ?? []}
+            previewClasses={{ container: styles.blockPreviewContainer }}
           />
         </>
       ) : viewMode === 'edit' ? (
