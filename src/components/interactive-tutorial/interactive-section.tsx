@@ -1644,7 +1644,6 @@ export function InteractiveSection({
         <div className="interactive-section-title-container">
           <span className="interactive-section-title">{title}</span>
           {isCompleted && <span className="interactive-section-checkmark">✓</span>}
-          {isRunning && <span className="interactive-section-spinner">⟳</span>}
         </div>
         {hints && (
           <span className="interactive-section-hint" title={hints}>

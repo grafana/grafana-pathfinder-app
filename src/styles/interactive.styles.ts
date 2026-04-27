@@ -506,14 +506,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     marginLeft: theme.spacing(1),
   },
 
-  '.interactive-section-spinner': {
-    color: theme.colors.warning.main,
-    fontSize: '16px',
-    fontWeight: 'bold',
-    marginLeft: theme.spacing(1),
-    animation: 'spin 1s linear infinite',
-  },
-
   '.interactive-section-hint': {
     color: theme.colors.text.secondary,
     fontSize: '14px',
