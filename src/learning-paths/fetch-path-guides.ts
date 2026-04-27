@@ -89,7 +89,7 @@ export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Pr
         // Persist the absolute per-guide URL so the My Learning "Continue"
         // button can navigate to the actual next module rather than falling
         // back to the path base URL (issue #744).
-        url: relpermalink ? `${origin}${relpermalink}` : undefined,
+        url: relpermalink ? new URL(relpermalink, origin).toString() : undefined,
       };
     }
 
