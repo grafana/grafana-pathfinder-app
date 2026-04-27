@@ -418,20 +418,23 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     []
   );
 
-  const togglePinnedPreview = useCallback(
-    (target: PreviewTarget) => {
-      setPinnedPreviewTargets((prev) => {
-        const pruned = prev
-          .map((t) => resolvePreviewTarget(state.blocks, t))
-          .filter((t): t is PreviewTarget => t !== null);
-        const resolvedToggle = resolvePreviewTarget(state.blocks, target);
-        const canonical = resolvedToggle ?? target;
-        const exists = pruned.some((existing) => isSamePreviewTarget(existing, canonical));
-        return exists ? pruned.filter((existing) => !isSamePreviewTarget(existing, canonical)) : [...pruned, canonical];
-      });
-    },
-    [state.blocks]
-  );
+  const latestBlocksRef = useRef(state.blocks);
+  useEffect(() => {
+    latestBlocksRef.current = state.blocks;
+  }, [state.blocks]);
+
+  const togglePinnedPreview = useCallback((target: PreviewTarget) => {
+    setPinnedPreviewTargets((prev) => {
+      const currentBlocks = latestBlocksRef.current;
+      const pruned = prev
+        .map((t) => resolvePreviewTarget(currentBlocks, t))
+        .filter((t): t is PreviewTarget => t !== null);
+      const resolvedToggle = resolvePreviewTarget(currentBlocks, target);
+      const canonical = resolvedToggle ?? target;
+      const exists = pruned.some((existing) => isSamePreviewTarget(existing, canonical));
+      return exists ? pruned.filter((existing) => !isSamePreviewTarget(existing, canonical)) : [...pruned, canonical];
+    });
+  }, []);
 
   const handleRootBlockPreview = useCallback(
     (block: EditorBlock) => {
@@ -468,7 +471,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
             ? crypto.randomUUID()
             : `pf-nested-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        editor.updateNestedBlock(sectionId, nestedIndex, assignNestedInstanceId(nested, instanceId));
+        editor.updateNestedBlock(sectionId, nestedIndex, assignNestedInstanceId(nested, instanceId), {
+          markDirty: false,
+          notifyChange: false,
+        });
       }
 
       togglePinnedPreview({
