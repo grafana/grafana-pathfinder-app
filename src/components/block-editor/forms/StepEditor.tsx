@@ -38,7 +38,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { INTERACTIVE_ACTIONS } from '../constants';
+import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
@@ -200,6 +200,17 @@ const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE
   value: a.value as JsonInteractiveAction,
   label: a.label,
 }));
+
+type PopoutTargetMode = (typeof POPOUT_TARGET_MODES)[number]['value'];
+const POPOUT_TARGET_OPTIONS: Array<ComboboxOption<PopoutTargetMode>> = POPOUT_TARGET_MODES.map((m) => ({
+  value: m.value,
+  label: m.label,
+}));
+const DEFAULT_POPOUT_TARGET: PopoutTargetMode = 'floating';
+
+function isPopoutTargetMode(value: string): value is PopoutTargetMode {
+  return value === 'sidebar' || value === 'floating';
+}
 
 export interface StepEditorProps {
   /** Current steps */
@@ -410,8 +421,15 @@ export function StepEditor({
 
   // Save edited step
   const handleSaveEdit = useCallback(() => {
-    // noop actions don't require a reftarget
-    if (editingStepIndex === null || (editAction !== 'noop' && !editReftarget.trim())) {
+    // noop and popout actions don't operate on a DOM element and skip reftarget
+    const editIsStateOnly = editAction === 'noop' || editAction === 'popout';
+    if (editingStepIndex === null) {
+      return;
+    }
+    if (!editIsStateOnly && !editReftarget.trim()) {
+      return;
+    }
+    if (editAction === 'popout' && !isPopoutTargetMode(editTargetvalue.trim())) {
       return;
     }
 
@@ -423,15 +441,20 @@ export function StepEditor({
 
     const updatedStep: JsonStep = {
       action: editAction,
-      reftarget: editReftarget.trim(),
+      // Only persist reftarget when the action operates on a DOM element
+      ...(!editIsStateOnly && { reftarget: editReftarget.trim() }),
       ...(editAction === 'formfill' && editTargetvalue.trim() && { targetvalue: editTargetvalue.trim() }),
       ...(editAction === 'formfill' && editFormHint.trim() && { formHint: editFormHint.trim() }),
       ...(editAction === 'formfill' && editValidateInput && { validateInput: true }),
+      ...(editAction === 'popout' &&
+        isPopoutTargetMode(editTargetvalue.trim()) && { targetvalue: editTargetvalue.trim() as PopoutTargetMode }),
       ...(isGuided
         ? editDescription.trim() && { description: editDescription.trim() }
         : editTooltip.trim() && { tooltip: editTooltip.trim() }),
-      ...(editLazyRender && { lazyRender: true }),
-      ...(editLazyRender && editScrollContainer.trim() && { scrollContainer: editScrollContainer.trim() }),
+      ...(!editIsStateOnly && editLazyRender && { lazyRender: true }),
+      ...(!editIsStateOnly &&
+        editLazyRender &&
+        editScrollContainer.trim() && { scrollContainer: editScrollContainer.trim() }),
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(isGuided && editSkippable && { skippable: true }),
     };
@@ -508,8 +531,12 @@ export function StepEditor({
 
   // Handle adding a manual step
   const handleAddStep = useCallback(() => {
-    // noop actions don't require a reftarget
-    if (newAction !== 'noop' && !newReftarget.trim()) {
+    // noop and popout actions don't operate on a DOM element and skip reftarget
+    const newIsStateOnly = newAction === 'noop' || newAction === 'popout';
+    if (!newIsStateOnly && !newReftarget.trim()) {
+      return;
+    }
+    if (newAction === 'popout' && !isPopoutTargetMode(newTargetvalue.trim())) {
       return;
     }
 
@@ -521,15 +548,20 @@ export function StepEditor({
 
     const step: JsonStep = {
       action: newAction,
-      reftarget: newReftarget.trim(),
+      // Only persist reftarget when the action operates on a DOM element
+      ...(!newIsStateOnly && { reftarget: newReftarget.trim() }),
       ...(newAction === 'formfill' && newTargetvalue.trim() && { targetvalue: newTargetvalue.trim() }),
       ...(newAction === 'formfill' && newFormHint.trim() && { formHint: newFormHint.trim() }),
       ...(newAction === 'formfill' && newValidateInput && { validateInput: true }),
+      ...(newAction === 'popout' &&
+        isPopoutTargetMode(newTargetvalue.trim()) && { targetvalue: newTargetvalue.trim() as PopoutTargetMode }),
       ...(isGuided
         ? newDescription.trim() && { description: newDescription.trim() }
         : newTooltip.trim() && { tooltip: newTooltip.trim() }),
-      ...(newLazyRender && { lazyRender: true }),
-      ...(newLazyRender && newScrollContainer.trim() && { scrollContainer: newScrollContainer.trim() }),
+      ...(!newIsStateOnly && newLazyRender && { lazyRender: true }),
+      ...(!newIsStateOnly &&
+        newLazyRender &&
+        newScrollContainer.trim() && { scrollContainer: newScrollContainer.trim() }),
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(isGuided && newSkippable && { skippable: true }),
     };
@@ -663,6 +695,12 @@ export function StepEditor({
                               if (suggestions.length > 0) {
                                 setEditRequirements((prev) => mergeRequirements(prev, suggestions));
                               }
+                              // Seed/clear popout target so the form is valid out of the gate
+                              if (opt.value === 'popout') {
+                                setEditTargetvalue((prev) => (isPopoutTargetMode(prev) ? prev : DEFAULT_POPOUT_TARGET));
+                              } else if (isPopoutTargetMode(editTargetvalue)) {
+                                setEditTargetvalue('');
+                              }
                             }}
                           />
                         </Field>
@@ -676,8 +714,18 @@ export function StepEditor({
                             />
                           </Field>
                         )}
+                        {/* Popout target mode - for popout actions only */}
+                        {editAction === 'popout' && (
+                          <Field label="Target" style={{ marginBottom: 0, flex: 1 }}>
+                            <Combobox
+                              options={POPOUT_TARGET_OPTIONS}
+                              value={isPopoutTargetMode(editTargetvalue) ? editTargetvalue : DEFAULT_POPOUT_TARGET}
+                              onChange={(opt) => setEditTargetvalue(opt.value)}
+                            />
+                          </Field>
+                        )}
                         {/* Selector with picker - for actions that need a DOM element */}
-                        {editAction !== 'noop' && editAction !== 'navigate' && (
+                        {editAction !== 'noop' && editAction !== 'navigate' && editAction !== 'popout' && (
                           <>
                             <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
                               <Input
@@ -769,7 +817,7 @@ export function StepEditor({
                       )}
 
                       {/* Lazy render only applies to actions with DOM elements */}
-                      {editAction !== 'navigate' && (
+                      {editAction !== 'navigate' && editAction !== 'popout' && (
                         <Checkbox
                           className={styles.checkbox}
                           label="Element may be off-screen (scroll to find)"
@@ -778,7 +826,7 @@ export function StepEditor({
                           onChange={(e) => setEditLazyRender(e.currentTarget.checked)}
                         />
                       )}
-                      {editLazyRender && editAction !== 'navigate' && (
+                      {editLazyRender && editAction !== 'navigate' && editAction !== 'popout' && (
                         <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
                           <div className={styles.addStepRow}>
                             <Input
@@ -848,7 +896,10 @@ export function StepEditor({
                         <Button
                           variant="primary"
                           onClick={handleSaveEdit}
-                          disabled={editAction !== 'noop' && !editReftarget.trim()}
+                          disabled={
+                            (editAction !== 'noop' && editAction !== 'popout' && !editReftarget.trim()) ||
+                            (editAction === 'popout' && !isPopoutTargetMode(editTargetvalue.trim()))
+                          }
                         >
                           Save changes
                         </Button>
@@ -869,15 +920,19 @@ export function StepEditor({
                           <Badge text={step.action} color="blue" />
                           {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
                         </div>
-                        {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop) */}
+                        {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop, "Dock"/"Undock" for popout) */}
                         <div className={styles.stepSelector} title={step.reftarget}>
                           {step.action === 'noop'
                             ? isGuided
                               ? step.description || 'Informational step'
                               : step.tooltip || 'Informational step'
-                            : isGuided
-                              ? step.description || step.reftarget
-                              : step.tooltip || step.reftarget}
+                            : step.action === 'popout'
+                              ? step.targetvalue === 'sidebar'
+                                ? 'Dock to sidebar'
+                                : 'Undock to floating window'
+                              : isGuided
+                                ? step.description || step.reftarget
+                                : step.tooltip || step.reftarget}
                         </div>
                       </div>
 
@@ -940,6 +995,12 @@ export function StepEditor({
                   if (suggestions.length > 0) {
                     setNewRequirements((prev) => mergeRequirements(prev, suggestions));
                   }
+                  // Seed/clear popout target so the form is valid out of the gate
+                  if (opt.value === 'popout') {
+                    setNewTargetvalue((prev) => (isPopoutTargetMode(prev) ? prev : DEFAULT_POPOUT_TARGET));
+                  } else if (isPopoutTargetMode(newTargetvalue)) {
+                    setNewTargetvalue('');
+                  }
                 }}
               />
             </Field>
@@ -953,8 +1014,18 @@ export function StepEditor({
                 />
               </Field>
             )}
+            {/* Popout target mode - for popout actions only */}
+            {newAction === 'popout' && (
+              <Field label="Target" style={{ marginBottom: 0, flex: 1 }}>
+                <Combobox
+                  options={POPOUT_TARGET_OPTIONS}
+                  value={isPopoutTargetMode(newTargetvalue) ? newTargetvalue : DEFAULT_POPOUT_TARGET}
+                  onChange={(opt) => setNewTargetvalue(opt.value)}
+                />
+              </Field>
+            )}
             {/* Selector with picker - for actions that need a DOM element */}
-            {newAction !== 'noop' && newAction !== 'navigate' && (
+            {newAction !== 'noop' && newAction !== 'navigate' && newAction !== 'popout' && (
               <>
                 <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
                   <Input
@@ -1038,7 +1109,7 @@ export function StepEditor({
           )}
 
           {/* Lazy render only applies to actions with DOM elements */}
-          {newAction !== 'navigate' && (
+          {newAction !== 'navigate' && newAction !== 'popout' && (
             <Checkbox
               className={styles.checkbox}
               label="Element may be off-screen (scroll to find)"
@@ -1047,7 +1118,7 @@ export function StepEditor({
               onChange={(e) => setNewLazyRender(e.currentTarget.checked)}
             />
           )}
-          {newLazyRender && newAction !== 'navigate' && (
+          {newLazyRender && newAction !== 'navigate' && newAction !== 'popout' && (
             <Field label="Scroll container (optional)" style={{ marginBottom: 0 }}>
               <div className={styles.addStepRow}>
                 <Input
@@ -1112,7 +1183,14 @@ export function StepEditor({
             <Button variant="secondary" onClick={() => setShowAddForm(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleAddStep} disabled={newAction !== 'noop' && !newReftarget.trim()}>
+            <Button
+              variant="primary"
+              onClick={handleAddStep}
+              disabled={
+                (newAction !== 'noop' && newAction !== 'popout' && !newReftarget.trim()) ||
+                (newAction === 'popout' && !isPopoutTargetMode(newTargetvalue.trim()))
+              }
+            >
               Add step
             </Button>
           </div>

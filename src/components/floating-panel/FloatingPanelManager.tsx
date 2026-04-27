@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { usePendingGuideLaunch } from '../../hooks';
@@ -8,6 +8,16 @@ import { getConfigWithDefaults } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
+import { SkeletonLoader } from '../SkeletonLoader';
+
+// Lazy-loaded so the editor only ships when the user actually pops it out.
+const BlockEditor = lazy(() =>
+  import('../block-editor').then((module) => ({
+    default: module.BlockEditor,
+  }))
+);
+
+const EDITOR_FLOATING_TITLE = 'Guide editor';
 
 /**
  * Root manager for the floating panel.
@@ -131,9 +141,12 @@ function FloatingPanelInner() {
 
   // Get active tab content
   const activeTab = tabs.find((t) => t.id === activeTabId);
+  const isEditorTab = activeTab?.type === 'editor';
   const content = activeTab?.content ?? null;
-  const title = activeTab?.title || 'Interactive learning';
-  const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations';
+  const title = isEditorTab ? EDITOR_FLOATING_TITLE : activeTab?.title || 'Interactive learning';
+  // hasActiveGuide drives the dock pill pulse and step-progress polling. The editor
+  // tab is its own kind of "active content" but isn't a guide, so leave it false.
+  const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
 
   // Track interactive step progress from window globals set by the
   // interactive engine. Poll on a short interval since these globals
@@ -159,13 +172,14 @@ function FloatingPanelInner() {
   }, [hasActiveGuide]);
 
   // After restoration completes, if there's no guide to show and none
-  // is being loaded, fall back to sidebar mode.
+  // is being loaded, fall back to sidebar mode. The editor tab counts as
+  // valid floating content, so don't fall back when it's active.
   useEffect(() => {
-    if (restorationDone && !hasActiveGuide && !guideOpenInFlightRef.current) {
+    if (restorationDone && !hasActiveGuide && !isEditorTab && !guideOpenInFlightRef.current) {
       panelModeManager.setMode('sidebar');
     }
-  }, [restorationDone, hasActiveGuide]);
-  const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
+  }, [restorationDone, hasActiveGuide, isEditorTab]);
+  const guideUrl = isEditorTab ? undefined : activeTab?.baseUrl || activeTab?.currentUrl;
 
   const handleSwitchToSidebar = useCallback(() => {
     reportAppInteraction(UserInteraction.FloatingPanelDock, {
@@ -182,6 +196,19 @@ function FloatingPanelInner() {
     sidebarState.openSidebar('Interactive learning');
   }, [guideUrl, title]);
 
+  // Symmetric counterpart to `pathfinder-request-pop-out` (see docs-panel.tsx).
+  // Dispatched by the popout interactive action so that guides can programmatically
+  // dock the floating panel back into the sidebar.
+  useEffect(() => {
+    const handleDockRequest = () => {
+      handleSwitchToSidebar();
+    };
+    document.addEventListener('pathfinder-request-dock', handleDockRequest);
+    return () => {
+      document.removeEventListener('pathfinder-request-dock', handleDockRequest);
+    };
+  }, [handleSwitchToSidebar]);
+
   const handleClose = useCallback(() => {
     panelModeManager.restoreSidebarTabSnapshot();
     CombinedLearningJourneyPanel.resetTabRestorationGuard();
@@ -197,7 +224,13 @@ function FloatingPanelInner() {
       onSwitchToSidebar={handleSwitchToSidebar}
       onClose={handleClose}
     >
-      <FloatingPanelContent content={content} />
+      {isEditorTab ? (
+        <Suspense fallback={<SkeletonLoader type="documentation" />}>
+          <BlockEditor />
+        </Suspense>
+      ) : (
+        <FloatingPanelContent content={content} />
+      )}
     </FloatingPanel>
   );
 }

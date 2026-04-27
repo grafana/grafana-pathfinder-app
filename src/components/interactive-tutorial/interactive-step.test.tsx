@@ -87,3 +87,83 @@ describe('InteractiveStep: noop action type', () => {
     expect(stepContainer).toHaveAttribute('data-targetaction', 'noop');
   });
 });
+
+describe('InteractiveStep: popout action type', () => {
+  it("renders an 'Undock' button when targetvalue is 'floating'", () => {
+    render(
+      <InteractiveStep targetAction="popout" refTarget="" targetValue="floating">
+        Move me out of the way
+      </InteractiveStep>
+    );
+
+    expect(screen.getByRole('button', { name: 'Undock' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show me/i })).not.toBeInTheDocument();
+  });
+
+  it("renders a 'Dock' button when targetvalue is 'sidebar'", () => {
+    render(
+      <InteractiveStep targetAction="popout" refTarget="" targetValue="sidebar">
+        Put me back in the sidebar
+      </InteractiveStep>
+    );
+
+    expect(screen.getByRole('button', { name: 'Dock' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show me/i })).not.toBeInTheDocument();
+  });
+
+  it('does not render a "Show me" button even when showMe is true', () => {
+    render(
+      <InteractiveStep targetAction="popout" refTarget="" targetValue="floating" showMe={true}>
+        Pop out
+      </InteractiveStep>
+    );
+
+    expect(screen.queryByRole('button', { name: /show me/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undock' })).toBeInTheDocument();
+  });
+
+  it("dispatches 'pathfinder-request-pop-out' when Undock is clicked", async () => {
+    const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+    try {
+      render(
+        <InteractiveStep targetAction="popout" refTarget="" targetValue="floating" stepId="popout-undock-step">
+          Pop out
+        </InteractiveStep>
+      );
+
+      const button = screen.getByRole('button', { name: 'Undock' });
+      button.click();
+      // Allow the async pipeline to dispatch
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const popOutCall = dispatchSpy.mock.calls.find(
+        (call) => (call[0] as Event).type === 'pathfinder-request-pop-out'
+      );
+      expect(popOutCall).toBeDefined();
+    } finally {
+      dispatchSpy.mockRestore();
+    }
+  });
+
+  it("dispatches 'pathfinder-request-dock' when Dock is clicked", async () => {
+    const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+    try {
+      render(
+        <InteractiveStep targetAction="popout" refTarget="" targetValue="sidebar" stepId="popout-dock-step">
+          Dock
+        </InteractiveStep>
+      );
+
+      const button = screen.getByRole('button', { name: 'Dock' });
+      button.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const dockCall = dispatchSpy.mock.calls.find((call) => (call[0] as Event).type === 'pathfinder-request-dock');
+      expect(dockCall).toBeDefined();
+    } finally {
+      dispatchSpy.mockRestore();
+    }
+  });
+});

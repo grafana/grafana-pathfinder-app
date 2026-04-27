@@ -19,7 +19,7 @@ import {
   type ComboboxOption,
 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { INTERACTIVE_ACTIONS } from '../constants';
+import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
@@ -51,6 +51,17 @@ const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE
   label: a.label,
   description: a.description,
 }));
+
+type PopoutTargetMode = (typeof POPOUT_TARGET_MODES)[number]['value'];
+const POPOUT_TARGET_OPTIONS: Array<ComboboxOption<PopoutTargetMode>> = POPOUT_TARGET_MODES.map((m) => ({
+  value: m.value,
+  label: m.label,
+}));
+const DEFAULT_POPOUT_TARGET: PopoutTargetMode = 'floating';
+
+function isPopoutTargetMode(value: string): value is PopoutTargetMode {
+  return value === 'sidebar' || value === 'floating';
+}
 
 /**
  * Interactive block form component
@@ -129,30 +140,35 @@ export function InteractiveBlockForm({
           return o.length > 0;
         });
 
-      // noop actions don't need most of these fields
+      // noop and popout actions don't operate on a DOM element and skip most fields
       const isNoopAction = action === 'noop';
+      const isPopoutAction = action === 'popout';
+      // Treat both actions like noop for the bulk of the optional-field gating below.
+      const isStateOnlyAction = isNoopAction || isPopoutAction;
 
       const block: JsonInteractiveBlock = {
         type: 'interactive',
         action,
-        // Only include reftarget for non-noop actions
-        ...(!isNoopAction && reftarget.trim() && { reftarget: reftarget.trim() }),
+        // Only include reftarget for actions that operate on DOM elements
+        ...(!isStateOnlyAction && reftarget.trim() && { reftarget: reftarget.trim() }),
         content: content.trim(),
-        // The following fields are not relevant for noop actions
-        ...(!isNoopAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
+        // formfill stores the value to fill; popout stores the target panel mode.
+        ...(!isStateOnlyAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
+        ...(isPopoutAction &&
+          isPopoutTargetMode(targetvalue.trim()) && { targetvalue: targetvalue.trim() as PopoutTargetMode }),
         ...(!isNoopAction && tooltip.trim() && { tooltip: tooltip.trim() }),
         ...(!isNoopAction && reqArray.length > 0 && { requirements: reqArray }),
         ...(!isNoopAction && objArray.length > 0 && { objectives: objArray }),
         ...(!isNoopAction && skippable && { skippable }),
         ...(!isNoopAction && hint.trim() && { hint: hint.trim() }),
-        ...(!isNoopAction && formHint.trim() && { formHint: formHint.trim() }),
-        ...(!isNoopAction && !showMe && { showMe: false }),
-        ...(!isNoopAction && !doIt && { doIt: false }),
+        ...(!isStateOnlyAction && formHint.trim() && { formHint: formHint.trim() }),
+        ...(!isStateOnlyAction && !showMe && { showMe: false }),
+        ...(!isStateOnlyAction && !doIt && { doIt: false }),
         ...(!isNoopAction && completeEarly && { completeEarly }),
         ...(!isNoopAction && verify.trim() && { verify: verify.trim() }),
-        // Lazy render support for virtualized containers (not relevant for noop)
-        ...(!isNoopAction && lazyRender && { lazyRender }),
-        ...(!isNoopAction && lazyRender && scrollContainer.trim() && { scrollContainer: scrollContainer.trim() }),
+        // Lazy render support for virtualized containers (not relevant for noop/popout)
+        ...(!isStateOnlyAction && lazyRender && { lazyRender }),
+        ...(!isStateOnlyAction && lazyRender && scrollContainer.trim() && { scrollContainer: scrollContainer.trim() }),
         // Navigate: guide to open after navigation
         ...(action === 'navigate' && openGuide.trim() && { openGuide: openGuide.trim() }),
         // AI customization props
@@ -195,8 +211,16 @@ export function InteractiveBlockForm({
       if (suggestions.length > 0) {
         setRequirements((prev) => mergeRequirements(prev, suggestions));
       }
+      // For popout, seed a sensible default targetvalue so the form is valid
+      // out of the gate. For other actions, clear any popout-specific value
+      // that wouldn't make sense (e.g. switching back to formfill).
+      if (option.value === 'popout') {
+        setTargetvalue((prev) => (isPopoutTargetMode(prev) ? prev : DEFAULT_POPOUT_TARGET));
+      } else if (isPopoutTargetMode(targetvalue)) {
+        setTargetvalue('');
+      }
     },
-    [reftarget]
+    [reftarget, targetvalue]
   );
 
   const handleRequirementClick = useCallback((req: string) => {
@@ -238,9 +262,14 @@ export function InteractiveBlockForm({
 
   // noop actions don't require a reftarget since they're informational only
   // navigate actions use reftarget as a path, not a DOM selector
+  // popout actions toggle panel mode and use targetvalue, not reftarget
   const isNoop = action === 'noop';
   const isNavigate = action === 'navigate';
-  const isValid = (isNoop || reftarget.trim().length > 0) && content.trim().length > 0;
+  const isPopout = action === 'popout';
+  const isValid =
+    (isNoop || isPopout || reftarget.trim().length > 0) &&
+    content.trim().length > 0 &&
+    (!isPopout || isPopoutTargetMode(targetvalue.trim()));
   const showTargetValue = action === 'formfill';
 
   return (
@@ -277,8 +306,23 @@ export function InteractiveBlockForm({
         </>
       )}
 
-      {/* Target Selector with DOM Picker - hidden for noop and navigate actions */}
-      {!isNoop && !isNavigate && (
+      {/* Popout target mode - select where the panel should end up */}
+      {isPopout && (
+        <Field
+          label="Target panel mode"
+          description="Whether to undock the guide into a floating window or dock it back into the sidebar"
+          required
+        >
+          <Combobox
+            options={POPOUT_TARGET_OPTIONS}
+            value={isPopoutTargetMode(targetvalue) ? targetvalue : DEFAULT_POPOUT_TARGET}
+            onChange={(option) => setTargetvalue(option.value)}
+          />
+        </Field>
+      )}
+
+      {/* Target Selector with DOM Picker - hidden for noop, navigate, and popout actions */}
+      {!isNoop && !isNavigate && !isPopout && (
         <>
           <Field label="Target selector" description="CSS selector or Grafana selector for the target element" required>
             <div className={styles.selectorField}>
@@ -398,8 +442,8 @@ export function InteractiveBlockForm({
         />
       </Field>
 
-      {/* Tooltip - hidden for noop actions */}
-      {!isNoop && (
+      {/* Tooltip - hidden for noop and popout actions (they have no element to highlight) */}
+      {!isNoop && !isPopout && (
         <Field label="Tooltip" description="Tooltip shown when highlighting the element">
           <Input
             value={tooltip}
@@ -438,7 +482,8 @@ export function InteractiveBlockForm({
 
       {/* Button Visibility - hidden for noop actions */}
       {/* Navigate actions always show "Go there" button, no "Show me" option */}
-      {!isNoop && !isNavigate && (
+      {/* Popout actions are single-button "Dock"/"Undock" toggles */}
+      {!isNoop && !isNavigate && !isPopout && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Button visibility</div>
           <Stack direction="row" gap={2}>
@@ -470,15 +515,18 @@ export function InteractiveBlockForm({
                 checked={skippable}
                 onChange={(e) => setSkippable(e.currentTarget.checked)}
               />
-              <Checkbox
-                className={styles.checkbox}
-                label="Complete early (mark complete before action)"
-                description="Marks the step as done immediately, before the action executes"
-                checked={completeEarly}
-                onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
-              />
+              {/* completeEarly doesn't apply to popout - it's already a discrete state change */}
+              {!isPopout && (
+                <Checkbox
+                  className={styles.checkbox}
+                  label="Complete early (mark complete before action)"
+                  description="Marks the step as done immediately, before the action executes"
+                  checked={completeEarly}
+                  onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
+                />
+              )}
               {/* Lazy render only applies to actions with DOM elements */}
-              {!isNavigate && (
+              {!isNavigate && !isPopout && (
                 <Checkbox
                   className={styles.checkbox}
                   label="Element may be off-screen (scroll to find)"
@@ -490,8 +538,8 @@ export function InteractiveBlockForm({
             </Stack>
           </div>
 
-          {/* Lazy Render Scroll Container - only for non-navigate actions */}
-          {lazyRender && !isNavigate && (
+          {/* Lazy Render Scroll Container - only for non-navigate, non-popout actions */}
+          {lazyRender && !isNavigate && !isPopout && (
             <Field
               label="Scroll container"
               description="CSS selector for the scroll container (default: .scrollbar-view)"

@@ -406,7 +406,7 @@ describe('E2E Contract: data-test-form-state', () => {
 // ============================================================================
 
 describe('E2E Contract: data-targetaction (existing)', () => {
-  const actionTypes = ['button', 'hover', 'highlight', 'formfill', 'navigate', 'noop'] as const;
+  const actionTypes = ['button', 'hover', 'highlight', 'formfill', 'navigate', 'noop', 'popout'] as const;
 
   it.each(actionTypes)('InteractiveStep: reflects "%s" action in data-targetaction', (actionType) => {
     render(
@@ -414,6 +414,7 @@ describe('E2E Contract: data-targetaction (existing)', () => {
         stepId={`test-action-${actionType}`}
         targetAction={actionType}
         refTarget={actionType === 'navigate' ? '/test' : 'button'}
+        targetValue={actionType === 'popout' ? 'floating' : undefined}
       >
         {actionType} action
       </InteractiveStep>

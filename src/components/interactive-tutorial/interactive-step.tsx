@@ -52,8 +52,8 @@ async function executeWithLazyScroll(
   action: () => Promise<void>,
   targetAction?: string
 ): Promise<LazyScrollResult> {
-  // Navigate and noop actions don't target DOM elements - execute immediately without element checking
-  if (targetAction === 'navigate' || targetAction === 'noop') {
+  // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
+  if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
     await action();
     return { success: true, elementFound: true };
   }
@@ -796,10 +796,20 @@ export const InteractiveStep = forwardRef<
           return `Run sequence`;
         case 'noop':
           return `Instructional step`;
+        case 'popout':
+          return currentTargetValue === 'sidebar'
+            ? 'Dock the guide back into the sidebar'
+            : 'Move the guide to a floating window';
         default:
           return targetAction;
       }
     };
+
+    // Popout actions are single-button (like navigate). Pre-compute the label
+    // so the do-button branch stays compact below.
+    const isPopoutAction = targetAction === 'popout';
+    const popoutButtonLabel = currentTargetValue === 'sidebar' ? 'Dock' : 'Undock';
+    const popoutButtonRunningLabel = currentTargetValue === 'sidebar' ? 'Docking...' : 'Undocking...';
 
     const isAnyActionRunning = isShowRunning || isDoRunning || isCurrentlyExecuting;
 
@@ -869,22 +879,28 @@ export const InteractiveStep = forwardRef<
 
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
-            {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate/noop action */}
+            {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate/noop/popout action */}
             {/* Navigate actions don't have a sensible "show me" behavior - it's "go there" or nothing */}
+            {/* Popout actions are single-press toggles ("Dock"/"Undock") with no preview */}
             {/* Noop actions are informational only - no buttons needed */}
-            {showMe && !isNoopAction && targetAction !== 'navigate' && !isCompletedWithObjectives && finalIsEnabled && (
-              <Button
-                onClick={handleShowAction}
-                disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
-                size="sm"
-                variant="secondary"
-                className="interactive-step-show-btn"
-                data-testid={testIds.interactive.showMeButton(renderedStepId)}
-                title={hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`}
-              >
-                {isShowRunning ? 'Showing...' : showMeText || 'Show me'}
-              </Button>
-            )}
+            {showMe &&
+              !isNoopAction &&
+              targetAction !== 'navigate' &&
+              !isPopoutAction &&
+              !isCompletedWithObjectives &&
+              finalIsEnabled && (
+                <Button
+                  onClick={handleShowAction}
+                  disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-step-show-btn"
+                  data-testid={testIds.interactive.showMeButton(renderedStepId)}
+                  title={hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`}
+                >
+                  {isShowRunning ? 'Showing...' : showMeText || 'Show me'}
+                </Button>
+              )}
 
             {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
             {/* Noop actions are informational only - no buttons needed */}
@@ -908,16 +924,22 @@ export const InteractiveStep = forwardRef<
                     hints ||
                     (targetAction === 'navigate'
                       ? `Go there: ${getActionDescription()}`
-                      : `Do it: ${getActionDescription()}`)
+                      : isPopoutAction
+                        ? `${popoutButtonLabel}: ${getActionDescription()}`
+                        : `Do it: ${getActionDescription()}`)
                   }
                 >
                   {isDoRunning || isCurrentlyExecuting
                     ? targetAction === 'navigate'
                       ? 'Going...'
-                      : 'Executing...'
+                      : isPopoutAction
+                        ? popoutButtonRunningLabel
+                        : 'Executing...'
                     : targetAction === 'navigate'
                       ? 'Go there'
-                      : 'Do it'}
+                      : isPopoutAction
+                        ? popoutButtonLabel
+                        : 'Do it'}
                 </Button>
               )}
 

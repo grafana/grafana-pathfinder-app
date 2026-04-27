@@ -1256,13 +1256,40 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
       const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
 
-      if (activeTab && activeTab.id !== 'recommendations' && guideUrl) {
-        panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
+      // Editor tab popout: the block editor itself moves into the floating panel.
+      // No pendingGuide handoff — the floating panel detects the editor tab and
+      // renders <BlockEditor /> directly (see FloatingPanelManager).
+      if (activeTab?.type === 'editor') {
+        reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
+          guide_url: '',
+          guide_title: activeTab.title,
+        });
+        panelModeManager.snapshotSidebarTabs();
+        // The floating panel creates a new CombinedLearningJourneyPanel instance
+        // whose `restoreTabsAsync` call would otherwise be skipped by the static
+        // `_hasRestoredTabs` guard set by the sidebar. Reset it so the floating
+        // model can rehydrate the editor tab from localStorage.
+        CombinedLearningJourneyPanel.resetTabRestorationGuard();
+        panelModeManager.setMode('floating');
+        return;
       }
 
+      // Refuse to pop out when there's no guide context — without this guard the
+      // sidebar would close and the floating panel would have nothing to show.
+      // Surface a notification so the user understands why nothing happened.
+      if (!activeTab || activeTab.id === 'recommendations' || !guideUrl) {
+        getAppEvents().publish({
+          type: 'alert-info',
+          payload: ['Open a guide before popping out the panel.'],
+        });
+        return;
+      }
+
+      panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
+
       reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
-        guide_url: guideUrl || '',
-        guide_title: activeTab?.title || '',
+        guide_url: guideUrl,
+        guide_title: activeTab.title,
       });
 
       // Snapshot sidebar tabs before switching — the floating panel's model

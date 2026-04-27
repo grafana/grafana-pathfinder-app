@@ -33,7 +33,22 @@ const SafeUrlSchema = z
  * Schema for interactive action types.
  * @coupling Type: JsonInteractiveAction
  */
-export const JsonInteractiveActionSchema = z.enum(['highlight', 'button', 'formfill', 'navigate', 'hover', 'noop']);
+export const JsonInteractiveActionSchema = z.enum([
+  'highlight',
+  'button',
+  'formfill',
+  'navigate',
+  'hover',
+  'noop',
+  'popout',
+]);
+
+/**
+ * Allowed targetvalue values for the `popout` action.
+ * - 'sidebar' docks the panel back into the Grafana sidebar.
+ * - 'floating' undocks the panel into a floating window.
+ */
+const POPOUT_TARGET_VALUES = ['sidebar', 'floating'] as const;
 
 // ============ QUIZ SCHEMAS ============
 
@@ -72,11 +87,11 @@ export const JsonStepSchema = z
   })
   .refine(
     (step) => {
-      // Non-noop actions require a reftarget
-      if (step.action !== 'noop' && (!step.reftarget || step.reftarget.trim() === '')) {
-        return false;
+      // Actions that don't operate on a DOM element don't require reftarget
+      if (step.action === 'noop' || step.action === 'popout') {
+        return true;
       }
-      return true;
+      return step.reftarget !== undefined && step.reftarget.trim() !== '';
     },
     { error: "Non-noop actions require 'reftarget'" }
   )
@@ -89,6 +104,16 @@ export const JsonStepSchema = z
       return true;
     },
     { error: "formfill with validateInput requires 'targetvalue'" }
+  )
+  .refine(
+    (step) => {
+      // popout requires a valid targetvalue indicating the target panel mode
+      if (step.action === 'popout') {
+        return step.targetvalue !== undefined && POPOUT_TARGET_VALUES.includes(step.targetvalue as never);
+      }
+      return true;
+    },
+    { error: "popout actions require 'targetvalue' to be 'sidebar' or 'floating'" }
   );
 
 // ============ ASSISTANT PROPS SCHEMA ============
@@ -185,11 +210,11 @@ export const JsonInteractiveBlockSchema = z
   })
   .refine(
     (block) => {
-      // Non-noop actions require a reftarget
-      if (block.action !== 'noop') {
-        return block.reftarget !== undefined && block.reftarget.trim() !== '';
+      // Actions that don't operate on a DOM element don't require reftarget
+      if (block.action === 'noop' || block.action === 'popout') {
+        return true;
       }
-      return true;
+      return block.reftarget !== undefined && block.reftarget.trim() !== '';
     },
     { error: "Non-noop actions require 'reftarget'" }
   )
@@ -202,6 +227,16 @@ export const JsonInteractiveBlockSchema = z
       return true;
     },
     { error: "formfill with validateInput requires 'targetvalue'" }
+  )
+  .refine(
+    (block) => {
+      // popout requires a valid targetvalue indicating the target panel mode
+      if (block.action === 'popout') {
+        return block.targetvalue !== undefined && POPOUT_TARGET_VALUES.includes(block.targetvalue as never);
+      }
+      return true;
+    },
+    { error: "popout actions require 'targetvalue' to be 'sidebar' or 'floating'" }
   );
 
 /**

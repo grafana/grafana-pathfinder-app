@@ -217,6 +217,111 @@ describe('JsonGuideSchema', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
+    it("should accept popout block with targetvalue 'floating' (no reftarget required)", () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'interactive',
+            action: 'popout',
+            targetvalue: 'floating',
+            content: 'Move me out of the way',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it("should accept popout block with targetvalue 'sidebar' (no reftarget required)", () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'interactive',
+            action: 'popout',
+            targetvalue: 'sidebar',
+            content: 'Put me back in the sidebar',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject popout block without targetvalue', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'interactive',
+            action: 'popout',
+            content: 'Missing targetvalue',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should reject popout block with an invalid targetvalue', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'interactive',
+            action: 'popout',
+            targetvalue: 'somewhere-else',
+            content: 'Invalid mode',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should accept popout step inside a multistep block', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'multistep',
+            content: 'Pop out then continue',
+            steps: [
+              { action: 'popout', targetvalue: 'floating' },
+              { action: 'button', reftarget: '[data-testid="next"]' },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject a popout step inside multistep when targetvalue is invalid', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'multistep',
+            content: 'Pop out then continue',
+            steps: [{ action: 'popout', targetvalue: 'middle' }],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
     it('should provide clear error for invalid action enum values', () => {
       const guide = JSON.stringify({
         id: 'test',
