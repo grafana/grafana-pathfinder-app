@@ -1260,10 +1260,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         });
         panelModeManager.snapshotSidebarTabs();
         // The floating panel creates a new CombinedLearningJourneyPanel instance
-        // whose `restoreTabsAsync` call would otherwise be skipped by the static
-        // `_hasRestoredTabs` guard set by the sidebar. Reset it so the floating
-        // model can rehydrate the editor tab from localStorage.
-        CombinedLearningJourneyPanel.resetTabRestorationGuard();
+        // with its own per-instance `_hasRestoredTabs` guard, so it can rehydrate
+        // the editor tab from localStorage without any cross-instance reset.
         panelModeManager.setMode('floating');
         return;
       }
