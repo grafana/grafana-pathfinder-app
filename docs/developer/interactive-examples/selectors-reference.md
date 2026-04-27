@@ -242,12 +242,51 @@ Use a `multistep` block to ensure hover and click happen as a single atomic sequ
 
 The default hover duration is 2000 ms, configured in `INTERACTIVE_CONFIG.delays.perceptual.hover`. This allows time for CSS transitions, hover styles, and subsequent actions.
 
+## Selector resilience pipeline
+
+Single-pass selector resolution is fragile against lazy-loaded UI and minor markup churn. The interactive engine ships with a resilience pipeline (`resolveSelectorPipeline`) that escalates strategies until it finds a unique match, returning a confidence score for each result.
+
+The pipeline runs through these strategies in order:
+
+1. **Native CSS** — `document.querySelectorAll(selector)` against the user-provided selector. Fastest path; used unchanged when the user-supplied selector is clean.
+2. **Enhanced selectors** — JavaScript fallbacks for `:contains()`, `:has()` (on older browsers), `:nth-match()`, and the `panel:` domain prefix.
+3. **`:text()` exact match** — for short button labels (under 20 characters), eliminating false positives that substring matches would produce. Prefer `:text("Save")` over `:contains("Save")` when the label is short.
+4. **`data-testid` prefix matching** — when the exact ID isn't found but a unique prefix exists, the engine matches the prefix (uniqueness-guarded — never returns multiple elements).
+5. **Retry with backoff** — `resolveWithRetry()` waits 200 ms, 600 ms, then 1.8 s between attempts to give lazy-loaded UI time to mount.
+
+Each successful resolution returns a **confidence score** that the block editor surfaces as a Selector Health badge:
+
+| Badge     | Confidence | Meaning                                                                    |
+| --------- | ---------- | -------------------------------------------------------------------------- |
+| 🟢 Green  | High       | Stable selector — `data-testid`, `aria-*`, `id`, or short `:text()` match. |
+| 🟡 Yellow | Medium     | Multiple matches, semantic but generic, or `:contains()` on long strings.  |
+| 🔴 Red    | Low        | Auto-generated CSS classes, deep DOM nesting, or no match.                 |
+
+The block editor's **Test selector** button evaluates a selector against the live DOM and flash-highlights every match with numbered overlays, so you can confirm targeting before publishing.
+
+### `panel:` domain prefix
+
+Targeting Grafana panels by title is fragile because panel DOM identifiers are auto-generated. The `panel:` domain prefix scopes the rest of the selector to the panel matching the given title:
+
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "panel:HTTP request rate input[data-testid='time-picker']",
+  "content": "Open the time picker on the HTTP request rate panel."
+}
+```
+
+The engine first locates the panel whose title matches `HTTP request rate`, then applies `input[data-testid='time-picker']` within that panel's bounds.
+
 ## Performance best practices
 
 1. **Native first** -- the engine always tries the browser's native `querySelector()` before falling back to JavaScript parsing
 2. **Specific base selectors** -- narrow the search scope (e.g., `div[data-testid="panel"]:has(...)` rather than `div:has(...)`)
 3. **Prefer `data-testid`** -- fastest and most stable
 4. **Test in target browsers** -- especially when using `:has()` on older Firefox
+5. **Prefer `:text()` over `:contains()` for short button labels** — eliminates false positives on common words like "New" or "Save"
+6. **Use `panel:` for panel targets** — far more stable than relying on auto-generated panel IDs
 
 ## Troubleshooting
 
