@@ -307,23 +307,21 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect((panelB as any).state.tabs[1].id).toBe('tab-guide-1');
   });
 
-  it('should leave a new instance on default tabs when restore is blocked by static guard', async () => {
-    // This test documents the exact bug symptom from #782:
-    // after sidebar toggle off → on, the user sees "recommendations"
-    // instead of their active guide.
+  it('should restore the previously active guide instead of leaving a remounted instance on recommendations', async () => {
+    // Regression test for #782:
+    // after sidebar toggle off → on, a newly created panel instance
+    // should restore the user's active guide rather than staying
+    // on the default "recommendations" tab.
     const panelA = new CombinedLearningJourneyPanel();
     await panelA.restoreTabsAsync();
 
     const panelB = new CombinedLearningJourneyPanel();
     await panelB.restoreTabsAsync();
 
-    // With the bug present, panelB stays on defaults
-    // After fix, panelB should have restored tabs
+    // Verify the remounted instance reflects restored state,
+    // not the default single-tab recommendations state.
     const panelBTabs = (panelB as any).state.tabs;
     const panelBActiveTab = (panelB as any).state.activeTabId;
-
-    // This assertion should PASS after the fix:
-    // panelB's active guide is restored, not stuck on recommendations
     expect(panelBActiveTab).not.toBe('recommendations');
     expect(panelBTabs.length).toBeGreaterThan(1);
   });
