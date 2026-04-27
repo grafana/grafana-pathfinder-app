@@ -26,7 +26,7 @@ export interface BaseInteractiveProps {
  * Single interactive step with show/do buttons
  */
 export interface InteractiveStepProps extends BaseInteractiveProps {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop' | 'popout';
   refTarget: string;
   targetValue?: string;
   postVerify?: string;
