@@ -46,6 +46,13 @@ export interface PathGuide {
   completed: boolean;
   /** Whether this is the current/next guide to complete */
   isCurrent: boolean;
+  /**
+   * Resolved URL for this guide within the parent path, or `undefined` for
+   * bundled guides (callers fall back to `bundled:{id}`). Always scoped to
+   * the path that produced this `PathGuide` — required to disambiguate when
+   * two paths share a guide slug.
+   */
+  url?: string;
 }
 
 /**

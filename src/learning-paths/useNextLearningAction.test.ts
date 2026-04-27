@@ -188,4 +188,73 @@ describe('computeNextAction', () => {
     expect(result).not.toBeNull();
     expect(result!.guideUrl).toBe('bundled:nonexistent-guide');
   });
+
+  // ============================================================================
+  // Issue #744: URL-based paths must point at the next module, not the path base
+  // ============================================================================
+  describe('issue #744: URL-based path next-guide resolution', () => {
+    const urlPath: LearningPath = {
+      id: 'linux-server',
+      title: 'Linux server integration',
+      description: 'Linux server integration',
+      guides: ['select-platform', 'install-alloy', 'configure-alloy'],
+      badgeId: 'linux-server-badge',
+      url: 'https://grafana.com/docs/learning-paths/linux-server-integration/',
+    };
+
+    const guideUrls: Record<string, string> = {
+      'select-platform': 'https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/',
+      'install-alloy': 'https://grafana.com/docs/learning-paths/linux-server-integration/install-alloy/',
+      'configure-alloy': 'https://grafana.com/docs/learning-paths/linux-server-integration/configure-alloy/',
+    };
+
+    /**
+     * Builds PathGuides annotated with the per-guide URL the hook would
+     * resolve from dynamic index.json data.
+     */
+    const makeUrlGuides = (guideIds: string[], completedIds: string[]): PathGuide[] =>
+      makeGuides(guideIds, completedIds).map((g) => ({ ...g, url: guideUrls[g.id] }));
+
+    it('returns the per-guide URL for the next-not-yet-completed module when one is available', () => {
+      // First guide complete; "next" is install-alloy.
+      const result = computeNextAction({
+        paths: [urlPath],
+        getPathProgress: () => 33,
+        getPathGuides: () => makeUrlGuides(urlPath.guides, ['select-platform']),
+        isPathCompleted: () => false,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.guideId).toBe('install-alloy');
+      // Bug: previously returned urlPath.url (= the path base / first module).
+      expect(result!.guideUrl).toBe(guideUrls['install-alloy']);
+      expect(result!.guideUrl).not.toBe(urlPath.url);
+    });
+
+    it('falls back to the path base URL when the current guide has no resolved per-guide URL', () => {
+      // Simulates dynamic data not yet loaded — guide.url is undefined.
+      const result = computeNextAction({
+        paths: [urlPath],
+        getPathProgress: () => 33,
+        getPathGuides: () => makeGuides(urlPath.guides, ['select-platform']),
+        isPathCompleted: () => false,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.guideUrl).toBe(urlPath.url);
+    });
+
+    it('uses guide.url even when starting at the first guide (not yet started but URL known)', () => {
+      const result = computeNextAction({
+        paths: [urlPath],
+        getPathProgress: () => 0,
+        getPathGuides: () => makeUrlGuides(urlPath.guides, []),
+        isPathCompleted: () => false,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.guideId).toBe('select-platform');
+      expect(result!.guideUrl).toBe(guideUrls['select-platform']);
+    });
+  });
 });

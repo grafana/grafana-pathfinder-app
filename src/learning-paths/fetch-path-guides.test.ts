@@ -98,6 +98,42 @@ describe('fetchPathGuides', () => {
     );
   });
 
+  it('populates each guide metadata with the per-guide URL from relpermalink (issue #744)', async () => {
+    // Without a per-guide URL the "Continue" button on My Learning falls back to
+    // the path base URL — opening the first module instead of the next one.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => SAMPLE_INDEX_JSON,
+    });
+
+    const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
+
+    expect(result).not.toBeNull();
+    expect(result!.guideMetadata['select-platform']!.url).toBe(
+      'https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/'
+    );
+    expect(result!.guideMetadata['install-alloy']!.url).toBe(
+      'https://grafana.com/docs/learning-paths/linux-server-integration/install-alloy/'
+    );
+    expect(result!.guideMetadata['configure-alloy']!.url).toBe(
+      'https://grafana.com/docs/learning-paths/linux-server-integration/configure-alloy/'
+    );
+  });
+
+  it('builds per-guide URLs using the docs origin even when pathUrl has no trailing slash', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => SAMPLE_INDEX_JSON,
+    });
+
+    const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration');
+
+    expect(result).not.toBeNull();
+    expect(result!.guideMetadata['select-platform']!.url).toBe(
+      'https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/'
+    );
+  });
+
   it('returns null on fetch failure', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
