@@ -43,12 +43,20 @@ export class ContextService {
     message: string;
   } | null = null;
 
-  // Constants for recommendation accuracy scores
+  // Constants for recommendation accuracy scores.
+  // CONFIDENCE_THRESHOLD = 0.5 drops weak matches (a coin-flip is not a useful
+  // recommendation) while keeping moderately confident ones. STATIC_LINK and
+  // BUNDLED_INTERACTIVE are the floors we assign when the recommender returned
+  // nothing — bundled interactives outrank static links because they're the
+  // primary product surface.
   private static readonly CONFIDENCE_THRESHOLD = 0.5;
   private static readonly STATIC_LINK_ACCURACY = 0.7;
   private static readonly BUNDLED_INTERACTIVE_ACCURACY = 0.8;
 
-  // Content type priority for sorting (lower number = higher priority)
+  // Content type priority for sorting (lower number = higher priority).
+  // Interactive guides have the highest user value (they teach by doing), then
+  // packages (curated sequences), then learning journeys, then plain docs pages.
+  // Used as a tiebreaker after the recommender's confidence score.
   private static readonly TYPE_PRIORITY: Record<string, number> = {
     interactive: 0,
     package: 1,

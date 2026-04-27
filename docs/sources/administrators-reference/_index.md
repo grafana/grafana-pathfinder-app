@@ -40,6 +40,14 @@ The recommender service is enabled by default for Grafana Cloud instances.
 For open source Grafana instances, administrators must enable it manually.
 {{< /admonition >}}
 
+The recommender service URL is auto-selected based on the Grafana instance hostname (production, ops, or development). Most administrators do not need to change it.
+
+### Custom guides (block editor)
+
+Editors and admins can author custom interactive guides directly inside Grafana with the block editor and publish them to the docs panel for everyone on the instance. The block editor is available from the **Editor** tab in the docs panel — no dev mode is required. Permissions are enforced by Grafana role: only users with editor or admin role see the Editor tab and can publish guides.
+
+For the end-user authoring workflow, refer to the [Block editor guide](../block-editor/).
+
 ### Auto-launch guide URL
 
 You can configure a guide or documentation page to automatically open when users open the Interactive learning sidebar.
@@ -148,12 +156,34 @@ To modify these settings:
 2. Enter new values for the timeout fields.
 3. Click **Save configuration** to apply changes, or click **Reset to defaults** to restore default values.
 
+### Kiosk mode
+
+Kiosk mode displays a full-screen catalog of interactive guides over Grafana, useful for in-booth and onboarding scenarios. When enabled, a kiosk button appears in the sidebar header and the catalog opens over the rest of the UI.
+
+**To enable kiosk mode:**
+
+1. Navigate to the **Interactive Features** tab on the plugin configuration page.
+2. Toggle **Enable kiosk mode** (`enableKioskMode`).
+3. Click **Save configuration**.
+
+You can configure a custom CDN URL for the kiosk rules JSON and supply an HTML banner block at the top of the overlay (sanitized via DOMPurify before render). Each catalog tile opens its target guide in a new tab via the `?doc=` deep link.
+
+### Coda sandbox terminal
+
+When enabled, Coda gives a guide direct access to a 30-minute sandbox VM through a terminal panel inside the docs panel. This is useful for guides that walk through Linux configuration, Alloy scenarios, or sample-app setup.
+
+To enable the terminal, your administrator must register the plugin with a Coda enrollment key. See the [Coda VM system](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/CODA.md) developer reference for the registration flow. Once registered, toggle **Enable Coda terminal** in plugin settings to expose the terminal block types in the block editor and the terminal panel in the docs panel.
+
+### Live sessions (experimental)
+
+Live sessions enable a presenter to broadcast their **Show me** and **Do it** actions to attendees over a peer-to-peer WebRTC connection. This is gated behind a plugin setting and requires a PeerJS signalling server. See the [Live sessions developer reference](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/LIVE_SESSIONS.md) for setup, scaling considerations, and known limitations.
+
 ### Dev mode
 
-Dev mode disables security protections and enables debugging features for development purposes.
+Dev mode is a per-user developer feature that exposes the DOM Selector Debug Panel and similar diagnostic tools.
 
 {{< admonition type="warning" >}}
-Dev mode disables critical security protections and should only be enabled in isolated development environments.
+Dev mode disables several security protections and should only be enabled in isolated development environments.
 Never enable dev mode in production or when viewing untrusted content.
 {{< /admonition >}}
 
@@ -172,7 +202,10 @@ Dev mode is only visible when you access the configuration page with `?dev=true`
 2. Review the security warnings.
 3. Toggle **Dev Mode** to enable the feature.
 
-The page reloads automatically to apply changes.
-Dev mode is stored per-user and requires admin permissions to change.
+The page reloads automatically to apply changes. Dev mode is stored per-user and requires admin permissions to change.
 
 When dev mode is enabled, you can also configure the **Recommender service URL** to point to a local development instance.
+
+{{< admonition type="note" >}}
+The block editor and kiosk mode used to require dev mode in earlier versions. Both are now available without dev mode — the block editor through the **Editor** tab, kiosk mode through the `enableKioskMode` plugin setting.
+{{< /admonition >}}

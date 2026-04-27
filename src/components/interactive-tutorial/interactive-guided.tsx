@@ -286,7 +286,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
 
-      // Progress persists between sessions - reset only via explicit "Restart section" button
+      // Flush React state before creating any DOM overlays. Without this, the
+      // idle-state skip button (block-level `skippable`) stays in the DOM while
+      // the guided handler synchronously appends its own overlay skip button,
+      // producing two simultaneous skip buttons (issue #786).
+      await waitForReactUpdates();
 
       try {
         // Execute each internal action in sequence, waiting for user

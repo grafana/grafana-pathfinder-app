@@ -69,7 +69,10 @@ export class SessionManager {
 
   // Connections awaiting attendee_join handshake (not yet in this.connections)
   private pendingConnections: Map<string, DataConnection> = new Map();
-  // Tracks which connections have already received a challenge (prevents DoS oracle)
+  // Tracks which connections have already received a challenge. Without this set,
+  // a malicious peer could spam join attempts and force us to issue an unbounded
+  // number of crypto challenges (a DoS oracle on the presenter's CPU). Cleared on
+  // successful authentication or disconnect.
   private challengedConnections: Set<string> = new Set();
 
   /**

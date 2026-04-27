@@ -38,9 +38,12 @@ export async function openBlockEditor(page: Page): Promise<void> {
   // In Grafana with extension sidebar registered, clicking Help toggles the sidebar
   await page.locator('button[aria-label="Help"]').click();
 
-  // Dismiss any tooltip that appeared on the Help button
-  // This prevents tooltip from intercepting pointer events in Grafana dev/preview versions
+  // Dismiss any tooltip that appeared on the Help button. The keyboard Escape covers
+  // older Grafana versions; moving the cursor off the button covers Grafana 13+,
+  // which holds the Help tooltip ("Close interactive learning, help, and
+  // documentation") in the portal container until pointer leave.
   await page.keyboard.press('Escape');
+  await page.mouse.move(0, 0);
 
   // Wait for panel container to be visible
   const panelContainer = page.getByTestId(testIds.docsPanel.container);
@@ -50,9 +53,10 @@ export async function openBlockEditor(page: Page): Promise<void> {
   const editorTab = page.getByTestId(testIds.docsPanel.tab('editor'));
   await expect(editorTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
 
-  // Hover before click to dismiss any tooltips that may intercept pointer events
-  await editorTab.hover();
-  await editorTab.click();
+  // Click with force: true to bypass any lingering portal-rendered tooltip in
+  // Grafana 13+ that briefly intercepts pointer events between Help dismiss
+  // and the editor tab becoming hover-stable.
+  await editorTab.click({ force: true });
 
   // Wait for block editor to be visible
   const blockEditor = page.getByTestId(testIds.blockEditor.container);

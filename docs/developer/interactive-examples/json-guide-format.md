@@ -195,14 +195,15 @@ A single interactive step with "Show me" and "Do it" buttons.
 
 **Action Types:**
 
-| Action      | Description                    | `reftarget`             | `targetvalue` |
-| ----------- | ------------------------------ | ----------------------- | ------------- |
-| `highlight` | Highlight an element           | CSS selector            | —             |
-| `button`    | Click a button                 | Button text or selector | —             |
-| `formfill`  | Enter text in input            | CSS selector            | Text to enter |
-| `navigate`  | Navigate to URL                | URL path                | —             |
-| `hover`     | Hover over element             | CSS selector            | —             |
-| `noop`      | Informational step (no action) | Optional                | —             |
+| Action      | Description                    | `reftarget`             | `targetvalue`                          |
+| ----------- | ------------------------------ | ----------------------- | -------------------------------------- |
+| `highlight` | Highlight an element           | CSS selector            | —                                      |
+| `button`    | Click a button                 | Button text or selector | —                                      |
+| `formfill`  | Enter text in input            | CSS selector            | Text to enter                          |
+| `navigate`  | Navigate to URL                | URL path                | —                                      |
+| `hover`     | Hover over element             | CSS selector            | —                                      |
+| `noop`      | Informational step (no action) | Optional                | —                                      |
+| `popout`    | Dock or undock the docs panel  | —                       | `"floating"` or `"sidebar"` (required) |
 
 **Formfill Validation:**
 
@@ -731,22 +732,145 @@ When `assistantEnabled` is `true`, the block displays a "Customize" button that 
 
 ---
 
+#### Code Block
+
+A code snippet with copy-to-clipboard and (in supported contexts) an Insert button that types the code into a Grafana Monaco editor.
+
+```json
+{
+  "type": "code-block",
+  "content": "Try this PromQL query:",
+  "code": "rate(http_requests_total[5m])",
+  "language": "promql",
+  "filename": "example.promql",
+  "reftarget": "textarea.inputarea"
+}
+```
+
+| Field          | Type     | Required | Description                                                            |
+| -------------- | -------- | -------- | ---------------------------------------------------------------------- |
+| `content`      | string   | ❌       | Markdown description shown above the code block                        |
+| `code`         | string   | ✅       | The code snippet                                                       |
+| `language`     | string   | ❌       | Syntax highlighting language (e.g., `promql`, `logql`, `yaml`, `json`) |
+| `filename`     | string   | ❌       | Filename label shown above the code (purely informational)             |
+| `reftarget`    | string   | ❌       | CSS selector of a Monaco editor — when set, an Insert button appears   |
+| `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
+| `objectives`   | string[] | ❌       | Objectives marked complete after this step                             |
+| `skippable`    | boolean  | ❌       | Allow skipping                                                         |
+
+#### Terminal Block
+
+A shell command shown with copy-to-clipboard and an "Execute" button that runs the command in the Coda terminal panel.
+
+```json
+{
+  "type": "terminal",
+  "content": "Install nginx:",
+  "command": "sudo apt-get install -y nginx"
+}
+```
+
+| Field          | Type     | Required | Description                                                 |
+| -------------- | -------- | -------- | ----------------------------------------------------------- |
+| `content`      | string   | ❌       | Markdown description shown above the command                |
+| `command`      | string   | ✅       | The shell command                                           |
+| `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
+| `skippable`    | boolean  | ❌       | Allow skipping                                              |
+
+Terminal blocks only render in the docs panel when the administrator has enabled the Coda terminal integration.
+
+#### Terminal Connect Block
+
+A button that provisions a sandbox VM (via Coda) and opens a terminal panel inside the docs panel.
+
+```json
+{
+  "type": "terminal-connect",
+  "content": "Connect to an nginx sandbox to follow along:",
+  "buttonText": "Connect to nginx sandbox",
+  "vmTemplate": "vm-aws-sample-app",
+  "vmApp": "nginx"
+}
+```
+
+| Field        | Type   | Default             | Description                                               |
+| ------------ | ------ | ------------------- | --------------------------------------------------------- |
+| `content`    | string | —                   | Markdown description shown above the button               |
+| `buttonText` | string | `"Try in terminal"` | Button label                                              |
+| `vmTemplate` | string | `""` (→ `vm-aws`)   | VM template to provision                                  |
+| `vmApp`      | string | `""`                | App name for `vm-aws-sample-app`                          |
+| `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
+
+See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
+
+#### Grot Guide Block
+
+A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.
+
+```json
+{
+  "type": "grot-guide",
+  "id": "intro-tree",
+  "title": "Choose your path",
+  "screens": [
+    {
+      "id": "start",
+      "title": "What do you want to do?",
+      "body": "Pick the path that best matches your goal.",
+      "options": [
+        { "label": "Set up Prometheus", "next": "prometheus" },
+        { "label": "Set up Loki", "next": "loki" }
+      ]
+    },
+    {
+      "id": "prometheus",
+      "title": "Set up Prometheus",
+      "body": "Open the connections page to add a Prometheus data source.",
+      "options": [{ "label": "Done", "next": "end" }]
+    },
+    {
+      "id": "loki",
+      "title": "Set up Loki",
+      "body": "Open the connections page to add a Loki data source.",
+      "options": [{ "label": "Done", "next": "end" }]
+    },
+    { "id": "end", "title": "All set", "body": "You're ready to start querying." }
+  ],
+  "startScreen": "start"
+}
+```
+
+| Field         | Type           | Required | Description                                          |
+| ------------- | -------------- | -------- | ---------------------------------------------------- |
+| `id`          | string         | ❌       | Block ID                                             |
+| `title`       | string         | ❌       | Title shown above the screen                         |
+| `screens`     | `GrotScreen[]` | ✅       | The decision-tree screens (see below)                |
+| `startScreen` | string         | ❌       | ID of the first screen (defaults to the first entry) |
+
+Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each option has a `label` and a `next` screen ID. A screen with no `options` ends the tree. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
+
+---
+
 ### Block Types Summary
 
-| Block Type    | Category    | Description                                                             |
-| ------------- | ----------- | ----------------------------------------------------------------------- |
-| `markdown`    | Content     | Formatted text with headings, lists, code, tables                       |
-| `html`        | Content     | Raw HTML for migration/custom content                                   |
-| `image`       | Content     | Embedded images with optional dimensions                                |
-| `video`       | Content     | YouTube or native HTML5 video embeds                                    |
-| `section`     | Structure   | Container for grouped interactive steps with "Do Section"               |
-| `conditional` | Structure   | Shows different content based on runtime conditions                     |
-| `assistant`   | Structure   | Wraps blocks with AI-powered customization                              |
-| `interactive` | Interactive | Single-action step (highlight, button, formfill, navigate, hover, noop) |
-| `multistep`   | Interactive | Automated sequence of actions                                           |
-| `guided`      | Interactive | User-performed sequence with detection                                  |
-| `quiz`        | Assessment  | Knowledge check with single/multiple choice                             |
-| `input`       | Assessment  | Collects user responses as variables                                    |
+| Block Type         | Category    | Description                                                                     |
+| ------------------ | ----------- | ------------------------------------------------------------------------------- |
+| `markdown`         | Content     | Formatted text with headings, lists, code, tables                               |
+| `html`             | Content     | Raw HTML for migration/custom content                                           |
+| `image`            | Content     | Embedded images with optional dimensions                                        |
+| `video`            | Content     | YouTube or native HTML5 video embeds                                            |
+| `code-block`       | Content     | Code snippet with copy and optional Monaco-editor insert                        |
+| `section`          | Structure   | Container for grouped interactive steps with "Do Section"                       |
+| `conditional`      | Structure   | Shows different content based on runtime conditions                             |
+| `assistant`        | Structure   | Wraps blocks with AI-powered customization                                      |
+| `interactive`      | Interactive | Single-action step (highlight, button, formfill, navigate, hover, noop, popout) |
+| `multistep`        | Interactive | Automated sequence of actions                                                   |
+| `guided`           | Interactive | User-performed sequence with detection                                          |
+| `terminal`         | Interactive | A shell command with copy and execute (requires Coda terminal)                  |
+| `terminal-connect` | Interactive | Button that provisions a sandbox VM and opens a terminal panel                  |
+| `grot-guide`       | Interactive | Choose-your-own-adventure decision tree                                         |
+| `quiz`             | Assessment  | Knowledge check with single/multiple choice                                     |
+| `input`            | Assessment  | Collects user responses as variables                                            |
 
 ---
 

@@ -4,6 +4,10 @@ Custom guides are guides created and managed directly inside Grafana using the P
 
 > **Scope:** Custom guides are private to your Grafana stack. They are stored in the Pathfinder backend that runs alongside your Grafana instance and are not shared with other organisations, tenants, or Grafana Cloud stacks. A guide published on one stack is not visible on any other.
 
+{{< admonition type="note" >}}
+This document is the **developer reference** for the custom-guide lifecycle. The end-user authoring guide with screenshots lives at [`docs/sources/block-editor/_index.md`](../sources/block-editor/_index.md) and is published to the Grafana documentation site.
+{{< /admonition >}}
+
 ---
 
 ## Overview
@@ -20,10 +24,10 @@ A custom guide moves through three states:
 
 ## Creating a guide
 
-1. Open the Pathfinder sidebar and navigate to the block editor.
+1. Open the Pathfinder sidebar and click the **Editor** tab in the tab bar (visible to users with editor or admin role; **no dev mode required**).
 2. Click the title field at the top and type a name for your guide. Press **Enter** or click away to confirm.
 3. On first commit the editor auto-generates a unique ID from the title (e.g. `my-guide-a3f9`). This ID is used as the backend resource name and does not change if you rename the guide later.
-4. Add blocks using the **+** button at the bottom of the editor. Available block types include markdown, interactive steps, sections, conditionals, quizzes, terminals, and more.
+4. Add blocks using the **+** button at the bottom of the editor. Available block types include markdown, interactive steps (with the new `popout` action), sections, conditionals, quizzes, terminals, code blocks, grot guides, and more — see [json-guide-format.md](interactive-examples/json-guide-format.md) for the full list.
 
 > **Tip:** Content is auto-saved to localStorage as you work, so a browser refresh won't lose your progress. This local save is separate from the backend — the status badge in the header reflects both.
 
@@ -108,3 +112,20 @@ When the backend is unavailable the badge area instead shows a **Saved** / **Sav
 - The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.com/v1alpha1` API group.
 - `resourceVersion` is used for optimistic concurrency control — the editor always fetches the latest version after a save before allowing a subsequent write.
 - Backend tracking state (`resourceName`, `backendStatus`, `lastPublishedJson`) is persisted to localStorage so the correct button state survives a page refresh.
+
+## Floating panel and popout step
+
+Authors can drive the docs panel between docked (sidebar) and floating modes from inside a guide using the `popout` action. This is useful when a guide step needs the right sidebar for something else (for example, Grafana Assistant), or when bringing the guide back after the user finishes a side task.
+
+```json
+{
+  "type": "interactive",
+  "action": "popout",
+  "targetvalue": "floating",
+  "content": "Move this guide to a floating window so you can use the assistant on the right."
+}
+```
+
+The `targetvalue` must be either `"floating"` (undock) or `"sidebar"` (dock). The button label flips to **Undock** or **Dock** accordingly. There is no Show me preview for `popout`.
+
+For the full action reference, see [`interactive-types.md#popout`](interactive-examples/interactive-types.md#popout).
