@@ -229,16 +229,6 @@ import { CombinedLearningJourneyPanel } from './docs-panel';
 // Helpers
 // ---------------------------------------------------------------------------
 
-const PERSISTED_TABS = [
-  {
-    id: 'tab-guide-1',
-    title: 'My Active Guide',
-    baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
-    currentUrl: 'https://grafana.com/docs/grafana/latest/test/page2/',
-    type: 'learning-journey' as const,
-  },
-];
-
 const RESTORED_TABS = [
   {
     id: 'recommendations',
@@ -273,8 +263,6 @@ function setupRestoreMocks() {
 describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset the static guard between tests so they're independent
-    CombinedLearningJourneyPanel.resetTabRestorationGuard();
     setupRestoreMocks();
   });
 

@@ -114,19 +114,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public static Component = CombinedPanelRenderer;
 
   /**
-   * Module-level guard: prevents restoreTabsAsync() from running more than once,
-   * even across model instances (which can be recreated by Scenes framework).
+   * Instance-level guard: prevents restoreTabsAsync() from running more than
+   * once on the same instance (e.g. React StrictMode double-mount re-fires
+   * the effect on the same cached useMemo panel). Because the flag is
+   * per-instance, a genuinely new panel (created when the sidebar remounts
+   * after toggle off → on) starts with the guard unset and can restore tabs.
    */
-  private static _hasRestoredTabs = false;
-
-  /**
-   * Reset the tab restoration guard so a new model instance can restore tabs.
-   * Called when switching display modes (floating ↔ sidebar) because each mode
-   * creates its own model instance that needs to restore independently.
-   */
-  public static resetTabRestorationGuard(): void {
-    CombinedLearningJourneyPanel._hasRestoredTabs = false;
-  }
+  private _hasRestoredTabs = false;
 
   public get renderBeforeActivation(): boolean {
     return true;
@@ -173,10 +167,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Guard: only restore once per model lifetime to prevent double-restore race condition
     // where a second restore (triggered by component remount or React Strict Mode) replaces
     // tabs that already had content loaded, leaving them in {content: null} blank state
-    if (CombinedLearningJourneyPanel._hasRestoredTabs) {
+    if (this._hasRestoredTabs) {
       return;
     }
-    CombinedLearningJourneyPanel._hasRestoredTabs = true;
+    this._hasRestoredTabs = true;
 
     // Use extracted restore module with dev mode detection
     const currentUserId = config.bootData.user?.id;

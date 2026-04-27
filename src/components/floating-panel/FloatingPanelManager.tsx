@@ -175,8 +175,6 @@ function FloatingPanelInner() {
     // Restore the sidebar's original tab state (snapshotted before pop-out)
     // so the floating panel's tabStorage writes don't wipe the user's tabs
     panelModeManager.restoreSidebarTabSnapshot();
-    // Reset the static guard so the sidebar's new model can restore tabs
-    CombinedLearningJourneyPanel.resetTabRestorationGuard();
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
     sidebarState.openSidebar('Interactive learning');
@@ -184,7 +182,6 @@ function FloatingPanelInner() {
 
   const handleClose = useCallback(() => {
     panelModeManager.restoreSidebarTabSnapshot();
-    CombinedLearningJourneyPanel.resetTabRestorationGuard();
     panelModeManager.setMode('sidebar');
   }, []);
 

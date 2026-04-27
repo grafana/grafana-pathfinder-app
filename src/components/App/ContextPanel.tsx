@@ -27,7 +27,6 @@ export default function MemoizedContextPanel() {
   useEffect(() => {
     if (mode === 'floating') {
       panelModeManager.restoreSidebarTabSnapshot();
-      CombinedLearningJourneyPanel.resetTabRestorationGuard();
       panelModeManager.setMode('sidebar');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
