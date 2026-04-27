@@ -936,6 +936,10 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
   }
 
   if (scored.length === 0) {
+    // No attribute / text / structural candidate matched — fall back to a positional
+    // `:nth-of-type` selector. This is brittle (any sibling reorder breaks it) but
+    // strictly better than returning nothing: at least the recorded step targets
+    // *something*, and the Selector Health badge will show red so the author notices.
     const tag = element.tagName.toLowerCase();
     let nthIndex = 1;
     if (element.parentElement) {

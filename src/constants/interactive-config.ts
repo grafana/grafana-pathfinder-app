@@ -17,7 +17,9 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     },
   },
   delays: {
-    // Perceptual delays for human-readable timing
+    // "Perceptual" delays are tuned to human reading/reaction time, not DOM timing —
+    // they pace Show/Do steps so a user can follow what's happening rather than seeing
+    // the UI flash and complete instantly. Don't shorten them to "improve performance".
     perceptual: {
       base: 800,
       button: 1500,
