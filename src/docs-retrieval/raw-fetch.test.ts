@@ -1,26 +1,27 @@
 /**
- * Phase 4 pre-extraction characterization tests for raw-fetch state machine.
+ * Unit tests for the raw-fetch state machine (`raw-fetch.ts`).
  *
- * SCOPE: Pin the async state machine behavior of `fetchRawHtml` and helpers
- * BEFORE extraction to a new module. These tests focus on:
+ * SCOPE: Pin the async state-machine behavior of `fetchRawHtml`, helpers, and
+ * `enforceHttps`. Five concern areas:
  *
  * 1. Drain behavior — exact `global.fetch` call counts and URL ordering
- *    (the variation queue, the json/html fallback chain, redirect handling)
+ *    (variation queue + json/html fallback chain + redirect handling)
  * 2. Trust/HTTPS asymmetry between the variation path and the direct path
- * 3. Cross-origin redirect blocking semantics
+ * 3. Cross-origin manual redirect blocking semantics
  * 4. Error classification matrix (`errorType` for not-found / server-error /
  *    timeout / network / other)
  * 5. JSON content-detection on `finalUrl` vs `urlVariation`
  *
- * These tests drive `fetchRawHtml` directly via temporary export (DR-07)
- * to isolate state-machine call counts from secondary fetches that
- * `fetchContent` makes via `extractMetadata` / index.json.
+ * These tests drive `fetchRawHtml` directly to isolate state-machine call
+ * counts from any secondary fetches `fetchContent` performs via
+ * `extractMetadata` / index.json.
  *
- * STATUS: Disposable. After Phase 4 extraction, this file is renamed
- * `raw-fetch.test.ts` (imports updated to `./raw-fetch`) and serves as
- * the permanent unit test for the new module. Some tests here verify
- * pre-existing behavior that may look quirky — that is intentional;
- * we are pinning current semantics, not fixing them.
+ * Originated as `raw-fetch.pre-extraction.test.ts` for Phase 4 of the
+ * content-fetcher refactor; promoted to the permanent `raw-fetch.test.ts`
+ * after extraction. Some assertions pin pre-existing behavior that may look
+ * quirky (e.g. trust gate trips before HTTPS gate on http downgrades) — that
+ * is intentional; we are characterizing current semantics, not aspirational
+ * ones.
  */
 
 import {
@@ -29,7 +30,7 @@ import {
   isJsonContentUrl,
   generateInteractiveLearningVariations,
   enforceHttps,
-} from './content-fetcher';
+} from './raw-fetch';
 
 const FETCHED_HTML = '<html><body>OK</body></html>';
 
