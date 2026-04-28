@@ -169,7 +169,12 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 		return packageCache.resp, packageCache.err
 	}
 
-	resp, err := fetchAndParsePackageRepository(ctx, packageRepositoryURL)
+	// Detach the upstream fetch from the request's cancellation: a canceled
+	// request (browser closed, panel collapsed mid-flight) must not poison the
+	// 6-hour cache with a "context canceled" error. The per-fetch timeouts
+	// inside fetchAndParsePackageRepository / enrichPackagesWithManifests
+	// still apply because they're added with their own context.WithTimeout.
+	resp, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), packageRepositoryURL)
 	packageCache = &packageCacheEntry{
 		resp:      resp,
 		err:       err,

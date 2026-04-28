@@ -152,6 +152,42 @@ func TestHandlePackageRecommendations_CachesAcrossCalls(t *testing.T) {
 	}
 }
 
+func TestHandlePackageRecommendations_DetachesFetchFromRequestCancellation(t *testing.T) {
+	resetPackageRecommendationsCache()
+	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	// Wrap the stub fetcher to fail if the request context (which we cancel
+	// below) leaks through. A passing test requires the handler to call us
+	// with a context that is NOT canceled.
+	innerFetcher, calls := stubFetcher(t, validPayload(t), nil)
+	withFetcherOverride(t, func(ctx context.Context, rawURL string) ([]byte, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return innerFetcher(ctx, rawURL)
+	})
+
+	// Build a request whose context is already canceled, mimicking a user
+	// closing the panel mid-fetch. Without context detachment, the upstream
+	// fetch fails and the error gets cached for 6 hours.
+	app := newTestApp(t)
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, "/package-recommendations", nil).WithContext(cancelledCtx)
+
+	rr := httptest.NewRecorder()
+	app.handlePackageRecommendations(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	// 1 repo + 2 manifest fetches (one per kept entry in validPayload), all
+	// succeeding because the fetcher's ctx.Err() check passes.
+	if got := atomic.LoadInt32(calls); got != 3 {
+		t.Errorf("upstream calls = %d, want 3", got)
+	}
+}
+
 func TestHandlePackageRecommendations_RefreshesAfterTTL(t *testing.T) {
 	resetPackageRecommendationsCache()
 	advance := withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
