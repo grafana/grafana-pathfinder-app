@@ -46,6 +46,13 @@ export interface PathGuide {
   completed: boolean;
   /** Whether this is the current/next guide to complete */
   isCurrent: boolean;
+  /**
+   * Resolved URL for this guide within the parent path, or `undefined` for
+   * bundled guides (callers fall back to `bundled:{id}`). Always scoped to
+   * the path that produced this `PathGuide` — required to disambiguate when
+   * two paths share a guide slug.
+   */
+  url?: string;
 }
 
 /**
@@ -224,6 +231,12 @@ export interface UseLearningPathsReturn {
   getPathProgress: (pathId: string) => number;
   /** Check if a path is completed */
   isPathCompleted: (pathId: string) => boolean;
+  /**
+   * Resolve the per-guide URL for a (guideId, pathId) pair.
+   * Returns undefined when no URL is known (e.g. bundled guide, or dynamic
+   * data has not loaded yet) so callers can fall back appropriately.
+   */
+  getGuideUrlForPath: (guideId: string, pathId: string) => string | undefined;
   /** Mark a guide as completed (triggers badge checks) */
   markGuideCompleted: (guideId: string) => Promise<void>;
   /** Reset a path's progress (clears guides, interactive steps, keeps badges) */

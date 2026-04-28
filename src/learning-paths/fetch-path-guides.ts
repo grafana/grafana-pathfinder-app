@@ -48,6 +48,9 @@ function slugFromPermalink(relpermalink: string): string {
 export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Promise<FetchedPathGuides | null> {
   // SECURITY: constructed URL with URL API (F3)
   const indexJsonUrl = new URL('index.json', pathUrl.endsWith('/') ? pathUrl : `${pathUrl}/`);
+  // Origin used to build absolute per-guide URLs from each item's relpermalink.
+  // Mirrors fetchLearningJourneyMetadataFromJson in docs-retrieval/content-fetcher.ts.
+  const origin = indexJsonUrl.origin;
 
   try {
     const response = await fetch(indexJsonUrl.toString(), { signal });
@@ -71,7 +74,8 @@ export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Pr
     const guideMetadata: Record<string, GuideMetadataEntry> = {};
 
     for (const item of validItems) {
-      const slug = slugFromPermalink(item.relpermalink || '');
+      const relpermalink: string = item.relpermalink || '';
+      const slug = slugFromPermalink(relpermalink);
       if (!slug) {
         continue;
       }
@@ -82,6 +86,10 @@ export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Pr
       guideMetadata[slug] = {
         title,
         estimatedMinutes: 5,
+        // Persist the absolute per-guide URL so the My Learning "Continue"
+        // button can navigate to the actual next module rather than falling
+        // back to the path base URL (issue #744).
+        url: relpermalink ? new URL(relpermalink, origin).toString() : undefined,
       };
     }
 

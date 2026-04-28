@@ -222,6 +222,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     getPathGuides,
     getPathProgress,
     isPathCompleted,
+    getGuideUrlForPath,
     resetPath,
     streakInfo,
     isLoading,
@@ -296,16 +297,23 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
       const parentPath = paths.find((p) => p.id === pathId);
 
-      // URL-based path — open as learning journey
+      // URL-based path — open the per-guide URL when known so the user lands
+      // on the actual next module instead of the path base / first module
+      // (issue #744). When dynamic data has not loaded yet, fall back to the
+      // path's base URL.
       if (parentPath?.url) {
+        const resolvedGuideUrl = getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url;
+        const guideTitle = getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
+        const title = guideTitle || parentPath.title;
+
         reportAppInteraction(UserInteraction.OpenResourceClick, {
-          content_title: parentPath.title,
-          content_url: parentPath.url,
+          content_title: title,
+          content_url: resolvedGuideUrl,
           content_type: 'learning-journey',
           interaction_location: 'my_learning_tab',
         });
 
-        onOpenGuide(parentPath.url, parentPath.title);
+        onOpenGuide(resolvedGuideUrl, title);
         return;
       }
 
@@ -338,7 +346,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       onOpenGuide(guideUrl, title);
     },
-    [onOpenGuide, paths, getPathProgress, getPathGuides]
+    [onOpenGuide, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
   );
 
   // Handle reset all progress (for testing)
