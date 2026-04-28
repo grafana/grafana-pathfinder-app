@@ -1,9 +1,9 @@
 import React from 'react';
 // @ts-expect-error - Icon kept available as core Grafana UI component
-import { Button, Alert, Icon, useStyles2 } from '@grafana/ui';
+import { Button, Alert, Icon, useStyles2, Tooltip } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { css } from '@emotion/css';
-import { locationService } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getConfigWithDefaults } from '../../constants';
 
@@ -15,6 +15,8 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
   const styles = useStyles2(getStyles);
   const context = usePluginContext();
   const configWithDefaults = getConfigWithDefaults(context?.meta?.jsonData || {});
+  const user = config.bootData?.user;
+  const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 
   // Only show if recommender is disabled (uses centralized config with platform defaults)
   if (configWithDefaults.acceptedTermsAndConditions) {
@@ -46,15 +48,22 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
             </div>
           </div>
           <div className={styles.action}>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleEnableRecommender}
-              icon="cog"
-              className={styles.enableButton}
+            <Tooltip
+              content="You don't have permission to access plugin settings"
+              placement="top"
+              show={!canAccessPluginSettings ? undefined : false}
             >
-              Go to plugin configuration
-            </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleEnableRecommender}
+                icon="cog"
+                className={styles.enableButton}
+                disabled={!canAccessPluginSettings}
+              >
+                Go to plugin configuration
+              </Button>
+            </Tooltip>
           </div>
         </div>
       </Alert>
