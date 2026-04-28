@@ -60,7 +60,7 @@ function fakeResponse(opts: {
   } as unknown as Response;
 }
 
-describe('raw-fetch state machine — pre-extraction characterization', () => {
+describe('raw-fetch state machine', () => {
   let fetchMock: jest.Mock;
   let warnSpy: jest.SpyInstance;
   let errorSpy: jest.SpyInstance;
@@ -382,6 +382,62 @@ describe('raw-fetch state machine — pre-extraction characterization', () => {
       const result = await fetchRawHtml('https://interactive-learning.grafana.net/g/', {});
 
       expect(result.isNativeJson).toBe(false);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // post-extraction additions
+  // (added after Phase 4 extract; cover gaps the disposable pre-tests missed)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('post-extraction additions', () => {
+    it('isJsonContentUrl returns false for the empty string and for strings without an extension', () => {
+      // Pin the no-extension fallback so a future refactor cannot accidentally
+      // make an empty path "look JSON" (e.g. via a startsWith check).
+      expect(isJsonContentUrl('')).toBe(false);
+      expect(isJsonContentUrl('https://grafana.com/docs/foo/')).toBe(false);
+    });
+
+    it('generateInteractiveLearningVariations returns the URL as-is when it already points at content.json', () => {
+      // The no-op single-element return path is easy to silently regress to
+      // [content.json/content.json, content.json/unstyled.html] during a
+      // mechanical refactor. Pin both shape and length.
+      const variations = generateInteractiveLearningVariations(
+        'https://interactive-learning.grafana.net/test/content.json'
+      );
+      expect(variations).toHaveLength(1);
+      expect(variations[0]).toBe('https://interactive-learning.grafana.net/test/content.json');
+    });
+
+    it('tryUrlVariations skips an untrusted-final-URL hit and continues to the next variation', async () => {
+      // Trust gate trips on the FIRST 200 response (its response.url points
+      // outside the allowlist) → the loop must `continue` and consume the
+      // next variation. This pins the silent-skip semantics that the
+      // variation queue depends on for security.
+      fetchMock
+        .mockResolvedValueOnce(
+          fakeResponse({
+            status: 200,
+            url: 'https://evil.com/exfiltrated', // untrusted final URL
+            body: '{"stolen":"data"}',
+          })
+        )
+        .mockResolvedValueOnce(
+          fakeResponse({
+            status: 200,
+            url: 'https://interactive-learning.grafana.net/g/unstyled.html',
+            body: FETCHED_HTML,
+          })
+        );
+
+      const result = await fetchRawHtml('https://interactive-learning.grafana.net/g/', {});
+
+      // First hit was rejected (untrusted), second hit succeeded
+      expect(result.html).toBe(FETCHED_HTML);
+      expect(result.isNativeJson).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0]![0]).toBe('https://interactive-learning.grafana.net/g/content.json');
+      expect(fetchMock.mock.calls[1]![0]).toBe('https://interactive-learning.grafana.net/g/unstyled.html');
     });
   });
 });
