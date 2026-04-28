@@ -4,7 +4,6 @@ import * as path from 'path';
 
 import type {
   JsonBlock,
-  JsonGuidedBlock,
   JsonInteractiveBlock,
   JsonMultistepBlock,
   JsonQuizBlock,
@@ -83,12 +82,6 @@ const multistep = (id: string, steps: JsonStep[] = []): JsonMultistepBlock => ({
   type: 'multistep',
   id,
   content: 'step block',
-  steps: steps.length > 0 ? steps : [{ action: 'noop' }],
-});
-const guided = (id: string, steps: JsonStep[] = []): JsonGuidedBlock => ({
-  type: 'guided',
-  id,
-  content: 'guided block',
   steps: steps.length > 0 ? steps : [{ action: 'noop' }],
 });
 const quiz = (id: string, choices: JsonQuizBlock['choices'] = []): JsonQuizBlock => ({

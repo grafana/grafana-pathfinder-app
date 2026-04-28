@@ -207,7 +207,18 @@ function parseFileWithSchema<T>(
 
   const result = schema.safeParse(parsed);
   if (!result.success) {
-    const issues: PackageIOIssue[] = result.error.issues.map((i) => ({
+    // Filter completeness issues — the authoring flow legitimately reads
+    // packages mid-construction with empty step / choice arrays. If any
+    // genuine schema issue remains after filtering, fail loud.
+    const realIssues = result.error.issues.filter((i) => !isEmptyContainerCompletenessMessage(i.message));
+    if (realIssues.length === 0) {
+      // The strict-schema parse failed only on empty containers; the file
+      // is structurally valid for authoring purposes. Return the raw
+      // parsed JSON cast to T — the CLI mutators will populate the empty
+      // arrays as the agent fills them in.
+      return parsed as T;
+    }
+    const issues: PackageIOIssue[] = realIssues.map((i) => ({
       code: 'SCHEMA_VALIDATION',
       message: `${label}: ${i.message}`,
       path: i.path.map(String),
@@ -249,6 +260,9 @@ export function validatePackageState(content: ContentJson, manifest: ManifestJso
   const contentParsed = ContentJsonSchema.safeParse(content);
   if (!contentParsed.success) {
     for (const issue of contentParsed.error.issues) {
+      if (isEmptyContainerCompletenessMessage(issue.message)) {
+        continue;
+      }
       issues.push({
         code: 'SCHEMA_VALIDATION',
         message: `content.json: ${issue.message}`,
@@ -263,6 +277,9 @@ export function validatePackageState(content: ContentJson, manifest: ManifestJso
   const guideResult = validateGuide(content);
   if (!guideResult.isValid) {
     for (const err of guideResult.errors) {
+      if (isEmptyContainerCompletenessMessage(err.message)) {
+        continue;
+      }
       // Skip messages already flagged above to avoid duplicate reporting on
       // the most common failure (Zod returns the same issue from both paths).
       if (issues.some((i) => i.message.includes(err.message))) {
@@ -296,6 +313,19 @@ export function validatePackageState(content: ContentJson, manifest: ManifestJso
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Drop "at least one X is required" Zod errors from in-memory validation.
+ *
+ * These are completeness checks the CLI authoring flow legitimately violates
+ * between a `add-block <container>` call and the first `add-step` /
+ * `add-choice` that fills it in. The standalone `validate` command (which
+ * calls `validatePackage(dir)` rather than this in-memory variant) still
+ * surfaces these so a published guide cannot ship an empty container.
+ */
+function isEmptyContainerCompletenessMessage(message: string): boolean {
+  return /At least one (step|choice|screen|condition) is required/.test(message);
 }
 
 // ---------------------------------------------------------------------------

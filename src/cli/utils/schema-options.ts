@@ -213,12 +213,44 @@ export function zodFieldToOption(name: string, field: z.ZodType): Option | null 
  * objects) are silently skipped. Use `describeField()` directly if you need
  * to detect or surface those.
  */
-export function registerSchemaOptions<T extends z.ZodObject>(cmd: Command, schema: T): Command {
+export function registerSchemaOptions<T extends z.ZodObject>(
+  cmd: Command,
+  schema: T,
+  options: {
+    skipExisting?: boolean;
+    /**
+     * Force every generated option to be non-mandatory. Used by `edit-block`,
+     * which composes flags from many block schemas — required-on-create
+     * fields (like `image.src`) are not required-on-patch.
+     */
+    forceOptional?: boolean;
+  } = {}
+): Command {
   const shape = schema.shape as Record<string, z.ZodType>;
+  // Pre-compute the set of long flags already registered on this command so
+  // multi-schema callers (notably `edit-block`, which unions every block
+  // schema's flag surface) can layer schemas without colliding on shared
+  // fields like `--id`.
+  const existing = new Set(cmd.options.map((o) => o.long ?? '').filter(Boolean));
   for (const [name, field] of Object.entries(shape)) {
     const option = zodFieldToOption(name, field);
-    if (option) {
+    if (!option) {
+      continue;
+    }
+    if (options.forceOptional) {
+      option.mandatory = false;
+    }
+    if (options.skipExisting && existing.has(option.long ?? '')) {
+      continue;
+    }
+    if (existing.has(option.long ?? '')) {
+      // Without `skipExisting`, fall back to the historical behavior so
+      // callers that *expect* a clean schema get a loud failure rather than
+      // a silent overwrite.
       cmd.addOption(option);
+    } else {
+      cmd.addOption(option);
+      existing.add(option.long ?? '');
     }
   }
   return cmd;
