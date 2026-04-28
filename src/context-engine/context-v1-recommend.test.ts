@@ -181,6 +181,52 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
     expect(urlBacked!.summary).toBe('Learn how to configure alerts in Grafana.');
   });
 
+  it('should preserve package metadata when featured content matches a package recommendation', async () => {
+    const v1Response = makeV1Response({
+      recommendations: [
+        {
+          type: 'package',
+          title: 'How to set up your first Synthetic Monitoring check',
+          description: 'Package-backed guide.',
+          matchAccuracy: 0.95,
+          contentUrl: 'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/content.json',
+          manifestUrl: 'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/manifest.json',
+          repository: 'interactive-tutorials',
+          manifest: { id: 'sm-setting-up-your-first-check', type: 'guide' },
+        },
+      ],
+      featured: [
+        {
+          type: 'interactive',
+          title: 'Interactive Guide: How to set up your first Synthetic Monitoring check',
+          description: 'Featured legacy guide.',
+          url: 'https://interactive-learning.grafana.net/guides/sm-setting-up-your-first-check',
+        },
+      ],
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(v1Response),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    const featured = result.featuredRecommendations[0];
+    expect(featured).toBeDefined();
+    expect(featured!.type).toBe('package');
+    expect(featured!.title).toBe('Interactive Guide: How to set up your first Synthetic Monitoring check');
+    expect(featured!.summary).toBe('Featured legacy guide.');
+    expect(featured!.contentUrl).toBe(
+      'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/content.json'
+    );
+    expect(featured!.manifestUrl).toBe(
+      'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/manifest.json'
+    );
+    expect(featured!.repository).toBe('interactive-tutorials');
+    expect(featured!.manifest).toEqual({ id: 'sm-setting-up-your-first-check', type: 'guide' });
+  });
+
   it('should sanitize v1 recommendations and not pass through raw properties', async () => {
     const v1Response = {
       recommendations: [
