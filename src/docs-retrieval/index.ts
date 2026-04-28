@@ -5,6 +5,11 @@
 export * from '../types/content.types';
 export * from './content-fetcher';
 
+// Markdown helpers (extracted from content-fetcher in Phase 1 of the
+// content-fetcher refactor; barrel re-export preserves the public path-shape
+// consumers see — `simpleMarkdownToHtml` is the only test-visible export today)
+export { simpleMarkdownToHtml } from './markdown-renderer';
+
 // Learning journey helpers
 export * from './learning-journey-helpers';
 

@@ -1,7 +1,8 @@
 /**
  * Tests for content fetcher security validation and JSON-first fetching
  */
-import { fetchContent, simpleMarkdownToHtml } from './content-fetcher';
+import { fetchContent } from './content-fetcher';
+import { simpleMarkdownToHtml } from './markdown-renderer';
 
 // Mock AbortSignal.timeout for Node environments that don't support it
 if (!AbortSignal.timeout) {

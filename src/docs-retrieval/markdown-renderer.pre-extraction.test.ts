@@ -18,7 +18,7 @@ import {
   simpleMarkdownToHtml,
   splitAtNextHeading,
   wrapExpectBlockInOrangeOutline,
-} from './content-fetcher';
+} from './markdown-renderer';
 
 describe('markdown-renderer (pre-extraction contract)', () => {
   describe('simpleMarkdownToHtml — table-driven', () => {
