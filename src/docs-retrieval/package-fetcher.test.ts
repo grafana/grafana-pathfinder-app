@@ -345,4 +345,88 @@ describe('package + resolver', () => {
       expect(calledIds).toEqual(['m-1', 'm-2', 'pkg-lj']);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // post-extraction additions
+  // (added after Phase 5 extract; cover gaps the disposable pre-tests missed)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('post-extraction additions', () => {
+    it('setPackageResolver replacement: most recent call wins', async () => {
+      // The PLAN's tripwire pinned *that* setPackageResolver replaces, but
+      // not that the new resolver is actually used by subsequent reads. Pin
+      // both halves: install resolver A, then resolver B, then verify only
+      // B is consulted.
+      const resolveA = jest.fn().mockResolvedValue({
+        ok: false as const,
+        id: 'a',
+        error: { code: 'not-found' as const, message: 'A' },
+      });
+      const resolveB = jest.fn().mockResolvedValue(
+        successResolution({
+          id: 'pkg-x',
+          contentUrl: 'https://grafana.com/docs/learning-paths/pkg-x',
+          repository: 'cdn',
+        })
+      );
+
+      setPackageResolver({ resolve: resolveA });
+      setPackageResolver({ resolve: resolveB });
+
+      // resolvePackageMilestones consults the active resolver
+      await resolvePackageMilestones(['pkg-x']);
+
+      expect(resolveA).not.toHaveBeenCalled();
+      expect(resolveB).toHaveBeenCalledTimes(1);
+      expect(resolveB).toHaveBeenCalledWith('pkg-x', { loadContent: 'metadata-only' });
+    });
+
+    it('resolvePackageMilestones falls back to manifest.description when content is absent', async () => {
+      // Pin the title-fallback chain: resolution.content?.title ??
+      // resolution.manifest?.description ?? id. Without explicit pins, a
+      // refactor could silently swap the order and produce wrong-looking
+      // milestone titles.
+      const resolver = makeResolverFromMap({
+        'has-content': successResolution({
+          id: 'has-content',
+          contentUrl: 'https://x/has-content',
+          repository: 'cdn',
+          content: { id: 'has-content', title: 'Title from content' },
+          // manifest absent
+        } as any),
+        'manifest-only': successResolution({
+          id: 'manifest-only',
+          contentUrl: 'https://x/manifest-only',
+          repository: 'cdn',
+          manifest: { id: 'manifest-only', description: 'Title from manifest' },
+          // content absent
+        } as any),
+        'no-metadata': successResolution({
+          id: 'no-metadata',
+          contentUrl: 'https://x/no-metadata',
+          repository: 'cdn',
+          // both content and manifest absent
+        }),
+      });
+      setPackageResolver(resolver);
+
+      const milestones = await resolvePackageMilestones(['has-content', 'manifest-only', 'no-metadata']);
+
+      expect(milestones).toHaveLength(3);
+      expect(milestones[0]!.title).toBe('Title from content');
+      expect(milestones[1]!.title).toBe('Title from manifest');
+      expect(milestones[2]!.title).toBe('no-metadata'); // falls all the way through to id
+    });
+
+    it('buildMilestoneWebsiteUrl handles empty pathSlug edge case (would prefix with bare "-")', () => {
+      // Pin the literal "${pathSlug}-" prefix construction. When pathSlug
+      // is the empty string, the prefix becomes just "-", so any milestoneId
+      // starting with "-" matches. Documenting this current behavior keeps
+      // a future refactor honest.
+      expect(buildMilestoneWebsiteUrl('', '-some-milestone')).toBe(
+        'https://grafana.com/docs/learning-paths//some-milestone/'
+      );
+      expect(buildMilestoneWebsiteUrl('', 'no-leading-dash')).toBeUndefined();
+    });
+  });
 });
