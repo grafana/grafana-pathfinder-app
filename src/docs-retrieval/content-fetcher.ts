@@ -1114,7 +1114,7 @@ function extractTitleFromJson(json: string): string {
   return 'Documentation';
 }
 
-function extractTitleFromHtml(html: string): string {
+export function extractTitleFromHtml(html: string): string {
   const titlePatterns = [
     /<title[^>]*>([^<]+)<\/title>/i,
     /<h1[^>]*>([^<]+)<\/h1>/i,
@@ -1169,7 +1169,7 @@ function extractSingleDocMetadata(html: string): SingleDocMetadata {
 /**
  * Simple summary extraction using string parsing
  */
-function extractJourneySummary(html: string): string {
+export function extractJourneySummary(html: string): string {
   // Look for first few paragraphs
   const paragraphMatches = html.match(/<p[^>]*>(.*?)<\/p>/gi);
   if (paragraphMatches && paragraphMatches.length > 0) {
@@ -1185,7 +1185,7 @@ function extractJourneySummary(html: string): string {
   return '';
 }
 
-function extractDocSummary(html: string): string {
+export function extractDocSummary(html: string): string {
   // Try meta description first
   const metaMatch = html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/i);
   if (metaMatch && metaMatch[1]) {
@@ -1208,7 +1208,7 @@ function extractDocSummary(html: string): string {
  * Learning journey specific functions
  * These are simplified versions that focus on data extraction only
  */
-function getLearningJourneyBaseUrl(url: string): string {
+export function getLearningJourneyBaseUrl(url: string): string {
   // Handle cases like:
   // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs (legacy)
   // https://grafana.com/docs/learning-paths/drilldown-logs/ -> https://grafana.com/docs/learning-paths/drilldown-logs (new)
@@ -1233,7 +1233,7 @@ function getLearningJourneyBaseUrl(url: string): string {
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
 
-async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Milestone[]> {
+export async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Milestone[]> {
   try {
     const indexJsonUrl = `${baseUrl}/index.json`;
     const response = await fetch(indexJsonUrl);
@@ -1297,7 +1297,7 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
  * Find current milestone number from URL - improved version
  * Handles /unstyled.html and /content.json suffixes added during content fetching
  */
-function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
+export function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
   // Strip /unstyled.html or /content.json suffixes for comparison (added during content fetching)
   const cleanUrl = url.replace(/\/(unstyled\.html|content\.json)$/, '');
 
@@ -1327,7 +1327,7 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
 /**
  * Check if two URLs match, handling trailing slashes
  */
-function urlsMatch(url1: string, url2: string): boolean {
+export function urlsMatch(url1: string, url2: string): boolean {
   const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
   return normalize(url1) === normalize(url2);
 }
