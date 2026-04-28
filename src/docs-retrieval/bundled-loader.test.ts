@@ -1,16 +1,23 @@
 /**
- * Pre-extraction characterization tests for bundled-loader extraction (Phase 3).
+ * Unit tests for the bundled-loader module.
  *
- * Disposable safety net per .cursor/skills/refactor/SKILL.md and the High-Risk
- * Refactor Guidelines wiki ("tests are safety rails, not refactoring targets").
+ * Originated as the Phase 3 pre-extraction characterization safety net for
+ * the content-fetcher refactor and was promoted to permanent post-tests
+ * after the extraction landed (per .cursor/skills/refactor/SKILL.md per-phase
+ * test sandwich).
  *
- * Pattern J (contract-surface) — these assertions pin the storage keys, scheme
- * sub-prefixes, error messages, fallback order, and the SAFE_PACKAGE_PATH
- * regex semantics owned by `fetchBundledInteractive` BEFORE the function moves
- * out of `content-fetcher.ts` into a new `./bundled-loader` module.
+ * Pattern J (contract-surface) coverage:
+ *   - 4 `bundled:` sub-prefixes (wysiwyg-preview, e2e-test, pr-tests/<id>,
+ *     <dir>/<file>.json) + the legacy `bundled:<id>` index.json fallback
+ *   - 3 storage-key reads (WYSIWYG_PREVIEW_JSON, E2E_TEST_GUIDE,
+ *     `pathfinder-bundled-<id>`)
+ *   - SAFE_PACKAGE_PATH regex negative table
+ *   - error message strings (verbatim — some E2E tests may match them)
+ *   - webpack require() literal-path resolution via Jest virtual mocks
  *
- * Lifecycle: this file becomes `bundled-loader.test.ts` (permanent) at the
- * post-test commit.
+ * Permanent additions over the pre-extraction set:
+ *   - empty contentId after the bundled: prefix
+ *   - malformed JSON in pr-tests sessionStorage (default title path)
  *
  * Mocking strategy:
  *   - Real jsdom `localStorage` / `sessionStorage` (per the project convention
@@ -53,7 +60,7 @@ jest.mock(
 import { fetchContent } from './content-fetcher';
 import { StorageKeys } from '../lib/user-storage';
 
-describe('bundled-loader (pre-extraction characterization)', () => {
+describe('bundled-loader', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -150,6 +157,27 @@ describe('bundled-loader (pre-extraction characterization)', () => {
       const result = await fetchContent('bundled:empty-guide');
       expect(result.content).toBeNull();
       expect(result.error).toContain('content is empty');
+    });
+  });
+
+  // Permanent additions (post-test promotion) — corner cases the pre-test skipped.
+  describe('post-extraction additions', () => {
+    it('treats `bundled:` with empty contentId as a missing index.json id (not an empty-content error)', async () => {
+      // contentId === '' has no '/', does not end with '.json', so it routes
+      // to the legacy index.json branch and reports "not found in index.json".
+      const result = await fetchContent('bundled:');
+      expect(result.content).toBeNull();
+      expect(result.error).toContain('not found in index.json');
+    });
+
+    it('falls back to the default "PR Test Path" title when sessionStorage has malformed JSON', async () => {
+      // The JSON.parse failure path silently uses the default title — pinning
+      // that the pr-tests branch does NOT propagate parse errors.
+      sessionStorage.setItem('pathfinder-bundled-malformed', '{not json');
+      const result = await fetchContent('bundled:pr-tests/malformed');
+      expect(result.content).not.toBeNull();
+      expect(result.content!.metadata.title).toBe('PR Test Path');
+      expect(result.content!.content).toBe('{not json'); // raw payload preserved
     });
   });
 });
