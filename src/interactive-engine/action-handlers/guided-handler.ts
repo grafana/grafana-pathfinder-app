@@ -96,6 +96,8 @@ export class GuidedHandler {
         throw new Error(`Non-noop action ${targetAction} requires a refTarget`);
       }
 
+      await this.expandNavigationParentIfNeeded(refTarget);
+
       // Find target element using action-specific logic with retry
       // For skippable steps, skip retries to fail fast and auto-skip
       let targetElement: HTMLElement;
@@ -371,6 +373,24 @@ export class GuidedHandler {
     }
 
     throw new Error(`Timeout finding element: ${selector}`);
+  }
+
+  private async expandNavigationParentIfNeeded(selector: string): Promise<void> {
+    const targetHref = this.getNavigationTargetHref(selector);
+    if (!targetHref) {
+      return;
+    }
+
+    await this.navigationManager.expandParentNavigationSection(targetHref);
+  }
+
+  private getNavigationTargetHref(selector: string): string | undefined {
+    const resolvedSelector = resolveSelector(selector);
+    const navigationMenuItemMatch = resolvedSelector.match(
+      /a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/
+    );
+
+    return navigationMenuItemMatch?.[1];
   }
 
   /**

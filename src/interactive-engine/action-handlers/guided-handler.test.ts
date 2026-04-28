@@ -1,6 +1,7 @@
 import { GuidedHandler } from './guided-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
+import { querySelectorAllEnhanced } from '../../lib/dom';
 
 // Mock dependencies
 jest.mock('../interactive-state-manager');
@@ -80,6 +81,74 @@ describe('GuidedHandler', () => {
       guidedHandler.resetProgress();
       // Method should not throw
       expect(guidedHandler.resetProgress).toBeDefined();
+    });
+  });
+
+  describe('executeGuidedStep', () => {
+    it('should expand parent navigation before resolving a nested guided nav target', async () => {
+      const refTarget = "a[data-testid='data-testid Nav menu item'][href='/alerting/list']";
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      document.body.innerHTML = `
+        <nav>
+          <a data-testid="data-testid Nav menu item" href="/alerting">Alerting</a>
+          <button type="button" aria-label="Expand section: Alerting" aria-expanded="false">Expand</button>
+        </nav>
+      `;
+
+      (querySelectorAllEnhanced as jest.Mock).mockImplementation((selector: string) => ({
+        elements: Array.from(document.querySelectorAll(selector)),
+        usedFallback: false,
+      }));
+
+      mockNavigationManager.expandParentNavigationSection = jest.fn().mockImplementation(async (targetHref: string) => {
+        const expandButton = document.querySelector('button[aria-label="Expand section: Alerting"]');
+        expandButton?.setAttribute('aria-expanded', 'true');
+
+        const nestedLink = document.createElement('a');
+        nestedLink.setAttribute('data-testid', 'data-testid Nav menu item');
+        nestedLink.setAttribute('href', targetHref);
+        nestedLink.textContent = 'Alert rules';
+        document.querySelector('nav')?.appendChild(nestedLink);
+
+        return true;
+      });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async (targetElement: HTMLElement) => {
+        targetElement.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget,
+          targetComment: 'Click Alert rules in the Alerting menu.',
+        },
+        0,
+        1,
+        5
+      );
+
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.expandParentNavigationSection).toHaveBeenCalledWith('/alerting/list');
+      expect(document.querySelector('button[aria-label="Expand section: Alerting"]')).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      );
+      expect(document.querySelector(refTarget)).toBeInTheDocument();
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(document.querySelector(refTarget));
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(
+        document.querySelector(refTarget),
+        'Click Alert rules in the Alerting menu.',
+        false,
+        expect.objectContaining({ current: 0, total: 1 }),
+        undefined,
+        expect.any(Function),
+        undefined,
+        undefined,
+        expect.objectContaining({ actionType: 'highlight', reftarget: refTarget })
+      );
+
+      consoleErrorSpy.mockRestore();
     });
   });
 
