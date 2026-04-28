@@ -24,11 +24,17 @@ test.describe('online package recommendations endpoint', () => {
     expect(Array.isArray(body.packages)).toBe(true);
 
     if (body.packages.length > 0) {
-      const sample = body.packages[0];
-      expect(typeof sample.id).toBe('string');
-      expect(typeof sample.path).toBe('string');
-      expect(sample.targeting).toBeDefined();
-      expect(sample.targeting.match).toBeDefined();
+      // Every entry must have id + path. Only the targeted subset participates
+      // in recommendations; untargeted entries (milestone steps,
+      // recommends/suggests targets) stay in the response so the package
+      // resolver can find them by ID.
+      for (const entry of body.packages) {
+        expect(typeof entry.id).toBe('string');
+        expect(typeof entry.path).toBe('string');
+      }
+      const targeted = body.packages.find((p: { targeting?: unknown }) => p.targeting);
+      expect(targeted).toBeDefined();
+      expect(targeted.targeting.match).toBeDefined();
     }
   });
 
