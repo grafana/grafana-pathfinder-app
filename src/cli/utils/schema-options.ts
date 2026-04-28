@@ -100,9 +100,23 @@ export function describeField(field: z.ZodType): FieldShape {
     return { kind: 'enum', optional, values, description };
   }
   if (t === 'array') {
-    const elementType = (def as any).element?.def?.type;
+    const element = (def as any).element;
+    const elementType = element?.def?.type;
     if (elementType === 'string') {
       return { kind: 'array-string', optional, description };
+    }
+    // Manifest dependency lists are `z.array(z.union([z.string(), z.array(z.string())]))`
+    // — the OR-group case (string[] alternatives) is rare in CLI use and
+    // requires manual JSON editing. Treat the union-element array as an
+    // array-string flag if any branch of the union is a string; users get
+    // the bare-string path via the CLI and can fall back to manual JSON
+    // editing for OR-groups.
+    if (elementType === 'union') {
+      const branches: Array<{ def?: { type?: string } }> = element?.def?.options ?? [];
+      const acceptsString = branches.some((branch) => branch?.def?.type === 'string');
+      if (acceptsString) {
+        return { kind: 'array-string', optional, description };
+      }
     }
     return { kind: 'unsupported', reason: `array of ${elementType ?? 'unknown'}`, optional };
   }

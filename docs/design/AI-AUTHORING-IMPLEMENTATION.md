@@ -12,7 +12,7 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 | Phase | Title                                  | Status      | Detailed plan                                                                   | Tracking         |
 | ----- | -------------------------------------- | ----------- | ------------------------------------------------------------------------------- | ---------------- |
 | P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md) | _epic issue TBD_ |
-| P1    | CLI authoring foundation               | In progress | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)   | _epic issue TBD_ |
+| P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)   | _epic issue TBD_ |
 | P2    | CLI distribution                       | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 | P3    | Authoring tools on existing plugin MCP | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 | P4    | Assistant handoff and viewer link      | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |

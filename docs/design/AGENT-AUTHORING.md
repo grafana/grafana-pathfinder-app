@@ -77,7 +77,7 @@ Instead of asking agents to understand the schema and produce raw JSON, we give 
 
 4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
 
-5. **Progressive discovery.** An agent runs `add-block <dir> interactive --help` and gets exactly the fields, types, constraints, and valid values for an interactive block. No upfront schema study required.
+5. **Progressive discovery.** An agent runs `add-block interactive --help` and gets exactly the fields, types, constraints, and valid values for an interactive block. No upfront schema study required.
 
 6. **Agent-first output.** Every command response is designed for an agent consumer. Success messages confirm what was done and suggest what the agent might do next. Error messages include the specific constraint that was violated. Help output is terse and structured.
 
@@ -114,7 +114,7 @@ Created package: my-guide/
   content.json  (id: my-guide, title: "Getting started with Loki")
   manifest.json (type: guide, schemaVersion: 1.1.0)
 
-Add blocks with: pathfinder-cli add-block my-guide/ <type>
+Add blocks with: pathfinder-cli add-block <type> my-guide/
 Block types: markdown, section, interactive, multistep, guided, quiz, input,
   image, video, html, terminal, terminal-connect, code-block, conditional, assistant
 ```
@@ -124,10 +124,12 @@ Block types: markdown, section, interactive, multistep, guided, quiz, input,
 Append a block to the guide. Each block type is a subcommand with its own flags derived from the corresponding Zod schema.
 
 ```
-pathfinder-cli add-block <dir> <type> [flags]
+pathfinder-cli add-block <type> <dir> [flags]
   --parent <id>                       Append inside container with this id
   --branch <true|false>               Target branch of a conditional block
 ```
+
+The block type is the _first_ positional argument so each type's `--help` (`pathfinder-cli add-block interactive --help`) resolves cleanly via Commander's subcommand model. The package directory follows.
 
 The `--parent` flag targets a container block by its `id`. Without `--parent`, the block is appended to the top-level `blocks` array. When the parent is a `conditional` block, `--branch true` or `--branch false` selects the target branch.
 
@@ -136,7 +138,7 @@ Container block types (`section`, `conditional`, `assistant`, `multistep`, `guid
 **Example — adding a section:**
 
 ```
-pathfinder-cli add-block my-guide/ section --id setup --title "Set up your environment"
+pathfinder-cli add-block section my-guide/ --id setup --title "Set up your environment"
 ```
 
 **Output on success:**
@@ -146,13 +148,13 @@ Added section "Set up your environment" (id: setup) to my-guide/
   Position: blocks[3]
   Package valid: yes
 
-Add content to this section with: pathfinder-cli add-block my-guide/ <type> --parent setup
+Add content to this section with: pathfinder-cli add-block <type> my-guide/ --parent setup
 ```
 
 **Example — adding an interactive block inside a section:**
 
 ```
-pathfinder-cli add-block my-guide/ interactive \
+pathfinder-cli add-block interactive my-guide/ \
   --parent setup \
   --action navigate \
   --reftarget '[data-testid="nav-item-connections"]' \
@@ -166,8 +168,8 @@ Added interactive block (action: navigate) to section "setup" in my-guide/
   Position: blocks[3].blocks[1]
   Package valid: yes
 
-Continue adding blocks with: pathfinder-cli add-block my-guide/ <type> --parent setup
-Or add a new top-level block with: pathfinder-cli add-block my-guide/ <type>
+Continue adding blocks with: pathfinder-cli add-block <type> my-guide/ --parent setup
+Or add a new top-level block with: pathfinder-cli add-block <type> my-guide/
 ```
 
 ### `add-step`
@@ -188,7 +190,7 @@ Added step (action: button) to guided block "install-steps" in my-guide/
   Package valid: yes
 
 Add another step with: pathfinder-cli add-step my-guide/ --parent install-steps --action <action>
-Or finalize and add the next block with: pathfinder-cli add-block my-guide/ <type>
+Or finalize and add the next block with: pathfinder-cli add-block <type> my-guide/
 ```
 
 ### `add-choice`
@@ -379,7 +381,7 @@ Agents retry. If an `add-block` call succeeds but the process crashes before the
 The `--if-absent` flag makes container creation idempotent:
 
 ```
-pathfinder-cli add-block my-guide/ section --id setup --title "Set up your environment" --if-absent
+pathfinder-cli add-block section my-guide/ --id setup --title "Set up your environment" --if-absent
 ```
 
 Behavior:
@@ -529,7 +531,9 @@ Every mutation command follows this sequence:
 
 This means the CLI **cannot produce an invalid package**. Even if the schema-to-option bridge has a bug that allows an unexpected value through as a flag, the Zod validation at step 3 catches it before anything is written.
 
-The validate command (`pathfinder-cli validate`) remains available for read-only inspection of existing packages, but it is never needed as a "final check" after authoring — every write has already validated.
+The CLI's in-flight validator filters one specific class of Zod issue: "At least one X is required" on `multistep.steps`, `guided.steps`, `quiz.choices`, `grot-guide.screens`, and `conditional.conditions`. The authoring flow legitimately holds a transient empty container between an `add-block <container>` call and the first `add-step` / `add-choice` that fills it. The standalone `pathfinder-cli validate --package <dir>` (used as the publish-time gate) keeps these checks strict — so a published guide is never empty in places that demand content. See [P1 phase plan — Deviations](./phases/ai-authoring-1-cli-foundation.md#deviations).
+
+The validate command (`pathfinder-cli validate --package <dir>`) remains available for full disk-aware inspection of existing packages, but it is never needed as a "final check" after authoring — every write has already validated. Run it before publishing to surface the completeness checks the in-flight validator filters out.
 
 ---
 
@@ -640,7 +644,7 @@ Error: --parent "setup" not found in my-guide/
 Help output is terse and structured for agent parsing. When an agent runs `--help` on a block type subcommand:
 
 ```
-$ pathfinder-cli add-block my-guide/ interactive --help
+$ pathfinder-cli add-block interactive my-guide/ --help
 
 Add an interactive block
 
@@ -791,15 +795,15 @@ A complete authoring session for a simple guide:
 pathfinder-cli create my-guide/ --id my-guide --title "Getting started with Loki"
 
 # Add an introduction section
-pathfinder-cli add-block my-guide/ section --id intro --title "Introduction"
+pathfinder-cli add-block section my-guide/ --id intro --title "Introduction"
 
 # Add markdown inside the section
-pathfinder-cli add-block my-guide/ markdown \
+pathfinder-cli add-block markdown my-guide/ \
   --parent intro \
   --content "In this guide you will learn how to send logs to **Loki** and query them in Grafana."
 
 # Add an interactive navigation step
-pathfinder-cli add-block my-guide/ interactive \
+pathfinder-cli add-block interactive my-guide/ \
   --parent intro \
   --action navigate \
   --reftarget '[data-testid="nav-item-connections"]' \
@@ -808,7 +812,7 @@ pathfinder-cli add-block my-guide/ interactive \
   --show-me
 
 # Add a guided block with multiple steps
-pathfinder-cli add-block my-guide/ guided \
+pathfinder-cli add-block guided my-guide/ \
   --id add-loki \
   --parent intro \
   --content "Add Loki as a data source."
@@ -825,7 +829,7 @@ pathfinder-cli add-step my-guide/ --parent add-loki \
   --description "Search for Loki."
 
 # Add a quiz
-pathfinder-cli add-block my-guide/ quiz \
+pathfinder-cli add-block quiz my-guide/ \
   --id check-understanding \
   --question "Which query language does Loki use?" \
   --requirements section-completed:intro
@@ -858,7 +862,7 @@ The complete context an agent needs to begin authoring:
 Use `pathfinder-cli` to author Pathfinder guides. Commands:
 
 - pathfinder-cli create <dir> --id <id> --title <title>
-- pathfinder-cli add-block <dir> <type> [--parent <id>] [--branch true|false]
+- pathfinder-cli add-block <type> <dir> [--parent <id>] [--branch true|false]
 - pathfinder-cli add-step <dir> --parent <id> --action <action> [flags]
 - pathfinder-cli add-choice <dir> --parent <id> --id <id> --text <text> [flags]
 - pathfinder-cli set-manifest <dir> [flags]

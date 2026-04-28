@@ -17,7 +17,10 @@ export const setManifestCommand = new Command('set-manifest')
   .description('Update manifest fields. Only the flags you pass are changed; everything else is preserved.')
   .argument('<dir>', 'package directory');
 
-registerSchemaOptions(setManifestCommand, ManifestJsonObjectSchema);
+// `forceOptional` because set-manifest is patch-only — schema-level
+// requireds (`id`, `type`) are filled in by the existing manifest, not by
+// the user, and the action handler skips bridge-defaulted empties.
+registerSchemaOptions(setManifestCommand, ManifestJsonObjectSchema, { forceOptional: true });
 
 setManifestCommand.action(async function (this: Command, dir: string) {
   const opts = this.opts() as Record<string, unknown>;
