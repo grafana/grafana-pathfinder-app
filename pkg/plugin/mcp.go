@@ -11,9 +11,12 @@ import (
 	"time"
 )
 
-// validGuideIDPattern matches kebab-case guide IDs (lowercase alphanumeric + hyphens).
+// validGuideIDPattern matches kebab-case guide IDs: lowercase alphanumeric and
+// hyphens, must start and end with an alphanumeric character. Mirrors
+// PACKAGE_ID_REGEX in src/types/package.schema.ts so the same string flows
+// unchanged from CLI authoring through the App Platform resource name.
 // Using an allowlist avoids path traversal and rejects IDs with dots, slashes, etc.
-var validGuideIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+var validGuideIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
 // schemaVersionPattern matches semantic version strings (e.g., "1.0.0").
 var schemaVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
