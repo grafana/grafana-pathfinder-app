@@ -37,6 +37,16 @@ import {
   type PackageMatchExpr,
 } from '../lib/package-recommendations-client';
 
+// Hoisted to module scope so the recursive `usesOnlySupportedMatchPredicates`
+// walk doesn't allocate (and discard) an identical Set on every node.
+const SUPPORTED_MATCH_PREDICATE_KEYS: ReadonlySet<string> = new Set([
+  'urlPrefix',
+  'urlPrefixIn',
+  'targetPlatform',
+  'and',
+  'or',
+]);
+
 export class ContextService {
   private static echoLoggingInitialized = false;
   private static currentDatasourceType: string | null = null;
@@ -1625,9 +1635,8 @@ export class ContextService {
     if (match == null || typeof match !== 'object') {
       return false;
     }
-    const supportedKeys: ReadonlySet<string> = new Set(['urlPrefix', 'urlPrefixIn', 'targetPlatform', 'and', 'or']);
     for (const key of Object.keys(match as Record<string, unknown>)) {
-      if (!supportedKeys.has(key)) {
+      if (!SUPPORTED_MATCH_PREDICATE_KEYS.has(key)) {
         return false;
       }
     }
