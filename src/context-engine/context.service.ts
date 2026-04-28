@@ -1499,6 +1499,16 @@ export class ContextService {
    * never propagate untrusted fields downstream. `entryId` and `entryType`
    * (from the repository.json index) are used as fallbacks when the manifest
    * omits them, which keeps the rendering type pill correct.
+   *
+   * COUPLING POINT — package manifest schema. The dependency-like field
+   * allowlist below (`milestones`, `depends`, `recommends`, `suggests`,
+   * `provides`, `conflicts`, `replaces`) is the contract with the upstream
+   * package author format documented in `docs/developer/package-authoring.md`.
+   * If the package design adds new dependency-like fields (e.g. `enhances`,
+   * `breaks`), they will silently fail to surface to OSS users until this
+   * allowlist is updated. Treat changes here and in
+   * `pkg/plugin/package_recommendations.go` (`PackageTargeting.Match`) as a
+   * schema-coupling pair.
    */
   private static normalizeOnlinePackageManifest(
     entryId: string,
