@@ -1,15 +1,16 @@
 /**
- * Pre-extraction contract tests for markdown-renderer extraction (Phase 1).
+ * Unit tests for the markdown-renderer module.
  *
- * Disposable safety net per .cursor/skills/refactor/SKILL.md and the High-Risk
- * Refactor Guidelines wiki ("tests are safety rails, not refactoring targets").
- * These assertions pin the current behavior in `content-fetcher.ts` so that the
- * extraction to `./markdown-renderer` cannot silently change observable
- * output, mutation semantics, or contract-surface byte identity.
+ * Originated as the Phase 1 pre-extraction safety net for the content-fetcher
+ * refactor and was promoted to permanent post-tests after the extraction
+ * landed (per .cursor/skills/refactor/SKILL.md per-phase test sandwich).
  *
- * Lifecycle: this file becomes `markdown-renderer.test.ts` (permanent) at the
- * post-test commit; the imports flip from `./content-fetcher` to
- * `./markdown-renderer` and 1–2 negative cases are appended.
+ * Coverage:
+ * - simpleMarkdownToHtml table-driven (headings, lists, links, escaping)
+ * - splitAtNextHeading corner cases
+ * - wrapExpectBlockInOrangeOutline in-place mutation contract
+ * - LEARNING_PATH_ICON_SVG / EXPECT_HEADING_RE / NEXT_HEADING_RE constant
+ *   identity
  */
 import {
   EXPECT_HEADING_RE,
@@ -20,7 +21,7 @@ import {
   wrapExpectBlockInOrangeOutline,
 } from './markdown-renderer';
 
-describe('markdown-renderer (pre-extraction contract)', () => {
+describe('markdown-renderer', () => {
   describe('simpleMarkdownToHtml — table-driven', () => {
     type Case = { name: string; input: string; expected: string };
     const cases: Case[] = [
@@ -66,6 +67,18 @@ describe('markdown-renderer (pre-extraction contract)', () => {
 
     it.each(cases)('$name', ({ input, expected }) => {
       expect(simpleMarkdownToHtml(input)).toBe(expected);
+    });
+
+    // Negative cases added at post-test promotion (PLAN.md Phase 1 post-test plan)
+    it('returns an empty string for empty markdown input', () => {
+      expect(simpleMarkdownToHtml('')).toBe('');
+    });
+
+    it('renders prose with no markdown links as a single escaped <p>', () => {
+      // No link regex matches → entire trimmed line goes through escapeHtmlEntities
+      expect(simpleMarkdownToHtml('Plain prose with <angle> & "quotes".')).toBe(
+        '<p>Plain prose with &lt;angle&gt; &amp; &quot;quotes&quot;.</p>'
+      );
     });
   });
 
