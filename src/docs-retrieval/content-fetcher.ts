@@ -429,7 +429,7 @@ export function setPackageResolver(resolver: PackageResolver): void {
  *   milestoneId = "grafana-cloud-tour-business-value"
  *   → "https://grafana.com/docs/learning-paths/grafana-cloud-tour/business-value/"
  */
-function buildMilestoneWebsiteUrl(pathSlug: string, milestoneId: string): string | undefined {
+export function buildMilestoneWebsiteUrl(pathSlug: string, milestoneId: string): string | undefined {
   const prefix = `${pathSlug}-`;
   if (!milestoneId.startsWith(prefix)) {
     return undefined;
@@ -547,14 +547,14 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
   return links;
 }
 
-function isPathManifest(manifest?: Record<string, unknown>): boolean {
+export function isPathManifest(manifest?: Record<string, unknown>): boolean {
   if (!manifest || typeof manifest.type !== 'string') {
     return false;
   }
   return manifest.type === 'path' || manifest.type === 'journey';
 }
 
-function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
+export function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
   if (!manifest || !Array.isArray(manifest.milestones)) {
     return [];
   }
