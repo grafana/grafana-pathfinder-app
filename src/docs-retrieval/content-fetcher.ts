@@ -32,7 +32,7 @@ import { extractMetadata } from './metadata-extractor';
 import { fetchBundledInteractive } from './bundled-loader';
 
 // Internal error structure for detailed error handling
-interface FetchError {
+export interface FetchError {
   message: string;
   errorType: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
   statusCode?: number;
@@ -81,7 +81,7 @@ function wrapContentAsJsonGuide(content: string, url: string, title: string): st
  * SECURITY: Enforce HTTPS for all external URLs to prevent MITM attacks
  * Exceptions: localhost in dev mode
  */
-function enforceHttps(url: string): boolean {
+export function enforceHttps(url: string): boolean {
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
@@ -448,7 +448,7 @@ function removeHashFragment(url: string): string {
 /**
  * Internal fetch result type that includes native JSON detection
  */
-interface FetchRawResult {
+export interface FetchRawResult {
   html: string | null;
   finalUrl?: string;
   error?: FetchError;
@@ -459,7 +459,7 @@ interface FetchRawResult {
 /**
  * Check if a URL points to a JSON file (content.json)
  */
-function isJsonContentUrl(url: string): boolean {
+export function isJsonContentUrl(url: string): boolean {
   // Check the URL path, ignoring query params and fragments
   const urlPath = url.split('?')[0]!.split('#')[0]!;
   return urlPath.endsWith('.json') || urlPath.endsWith('/content.json');
@@ -469,7 +469,7 @@ function isJsonContentUrl(url: string): boolean {
  * Try multiple URL variations in order, returning the first successful result.
  * This is used for content URLs where we want to try content.json first, then unstyled.html.
  */
-async function tryUrlVariations(urls: string[], options: ContentFetchOptions): Promise<FetchRawResult> {
+export async function tryUrlVariations(urls: string[], options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
   let lastError: FetchError | undefined;
 
@@ -541,7 +541,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
   return { html: null, error: lastError || { message: 'No content found', errorType: 'not-found' } };
 }
 
-async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<FetchRawResult> {
+export async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
   // For interactive learning URLs, try content.json first, then unstyled.html
@@ -792,7 +792,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
  * @param url - The interactive learning URL
  * @returns Array of URLs to try in order: [content.json, unstyled.html]
  */
-function generateInteractiveLearningVariations(url: string): string[] {
+export function generateInteractiveLearningVariations(url: string): string[] {
   const variations: string[] = [];
 
   // Only generate variations for interactive learning URLs
@@ -819,7 +819,7 @@ function generateInteractiveLearningVariations(url: string): string[] {
  * Get content URLs for both JSON and HTML formats
  * Returns URLs to try in order of preference: JSON first, then HTML
  */
-function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string } {
+export function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string } {
   const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
 
   // If URL already points to a specific file, return it as-is for JSON detection
