@@ -22,7 +22,8 @@ export * from './html-parser';
 // Re-export main functions with clear names for easy migration
 export { fetchContent as fetchUnifiedContent } from './content-fetcher';
 
-// Package content integration (Phase 4g)
+// Package content integration (Phase 4g; extracted to package-fetcher.ts in
+// the content-fetcher refactor Phase 5 — barrel keeps the public API stable).
 export {
   fetchPackageContent,
   fetchPackageById,
@@ -30,7 +31,7 @@ export {
   resolvePackageMilestones,
   resolvePackageNavLinks,
   derivePathSlug,
-} from './content-fetcher';
+} from './package-fetcher';
 
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,

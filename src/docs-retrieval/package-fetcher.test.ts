@@ -1,17 +1,16 @@
 /**
- * Phase 5 pre-extraction characterization tests for the package + resolver
- * module.
+ * Unit tests for the package + resolver module (`package-fetcher.ts`).
  *
  * SCOPE: Pin the contract surface of the package-resolver singleton and
- * its consumers BEFORE extraction to a new `package-fetcher.ts` module.
+ * its consumers (Pattern J anchors).
  *
- * Critical invariants pinned (Pattern J):
+ * Critical invariants pinned:
  * 1. Singleton init contract — fetchPackageById fails predictably when
  *    setPackageResolver has not been called.
  * 2. STRICT-EQUALITY URL match in fetchPackageContent — the milestone
  *    `m.url === contentUrl` comparison must NOT be weakened to the
- *    normalized urlsMatch helper that metadata-extractor uses elsewhere.
- *    INVESTIGATION §6 invariant 5 — TOP-3 risk.
+ *    normalized urlsMatch helper that metadata-extractor uses elsewhere
+ *    (TOP-3 risk per INVESTIGATION §6 invariant 5).
  * 3. Promise.all three-leg orchestration — fetchPackageContent fans out
  *    fetchContent + resolvePackageMilestones + _packageResolver.resolve(id)
  *    in parallel.
@@ -22,9 +21,9 @@
  * 6. buildMilestoneWebsiteUrl prefix check — milestone IDs that don't
  *    start with `${pathSlug}-` return undefined.
  *
- * STATUS: Disposable. After Phase 5 extraction, this file is renamed
- * `package-fetcher.test.ts` (imports updated to `./package-fetcher`)
- * and serves as the permanent unit test for the new module.
+ * Originated as `package-fetcher.pre-extraction.test.ts` for Phase 5 of
+ * the content-fetcher refactor; promoted to the permanent
+ * `package-fetcher.test.ts` after extraction.
  */
 
 import {
@@ -35,7 +34,7 @@ import {
   buildMilestoneWebsiteUrl,
   isPathManifest,
   getManifestMilestoneIds,
-} from './content-fetcher';
+} from './package-fetcher';
 import type { PackageResolver, PackageResolution } from '../types';
 
 // jsdom: AbortSignal.timeout polyfill for fetchContent's inner timeout
@@ -100,7 +99,7 @@ function successResolution(overrides: Partial<Extract<PackageResolution, { ok: t
   } satisfies PackageResolution;
 }
 
-describe('package + resolver — pre-extraction characterization', () => {
+describe('package + resolver', () => {
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -201,7 +200,7 @@ describe('package + resolver — pre-extraction characterization', () => {
       jest.isolateModules(() => {
         // require inside isolated context → fresh module with _packageResolver = undefined
 
-        const { fetchPackageById: freshFetchPackageById } = require('./content-fetcher');
+        const { fetchPackageById: freshFetchPackageById } = require('./package-fetcher');
         return freshFetchPackageById('any-pkg-id').then((result: any) => {
           expect(result.content).toBeNull();
           expect(result.error).toMatch(/No package resolver configured/i);

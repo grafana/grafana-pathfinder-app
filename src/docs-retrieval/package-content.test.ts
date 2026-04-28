@@ -9,13 +9,8 @@
  * - Manifest metadata passthrough via fetchPackageContent
  * - setPackageResolver injection and resolver-not-configured error
  */
-import {
-  fetchPackageContent,
-  fetchPackageById,
-  setPackageResolver,
-  fetchContent,
-  resolvePackageMilestones,
-} from './content-fetcher';
+import { fetchPackageContent, fetchPackageById, setPackageResolver, resolvePackageMilestones } from './package-fetcher';
+import { fetchContent } from './content-fetcher';
 import type { PackageResolver, PackageResolution } from '../types';
 
 // Mock AbortSignal.timeout for Node environments
