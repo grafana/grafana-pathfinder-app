@@ -30,6 +30,11 @@ import {
   BundledInteractivesIndex,
 } from '../types/context.types';
 import type { V1Recommendation, V1PackageManifest, V1RecommenderResponse } from '../types/v1-recommender.types';
+import {
+  fetchOnlinePackageRecommendations,
+  type OnlinePackageEntry,
+  type PackageMatchExpr,
+} from './package-recommendations.client';
 
 export class ContextService {
   private static echoLoggingInitialized = false;
@@ -312,7 +317,13 @@ export class ContextService {
 
       const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       if (!isRecommenderEnabled(pluginConfig)) {
-        const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+        // When the recommender is disabled, OSS users with internet access can
+        // still see guides authored on the public CDN. The fetch is gated on
+        // navigator.onLine and goes sticky-disabled on the first failure, so
+        // air-gapped installs make at most one attempt per session.
+        const onlinePackageRecommendations = await this.getOnlinePackageRecommendations(contextData);
+        const merged = [...bundledRecommendations, ...onlinePackageRecommendations];
+        const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
         return {
           ...fallbackResult,
           featuredRecommendations: [],
@@ -1479,6 +1490,59 @@ export class ContextService {
 
     // If no URL-related properties, assume it matches (no URL constraint)
     return true;
+  }
+
+  /**
+   * Apply the lightweight URL+platform matchers to an online package entry.
+   * Returns false for entries with no targeting — those would be unmatchable
+   * for the bundled flow and are also dropped by the backend.
+   */
+  private static matchesPackageEntry(entry: OnlinePackageEntry, contextData: ContextData): boolean {
+    const match = entry.targeting?.match;
+    if (!match) {
+      return false;
+    }
+    const matchAsAny = match as unknown as PackageMatchExpr;
+    return (
+      this.matchesUrlPrefix(matchAsAny, contextData.currentPath) &&
+      this.matchesPlatform(matchAsAny, contextData.platform)
+    );
+  }
+
+  /**
+   * Fetch the online package index (paired-down recommender for OSS) and
+   * return the entries that match the current path and platform. Surfaced
+   * only when the online recommender is disabled; never throws.
+   */
+  private static async getOnlinePackageRecommendations(contextData: ContextData): Promise<Recommendation[]> {
+    try {
+      const { baseUrl, packages } = await fetchOnlinePackageRecommendations();
+      if (!packages.length) {
+        return [];
+      }
+      const matched = packages.filter((entry) => this.matchesPackageEntry(entry, contextData));
+      return Promise.all(
+        matched.map(async (entry) => {
+          const sentinelUrl = `package:${entry.id}`;
+          const completionPercentage = await interactiveCompletionStorage.get(sentinelUrl);
+          return {
+            title: entry.title ?? entry.id,
+            url: sentinelUrl,
+            type: 'interactive' as const,
+            summary: entry.description,
+            matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
+            completionPercentage,
+            contentUrl: baseUrl ? `${baseUrl}${entry.path}/content.json` : undefined,
+            manifestUrl: baseUrl ? `${baseUrl}${entry.path}/manifest.json` : undefined,
+          };
+        })
+      );
+    } catch (error) {
+      // The client itself never throws, but guard against future regressions
+      // — a failure here must not break the bundled flow.
+      console.warn('Failed to load online package recommendations:', error);
+      return [];
+    }
   }
 
   /**
