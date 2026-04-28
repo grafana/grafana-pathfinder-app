@@ -478,6 +478,10 @@ export const GrotGuideScreenSchema = z.discriminatedUnion('type', [
 export const JsonGrotGuideBlockSchema = z
   .object({
     type: z.literal('grot-guide'),
+    id: z
+      .string()
+      .optional()
+      .describe('Stable identifier; grot-guide blocks are authored in the dedicated editor, not the CLI'),
     welcome: GrotGuideWelcomeSchema,
     screens: z.array(GrotGuideScreenSchema).min(1, 'At least one screen is required'),
   })
@@ -809,7 +813,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'hint',
   ]),
-  'grot-guide': new Set(['type', 'welcome', 'screens']),
+  'grot-guide': new Set(['type', 'id', 'welcome', 'screens']),
   _manifest: new Set([
     'schemaVersion',
     'id',
