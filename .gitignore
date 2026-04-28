@@ -52,6 +52,9 @@ plans/
 # Cursor local prompt context, so as not to pollute repo
 .cursor/local
 
+# Refactor scratch state (per .cursor/skills/refactor/SKILL.md)
+.refactor/
+
 # Prevent generated JS artifacts in src from being committed
 src/**/*.js
 src/**/*.js.map
