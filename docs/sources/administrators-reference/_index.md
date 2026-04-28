@@ -33,7 +33,7 @@ When disabled, Interactive learning only displays bundled examples and static re
 
 When you enable the recommender service, Interactive learning sends contextual data to Grafana's hosted recommendation service.
 The service uses this data to provide personalized documentation recommendations.
-For more information about data collection and privacy, refer to the data usage details in the configuration page and the [Architecture](/docs/grafana/latest/pathfinder/architecture/) documentation.
+For more information about data collection and privacy, refer to the [Terms and conditions](../terms-and-conditions/) page and the [Architecture](/docs/grafana/latest/pathfinder/architecture/) documentation.
 
 {{< admonition type="note" >}}
 The recommender service is enabled by default for Grafana Cloud instances.

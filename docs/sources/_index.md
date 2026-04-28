@@ -27,6 +27,10 @@ cards:
       description: Learn about Interactive learning administrators features.
       href: administrators-reference/
       height: 24
+    - title: Terms and conditions
+      description: Data usage notice for context-aware recommendations.
+      href: terms-and-conditions/
+      height: 24
     - title: Upgrade notes
       description: Important information about upgrading, including breaking changes.
       href: upgrade-notes/

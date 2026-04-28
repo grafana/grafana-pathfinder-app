@@ -16,6 +16,7 @@ import { type DocsPluginConfig, isRecommenderEnabled, getConfigWithDefaults } fr
 import type { PackageResolution, PackageResolver, ResolveOptions } from '../types/package.types';
 
 import { createBundledResolver } from './resolver';
+import { OnlineCdnPackageResolver } from './online-cdn-resolver';
 import { RecommenderPackageResolver } from './recommender-resolver';
 
 export class CompositePackageResolver implements PackageResolver {
@@ -62,7 +63,10 @@ export class CompositePackageResolver implements PackageResolver {
 /**
  * Create the standard composite resolver for the plugin:
  * 1. Bundled content (always present, works offline/OSS)
- * 2. Recommender (only when enabled via plugin config)
+ * 2. Online recommender (when enabled) — preferred for stack-aware resolution
+ * 3. Online CDN index (when recommender disabled) — lets bare IDs from CDN
+ *    learning journeys (milestones, recommends, suggests) resolve so the
+ *    rich rendering matches the recommender-on experience.
  */
 export function createCompositeResolver(pluginConfig: DocsPluginConfig): CompositePackageResolver {
   const resolvers: PackageResolver[] = [createBundledResolver()];
@@ -70,6 +74,8 @@ export function createCompositeResolver(pluginConfig: DocsPluginConfig): Composi
   if (isRecommenderEnabled(pluginConfig)) {
     const configWithDefaults = getConfigWithDefaults(pluginConfig);
     resolvers.push(new RecommenderPackageResolver(configWithDefaults.recommenderServiceUrl));
+  } else {
+    resolvers.push(new OnlineCdnPackageResolver());
   }
 
   return new CompositePackageResolver(resolvers);

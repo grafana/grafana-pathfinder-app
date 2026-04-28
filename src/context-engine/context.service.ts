@@ -30,6 +30,22 @@ import {
   BundledInteractivesIndex,
 } from '../types/context.types';
 import type { V1Recommendation, V1PackageManifest, V1RecommenderResponse } from '../types/v1-recommender.types';
+import {
+  buildPackageFileUrl,
+  fetchOnlinePackageRecommendations,
+  type OnlinePackageEntry,
+  type PackageMatchExpr,
+} from '../lib/package-recommendations-client';
+
+// Hoisted to module scope so the recursive `usesOnlySupportedMatchPredicates`
+// walk doesn't allocate (and discard) an identical Set on every node.
+const SUPPORTED_MATCH_PREDICATE_KEYS: ReadonlySet<string> = new Set([
+  'urlPrefix',
+  'urlPrefixIn',
+  'targetPlatform',
+  'and',
+  'or',
+]);
 
 export class ContextService {
   private static echoLoggingInitialized = false;
@@ -312,7 +328,13 @@ export class ContextService {
 
       const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       if (!isRecommenderEnabled(pluginConfig)) {
-        const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+        // When the recommender is disabled, OSS users with internet access can
+        // still see guides authored on the public CDN. The fetch is gated on
+        // navigator.onLine and goes sticky-disabled on the first failure, so
+        // air-gapped installs make at most one attempt per session.
+        const onlinePackageRecommendations = await this.getOnlinePackageRecommendations(contextData);
+        const merged = [...bundledRecommendations, ...onlinePackageRecommendations];
+        const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
         return {
           ...fallbackResult,
           featuredRecommendations: [],
@@ -1479,6 +1501,209 @@ export class ContextService {
 
     // If no URL-related properties, assume it matches (no URL constraint)
     return true;
+  }
+
+  /**
+   * Normalize a manifest fetched from the public CDN into the same shape
+   * sanitizeV1PackageManifest produces, with an explicit allowlist so we
+   * never propagate untrusted fields downstream. `entryId` and `entryType`
+   * (from the repository.json index) are used as fallbacks when the manifest
+   * omits them, which keeps the rendering type pill correct.
+   *
+   * COUPLING POINT — package manifest schema. The dependency-like field
+   * allowlist below (`milestones`, `depends`, `recommends`, `suggests`,
+   * `provides`, `conflicts`, `replaces`) is the contract with the upstream
+   * package author format documented in `docs/developer/package-authoring.md`.
+   * If the package design adds new dependency-like fields (e.g. `enhances`,
+   * `breaks`), they will silently fail to surface to OSS users until this
+   * allowlist is updated. Treat changes here and in
+   * `pkg/plugin/package_recommendations.go` (`PackageTargeting.Match`) as a
+   * schema-coupling pair.
+   */
+  private static normalizeOnlinePackageManifest(
+    entryId: string,
+    entryType: string | undefined,
+    raw: Record<string, unknown>
+  ): Record<string, unknown> {
+    const normalized: Record<string, unknown> = {
+      id: typeof raw.id === 'string' ? raw.id : entryId,
+      type: typeof raw.type === 'string' ? raw.type : (entryType ?? 'guide'),
+    };
+    if (typeof raw.description === 'string') {
+      normalized.description = sanitizeTextForDisplay(raw.description);
+    }
+    if (typeof raw.category === 'string') {
+      normalized.category = raw.category;
+    }
+    if (raw.author && typeof raw.author === 'object') {
+      const author = raw.author as Record<string, unknown>;
+      normalized.author = {
+        ...(typeof author.name === 'string' ? { name: author.name } : {}),
+        ...(typeof author.team === 'string' ? { team: author.team } : {}),
+      };
+    }
+    if (typeof raw.startingLocation === 'string') {
+      normalized.startingLocation = raw.startingLocation;
+    }
+    for (const field of ['milestones', 'depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces']) {
+      const value = raw[field];
+      if (Array.isArray(value)) {
+        normalized[field] = value.filter((s): s is string => typeof s === 'string');
+      }
+    }
+    return normalized;
+  }
+
+  /**
+   * Apply the lightweight URL+platform matchers to an online package entry.
+   * Returns false for entries with no targeting — those would be unmatchable
+   * for the bundled flow and are also dropped by the backend.
+   *
+   * Also fails closed on any unsupported predicate (e.g. `urlRegex`,
+   * `datasource`, `cohort`, `tag`). The base matchers fall through to
+   * "no constraint → matches" when they encounter a leaf with only fields
+   * they don't recognize, which would surface entries like
+   * `assistant-self-hosted` (`urlRegex: "^/?$"`) on every page.
+   */
+  private static matchesPackageEntry(entry: OnlinePackageEntry, contextData: ContextData): boolean {
+    const match = entry.targeting?.match;
+    if (!match) {
+      return false;
+    }
+    if (!this.usesOnlySupportedMatchPredicates(match)) {
+      return false;
+    }
+    // Defense in depth: even if a match expression contains only supported
+    // keys, it must actually constrain the URL somewhere in the tree.
+    // Otherwise a legitimately empty `match: {}` (or one carrying only
+    // `targetPlatform`) would fall through `matchesUrlPrefix`'s "no URL
+    // constraint → match" branch and surface the entry on every page.
+    // Bug-1 was the upstream cause (Go was producing empty `{}` after
+    // stripping unknown predicates); this guard catches the same shape
+    // even when it's authored that way intentionally upstream.
+    if (!this.hasUrlConstraint(match)) {
+      return false;
+    }
+    const matchAsAny = match as unknown as PackageMatchExpr;
+    return (
+      this.matchesUrlPrefix(matchAsAny, contextData.currentPath) &&
+      this.matchesPlatform(matchAsAny, contextData.platform)
+    );
+  }
+
+  /**
+   * Returns true when the match tree provably constrains the URL on every
+   * branch that could otherwise satisfy the expression. Semantics mirror
+   * the matcher's evaluation:
+   *  - leaf: `urlPrefix` or `urlPrefixIn` present
+   *  - and: at least one child must contribute a URL constraint
+   *  - or: ALL children must contribute (otherwise an unconstrained child
+   *        is the easy-out that makes the OR match every URL)
+   */
+  private static hasUrlConstraint(match: unknown): boolean {
+    if (match == null || typeof match !== 'object') {
+      return false;
+    }
+    const node = match as Record<string, unknown>;
+    if (typeof node.urlPrefix === 'string' && node.urlPrefix.length > 0) {
+      return true;
+    }
+    if (Array.isArray(node.urlPrefixIn) && node.urlPrefixIn.length > 0) {
+      return true;
+    }
+    if (Array.isArray(node.and) && node.and.length > 0) {
+      if (node.and.some((c) => this.hasUrlConstraint(c))) {
+        return true;
+      }
+    }
+    if (Array.isArray(node.or) && node.or.length > 0) {
+      if (node.or.every((c) => this.hasUrlConstraint(c))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Recursively validate that a match expression uses only the predicates
+   * the lightweight matcher understands. Anything else (urlRegex, datasource,
+   * source, cohort, userRole, tag, ...) means the entry was authored for the
+   * full recommender — surfacing it via this paired-down matcher would be
+   * a false positive.
+   */
+  private static usesOnlySupportedMatchPredicates(match: unknown): boolean {
+    if (match == null || typeof match !== 'object') {
+      return false;
+    }
+    for (const key of Object.keys(match as Record<string, unknown>)) {
+      if (!SUPPORTED_MATCH_PREDICATE_KEYS.has(key)) {
+        return false;
+      }
+    }
+    const node = match as Record<string, unknown>;
+    if (Array.isArray(node.and) && !node.and.every((c) => this.usesOnlySupportedMatchPredicates(c))) {
+      return false;
+    }
+    if (Array.isArray(node.or) && !node.or.every((c) => this.usesOnlySupportedMatchPredicates(c))) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Fetch the online package index (paired-down recommender for OSS) and
+   * return the entries that match the current path and platform. Surfaced
+   * only when the online recommender is disabled; never throws.
+   *
+   * Emits `type: 'package'` so processLearningJourneys dispatches on
+   * `manifest.type` to distinguish guide-style (rendered as interactive)
+   * from path/journey-style (rendered as a learning journey). Without this,
+   * every entry would render uniformly as an interactive card.
+   */
+  private static async getOnlinePackageRecommendations(contextData: ContextData): Promise<Recommendation[]> {
+    try {
+      const { baseUrl, packages } = await fetchOnlinePackageRecommendations();
+      if (!packages.length) {
+        return [];
+      }
+      const matched = packages.filter((entry) => this.matchesPackageEntry(entry, contextData));
+      // baseUrl always ends with '/' (the backend strips "repository.json"
+      // off the configured URL); entry.path may or may not have a trailing
+      // slash. `buildPackageFileUrl` normalizes both sides and fails closed
+      // on pathological inputs (e.g. all-slashes baseUrl, empty entry.path)
+      // so we never produce a broken relative URL or a double slash like
+      // ".../packages/assistant-self-hosted//content.json".
+      return matched.map((entry) => {
+        // Prefer the inlined manifest fetched server-side (gives us
+        // milestones, recommends, suggests, etc.). Fall back to a minimal
+        // stub when the backend couldn't fetch this package's manifest, so
+        // the rendering type pill is still correct.
+        const inlinedManifest = entry.manifest;
+        const manifest =
+          inlinedManifest && typeof inlinedManifest === 'object'
+            ? this.normalizeOnlinePackageManifest(entry.id, entry.type, inlinedManifest)
+            : { id: entry.id, type: entry.type ?? 'guide' };
+        return {
+          title: entry.title ?? entry.id,
+          // Stable session-unique key. processLearningJourneys reads
+          // contentUrl for completion + content lookups when type === 'package',
+          // so this URL is only a React key / dedup token — not a fetch target.
+          url: `package:${entry.id}`,
+          type: 'package' as const,
+          summary: entry.description,
+          matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
+          contentUrl: buildPackageFileUrl(baseUrl, entry.path, 'content.json'),
+          manifestUrl: buildPackageFileUrl(baseUrl, entry.path, 'manifest.json'),
+          repository: 'online-cdn',
+          manifest,
+        };
+      });
+    } catch (error) {
+      // The client itself never throws, but guard against future regressions
+      // — a failure here must not break the bundled flow.
+      console.warn('Failed to load online package recommendations:', error);
+      return [];
+    }
   }
 
   /**
