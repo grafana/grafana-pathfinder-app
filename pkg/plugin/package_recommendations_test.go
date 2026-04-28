@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -99,15 +100,30 @@ func TestHandlePackageRecommendations_Success(t *testing.T) {
 	if resp.BaseURL != "https://interactive-learning.grafana.net/packages/" {
 		t.Errorf("BaseURL = %q", resp.BaseURL)
 	}
-	if len(resp.Packages) != 1 || resp.Packages[0].ID != "prom-101" {
-		t.Fatalf("expected only prom-101 to survive filtering; got %+v", resp.Packages)
+	// Both targeted and untargeted entries survive (only `no-path` is dropped
+	// because we can't build a CDN URL for it). Untargeted entries stay so
+	// the milestone-by-id resolver can find them; the frontend's
+	// matchesPackageEntry filters them out of the recommendation list.
+	idSet := map[string]bool{}
+	for _, p := range resp.Packages {
+		idSet[p.ID] = true
 	}
-	if resp.Packages[0].Targeting == nil ||
-		resp.Packages[0].Targeting.Match.URLPrefix != "/connections" {
-		t.Errorf("targeting not preserved: %+v", resp.Packages[0].Targeting)
+	if !idSet["prom-101"] || !idSet["untargeted"] || idSet["no-path"] {
+		t.Fatalf("unexpected package set: %+v", idSet)
 	}
-	if atomic.LoadInt32(calls) != 1 {
-		t.Errorf("calls = %d, want 1", atomic.LoadInt32(calls))
+	var prom *PackageEntry
+	for i := range resp.Packages {
+		if resp.Packages[i].ID == "prom-101" {
+			prom = &resp.Packages[i]
+		}
+	}
+	if prom == nil || prom.Targeting == nil ||
+		prom.Targeting.Match.URLPrefix != "/connections" {
+		t.Errorf("targeting not preserved on prom-101: %+v", prom)
+	}
+	// 1 repo fetch + 2 manifest fetches (one per kept entry).
+	if got := atomic.LoadInt32(calls); got != 3 {
+		t.Errorf("calls = %d, want 3 (repo + 2 manifests)", got)
 	}
 }
 
@@ -118,6 +134,12 @@ func TestHandlePackageRecommendations_CachesAcrossCalls(t *testing.T) {
 	withFetcherOverride(t, fetcher)
 
 	app := newTestApp(t)
+	rr := httptest.NewRecorder()
+	app.handlePackageRecommendations(rr, httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("first call: status %d", rr.Code)
+	}
+	initial := atomic.LoadInt32(calls)
 	for i := 0; i < 3; i++ {
 		rr := httptest.NewRecorder()
 		app.handlePackageRecommendations(rr, httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
@@ -125,8 +147,8 @@ func TestHandlePackageRecommendations_CachesAcrossCalls(t *testing.T) {
 			t.Fatalf("iteration %d: status %d", i, rr.Code)
 		}
 	}
-	if got := atomic.LoadInt32(calls); got != 1 {
-		t.Errorf("upstream calls = %d, want 1 (cached)", got)
+	if got := atomic.LoadInt32(calls); got != initial {
+		t.Errorf("upstream calls grew from %d to %d; expected cached", initial, got)
 	}
 }
 
@@ -138,11 +160,13 @@ func TestHandlePackageRecommendations_RefreshesAfterTTL(t *testing.T) {
 
 	app := newTestApp(t)
 	app.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	initial := atomic.LoadInt32(calls)
 	advance(packageRepositoryCacheTTL + time.Minute)
 	app.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
 
-	if got := atomic.LoadInt32(calls); got != 2 {
-		t.Errorf("upstream calls = %d, want 2 after TTL expiry", got)
+	// After TTL expiry both the repo and the manifests are refetched.
+	if got := atomic.LoadInt32(calls); got != initial*2 {
+		t.Errorf("upstream calls = %d after TTL expiry, want %d (= 2 * initial)", got, initial*2)
 	}
 }
 
@@ -222,6 +246,112 @@ func TestFetchAndParsePackageRepository_RejectsDisallowedHost(t *testing.T) {
 	_, err := fetchAndParsePackageRepository(context.Background(), "https://evil.example.com/repository.json")
 	if err == nil || !strings.Contains(err.Error(), "host not allowed") {
 		t.Fatalf("expected host-not-allowed error, got %v", err)
+	}
+}
+
+func TestEnrichPackagesWithManifests_InlinesParsedJSON(t *testing.T) {
+	resetPackageRecommendationsCache()
+	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	repoBody := []byte(`{
+		"prom-101": {"path": "prom-101/v1", "type": "guide", "title": "Prom",
+			"targeting": {"match": {"urlPrefix": "/connections"}}},
+		"prom-lj": {"path": "prom-lj/v1", "type": "path", "title": "Prom journey",
+			"targeting": {"match": {"urlPrefix": "/connections"}}}
+	}`)
+	manifestBody := []byte(`{
+		"id": "prom-lj",
+		"type": "path",
+		"description": "Connect Prom step by step.",
+		"milestones": ["intro", "install", "verify"]
+	}`)
+
+	calls := map[string]int{}
+	var mu sync.Mutex
+	fetcher := func(_ context.Context, rawURL string) ([]byte, error) {
+		mu.Lock()
+		calls[rawURL]++
+		mu.Unlock()
+		switch {
+		case strings.HasSuffix(rawURL, "repository.json"):
+			return repoBody, nil
+		case strings.HasSuffix(rawURL, "/prom-lj/v1/manifest.json"):
+			return manifestBody, nil
+		case strings.HasSuffix(rawURL, "/prom-101/v1/manifest.json"):
+			return nil, errors.New("manifest unavailable") // partial failure should not break the response
+		default:
+			return nil, fmt.Errorf("unexpected URL %q", rawURL)
+		}
+	}
+	withFetcherOverride(t, fetcher)
+
+	app := newTestApp(t)
+	rr := httptest.NewRecorder()
+	app.handlePackageRecommendations(rr, httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp PackageRecommendationsResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(resp.Packages) != 2 {
+		t.Fatalf("expected 2 packages, got %d", len(resp.Packages))
+	}
+
+	var promLJ *PackageEntry
+	var prom101 *PackageEntry
+	for i := range resp.Packages {
+		switch resp.Packages[i].ID {
+		case "prom-lj":
+			promLJ = &resp.Packages[i]
+		case "prom-101":
+			prom101 = &resp.Packages[i]
+		}
+	}
+
+	if promLJ == nil || promLJ.Manifest == nil {
+		t.Fatalf("prom-lj manifest was not inlined: %+v", promLJ)
+	}
+	if got := promLJ.Manifest["id"]; got != "prom-lj" {
+		t.Errorf("manifest.id = %v, want prom-lj", got)
+	}
+	milestones, ok := promLJ.Manifest["milestones"].([]interface{})
+	if !ok || len(milestones) != 3 {
+		t.Errorf("milestones not preserved: %v", promLJ.Manifest["milestones"])
+	}
+
+	if prom101 == nil {
+		t.Fatal("prom-101 missing from response")
+	}
+	if prom101.Manifest != nil {
+		t.Errorf("prom-101 manifest should be nil after fetch failure, got %+v", prom101.Manifest)
+	}
+}
+
+func TestBuildPackageFileURL_NormalizesSlashes(t *testing.T) {
+	cases := []struct {
+		baseURL string
+		path    string
+		file    string
+		want    string
+	}{
+		{"https://x.example/packages/", "foo/", "content.json", "https://x.example/packages/foo/content.json"},
+		{"https://x.example/packages/", "/foo", "manifest.json", "https://x.example/packages/foo/manifest.json"},
+		{"https://x.example/packages", "foo", "content.json", "https://x.example/packages/foo/content.json"},
+		{"https://x.example/packages/", "/foo/bar/", "content.json", "https://x.example/packages/foo/bar/content.json"},
+		{"", "foo", "content.json", ""},
+		{"https://x.example/packages/", "", "content.json", ""},
+		{"https://x.example/packages/", "foo", "", ""},
+	}
+	for _, tc := range cases {
+		if got := buildPackageFileURL(tc.baseURL, tc.path, tc.file); got != tc.want {
+			t.Errorf("buildPackageFileURL(%q,%q,%q) = %q; want %q",
+				tc.baseURL, tc.path, tc.file, got, tc.want)
+		}
 	}
 }
 

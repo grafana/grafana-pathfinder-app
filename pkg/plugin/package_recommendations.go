@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,6 +24,12 @@ const (
 	packageRepositoryFetchTimeout = 5 * time.Second
 	packageRepositoryMaxBytes     = 5 * 1024 * 1024
 	packageRepositoryCacheTTL     = 6 * time.Hour
+
+	// Per-manifest fetch limits — keep manifests small and the fan-out bounded
+	// so a slow CDN can't stall the whole response or run us out of memory.
+	packageManifestFetchTimeout = 5 * time.Second
+	packageManifestMaxBytes     = 256 * 1024
+	packageManifestConcurrency  = 8
 )
 
 // allowedPackageRepositoryHosts mirrors the frontend
@@ -50,15 +57,19 @@ type PackageTargeting struct {
 }
 
 // PackageEntry is the slim view of a repository entry sent to the frontend.
-// We strip recommender-only fields (depends, conflicts, milestones, etc.)
-// because the OSS discovery path doesn't use them.
+// `Manifest` is the parsed contents of the entry's manifest.json (when the
+// backend successfully fetched it). The frontend needs manifest fields like
+// `milestones`, `recommends`, and `suggests` for the rich learning-journey
+// rendering — without them, the cards lack milestone counts, deferred nav
+// links, and the right "Start" CTA wiring.
 type PackageEntry struct {
-	ID          string            `json:"id"`
-	Path        string            `json:"path"`
-	Title       string            `json:"title,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Type        string            `json:"type,omitempty"`
-	Targeting   *PackageTargeting `json:"targeting,omitempty"`
+	ID          string                 `json:"id"`
+	Path        string                 `json:"path"`
+	Title       string                 `json:"title,omitempty"`
+	Description string                 `json:"description,omitempty"`
+	Type        string                 `json:"type,omitempty"`
+	Targeting   *PackageTargeting      `json:"targeting,omitempty"`
+	Manifest    map[string]interface{} `json:"manifest,omitempty"`
 }
 
 // PackageRecommendationsResponse is the JSON returned to the frontend.
@@ -189,12 +200,16 @@ func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*Packag
 		return nil, fmt.Errorf("parse repository.json: %w", err)
 	}
 
+	baseURL := baseURLFromRepositoryURL(rawURL)
 	packages := make([]PackageEntry, 0, len(index))
 	for id, entry := range index {
-		// Skip entries we can't resolve content for or can't filter on.
-		// Without targeting, the lightweight matcher would treat the entry
-		// as universal — which would surface unrelated guides on every page.
-		if entry.Path == "" || entry.Targeting == nil {
+		// Skip only entries we can't build a CDN URL for. Untargeted entries
+		// stay in the response — they're how milestone / recommends / suggests
+		// IDs from learning paths get resolved by OnlineCdnPackageResolver.
+		// The frontend's matchesPackageEntry drops them from the recommendation
+		// list (no targeting → no match), matching how the upstream recommender
+		// builds virtual rules only for targeted entries.
+		if entry.Path == "" {
 			continue
 		}
 		packages = append(packages, PackageEntry{
@@ -207,10 +222,90 @@ func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*Packag
 		})
 	}
 
+	enrichPackagesWithManifests(ctx, baseURL, packages, fetch)
+
 	return &PackageRecommendationsResponse{
-		BaseURL:  baseURLFromRepositoryURL(rawURL),
+		BaseURL:  baseURL,
 		Packages: packages,
 	}, nil
+}
+
+// enrichPackagesWithManifests fetches every package's manifest.json in parallel
+// (bounded concurrency) and inlines it into each PackageEntry. Per-package
+// failures are silently skipped — the entry stays in the response without a
+// manifest, so the frontend still gets discovery + a working "Start" button
+// even when one package's manifest is unavailable.
+func enrichPackagesWithManifests(
+	ctx context.Context,
+	baseURL string,
+	packages []PackageEntry,
+	fetch packageRepositoryFetcher,
+) {
+	if baseURL == "" || len(packages) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, packageManifestConcurrency)
+	var wg sync.WaitGroup
+
+	for i := range packages {
+		entry := &packages[i]
+		manifestURL := buildPackageFileURL(baseURL, entry.Path, "manifest.json")
+		if manifestURL == "" {
+			continue
+		}
+		// Defensive: only fetch from the same allowlisted host as the index.
+		if !isAllowedInteractiveLearningHost(manifestURL) {
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(target *PackageEntry, url string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			fetchCtx, cancel := context.WithTimeout(ctx, packageManifestFetchTimeout)
+			defer cancel()
+
+			body, err := fetchManifestWithLimit(fetchCtx, url, fetch)
+			if err != nil {
+				return
+			}
+			var parsed map[string]interface{}
+			if err := json.Unmarshal(body, &parsed); err != nil {
+				return
+			}
+			target.Manifest = parsed
+		}(entry, manifestURL)
+	}
+	wg.Wait()
+}
+
+// buildPackageFileURL joins the CDN base, the entry path, and a file name
+// while collapsing duplicate slashes that would otherwise produce URLs like
+// ".../packages/some-id//manifest.json".
+func buildPackageFileURL(baseURL, entryPath, fileName string) string {
+	if baseURL == "" || entryPath == "" || fileName == "" {
+		return ""
+	}
+	trimmedBase := strings.TrimRight(baseURL, "/")
+	cleanPath := strings.Trim(entryPath, "/")
+	return trimmedBase + "/" + cleanPath + "/" + fileName
+}
+
+// fetchManifestWithLimit applies the manifest-specific size cap on top of the
+// shared fetcher. A separate cap keeps a misconfigured manifest from eating
+// the whole repository budget.
+func fetchManifestWithLimit(ctx context.Context, url string, fetch packageRepositoryFetcher) ([]byte, error) {
+	body, err := fetch(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > packageManifestMaxBytes {
+		return nil, fmt.Errorf("manifest exceeded %d bytes", packageManifestMaxBytes)
+	}
+	return body, nil
 }
 
 // defaultPackageRepositoryFetcher is the real-network HTTP fetcher.

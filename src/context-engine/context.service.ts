@@ -34,7 +34,7 @@ import {
   fetchOnlinePackageRecommendations,
   type OnlinePackageEntry,
   type PackageMatchExpr,
-} from './package-recommendations.client';
+} from '../lib/package-recommendations-client';
 
 export class ContextService {
   private static echoLoggingInitialized = false;
@@ -1493,6 +1493,47 @@ export class ContextService {
   }
 
   /**
+   * Normalize a manifest fetched from the public CDN into the same shape
+   * sanitizeV1PackageManifest produces, with an explicit allowlist so we
+   * never propagate untrusted fields downstream. `entryId` and `entryType`
+   * (from the repository.json index) are used as fallbacks when the manifest
+   * omits them, which keeps the rendering type pill correct.
+   */
+  private static normalizeOnlinePackageManifest(
+    entryId: string,
+    entryType: string | undefined,
+    raw: Record<string, unknown>
+  ): Record<string, unknown> {
+    const normalized: Record<string, unknown> = {
+      id: typeof raw.id === 'string' ? raw.id : entryId,
+      type: typeof raw.type === 'string' ? raw.type : (entryType ?? 'guide'),
+    };
+    if (typeof raw.description === 'string') {
+      normalized.description = sanitizeTextForDisplay(raw.description);
+    }
+    if (typeof raw.category === 'string') {
+      normalized.category = raw.category;
+    }
+    if (raw.author && typeof raw.author === 'object') {
+      const author = raw.author as Record<string, unknown>;
+      normalized.author = {
+        ...(typeof author.name === 'string' ? { name: author.name } : {}),
+        ...(typeof author.team === 'string' ? { team: author.team } : {}),
+      };
+    }
+    if (typeof raw.startingLocation === 'string') {
+      normalized.startingLocation = raw.startingLocation;
+    }
+    for (const field of ['milestones', 'depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces']) {
+      const value = raw[field];
+      if (Array.isArray(value)) {
+        normalized[field] = value.filter((s): s is string => typeof s === 'string');
+      }
+    }
+    return normalized;
+  }
+
+  /**
    * Apply the lightweight URL+platform matchers to an online package entry.
    * Returns false for entries with no targeting — those would be unmatchable
    * for the bundled flow and are also dropped by the backend.
@@ -1513,6 +1554,11 @@ export class ContextService {
    * Fetch the online package index (paired-down recommender for OSS) and
    * return the entries that match the current path and platform. Surfaced
    * only when the online recommender is disabled; never throws.
+   *
+   * Emits `type: 'package'` so processLearningJourneys dispatches on
+   * `manifest.type` to distinguish guide-style (rendered as interactive)
+   * from path/journey-style (rendered as a learning journey). Without this,
+   * every entry would render uniformly as an interactive card.
    */
   private static async getOnlinePackageRecommendations(contextData: ContextData): Promise<Recommendation[]> {
     try {
@@ -1521,22 +1567,43 @@ export class ContextService {
         return [];
       }
       const matched = packages.filter((entry) => this.matchesPackageEntry(entry, contextData));
-      return Promise.all(
-        matched.map(async (entry) => {
-          const sentinelUrl = `package:${entry.id}`;
-          const completionPercentage = await interactiveCompletionStorage.get(sentinelUrl);
-          return {
-            title: entry.title ?? entry.id,
-            url: sentinelUrl,
-            type: 'interactive' as const,
-            summary: entry.description,
-            matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
-            completionPercentage,
-            contentUrl: baseUrl ? `${baseUrl}${entry.path}/content.json` : undefined,
-            manifestUrl: baseUrl ? `${baseUrl}${entry.path}/manifest.json` : undefined,
-          };
-        })
-      );
+      // baseUrl always ends with '/' (the backend strips "repository.json"
+      // off the configured URL); entry.path may or may not have a trailing
+      // slash. Normalize both sides so we never produce a double slash like
+      // ".../packages/assistant-self-hosted//content.json".
+      const trimmedBase = baseUrl.replace(/\/+$/, '');
+      const buildFileUrl = (entryPath: string, fileName: string): string => {
+        if (!trimmedBase) {
+          return '';
+        }
+        const normalizedPath = entryPath.replace(/^\/+|\/+$/g, '');
+        return `${trimmedBase}/${normalizedPath}/${fileName}`;
+      };
+      return matched.map((entry) => {
+        // Prefer the inlined manifest fetched server-side (gives us
+        // milestones, recommends, suggests, etc.). Fall back to a minimal
+        // stub when the backend couldn't fetch this package's manifest, so
+        // the rendering type pill is still correct.
+        const inlinedManifest = entry.manifest;
+        const manifest =
+          inlinedManifest && typeof inlinedManifest === 'object'
+            ? this.normalizeOnlinePackageManifest(entry.id, entry.type, inlinedManifest)
+            : { id: entry.id, type: entry.type ?? 'guide' };
+        return {
+          title: entry.title ?? entry.id,
+          // Stable session-unique key. processLearningJourneys reads
+          // contentUrl for completion + content lookups when type === 'package',
+          // so this URL is only a React key / dedup token — not a fetch target.
+          url: `package:${entry.id}`,
+          type: 'package' as const,
+          summary: entry.description,
+          matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
+          contentUrl: buildFileUrl(entry.path, 'content.json'),
+          manifestUrl: buildFileUrl(entry.path, 'manifest.json'),
+          repository: 'online-cdn',
+          manifest,
+        };
+      });
     } catch (error) {
       // The client itself never throws, but guard against future regressions
       // — a failure here must not break the bundled flow.

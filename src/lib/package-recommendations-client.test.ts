@@ -7,7 +7,7 @@ import { getBackendSrv } from '@grafana/runtime';
 import {
   __resetPackageRecommendationsClientForTests,
   fetchOnlinePackageRecommendations,
-} from './package-recommendations.client';
+} from './package-recommendations-client';
 
 const mockGet = jest.fn();
 

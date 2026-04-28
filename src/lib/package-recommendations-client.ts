@@ -27,6 +27,15 @@ export interface OnlinePackageEntry {
   description?: string;
   type?: string;
   targeting?: PackageTargeting;
+  /**
+   * Inlined contents of the package's manifest.json, when the backend
+   * successfully fetched it. Carries fields like `milestones`, `recommends`,
+   * `suggests`, `description`, `startingLocation` — used by the rendering
+   * pipeline to surface milestone counts, deferred nav links, and the
+   * correct "Start" CTA wiring. Absent when the per-package manifest fetch
+   * failed; the entry is still discoverable but renders without these.
+   */
+  manifest?: Record<string, unknown>;
 }
 
 export interface PackageRecommendationsResponse {
