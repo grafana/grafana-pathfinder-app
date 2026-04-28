@@ -44,13 +44,13 @@ The canonical artifact is package-shaped, mirroring the CLI's two-file package m
 {
   "content": {
     "schemaVersion": "1.1.0",
-    "id": "hello-world",
+    "id": "hello-world-x7q2k1",
     "title": "Hello world",
     "blocks": []
   },
   "manifest": {
     "schemaVersion": "1.1.0",
-    "id": "hello-world",
+    "id": "hello-world-x7q2k1",
     "type": "guide",
     "description": "A first guide generated with Pathfinder AI authoring"
   },
@@ -62,7 +62,7 @@ The canonical artifact is package-shaped, mirroring the CLI's two-file package m
 }
 ```
 
-The `content.id` and `manifest.id` are required to match — this is a cross-file consistency check enforced by the CLI. They are kebab-case (`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`) and serve as the canonical package identifier, used unchanged as the App Platform `metadata.name` and the viewer deep link key.
+The `content.id` and `manifest.id` are required to match — this is a cross-file consistency check enforced by the CLI. They are kebab-case (`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`, max 253 chars) and serve as the canonical package identifier, used unchanged as the App Platform `metadata.name` and the viewer deep link key. By default the CLI generates IDs of the form `<kebab-of-title>-<6-char-base32-suffix>` so collisions in the target App Platform namespace are statistically negligible without a remote lookup; agents that explicitly want to overwrite an existing guide can pass `--id` to suppress the suffix (see [Agent authoring CLI — `create`](./AGENT-AUTHORING.md#create)).
 
 ## Validate-on-write model
 

@@ -31,9 +31,9 @@ The MCP publish handoff should return these fields:
 
 ```json
 {
-  "docParam": "api:hello-world",
-  "path": "/a/grafana-pathfinder-app?doc=api%3Ahello-world",
-  "floatingPath": "/a/grafana-pathfinder-app?doc=api%3Ahello-world&panelMode=floating"
+  "docParam": "api:hello-world-x7q2k1",
+  "path": "/a/grafana-pathfinder-app?doc=api%3Ahello-world-x7q2k1",
+  "floatingPath": "/a/grafana-pathfinder-app?doc=api%3Ahello-world-x7q2k1&panelMode=floating"
 }
 ```
 
@@ -42,15 +42,17 @@ The client turns `path` or `floatingPath` into an absolute URL by resolving it a
 Example:
 
 ```text
-https://example.grafana.net/a/grafana-pathfinder-app?doc=api%3Ahello-world&panelMode=floating
+https://example.grafana.net/a/grafana-pathfinder-app?doc=api%3Ahello-world-x7q2k1&panelMode=floating
 ```
+
+The trailing `-x7q2k1` segment is the auto-generated random suffix that the CLI's `create` command appends to keep IDs unique without a pre-publish lookup (see [Agent authoring CLI — `create`](./AGENT-AUTHORING.md#create)). When an agent passes an explicit `--id`, the suffix is absent and the URL uses the supplied ID verbatim (e.g., `?doc=api%3Ahello-world`).
 
 ## Floating mode
 
 For Grafana Assistant workflows, the recommended link is `floatingPath`.
 
 ```text
-/a/grafana-pathfinder-app?doc=api%3Ahello-world&panelMode=floating
+/a/grafana-pathfinder-app?doc=api%3Ahello-world-x7q2k1&panelMode=floating
 ```
 
 `panelMode=floating` avoids competition between Grafana Assistant and Pathfinder for the right-hand sidebar. Pathfinder already supports this mode when opening guide links.
@@ -93,11 +95,21 @@ Recommended client behavior:
 - If saved as `published`, return the link as the normal share/view URL for users of that Grafana instance.
 - If the App Platform write fails, do not return a viewer link as if it were live.
 
+## Deep links require an App Platform write
+
+The viewer deep link only resolves to a guide that exists as an `InteractiveGuide` resource in the user's Grafana instance. **It does not resolve any other path.**
+
+Specifically:
+
+- The link does not resolve a local-export package on the user's filesystem. If the agent fell back to `localExport` (see [Grafana App Platform publish handoff — Local-export fallback](./APP-PLATFORM-PUBLISH-HANDOFF.md#local-export-fallback)) — for non-Grafana clients or for Assistant-on-OSS — the agent must suppress the viewer link and tell the user where the local files were written instead.
+- The link does not resolve before a successful POST/PUT. The agent should never give the user the link until the App Platform write returns success.
+- The link does not resolve in environments without App Platform (Grafana OSS today). The handoff response still contains `viewer.path`, but the agent should treat it as inert in those environments.
+
 ## Failure behavior
 
 If the user opens a link before the guide exists, Pathfinder will fail to load the backend guide. The client should return the viewer link only after the POST or PUT succeeds.
 
-If the backend API is unavailable in the target Grafana instance, the client should report that the guide was generated but could not be stored or viewed through Pathfinder custom guides.
+If the backend API is unavailable in the target Grafana instance, the client should report that the guide was generated but could not be stored or viewed through Pathfinder custom guides, and follow `localExport` to preserve the work.
 
 ## Future considerations
 

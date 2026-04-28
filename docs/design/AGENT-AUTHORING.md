@@ -95,15 +95,17 @@ Create a new guide package.
 
 ```
 pathfinder-cli create <dir>
-  --id <kebab-string>                 Guide identifier (required, kebab-case)
   --title <string>                    Guide title (required)
+  --id <kebab-string>                 Guide identifier (optional, kebab-case)
   --type <guide|path|journey>         Package type (default: guide)
   --description <string>              Package description
 ```
 
 Creates `<dir>/content.json` and `<dir>/manifest.json` with the provided values. The `schemaVersion` is set to `CURRENT_SCHEMA_VERSION` in both files. The `content.json` starts with an empty `blocks` array.
 
-The `--id` value must match `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` — lowercase alphanumeric and hyphens, must start and end with an alphanumeric character. This is the canonical package identifier and is used unchanged as the App Platform resource name (`metadata.name`) and the viewer deep link key when the package is published. Title-to-ID derivation, if needed, happens at the input edge before the value is passed to `--id`.
+**ID generation.** When `--id` is omitted, the CLI generates a default of the form `<kebab-of-title>-<random-suffix>`, where the suffix is 6 characters of base32 entropy (e.g., `loki-setup-x7q2k1`). The suffix makes ID collisions in the target App Platform namespace statistically negligible without any pre-publish lookup, so the agent never has to coordinate naming with a remote registry. If the agent intentionally wants to overwrite an existing guide, it can pass an explicit `--id` matching the existing resource name; that path is the only one where the publish step needs the "GET-before-POST" overwrite check.
+
+When `--id` is provided explicitly, it must match `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` — lowercase alphanumeric and hyphens, must start and end with an alphanumeric character, max 253 chars (Kubernetes resource-name limit). Auto-generated IDs satisfy this regex by construction. This is the canonical package identifier and is used unchanged as the App Platform resource name (`metadata.name`) and the viewer deep link key when the package is published.
 
 **Output on success:**
 
@@ -685,6 +687,16 @@ Common requirements:
     has-permission:<perm>, var-<name>:<value>, renderer:<type>
 ```
 
+### `--help --format json` is a stability contract
+
+The Pathfinder authoring MCP exposes a `pathfinder_help` tool that returns the output of `pathfinder-cli <command> [<subcommand>] --help --format json` directly to the calling agent (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the JSON shape of `--help` part of the public contract:
+
+- The top-level keys (e.g., `command`, `summary`, `required`, `optional`, `constraints`, `addressing`) are stable. New keys may be added as additive fields. Existing keys are not renamed or removed within a major version.
+- Per-flag entries have stable keys (`name`, `valueType`, `enum`, `repeatable`, `description`, `default`).
+- Removing or renaming a flag is a breaking change and rides the schema version.
+
+Agents call `pathfinder_help` instead of carrying field-level guidance locally; promoting `--help --format json` to a contract is what lets the MCP layer be a thin pass-through with no schema knowledge of its own.
+
 ---
 
 ## Version coupling
@@ -745,9 +757,28 @@ The CLI is shipped as **two artifacts built from the same TypeScript source**, b
 
 2. **Single-file Node binary** — bundled inside the Pathfinder plugin tarball at a known path (e.g., `<plugin-dir>/cli/pathfinder-cli`). Built via `pkg` (Vercel) or Node's Single Executable Applications feature. This binary is what the plugin's Go MCP endpoint invokes via `exec.Command` when serving authoring tool calls (see [Pathfinder authoring MCP service](./HOSTED-AUTHORING-MCP.md)). Bundling avoids any requirement that Node be installed on the host running Grafana, and it avoids requiring Docker access from the plugin's process — which is unavailable in most Grafana deployments.
 
+### Supported platforms
+
+The bundled binary is built for the platforms on which the plugin actually runs:
+
+- `linux/amd64`
+- `linux/arm64`
+- `darwin` (local-developer support; arch covers Apple Silicon, with `darwin/amd64` produced if the build matrix and Pathfinder's own backend matrix already cover Intel Macs)
+
+Windows is not in scope for the bundled binary in MVP. The Docker image remains the cross-platform path for any environment outside those three.
+
+### Build pipeline
+
+The CLI binaries are produced by GitHub Actions:
+
+- **Every merge to `main`**: build the binaries for all three target platforms and upload them as workflow artifacts. These are transient — they cover spot-checking and CI integration but are not durable distribution.
+- **Tagged releases**: build the binaries for all three target platforms and attach them to the GitHub Release as durable assets, alongside the Docker image push.
+
+Plugin tarball assembly (driven by `mage`) pulls the matching CLI binary into `<plugin-dir>/cli/pathfinder-cli` for each backend platform variant the tarball is built for. The mage targets that build the Go backend (`mage build:linux`, `mage build:linuxARM64`, `mage build:darwinARM64`, etc.) gain a step that copies in the CLI binary for the same platform.
+
 Both artifacts execute identical authoring logic. The Go MCP performs no schema validation of its own; it serializes the in-flight artifact to a temporary directory, invokes the bundled CLI binary, and returns the structured CLI response to the caller. This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives.
 
-Per-call cost is dominated by Node startup (~100-200ms cold-start). For a 20-block guide this accumulates to a few seconds across the authoring session, which is acceptable for the MVP. The escape hatch when this becomes a problem is [batch operations](#batch-operations), which collapse N mutations into a single CLI invocation.
+Per-call cost is dominated by Node startup (~100-200ms cold-start). For a 20-block guide this accumulates to a few seconds across the authoring session, which is acceptable for the MVP. The escape hatch when this becomes a problem is [batch operations](#batch-operations), which collapse N mutations into a single CLI invocation. A long-lived Node sidecar (one process per plugin, JSON-RPC over stdio) is a known follow-up optimization if the per-call cost becomes a measured bottleneck — but it is intentionally **not** the MVP because per-call `exec.Command` is simpler and more robust under failure.
 
 ---
 
@@ -883,6 +914,8 @@ Implement the eight commands: `create`, `add-block`, `add-step`, `add-choice`, `
 
 All commands support `--quiet` and `--format json` flags via shared output formatting. The `--if-absent` flag is implemented on `add-block` for container types. Auto-ID assignment is implemented in the `add-block` write path — when no `--id` is provided for a leaf block, a `<type>-<n>` ID is generated before the write.
 
+The `create` command's auto-generated package `id` (when `--id` is omitted) takes the form `<kebab-of-title>-<6-char-base32-suffix>`, so collision in any target App Platform namespace is statistically negligible without a remote check.
+
 ### Phase 6: Tests
 
 - Unit tests for the bridge module (Zod field → Commander option mapping)
@@ -896,7 +929,15 @@ All commands support `--quiet` and `--format json` flags via shared output forma
 - `edit-block` tests: scalar merge semantics, array replace semantics, error on unknown ID, error on `--type` flag, error on structural fields, validate-on-write
 - `remove-block` tests: successful leaf removal, error on non-empty container without `--cascade`, successful cascade removal, validate-on-write
 
-### Phase 7: Documentation
+### Phase 7: Build pipeline and binary distribution
+
+- Add a build target that produces single-file Node binaries for `linux/amd64`, `linux/arm64`, and `darwin` from the same TypeScript source as the Docker image.
+- GitHub Actions: on every merge to `main`, build all three binaries and upload as workflow artifacts.
+- GitHub Actions: on tagged releases, build all three binaries and attach them to the GitHub Release as durable assets.
+- Plugin tarball: extend the per-platform `mage build:*` targets to copy the matching CLI binary into `<plugin-dir>/cli/pathfinder-cli` so the bundled binary ships alongside the Go backend.
+- Smoke test: after each tarball assembly, verify `<plugin-dir>/cli/pathfinder-cli --version` returns the expected schema version.
+
+### Phase 8: Documentation
 
 - Update `docs/developer/CLI_TOOLS.md` with the new commands
 - Update `AGENTS.md` on-demand context table to reference this design doc
