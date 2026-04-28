@@ -56,7 +56,11 @@ jest.mock('./BlockPalette', () => ({
 }));
 
 jest.mock('./BlockPreview', () => ({
-  BlockPreview: ({ guide }: { guide: { id: string } }) => <div data-testid={`inline-preview-${guide.id}`}>Preview</div>,
+  BlockPreview: ({ guide, showTitle }: { guide: { id: string }; showTitle?: boolean }) => (
+    <div data-testid={`inline-preview-${guide.id}`} data-show-title={showTitle ? 'true' : 'false'}>
+      Preview
+    </div>
+  ),
 }));
 
 // Now import the component (after mocks are set up)
@@ -264,11 +268,30 @@ describe('BlockList', () => {
       const blockItems = screen.getAllByTestId('block-item');
       expect(blockItems).toHaveLength(2);
       const preview = screen.getByTestId('inline-preview-preview-guide');
+      expect(preview).toHaveAttribute('data-show-title', 'false');
 
       const firstBlockPos = blockItems[0]!.compareDocumentPosition(preview);
       const secondBlockPos = blockItems[1]!.compareDocumentPosition(preview);
       expect(firstBlockPos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(secondBlockPos & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    });
+
+    it('renders whole-section previews with the section title enabled', () => {
+      const blocks: EditorBlock[] = [
+        createSectionBlock('section-1', 'My Section', [{ type: 'markdown', content: 'Nested' }]),
+      ];
+      const target: PreviewTarget = { type: 'section', sectionId: 'section-1', source: 'root' };
+
+      render(
+        <BlockList
+          blocks={blocks}
+          operations={defaultOperations}
+          pinnedPreviews={[{ target, guide: previewGuide }]}
+          previewClasses={{ container: 'preview-container' }}
+        />
+      );
+
+      expect(screen.getByTestId('inline-preview-preview-guide')).toHaveAttribute('data-show-title', 'true');
     });
 
     it('renders multiple pinned previews simultaneously without closing earlier ones', () => {
@@ -325,6 +348,7 @@ describe('BlockList', () => {
 
       expect(screen.getByTestId('block-item')).toHaveAttribute('data-preview-active', 'false');
       expect(screen.getByTestId('nested-block-item')).toHaveAttribute('data-preview-active', 'true');
+      expect(screen.getByTestId('inline-preview-pv-nested')).toHaveAttribute('data-show-title', 'false');
     });
 
     it('wires nested preview clicks to section child target', () => {
@@ -345,6 +369,46 @@ describe('BlockList', () => {
 
       screen.getByTestId('nested-block-item').click();
       expect(onNestedSectionBlockPreview).toHaveBeenCalledWith('section-1', 0);
+    });
+
+    it('does not wire root preview clicks for unsupported block types', () => {
+      const blocks: EditorBlock[] = [createConditionalBlock('cond-1', ['x'])];
+      const onBlockPreview = jest.fn();
+
+      render(
+        <BlockList
+          blocks={blocks}
+          operations={{
+            ...defaultOperations,
+            onBlockPreview,
+          }}
+          canPreviewBlockType={(type) => type !== 'conditional'}
+        />
+      );
+
+      screen.getByTestId('block-item').click();
+      expect(onBlockPreview).not.toHaveBeenCalled();
+    });
+
+    it('does not wire nested preview clicks for unsupported block types', () => {
+      const blocks: EditorBlock[] = [
+        createSectionBlock('section-1', 'My Section', [{ type: 'multistep', content: '', steps: [] }]),
+      ];
+      const onNestedSectionBlockPreview = jest.fn();
+
+      render(
+        <BlockList
+          blocks={blocks}
+          operations={{
+            ...defaultOperations,
+            onNestedSectionBlockPreview,
+          }}
+          canPreviewBlockType={(type) => type !== 'multistep'}
+        />
+      );
+
+      screen.getByTestId('nested-block-item').click();
+      expect(onNestedSectionBlockPreview).not.toHaveBeenCalled();
     });
   });
 

@@ -39,6 +39,8 @@ export interface SectionNestedBlocksProps {
   lastModifiedId?: string | null;
   /** Optional handler to preview this section (used by nested block preview) */
   onPreviewSection?: (sectionId: string, nestedIndex: number) => void;
+  /** Shared eligibility gate for showing nested preview affordances. */
+  canPreviewBlockType?: (type: BlockType) => boolean;
   /** Set of nested-block indices that currently have a pinned preview open. */
   pinnedNestedIndices?: ReadonlySet<number>;
 }
@@ -62,6 +64,7 @@ export function SectionNestedBlocks({
   justDroppedId,
   lastModifiedId,
   onPreviewSection,
+  canPreviewBlockType,
   pinnedNestedIndices,
 }: SectionNestedBlocksProps) {
   const nestedBlockIds = useMemo(
@@ -132,7 +135,7 @@ export function SectionNestedBlocks({
                       isJustDropped={isJustDroppedCheck}
                       isLastModified={lastModifiedId === nestedBlockId}
                       onPreview={
-                        onPreviewSection
+                        onPreviewSection && canPreviewBlockType?.(nestedBlock.type as BlockType) !== false
                           ? () => {
                               onPreviewSection(block.id, nestedIndex);
                             }

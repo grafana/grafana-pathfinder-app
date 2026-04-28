@@ -14,6 +14,7 @@ import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
 import type {
   EditorBlock,
+  BlockType,
   BlockOperations,
   JsonGuide,
   ViewMode,
@@ -67,6 +68,8 @@ export interface BlockEditorContentProps {
   onJsonUndo?: () => void;
   /** Pinned block previews that stay visible until toggled off via the eye button */
   pinnedPreviews?: Array<{ target: PreviewTarget; guide: JsonGuide }>;
+  /** Shared eligibility gate for preview affordances in block list rows. */
+  canPreviewBlockType?: (type: BlockType) => boolean;
 }
 
 export function BlockEditorContent({
@@ -89,6 +92,7 @@ export function BlockEditorContent({
   canJsonUndo,
   onJsonUndo,
   pinnedPreviews,
+  canPreviewBlockType,
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
@@ -172,6 +176,7 @@ export function BlockEditorContent({
             operations={operations}
             pinnedPreviews={pinnedPreviews ?? []}
             previewClasses={{ container: styles.blockPreviewContainer }}
+            canPreviewBlockType={canPreviewBlockType}
           />
         </>
       ) : viewMode === 'edit' ? (

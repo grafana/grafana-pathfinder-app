@@ -738,6 +738,10 @@ export const getBlockPreviewStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
   }),
 
+  resetActions: css({
+    marginBottom: theme.spacing(1),
+  }),
+
   resetButton: css({
     display: 'flex',
     alignItems: 'center',

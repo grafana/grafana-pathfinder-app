@@ -30,7 +30,7 @@ import { BlockPalette } from './BlockPalette';
 import { SortableBlock, DroppableInsertZone, DragData, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
 import { SectionNestedBlocks } from './SectionNestedBlocks';
 import { ConditionalBranches } from './ConditionalBranches';
-import type { EditorBlock, JsonBlock, BlockOperations, JsonGuide, PreviewTarget } from './types';
+import type { EditorBlock, JsonBlock, BlockOperations, JsonGuide, PreviewTarget, BlockType } from './types';
 import {
   isSectionBlock as checkIsSectionBlock,
   isConditionalBlock as checkIsConditionalBlock,
@@ -49,6 +49,8 @@ export interface BlockListProps {
   previewClasses?: {
     container: string;
   };
+  /** Shared eligibility gate for showing preview affordances across root and nested blocks. */
+  canPreviewBlockType?: (type: BlockType) => boolean;
 }
 
 /**
@@ -64,7 +66,13 @@ function previewKey(target: PreviewTarget): string {
 /**
  * Block list component with @dnd-kit drag-and-drop
  */
-export function BlockList({ blocks, operations, pinnedPreviews = [], previewClasses }: BlockListProps) {
+export function BlockList({
+  blocks,
+  operations,
+  pinnedPreviews = [],
+  previewClasses,
+  canPreviewBlockType,
+}: BlockListProps) {
   // Destructure operations for convenience
   const {
     onBlockEdit,
@@ -714,7 +722,11 @@ export function BlockList({ blocks, operations, pinnedPreviews = [], previewClas
                     childCount={isSection ? sectionBlocks.length : conditionalChildCount}
                     isJustDropped={justDroppedId === block.id}
                     isLastModified={lastModifiedId === block.id}
-                    onPreview={onBlockPreview ? () => onBlockPreview(block) : undefined}
+                    onPreview={
+                      onBlockPreview && canPreviewBlockType?.(block.block.type as BlockType) !== false
+                        ? () => onBlockPreview(block)
+                        : undefined
+                    }
                     isPreviewActive={isBlockItemPreviewActive}
                   />
                 </SortableBlock>
@@ -778,16 +790,20 @@ export function BlockList({ blocks, operations, pinnedPreviews = [], previewClas
                     justDroppedId={justDroppedId}
                     lastModifiedId={lastModifiedId}
                     onPreviewSection={onNestedSectionBlockPreview}
+                    canPreviewBlockType={canPreviewBlockType}
                     pinnedNestedIndices={pinnedNestedIndices}
                   />
                 )}
 
                 {previewClasses &&
-                  previewsForBlock.map((preview) => (
-                    <div key={previewKey(preview.target)} className={previewClasses.container}>
-                      <BlockPreview guide={preview.guide} />
-                    </div>
-                  ))}
+                  previewsForBlock.map((preview) => {
+                    const showPreviewTitle = preview.target.type === 'section' && preview.target.source === 'root';
+                    return (
+                      <div key={previewKey(preview.target)} className={previewClasses.container}>
+                        <BlockPreview guide={preview.guide} showTitle={showPreviewTitle} />
+                      </div>
+                    );
+                  })}
 
                 {activeId !== null && !isRootZoneRedundant(index + 1) && (
                   <DroppableInsertZone

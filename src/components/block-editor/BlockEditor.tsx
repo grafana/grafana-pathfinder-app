@@ -106,7 +106,7 @@ export interface BlockEditorProps {
  * Inner component that uses the context.
  * Separated from the provider wrapper for clean hook usage.
  */
-function buildPreviewGuideForTarget(
+export function buildPreviewGuideForTarget(
   guide: Pick<JsonGuide, 'id' | 'title'>,
   blocks: EditorBlock[],
   target: PreviewTarget
@@ -164,7 +164,7 @@ function buildPreviewGuideForTarget(
     return {
       id: `${guide.id}-section-${target.sectionId}`,
       title: section.title || guide.title,
-      blocks: section.blocks,
+      blocks: [section],
     };
   }
 
@@ -401,6 +401,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     formState,
   });
 
+  // TODO: Expand standalone preview support for additional parser-supported block types
+  // (e.g. conditional, multistep, guided, terminal-connect, grot-guide) in a next iteration.
   const previewableBlockTypes: ReadonlySet<BlockType> = useMemo(
     () =>
       new Set<BlockType>([
@@ -416,6 +418,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         'interactive',
       ]),
     []
+  );
+  const canPreviewBlockType = useCallback(
+    (type: BlockType) => previewableBlockTypes.has(type),
+    [previewableBlockTypes]
   );
 
   const latestBlocksRef = useRef(state.blocks);
@@ -439,7 +445,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const handleRootBlockPreview = useCallback(
     (block: EditorBlock) => {
       const blockType = block.block.type as BlockType;
-      if (!previewableBlockTypes.has(blockType)) {
+      if (!canPreviewBlockType(blockType)) {
         notify('info', 'Block preview not available', 'This block can only be previewed as part of the full guide.');
         return;
       }
@@ -450,7 +456,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           : { type: 'root', blockId: block.id };
       togglePinnedPreview(target);
     },
-    [previewableBlockTypes, togglePinnedPreview]
+    [canPreviewBlockType, togglePinnedPreview]
   );
 
   const handleNestedSectionBlockPreview = useCallback(
@@ -462,6 +468,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       const section = sectionBlock.block as JsonSectionBlock;
       const nested = section.blocks[nestedIndex];
       if (!nested) {
+        return;
+      }
+      if (!canPreviewBlockType(nested.type as BlockType)) {
+        notify('info', 'Block preview not available', 'This block can only be previewed as part of the full guide.');
         return;
       }
 
@@ -485,7 +495,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         nestedIndex,
       });
     },
-    [editor, state.blocks, togglePinnedPreview]
+    [canPreviewBlockType, editor, state.blocks, togglePinnedPreview]
   );
 
   // Create BlockOperations for child components
@@ -1010,6 +1020,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         canJsonUndo={jsonMode.canUndo}
         onJsonUndo={jsonMode.handleJsonUndo}
         pinnedPreviews={pinnedPreviews}
+        canPreviewBlockType={canPreviewBlockType}
       />
 
       {/* Footer with add block button (only in edit mode) */}
