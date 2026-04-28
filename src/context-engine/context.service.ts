@@ -31,6 +31,7 @@ import {
 } from '../types/context.types';
 import type { V1Recommendation, V1PackageManifest, V1RecommenderResponse } from '../types/v1-recommender.types';
 import {
+  buildPackageFileUrl,
   fetchOnlinePackageRecommendations,
   type OnlinePackageEntry,
   type PackageMatchExpr,
@@ -1552,11 +1553,55 @@ export class ContextService {
     if (!this.usesOnlySupportedMatchPredicates(match)) {
       return false;
     }
+    // Defense in depth: even if a match expression contains only supported
+    // keys, it must actually constrain the URL somewhere in the tree.
+    // Otherwise a legitimately empty `match: {}` (or one carrying only
+    // `targetPlatform`) would fall through `matchesUrlPrefix`'s "no URL
+    // constraint → match" branch and surface the entry on every page.
+    // Bug-1 was the upstream cause (Go was producing empty `{}` after
+    // stripping unknown predicates); this guard catches the same shape
+    // even when it's authored that way intentionally upstream.
+    if (!this.hasUrlConstraint(match)) {
+      return false;
+    }
     const matchAsAny = match as unknown as PackageMatchExpr;
     return (
       this.matchesUrlPrefix(matchAsAny, contextData.currentPath) &&
       this.matchesPlatform(matchAsAny, contextData.platform)
     );
+  }
+
+  /**
+   * Returns true when the match tree provably constrains the URL on every
+   * branch that could otherwise satisfy the expression. Semantics mirror
+   * the matcher's evaluation:
+   *  - leaf: `urlPrefix` or `urlPrefixIn` present
+   *  - and: at least one child must contribute a URL constraint
+   *  - or: ALL children must contribute (otherwise an unconstrained child
+   *        is the easy-out that makes the OR match every URL)
+   */
+  private static hasUrlConstraint(match: unknown): boolean {
+    if (match == null || typeof match !== 'object') {
+      return false;
+    }
+    const node = match as Record<string, unknown>;
+    if (typeof node.urlPrefix === 'string' && node.urlPrefix.length > 0) {
+      return true;
+    }
+    if (Array.isArray(node.urlPrefixIn) && node.urlPrefixIn.length > 0) {
+      return true;
+    }
+    if (Array.isArray(node.and) && node.and.length > 0) {
+      if (node.and.some((c) => this.hasUrlConstraint(c))) {
+        return true;
+      }
+    }
+    if (Array.isArray(node.or) && node.or.length > 0) {
+      if (node.or.every((c) => this.hasUrlConstraint(c))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -1605,16 +1650,10 @@ export class ContextService {
       const matched = packages.filter((entry) => this.matchesPackageEntry(entry, contextData));
       // baseUrl always ends with '/' (the backend strips "repository.json"
       // off the configured URL); entry.path may or may not have a trailing
-      // slash. Normalize both sides so we never produce a double slash like
+      // slash. `buildPackageFileUrl` normalizes both sides and fails closed
+      // on pathological inputs (e.g. all-slashes baseUrl, empty entry.path)
+      // so we never produce a broken relative URL or a double slash like
       // ".../packages/assistant-self-hosted//content.json".
-      const trimmedBase = baseUrl.replace(/\/+$/, '');
-      const buildFileUrl = (entryPath: string, fileName: string): string => {
-        if (!trimmedBase) {
-          return '';
-        }
-        const normalizedPath = entryPath.replace(/^\/+|\/+$/g, '');
-        return `${trimmedBase}/${normalizedPath}/${fileName}`;
-      };
       return matched.map((entry) => {
         // Prefer the inlined manifest fetched server-side (gives us
         // milestones, recommends, suggests, etc.). Fall back to a minimal
@@ -1634,8 +1673,8 @@ export class ContextService {
           type: 'package' as const,
           summary: entry.description,
           matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
-          contentUrl: buildFileUrl(entry.path, 'content.json'),
-          manifestUrl: buildFileUrl(entry.path, 'manifest.json'),
+          contentUrl: buildPackageFileUrl(baseUrl, entry.path, 'content.json'),
+          manifestUrl: buildPackageFileUrl(baseUrl, entry.path, 'manifest.json'),
           repository: 'online-cdn',
           manifest,
         };

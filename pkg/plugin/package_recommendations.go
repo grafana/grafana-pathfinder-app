@@ -40,20 +40,18 @@ var allowedPackageRepositoryHosts = map[string]struct{}{
 	"interactive-learning.grafana-ops.net": {},
 }
 
-// PackageMatchExpr is the subset of the recommender's MatchExpr that
-// Pathfinder's lightweight bundled matcher already understands. We
-// deliberately drop datasource/source/cohort/role/tag predicates.
-type PackageMatchExpr struct {
-	URLPrefix      string             `json:"urlPrefix,omitempty"`
-	URLPrefixIn    []string           `json:"urlPrefixIn,omitempty"`
-	TargetPlatform string             `json:"targetPlatform,omitempty"`
-	And            []PackageMatchExpr `json:"and,omitempty"`
-	Or             []PackageMatchExpr `json:"or,omitempty"`
-}
-
 // PackageTargeting wraps the match expression for a repository entry.
+//
+// Match is intentionally typed as json.RawMessage rather than a typed struct
+// so unknown predicate keys (urlRegex, datasource, cohort, userRole, tag, …)
+// survive the round-trip to the frontend. Decoding into a struct that only
+// declares the supported predicates would silently drop the unknown keys and
+// reserialize as an empty `{}`, which the frontend's lightweight matcher
+// would then vacuously match against every page. Keeping the bytes as-is
+// lets the frontend's `usesOnlySupportedMatchPredicates` see the original
+// keys and fail closed.
 type PackageTargeting struct {
-	Match PackageMatchExpr `json:"match"`
+	Match json.RawMessage `json:"match"`
 }
 
 // PackageEntry is the slim view of a repository entry sent to the frontend.
@@ -91,7 +89,13 @@ type rawRepositoryEntry struct {
 
 // packageRepositoryFetcher abstracts the HTTP fetch so tests can inject a
 // fake without spinning up an httptest server when convenient.
-type packageRepositoryFetcher func(ctx context.Context, rawURL string) ([]byte, error)
+//
+// `maxBytes` lets the caller bound the in-memory buffer per request — the
+// repository index gets 5 MB while individual manifests get 256 KB. Without
+// this, a manifest fetch would inherit the larger repository cap and could
+// transiently allocate up to (concurrency × repo cap) — ~40 MB at 8-way
+// parallelism — before the post-read cap rejected the body.
+type packageRepositoryFetcher func(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error)
 
 type packageCacheEntry struct {
 	resp      *PackageRecommendationsResponse
@@ -99,9 +103,20 @@ type packageCacheEntry struct {
 	fetchedAt time.Time
 }
 
+// packageRefreshFlight is a single-flight handle for an active refresh.
+// Concurrent callers wait on `done` instead of serializing on `packageCacheMu`
+// for the duration of the upstream fetch (which can be 5 s for the index
+// plus several seconds for the manifest fan-out).
+type packageRefreshFlight struct {
+	done chan struct{}
+	resp *PackageRecommendationsResponse
+	err  error
+}
+
 var (
-	packageCacheMu sync.Mutex
-	packageCache   *packageCacheEntry
+	packageCacheMu      sync.Mutex
+	packageCache        *packageCacheEntry
+	packageActiveFlight *packageRefreshFlight
 
 	// Test-only override. nil falls back to the real HTTP fetcher.
 	packageRepositoryFetcherOverride packageRepositoryFetcher
@@ -161,25 +176,55 @@ func (a *App) handlePackageRecommendations(w http.ResponseWriter, r *http.Reques
 // getCachedPackageRecommendations returns the cached index, refreshing it at
 // most once per packageRepositoryCacheTTL window. Both successful and failed
 // fetches are cached; a sticky failure prevents repeat upstream hits.
+//
+// The mutex is held only for cache lookup and inflight-slot management — the
+// upstream fetch runs unlocked. Concurrent callers that arrive during a
+// refresh wait on the inflight channel instead of serializing on the mutex
+// (which would block them for the full ~50 s manifest fan-out window).
 func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageRecommendationsResponse, error) {
 	packageCacheMu.Lock()
-	defer packageCacheMu.Unlock()
-
 	if packageCache != nil && timeNow().Sub(packageCache.fetchedAt) < packageRepositoryCacheTTL {
-		return packageCache.resp, packageCache.err
+		resp, err := packageCache.resp, packageCache.err
+		packageCacheMu.Unlock()
+		return resp, err
 	}
 
+	if existing := packageActiveFlight; existing != nil {
+		packageCacheMu.Unlock()
+		// Wait for the in-flight refresh to publish its result. Honour the
+		// caller's context so a cancelled request can return immediately
+		// instead of blocking on a slow CDN.
+		select {
+		case <-existing.done:
+			return existing.resp, existing.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	flight := &packageRefreshFlight{done: make(chan struct{})}
+	packageActiveFlight = flight
+	packageCacheMu.Unlock()
+
 	// Detach the upstream fetch from the request's cancellation: a canceled
-	// request (browser closed, panel collapsed mid-flight) must not poison the
-	// 6-hour cache with a "context canceled" error. The per-fetch timeouts
-	// inside fetchAndParsePackageRepository / enrichPackagesWithManifests
+	// request (browser closed, panel collapsed mid-flight) must not poison
+	// the 6-hour cache with a "context canceled" error. The per-fetch
+	// timeouts inside fetchAndParsePackageRepository / enrichPackagesWithManifests
 	// still apply because they're added with their own context.WithTimeout.
 	resp, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), packageRepositoryURL)
+
+	packageCacheMu.Lock()
 	packageCache = &packageCacheEntry{
 		resp:      resp,
 		err:       err,
 		fetchedAt: timeNow(),
 	}
+	flight.resp = resp
+	flight.err = err
+	packageActiveFlight = nil
+	packageCacheMu.Unlock()
+	close(flight.done)
+
 	return resp, err
 }
 
@@ -195,7 +240,7 @@ func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*Packag
 		fetch = defaultPackageRepositoryFetcher
 	}
 
-	body, err := fetch(ctx, rawURL)
+	body, err := fetch(ctx, rawURL, packageRepositoryMaxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +318,11 @@ func enrichPackagesWithManifests(
 			fetchCtx, cancel := context.WithTimeout(ctx, packageManifestFetchTimeout)
 			defer cancel()
 
-			body, err := fetchManifestWithLimit(fetchCtx, url, fetch)
+			// Pass the manifest cap directly so the body is bounded at read
+			// time. Without this, a misconfigured 4 MB manifest would be
+			// fully buffered before the post-read check rejected it,
+			// transiently allocating ~32 MB across 8 in-flight goroutines.
+			body, err := fetch(fetchCtx, url, packageManifestMaxBytes)
 			if err != nil {
 				return
 			}
@@ -290,31 +339,22 @@ func enrichPackagesWithManifests(
 // buildPackageFileURL joins the CDN base, the entry path, and a file name
 // while collapsing duplicate slashes that would otherwise produce URLs like
 // ".../packages/some-id//manifest.json".
+//
+// Mirrors `buildPackageFileUrl` in
+// src/lib/package-recommendations-client.ts; keep the two in sync.
 func buildPackageFileURL(baseURL, entryPath, fileName string) string {
-	if baseURL == "" || entryPath == "" || fileName == "" {
-		return ""
-	}
 	trimmedBase := strings.TrimRight(baseURL, "/")
 	cleanPath := strings.Trim(entryPath, "/")
+	if trimmedBase == "" || cleanPath == "" || fileName == "" {
+		return ""
+	}
 	return trimmedBase + "/" + cleanPath + "/" + fileName
 }
 
-// fetchManifestWithLimit applies the manifest-specific size cap on top of the
-// shared fetcher. A separate cap keeps a misconfigured manifest from eating
-// the whole repository budget.
-func fetchManifestWithLimit(ctx context.Context, url string, fetch packageRepositoryFetcher) ([]byte, error) {
-	body, err := fetch(ctx, url)
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(body)) > packageManifestMaxBytes {
-		return nil, fmt.Errorf("manifest exceeded %d bytes", packageManifestMaxBytes)
-	}
-	return body, nil
-}
-
-// defaultPackageRepositoryFetcher is the real-network HTTP fetcher.
-func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string) ([]byte, error) {
+// defaultPackageRepositoryFetcher is the real-network HTTP fetcher. The
+// `maxBytes` cap is enforced at read time (LimitReader) so we never buffer
+// more than `maxBytes + 1` even when the upstream sends a much larger body.
+func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
 	fetchCtx, cancel := context.WithTimeout(ctx, packageRepositoryFetchTimeout)
 	defer cancel()
 
@@ -334,12 +374,12 @@ func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string) ([]byte
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, packageRepositoryMaxBytes+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
-	if int64(len(body)) > packageRepositoryMaxBytes {
-		return nil, fmt.Errorf("response exceeded %d bytes", packageRepositoryMaxBytes)
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("response exceeded %d bytes", maxBytes)
 	}
 	return body, nil
 }
@@ -349,4 +389,5 @@ func resetPackageRecommendationsCache() {
 	packageCacheMu.Lock()
 	defer packageCacheMu.Unlock()
 	packageCache = nil
+	packageActiveFlight = nil
 }

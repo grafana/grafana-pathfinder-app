@@ -47,9 +47,13 @@ jest.mock('../docs-retrieval', () => ({
   derivePathSlug: jest.fn(),
 }));
 
-jest.mock('../lib/package-recommendations-client', () => ({
-  fetchOnlinePackageRecommendations: jest.fn(),
-}));
+jest.mock('../lib/package-recommendations-client', () => {
+  const actual = jest.requireActual('../lib/package-recommendations-client');
+  return {
+    ...actual,
+    fetchOnlinePackageRecommendations: jest.fn(),
+  };
+});
 
 import { ContextService } from './context.service';
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
@@ -236,6 +240,53 @@ describe('ContextService: online package recommendations (recommender-disabled b
 
     const titles = result.recommendations.map((r) => r.title);
     expect(titles).not.toContain('Explore guide');
+  });
+
+  it('drops entries whose match expression carries no URL constraint at all', async () => {
+    // Defense in depth for Bug 1: even after the Go backend was fixed to
+    // preserve unknown predicates, an upstream entry that legitimately
+    // ships `match: {}` (or only `targetPlatform`) would still vacuously
+    // pass the supported-predicate check and then fall through
+    // `matchesUrlPrefix`'s "no URL constraint → match" branch.
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'empty-match',
+          path: 'empty-match/v1',
+          title: 'Empty match',
+          // Simulates the post-Go shape Bug 1 produced (`{}`), and also any
+          // future upstream entry authored without a URL predicate.
+          targeting: { match: {} },
+        },
+        {
+          id: 'platform-only',
+          path: 'platform-only/v1',
+          title: 'Platform only',
+          targeting: { match: { targetPlatform: 'oss' } },
+        },
+        {
+          id: 'or-with-unconstrained-child',
+          path: 'or-with-unconstrained-child/v1',
+          title: 'OR with empty child',
+          // The empty-object child is the easy-out that makes the OR match
+          // every URL. Must be rejected even though the supported-predicate
+          // check passes.
+          targeting: {
+            match: { or: [{}, { urlPrefix: '/connections' }] },
+          },
+        },
+      ],
+    });
+
+    const result = await ContextService.fetchRecommendations(baseContext, {
+      acceptedTermsAndConditions: false,
+    });
+
+    const titles = result.recommendations.map((r) => r.title);
+    expect(titles).not.toContain('Empty match');
+    expect(titles).not.toContain('Platform only');
+    expect(titles).not.toContain('OR with empty child');
   });
 
   it('drops entries whose targeting uses unsupported predicates (e.g. urlRegex)', async () => {

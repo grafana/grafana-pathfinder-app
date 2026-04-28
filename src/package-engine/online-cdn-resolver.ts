@@ -12,7 +12,11 @@
  * @coupling API: GET /package-recommendations served by pkg/plugin/package_recommendations.go
  */
 
-import { fetchOnlinePackageRecommendations, type OnlinePackageEntry } from '../lib/package-recommendations-client';
+import {
+  buildPackageFileUrl,
+  fetchOnlinePackageRecommendations,
+  type OnlinePackageEntry,
+} from '../lib/package-recommendations-client';
 import { ContentJsonSchema, ManifestJsonObjectSchema } from '../types/package.schema';
 import type {
   ContentJson,
@@ -30,16 +34,6 @@ function failure(
   message: string
 ): PackageResolutionFailure {
   return { ok: false, id, error: { code, message } };
-}
-
-/** Build a CDN URL from the index baseUrl + entry path + filename. */
-function buildCdnUrl(baseUrl: string, entryPath: string, fileName: string): string {
-  if (!baseUrl || !entryPath) {
-    return '';
-  }
-  const trimmedBase = baseUrl.replace(/\/+$/, '');
-  const cleanPath = entryPath.replace(/^\/+|\/+$/g, '');
-  return `${trimmedBase}/${cleanPath}/${fileName}`;
 }
 
 export class OnlineCdnPackageResolver implements PackageResolver {
@@ -60,8 +54,8 @@ export class OnlineCdnPackageResolver implements PackageResolver {
       return failure(packageId, 'not-found', 'package not in online CDN index');
     }
 
-    const contentUrl = buildCdnUrl(baseUrl, entry.path, 'content.json');
-    const manifestUrl = buildCdnUrl(baseUrl, entry.path, 'manifest.json');
+    const contentUrl = buildPackageFileUrl(baseUrl, entry.path, 'content.json');
+    const manifestUrl = buildPackageFileUrl(baseUrl, entry.path, 'manifest.json');
 
     if (!contentUrl) {
       return failure(packageId, 'not-found', 'invalid base URL or path for online package');

@@ -6,6 +6,7 @@ import { getBackendSrv } from '@grafana/runtime';
 
 import {
   __resetPackageRecommendationsClientForTests,
+  buildPackageFileUrl,
   fetchOnlinePackageRecommendations,
 } from './package-recommendations-client';
 
@@ -157,5 +158,52 @@ describe('fetchOnlinePackageRecommendations', () => {
 
     expect(result.packages).toHaveLength(1);
     expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildPackageFileUrl', () => {
+  it('joins base, path, and filename with a single slash', () => {
+    expect(buildPackageFileUrl('https://x.example/packages/', 'prom-101/v1', 'content.json')).toBe(
+      'https://x.example/packages/prom-101/v1/content.json'
+    );
+  });
+
+  it('normalizes a missing trailing slash on the base', () => {
+    expect(buildPackageFileUrl('https://x.example/packages', 'prom-101/v1', 'manifest.json')).toBe(
+      'https://x.example/packages/prom-101/v1/manifest.json'
+    );
+  });
+
+  it('strips leading and trailing slashes from the entry path', () => {
+    expect(buildPackageFileUrl('https://x.example/packages/', '/foo/', 'content.json')).toBe(
+      'https://x.example/packages/foo/content.json'
+    );
+    expect(buildPackageFileUrl('https://x.example/packages/', '/foo/bar/', 'content.json')).toBe(
+      'https://x.example/packages/foo/bar/content.json'
+    );
+  });
+
+  it('never produces double slashes between path and filename', () => {
+    expect(buildPackageFileUrl('https://x.example/packages/', 'foo', 'content.json')).not.toContain('//content.json');
+  });
+
+  it('fails closed on empty inputs', () => {
+    expect(buildPackageFileUrl('', 'foo', 'content.json')).toBe('');
+    expect(buildPackageFileUrl('https://x.example/packages/', '', 'content.json')).toBe('');
+    expect(buildPackageFileUrl('https://x.example/packages/', 'foo', '')).toBe('');
+  });
+
+  it('fails closed when the base trims to empty (e.g. all-slashes input)', () => {
+    // Regression: previously `buildCdnUrl` truthy-checked the raw baseUrl,
+    // letting `'///'` through and producing a broken relative URL like
+    // `/foo/manifest.json`.
+    expect(buildPackageFileUrl('///', 'foo', 'manifest.json')).toBe('');
+    expect(buildPackageFileUrl('/', 'foo', 'manifest.json')).toBe('');
+  });
+
+  it('fails closed when the entry path is only slashes', () => {
+    // Regression: previously `buildFileUrl` skipped the path check entirely,
+    // producing `https://.../packages//content.json`.
+    expect(buildPackageFileUrl('https://x.example/packages/', '///', 'content.json')).toBe('');
   });
 });

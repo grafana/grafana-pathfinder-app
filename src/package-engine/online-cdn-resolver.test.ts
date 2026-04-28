@@ -1,6 +1,10 @@
-jest.mock('../lib/package-recommendations-client', () => ({
-  fetchOnlinePackageRecommendations: jest.fn(),
-}));
+jest.mock('../lib/package-recommendations-client', () => {
+  const actual = jest.requireActual('../lib/package-recommendations-client');
+  return {
+    ...actual,
+    fetchOnlinePackageRecommendations: jest.fn(),
+  };
+});
 
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 

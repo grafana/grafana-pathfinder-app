@@ -45,6 +45,28 @@ export interface PackageRecommendationsResponse {
 
 const PACKAGE_RECOMMENDATIONS_URL = `${PLUGIN_BACKEND_URL}/package-recommendations`;
 
+/**
+ * Build a CDN URL from a package index `baseUrl`, an entry's `path`, and a
+ * `fileName` (e.g. `content.json`, `manifest.json`), normalizing slashes so
+ * we never produce double slashes such as `.../packages/some-id//content.json`.
+ *
+ * Fails closed (returns `''`) when any required component is effectively
+ * empty *after* trimming — including pathological inputs like an all-slashes
+ * `baseUrl` (`'///'`) or an empty `entryPath`. Callers should treat `''` as
+ * "no usable URL" and skip the entry rather than fetching a relative path.
+ *
+ * Mirrors `buildPackageFileURL` in `pkg/plugin/package_recommendations.go`;
+ * keep the two in sync.
+ */
+export function buildPackageFileUrl(baseUrl: string, entryPath: string, fileName: string): string {
+  const trimmedBase = baseUrl.replace(/\/+$/, '');
+  const cleanPath = entryPath.replace(/^\/+|\/+$/g, '');
+  if (!trimmedBase || !cleanPath || !fileName) {
+    return '';
+  }
+  return `${trimmedBase}/${cleanPath}/${fileName}`;
+}
+
 // Session-lifetime state. Reset only via `online` event or
 // `__resetPackageRecommendationsClientForTests`.
 let unavailable = false;
