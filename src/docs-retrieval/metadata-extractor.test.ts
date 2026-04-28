@@ -1,25 +1,27 @@
 /**
- * Pre-extraction contract tests for metadata-extractor extraction (Phase 2).
+ * Unit tests for the metadata-extractor module.
  *
- * Disposable safety net per .cursor/skills/refactor/SKILL.md and the High-Risk
- * Refactor Guidelines wiki ("tests are safety rails, not refactoring targets").
- * These assertions pin the current behavior in `content-fetcher.ts` so that the
- * extraction to `./metadata-extractor` cannot silently change:
+ * Originated as the Phase 2 pre-extraction safety net for the content-fetcher
+ * refactor and was promoted to permanent post-tests after the extraction
+ * landed (per .cursor/skills/refactor/SKILL.md per-phase test sandwich).
+ *
+ * Coverage:
  *   - title regex precedence (<title> → <h1> → og:title → 'Documentation')
  *   - urlsMatch normalization (trailing-slash + lowercase) — asymmetric vs.
- *     Phase 5's strict `m.url === contentUrl` match
+ *     fetchPackageContent's strict `m.url === contentUrl` match
  *   - findCurrentMilestoneFromUrl /unstyled.html and /content.json suffix strip
  *   - getLearningJourneyBaseUrl regex precedence
  *     (learning-journeys → learning-paths → tutorials → strip-milestone)
  *   - fetchLearningJourneyMetadataFromJson grafana.skip filter + sequential
  *     index+1 renumbering
  *   - extractJourneySummary / extractDocSummary boundary semantics
- *   - INVESTIGATION §6 invariant 1: index.json fetch over http:// succeeds
- *     (no enforceHttps gate added during extraction)
+ *   - INVESTIGATION §6 invariant 1 anchor: index.json fetch over http://
+ *     succeeds (no enforceHttps gate)
  *
- * Lifecycle: this file becomes `metadata-extractor.test.ts` (permanent) at the
- * post-test commit; imports flip from `./content-fetcher` to
- * `./metadata-extractor`.
+ * Permanent additions over the pre-extraction set:
+ *   - title regex order across all three patterns simultaneously
+ *   - extractJourneySummary truncation around the 299/300/301-char boundary
+ *   - urlsMatch with URL fragments
  */
 import {
   extractDocSummary,
@@ -32,7 +34,7 @@ import {
 } from './metadata-extractor';
 import type { Milestone } from '../types/content.types';
 
-describe('metadata-extractor (pre-extraction contract)', () => {
+describe('metadata-extractor', () => {
   describe('extractTitleFromHtml — regex precedence', () => {
     it('prefers <title> over <h1>', () => {
       expect(extractTitleFromHtml('<title>From title</title><h1>From h1</h1>')).toBe('From title');
@@ -263,6 +265,45 @@ describe('metadata-extractor (pre-extraction contract)', () => {
     it('extractDocSummary falls back to first <p> when no meta description is present', () => {
       const html = '<body><p>From paragraph only</p></body>';
       expect(extractDocSummary(html)).toBe('From paragraph only');
+    });
+  });
+
+  // Permanent additions (post-test promotion) — boundaries, fragments, all-three
+  describe('post-extraction additions', () => {
+    it('title regex order — all three patterns present simultaneously, only the first wins', () => {
+      const html = '<title>From title</title><meta property="og:title" content="From og:title"><h1>From h1</h1>';
+      expect(extractTitleFromHtml(html)).toBe('From title');
+    });
+
+    it('extractJourneySummary at exactly 299/300/301 chars — ellipsis fires only once length ≥ 300', () => {
+      // Use a single paragraph so the joined-text length equals the body length
+      // exactly (no inter-paragraph " " injected).
+
+      // 299 chars total → text.length === 299, no ellipsis
+      const at299 = `<p>${'a'.repeat(299)}</p>`;
+      const out299 = extractJourneySummary(at299);
+      expect(out299.length).toBe(299);
+      expect(out299.endsWith('...')).toBe(false);
+
+      // Exactly 300 chars → text.length === 300, ellipsis appended (final length 303)
+      const at300 = `<p>${'b'.repeat(300)}</p>`;
+      const out300 = extractJourneySummary(at300);
+      expect(out300.length).toBe(303);
+      expect(out300.endsWith('...')).toBe(true);
+
+      // 301-char source → substring(0, 300) trims to 300, ellipsis appended (final length 303)
+      const at301 = `<p>${'c'.repeat(301)}</p>`;
+      const out301 = extractJourneySummary(at301);
+      expect(out301.length).toBe(303);
+      expect(out301.endsWith('...')).toBe(true);
+    });
+
+    it('urlsMatch with fragments — fragments are NOT stripped (lenient on slash + case only)', () => {
+      // Pre-existing behavior: only trailing slash + case are normalized.
+      // Fragment differences should NOT be normalized away — pinning that.
+      expect(urlsMatch('https://grafana.com/docs/foo#section', 'https://grafana.com/docs/foo')).toBe(false);
+      expect(urlsMatch('https://grafana.com/docs/foo#section', 'https://grafana.com/docs/foo#section')).toBe(true);
+      expect(urlsMatch('https://grafana.com/docs/foo/#section', 'https://grafana.com/docs/foo#section')).toBe(false);
     });
   });
 });
