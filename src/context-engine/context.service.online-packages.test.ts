@@ -238,6 +238,44 @@ describe('ContextService: online package recommendations (recommender-disabled b
     expect(titles).not.toContain('Explore guide');
   });
 
+  it('drops entries whose targeting uses unsupported predicates (e.g. urlRegex)', async () => {
+    // Real-world case: `assistant-self-hosted` uses `urlRegex: "^/?$"` inside
+    // an OR. The base matchers don't understand urlRegex and fall through to
+    // "no URL constraint", so without fail-closed handling the entry would
+    // appear on every page on OSS.
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'assistant-self-hosted',
+          path: 'assistant-self-hosted/',
+          title: 'Grafana Assistant',
+          targeting: {
+            match: {
+              and: [
+                {
+                  or: [
+                    { urlRegex: '^/?$' },
+                    { urlPrefix: '/connections' },
+                    { urlPrefix: '/plugins/grafana-assistant-app' },
+                  ],
+                },
+                { targetPlatform: 'oss' },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await ContextService.fetchRecommendations(baseContext, {
+      acceptedTermsAndConditions: false,
+    });
+
+    const titles = result.recommendations.map((r) => r.title);
+    expect(titles).not.toContain('Grafana Assistant');
+  });
+
   it('drops online entries whose targetPlatform does not match', async () => {
     (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
       baseUrl: 'https://interactive-learning.grafana.net/packages/',

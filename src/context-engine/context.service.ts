@@ -1537,10 +1537,19 @@ export class ContextService {
    * Apply the lightweight URL+platform matchers to an online package entry.
    * Returns false for entries with no targeting — those would be unmatchable
    * for the bundled flow and are also dropped by the backend.
+   *
+   * Also fails closed on any unsupported predicate (e.g. `urlRegex`,
+   * `datasource`, `cohort`, `tag`). The base matchers fall through to
+   * "no constraint → matches" when they encounter a leaf with only fields
+   * they don't recognize, which would surface entries like
+   * `assistant-self-hosted` (`urlRegex: "^/?$"`) on every page.
    */
   private static matchesPackageEntry(entry: OnlinePackageEntry, contextData: ContextData): boolean {
     const match = entry.targeting?.match;
     if (!match) {
+      return false;
+    }
+    if (!this.usesOnlySupportedMatchPredicates(match)) {
       return false;
     }
     const matchAsAny = match as unknown as PackageMatchExpr;
@@ -1548,6 +1557,33 @@ export class ContextService {
       this.matchesUrlPrefix(matchAsAny, contextData.currentPath) &&
       this.matchesPlatform(matchAsAny, contextData.platform)
     );
+  }
+
+  /**
+   * Recursively validate that a match expression uses only the predicates
+   * the lightweight matcher understands. Anything else (urlRegex, datasource,
+   * source, cohort, userRole, tag, ...) means the entry was authored for the
+   * full recommender — surfacing it via this paired-down matcher would be
+   * a false positive.
+   */
+  private static usesOnlySupportedMatchPredicates(match: unknown): boolean {
+    if (match == null || typeof match !== 'object') {
+      return false;
+    }
+    const supportedKeys: ReadonlySet<string> = new Set(['urlPrefix', 'urlPrefixIn', 'targetPlatform', 'and', 'or']);
+    for (const key of Object.keys(match as Record<string, unknown>)) {
+      if (!supportedKeys.has(key)) {
+        return false;
+      }
+    }
+    const node = match as Record<string, unknown>;
+    if (Array.isArray(node.and) && !node.and.every((c) => this.usesOnlySupportedMatchPredicates(c))) {
+      return false;
+    }
+    if (Array.isArray(node.or) && !node.or.every((c) => this.usesOnlySupportedMatchPredicates(c))) {
+      return false;
+    }
+    return true;
   }
 
   /**
