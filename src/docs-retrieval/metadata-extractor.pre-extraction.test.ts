@@ -29,7 +29,7 @@ import {
   findCurrentMilestoneFromUrl,
   getLearningJourneyBaseUrl,
   urlsMatch,
-} from './content-fetcher';
+} from './metadata-extractor';
 import type { Milestone } from '../types/content.types';
 
 describe('metadata-extractor (pre-extraction contract)', () => {
