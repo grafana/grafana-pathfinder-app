@@ -10,6 +10,8 @@
   "scripts": {
     "build": "webpack -c ./webpack.config.ts --env production",
     "copy-static": "node scripts/copy-static.js",
+    "docs:sync-terms": "node scripts/sync-terms-and-conditions.js",
+    "docs:sync-terms:check": "node scripts/sync-terms-and-conditions.js --check",
     "build:backend": "npm run copy-static && mage -v build:linux",
     "build:backend:linux-arm64": "npm run copy-static && mage -v build:linuxARM64",
     "build:backend:darwin": "npm run copy-static && mage -v build:darwin",
@@ -41,7 +43,7 @@
     "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
     "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
     "schema:export": "node dist/cli/cli/index.js schema --all",
-    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run lint:go && npm run test:go && npm run test:ci",
+    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:ci",
     "prepare": "husky"
   },
   "author": "Grafanalabs",
