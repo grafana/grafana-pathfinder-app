@@ -1,7 +1,7 @@
 # Agent authoring CLI
 
 > Part of the [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md).
-> See also: [CLI extensions](./package/cli-extensions.md) · [CLI tools reference](../developer/CLI_TOOLS.md)
+> See also: [Pathfinder AI authoring](./PATHFINDER-AI-AUTHORING.md) · [CLI extensions](./package/cli-extensions.md) · [CLI tools reference](../developer/CLI_TOOLS.md)
 
 ---
 
@@ -16,7 +16,10 @@
   - [add-choice](#add-choice)
   - [set-manifest](#set-manifest)
   - [inspect](#inspect)
+  - [edit-block](#edit-block)
+  - [remove-block](#remove-block)
 - [Addressing model](#addressing-model)
+  - [Auto-assignment of IDs](#auto-assignment-of-ids)
   - [Idempotent retries with `--if-absent`](#idempotent-retries-with---if-absent)
 - [Schema-driven option generation](#schema-driven-option-generation)
   - [The bridge module](#the-bridge-module)
@@ -32,6 +35,7 @@
 - [Version coupling](#version-coupling)
 - [Schema coupling guarantees](#schema-coupling-guarantees)
 - [Architectural layering](#architectural-layering)
+- [Distribution](#distribution)
 - [Agent usage example](#agent-usage-example)
 - [Agent context injection](#agent-context-injection)
 - [Implementation plan](#implementation-plan)
@@ -69,9 +73,9 @@ Instead of asking agents to understand the schema and produce raw JSON, we give 
 
 2. **Impossible to produce invalid output.** Every mutation validates the full package (both `content.json` and `manifest.json`) before writing. If validation fails, the file is not modified and the error is printed.
 
-3. **Append-only.** Blocks are appended sequentially. There is no reordering, insertion at index, or positional addressing. The agent writes blocks in the order they should appear.
+3. **Append-first.** New blocks are appended sequentially. There is no insert-at-index and no reordering. The agent writes blocks in the order they should appear. Existing blocks can be updated in place via `edit-block` or removed via `remove-block` using their ID.
 
-4. **ID-based addressing.** Container blocks (sections, conditionals, assistant, multistep, guided, quiz) are addressed by their `id`. Leaf blocks need no ID — they are appended to their parent.
+4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
 
 5. **Progressive discovery.** An agent runs `add-block <dir> interactive --help` and gets exactly the fields, types, constraints, and valid values for an interactive block. No upfront schema study required.
 
@@ -91,13 +95,15 @@ Create a new guide package.
 
 ```
 pathfinder-cli create <dir>
-  --id <string>                       Guide identifier (required)
+  --id <kebab-string>                 Guide identifier (required, kebab-case)
   --title <string>                    Guide title (required)
   --type <guide|path|journey>         Package type (default: guide)
   --description <string>              Package description
 ```
 
 Creates `<dir>/content.json` and `<dir>/manifest.json` with the provided values. The `schemaVersion` is set to `CURRENT_SCHEMA_VERSION` in both files. The `content.json` starts with an empty `blocks` array.
+
+The `--id` value must match `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` — lowercase alphanumeric and hyphens, must start and end with an alphanumeric character. This is the canonical package identifier and is used unchanged as the App Platform resource name (`metadata.name`) and the viewer deep link key when the package is published. Title-to-ID derivation, if needed, happens at the input edge before the value is passed to `--id`.
 
 **Output on success:**
 
@@ -229,7 +235,8 @@ Query the current state of a package. Agents need to verify state after errors, 
 
 ```
 pathfinder-cli inspect <dir>
-  --block <id>                        Show details for a single block
+  --block <id>                        Show details for a single block by ID
+  --at <jsonpath>                     Show details for the block at a JSONPath (e.g., blocks[2].blocks[1])
   --format <text|json>                Output format (default: text)
 ```
 
@@ -250,11 +257,84 @@ Package: my-guide/
 Block: setup (section)
   Title: "Set up your environment"
   Position: blocks[1]
-  Children: 3 (1 markdown, 2 interactive)
+  Children: markdown-1 (markdown), interactive-1 (interactive), interactive-2 (interactive)
   Requirements: none
 ```
 
+`--block <id>` and `--at <jsonpath>` are two lookup directions for the same information — use whichever handle you have. `--at` is most useful when reading raw JSON and needing to find a block's addressable ID.
+
 The `inspect` command performs no mutations and never writes to disk. It is a pure read operation.
+
+### `edit-block`
+
+Update fields on an existing block by ID. Flags are derived from the same Zod schema as the corresponding `add-block <type>` subcommand.
+
+```
+pathfinder-cli edit-block <dir> <id> [flags]
+```
+
+**Semantics:**
+
+- **Scalar fields** use merge semantics — only the flags provided change; unspecified fields are preserved.
+- **Array fields** (e.g., `--requirements`, `--objectives`) use replace semantics — the new value replaces the existing array entirely.
+- **`--type` is not accepted.** Changing a block's type is not supported. Remove and re-add the block if a different type is needed.
+- **Structural fields** (`blocks`, `whenTrue`, `whenFalse`, `steps`) cannot be edited via this command — they are managed by `add-block`, `add-step`, and `add-choice`.
+
+**Example:**
+
+```
+pathfinder-cli edit-block my-guide/ interactive-1 \
+  --reftarget '[data-testid="new-target"]' \
+  --content "Updated instruction text."
+```
+
+**Output on success:**
+
+```
+Updated interactive block "interactive-1" in my-guide/
+  Changed: reftarget, content
+  Package valid: yes
+```
+
+**Error — block has no ID:**
+
+```
+Error: Block at blocks[2].blocks[0] has no ID and is not addressable.
+  Re-add the block with --id to make it editable.
+```
+
+### `remove-block`
+
+Remove a block by ID. Validates the package after removal.
+
+```
+pathfinder-cli remove-block <dir> <id>
+  --cascade                           Also remove all child blocks (required for non-empty containers)
+```
+
+Without `--cascade`, the command fails if the block is a container with children. This prevents accidental loss of content authored inside a container.
+
+**Output on success (leaf block):**
+
+```
+Removed interactive block "interactive-1" from my-guide/
+  Package valid: yes
+```
+
+**Output on success (container with --cascade):**
+
+```
+Removed section "setup" (and 3 children) from my-guide/
+  Package valid: yes
+```
+
+**Error — non-empty container without --cascade:**
+
+```
+Error: Section "setup" has 3 children and cannot be removed without --cascade.
+  Use: pathfinder-cli remove-block my-guide/ setup --cascade
+  Or inspect first: pathfinder-cli inspect my-guide/ --block setup
+```
 
 ---
 
@@ -266,15 +346,29 @@ The addressing model defines how commands locate where to append content within 
 
 1. **Top-level is the default.** Without `--parent`, blocks are appended to the guide's root `blocks` array.
 
-2. **Container blocks require `id`.** When creating a `section`, `conditional`, `assistant`, `multistep`, `guided`, or `quiz` block, the `--id` flag is required. The CLI enforces this — the command fails if `--id` is omitted for these types.
+2. **Container blocks require `id`.** When creating a `section`, `conditional`, `assistant`, `multistep`, `guided`, or `quiz` block, the `--id` flag is required. The CLI enforces this — the command fails if `--id` is omitted for these types. All other block types accept an optional `--id`; if omitted, the CLI auto-assigns one (see [Auto-assignment of IDs](#auto-assignment-of-ids)).
 
 3. **`--parent <id>` locates a container.** The CLI searches the block tree depth-first for a block with the matching `id`. If not found, the command fails with an error listing available container IDs.
 
 4. **`--branch` disambiguates conditional branches.** When the parent is a `conditional` block, `--branch true` appends to `whenTrue` and `--branch false` appends to `whenFalse`. If the parent is a conditional and `--branch` is omitted, the command fails.
 
-5. **Append-only.** There is no insert-at-index, no reordering, no deletion. Blocks are written sequentially in the order they should appear. This prevents index confusion when agents are tracking positions across multiple commands.
+5. **No positional mutation.** There is no insert-at-index and no reordering. New blocks are always appended. `edit-block` and `remove-block` operate on existing blocks by ID without touching positions of other blocks.
 
 6. **IDs must be unique within the guide.** The CLI enforces ID uniqueness at creation time.
+
+### Auto-assignment of IDs
+
+When `add-block` creates a leaf block and no `--id` is provided, the CLI auto-assigns a stable ID using the pattern `<type>-<n>` where `n` is a per-type counter scoped to the guide (e.g., `markdown-1`, `interactive-3`). The assigned ID is written into `content.json` and appears in the success output.
+
+```
+Added markdown block (id: markdown-1) to section "intro" in my-guide/
+  Position: blocks[0].blocks[0]
+  Package valid: yes
+```
+
+Auto-assigned IDs are durable — they survive across CLI sessions, MCP reconnects, and conversation restarts. Any future `edit-block` or `remove-block` call can use them without re-inspection. The guide file is the source of truth; there is no separate ID mapping to maintain or lose.
+
+Leaf blocks in guides authored before this feature have no IDs and are not addressable by `edit-block` or `remove-block`. This is intentional — the change is additive and backward-compatible. Existing guides are unaffected. IDs can be added to specific blocks in those guides on demand if needed.
 
 ### Idempotent retries with `--if-absent`
 
@@ -292,7 +386,7 @@ Behavior:
 - If `setup` exists and matches the provided flags → return success (no-op).
 - If `setup` exists but differs → return an error explaining the conflict.
 
-This follows the standard "create-if-not-exists" pattern used in idempotent APIs. It applies only to container blocks (which have IDs). Leaf blocks are append-only and have no natural deduplication key.
+This follows the standard "create-if-not-exists" pattern used in idempotent APIs. It applies only to container blocks (which have author-supplied IDs). Leaf blocks are append-only and auto-assigned IDs are not deterministic across retries, so `--if-absent` is not applicable to them.
 
 For agents that need to verify state before retrying, `inspect` provides a lightweight alternative to parsing raw JSON.
 
@@ -643,6 +737,20 @@ No changes to the tier model or architectural tests are needed.
 
 ---
 
+## Distribution
+
+The CLI is shipped as **two artifacts built from the same TypeScript source**, both pinned to `CURRENT_SCHEMA_VERSION`:
+
+1. **Docker image** — published to a container registry on every build. This is the distribution channel for human authors, CI pipelines, and any environment where a Docker daemon is available. Usage is the standard "Docker as CLI" pattern: `docker run --rm grafana/pathfinder-cli:<version> add-block ...`.
+
+2. **Single-file Node binary** — bundled inside the Pathfinder plugin tarball at a known path (e.g., `<plugin-dir>/cli/pathfinder-cli`). Built via `pkg` (Vercel) or Node's Single Executable Applications feature. This binary is what the plugin's Go MCP endpoint invokes via `exec.Command` when serving authoring tool calls (see [Pathfinder authoring MCP service](./HOSTED-AUTHORING-MCP.md)). Bundling avoids any requirement that Node be installed on the host running Grafana, and it avoids requiring Docker access from the plugin's process — which is unavailable in most Grafana deployments.
+
+Both artifacts execute identical authoring logic. The Go MCP performs no schema validation of its own; it serializes the in-flight artifact to a temporary directory, invokes the bundled CLI binary, and returns the structured CLI response to the caller. This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives.
+
+Per-call cost is dominated by Node startup (~100-200ms cold-start). For a 20-block guide this accumulates to a few seconds across the authoring session, which is acceptable for the MVP. The escape hatch when this becomes a problem is [batch operations](#batch-operations), which collapse N mutations into a single CLI invocation.
+
+---
+
 ## Agent usage example
 
 A complete authoring session for a simple guide:
@@ -723,7 +831,9 @@ Use `pathfinder-cli` to author Pathfinder guides. Commands:
 - pathfinder-cli add-step <dir> --parent <id> --action <action> [flags]
 - pathfinder-cli add-choice <dir> --parent <id> --id <id> --text <text> [flags]
 - pathfinder-cli set-manifest <dir> [flags]
-- pathfinder-cli inspect <dir> [--block <id>]
+- pathfinder-cli inspect <dir> [--block <id>] [--at <jsonpath>]
+- pathfinder-cli edit-block <dir> <id> [flags]
+- pathfinder-cli remove-block <dir> <id> [--cascade]
 
 Run any command with --help to see available flags for that block type.
 All commands support --quiet (terse output) and --format json (structured output).
@@ -732,20 +842,28 @@ Block types: markdown, section, interactive, multistep, guided, quiz, input,
   image, video, html, terminal, terminal-connect, code-block, conditional, assistant
 
 Container types (require --id): section, conditional, assistant, multistep, guided, quiz
-Use --parent <id> to append inside a container. Blocks are always appended in order.
+Leaf blocks are auto-assigned an ID (e.g., markdown-1) if --id is not provided.
+Use --parent <id> to append inside a container. New blocks are always appended in order.
 Use --if-absent on container blocks to make retries safe.
+Use inspect to discover block IDs before calling edit-block or remove-block.
 The CLI validates on every write — invalid output is impossible.
 ```
 
-This is approximately 15 lines. The agent discovers everything else via `--help` on the specific command it needs.
+This is approximately 20 lines. The agent discovers everything else via `--help` on the specific command it needs.
 
 ---
 
 ## Implementation plan
 
-### Phase 1: Schema descriptions
+### Phase 1: Schema descriptions, leaf block IDs, and canonical ID format
 
 Add `.describe()` to Zod schema fields in `json-guide.schema.ts` and `package.schema.ts`. Start with the most commonly used block types: `markdown`, `interactive`, `section`, `multistep`, `guided`, `quiz`. This has no runtime effect on existing code — `.describe()` is metadata only.
+
+Also add an optional `id` field to all leaf block schemas that do not already have one. This is a purely additive schema change — existing guides without leaf-block IDs remain valid.
+
+Tighten the package-level `id` field on `ContentJsonSchema` and `ManifestJsonObjectSchema` to enforce kebab-case: `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`, with a maximum length compatible with Kubernetes resource names (253 chars). This brings the canonical TS schema into agreement with the Go-side validation regex (`pkg/plugin/mcp.go`) and with what the App Platform `InteractiveGuide` CRD requires for `metadata.name`. The package `id` becomes the single canonical identifier used as content ID, manifest ID, package directory name, App Platform resource name, and viewer deep link key — with no transformation at any boundary.
+
+This is a tightening rather than additive change. Before merging, audit existing guides in `src/bundled-interactives/` and the `interactive-tutorials` repository for non-kebab IDs. If any are found, normalize them in the same change set; if none are found, the tightening is free.
 
 ### Phase 2: Bridge module
 
@@ -761,9 +879,9 @@ Implement `src/cli/utils/package-io.ts` — read a package directory into memory
 
 ### Phase 5: Commands
 
-Implement the six commands: `create`, `add-block`, `add-step`, `add-choice`, `set-manifest`, `inspect`. The five mutation commands follow the read-mutate-validate-write pattern and produce agent-oriented output with next-step hints. The `inspect` command is read-only.
+Implement the eight commands: `create`, `add-block`, `add-step`, `add-choice`, `set-manifest`, `inspect`, `edit-block`, `remove-block`. The six mutation commands follow the read-mutate-validate-write pattern and produce agent-oriented output with next-step hints. The `inspect` command is read-only.
 
-All commands support `--quiet` and `--format json` flags via shared output formatting. The `--if-absent` flag is implemented on `add-block` for container types.
+All commands support `--quiet` and `--format json` flags via shared output formatting. The `--if-absent` flag is implemented on `add-block` for container types. Auto-ID assignment is implemented in the `add-block` write path — when no `--id` is provided for a leaf block, a `<type>-<n>` ID is generated before the write.
 
 ### Phase 6: Tests
 
@@ -771,9 +889,12 @@ All commands support `--quiet` and `--format json` flags via shared output forma
 - Unit tests for each command (using in-memory fixtures, not subprocess calls, following existing CLI test patterns)
 - Integration test: author a complete guide via CLI commands and validate the resulting package
 - Registry completeness test: `BLOCK_SCHEMA_MAP` keys === `VALID_BLOCK_TYPES`
-- `inspect` command tests: verify output for empty packages, populated packages, and `--block` targeting
+- `inspect` command tests: verify output for empty packages, populated packages, `--block` targeting, and `--at` JSONPath targeting
 - `--if-absent` tests: verify no-op on match, error on conflict, normal create on absence
 - `--quiet` and `--format json` tests: verify output shape for success and error cases across commands
+- Auto-assignment tests: verify leaf blocks without `--id` receive auto-assigned IDs; verify counter increments correctly per type; verify IDs appear in success output and are present in written `content.json`
+- `edit-block` tests: scalar merge semantics, array replace semantics, error on unknown ID, error on `--type` flag, error on structural fields, validate-on-write
+- `remove-block` tests: successful leaf removal, error on non-empty container without `--cascade`, successful cascade removal, validate-on-write
 
 ### Phase 7: Documentation
 
@@ -788,13 +909,9 @@ All commands support `--quiet` and `--format json` flags via shared output forma
 
 If the CLI is published as a standalone npm package, the version is already coupled to the schema version. A prepublish script can sync `package.json` version to `CURRENT_SCHEMA_VERSION`.
 
-### Removal and reordering
+### Reordering
 
-The initial design is append-only. If agents need to restructure guides (remove a block, reorder sections), `remove-block` and `move-block` commands could be added. These would use the same ID-based addressing model. For now, an agent that needs to restructure can regenerate the guide from scratch.
-
-### Edit-in-place
-
-An `edit-block` command could update fields on an existing block by ID, revalidating after the change. This is a natural extension of the addressing model.
+Block reordering (`move-block`) is intentionally excluded. Moving blocks creates positional instability that is difficult for agents to reason about correctly. If structure needs to be substantially rearranged, removing and re-adding blocks in the correct order is the supported path.
 
 ### Dry-run mode
 
