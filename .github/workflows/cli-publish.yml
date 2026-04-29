@@ -62,10 +62,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # SECURITY: No `cache:` option in this workflow. Caching in workflows that
+      # publish artifacts is a supply chain attack vector (cache poisoning).
+      # The CLI build is fast enough that the tradeoff favors integrity.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
 
       - name: Install
         run: npm ci --no-audit --no-fund
