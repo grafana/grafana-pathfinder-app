@@ -15,7 +15,14 @@ import { ManifestJsonObjectSchema, ManifestJsonSchema } from '../../types/packag
 import type { ManifestJson } from '../../types/package.types';
 import { assertCliManifestFields, assertSemver, CliValidationError } from '../utils/cli-validators';
 import { mutateAndValidate, PackageIOError } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import {
+  issueToOutcome,
+  manyIssuesOutcome,
+  printOutcome,
+  readOutputOptions,
+  renderError,
+  type CommandOutcome,
+} from '../utils/output';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 
 export const setManifestCommand = new Command('set-manifest')
@@ -164,10 +171,15 @@ export async function runSetManifest(args: SetManifestArgs): Promise<CommandOutc
       Object.assign(manifest, reparsed as ManifestJson);
     });
     if (!writeResult.validation.ok) {
-      const first = writeResult.validation.issues[0];
-      return first
-        ? issueToOutcome(first, { issues: writeResult.validation.issues })
-        : { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after manifest update' };
+      const issues = writeResult.validation.issues;
+      if (issues.length === 0) {
+        return { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after manifest update' };
+      }
+      if (issues.length === 1) {
+        return issueToOutcome(issues[0]!, { issues });
+      }
+      const multi = manyIssuesOutcome(issues, 'manifest');
+      return { ...multi, code: issues[0]!.code, data: { ...(multi.data ?? {}), issues } };
     }
   } catch (err) {
     if (err instanceof PackageIOError) {

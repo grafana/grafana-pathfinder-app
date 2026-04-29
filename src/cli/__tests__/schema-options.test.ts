@@ -309,6 +309,11 @@ describe('integration with the live JsonInteractiveBlockSchema', () => {
     const action = cmd.options.find((o) => o.long === '--action');
     expect(action?.description).toBe('Action to perform on target element');
     const requirements = cmd.options.find((o) => o.long === '--requirements');
-    expect(requirements?.description).toBe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)');
+    // The bridge enriches requirements/conditions descriptions with a pointer
+    // to `pathfinder-cli requirements list` so authors discover valid tokens
+    // without leaving --help. Assert the describe() text and the suffix
+    // separately so future suffix changes don't tangle the .describe() check.
+    expect(requirements?.description).toContain('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)');
+    expect(requirements?.description).toContain('pathfinder-cli requirements list');
   });
 });

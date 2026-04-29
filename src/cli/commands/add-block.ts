@@ -12,13 +12,28 @@ import { Command, InvalidArgumentError, Option } from 'commander';
 import { BLOCK_SCHEMA_MAP, isContainerBlockType, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { appendBlock, mutateAndValidate, PackageIOError, type AppendBlockOptions } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
-import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import {
+  issueToOutcome,
+  manyIssuesOutcome,
+  printOutcome,
+  readOutputOptions,
+  renderError,
+  type CommandOutcome,
+} from '../utils/output';
+import { getSchemaRequiredFlagNames, parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 import type { JsonBlock } from '../../types/json-guide.types';
 
 export const addBlockCommand = new Command('add-block').description(
   'Append a block to a guide. One subcommand per block type. Usage: add-block <type> <dir> [flags]'
 );
+
+/**
+ * Map of block type → array of logically-required flag names. Populated as
+ * subcommands register; surfaced via `add-block --help` so authors can see
+ * what each type needs without drilling into per-type help. Help-shape JSON
+ * exposes this as `requiredByType` (additive key in the stability contract).
+ */
+export const REQUIRED_BY_BLOCK_TYPE: Record<string, string[]> = {};
 
 for (const [type, schema] of Object.entries(BLOCK_SCHEMA_MAP) as Array<
   [BlockType, (typeof BLOCK_SCHEMA_MAP)[BlockType]]
@@ -59,7 +74,30 @@ for (const [type, schema] of Object.entries(BLOCK_SCHEMA_MAP) as Array<
   // Bridge: derive flags from the block's schema. The bridge skips `type`
   // (it's the subcommand name), `blocks`, `whenTrue`, `whenFalse`, `steps`,
   // and `choices` (managed by sibling commands).
-  registerSchemaOptions(sub, schema);
+  //
+  // `forceOptional: true` defers required-field checking to the schema's
+  // `safeParse` in `runAddBlock`. Commander otherwise short-circuits on the
+  // first missing required option, forcing the agent to retry once per
+  // missing flag; with all schema-required flags collected at parse time,
+  // every missing field surfaces in a single error response. The set of
+  // logically-required flags is recorded on the command for help output.
+  registerSchemaOptions(sub, schema, { forceOptional: true });
+
+  // Populate the per-type required-flags table. Container types (section,
+  // multistep, guided, quiz, conditional, assistant) also require --id at the
+  // CLI level even though the schema marks `id` optional, so authors see
+  // every author-required flag in one glance. Mutate the subcommand's
+  // schema-required set in place so help-shape JSON picks them up too.
+  const requiredSet = getSchemaRequiredFlagNames(sub) as Set<string> | undefined;
+  if (requiredSet) {
+    if (isContainerBlockType(type as BlockType)) {
+      requiredSet.add('id');
+    }
+    if (type === 'conditional') {
+      requiredSet.add('conditions');
+    }
+  }
+  REQUIRED_BY_BLOCK_TYPE[type] = [...(requiredSet ?? new Set<string>())];
 
   sub.action(async function (this: Command, dir: string) {
     const opts = this.opts() as Record<string, unknown>;
@@ -81,6 +119,21 @@ for (const [type, schema] of Object.entries(BLOCK_SCHEMA_MAP) as Array<
   });
 
   addBlockCommand.addCommand(sub);
+}
+
+// Append a "required by type" summary so a single `add-block --help` is
+// enough to author any block type. Without this, authors run the parent
+// help, then a per-type help, then begin authoring — paying two help
+// round-trips per block type.
+{
+  const lines = ['', 'Required flags by type (run `add-block <type> --help` for the full surface):'];
+  const padding = Math.max(...Object.keys(REQUIRED_BY_BLOCK_TYPE).map((k) => k.length));
+  for (const type of Object.keys(REQUIRED_BY_BLOCK_TYPE).sort()) {
+    const flags = REQUIRED_BY_BLOCK_TYPE[type] ?? [];
+    const formatted = flags.length === 0 ? '(none)' : flags.map((f) => `--${f}`).join(' ');
+    lines.push(`  ${type.padEnd(padding)}  ${formatted}`);
+  }
+  addBlockCommand.description(`${addBlockCommand.description() ?? ''}\n${lines.join('\n')}`);
 }
 
 interface AddBlockArgs {
@@ -183,13 +236,9 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   if (!candidateParse.success) {
     const filtered = filterEmptyContainerIssues(candidateParse.error.issues);
     if (filtered.length > 0) {
-      const first = filtered[0]!;
-      return {
-        status: 'error',
-        code: 'SCHEMA_VALIDATION',
-        message: `${first.path.join('.') || args.type}: ${first.message}`,
-        data: { issues: filtered },
-      };
+      // Surface every issue at once so the agent fixes them in a single
+      // retry instead of pinging the CLI for each missing required field.
+      return manyIssuesOutcome(filtered, `${args.type} block`);
     }
   }
 
@@ -216,10 +265,17 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       assignedId = out.id;
     });
     if (!result.validation.ok) {
-      const first = result.validation.issues[0];
-      return first
-        ? issueToOutcome(first, { issues: result.validation.issues })
-        : { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after append' };
+      const issues = result.validation.issues;
+      if (issues.length === 0) {
+        return { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after append' };
+      }
+      if (issues.length === 1) {
+        return issueToOutcome(issues[0]!, { issues });
+      }
+      // Multi-issue: keep the first issue's stable code, but render every
+      // problem in the message so the agent doesn't replay the round-trip.
+      const multi = manyIssuesOutcome(issues, `${args.type} block`);
+      return { ...multi, code: issues[0]!.code, data: { ...(multi.data ?? {}), issues } };
     }
   } catch (err) {
     if (err instanceof PackageIOError) {

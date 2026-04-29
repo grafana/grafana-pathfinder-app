@@ -66,6 +66,8 @@ export type PackageIOErrorCode =
   | 'CONTAINER_HAS_CHILDREN'
   | 'IF_ABSENT_CONFLICT'
   | 'INVALID_OPTIONS'
+  | 'QUIZ_CORRECT_COUNT'
+  | 'UNKNOWN_REQUIREMENT'
   | 'WRITE_FAILED';
 
 export interface PackageIOIssue {
@@ -370,7 +372,7 @@ export function validatePackageState(
         continue;
       }
       issues.push({
-        code: 'SCHEMA_VALIDATION',
+        code: classifyContentIssue(issue.message),
         message: `content.json: ${issue.message}`,
         path: ['content.json', ...issue.path.map(String)],
       });
@@ -392,7 +394,7 @@ export function validatePackageState(
         continue;
       }
       issues.push({
-        code: 'SCHEMA_VALIDATION',
+        code: classifyContentIssue(err.message),
         message: `content.json: ${err.message}`,
         path: ['content.json', ...err.path.map(String)],
       });
@@ -453,7 +455,40 @@ export function validatePackageState(
  * surfaces these so a published guide cannot ship an empty container.
  */
 function isEmptyContainerCompletenessMessage(message: string): boolean {
-  return /At least one (step|choice|screen|condition) is required/.test(message);
+  if (/At least one (step|choice|screen|condition) is required/.test(message)) {
+    return true;
+  }
+  // "Quiz has no correct choice yet" is the transient authoring twin of the
+  // empty-container completeness check: an agent legitimately adds a non-
+  // correct choice before the correct one. The publish-time validator
+  // (`validatePackage`) still surfaces it.
+  if (/Quiz has no correct choice yet/.test(message)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Map a Zod / validateGuide message to a stable `PackageIOErrorCode`.
+ *
+ * Most schema violations stay under the generic `SCHEMA_VALIDATION` bucket so
+ * MCP consumers don't have to enumerate every edge case. A few semantic
+ * checks get their own codes because the design contract names them: the
+ * quiz correct-count refinement and the unknown-requirement refinement both
+ * exist so agents can branch on a stable string instead of grepping the
+ * message.
+ */
+function classifyContentIssue(message: string): PackageIOErrorCode {
+  if (
+    message.includes('Single-select quiz has more than one correct choice') ||
+    message.includes('Quiz has no correct choice yet')
+  ) {
+    return 'QUIZ_CORRECT_COUNT';
+  }
+  if (message.startsWith('Unknown requirement ')) {
+    return 'UNKNOWN_REQUIREMENT';
+  }
+  return 'SCHEMA_VALIDATION';
 }
 
 // ---------------------------------------------------------------------------
@@ -692,6 +727,30 @@ export function appendBlock(
       code: 'CONTAINER_REQUIRES_ID',
       message: `Block type "${block.type}" requires --id (container blocks must be addressable)`,
     });
+  }
+
+  // --if-absent path for leaves WITHOUT an explicit --id: search the
+  // resolved target parent's children for a content-equivalent leaf and
+  // return its id without minting a new one. Without this, re-running the
+  // same `add-block markdown … --if-absent --content X` after a crash
+  // produces a fresh auto-id (`markdown-2`) instead of the no-op the agent
+  // expected — duplicating content silently. Containers and leaves with
+  // explicit ids fall through to the id-based --if-absent path below.
+  if (options.ifAbsent && !isContainer && !block.id) {
+    const target = resolveAppendTarget(content, options);
+    const equivalent = findEquivalentLeaf(target.array, block);
+    if (equivalent) {
+      const equivalentPosition = positionOf(content, equivalent);
+      return {
+        appended: false,
+        id: (equivalent as { id?: string }).id ?? '',
+        position: equivalentPosition ?? '<unknown>',
+      };
+    }
+    // No equivalent → fall through to normal append. We don't conflict on
+    // "same-type but different content" siblings: an agent calling
+    // --if-absent wants "create iff my exact content isn't there", not
+    // "fail if any sibling of this type exists".
   }
 
   if (!block.id && !isContainer) {
@@ -1378,6 +1437,30 @@ interface ConflictDetail {
  * are intentionally ignored — `--if-absent` is for the "create the container
  * if it isn't there" pattern; existing children are preserved by design.
  */
+/**
+ * Find an existing leaf block in `siblings` whose type and scalar fields
+ * exactly match `candidate`. Used by leaf-block `--if-absent` to short-circuit
+ * idempotent retries — if the agent re-runs the same `add-block markdown …`
+ * after a crash, the second call returns the existing block's id instead of
+ * appending a duplicate.
+ *
+ * Excludes ids and structural arrays from the equivalence check: the
+ * candidate has no id yet (auto-id minting happens after this lookup), and
+ * leaves don't have structural arrays anyway. Auto-assigned ids on the
+ * existing block are preserved as the canonical id of the result.
+ */
+function findEquivalentLeaf(siblings: JsonBlock[], candidate: JsonBlock): JsonBlock | null {
+  for (const sibling of siblings) {
+    if (sibling.type !== candidate.type) {
+      continue;
+    }
+    if (scalarFieldsConflict(sibling, candidate) === null) {
+      return sibling;
+    }
+  }
+  return null;
+}
+
 function scalarFieldsConflict(existing: JsonBlock, candidate: JsonBlock): ConflictDetail | null {
   const structural = new Set(['blocks', 'whenTrue', 'whenFalse', 'steps', 'choices']);
   const existingRecord = existing as unknown as Record<string, unknown>;

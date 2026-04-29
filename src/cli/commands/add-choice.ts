@@ -9,7 +9,14 @@ import { JsonQuizChoiceSchema } from '../../types/json-guide.schema';
 import type { JsonQuizChoice } from '../../types/json-guide.types';
 import { assertCliChoiceFields, CliValidationError } from '../utils/cli-validators';
 import { appendChoice, mutateAndValidate, PackageIOError } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import {
+  issueToOutcome,
+  manyIssuesOutcome,
+  printOutcome,
+  readOutputOptions,
+  renderError,
+  type CommandOutcome,
+} from '../utils/output';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 
 export const addChoiceCommand = new Command('add-choice')
@@ -47,12 +54,7 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
 
   const candidate = JsonQuizChoiceSchema.safeParse(projected);
   if (!candidate.success) {
-    const first = candidate.error.issues[0];
-    return {
-      status: 'error',
-      code: 'SCHEMA_VALIDATION',
-      message: first ? `${first.path.join('.') || 'choice'}: ${first.message}` : 'Invalid choice',
-    };
+    return manyIssuesOutcome(candidate.error.issues, 'choice');
   }
 
   let position = '';

@@ -9,7 +9,14 @@ import { JsonStepSchema } from '../../types/json-guide.schema';
 import type { JsonStep } from '../../types/json-guide.types';
 import { assertCliStepFields, CliValidationError } from '../utils/cli-validators';
 import { appendStep, mutateAndValidate, PackageIOError } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import {
+  issueToOutcome,
+  manyIssuesOutcome,
+  printOutcome,
+  readOutputOptions,
+  renderError,
+  type CommandOutcome,
+} from '../utils/output';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 
 export const addStepCommand = new Command('add-step')
@@ -55,12 +62,7 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
 
   const candidate = JsonStepSchema.safeParse(projected);
   if (!candidate.success) {
-    const first = candidate.error.issues[0];
-    return {
-      status: 'error',
-      code: 'SCHEMA_VALIDATION',
-      message: first ? `${first.path.join('.') || 'step'}: ${first.message}` : 'Invalid step',
-    };
+    return manyIssuesOutcome(candidate.error.issues, 'step');
   }
 
   let position = '';

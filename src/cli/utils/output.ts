@@ -16,7 +16,7 @@
 import type { Command } from 'commander';
 import { ZodError, z } from 'zod';
 
-import { describeField, fieldNameToFlag, STRUCTURAL_SKIP_FIELDS } from './schema-options';
+import { describeField, fieldNameToFlag, getSchemaRequiredFlagNames, STRUCTURAL_SKIP_FIELDS } from './schema-options';
 import type { PackageIOIssue } from './package-io';
 
 // ---------------------------------------------------------------------------
@@ -99,6 +99,53 @@ export function issueToOutcome(issue: PackageIOIssue, data?: Record<string, unkn
     code: issue.code,
     message: issue.message,
     data: data ?? (issue.path ? { path: issue.path } : undefined),
+  };
+}
+
+/**
+ * Build a multi-issue `SCHEMA_VALIDATION` error outcome from a list of Zod
+ * issues. When more than one issue is present, the message lists each on its
+ * own line so the agent sees every required-field violation in a single
+ * round-trip (instead of fixing one and discovering the next on retry).
+ *
+ * `subject` should be a short label like `"interactive block"` or
+ * `"manifest"` used in the header line.
+ */
+export function manyIssuesOutcome(
+  issues: ReadonlyArray<{ path?: readonly PropertyKey[] | undefined; message: string }>,
+  subject: string
+): ErrorOutcome {
+  if (issues.length === 0) {
+    return {
+      status: 'error',
+      code: 'SCHEMA_VALIDATION',
+      message: `Validation failed for ${subject}`,
+    };
+  }
+  const formatPath = (path: readonly PropertyKey[] | undefined): string => {
+    if (!path || path.length === 0) {
+      return '<root>';
+    }
+    return (
+      path
+        .map((segment) => (typeof segment === 'number' ? `[${segment}]` : String(segment)))
+        .filter((s) => s.length > 0)
+        .join('.')
+        .replace(/\.\[/g, '[') || '<root>'
+    );
+  };
+  const lines = issues.map((issue) => `  - ${formatPath(issue.path)}: ${issue.message}`);
+  const head = issues.length === 1 ? `${subject}:` : `${issues.length} problems with this ${subject}:`;
+  return {
+    status: 'error',
+    code: 'SCHEMA_VALIDATION',
+    message: `${head}\n${lines.join('\n')}`,
+    data: {
+      issues: issues.map((i) => ({
+        path: (i.path ?? []).map((p) => String(p)),
+        message: i.message,
+      })),
+    },
   };
 }
 
@@ -243,6 +290,12 @@ export interface HelpJson {
   addressing?: HelpJsonFlag[];
   /** Subcommand names exposed by this command, if any. */
   subcommands?: string[];
+  /**
+   * Map of subcommand name → list of logically-required flag names. Surfaced
+   * by `add-block` so a single help round-trip is enough to author any block
+   * type. Additive key in the help-shape stability contract.
+   */
+  requiredByType?: Record<string, string[]>;
 }
 
 const ADDRESSING_FLAGS: ReadonlySet<string> = new Set(['parent', 'branch', 'id', 'if-absent']);
@@ -294,9 +347,11 @@ export function formatHelpAsJson(cmd: Command): HelpJson {
       flag.default = option.defaultValue;
     }
 
+    const schemaRequired = getSchemaRequiredFlagNames(cmd);
+    const isLogicallyRequired = option.mandatory === true || schemaRequired?.has(flagName) === true;
     if (ADDRESSING_FLAGS.has(flagName)) {
       addressing.push(flag);
-    } else if (option.mandatory) {
+    } else if (isLogicallyRequired) {
       required.push(flag);
     } else {
       optional.push(flag);
@@ -304,6 +359,23 @@ export function formatHelpAsJson(cmd: Command): HelpJson {
   }
 
   const subcommands = cmd.commands.length > 0 ? cmd.commands.map((c) => c.name()) : undefined;
+
+  // Build requiredByType from any subcommands that recorded schema-required
+  // flags. Only includes container `--id` and conditional `--conditions` if
+  // the parent surfaced them; the upstream populator (`add-block.ts`) handles
+  // those CLI-level requirements.
+  let requiredByType: Record<string, string[]> | undefined;
+  if (cmd.commands.length > 0) {
+    for (const sub of cmd.commands) {
+      const reqSet = getSchemaRequiredFlagNames(sub);
+      if (reqSet && reqSet.size > 0) {
+        if (!requiredByType) {
+          requiredByType = {};
+        }
+        requiredByType[sub.name()] = [...reqSet];
+      }
+    }
+  }
 
   const result: HelpJson = {
     command: cmd.name(),
@@ -316,6 +388,9 @@ export function formatHelpAsJson(cmd: Command): HelpJson {
   }
   if (subcommands && subcommands.length > 0) {
     result.subcommands = subcommands;
+  }
+  if (requiredByType) {
+    result.requiredByType = requiredByType;
   }
   return result;
 }

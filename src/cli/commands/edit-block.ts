@@ -7,7 +7,14 @@
 import { Command, Option } from 'commander';
 
 import { editBlock, findBlockById, mutateAndValidate, PackageIOError, readPackage } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import {
+  issueToOutcome,
+  manyIssuesOutcome,
+  printOutcome,
+  readOutputOptions,
+  renderError,
+  type CommandOutcome,
+} from '../utils/output';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
@@ -145,10 +152,15 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
       changed = r.changed;
     });
     if (!result.validation.ok) {
-      const first = result.validation.issues[0];
-      return first
-        ? issueToOutcome(first, { issues: result.validation.issues })
-        : { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after edit' };
+      const issues = result.validation.issues;
+      if (issues.length === 0) {
+        return { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after edit' };
+      }
+      if (issues.length === 1) {
+        return issueToOutcome(issues[0]!, { issues });
+      }
+      const multi = manyIssuesOutcome(issues, `${blockType} block`);
+      return { ...multi, code: issues[0]!.code, data: { ...(multi.data ?? {}), issues } };
     }
   } catch (err) {
     if (err instanceof PackageIOError) {

@@ -19,7 +19,16 @@ interface ValidateOptions {
   format?: 'text' | 'json';
   package?: string;
   packages?: string;
+  verbose?: boolean;
 }
+
+/**
+ * Stable regexes for default-array INFO messages emitted by
+ * `validatePackage`. Used to collapse the six "depends/recommends/.../replaces
+ * defaulting to []" lines that fire on every fresh package into a single
+ * summary line, freeing screen budget for real WARN/ERROR signals.
+ */
+const DEFAULT_ARRAY_INFO_REGEX = /^manifest\.json: "([a-zA-Z]+)" not specified, defaulting to \[\]/;
 
 interface ValidationSummary {
   totalFiles: number;
@@ -105,7 +114,7 @@ function formatJsonOutput(summary: ValidationSummary): void {
 
 // --- Package validation output ---
 
-function formatPackageResult(dirName: string, result: PackageValidationResult, strict: boolean): void {
+function formatPackageResult(dirName: string, result: PackageValidationResult, strict: boolean, verbose = false): void {
   const status = result.isValid ? '✅' : '❌';
   console.log(`\n${status} ${dirName} (${result.packageId ?? 'unknown id'})`);
 
@@ -119,12 +128,38 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
     }
   }
 
+  // Collapse the default-array INFO messages into a single summary line
+  // unless --verbose. Six identical-shape "defaulting to []" lines on every
+  // fresh package drown out real warnings; one summary keeps validate output
+  // scannable without losing information for authors who want it.
+  const defaultArrayFields: string[] = [];
   for (const msg of result.messages) {
+    if (msg.severity === 'info' && !verbose) {
+      const m = DEFAULT_ARRAY_INFO_REGEX.exec(msg.message);
+      if (m) {
+        defaultArrayFields.push(m[1]!);
+        continue;
+      }
+    }
     const icon = msg.severity === 'error' ? '❌' : msg.severity === 'warn' ? '⚠️ ' : 'ℹ️ ';
     console.log(`  ${icon} ${msg.severity.toUpperCase()}: ${msg.message}`);
     if (msg.remediation) {
       console.log(`      Fix: ${msg.remediation}`);
     }
+  }
+  if (defaultArrayFields.length > 0) {
+    console.log(
+      `  ℹ️  INFO: ${defaultArrayFields.length} optional manifest field(s) not set (${defaultArrayFields.join(', ')}) — run with --verbose for details.`
+    );
+  }
+
+  // Explicit PASS / FAIL trailer so success is unambiguous when WARNs are
+  // present in the body. Tested by every audit scenario; previously authors
+  // had to scan for `❌ ERROR` lines or rely on exit code.
+  if (result.isValid) {
+    console.log('\n✅ PASS');
+  } else {
+    console.log('\n❌ FAIL');
   }
 }
 
@@ -135,7 +170,7 @@ function runPackageValidation(packageDir: string, options: ValidateOptions): voi
   if (options.format === 'json') {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    formatPackageResult(path.basename(absoluteDir), result, !!options.strict);
+    formatPackageResult(path.basename(absoluteDir), result, !!options.strict, !!options.verbose);
   }
 
   if (!result.isValid) {
@@ -285,6 +320,7 @@ export const validateCommand = new Command('validate')
   .option('--format <format>', 'Output format: text or json', 'text')
   .option('--package <dir>', 'Validate a single package directory (expects content.json)')
   .option('--packages <dir>', 'Validate a tree of package directories')
+  .option('--verbose', 'Show every INFO message individually (default: collapse default-array INFOs)')
   .action(async function (this: Command, files: string[]) {
     const options = this.optsWithGlobals<ValidateOptions>();
     try {

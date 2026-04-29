@@ -276,7 +276,7 @@ describe('JSON Round-trip Conversion', () => {
         blocks: [
           {
             type: 'conditional',
-            conditions: ['context:isCloud'],
+            conditions: ['has-feature:cloud'],
             whenTrue: [{ type: 'markdown', content: 'Cloud-specific content' }],
             whenFalse: [{ type: 'markdown', content: 'OSS-specific content' }],
             description: 'Show different content based on deployment type',
@@ -287,7 +287,7 @@ describe('JSON Round-trip Conversion', () => {
       expect(result.isValid).toBe(true);
       const conditional = result.guide?.blocks[0] as JsonConditionalBlock;
       expect(conditional.type).toBe('conditional');
-      expect(conditional.conditions).toEqual(['context:isCloud']);
+      expect(conditional.conditions).toEqual(['has-feature:cloud']);
       expect(conditional.whenTrue).toHaveLength(1);
       expect(conditional.whenFalse).toHaveLength(1);
       expect(conditional.description).toBe('Show different content based on deployment type');
@@ -366,7 +366,7 @@ describe('JSON Round-trip Conversion', () => {
                 action: 'formfill',
                 reftarget: 'input[name="search"]',
                 targetvalue: 'test query',
-                requirements: ['element-visible:input'],
+                requirements: ['exists-reftarget'],
                 tooltip: 'Enter search term',
                 description: 'Search for something',
                 skippable: false,
@@ -383,7 +383,7 @@ describe('JSON Round-trip Conversion', () => {
       expect(result.isValid).toBe(true);
       const multistep = result.guide?.blocks[0] as JsonMultistepBlock;
       const step = multistep.steps[0]!;
-      expect(step.requirements).toEqual(['element-visible:input']);
+      expect(step.requirements).toEqual(['exists-reftarget']);
       expect(step.tooltip).toBe('Enter search term');
       expect(step.description).toBe('Search for something');
       expect(step.validateInput).toBe(true);
@@ -436,7 +436,7 @@ describe('JSON Round-trip Conversion', () => {
             multiSelect: false,
             completionMode: 'max-attempts',
             maxAttempts: 3,
-            requirements: ['section-complete:intro'],
+            requirements: ['section-completed:intro'],
             skippable: true,
           },
         ],

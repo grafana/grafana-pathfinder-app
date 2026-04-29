@@ -26,6 +26,7 @@ import { inspectCommand } from './commands/inspect';
 import { moveBlockCommand } from './commands/move-block';
 import { removeBlockCommand } from './commands/remove-block';
 import { renameIdCommand } from './commands/rename-id';
+import { requirementsCommand } from './commands/requirements';
 import { schemaCommand } from './commands/schema';
 import { setManifestCommand } from './commands/set-manifest';
 import { validateCommand } from './commands/validate';
@@ -94,6 +95,7 @@ program.addCommand(e2eCommand);
 program.addCommand(buildRepositoryCommand);
 program.addCommand(buildGraphCommand);
 program.addCommand(schemaCommand);
+program.addCommand(requirementsCommand);
 
 // Walk the entire command tree (including nested add-block subcommands) and
 // install the JSON help hook. Called after all addCommand() so every node is

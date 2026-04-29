@@ -289,19 +289,19 @@ describe('runEditBlock', () => {
         action: 'navigate',
         reftarget: '[data-testid="x"]',
         content: 'old',
-        requirements: ['old-req'],
+        requirements: ['is-admin'],
       },
     });
     const result = await runEditBlock({
       dir,
       id: 'interactive-1',
-      flagValues: { content: 'new', requirements: ['new-req'] },
+      flagValues: { content: 'new', requirements: ['is-editor'] },
     });
     expect(result.status).toBe('ok');
     const content = readContent(dir);
     const block = content.blocks[0] as unknown as Record<string, unknown>;
     expect(block.content).toBe('new');
-    expect(block.requirements).toEqual(['new-req']);
+    expect(block.requirements).toEqual(['is-editor']);
   });
 
   it('reports BLOCK_NOT_FOUND on a missing id', async () => {

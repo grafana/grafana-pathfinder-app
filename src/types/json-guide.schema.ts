@@ -9,7 +9,25 @@
 
 import { z } from 'zod';
 
+import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
+
 // ============ PRIMITIVE SCHEMAS ============
+
+/**
+ * Schema for a single requirement / condition token. Wraps a plain string
+ * with a refinement that rejects tokens not recognized by
+ * `isValidRequirement` and suggests a fix via `unknownRequirementMessage`.
+ *
+ * Used wherever the JSON model accepts requirement expressions
+ * (`requirements`, `conditions`). The check fires at every Zod parse, which
+ * means `validatePackage()`, the CLI's in-flight `validatePackageState`, and
+ * any future MCP-layer schema parse all enforce the same vocabulary.
+ */
+const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
+  if (!isValidRequirement(token)) {
+    ctx.addIssue({ code: 'custom', message: unknownRequirementMessage(token) });
+  }
+});
 
 /**
  * Schema for safe URLs (http/https only).
@@ -82,7 +100,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
-    requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
+    requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
     description: z.string().optional().describe('Step description shown to the user'),
     skippable: z.boolean().optional().describe('Allow user to skip this step'),
@@ -213,7 +231,7 @@ export const JsonInteractiveBlockSchema = z
       .describe('Instructional text shown to user (markdown)'),
     tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
     requirements: z
-      .array(z.string())
+      .array(RequirementTokenSchema)
       .optional()
       .describe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)'),
     objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
@@ -274,7 +292,7 @@ export const JsonMultistepBlockSchema = z.object({
     .array(JsonStepSchema)
     .min(1, 'At least one step is required')
     .describe('Ordered steps; populated via add-step'),
-  requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
 });
@@ -292,7 +310,7 @@ export const JsonGuidedBlockSchema = z.object({
     .min(1, 'At least one step is required')
     .describe('Ordered steps; populated via add-step'),
   stepTimeout: z.number().optional().describe('Per-step timeout in milliseconds'),
-  requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
@@ -300,22 +318,71 @@ export const JsonGuidedBlockSchema = z.object({
 
 /**
  * Schema for quiz block.
+ *
+ * Single-select quizzes (`multiSelect !== true`) must have exactly one
+ * `correct: true` choice; multi-select quizzes must have at least one. The
+ * empty-choices case is left to the standalone `validatePackage` completeness
+ * check so the authoring flow can hold a transient empty quiz between
+ * `add-block quiz` and the first `add-choice`.
+ *
  * @coupling Type: JsonQuizBlock
  */
-export const JsonQuizBlockSchema = z.object({
-  type: z.literal('quiz'),
-  id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
-  question: z.string().min(1, 'Quiz question is required').describe('Question text shown to the user'),
-  choices: z
-    .array(JsonQuizChoiceSchema)
-    .min(1, 'At least one choice is required')
-    .describe('Quiz choices; populated via add-choice'),
-  multiSelect: z.boolean().optional().describe('Allow selecting more than one choice'),
-  completionMode: z.enum(['correct-only', 'max-attempts']).optional().describe('How the quiz is considered complete'),
-  maxAttempts: z.number().optional().describe('Number of attempts allowed when completionMode=max-attempts'),
-  requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
-  skippable: z.boolean().optional().describe('Allow user to skip this block'),
-});
+export const JsonQuizBlockSchema = z
+  .object({
+    type: z.literal('quiz'),
+    id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
+    question: z.string().min(1, 'Quiz question is required').describe('Question text shown to the user'),
+    choices: z
+      .array(JsonQuizChoiceSchema)
+      .min(1, 'At least one choice is required')
+      .describe('Quiz choices; populated via add-choice'),
+    multiSelect: z.boolean().optional().describe('Allow selecting more than one choice'),
+    completionMode: z.enum(['correct-only', 'max-attempts']).optional().describe('How the quiz is considered complete'),
+    maxAttempts: z.number().optional().describe('Number of attempts allowed when completionMode=max-attempts'),
+    requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+    skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  })
+  .superRefine((quiz, ctx) => {
+    // Empty quizzes are a transient authoring state; the publish-time
+    // `validatePackage` completeness check covers them. Skip here so
+    // `add-block quiz --id q` doesn't fail before the first `add-choice`.
+    if (!quiz.choices || quiz.choices.length === 0) {
+      return;
+    }
+    const correctCount = quiz.choices.filter((c) => c.correct === true).length;
+    if (quiz.multiSelect === true) {
+      if (correctCount === 0) {
+        // "No correct yet" is a transient authoring state — the publish-time
+        // `validatePackage` enforces it, the in-flight authoring filter
+        // (`isEmptyContainerCompletenessMessage`) tolerates it so an agent
+        // can add the un-marked choice before the correct one.
+        ctx.addIssue({
+          code: 'custom',
+          path: ['choices'],
+          message: 'Quiz has no correct choice yet (mark a choice with --correct on add-choice or edit-block).',
+        });
+      }
+      return;
+    }
+    // Default: single-select. Two distinct failure modes — split so the
+    // CLI can tolerate "no correct yet" (transient) but reject "two correct"
+    // (genuine authoring bug) at write time.
+    if (correctCount === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['choices'],
+        message: 'Quiz has no correct choice yet (mark a choice with --correct on add-choice or edit-block).',
+      });
+      return;
+    }
+    if (correctCount > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['choices'],
+        message: `Single-select quiz has more than one correct choice (got ${correctCount}). Pass --multi-select on the quiz, or unset --correct on the extras with edit-block.`,
+      });
+    }
+  });
 
 /**
  * Schema for input block (collects user responses).
@@ -337,7 +404,7 @@ export const JsonInputBlockSchema = z.object({
   required: z.boolean().optional().describe('Whether the input must be provided to continue'),
   pattern: z.string().optional().describe('Regex pattern the value must match (text inputs only)'),
   validationMessage: z.string().optional().describe('Message shown when validation fails'),
-  requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
 });
@@ -353,7 +420,7 @@ export const JsonTerminalBlockSchema = z.object({
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
   command: z.string().min(1, 'Terminal command is required').describe('Command to execute in the terminal'),
   content: z.string().min(1, 'Terminal content is required').describe('Instructional text shown to the user'),
-  requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
@@ -391,7 +458,7 @@ export const JsonCodeBlockBlockSchema = z.object({
   language: z.string().optional().describe('Source language hint (e.g., promql, logql, sql)'),
   code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
   content: z.string().optional().describe('Optional instructional text shown above the code'),
-  requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
@@ -537,7 +604,7 @@ const SectionProps = {
   type: z.literal('section'),
   id: z.string().optional().describe('Stable identifier for the section (required for container blocks via CLI)'),
   title: z.string().optional().describe('Section heading'),
-  requirements: z.array(z.string()).optional().describe('Prerequisite conditions'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this section addresses'),
   autoCollapse: z.boolean().optional().describe('Collapse the section after the user completes its contents'),
 };
@@ -562,7 +629,7 @@ const AssistantProps = {
  */
 const ConditionalSectionConfigSchema = z.object({
   title: z.string().optional(),
-  requirements: z.array(z.string()).optional(),
+  requirements: z.array(RequirementTokenSchema).optional(),
   objectives: z.array(z.string()).optional(),
 });
 
@@ -573,7 +640,7 @@ const ConditionalProps = {
     .optional()
     .describe('Stable identifier for the conditional block (required for container blocks via CLI)'),
   conditions: z
-    .array(z.string())
+    .array(RequirementTokenSchema)
     .min(1, 'At least one condition is required')
     .describe('Requirement expressions evaluated to choose the active branch'),
   description: z.string().optional().describe('Description shown when the conditional acts as a section'),

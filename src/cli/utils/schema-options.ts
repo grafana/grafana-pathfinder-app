@@ -159,7 +159,15 @@ export function zodFieldToOption(name: string, field: z.ZodType): Option | null 
   }
 
   const fallbackDescription = `${name} (${shape.kind}${shape.optional ? ', optional' : ''})`;
-  const description = shape.description ?? fallbackDescription;
+  let description = shape.description ?? fallbackDescription;
+
+  // Surface the canonical requirement vocabulary on the two flags that take
+  // requirement tokens, so authors discover valid values without invoking
+  // `pathfinder-cli requirements list`. Schema-level refinement still
+  // enforces the vocabulary; this is purely a help-text enrichment.
+  if (name === 'requirements' || name === 'conditions') {
+    description = `${description} | run "pathfinder-cli requirements list" for valid tokens (e.g., is-admin, on-page:/dashboards)`;
+  }
 
   if (shape.kind === 'boolean') {
     const option = new Option(`--${flag}`, description);
@@ -227,6 +235,22 @@ export function zodFieldToOption(name: string, field: z.ZodType): Option | null 
  * objects) are silently skipped. Use `describeField()` directly if you need
  * to detect or surface those.
  */
+/**
+ * Set of flag names that are *logically* required (per the underlying schema)
+ * but were registered with `forceOptional: true` so the command can defer
+ * required-field checking to a single Zod `safeParse`. `formatHelpAsJson`
+ * consults this list to keep the help-shape `required` bucket accurate even
+ * when Commander itself sees the options as optional. Stored on the command
+ * via a non-enumerable property so the rest of the Commander API is
+ * unaffected.
+ */
+export const SCHEMA_REQUIRED_KEY = '__schemaRequiredFlagNames';
+
+export function getSchemaRequiredFlagNames(cmd: Command): ReadonlySet<string> | undefined {
+  const value = (cmd as unknown as Record<string, unknown>)[SCHEMA_REQUIRED_KEY];
+  return value instanceof Set ? (value as ReadonlySet<string>) : undefined;
+}
+
 export function registerSchemaOptions<T extends z.ZodObject>(
   cmd: Command,
   schema: T,
@@ -235,11 +259,17 @@ export function registerSchemaOptions<T extends z.ZodObject>(
     /**
      * Force every generated option to be non-mandatory. Used by `edit-block`,
      * which composes flags from many block schemas — required-on-create
-     * fields (like `image.src`) are not required-on-patch.
+     * fields (like `image.src`) are not required-on-patch — and by
+     * `add-block` subcommands, which defer required-field checking to a
+     * single Zod parse so multiple missing fields surface together instead
+     * of Commander short-circuiting on the first one.
      */
     forceOptional?: boolean;
   } = {}
 ): Command {
+  // Track logically-required flags when forceOptional is set so help output
+  // and downstream consumers still know the truth.
+  const requiredNames = new Set<string>(getSchemaRequiredFlagNames(cmd) ?? []);
   const shape = schema.shape as Record<string, z.ZodType>;
   // Pre-compute the set of long flags already registered on this command so
   // multi-schema callers (notably `edit-block`, which unions every block
@@ -251,8 +281,15 @@ export function registerSchemaOptions<T extends z.ZodObject>(
     if (!option) {
       continue;
     }
+    const wasMandatory = option.mandatory === true;
     if (options.forceOptional) {
       option.mandatory = false;
+      if (wasMandatory) {
+        const longName = (option.long ?? '').replace(/^--/, '');
+        if (longName) {
+          requiredNames.add(longName);
+        }
+      }
     }
     if (options.skipExisting && existing.has(option.long ?? '')) {
       continue;
@@ -266,6 +303,18 @@ export function registerSchemaOptions<T extends z.ZodObject>(
       cmd.addOption(option);
       existing.add(option.long ?? '');
     }
+  }
+  // Always stash the set when forceOptional is in use, even if it's empty —
+  // callers (notably add-block) need a mutable handle so they can layer in
+  // CLI-level required flags (`--id` for containers, `--conditions` for
+  // conditional blocks) that the schema marks optional.
+  if (requiredNames.size > 0 || options.forceOptional) {
+    Object.defineProperty(cmd, SCHEMA_REQUIRED_KEY, {
+      value: requiredNames,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
   }
   return cmd;
 }
