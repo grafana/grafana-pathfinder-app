@@ -433,7 +433,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       updateManager(enabledState);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
-      const errorState = createErrorState(errorMessage, requirements, objectives, hints, skippable);
+      const errorState = createErrorState(errorMessage, requirements || objectives, hints, skippable);
       safeSetState(errorState);
       updateManager(errorState);
     }
@@ -471,12 +471,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       } else if (state.fixType === 'location' && state.targetHref && navigationManagerRef.current) {
         // Fix location requirements by navigating to the expected path
         await navigationManagerRef.current.fixLocationRequirement(state.targetHref);
-      } else if (state.fixType === 'lazy-scroll') {
-        // lazy-scroll is now handled transparently in Show me/Do it buttons
-        // This case should not be reached - buttons are enabled and handle scroll automatically
-        console.warn('lazy-scroll fixType should be handled by button click, not fixRequirement');
-        safeSetState((prev) => ({ ...prev, isChecking: false }));
-        return;
       } else if (state.fixType === 'expand-options-group') {
         // Expand all collapsed Options Group panels in the Grafana panel editor
         const collapsedToggles = document.querySelectorAll(

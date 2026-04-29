@@ -384,7 +384,7 @@ describe('check-phases', () => {
   // ============================================================
   describe('createErrorState', () => {
     it('should create error state with correct flags', () => {
-      const state = createErrorState('Test error', 'exists-reftarget', undefined, undefined, false);
+      const state = createErrorState('Test error', 'exists-reftarget', undefined, false);
 
       expect(state.isEnabled).toBe(false);
       expect(state.isCompleted).toBe(false);
@@ -393,39 +393,40 @@ describe('check-phases', () => {
     });
 
     it('should preserve error message', () => {
-      const state = createErrorState('Network timeout', 'test-req', undefined, undefined, false);
+      const state = createErrorState('Network timeout', 'test-req', undefined, false);
 
       expect(state.error).toBe('Network timeout');
     });
 
-    it('should generate explanation from requirements', () => {
-      const state = createErrorState('Error', 'navmenu-open', undefined, undefined, false);
+    it('should generate explanation from conditions string', () => {
+      const state = createErrorState('Error', 'navmenu-open', undefined, false);
 
       expect(state.explanation).toContain('navigation menu');
     });
 
-    it('should generate explanation from objectives when requirements undefined', () => {
-      const state = createErrorState('Error', undefined, 'exists:.target', undefined, false);
+    it('should generate explanation when conditions string is an objective', () => {
+      // Caller is responsible for picking the relevant string (requirements or objectives).
+      const state = createErrorState('Error', 'exists:.target', undefined, false);
 
       expect(state.explanation).toBeDefined();
     });
 
     it('should use hints for explanation when provided', () => {
-      const state = createErrorState('Error', 'test-req', undefined, 'Custom hint', false);
+      const state = createErrorState('Error', 'test-req', 'Custom hint', false);
 
       expect(state.explanation).toBe('Custom hint');
     });
 
     it('should handle skippable parameter in explanation', () => {
-      const skippable = createErrorState('Error', 'test-req', undefined, undefined, true);
-      const notSkippable = createErrorState('Error', 'test-req', undefined, undefined, false);
+      const skippable = createErrorState('Error', 'test-req', undefined, true);
+      const notSkippable = createErrorState('Error', 'test-req', undefined, false);
 
       expect(skippable.explanation).toContain('skip');
       expect(notSkippable.explanation).not.toContain('skip');
     });
 
     it('should not allow fixing error states', () => {
-      const state = createErrorState('Error', 'test-req', undefined, undefined, false);
+      const state = createErrorState('Error', 'test-req', undefined, false);
 
       expect(state.canFixRequirement).toBe(false);
       expect(state.fixType).toBeUndefined();
@@ -433,7 +434,7 @@ describe('check-phases', () => {
     });
 
     it('should use maxRetries from config', () => {
-      const state = createErrorState('Error', 'test-req', undefined, undefined, false);
+      const state = createErrorState('Error', 'test-req', undefined, false);
 
       expect(state.maxRetries).toBe(INTERACTIVE_CONFIG.delays.requirements.maxRetries);
     });
@@ -501,7 +502,7 @@ describe('check-phases', () => {
         expect(createBlockedState('step').isChecking).toBe(false);
         expect(createRequirementsState({ pass: true, error: [] }, 'req', undefined, false).isChecking).toBe(false);
         expect(createEnabledState(false).isChecking).toBe(false);
-        expect(createErrorState('err', 'req', undefined, undefined, false).isChecking).toBe(false);
+        expect(createErrorState('err', 'req', undefined, false).isChecking).toBe(false);
       });
 
       it('should have maxRetries equal to config value in all states', () => {
@@ -514,7 +515,7 @@ describe('check-phases', () => {
           expectedMaxRetries
         );
         expect(createEnabledState(false).maxRetries).toBe(expectedMaxRetries);
-        expect(createErrorState('err', 'req', undefined, undefined, false).maxRetries).toBe(expectedMaxRetries);
+        expect(createErrorState('err', 'req', undefined, false).maxRetries).toBe(expectedMaxRetries);
       });
 
       it('should have retryCount of 0 in all freshly created states', () => {
@@ -523,7 +524,7 @@ describe('check-phases', () => {
         expect(createBlockedState('step').retryCount).toBe(0);
         expect(createRequirementsState({ pass: true, error: [] }, 'req', undefined, false).retryCount).toBe(0);
         expect(createEnabledState(false).retryCount).toBe(0);
-        expect(createErrorState('err', 'req', undefined, undefined, false).retryCount).toBe(0);
+        expect(createErrorState('err', 'req', undefined, false).retryCount).toBe(0);
       });
 
       it('should have completionReason "none" unless completed', () => {
@@ -533,7 +534,7 @@ describe('check-phases', () => {
           'none'
         );
         expect(createEnabledState(false).completionReason).toBe('none');
-        expect(createErrorState('err', 'req', undefined, undefined, false).completionReason).toBe('none');
+        expect(createErrorState('err', 'req', undefined, false).completionReason).toBe('none');
 
         // Only objectives completed has different reason
         expect(createObjectivesCompletedState(false).completionReason).toBe('objectives');
@@ -547,7 +548,7 @@ describe('check-phases', () => {
         expect(createBlockedState('step').isSkipped).toBe(false);
         expect(createRequirementsState({ pass: true, error: [] }, 'req', undefined, false).isSkipped).toBe(false);
         expect(createEnabledState(false).isSkipped).toBe(false);
-        expect(createErrorState('err', 'req', undefined, undefined, false).isSkipped).toBe(false);
+        expect(createErrorState('err', 'req', undefined, false).isSkipped).toBe(false);
       });
     });
   });

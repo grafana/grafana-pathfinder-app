@@ -203,12 +203,13 @@ export function createEnabledState(skippable: boolean): BaseStepState {
 }
 
 /**
- * Create error state when check fails
+ * Create error state when check fails.
+ * `conditions` is the requirement-or-objective string to render the explanation against;
+ * the caller is responsible for picking the relevant one.
  */
 export function createErrorState(
   errorMessage: string,
-  requirements: string | undefined,
-  objectives: string | undefined,
+  conditions: string | undefined,
   hints: string | undefined,
   skippable: boolean
 ): BaseStepState {
@@ -218,7 +219,7 @@ export function createErrorState(
     isChecking: false,
     isSkipped: false,
     completionReason: 'none',
-    explanation: getRequirementExplanation(requirements || objectives, hints, errorMessage, skippable),
+    explanation: getRequirementExplanation(conditions, hints, errorMessage, skippable),
     error: errorMessage,
     canFixRequirement: false,
     canSkip: skippable,

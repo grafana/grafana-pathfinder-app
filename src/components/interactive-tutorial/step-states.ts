@@ -45,6 +45,7 @@ export const FIX_TYPES = {
   LAZY_SCROLL: 'lazy-scroll',
   LOCATION: 'location',
   EXPAND_PARENT_NAVIGATION: 'expand-parent-navigation',
+  EXPAND_OPTIONS_GROUP: 'expand-options-group',
 } as const;
 
 export type FixTypeValue = (typeof FIX_TYPES)[keyof typeof FIX_TYPES];
