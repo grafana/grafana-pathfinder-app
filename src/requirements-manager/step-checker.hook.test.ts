@@ -1,15 +1,30 @@
-import React from 'react';
+import type React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
-import { AlignmentPendingContext } from '../global-state/alignment-pending-context';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Mock requirements checker utility
 jest.mock('./requirements-checker.utils', () => ({
   checkRequirements: jest.fn(),
 }));
+
+// The alignment-pending context is a Tier 1 dependency the hook reads to decide
+// whether to gate `isEligibleForChecking`. Mocking it explicitly here keeps the
+// pre-existing tests deterministic (paused=false, default behaviour) and lets
+// the new "AlignmentPendingContext gate" describe override the mock per-test.
+// Without the mock, CI would occasionally time out the heartbeat test under
+// `--maxWorkers 4` because the un-mocked `useContext` adds a second hook call
+// inside an already heartbeat-driven re-render path.
+jest.mock('../global-state/alignment-pending-context', () => ({
+  AlignmentPendingContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
+  useIsAlignmentPaused: jest.fn(() => false),
+  useAlignmentStartingLocation: jest.fn(() => null),
+}));
+
+const mockUseIsAlignmentPaused = jest.requireMock('../global-state/alignment-pending-context')
+  .useIsAlignmentPaused as jest.Mock;
 
 // Mock interactive-engine to control NavigationManager (lazy-imported) and useInteractiveElements
 const mockExpandParentNavigationSection = jest.fn().mockResolvedValue(true);
@@ -668,24 +683,21 @@ describe('useStepChecker return shape (regression)', () => {
 // is pending so step 1 can't race the user's redirect decision.
 // =============================================================================
 describe('useStepChecker — AlignmentPendingContext gate', () => {
-  it('does not call checkRequirements when the context is true, even with isEligibleForChecking: true', async () => {
+  afterEach(() => {
+    // Reset the mock to its default so pre-existing tests are not affected.
+    mockUseIsAlignmentPaused.mockReturnValue(false);
+  });
+
+  it('does not call checkRequirements when the context returns isPending: true', async () => {
+    mockUseIsAlignmentPaused.mockReturnValue(true);
     mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
 
-    const wrapper = ({ children }: { children: React.ReactNode }) =>
-      React.createElement(
-        AlignmentPendingContext.Provider,
-        { value: { isPending: true, startingLocation: '/connections' } },
-        children
-      );
-
-    const { result } = renderHook(
-      () =>
-        useStepChecker({
-          requirements: 'navmenu-open',
-          stepId: 'paused-step',
-          isEligibleForChecking: true,
-        }),
-      { wrapper }
+    const { result } = renderHook(() =>
+      useStepChecker({
+        requirements: 'navmenu-open',
+        stepId: 'paused-step',
+        isEligibleForChecking: true,
+      })
     );
 
     await act(async () => {
@@ -696,7 +708,8 @@ describe('useStepChecker — AlignmentPendingContext gate', () => {
     expect(result.current.isEnabled).toBe(false);
   });
 
-  it('runs checkRequirements normally when the context is false (default outside a provider)', async () => {
+  it('runs checkRequirements normally when the context returns isPending: false', async () => {
+    mockUseIsAlignmentPaused.mockReturnValue(false);
     mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
 
     const { result } = renderHook(() =>
