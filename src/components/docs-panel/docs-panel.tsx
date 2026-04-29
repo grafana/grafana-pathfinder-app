@@ -76,6 +76,7 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { evaluateAlignment, resolveStartingLocation } from '../../recovery';
+import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
@@ -2256,12 +2257,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   }}
                 >
                   {stableContent && (
-                    <>
-                      {activeTab?.pendingAlignment ? (
-                        // While an alignment prompt is pending, suppress the
-                        // ContentRenderer entirely. This keeps the implied 0th
-                        // step from racing with step 1's mount and matches the
-                        // documented contract on `PendingAlignment`.
+                    <AlignmentPendingContext.Provider value={!!activeTab?.pendingAlignment}>
+                      {activeTab?.pendingAlignment && (
                         <AlignmentPrompt
                           startingLocation={activeTab.pendingAlignment.startingLocation}
                           onConfirm={() => {
@@ -2271,42 +2268,41 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             model.dismissAlignment(activeTab.id);
                           }}
                         />
-                      ) : (
-                        <ContentRenderer
-                          key={activeTab?.currentUrl || stableContent.url}
-                          content={stableContent}
-                          containerRef={contentRef}
-                          className={`${
-                            stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
-                          } ${interactiveStyles} ${prismStyles}`}
-                          onContentReady={() => {
-                            // Restore scroll position after content is ready
-                            restoreScrollPosition();
-                          }}
-                          onGuideComplete={() => {
-                            const baseUrl = activeTab?.baseUrl || stableContent.url;
-
-                            // Mark bundled guides as 100% complete when all interactive steps finish
-                            if (baseUrl?.startsWith('bundled:')) {
-                              setJourneyCompletionPercentage(baseUrl, 100);
-                            }
-
-                            // Mark learning journey milestones as done when all interactive steps finish
-                            if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                              const slug = getMilestoneSlug(activeTab.currentUrl);
-                              const journeyBase = activeTab.baseUrl;
-                              if (slug && journeyBase) {
-                                markMilestoneDone(
-                                  journeyBase,
-                                  slug,
-                                  stableContent.metadata?.learningJourney?.totalMilestones
-                                );
-                              }
-                            }
-                          }}
-                        />
                       )}
-                    </>
+                      <ContentRenderer
+                        key={activeTab?.currentUrl || stableContent.url}
+                        content={stableContent}
+                        containerRef={contentRef}
+                        className={`${
+                          stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
+                        } ${interactiveStyles} ${prismStyles}`}
+                        onContentReady={() => {
+                          // Restore scroll position after content is ready
+                          restoreScrollPosition();
+                        }}
+                        onGuideComplete={() => {
+                          const baseUrl = activeTab?.baseUrl || stableContent.url;
+
+                          // Mark bundled guides as 100% complete when all interactive steps finish
+                          if (baseUrl?.startsWith('bundled:')) {
+                            setJourneyCompletionPercentage(baseUrl, 100);
+                          }
+
+                          // Mark learning journey milestones as done when all interactive steps finish
+                          if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
+                            const slug = getMilestoneSlug(activeTab.currentUrl);
+                            const journeyBase = activeTab.baseUrl;
+                            if (slug && journeyBase) {
+                              markMilestoneDone(
+                                journeyBase,
+                                slug,
+                                stableContent.metadata?.learningJourney?.totalMilestones
+                              );
+                            }
+                          }
+                        }}
+                      />
+                    </AlignmentPendingContext.Provider>
                   )}
 
                   {/* Go home button - always visible at bottom of content */}

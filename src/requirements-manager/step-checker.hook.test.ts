@@ -660,3 +660,58 @@ describe('useStepChecker return shape (regression)', () => {
     expect(typeof result.current.fixRequirement).toBe('function');
   });
 });
+
+// =============================================================================
+// AlignmentPendingContext gating — pauses checks while the implied 0th step
+// is pending so step 1 can't race the user's redirect decision.
+// =============================================================================
+describe('useStepChecker — AlignmentPendingContext gate', () => {
+  // Local imports kept inside the describe to avoid disturbing the file's
+  // existing import block.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { AlignmentPendingContext } = require('../global-state/alignment-pending-context');
+
+  it('does not call checkRequirements when the context is true, even with isEligibleForChecking: true', async () => {
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(AlignmentPendingContext.Provider, { value: true }, children);
+
+    const { result } = renderHook(
+      () =>
+        useStepChecker({
+          requirements: 'navmenu-open',
+          stepId: 'paused-step',
+          isEligibleForChecking: true,
+        }),
+      { wrapper }
+    );
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+
+    expect(mockCheckRequirements).not.toHaveBeenCalled();
+    expect(result.current.isEnabled).toBe(false);
+  });
+
+  it('runs checkRequirements normally when the context is false (default outside a provider)', async () => {
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
+
+    const { result } = renderHook(() =>
+      useStepChecker({
+        requirements: 'navmenu-open',
+        stepId: 'unpaused-step',
+        isEligibleForChecking: true,
+      })
+    );
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+
+    expect(mockCheckRequirements).toHaveBeenCalled();
+  });
+});

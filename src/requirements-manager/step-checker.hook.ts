@@ -26,6 +26,7 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { useTimeoutManager } from '../utils/timeout-manager';
+import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
@@ -86,7 +87,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     stepId,
     targetAction,
     refTarget,
-    isEligibleForChecking = true,
+    isEligibleForChecking: rawIsEligibleForChecking = true,
     skippable = false,
     stepIndex,
     lazyRender,
@@ -95,6 +96,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     onStepComplete,
     onComplete,
   } = props;
+
+  // Pause requirement checks while an implied-0th-step alignment prompt is
+  // pending — keeps step 1 from racing the user's redirect decision and
+  // showing a redundant "Fix this" alongside the prompt.
+  const isAlignmentPaused = useIsAlignmentPaused();
+  const isEligibleForChecking = rawIsEligibleForChecking && !isAlignmentPaused;
   const [fsmState, dispatch] = useReducer(stepReducer, undefined, () => createInitialState({ canSkip: skippable }));
   // Memoize the legacy projection so its identity only changes on real FSM
   // transitions. `toLegacyState` returns a fresh object literal every call, so

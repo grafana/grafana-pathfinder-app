@@ -7,6 +7,7 @@ import { getPrismStyles } from '../../styles/prism.styles';
 import type { RawContent } from '../../types/content.types';
 import type { PendingAlignment } from '../../types/content-panel.types';
 import { AlignmentPrompt } from '../docs-panel/components';
+import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 
 interface FloatingPanelContentProps {
   /** The guide content to render */
@@ -49,33 +50,26 @@ export function FloatingPanelContent({
 
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
-  // While an alignment prompt is pending, suppress the ContentRenderer
-  // entirely. The implied 0th step must resolve before step 1 mounts —
-  // matches the documented contract on `PendingAlignment` and the sidebar
-  // panel's behaviour.
-  if (pendingAlignment && onAlignmentConfirm && onAlignmentCancel) {
-    return (
-      <div ref={contentRef}>
-        <div style={{ padding: 16 }}>
-          <AlignmentPrompt
-            startingLocation={pendingAlignment.startingLocation}
-            onConfirm={onAlignmentConfirm}
-            onCancel={onAlignmentCancel}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div ref={contentRef}>
-      <ContentRenderer
-        key={content.url}
-        content={content}
-        containerRef={contentRef}
-        className={contentClassName}
-        onGuideComplete={onGuideComplete}
-      />
-    </div>
+    <AlignmentPendingContext.Provider value={!!pendingAlignment}>
+      <div ref={contentRef}>
+        {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
+          <div style={{ padding: 16 }}>
+            <AlignmentPrompt
+              startingLocation={pendingAlignment.startingLocation}
+              onConfirm={onAlignmentConfirm}
+              onCancel={onAlignmentCancel}
+            />
+          </div>
+        )}
+        <ContentRenderer
+          key={content.url}
+          content={content}
+          containerRef={contentRef}
+          className={contentClassName}
+          onGuideComplete={onGuideComplete}
+        />
+      </div>
+    </AlignmentPendingContext.Provider>
   );
 }
