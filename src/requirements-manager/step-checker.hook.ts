@@ -102,6 +102,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // showing a redundant "Fix this" alongside the prompt.
   const isAlignmentPaused = useIsAlignmentPaused();
   const isEligibleForChecking = rawIsEligibleForChecking && !isAlignmentPaused;
+
   const [fsmState, dispatch] = useReducer(stepReducer, undefined, () => createInitialState({ canSkip: skippable }));
   // Memoize the legacy projection so its identity only changes on real FSM
   // transitions. `toLegacyState` returns a fresh object literal every call, so
@@ -496,6 +497,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         fixType: state.fixType,
         targetHref: state.targetHref,
         scrollContainer: state.scrollContainer,
+        requirements,
         stepId,
         navigationManager: navigationManagerRef.current,
         fixNavigationRequirements,
@@ -553,6 +555,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     state.fixType,
     state.targetHref,
     state.scrollContainer,
+    requirements,
     fixNavigationRequirements,
     checkStep,
     stepId,

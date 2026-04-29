@@ -43,16 +43,22 @@ describe('dispatchFix', () => {
     expect(ctx.fixNavigationRequirements).toHaveBeenCalledTimes(1);
   });
 
-  it('returns ok:false for an undefined fixType (no handler claims it)', async () => {
-    const ctx = makeContext({ fixType: undefined });
+  it('runs navigation handler via legacy fallback (navmenu-open in requirements, no explicit fixType)', async () => {
+    const ctx = makeContext({ fixType: undefined, requirements: 'navmenu-open' });
     const result = await dispatchFix(ctx);
 
-    expect(result.ok).toBe(false);
-    expect(ctx.fixNavigationRequirements).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true });
+    expect(ctx.fixNavigationRequirements).toHaveBeenCalledTimes(1);
   });
 
-  it('routes to the location handler when fixType=location (does not fall through)', async () => {
-    const ctx = makeContext({ fixType: 'location', targetHref: '/explore' });
+  it('prefers location over navigation when both could match', async () => {
+    // location must be tried before navigation because the array is ordered
+    // most-specific first.
+    const ctx = makeContext({
+      fixType: 'location',
+      targetHref: '/explore',
+      requirements: 'navmenu-open, on-page:/explore',
+    });
     const result = await dispatchFix(ctx);
 
     expect(result).toEqual({ ok: true });

@@ -8,9 +8,9 @@ import type { FixHandler } from './types';
  * Fix handler registry.
  *
  * Order matters: handlers are tried in sequence and the first whose `canHandle`
- * returns true wins. Each handler matches strictly on `fixType`; ordering only
- * matters as a defensive guarantee that more-specific handlers run before
- * `navigationHandler` if multiple ever claimed the same fixType.
+ * returns true wins. Specific-fixType handlers come first; the catch-all
+ * `navigationHandler` comes last because it also accepts the legacy
+ * `requirements.includes('navmenu-open')` fallback.
  */
 export const FIX_HANDLERS: readonly FixHandler[] = [
   expandParentNavigationHandler,
