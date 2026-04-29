@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useStyles2 } from '@grafana/ui';
 import { ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -48,6 +48,22 @@ export function FloatingPanelContent({
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
 
+  // STABILITY: Memoize the context value keyed on the two underlying
+  // primitives. React context uses referential equality, so an inline object
+  // literal would force every `useStepChecker` consumer (one per interactive
+  // section) to re-render on every parent render — re-evaluating eligibility
+  // and re-subscribing listeners. See the matching pattern in `docs-panel.tsx`.
+  // NOTE: Computed before any early return to keep hook order stable.
+  const alignmentIsPending = !!pendingAlignment;
+  const alignmentStartingLocation = pendingAlignment?.startingLocation ?? null;
+  const alignmentPendingValue = useMemo(
+    () => ({
+      isPending: alignmentIsPending,
+      startingLocation: alignmentStartingLocation,
+    }),
+    [alignmentIsPending, alignmentStartingLocation]
+  );
+
   if (!content) {
     return (
       <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary)' }}>No guide content loaded</div>
@@ -57,12 +73,7 @@ export function FloatingPanelContent({
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
   return (
-    <AlignmentPendingContext.Provider
-      value={{
-        isPending: !!pendingAlignment,
-        startingLocation: pendingAlignment?.startingLocation ?? null,
-      }}
-    >
+    <AlignmentPendingContext.Provider value={alignmentPendingValue}>
       <div ref={contentRef}>
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>

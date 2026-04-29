@@ -1148,6 +1148,22 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
 
+  // STABILITY: Memoize the AlignmentPendingContext value keyed on the two
+  // underlying primitives so consumers (`useStepChecker` in every interactive
+  // section) don't re-render on every parent render. React context uses
+  // referential equality, so an inline object literal here cascades into
+  // re-evaluating step eligibility, recreating `checkStep`, and
+  // re-subscribing event listeners across all steps in long guides.
+  const alignmentPendingIsPending = !!activeTab?.pendingAlignment;
+  const alignmentPendingStartingLocation = activeTab?.pendingAlignment?.startingLocation ?? null;
+  const alignmentPendingValue = React.useMemo(
+    () => ({
+      isPending: alignmentPendingIsPending,
+      startingLocation: alignmentPendingStartingLocation,
+    }),
+    [alignmentPendingIsPending, alignmentPendingStartingLocation]
+  );
+
   // Check for interactive progress when content changes to show reset button
   // MUST use currentUrl || baseUrl (not content.url) to match getContentKey() in interactive sections.
   // content.url includes "/content.json" suffix which causes a key mismatch with saved progress.
@@ -2363,12 +2379,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   }}
                 >
                   {stableContent && (
-                    <AlignmentPendingContext.Provider
-                      value={{
-                        isPending: !!activeTab?.pendingAlignment,
-                        startingLocation: activeTab?.pendingAlignment?.startingLocation ?? null,
-                      }}
-                    >
+                    <AlignmentPendingContext.Provider value={alignmentPendingValue}>
                       {activeTab?.pendingAlignment && (
                         <AlignmentPrompt
                           startingLocation={activeTab.pendingAlignment.startingLocation}
