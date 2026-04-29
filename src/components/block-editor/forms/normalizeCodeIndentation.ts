@@ -32,6 +32,7 @@ export function normalizeCodeIndentation(markdown: string): string {
       continue;
     }
 
+    const originalFenceIndent = openingMatch[1] ?? '';
     const fenceChar = fenceMarker.charAt(0);
     const fenceLength = fenceMarker.length;
     const fenceInfo = openingMatch[3] ?? '';
@@ -80,9 +81,21 @@ export function normalizeCodeIndentation(markdown: string): string {
       }
     }
 
-    // Re-align fence markers to match content indentation
-    lines[i] = `${contentIndent}${fenceChar.repeat(fenceLength)}${fenceInfo}`;
-    lines[closingIndex] = `${contentIndent}${fenceChar.repeat(fenceLength)}`;
+    // Re-align fence markers to match content indentation, but only when
+    // TipTap has stripped the indent from a nested-list fence (original indent
+    // was 0-3 spaces). If the original fence was unindented and content is
+    // indented 4+ spaces, that's legitimately indented code in a flat block;
+    // applying that indent to the fence would violate CommonMark's rule that
+    // opening/closing fences may have at most 3 spaces of indentation.
+    const maxAllowedIndent = 3;
+    const shouldRealign =
+      originalFenceIndent.length < minIndentLength &&
+      (originalFenceIndent.length > 0 || minIndentLength <= maxAllowedIndent);
+
+    if (shouldRealign) {
+      lines[i] = `${contentIndent}${fenceChar.repeat(fenceLength)}${fenceInfo}`;
+      lines[closingIndex] = `${contentIndent}${fenceChar.repeat(fenceLength)}`;
+    }
 
     // Skip past this fence block so nested fences aren't re-processed
     i = closingIndex;
