@@ -62,12 +62,15 @@ jobs:
         with:
           persist-credentials: false
 
-      # SECURITY: No `cache:` option in this workflow. Caching in workflows that
-      # publish artifacts is a supply chain attack vector (cache poisoning).
-      # The CLI build is fast enough that the tradeoff favors integrity.
+      # SECURITY: Explicit cache disable. The repo's package.json has a
+      # `packageManager` field which triggers automatic caching in setup-node v6.
+      # Caching in workflows that publish artifacts is a supply chain attack
+      # vector (cache poisoning). The CLI build is fast enough that the
+      # tradeoff favors integrity.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
 
       - name: Install
         run: npm ci --no-audit --no-fund
@@ -160,12 +163,11 @@ jobs:
         with:
           persist-credentials: false
 
-      # SECURITY: No `cache:` option — caching in publish jobs is a supply chain
-      # attack vector (cache poisoning). The build job validates with cache;
-      # publish jobs rebuild from scratch for integrity.
+      # SECURITY: Explicit cache disable — see build job comment.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
           registry-url: https://registry.npmjs.org
 
       - name: Install
@@ -297,9 +299,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      # SECURITY: Explicit cache disable — see build job comment.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
 
       - name: npx pathfinder-cli@<version> --version
         env:
