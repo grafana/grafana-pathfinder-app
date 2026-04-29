@@ -14,7 +14,13 @@ interface FloatingPanelContentProps {
   content: RawContent | null;
   /** Called when a guide completes all interactive sections */
   onGuideComplete?: () => void;
-  /** Active tab's pending alignment (implied 0th step) — when set, suppresses ContentRenderer */
+  /**
+   * Active tab's pending alignment (implied 0th step) — when set, renders the
+   * `<AlignmentPrompt>` banner above `<ContentRenderer>`. The component itself
+   * does NOT suppress the renderer; step 1 is paused via
+   * `AlignmentPendingContext` (`useStepChecker.isEligibleForChecking` gate)
+   * which the wrapping provider supplies.
+   */
   pendingAlignment?: PendingAlignment;
   /** Confirm callback for the alignment prompt */
   onAlignmentConfirm?: () => void;

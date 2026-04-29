@@ -162,9 +162,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     ];
 
     const contextPanel = new ContextPanel(
-      (url: string, title: string) => this.openLearningJourney(url, title),
-      (url: string, title: string, packageInfo?: PackageOpenInfo) =>
-        this.openDocsPage(url, title, undefined, packageInfo),
+      (url: string, title: string) => {
+        // Recommender is aligned-by-construction (URL-filtered guide list).
+        // Tag the open so the implied-0th-step alignment evaluator skips
+        // it; without this the source would consume as null and an
+        // unrelated `home_page` source previously stashed could leak
+        // through, prompting on a recommender click.
+        this._recordAutoLaunchSource('recommender');
+        return this.openLearningJourney(url, title);
+      },
+      (url: string, title: string, packageInfo?: PackageOpenInfo) => {
+        this._recordAutoLaunchSource('recommender');
+        return this.openDocsPage(url, title, undefined, packageInfo);
+      },
       () => this.openEditorTab()
     );
 
@@ -815,12 +825,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
               }
             : t
         );
+        // Capture the title from the freshly-built tab BEFORE setState so the
+        // telemetry payload doesn't depend on the post-setState state shape
+        // (defensive against future async/batched setState behaviour).
+        const finalTab = finalUpdatedTabs.find((t) => t.id === tabId);
         this.setState({ tabs: finalUpdatedTabs });
 
         if (pendingAlignment) {
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {
             guide_url: url,
-            guide_title: this.state.tabs.find((t) => t.id === tabId)?.title ?? '',
+            guide_title: finalTab?.title ?? '',
             launch_source: pendingAlignment.launchSource,
             current_path: pendingAlignment.currentPath,
             starting_location: pendingAlignment.startingLocation,
@@ -1392,6 +1406,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const url = sessionInfo.config.tutorialUrl;
       const title = sessionInfo.config.name;
 
+      // The presenter coordinates location for attendees; treat as
+      // aligned-by-construction so the implied-0th-step prompt doesn't
+      // second-guess them.
+      model._recordAutoLaunchSource('live_session_attendee');
+
       // Open the tutorial in a new tab
       if (url.includes('/learning-journeys/') || url.includes('/learning-paths/')) {
         model.openLearningJourney(url, title);
@@ -1868,8 +1887,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div className={styles.devToolsContent} data-testid="devtools-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                   <SelectorDebugPanel
-                    onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
-                    onOpenLearningJourney={(url: string, title: string) => model.openLearningJourney(url, title)}
+                    onOpenDocsPage={(url: string, title: string) => {
+                      // Dev tools is a power-user surface; tag as aligned-by-construction
+                      // so the implied-0th-step doesn't prompt during selector work.
+                      model._recordAutoLaunchSource('devtools');
+                      return model.openDocsPage(url, title, true);
+                    }}
+                    onOpenLearningJourney={(url: string, title: string) => {
+                      model._recordAutoLaunchSource('devtools');
+                      return model.openLearningJourney(url, title);
+                    }}
                   />
                 </Suspense>
               </div>

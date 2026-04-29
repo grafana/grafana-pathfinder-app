@@ -15,9 +15,8 @@
  * No alignment prompt is shown for these.
  */
 export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<string> = new Set([
-  // Recommender clicks bypass auto-launch-tutorial entirely (they call
-  // openDocsPage directly via ContextPanel callbacks). Listed here defensively
-  // in case that flow ever changes.
+  // Recommender clicks tag with this source via the ContextPanel callbacks
+  // wired in `CombinedLearningJourneyPanel.constructor`.
   'recommender',
   // User was mid-tutorial; restoring their state shouldn't second-guess location.
   'browser_restore',
@@ -33,6 +32,10 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<string> = new Set([
   'auto_open',
   // Floating panel docking back to sidebar — tab already exists.
   'floating_panel_dock',
+  // Live session attendees follow the presenter's coordinated location.
+  'live_session_attendee',
+  // Dev tools surface — power-user; don't prompt during selector work.
+  'devtools',
 ]);
 
 /**

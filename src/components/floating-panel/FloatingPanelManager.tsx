@@ -91,10 +91,14 @@ function FloatingPanelInner() {
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
 
-    // If a guide was handed off from the sidebar (pop-out), open it now
+    // If a guide was handed off from the sidebar (pop-out), open it now.
+    // Tag the source as `floating_panel_dock` (aligned-by-construction) so
+    // the implied-0th-step evaluator doesn't second-guess a guide the user
+    // is already viewing.
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
+      panel._recordAutoLaunchSource('floating_panel_dock');
       panel.openDocsPage(pendingGuide.url, pendingGuide.title);
     }
 
