@@ -5,7 +5,7 @@
 
 ## Purpose
 
-An authoring artifact is the validated package state produced by an AI client building a Pathfinder guide through MCP tools. The MVP authoring surface is **stateless**: the artifact is passed in to and returned from every mutation tool call. There are no server-side sessions to allocate, persist, or expire. This pairs directly with the CLI shell-out validation strategy — every tool call is a pure function of its arguments (see [Pathfinder authoring MCP service — Validation strategy](./HOSTED-AUTHORING-MCP.md#validation-strategy)).
+An authoring artifact is the validated package state produced by an AI client building a Pathfinder guide through MCP tools. The MVP authoring surface is **stateless**: the artifact is passed in to and returned from every mutation tool call. There are no server-side sessions to allocate, persist, or expire. This pairs directly with the in-process library-import validation strategy — the MCP imports CLI command functions and every tool call is a pure function of its arguments (see [Pathfinder authoring MCP service — Validation strategy](./HOSTED-AUTHORING-MCP.md#validation-strategy)).
 
 The artifact can be inspected, validated, exported, or finalized for Grafana App Platform publication.
 
@@ -69,7 +69,7 @@ The `content.id` and `manifest.id` are required to match — this is a cross-fil
 Mutation tools follow the CLI validate-on-write model:
 
 1. Receive the current artifact and the requested mutation in the tool call.
-2. Apply the mutation by invoking the bundled `pathfinder-cli` binary against a serialized copy of the artifact.
+2. Apply the mutation by calling the corresponding `pathfinder-cli` command function directly against the in-flight artifact (the MCP imports the CLI module — no serialization, no IPC).
 3. The CLI validates the full artifact.
 4. If validation passes, the CLI writes the new artifact; the MCP returns the new artifact to the client.
 5. If validation fails, the CLI returns structured errors and does not write; the MCP returns the original artifact and the validation errors to the client.

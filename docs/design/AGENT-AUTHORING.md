@@ -742,47 +742,50 @@ The only thing that requires manual maintenance is `.describe()` text on Zod fie
 The `cli/` directory is excluded from the project's tier-based import enforcement (see `EXCLUDED_TOP_LEVEL` in `src/validation/import-graph.ts`). The CLI already imports from `types/` (tier 0) and `validation/` (tier 1). The authoring commands follow the same pattern — they depend on schemas and validation, never the reverse.
 
 ```
-types/ (tier 0)          ← schema definitions, .describe() text
+types/ (tier 0)              ← schema definitions, .describe() text
   ↑
-validation/ (tier 1)     ← validatePackage(), validateGuide()
+validation/ (tier 1)         ← validatePackage(), validateGuide()
   ↑
-cli/ (excluded from tiers) ← schema-options bridge, authoring commands
+cli/ (excluded from tiers)   ← schema-options bridge, authoring commands
+  ↑
+cli/mcp/ (sibling entrypoint) ← MCP server importing CLI commands as functions
 ```
 
-No changes to the tier model or architectural tests are needed.
+CLI commands are exported as importable library functions (`runCreate`, `runAddBlock`, etc.) — already in place from P1, exercised directly by `src/cli/__tests__/commands.test.ts` and `src/cli/__tests__/authoring-integration.test.ts` without subprocess invocation. The MCP server entrypoint composes against the same exports. No tier-model changes are needed.
 
 ---
 
 ## Distribution
 
-The CLI is shipped as **two artifacts built from the same TypeScript source**, both pinned to `CURRENT_SCHEMA_VERSION`:
+The CLI and the MCP server ship as **two binary entrypoints of a single npm package** (`pathfinder-cli`), both pinned to `CURRENT_SCHEMA_VERSION` via a prepublish script. The package's `package.json#bin` exposes:
 
-1. **Docker image** — published to a container registry on every build. This is the distribution channel for human authors, CI pipelines, and any environment where a Docker daemon is available. Usage is the standard "Docker as CLI" pattern: `docker run --rm grafana/pathfinder-cli:<version> add-block ...`.
+- `pathfinder-cli` — the human and CI-facing command (`create`, `add-block`, …).
+- `pathfinder-mcp` — the MCP server (stdio transport by default; HTTP transport for hosted deployments).
 
-2. **Single-file Node binary** — bundled inside the Pathfinder plugin tarball at a known path (e.g., `<plugin-dir>/cli/pathfinder-cli`). Built via `pkg` (Vercel) or Node's Single Executable Applications feature. This binary is what the plugin's Go MCP endpoint invokes via `exec.Command` when serving authoring tool calls (see [Pathfinder authoring MCP service](./HOSTED-AUTHORING-MCP.md)). Bundling avoids any requirement that Node be installed on the host running Grafana, and it avoids requiring Docker access from the plugin's process — which is unavailable in most Grafana deployments.
+There are two distribution channels, both wrapping the same npm package:
 
-### Supported platforms
+1. **npm registry** — primary channel. Consumed via `npx pathfinder-cli@<version>` or `npx pathfinder-mcp@<version>` for local-developer and MCP-client use, and via `npm install` in service deployments.
+2. **Docker image** — `grafana/pathfinder-cli:<version>`. Built on every release and published to a container registry. Convenience entrypoints: `docker run --rm grafana/pathfinder-cli:<version> add-block …` runs the CLI; `docker run --rm grafana/pathfinder-cli:<version> mcp` runs the MCP server. The image wraps the same npm package, so behavior is identical to direct npm use.
 
-The bundled binary is built for the platforms on which the plugin actually runs:
-
-- `linux/amd64`
-- `linux/arm64`
-- `darwin` (local-developer support; arch covers Apple Silicon, with `darwin/amd64` produced if the build matrix and Pathfinder's own backend matrix already cover Intel Macs)
-
-Windows is not in scope for the bundled binary in MVP. The Docker image remains the cross-platform path for any environment outside those three.
+There is no per-platform single-file binary, no Node SEA / `pkg` step, and no plugin-tarball-bundled CLI. An earlier draft of this design called for a per-platform Node binary that the plugin's Go MCP would invoke via `exec.Command`; that approach was retired when the MCP itself moved to TypeScript (see [Pathfinder authoring MCP service — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs)).
 
 ### Build pipeline
 
-The CLI binaries are produced by GitHub Actions:
+GitHub Actions:
 
-- **Every merge to `main`**: build the binaries for all three target platforms and upload them as workflow artifacts. These are transient — they cover spot-checking and CI integration but are not durable distribution.
-- **Tagged releases**: build the binaries for all three target platforms and attach them to the GitHub Release as durable assets, alongside the Docker image push.
+- **Every merge to `main`**: run the full test suite, build the npm package, and publish a smoke-tested image as a workflow artifact (transient; not durable distribution).
+- **Tagged releases**: publish the npm package to the registry and push the matching Docker image. Both artifacts carry the same `CURRENT_SCHEMA_VERSION`-derived version tag.
 
-Plugin tarball assembly (driven by `mage`) pulls the matching CLI binary into `<plugin-dir>/cli/pathfinder-cli` for each backend platform variant the tarball is built for. The mage targets that build the Go backend (`mage build:linux`, `mage build:linuxARM64`, `mage build:darwinARM64`, etc.) gain a step that copies in the CLI binary for the same platform.
+### Smoke tests
 
-Both artifacts execute identical authoring logic. The Go MCP performs no schema validation of its own; it serializes the in-flight artifact to a temporary directory, invokes the bundled CLI binary, and returns the structured CLI response to the caller. This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives.
+After each release publish:
 
-Per-call cost is dominated by Node startup (~100-200ms cold-start). For a 20-block guide this accumulates to a few seconds across the authoring session, which is acceptable for the MVP. The escape hatch when this becomes a problem is [batch operations](#batch-operations), which collapse N mutations into a single CLI invocation. A long-lived Node sidecar (one process per plugin, JSON-RPC over stdio) is a known follow-up optimization if the per-call cost becomes a measured bottleneck — but it is intentionally **not** the MVP because per-call `exec.Command` is simpler and more robust under failure.
+- `npx pathfinder-cli@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+- `npx pathfinder-mcp@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+- `docker run --rm grafana/pathfinder-cli:<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+- `docker run --rm grafana/pathfinder-cli:<version> mcp --version` returns `CURRENT_SCHEMA_VERSION`.
+
+Both entrypoints execute identical authoring logic. The MCP server imports the CLI commands directly — no IPC, no temp dir, no `exec.Command`. This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives.
 
 ---
 
@@ -933,13 +936,17 @@ The `create` command's auto-generated package `id` (when `--id` is omitted) take
 - `edit-block` tests: scalar merge semantics, array replace semantics, error on unknown ID, error on `--type` flag, error on structural fields, validate-on-write
 - `remove-block` tests: successful leaf removal, error on non-empty container without `--cascade`, successful cascade removal, validate-on-write
 
-### Phase 7: Build pipeline and binary distribution
+### Phase 7: Build pipeline and distribution
 
-- Add a build target that produces single-file Node binaries for `linux/amd64`, `linux/arm64`, and `darwin` from the same TypeScript source as the Docker image.
-- GitHub Actions: on every merge to `main`, build all three binaries and upload as workflow artifacts.
-- GitHub Actions: on tagged releases, build all three binaries and attach them to the GitHub Release as durable assets.
-- Plugin tarball: extend the per-platform `mage build:*` targets to copy the matching CLI binary into `<plugin-dir>/cli/pathfinder-cli` so the bundled binary ships alongside the Go backend.
-- Smoke test: after each tarball assembly, verify `<plugin-dir>/cli/pathfinder-cli --version` returns the expected schema version.
+- Add a `package.json#bin` entry for `pathfinder-mcp` alongside `pathfinder-cli`, both pointing into the same compiled `dist/` tree (the MCP entrypoint is added in P3; the bin map is added here as part of distribution).
+- Add a prepublish script that pins `package.json` version to `CURRENT_SCHEMA_VERSION`.
+- GitHub Actions: on every merge to `main`, build the package and run smoke tests against the local tarball.
+- GitHub Actions: on tagged releases, publish to the npm registry and push the matching Docker image tag.
+- Smoke tests after each release:
+  - `npx pathfinder-cli@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+  - `npx pathfinder-mcp@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+  - `docker run --rm grafana/pathfinder-cli:<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+  - `docker run --rm grafana/pathfinder-cli:<version> mcp --version` returns `CURRENT_SCHEMA_VERSION`.
 
 ### Phase 8: Documentation
 

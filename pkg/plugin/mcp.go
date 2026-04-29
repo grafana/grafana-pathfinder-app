@@ -1,5 +1,25 @@
 package plugin
 
+// Status: SPIKE / STUB.
+//
+// This Go MCP endpoint was implemented as an exploratory spike (PR #643) to
+// expose Pathfinder runtime tools to AI clients. It is not currently used by
+// any production caller, has no developer-facing connection docs, and is
+// intentionally NOT the destination for AI-authoring tools.
+//
+// AI authoring tools live in a standalone TypeScript MCP server under
+// src/cli/ — the same npm package that ships pathfinder-cli, with a second
+// `pathfinder-mcp` entrypoint that imports the CLI commands directly as
+// library functions. See docs/design/HOSTED-AUTHORING-MCP.md and
+// docs/design/AI-AUTHORING-IMPLEMENTATION.md.
+//
+// The runtime tools in this file (list_guides, get_guide, get_guide_schema,
+// launch_guide, validate_guide_json, create_guide_template) and the
+// pending-launch queue may stay here long-term: launch_guide is coupled to
+// per-instance frontend polling (src/hooks/usePendingGuideLaunch.ts) and
+// genuinely belongs in-process. Migration of the other runtime tools to the
+// TS package is tracked as a P5 follow-up in AI-AUTHORING-IMPLEMENTATION.md.
+
 import (
 	"encoding/json"
 	"fmt"
@@ -11,12 +31,9 @@ import (
 	"time"
 )
 
-// validGuideIDPattern matches kebab-case guide IDs: lowercase alphanumeric and
-// hyphens, must start and end with an alphanumeric character. Mirrors
-// PACKAGE_ID_REGEX in src/types/package.schema.ts so the same string flows
-// unchanged from CLI authoring through the App Platform resource name.
+// validGuideIDPattern matches kebab-case guide IDs (lowercase alphanumeric + hyphens).
 // Using an allowlist avoids path traversal and rejects IDs with dots, slashes, etc.
-var validGuideIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+var validGuideIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // schemaVersionPattern matches semantic version strings (e.g., "1.0.0").
 var schemaVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)

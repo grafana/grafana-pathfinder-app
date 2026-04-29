@@ -11,23 +11,27 @@ The service is not a replacement for the AI client. The client still reasons abo
 
 ## Where it runs
 
-The authoring MCP service is **not a new, centrally hosted service**. It is an extension of the existing plugin MCP endpoint at `/api/plugins/grafana-pathfinder-app/resources/mcp` (`pkg/plugin/mcp.go`).
+The authoring MCP service is a **standalone TypeScript MCP server** that lives in this repository at `src/cli/` as a sibling entrypoint to the `pathfinder-cli` command. The CLI and the MCP server are two binary entrypoints of the same npm package: a single source tree, one schema runtime, two `package.json#bin` targets (`pathfinder-cli` and `pathfinder-mcp`).
 
-This has direct consequences for the design:
+The MCP server **imports CLI commands as library functions**. There is no shell-out, no temporary directory, no `exec.Command`, no per-call Node startup. Every authoring tool call is a synchronous function call against the same Zod schemas the CLI uses.
 
-- Updates ship via plugin releases, alongside frontend, backend, and CLI changes. The whole authoring stack moves in lockstep.
-- The endpoint is per-Grafana-instance, in-process. There is no multi-tenant hosted infrastructure.
-- It can serve any MCP-capable client that can reach the Grafana instance.
+The server runs in two deployment modes:
 
-An earlier draft of this design proposed a separately hosted MCP service so authoring updates could ship without client churn. We instead achieve "ship without client churn" by treating the plugin release as the unit of update and by [thin-client orchestration](./CLIENT-ORCHESTRATION-GUIDE.md) — clients call `pathfinder_authoring_start` and follow server-provided instructions rather than carrying authoring guidance locally.
+1. **Self-serve (stdio transport).** `npx pathfinder-mcp` or `docker run grafana/pathfinder-cli mcp` for Cursor, Claude Desktop, or any local MCP client. The MCP client owns the process; auth is the user's local trust boundary.
+2. **Centrally hosted (HTTP transport).** The same code runs as a Grafana-org service for clients that cannot connect to a user-local process — most importantly Grafana Assistant on Cloud. Authentication uses the Grafana MCP token-verifier pattern (FastMCP `MultiAuth` + `GrafanaGoogleTokenVerifier`); see [Authentication and authorization](#authentication-and-authorization) below.
+
+This is a deliberate departure from an earlier draft of this design that placed authoring tools inside the existing Go plugin MCP at `/api/plugins/grafana-pathfinder-app/resources/mcp`. That earlier approach would have required shelling out from Go to a per-platform Node binary bundled inside the plugin tarball. Investigation found that the existing Go MCP is a dormant spike with no production callers, that the "ship in lockstep with the plugin" property it offered can be replaced by lockstep CI between the npm package and the plugin, and that the in-process TypeScript design is materially simpler — fewer build artifacts, no IPC, no per-call cold-start, and no class of bundled-binary failure modes. The existing `pkg/plugin/mcp.go` is preserved as a runtime-tools-only stub (see [Relationship to existing plugin MCP tools](#relationship-to-existing-plugin-mcp-tools)).
 
 ### Authentication and authorization
 
-**Any authenticated Grafana identity may call the authoring tools.** There is no role-based gate at the MCP layer. The authoring tool surface is stateless and produces no Grafana-instance side effects on its own — it returns artifacts. Publish authority is enforced **downstream**, at the App Platform write performed by the Grafana-authorized client (see [Grafana App Platform publish handoff](./APP-PLATFORM-PUBLISH-HANDOFF.md)). A viewer-role user who reaches `pathfinder_finalize_for_app_platform` and tries to PUT the resulting payload will be rejected by the App Platform API; the error surface is correct without an additional MCP-side check.
+**Any authenticated identity that reaches the MCP may call the authoring tools.** There is no role-based gate at the MCP layer. The authoring tool surface is stateless and produces no Grafana-instance side effects on its own — it returns artifacts. Publish authority is enforced **downstream**, at the App Platform write performed by the Grafana-authorized client (see [Grafana App Platform publish handoff](./APP-PLATFORM-PUBLISH-HANDOFF.md)). A viewer-role user who reaches `pathfinder_finalize_for_app_platform` and tries to PUT the resulting payload will be rejected by the App Platform API; the error surface is correct without an additional MCP-side check.
 
-The auth mechanism itself follows the Grafana MCP token-verifier pattern used elsewhere in the org — for the standalone case, see the FastMCP `MultiAuth` + `GrafanaGoogleTokenVerifier` setup in [`grafana/data-platform-tools` `mcp/mcp-data/server.py`](https://github.com/grafana/data-platform-tools/blob/5892defb0515fd66864ecb57627e5aafd8013fde/mcp/mcp-data/server.py#L143). For the in-plugin case (Pathfinder's MCP at `/api/plugins/grafana-pathfinder-app/resources/mcp`), authentication is whatever Grafana's plugin-resource path enforces on the way in; the plugin trusts that auth and does not re-validate.
+Auth strategy by transport:
 
-Pathfinder is OSS, the authoring tools are publicly available on GitHub, and the agent's authority to hit endpoints is delegated through Grafana's normal auth path. There is no new identity provider, rate limiter, or tenant model to build.
+- **Stdio.** No auth at the MCP layer. The MCP server runs as a child process of a local MCP client (Cursor, Claude Desktop) and trusts the local user. This is the same trust model every stdio-transport MCP server uses.
+- **HTTP (hosted).** The Grafana MCP token-verifier pattern. See FastMCP `MultiAuth` + `GrafanaGoogleTokenVerifier` in [`grafana/data-platform-tools` `mcp/mcp-data/server.py`](https://github.com/grafana/data-platform-tools/blob/5892defb0515fd66864ecb57627e5aafd8013fde/mcp/mcp-data/server.py#L143). Tokens are verified per request; no session state is established.
+
+Pathfinder is OSS, the authoring tools are publicly available on GitHub, and the agent's authority to write into a Grafana instance is delegated downstream through the App Platform path. There is no new identity provider, rate limiter, or tenant model introduced by the MCP layer itself.
 
 ## Server responsibilities
 
@@ -35,7 +39,7 @@ The service owns:
 
 1. **Authoring context delivery.** Provide the minimal instructions a model needs to begin authoring and discover more details through tools.
 2. **Tool discovery.** Expose MCP tools with machine-readable input schemas and clear descriptions.
-3. **Deterministic mutation.** Route authoring operations through the bundled `pathfinder-cli` binary so guide state changes are schema-validating and repeatable.
+3. **Deterministic mutation.** Route authoring operations through the imported `pathfinder-cli` command functions so guide state changes are schema-validating and repeatable.
 4. **Inspection.** Let clients query an artifact without parsing raw JSON.
 5. **Validation.** Run the canonical Pathfinder validation pipeline (in the CLI) and return structured errors.
 6. **Finalization.** Produce a publish handoff artifact for Grafana App Platform and a viewer link contract.
@@ -51,27 +55,20 @@ The service does not own:
 
 ## Validation strategy
 
-The Go MCP endpoint **performs no schema validation of its own**. All validation lives in the bundled `pathfinder-cli` binary, which is shipped inside the plugin tarball at a known path (e.g., `<plugin-dir>/cli/pathfinder-cli`) and is built from the same TypeScript source as the public `pathfinder-cli` Docker image (see [Agent authoring CLI — Distribution](./AGENT-AUTHORING.md#distribution)).
+The MCP server **performs no schema validation of its own**. All validation lives in the `pathfinder-cli` command functions, which the MCP server imports directly from the same source tree (see [Agent authoring CLI — Distribution](./AGENT-AUTHORING.md#distribution)). The CLI's exported `runX` functions (in place since P1 — see [`phases/ai-authoring-1-cli-foundation.md`](./phases/ai-authoring-1-cli-foundation.md)) are designed to be importable and are exercised by the CLI test suite without subprocess invocation. The MCP server composes against the same surface.
 
 Each authoring tool call follows this pattern:
 
-1. The Go MCP receives the tool call with the in-flight artifact and mutation arguments.
-2. The artifact is serialized to a temporary directory as `content.json` and `manifest.json`.
-3. The Go MCP invokes the bundled CLI binary via `exec.Command` with the equivalent CLI subcommand (`create`, `add-block`, `edit-block`, `inspect`, etc.) and `--format json`.
-4. The CLI applies the mutation, validates the full package, writes if valid, and emits structured output.
-5. The Go MCP reads the updated artifact (or the structured validation errors) and returns the response to the caller.
-6. The temporary directory is cleaned up.
+1. The MCP server receives the tool call with the in-flight artifact and mutation arguments.
+2. The MCP tool dispatcher maps the call to the corresponding CLI command function (`create`, `add-block`, `edit-block`, `inspect`, etc.) and invokes it directly against the in-flight artifact.
+3. The CLI command applies the mutation, validates the full package, and returns either the updated artifact or structured validation errors.
+4. The MCP server returns the response to the caller.
 
-This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives. When the schema evolves in `src/types/`, both the public CLI image and the bundled CLI binary move in lockstep — the Go MCP requires no edits.
+There is no temporary directory, no JSON marshalling across an IPC boundary, no process spawn. **Per-call cost is a function call.**
 
-Per-call cost is dominated by Node startup (~100-200ms cold-start). For a 20-block guide this accumulates to a few seconds across the authoring session, which is acceptable for the MVP. The MVP deliberately uses fresh `exec.Command` per call — it is the simplest and most robust failure model.
+This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives. The MCP and CLI share a single TypeScript runtime, a single Zod schema instance, and ship in lockstep as one npm package — there is no IPC contract that could drift.
 
-If per-call latency or process-spawn rate becomes a measured bottleneck in production, two known follow-up paths exist:
-
-1. **Batch operations** — already on the CLI roadmap; see [Agent authoring CLI — Batch operations](./AGENT-AUTHORING.md#batch-operations). Collapses N mutations into a single CLI invocation, trading incremental validation for throughput.
-2. **Long-lived Node sidecar** — one Node child process per plugin, JSON-RPC over stdio, with restart-on-crash. Pays the Node cold start once instead of per call. Not in scope for MVP.
-
-Both are optimizations triggered by measurement, not assumed at design time.
+If batching multiple mutations into a single tool call ever becomes useful for clients (e.g., to avoid round-trips on large guides), [batch operations](./AGENT-AUTHORING.md#batch-operations) are already on the CLI roadmap. Unlike in the earlier shell-out design, batching here is purely a UX/throughput choice for clients; there is no Node cold-start to amortize.
 
 ## MCP surface
 
@@ -100,8 +97,8 @@ All authoring tools follow the [stateless model](./AUTHORING-SESSION-ARTIFACTS.m
 
 #### Tool-surface design notes
 
-- **`pathfinder_add_block` is intentionally permissive.** Its input schema declares the `type` discriminator but accepts arbitrary additional fields. The Go MCP forwards everything to the bundled CLI, which is the sole validator. Per-block-type MCP tools were considered and rejected: they would re-introduce schema knowledge into the MCP layer (or require a Zod-to-JSONSchema generator at MCP startup), violating the design's core "CLI owns guide correctness" boundary. Any new block type that the CLI learns about is automatically supported by the MCP without code changes.
-- **`pathfinder_help` is the discovery surface.** Agents call it with a command name (and optional subcommand) to get the field-level contract for any operation, mirroring the CLI's progressive-disclosure help. It is a thin pass-through over `pathfinder-cli <cmd> [<sub>] --help --format json`. Promoting `--help --format json` to a stability contract is what makes this tool work; see [Agent authoring CLI — `--help --format json` is a stability contract](./AGENT-AUTHORING.md#--help---format-json-is-a-stability-contract).
+- **`pathfinder_add_block` is intentionally permissive.** Its input schema declares the `type` discriminator but accepts arbitrary additional fields. The MCP forwards everything to the imported CLI command, which is the sole validator. Per-block-type MCP tools were considered and rejected: they would re-introduce schema knowledge into the MCP layer (or require a Zod-to-JSONSchema generator at MCP startup), violating the design's core "CLI owns guide correctness" boundary. Any new block type that the CLI learns about is automatically supported by the MCP without code changes.
+- **`pathfinder_help` is the discovery surface.** Agents call it with a command name (and optional subcommand) to get the field-level contract for any operation, mirroring the CLI's progressive-disclosure help. The MCP composes the same help surface the CLI exposes via `pathfinder-cli <cmd> [<sub>] --help --format json` — since the MCP imports the CLI module directly, this is a function call, not a shell-out. Promoting `--help --format json` to a stability contract is what makes this tool work; see [Agent authoring CLI — `--help --format json` is a stability contract](./AGENT-AUTHORING.md#--help---format-json-is-a-stability-contract).
 
 ### Optional tools
 
@@ -173,33 +170,38 @@ Clients should prefer the workflow and tutorial returned by `pathfinder_authorin
 
 ## Relationship to the CLI
 
-There is no separate "MCP authoring engine." The CLI **is** the engine. The Go MCP endpoint does not duplicate guide schema logic, validation rules, or block catalog summaries — it marshals tool arguments, invokes the bundled CLI binary, and returns the CLI's structured output.
+There is no separate "MCP authoring engine." The CLI **is** the engine. The MCP server is a thin tool dispatcher: it maps each MCP tool call to the corresponding CLI command function and returns the CLI's structured output. There is no parallel schema, no parallel validation, no parallel block catalog.
 
 When the schema evolves in `src/types/`:
 
 - The CLI gains the new fields automatically through schema-driven option generation.
-- The bundled binary picks up the change through normal builds.
-- The Go MCP requires no edits.
+- The MCP picks up the change in the same build (it imports the CLI module).
+- No additional edits are required.
 
-This eliminates the drift previously visible in the existing plugin-side MCP, where simplified Go schema summaries had to manually track the canonical Zod schemas.
+The CLI and the MCP ship as a single npm package — they cannot drift, because they share a process and a Zod schema instance.
 
 ## Relationship to existing plugin MCP tools
 
-The existing plugin MCP at `/api/plugins/grafana-pathfinder-app/resources/mcp` already exposes runtime tools (`list_guides`, `get_guide`, `launch_guide`, `validate_guide_json`, `create_guide_template`). The authoring tools described here are added to that same endpoint. Existing tools continue to operate as before.
+The Pathfinder plugin's Go backend exposes a small MCP endpoint at `/api/plugins/grafana-pathfinder-app/resources/mcp` (`pkg/plugin/mcp.go`), inherited from PR #643. That endpoint is **a stub spike with no production callers** and is intentionally **not** the destination for AI-authoring tools. A status comment at the top of `pkg/plugin/mcp.go` documents this.
 
-The previously-documented hand-maintained Go schema summaries (`guideSchemas` in `pkg/plugin/mcp.go`) remain in place for those existing tools. New authoring tools do not use them — they delegate to the bundled CLI binary, which is the canonical validator. Over time, existing tools may be migrated to the CLI shell-out pattern to retire those summaries; see [Open questions](#open-questions).
+The runtime tools that endpoint exposes (`list_guides`, `get_guide`, `get_guide_schema`, `launch_guide`, `validate_guide_json`, `create_guide_template`) fall into two categories:
+
+1. **Tools that have a genuine reason to remain in-process**, primarily `launch_guide` and the `pending-launch` queue. `launch_guide` is coupled to per-instance frontend polling (`src/hooks/usePendingGuideLaunch.ts`), and the queue is in-process state. These stay in Go indefinitely.
+2. **Tools that could move to the TS package** (`list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, `create_guide_template`). Migration is optional cleanup; tracked as a P5 follow-up in [`AI-AUTHORING-IMPLEMENTATION.md`](./AI-AUTHORING-IMPLEMENTATION.md). Until then, they continue to operate unchanged.
+
+The authoring tools described in this document are **not** added to the Go endpoint. They live exclusively in the TS MCP server.
 
 ## Failure behavior
 
-The service degrades in predictable ways:
+The server degrades in predictable ways:
 
-- If the bundled CLI binary is missing or fails to start, the tool returns a structured error indicating an installation problem; the artifact is unchanged.
 - If validation fails, return structured validation issues and leave the last valid artifact unchanged (the artifact returned to the caller is the input artifact).
 - If finalization fails, return the missing contract field, not a partial publish payload.
 - If the current schema is incompatible with the requested artifact (for example, the client passed in an artifact authored at a newer schema version), return migration guidance.
+- Transport-level failures (stdio pipe closed, HTTP 5xx) are the responsibility of the MCP transport layer and are surfaced to clients per MCP spec.
 
 ## Open questions
 
 1. Should prompts/resources duplicate tool output, or only provide richer examples for clients that support them?
-2. How should the service expose changelog information when authoring guidance changes between plugin releases?
-3. Should existing plugin MCP tools (`validate_guide_json`, `create_guide_template`) be migrated to the CLI shell-out pattern as part of the authoring rollout, to retire the hand-maintained Go schema summaries?
+2. How should the server expose changelog information when authoring guidance changes between releases?
+3. Which Go-side runtime tools (`list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, `create_guide_template`) are worth migrating to the TS package, and on what trigger? `launch_guide` and the pending-launch queue stay in Go.

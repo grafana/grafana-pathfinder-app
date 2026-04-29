@@ -13,10 +13,10 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 | ----- | -------------------------------------- | ----------- | ------------------------------------------------------------------------------- | ---------------- |
 | P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md) | _epic issue TBD_ |
 | P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)   | _epic issue TBD_ |
-| P2    | CLI distribution                       | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
-| P3    | Authoring tools on existing plugin MCP | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
+| P2    | npm + Docker distribution              | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
+| P3    | TypeScript MCP server                  | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 | P4    | Assistant handoff and viewer link      | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
-| P5    | Existing-tool migration and batch ops  | Deferred    | —                                                                               | —                |
+| P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                               | —                |
 
 Each row's "Detailed plan" cell is filled in when an agent runs the per-phase planning step and writes `docs/design/phases/ai-authoring-N-<slug>.md`.
 
@@ -48,12 +48,12 @@ Decision log and Deviations are append-only and may be empty if the phase ran cl
 ```
 P0 (spike) -----------------------+
                                   |
-P1 (CLI) --> P2 (distribution) --+--> P3 (MCP) --> P4 (Assistant + link)
+P1 (CLI) --> P2 (distribution) --+--> P3 (TS MCP) --> P4 (Assistant + link)
                                   |
                                   +--> P5 (deferred follow-ups)
 ```
 
-P0 is non-blocking until P4. P1 is the critical path for everything downstream. P2 must land before P3 because the MCP shell-out depends on the bundled binary being on disk inside the plugin tarball.
+P0 is non-blocking until P4. P1 is the critical path for everything downstream. P2 lands before P3 because the TS MCP server is published as a second entrypoint of the same npm package the CLI ships in — once the package layout and publishing pipeline exist (P2), P3 adds the MCP entrypoint to it. There is no shell-out boundary, no bundled binary, and no plugin-tarball coupling.
 
 ---
 
@@ -118,58 +118,66 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 ---
 
-## P2 — CLI distribution
+## P2 — npm + Docker distribution
 
-**Goal.** Both distribution channels for `pathfinder-cli` exist and the bundled binary ships inside the plugin tarball.
+**Goal.** The `pathfinder-cli` npm package and `grafana/pathfinder-cli` Docker image are published, version-pinned to `CURRENT_SCHEMA_VERSION`, and ready to host a second `pathfinder-mcp` binary entrypoint that P3 adds.
 
 **Scope.** Sub-phase 7 of [`AGENT-AUTHORING.md` — Implementation plan](./AGENT-AUTHORING.md#implementation-plan):
 
-- Docker image build and registry push wired into the existing release flow.
-- Single-file Node binary build for `linux/amd64`, `linux/arm64`, `darwin` (Single Executable Applications or `pkg`).
-- GitHub Actions: workflow artifacts on every merge to `main`; durable Release assets on tagged releases.
-- Per-platform `mage build:*` targets copy the matching binary into `<plugin-dir>/cli/pathfinder-cli`.
-- Smoke test after tarball assembly: `<plugin-dir>/cli/pathfinder-cli --version` returns `CURRENT_SCHEMA_VERSION`.
+- npm package layout: single `pathfinder-cli` package with `package.json#bin` exposing `pathfinder-cli` (existing entrypoint from P1) plus a placeholder for `pathfinder-mcp` (filled in P3).
+- Prepublish script: pin `package.json` version to `CURRENT_SCHEMA_VERSION` so MCP and CLI versions cannot drift.
+- Docker image: `grafana/pathfinder-cli:<version>`. Wraps the published npm package. Convenience entrypoints route to the CLI by default and to `pathfinder-mcp` via `mcp` subcommand.
+- GitHub Actions: build the package and run smoke tests on every merge to `main`; publish to npm and push the Docker image on tagged releases.
+- Smoke tests after release publish:
+  - `npx pathfinder-cli@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+  - `docker run --rm grafana/pathfinder-cli:<version> --version` returns `CURRENT_SCHEMA_VERSION`.
 
-**Out of scope.** MCP shell-out integration (P3). npm publishing (deferred). Windows binary (deferred — Docker covers it).
+**Out of scope.** Per-platform single-file binaries / Node SEA / `pkg` — explicitly retired. Plugin-tarball bundling — explicitly retired (the plugin is no longer the distribution unit for the CLI). The `pathfinder-mcp` entrypoint code itself — added in P3. Windows binary — deferred (Docker covers it).
 
 **Dependencies.** P1.
 
 **Exit criteria.**
 
-- A locally built plugin tarball contains a working CLI binary at the bundled path on each supported platform.
-- Tagged release attaches all three binaries.
-- Docker image for the matching version is pushed.
+- `pathfinder-cli@<CURRENT_SCHEMA_VERSION>` is installable from the npm registry and `npx` runs it.
+- `grafana/pathfinder-cli:<CURRENT_SCHEMA_VERSION>` is in the container registry and runs.
+- Both versions match `CURRENT_SCHEMA_VERSION` exactly (verified by smoke test).
+- Plugin tarball contents are unchanged from `main` — the CLI is no longer copied into the tarball.
 
 ---
 
-## P3 — Authoring tools on the existing plugin MCP
+## P3 — TypeScript MCP server
 
-**Goal.** Any MCP-capable client connected to the Pathfinder plugin's MCP endpoint can author a guide end-to-end via tool calls and receive a finalization payload.
+**Goal.** Any MCP-capable client can connect to the standalone TypeScript MCP server, author a guide end-to-end via tool calls, and receive a finalization payload. The server runs from the same npm package as the CLI and imports CLI commands as library functions.
 
 **Scope.**
 
-- Add authoring tools to `pkg/plugin/mcp.go` at the existing endpoint `/api/plugins/grafana-pathfinder-app/resources/mcp`. No separate service.
+- Add a `pathfinder-mcp` entrypoint under `src/cli/` (e.g., `src/cli/mcp/`) — sibling to the existing CLI entrypoint. Same compiled `dist/` tree, second `package.json#bin` target.
+- Tool dispatchers map each MCP tool call to the corresponding imported CLI command function (`runCreate`, `runAddBlock`, …) — no shell-out, no temp directory, no `exec.Command`. The CLI test suite already exercises these functions directly without subprocess invocation; P3 composes against the same surface.
 - Stateless artifact model — every mutation tool takes the artifact in and returns the artifact out. No `sessionId`, no server-side cache.
-- Shell-out pattern: serialize artifact to a temp dir, invoke the bundled CLI binary via `exec.Command`, read the structured response, clean up.
+- Two transports from one codebase:
+  - **stdio** — the default for local MCP clients (Cursor, Claude Desktop, MCP Inspector). Trust-the-local-user auth model.
+  - **HTTP** — for centrally hosted deployment. Auth via the Grafana MCP token-verifier pattern (FastMCP `MultiAuth` + `GrafanaGoogleTokenVerifier`).
 - Tools (per [`HOSTED-AUTHORING-MCP.md` — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)):
   - `pathfinder_authoring_start` — first tool, returns context + workflow + tutorial + discovery hints.
-  - `pathfinder_help` — pass-through for `pathfinder-cli <cmd> [<sub>] --help --format json`.
+  - `pathfinder_help` — composes the same `--help --format json` surface the CLI exposes, as a function call.
   - `pathfinder_create_package`, `pathfinder_add_block`, `pathfinder_add_step`, `pathfinder_add_choice`, `pathfinder_edit_block`, `pathfinder_remove_block`, `pathfinder_set_manifest`.
   - `pathfinder_inspect`, `pathfinder_validate`.
   - `pathfinder_finalize_for_app_platform` — returns the handoff structure defined in [`APP-PLATFORM-PUBLISH-HANDOFF.md`](./APP-PLATFORM-PUBLISH-HANDOFF.md), including the `localExport` fallback.
-- `pathfinder_add_block` is intentionally permissive — the discriminator and arbitrary fields are forwarded; the CLI is the sole validator.
-- Failure-mode coverage: missing/broken bundled binary, validation failure, finalization failure, schema mismatch.
+- `pathfinder_add_block` is intentionally permissive — the discriminator and arbitrary fields are forwarded; the CLI command function is the sole validator.
+- Failure-mode coverage: validation failure, finalization failure, schema mismatch, transport-level failures (stdio pipe closed, HTTP 5xx).
 - Documentation pass for the new tools (developer docs + agent context update in `AGENTS.md`).
 
-**Out of scope.** Direct App Platform writes from the plugin (those are P4). Migrating existing tools (`validate_guide_json`, `create_guide_template`) — that's P5. Long-lived Node sidecar — explicitly deferred.
+**Out of scope.** Direct App Platform writes from the MCP (those are P4). Migrating Go MCP runtime tools (`list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, `create_guide_template`) — that's P5. Editing `pkg/plugin/mcp.go` — explicitly excluded; the existing Go MCP is unchanged.
 
 **Dependencies.** P1, P2.
 
 **Exit criteria.**
 
-- A non-Grafana-aware MCP client (Cursor, Claude Desktop) can connect, call `pathfinder_authoring_start`, build a multi-block guide via tool calls, validate, and call `pathfinder_finalize_for_app_platform` to receive a handoff containing both `appPlatform` instructions and a `localExport` fallback.
+- A non-Grafana-aware MCP client (Cursor, Claude Desktop) can connect to `npx pathfinder-mcp` over stdio, call `pathfinder_authoring_start`, build a multi-block guide via tool calls, validate, and call `pathfinder_finalize_for_app_platform` to receive a handoff containing both `appPlatform` instructions and a `localExport` fallback.
+- The same code, run with the HTTP transport behind the Grafana token verifier, accepts authenticated requests with the same tool surface.
 - Following `localExport`, the client can write `content.json` and `manifest.json` to the user's workspace and the resulting package round-trips through `pathfinder-cli validate`.
-- The Go MCP performs no schema validation of its own — confirmed by code review and by an integration test that introduces a CLI-detectable schema violation and asserts the Go layer surfaces the CLI's structured error verbatim.
+- The MCP server performs no schema validation of its own — confirmed by code review (the only validator entry points are the imported CLI command functions) and by an integration test that introduces a CLI-detectable schema violation and asserts the MCP surfaces the CLI's structured error verbatim.
+- `pkg/plugin/mcp.go` is unchanged from `main` (apart from the spike/stub status comment added on this branch).
 
 ---
 
@@ -195,6 +203,7 @@ The split is mechanical; the exit criterion above belongs to P1b.
 - **Pick the Assistant write-tool surface.** Assistant has no generic "call this App Platform path with this JSON body and method" tool. P4 must coordinate with the Assistant team and choose among: a Pathfinder-specific publish tool exposed by Assistant; a small generic App Platform write tool in Assistant; or documented reuse of an existing pattern. This is the first concrete decision in P4's plan.
 - **Path is component-shaped, not template-shaped, on the Assistant side.** Assistant builds App Platform paths from `(group, version, namespace, resource, name)`. The handoff already exposes those component fields; P4 should not assume `itemPathTemplate`/`collectionPathTemplate` are consumed verbatim by Assistant. They remain useful for non-Assistant clients.
 - **Confirmation UX is in the loop.** Assistant's per-tool confirmation layer means a publish action will surface a user-visible prompt. Design the handoff so that prompt reads sensibly and the boundary-decision-4 "AI client owns user agency" flow lands on this confirmation rather than an extra one in front of it.
+- **Where does the centrally hosted TS MCP run such that Assistant can reach it?** Assistant connects to a hosted MCP URL, not to the per-instance plugin endpoint. P4 must coordinate with the Assistant team to choose a hosting model (Grafana-org service, similar to `mcp/mcp-data` from `grafana/data-platform-tools`) and to wire Assistant's tool list with that URL. See [`HOSTED-AUTHORING-MCP.md` — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs).
 
 **Exit criteria.**
 
@@ -208,16 +217,18 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 Tracked here so they don't get lost; not scoped for the MVP.
 
-- Migrate existing plugin MCP tools (`validate_guide_json`, `create_guide_template`) to the CLI shell-out pattern to retire the hand-maintained Go schema summaries in `pkg/plugin/mcp.go` (`guideSchemas`).
-- `pathfinder-cli apply` batch command — collapse N mutations into one CLI invocation if cold-start cost becomes a measured bottleneck.
-- Long-lived Node sidecar (one process per plugin, JSON-RPC over stdio) — only if measurement justifies it.
-- npm publishing of the CLI as a standalone package, with version pinned to `CURRENT_SCHEMA_VERSION` via a prepublish script.
+- Migrate Go MCP runtime tools to the TS package: `list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, `create_guide_template`. These are stateless and could move cleanly. `launch_guide` and the `pending-launch` queue stay in `pkg/plugin/mcp.go` indefinitely — they are coupled to per-instance frontend polling (`src/hooks/usePendingGuideLaunch.ts`) and genuinely belong in-process. Migration retires the hand-maintained Go schema summaries in `pkg/plugin/mcp.go` (`guideSchemas`).
+- `pathfinder-cli apply` batch command — collapse N mutations into one CLI invocation if it becomes useful for human authors. Originally motivated by amortizing Node cold-start across MCP tool calls, which no longer applies once the MCP imports the CLI directly. Re-evaluate against the human-authoring use case.
 - CRD extension to round-trip manifest fields, lighting up recommendation-engine parity for custom guides for both block-editor and AI-authored guides simultaneously.
+
+The "long-lived Node sidecar" item from earlier drafts of this design is no longer applicable — the MCP server itself is a Node process, so there is no Go-Node bridge to optimize.
 
 ## Cross-cutting concerns
 
-- **Schema is owned by the CLI, end to end.** Every phase preserves boundary decision 1: the Go MCP performs no schema validation. P3's review must enforce this.
+- **Schema is owned by the CLI, end to end.** Every phase preserves boundary decision 1: the MCP performs no schema validation of its own. With the MCP and CLI sharing one TypeScript runtime and one Zod schema instance, this is structurally enforced — not just a code-review check.
 - **One canonical ID.** P1 tightens the regex; P3's finalize tool and P4's Assistant handoff must use the same string verbatim — no transformation. Cross-checked at exit of P4.
 - **Stateless artifact model.** P3 must not introduce server-side session state. If a future need emerges, the trigger is documented in [`AUTHORING-SESSION-ARTIFACTS.md` — Open questions](./AUTHORING-SESSION-ARTIFACTS.md#open-questions).
-- **Plugin-release cadence is the update unit.** P3 onward, agents must call `pathfinder_authoring_start` and follow server-provided guidance rather than carrying authoring instructions locally. Skill files for Cursor/Claude Desktop should remain thin.
-- **Assistant write-tool surface is a P4 coordination point** (from [P0 spike](./phases/ai-authoring-0-assistant-spike.md)). Assistant exposes no generic "call this App Platform path" tool today. P4 must pick a write-tool surface (Pathfinder-specific publish tool, generic App Platform write tool in Assistant, or documented reuse of an existing pattern) and coordinate with the Assistant team. Capability is verified-supported; only the wiring is open.
+- **CLI and MCP ship in lockstep as one npm package.** Schema version is pinned to `CURRENT_SCHEMA_VERSION` via the P2 prepublish script, so the CLI and MCP entrypoints cannot publish at different versions. Plugin and MCP package releases are coordinated through CI but published independently — the plugin no longer carries the CLI binary, so plugin and CLI release cadences are decoupled.
+- **Server-provided context, not client-cached instructions.** P3 onward, agents must call `pathfinder_authoring_start` and follow server-provided guidance rather than carrying authoring instructions locally. Skill files for Cursor/Claude Desktop should remain thin.
+- **Assistant write-tool surface is a P4 coordination point** (from [P0 spike](./phases/ai-authoring-0-assistant-spike.md)). Assistant exposes no generic "call this App Platform path" tool today. P4 must pick a write-tool surface and coordinate with the Assistant team.
+- **Assistant connection target is a P4 coordination point.** Since the authoring MCP no longer lives at the per-instance plugin URL, P4 must coordinate with the Assistant team on where the centrally hosted TS MCP runs and how Assistant's tool list points at it.

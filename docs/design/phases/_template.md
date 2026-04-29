@@ -16,7 +16,7 @@ _Filled at draft. What must be true on arrival._
 
 **Prior-phase exit criteria to re-verify before starting:**
 
-- [ ] _e.g., bundled CLI binary present at `<plugin-dir>/cli/pathfinder-cli` on all three target platforms_
+- [ ] _e.g., npm package `pathfinder-cli@<CURRENT_SCHEMA_VERSION>` resolvable from the registry_
 - [ ] _e.g., `npm run check` clean on `main`_
 
 **Surface area this phase touches:**

@@ -174,3 +174,15 @@ Things the P4 agent should know on arrival:
 - **User-confirmation UX is in the loop.** Assistant's per-tool confirmation/approval layer means a publish action will likely surface a user-visible prompt. P4 should design the handoff so the prompt reads sensibly ("Publish guide _Title_ to this Grafana instance?") and the boundary-decision-4 flow ("the AI client owns user agency and final action") naturally lands on this confirmation rather than an additional one in front of it.
 - **Assistant-on-OSS still falls through to `localExport`.** Nothing in this spike changes the OSS path. The same handoff response covers both Cloud and OSS; Assistant detects the absence of App Platform and follows the `localExport` instructions. P4's exit criterion for the OSS flow stays as written in the index.
 - **No design doc edits required.** [`PATHFINDER-AI-AUTHORING.md`](../PATHFINDER-AI-AUTHORING.md), [`APP-PLATFORM-PUBLISH-HANDOFF.md`](../APP-PLATFORM-PUBLISH-HANDOFF.md), and [`CLIENT-ORCHESTRATION-GUIDE.md`](../CLIENT-ORCHESTRATION-GUIDE.md) are all consistent with the verified Assistant capabilities. The index gains one cross-cutting concern entry to ensure the wiring item is not forgotten.
+
+---
+
+## Addendum (2026-04-29, post-spike design pivot)
+
+This spike validated that Grafana Assistant can perform App Platform writes from a runtime-supplied path. **That conclusion is unchanged.**
+
+What did change after the spike merged: the Pathfinder authoring MCP itself moved out of the plugin. It is no longer added to `pkg/plugin/mcp.go` at `/api/plugins/grafana-pathfinder-app/resources/mcp`; it is a standalone TypeScript MCP server shipped as a second binary entrypoint of the `pathfinder-cli` npm package (see [`HOSTED-AUTHORING-MCP.md` — Where it runs](../HOSTED-AUTHORING-MCP.md#where-it-runs) and [`AI-AUTHORING-IMPLEMENTATION.md` — P3](../AI-AUTHORING-IMPLEMENTATION.md)).
+
+This adds one item to the P4 wiring list that the body of this spike did not cover: **Assistant must connect to the centrally hosted TS MCP, not to the plugin URL.** Picking a hosting model (likely a Grafana-org service following the `grafana/data-platform-tools` `mcp/mcp-data` pattern) and wiring Assistant's tool list with that URL is now part of P4 coordination. Tracked in [`AI-AUTHORING-IMPLEMENTATION.md` — P4 §Wiring items](../AI-AUTHORING-IMPLEMENTATION.md).
+
+None of the six verified Assistant capabilities are affected by this change.

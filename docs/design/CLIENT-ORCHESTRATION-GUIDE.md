@@ -15,7 +15,10 @@ The client should:
 
 1. Understand the user's guide goal.
 2. Ask clarifying questions when necessary.
-3. Connect to the Pathfinder authoring MCP at `/api/plugins/grafana-pathfinder-app/resources/mcp`.
+3. Connect to the Pathfinder authoring MCP via the appropriate transport for the client:
+   - **Stdio (local clients — Cursor, Claude Desktop, MCP Inspector):** spawn `npx pathfinder-mcp` (or `docker run --rm grafana/pathfinder-cli mcp`) and use stdio.
+   - **HTTPS (Grafana Assistant on Cloud):** connect to the centrally hosted TS MCP using the Grafana MCP token-verifier auth flow.
+     The existing Go endpoint at `/api/plugins/grafana-pathfinder-app/resources/mcp` is **not** the destination for authoring tools; it is preserved as a runtime-tools-only stub. See [Pathfinder authoring MCP service — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs).
 4. Call `pathfinder_authoring_start` to receive the current authoring context (always the first tool call).
 5. Use deterministic MCP tools to build the guide. Use `pathfinder_help` to discover field-level details for any block type rather than guessing.
 6. Inspect and validate the artifact.
@@ -131,7 +134,7 @@ Grafana Assistant is the primary target client for the full loop because it can 
 
 ### Assistant on Cloud / Enterprise (App Platform available)
 
-1. Assistant connects to the Pathfinder authoring MCP.
+1. Assistant connects to the centrally hosted Pathfinder authoring MCP (HTTP transport, behind the Grafana MCP token verifier).
 2. Assistant uses MCP tools to generate and validate a guide.
 3. Assistant asks the user whether to save as draft or publish.
 4. Assistant writes the `InteractiveGuide` resource through the private App Platform endpoint available in that Grafana instance.
