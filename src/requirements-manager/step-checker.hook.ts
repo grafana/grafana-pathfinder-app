@@ -9,7 +9,7 @@
  * 4. Smart performance: skip requirements if objectives are satisfied
  */
 
-import { useReducer, useCallback, useEffect, useRef } from 'react';
+import { useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 // getRequirementExplanation is used in check-phases.ts
 import {
   createObjectivesCompletedState,
@@ -96,7 +96,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     onComplete,
   } = props;
   const [fsmState, dispatch] = useReducer(stepReducer, undefined, () => createInitialState({ canSkip: skippable }));
-  const state = toLegacyState(fsmState);
+  // Memoize the legacy projection so its identity only changes on real FSM
+  // transitions. `toLegacyState` returns a fresh object literal every call, so
+  // without this memo every parent re-render would produce a new `state` and
+  // recreate downstream `useCallback`s (e.g. `markCompleted` depends on
+  // `[state, updateManager]`), propagating new function references to children.
+  const state = useMemo(() => toLegacyState(fsmState), [fsmState]);
 
   // REACT: Track mounted state to prevent state updates after unmount (R4)
   const isMountedRef = useRef(true);
