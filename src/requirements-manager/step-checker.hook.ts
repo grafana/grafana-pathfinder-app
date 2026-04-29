@@ -471,6 +471,17 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
+    // `lazy-scroll` is a hint to the consumer (the action button in
+    // `interactive-step.tsx` runs the discovery scroll via `tryLazyScrollAndExecute`),
+    // not a fix the registry can dispatch. Short-circuit so we don't call
+    // `dispatchFix` (which would return `{ ok: false }` for an unmatched handler
+    // and clobber the state into `SET_ERROR`). Leaving state untouched keeps
+    // `canFixRequirement` and `fixType` intact so the action button remains
+    // available — matching the pre-FSM behaviour.
+    if (state.fixType === 'lazy-scroll') {
+      return;
+    }
+
     try {
       safeDispatch({ type: 'START_CHECK' });
 
@@ -487,7 +498,20 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       if (!result.ok) {
         console.warn('Fix failed:', result.error);
         if (isMountedRef.current) {
-          safeDispatch({ type: 'SET_ERROR', error: result.error });
+          // Preserve the existing fix metadata so the user can retry.
+          // The reducer's `SET_ERROR` defaults `canFix` to `false` and clears
+          // the rest, so we must pass them explicitly — otherwise the fix
+          // button vanishes after a single failed attempt. (The pre-FSM code
+          // used `setState(prev => ({ ...prev, error }))`, which preserved
+          // these fields via spread.)
+          safeDispatch({
+            type: 'SET_ERROR',
+            error: result.error,
+            canFix: state.canFixRequirement,
+            fixType: state.fixType,
+            targetHref: state.targetHref,
+            scrollContainer: state.scrollContainer,
+          });
         }
         return;
       }
@@ -508,7 +532,15 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       await checkStep();
     } catch (error) {
       console.error('Failed to fix requirements:', error);
-      safeDispatch({ type: 'SET_ERROR', error: 'Failed to fix requirements' });
+      // Same preservation rationale as the `!result.ok` branch above.
+      safeDispatch({
+        type: 'SET_ERROR',
+        error: 'Failed to fix requirements',
+        canFix: state.canFixRequirement,
+        fixType: state.fixType,
+        targetHref: state.targetHref,
+        scrollContainer: state.scrollContainer,
+      });
     }
   }, [
     state.canFixRequirement,

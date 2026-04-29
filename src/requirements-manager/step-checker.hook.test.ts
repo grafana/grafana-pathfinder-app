@@ -300,6 +300,89 @@ describe('useStepChecker fix dispatch (regression)', () => {
     expect(mockExpandParentNavigationSection).not.toHaveBeenCalled();
     expect(mockFixLocationRequirement).not.toHaveBeenCalled();
   });
+
+  it('preserves fix metadata when a fix handler reports failure so the user can retry', async () => {
+    // The handler will throw to simulate a failed fix. The reducer's SET_ERROR
+    // path defaults canFix to false and clears fix metadata, so the hook must
+    // pass them explicitly — otherwise the fix button vanishes after one click.
+    mockExpandParentNavigationSection.mockResolvedValueOnce(false);
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'exists-reftarget',
+      error: [
+        failedRequirement({
+          requirement: 'exists-reftarget',
+          canFix: true,
+          fixType: 'expand-parent-navigation',
+          targetHref: '/connections/datasources',
+        }),
+      ],
+    });
+
+    const { result } = await renderStepChecker({ requirements: 'exists-reftarget', refTarget: '#datasources' });
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+
+    expect(result.current.canFixRequirement).toBe(true);
+
+    await act(async () => {
+      await result.current.fixRequirement?.();
+    });
+
+    expect(result.current.error).toBeDefined();
+    // The button must still be available for another attempt.
+    expect(result.current.canFixRequirement).toBe(true);
+    expect(result.current.fixType).toBe('expand-parent-navigation');
+  });
+
+  it('lazy-scroll: fixRequirement is a no-op so the action button remains available', async () => {
+    // `lazy-scroll` is a hint for the action button (which runs the discovery
+    // scroll via `tryLazyScrollAndExecute`). The fix-handler registry has no
+    // entry for it; calling dispatchFix would return `{ ok: false }` and
+    // clobber state. The hook must short-circuit instead.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'exists-reftarget',
+      error: [
+        failedRequirement({
+          requirement: 'exists-reftarget',
+          canFix: true,
+          fixType: 'lazy-scroll',
+          scrollContainer: '#dashboard',
+        }),
+      ],
+    });
+
+    const { result } = await renderStepChecker({
+      requirements: 'exists-reftarget',
+      refTarget: '#far-away',
+      lazyRender: true,
+      scrollContainer: '#dashboard',
+    });
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+
+    expect(result.current.canFixRequirement).toBe(true);
+    expect(result.current.fixType).toBe('lazy-scroll');
+    const errorBefore = result.current.error;
+
+    await act(async () => {
+      await result.current.fixRequirement?.();
+    });
+
+    expect(mockExpandParentNavigationSection).not.toHaveBeenCalled();
+    expect(mockFixLocationRequirement).not.toHaveBeenCalled();
+    expect(mockFixNavigationRequirementsFromHook).not.toHaveBeenCalled();
+    // State is unchanged: no spurious "No fix handler matched" error appears
+    // and the metadata is preserved.
+    expect(result.current.canFixRequirement).toBe(true);
+    expect(result.current.fixType).toBe('lazy-scroll');
+    expect(result.current.error).toBe(errorBefore);
+  });
 });
 
 // =============================================================================
