@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import type { z } from 'zod';
 
 import {
   BLOCK_SCHEMA_MAP,
@@ -10,12 +11,28 @@ import {
   isContainerBlockType,
 } from '../utils/block-registry';
 import {
+  BLOCK_FIELD_VALIDATORS,
+  CHOICE_FIELD_VALIDATORS,
+  MANIFEST_FIELD_VALIDATORS,
+  STEP_FIELD_VALIDATORS,
+} from '../utils/cli-validators';
+import {
   JsonInteractiveBlockSchema,
   JsonMarkdownBlockSchema,
+  JsonQuizChoiceSchema,
   JsonSectionBlockSchema,
+  JsonStepSchema,
   VALID_BLOCK_TYPES,
 } from '../../types/json-guide.schema';
+import { ManifestJsonObjectSchema } from '../../types/package.schema';
 import { registerSchemaOptions } from '../utils/schema-options';
+
+// Some authoring schemas wrap a `z.object({...})` with `.refine()` /
+// `.superRefine()`; the `.shape` accessor still resolves at runtime in Zod v4.
+// Cast through `unknown` so the tests can introspect them uniformly.
+function shapeOf(schema: unknown): Record<string, z.ZodType> {
+  return (schema as { shape: Record<string, z.ZodType> }).shape;
+}
 
 describe('BLOCK_SCHEMA_MAP completeness', () => {
   it('every VALID_BLOCK_TYPES entry is either registered or explicitly excluded', () => {
@@ -133,5 +150,112 @@ describe('integration: every registered schema is bridge-compatible', () => {
     // the bridge must skip it — assert no `--type` flag is registered.
     const typeFlag = cmd.options.find((o) => o.long === '--type');
     expect(typeFlag).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Item 2: CONTAINER_CHILD_KEYS coverage
+// ---------------------------------------------------------------------------
+//
+// `walkBlocks` and the structural mutators in package-io descend into a
+// container's children via the keys listed in `CONTAINER_CHILD_KEYS`. If a
+// future container type (block-children-bearing) is added to
+// `CONTAINER_BLOCK_TYPES` without a matching entry here, the walker silently
+// returns 0 children — `removeBlock`, `moveBlock`, and `inspect` would all
+// treat it as a leaf. That's the latent correctness bug this guard prevents.
+
+// Mirror of the private CONTAINER_CHILD_KEYS table in package-io.ts. Kept in
+// lockstep deliberately — the test asserts the schema reality matches.
+const CONTAINER_CHILD_KEYS_MIRROR: Record<string, string[]> = {
+  section: ['blocks'],
+  assistant: ['blocks'],
+  conditional: ['whenTrue', 'whenFalse'],
+};
+const CONTAINER_NON_BLOCK_CHILD_KEYS_MIRROR: Record<string, string[]> = {
+  multistep: ['steps'],
+  guided: ['steps'],
+  quiz: ['choices'],
+};
+
+describe('CONTAINER_CHILD_KEYS coverage', () => {
+  it('every container block type is covered by exactly one of the two child-keys maps', () => {
+    // The test mirror duplicates the private maps in package-io.ts; if those
+    // change, this test is the canary forcing both to update together.
+    for (const t of CONTAINER_BLOCK_TYPES) {
+      const inBlockMap = t in CONTAINER_CHILD_KEYS_MIRROR;
+      const inNonBlockMap = t in CONTAINER_NON_BLOCK_CHILD_KEYS_MIRROR;
+      // Exactly one — block-containers belong in one map, non-block-containers
+      // in the other. Belonging to both or neither indicates drift.
+      expect(inBlockMap || inNonBlockMap).toBe(true);
+      expect(inBlockMap && inNonBlockMap).toBe(false);
+    }
+  });
+
+  it('every CONTAINER_CHILD_KEYS entry resolves to a real array field on the block schema', () => {
+    for (const [type, keys] of Object.entries(CONTAINER_CHILD_KEYS_MIRROR)) {
+      const schema = BLOCK_SCHEMA_MAP[type as keyof typeof BLOCK_SCHEMA_MAP];
+      expect(schema).toBeDefined();
+      const shape = shapeOf(schema);
+      for (const key of keys) {
+        expect(shape[key]).toBeDefined();
+      }
+    }
+  });
+
+  it('every CONTAINER_NON_BLOCK_CHILD_KEYS entry resolves to a real array field on the block schema', () => {
+    for (const [type, keys] of Object.entries(CONTAINER_NON_BLOCK_CHILD_KEYS_MIRROR)) {
+      const schema = BLOCK_SCHEMA_MAP[type as keyof typeof BLOCK_SCHEMA_MAP];
+      expect(schema).toBeDefined();
+      const shape = shapeOf(schema);
+      for (const key of keys) {
+        expect(shape[key]).toBeDefined();
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Item 7: cli-validators field-name coverage
+// ---------------------------------------------------------------------------
+//
+// `cli-validators.ts` references field names by string. A schema rename
+// silently disables CLI-strict validation on the renamed field. These tests
+// pin every validator key to a real schema field so renames break loudly.
+
+describe('cli-validators field-name coverage', () => {
+  it('every BLOCK_FIELD_VALIDATORS field is a real field on the corresponding block schema', () => {
+    for (const [blockType, fields] of Object.entries(BLOCK_FIELD_VALIDATORS)) {
+      const schema = BLOCK_SCHEMA_MAP[blockType as keyof typeof BLOCK_SCHEMA_MAP];
+      expect(schema).toBeDefined();
+      const shape = shapeOf(schema);
+      for (const fieldName of Object.keys(fields)) {
+        expect({ blockType, fieldName, exists: fieldName in shape }).toEqual({
+          blockType,
+          fieldName,
+          exists: true,
+        });
+      }
+    }
+  });
+
+  it('every STEP_FIELD_VALIDATORS field is a real field on JsonStepSchema', () => {
+    const shape = shapeOf(JsonStepSchema);
+    for (const fieldName of Object.keys(STEP_FIELD_VALIDATORS)) {
+      expect({ fieldName, exists: fieldName in shape }).toEqual({ fieldName, exists: true });
+    }
+  });
+
+  it('every CHOICE_FIELD_VALIDATORS field is a real field on JsonQuizChoiceSchema', () => {
+    const shape = shapeOf(JsonQuizChoiceSchema);
+    for (const fieldName of Object.keys(CHOICE_FIELD_VALIDATORS)) {
+      expect({ fieldName, exists: fieldName in shape }).toEqual({ fieldName, exists: true });
+    }
+  });
+
+  it('every MANIFEST_FIELD_VALIDATORS field is a real field on ManifestJsonObjectSchema', () => {
+    const shape = shapeOf(ManifestJsonObjectSchema);
+    for (const fieldName of Object.keys(MANIFEST_FIELD_VALIDATORS)) {
+      expect({ fieldName, exists: fieldName in shape }).toEqual({ fieldName, exists: true });
+    }
   });
 });

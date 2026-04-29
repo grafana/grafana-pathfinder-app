@@ -146,6 +146,7 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
   }
 
   let changed: string[] = [];
+  let legacyIdsMinted = 0;
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
       const r = editBlock(content, args.id, { patch });
@@ -162,6 +163,7 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
       const multi = manyIssuesOutcome(issues, `${blockType} block`);
       return { ...multi, code: issues[0]!.code, data: { ...(multi.data ?? {}), issues } };
     }
+    legacyIdsMinted = result.state.idsAssignedOnRead ?? 0;
   } catch (err) {
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
@@ -176,7 +178,18 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
   return {
     status: 'ok',
     summary: `Updated ${blockType} block "${args.id}" (changed: ${changed.join(', ')})`,
-    details: { type: blockType, id: args.id, changed, 'package valid': true },
-    data: { type: blockType, id: args.id, changed },
+    details: {
+      type: blockType,
+      id: args.id,
+      changed,
+      'package valid': true,
+      ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
+    },
+    data: {
+      type: blockType,
+      id: args.id,
+      changed,
+      ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+    },
   };
 }

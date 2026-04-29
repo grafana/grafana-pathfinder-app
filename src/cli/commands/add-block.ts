@@ -21,6 +21,12 @@ import {
   type CommandOutcome,
 } from '../utils/output';
 import { getSchemaRequiredFlagNames, parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import {
+  EMPTY_CHOICES_MESSAGE,
+  EMPTY_CONDITIONS_MESSAGE,
+  EMPTY_SCREENS_MESSAGE,
+  EMPTY_STEPS_MESSAGE,
+} from '../../types/json-guide.schema';
 import type { JsonBlock } from '../../types/json-guide.types';
 
 export const addBlockCommand = new Command('add-block').description(
@@ -255,6 +261,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   let position = '';
   let appended = true;
   let assignedId = block.id as string | undefined;
+  let legacyIdsMinted = 0;
 
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
@@ -277,6 +284,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       const multi = manyIssuesOutcome(issues, `${args.type} block`);
       return { ...multi, code: issues[0]!.code, data: { ...(multi.data ?? {}), issues } };
     }
+    legacyIdsMinted = result.state.idsAssignedOnRead ?? 0;
   } catch (err) {
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
@@ -297,6 +305,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       position,
       'package valid': true,
       ...(appended ? {} : { 'idempotent no-op': true }),
+      ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
     hints: appended ? hintsFor(args.type, args.parentId, assignedId) : undefined,
     data: {
@@ -304,6 +313,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       id: assignedId,
       position,
       appended,
+      ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
     },
   };
 }
@@ -375,8 +385,15 @@ function initializeStructuralFields(block: Record<string, unknown>, type: BlockT
  * `validate` command (which uses validateGuide directly) still surfaces
  * these as errors at finalization time.
  */
+const EMPTY_CONTAINER_COMPLETENESS_MESSAGES: ReadonlySet<string> = new Set([
+  EMPTY_STEPS_MESSAGE,
+  EMPTY_CHOICES_MESSAGE,
+  EMPTY_SCREENS_MESSAGE,
+  EMPTY_CONDITIONS_MESSAGE,
+]);
+
 function filterEmptyContainerIssues(
   issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }>
 ): Array<{ path: readonly PropertyKey[]; message: string }> {
-  return issues.filter((issue) => !/At least one (step|choice|screen|condition) is required/.test(issue.message));
+  return issues.filter((issue) => !EMPTY_CONTAINER_COMPLETENESS_MESSAGES.has(issue.message));
 }

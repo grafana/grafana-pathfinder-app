@@ -30,7 +30,6 @@ import {
   JsonTerminalBlockSchema,
   JsonTerminalConnectBlockSchema,
   JsonVideoBlockSchema,
-  VALID_BLOCK_TYPES,
 } from '../../types/json-guide.schema';
 
 /**
@@ -145,10 +144,3 @@ export function isBlockType(type: string): type is BlockType {
 export function isContainerBlockType(type: BlockType): boolean {
   return CONTAINER_BLOCK_TYPES.has(type);
 }
-
-// Coverage between `BLOCK_SCHEMA_MAP`, `CLI_EXCLUDED_BLOCK_TYPES`, and
-// `VALID_BLOCK_TYPES` is enforced at runtime in `block-registry.test.ts`.
-// `VALID_BLOCK_TYPES` is `Set<string>` at the type level (the literal members
-// widen at construction), so the check has to live in test code, not in the
-// type system.
-void VALID_BLOCK_TYPES;

@@ -43,6 +43,7 @@ export async function runRemoveBlock(args: RemoveBlockArgs): Promise<CommandOutc
   let removed = '';
   let childrenRemoved = 0;
   let childrenOrphaned = 0;
+  let legacyIdsMinted = 0;
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
       const r = removeBlock(content, args.id, {
@@ -59,6 +60,7 @@ export async function runRemoveBlock(args: RemoveBlockArgs): Promise<CommandOutc
         ? issueToOutcome(first, { issues: result.validation.issues })
         : { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after removal' };
     }
+    legacyIdsMinted = result.state.idsAssignedOnRead ?? 0;
   } catch (err) {
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
@@ -88,7 +90,14 @@ export async function runRemoveBlock(args: RemoveBlockArgs): Promise<CommandOutc
       'children removed': childrenRemoved,
       'children orphaned': childrenOrphaned,
       'package valid': true,
+      ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
-    data: { type: removed, id: args.id, childrenRemoved, childrenOrphaned },
+    data: {
+      type: removed,
+      id: args.id,
+      childrenRemoved,
+      childrenOrphaned,
+      ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+    },
   };
 }

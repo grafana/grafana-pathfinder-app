@@ -16,7 +16,7 @@
 import type { Command } from 'commander';
 import { ZodError, z } from 'zod';
 
-import { describeField, fieldNameToFlag, getSchemaRequiredFlagNames, STRUCTURAL_SKIP_FIELDS } from './schema-options';
+import { getSchemaRequiredFlagNames, STRUCTURAL_SKIP_FIELDS } from './schema-options';
 import type { PackageIOIssue } from './package-io';
 
 // ---------------------------------------------------------------------------
@@ -394,8 +394,3 @@ export function formatHelpAsJson(cmd: Command): HelpJson {
   }
   return result;
 }
-
-// Pin the bridge imports as observed contract so unused-import drift
-// surfaces during refactoring rather than silently breaking the help shape.
-void describeField;
-void fieldNameToFlag;

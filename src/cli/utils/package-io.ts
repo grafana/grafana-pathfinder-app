@@ -23,7 +23,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
+import {
+  CURRENT_SCHEMA_VERSION,
+  EMPTY_CHOICES_MESSAGE,
+  EMPTY_CONDITIONS_MESSAGE,
+  EMPTY_SCREENS_MESSAGE,
+  EMPTY_STEPS_MESSAGE,
+  QUIZ_MULTI_CORRECT_PREFIX,
+  QUIZ_NO_CORRECT_CHOICE_PREFIX,
+} from '../../types/json-guide.schema';
 import type {
   JsonAssistantBlock,
   JsonBlock,
@@ -38,7 +46,7 @@ import type {
 import { ContentJsonSchema, ManifestJsonSchema } from '../../types/package.schema';
 import type { ContentJson, ManifestJson } from '../../types/package.types';
 import { validateGuide } from '../../validation/validate-guide';
-import { CONTAINER_BLOCK_TYPES, isContainerBlockType } from './block-registry';
+import { isContainerBlockType } from './block-registry';
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -114,6 +122,16 @@ export interface PackageState {
    * validator boundary is "authored" (strict).
    */
   manifestSchemaVersionAuthored?: boolean;
+  /**
+   * Number of `<type>-<n>` ids minted on read by `assignMissingIds` because
+   * legacy / bundled / hand-authored content lacked them. Surfaced in command
+   * success output so authors aren't surprised to see id additions in the
+   * write diff alongside their actual change.
+   *
+   * Optional because synthetic states constructed in tests don't go through
+   * `readPackage` and don't need to track it.
+   */
+  idsAssignedOnRead?: number;
 }
 
 /**
@@ -168,9 +186,9 @@ export function readPackage(packageDir: string): PackageState {
   // hand-authored content with `move-block`, `remove-block`, etc. The walk
   // order is deterministic so a read-only inspect and a subsequent mutation
   // see the same ids; mutateAndValidate persists them on the next write.
-  assignMissingIds(content);
+  const { assigned } = assignMissingIds(content);
 
-  return { content, manifest, manifestSchemaVersionAuthored };
+  return { content, manifest, manifestSchemaVersionAuthored, idsAssignedOnRead: assigned };
 }
 
 function readRawJson(filePath: string, label: string): unknown {
@@ -308,6 +326,15 @@ function parseFileWithSchema<T>(
       // is structurally valid for authoring purposes. Return the raw
       // parsed JSON cast to T — the CLI mutators will populate the empty
       // arrays as the agent fills them in.
+      //
+      // Safety note: this skips Zod's default-application. That's only
+      // reached for `ContentJsonSchema` in practice (manifest.json has no
+      // empty-container completeness checks), and `ContentJsonSchema`
+      // declares no `.default()` fields — `schemaVersion` is `optional()`
+      // and downstream consumers (`validatePackageState` drift check,
+      // `inspect`'s schemaVersion display) all guard against undefined.
+      // If a future change adds a `.default()` to `ContentJsonSchema`,
+      // populate it manually here before returning.
       return parsed as T;
     }
     const issues: PackageIOIssue[] = realIssues.map((i) => ({
@@ -454,15 +481,24 @@ export function validatePackageState(
  * calls `validatePackage(dir)` rather than this in-memory variant) still
  * surfaces these so a published guide cannot ship an empty container.
  */
+// Suffix-list rather than exact-match Set because `validateGuide` prepends a
+// JSON path to each Zod issue message (`blocks[0].steps: <message>`). Direct
+// schema issues are bare strings; both shapes need to match the filter.
+const EMPTY_CONTAINER_COMPLETENESS_SUFFIXES: readonly string[] = [
+  EMPTY_STEPS_MESSAGE,
+  EMPTY_CHOICES_MESSAGE,
+  EMPTY_SCREENS_MESSAGE,
+  EMPTY_CONDITIONS_MESSAGE,
+];
+
 function isEmptyContainerCompletenessMessage(message: string): boolean {
-  if (/At least one (step|choice|screen|condition) is required/.test(message)) {
+  if (EMPTY_CONTAINER_COMPLETENESS_SUFFIXES.some((suffix) => message.endsWith(suffix))) {
     return true;
   }
-  // "Quiz has no correct choice yet" is the transient authoring twin of the
-  // empty-container completeness check: an agent legitimately adds a non-
-  // correct choice before the correct one. The publish-time validator
-  // (`validatePackage`) still surfaces it.
-  if (/Quiz has no correct choice yet/.test(message)) {
+  // The "no correct choice yet" message has a stable prefix and a trailing
+  // hint; the path-prefixed variant from validateGuide also contains it. Use
+  // includes() to match both shapes.
+  if (message.includes(QUIZ_NO_CORRECT_CHOICE_PREFIX)) {
     return true;
   }
   return false;
@@ -479,13 +515,13 @@ function isEmptyContainerCompletenessMessage(message: string): boolean {
  * message.
  */
 function classifyContentIssue(message: string): PackageIOErrorCode {
-  if (
-    message.includes('Single-select quiz has more than one correct choice') ||
-    message.includes('Quiz has no correct choice yet')
-  ) {
+  // includes() rather than startsWith() because validateGuide prepends a JSON
+  // path to each issue (`blocks[0].choices: Quiz has no...`). Both shapes
+  // route to QUIZ_CORRECT_COUNT.
+  if (message.includes(QUIZ_MULTI_CORRECT_PREFIX) || message.includes(QUIZ_NO_CORRECT_CHOICE_PREFIX)) {
     return 'QUIZ_CORRECT_COUNT';
   }
-  if (message.startsWith('Unknown requirement ')) {
+  if (message.includes('Unknown requirement ')) {
     return 'UNKNOWN_REQUIREMENT';
   }
   return 'SCHEMA_VALIDATION';
@@ -506,6 +542,19 @@ const CONTAINER_CHILD_KEYS: Record<string, string[]> = {
   section: ['blocks'],
   assistant: ['blocks'],
   conditional: ['whenTrue', 'whenFalse'],
+};
+
+/**
+ * Container blocks whose children are NOT `JsonBlock`s (steps, choices). The
+ * walker skips these — generic block traversal would corrupt their schema —
+ * but `countChildren` and other "any non-empty container" checks need to see
+ * them. Driving the count from a map removes a duplicate site of container-
+ * type knowledge (previously hardcoded as per-type ifs in countChildren).
+ */
+const CONTAINER_NON_BLOCK_CHILD_KEYS: Record<string, string[]> = {
+  multistep: ['steps'],
+  guided: ['steps'],
+  quiz: ['choices'],
 };
 
 /**
@@ -1321,24 +1370,16 @@ function findSiblingIndexOrThrow(
 }
 
 function countChildren(block: JsonBlock): number {
-  const childKeys = CONTAINER_CHILD_KEYS[block.type];
-  if (childKeys) {
-    let total = 0;
-    for (const key of childKeys) {
-      const children = (block as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(children)) {
-        total += children.length;
-      }
+  const blockKeys = CONTAINER_CHILD_KEYS[block.type] ?? [];
+  const nonBlockKeys = CONTAINER_NON_BLOCK_CHILD_KEYS[block.type] ?? [];
+  let total = 0;
+  for (const key of [...blockKeys, ...nonBlockKeys]) {
+    const children = (block as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(children)) {
+      total += children.length;
     }
-    return total;
   }
-  if (block.type === 'multistep' || block.type === 'guided') {
-    return (block as JsonMultistepBlock | JsonGuidedBlock).steps.length;
-  }
-  if (block.type === 'quiz') {
-    return (block as JsonQuizBlock).choices.length;
-  }
-  return 0;
+  return total;
 }
 
 // ---------------------------------------------------------------------------
@@ -1538,8 +1579,3 @@ function positionOf(content: ContentJson, target: JsonBlock): string | null {
   }
   return null;
 }
-
-// Pin the imports so `tsc --noEmit` reports unused-export drift if upstream
-// renames CONTAINER_BLOCK_TYPES / `JsonStep` shape; both are part of the
-// observed contract that downstream commands depend on.
-void CONTAINER_BLOCK_TYPES;

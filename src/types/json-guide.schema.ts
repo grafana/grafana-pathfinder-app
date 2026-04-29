@@ -11,6 +11,26 @@ import { z } from 'zod';
 
 import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
 
+// ============ COMPLETENESS MESSAGES ============
+//
+// These message strings are referenced by the CLI's empty-container filters
+// (src/cli/utils/package-io.ts and src/cli/commands/add-block.ts). Authoring
+// commands legitimately produce transient empty containers between
+// `add-block <container>` and the first `add-step` / `add-choice`; the
+// filters drop these specific Zod issues so a mid-flight package is still
+// persistable. The standalone `pathfinder-cli validate --package` path
+// surfaces them as expected.
+//
+// Keep schema-side message text and CLI-side filter checks in lockstep by
+// importing these constants on both sides instead of grepping by literal.
+
+export const EMPTY_STEPS_MESSAGE = 'At least one step is required';
+export const EMPTY_CHOICES_MESSAGE = 'At least one choice is required';
+export const EMPTY_SCREENS_MESSAGE = 'At least one screen is required';
+export const EMPTY_CONDITIONS_MESSAGE = 'At least one condition is required';
+export const QUIZ_NO_CORRECT_CHOICE_PREFIX = 'Quiz has no correct choice yet';
+export const QUIZ_MULTI_CORRECT_PREFIX = 'Single-select quiz has more than one correct choice';
+
 // ============ PRIMITIVE SCHEMAS ============
 
 /**
@@ -288,10 +308,7 @@ export const JsonMultistepBlockSchema = z.object({
   type: z.literal('multistep'),
   id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
   content: z.string().min(1, 'Multistep content is required').describe('Block heading/intro text'),
-  steps: z
-    .array(JsonStepSchema)
-    .min(1, 'At least one step is required')
-    .describe('Ordered steps; populated via add-step'),
+  steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
@@ -305,10 +322,7 @@ export const JsonGuidedBlockSchema = z.object({
   type: z.literal('guided'),
   id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
   content: z.string().min(1, 'Guided content is required').describe('Block heading/intro text'),
-  steps: z
-    .array(JsonStepSchema)
-    .min(1, 'At least one step is required')
-    .describe('Ordered steps; populated via add-step'),
+  steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
   stepTimeout: z.number().optional().describe('Per-step timeout in milliseconds'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
@@ -334,7 +348,7 @@ export const JsonQuizBlockSchema = z
     question: z.string().min(1, 'Quiz question is required').describe('Question text shown to the user'),
     choices: z
       .array(JsonQuizChoiceSchema)
-      .min(1, 'At least one choice is required')
+      .min(1, EMPTY_CHOICES_MESSAGE)
       .describe('Quiz choices; populated via add-choice'),
     multiSelect: z.boolean().optional().describe('Allow selecting more than one choice'),
     completionMode: z.enum(['correct-only', 'max-attempts']).optional().describe('How the quiz is considered complete'),
@@ -359,7 +373,7 @@ export const JsonQuizBlockSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['choices'],
-          message: 'Quiz has no correct choice yet (mark a choice with --correct on add-choice or edit-block).',
+          message: `${QUIZ_NO_CORRECT_CHOICE_PREFIX} (mark a choice with --correct on add-choice or edit-block).`,
         });
       }
       return;
@@ -371,7 +385,7 @@ export const JsonQuizBlockSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['choices'],
-        message: 'Quiz has no correct choice yet (mark a choice with --correct on add-choice or edit-block).',
+        message: `${QUIZ_NO_CORRECT_CHOICE_PREFIX} (mark a choice with --correct on add-choice or edit-block).`,
       });
       return;
     }
@@ -379,7 +393,7 @@ export const JsonQuizBlockSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['choices'],
-        message: `Single-select quiz has more than one correct choice (got ${correctCount}). Pass --multi-select on the quiz, or unset --correct on the extras with edit-block.`,
+        message: `${QUIZ_MULTI_CORRECT_PREFIX} (got ${correctCount}). Pass --multi-select on the quiz, or unset --correct on the extras with edit-block.`,
       });
     }
   });
@@ -550,7 +564,7 @@ export const JsonGrotGuideBlockSchema = z
       .optional()
       .describe('Stable identifier; grot-guide blocks are authored in the dedicated editor, not the CLI'),
     welcome: GrotGuideWelcomeSchema,
-    screens: z.array(GrotGuideScreenSchema).min(1, 'At least one screen is required'),
+    screens: z.array(GrotGuideScreenSchema).min(1, EMPTY_SCREENS_MESSAGE),
   })
   .refine(
     (block) => {
@@ -641,7 +655,7 @@ const ConditionalProps = {
     .describe('Stable identifier for the conditional block (required for container blocks via CLI)'),
   conditions: z
     .array(RequirementTokenSchema)
-    .min(1, 'At least one condition is required')
+    .min(1, EMPTY_CONDITIONS_MESSAGE)
     .describe('Requirement expressions evaluated to choose the active branch'),
   description: z.string().optional().describe('Description shown when the conditional acts as a section'),
   display: z

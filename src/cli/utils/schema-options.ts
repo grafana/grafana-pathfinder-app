@@ -26,8 +26,6 @@ export const STRUCTURAL_SKIP_FIELDS: ReadonlySet<string> = new Set([
   'whenFalse',
   'steps',
   'choices',
-  'welcome',
-  'screens',
 ]);
 
 /**

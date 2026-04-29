@@ -6,7 +6,7 @@
 
 import { Command, Option } from 'commander';
 
-import { CONTAINER_BLOCK_TYPES, isContainerBlockType, type BlockType } from '../utils/block-registry';
+import { isContainerBlockType, type BlockType } from '../utils/block-registry';
 import {
   collectAllIds,
   findBlockById,
@@ -387,5 +387,3 @@ function resolveJsonPath(rootBlocks: JsonBlock[], jsonPath: string): ResolvedPat
 
   return current;
 }
-
-void CONTAINER_BLOCK_TYPES;

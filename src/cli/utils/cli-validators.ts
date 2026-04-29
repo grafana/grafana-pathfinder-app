@@ -187,7 +187,7 @@ function arrayOf(elementAssert: FieldValidator): FieldValidator {
  * names used in the Zod block schemas (so they line up with what
  * `parseOptionValues` projects from Commander flag values).
  */
-const BLOCK_FIELD_VALIDATORS: Record<string, Record<string, FieldValidator[]>> = {
+export const BLOCK_FIELD_VALIDATORS: Record<string, Record<string, FieldValidator[]>> = {
   image: {
     src: [assertSafeUrl],
     width: [assertNonNegativeInt],
@@ -209,22 +209,21 @@ const BLOCK_FIELD_VALIDATORS: Record<string, Record<string, FieldValidator[]>> =
   quiz: {
     maxAttempts: [assertPositiveInt],
   },
-  multistep: {
+  guided: {
     stepTimeout: [assertPositiveInt],
   },
 };
 
-const STEP_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
+export const STEP_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
   reftarget: [assertCssSelector],
-  verify: [assertCssSelector],
   scrollContainer: [assertCssSelector],
 };
 
-const CHOICE_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
+export const CHOICE_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
   text: [assertNonEmptyString],
 };
 
-const MANIFEST_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
+export const MANIFEST_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
   repository: [assertRepositoryRef],
   schemaVersion: [assertSemver],
   description: [assertNonEmptyString],

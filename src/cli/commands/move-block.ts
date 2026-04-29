@@ -105,6 +105,7 @@ export async function runMoveBlock(args: MoveBlockArgs): Promise<CommandOutcome>
   let to = -1;
   let reparented = false;
   let toContainer: string | undefined;
+  let legacyIdsMinted = 0;
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
       const r = moveBlock(content, args.id, {
@@ -125,6 +126,7 @@ export async function runMoveBlock(args: MoveBlockArgs): Promise<CommandOutcome>
         ? issueToOutcome(first, { issues: result.validation.issues })
         : { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after move' };
     }
+    legacyIdsMinted = result.state.idsAssignedOnRead ?? 0;
   } catch (err) {
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
@@ -150,7 +152,15 @@ export async function runMoveBlock(args: MoveBlockArgs): Promise<CommandOutcome>
       to,
       ...(reparented && toContainer ? { 'into container': toContainer } : {}),
       'package valid': true,
+      ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
-    data: { id: args.id, from, to, reparented, toContainer },
+    data: {
+      id: args.id,
+      from,
+      to,
+      reparented,
+      toContainer,
+      ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+    },
   };
 }

@@ -58,6 +58,7 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
   }
 
   let position = '';
+  let legacyIdsMinted = 0;
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
       const r = appendChoice(content, candidate.data as JsonQuizChoice, args.parentId);
@@ -69,6 +70,7 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
         ? issueToOutcome(first, { issues: result.validation.issues })
         : { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after append' };
     }
+    legacyIdsMinted = result.state.idsAssignedOnRead ?? 0;
   } catch (err) {
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
@@ -83,10 +85,21 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
   return {
     status: 'ok',
     summary: `Added choice "${candidate.data.id}" to quiz "${args.parentId}" at ${position}`,
-    details: { id: candidate.data.id, correct: candidate.data.correct ?? false, position, 'package valid': true },
+    details: {
+      id: candidate.data.id,
+      correct: candidate.data.correct ?? false,
+      position,
+      'package valid': true,
+      ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
+    },
     hints: [
       `Add another choice with: pathfinder-cli add-choice ${args.dir} --parent ${args.parentId} --id <id> --text <text>`,
     ],
-    data: { position, parent: args.parentId, id: candidate.data.id },
+    data: {
+      position,
+      parent: args.parentId,
+      id: candidate.data.id,
+      ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+    },
   };
 }

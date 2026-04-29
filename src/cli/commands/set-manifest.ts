@@ -193,11 +193,19 @@ export async function runSetManifest(args: SetManifestArgs): Promise<CommandOutc
   }
 
   const changed = [...changedFields];
+  const legacyIdsMinted = writeResult.state.idsAssignedOnRead ?? 0;
   return {
     status: 'ok',
     summary: `Updated manifest in ${args.dir} (changed: ${changed.join(', ')})`,
-    details: { changed, 'package valid': true },
-    data: { changed },
+    details: {
+      changed,
+      'package valid': true,
+      ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
+    },
+    data: {
+      changed,
+      ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+    },
   };
 }
 

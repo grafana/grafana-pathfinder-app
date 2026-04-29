@@ -66,6 +66,7 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
   }
 
   let position = '';
+  let legacyIdsMinted = 0;
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
       const r = appendStep(content, candidate.data as JsonStep, args.parentId);
@@ -77,6 +78,7 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
         ? issueToOutcome(first, { issues: result.validation.issues })
         : { status: 'error', code: 'SCHEMA_VALIDATION', message: 'Validation failed after append' };
     }
+    legacyIdsMinted = result.state.idsAssignedOnRead ?? 0;
   } catch (err) {
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
@@ -91,11 +93,20 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
   return {
     status: 'ok',
     summary: `Added step (action: ${String(candidate.data.action)}) to "${args.parentId}" at ${position}`,
-    details: { action: String(candidate.data.action), position, 'package valid': true },
+    details: {
+      action: String(candidate.data.action),
+      position,
+      'package valid': true,
+      ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
+    },
     hints: [
       `Add another step with: pathfinder-cli add-step ${args.dir} --parent ${args.parentId} --action <action>`,
       `Or move on with: pathfinder-cli add-block <type> ${args.dir}`,
     ],
-    data: { position, parent: args.parentId },
+    data: {
+      position,
+      parent: args.parentId,
+      ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+    },
   };
 }
