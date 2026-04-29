@@ -6,7 +6,11 @@
  * fences must be indented to match the list continuation indent).
  *
  * This function post-processes TipTap Markdown output to re-align fence markers
- * with the actual indentation of the first non-blank content line inside the fence.
+ * with the minimum indentation across all non-blank content lines inside the fence.
+ *
+ * Using the minimum (rather than the first line's) indent recovers the list
+ * continuation indent even when the code's own first line is more deeply
+ * indented than later lines (e.g., the code starts inside a nested scope).
  */
 export function normalizeCodeIndentation(markdown: string): string {
   const lines = markdown.split('\n');
@@ -57,16 +61,23 @@ export function normalizeCodeIndentation(markdown: string): string {
       continue;
     }
 
-    // Detect the indentation of the first non-blank content line
+    // Detect the minimum indentation across all non-blank content lines.
+    // The list continuation indent is the *least* indented line inside the
+    // fence; deeper indentation reflects the code's own internal structure
+    // and must not be folded into the fence marker indent.
     let contentIndent = '';
+    let minIndentLength = Infinity;
     for (let j = i + 1; j < closingIndex; j++) {
       const innerLine = lines[j];
       if (innerLine === undefined || innerLine.trim().length === 0) {
         continue;
       }
       const indentMatch = innerLine.match(/^(\s*)/);
-      contentIndent = indentMatch?.[1] ?? '';
-      break;
+      const indent = indentMatch?.[1] ?? '';
+      if (indent.length < minIndentLength) {
+        minIndentLength = indent.length;
+        contentIndent = indent;
+      }
     }
 
     // Re-align fence markers to match content indentation

@@ -56,4 +56,32 @@ describe('normalizeCodeIndentation', () => {
     const input = ['1. FIRST', '   ```', '   FENCED CODE', '   ```', '2. SECOND'].join('\n');
     expect(normalizeCodeIndentation(input)).toBe(input);
   });
+
+  it('uses the minimum content indent, not the first line, when the code itself is internally indented', () => {
+    // The first content line is indented 6 spaces (deeper than the list
+    // continuation), but a later line sits at the true list continuation
+    // indent of 3 spaces. The fence markers must align to 3, not 6, so the
+    // shallower line stays inside the fence.
+    const input = ['1. FIRST', '```', '      if (x) {', '         doStuff();', '      }', '   trailing()', '```'].join(
+      '\n'
+    );
+
+    const expected = [
+      '1. FIRST',
+      '   ```',
+      '      if (x) {',
+      '         doStuff();',
+      '      }',
+      '   trailing()',
+      '   ```',
+    ].join('\n');
+
+    expect(normalizeCodeIndentation(input)).toBe(expected);
+  });
+
+  it('picks the minimum indent even when blank lines appear before the shallowest line', () => {
+    const input = ['```', '      deep_first', '', '   shallow_later', '```'].join('\n');
+    const expected = ['   ```', '      deep_first', '', '   shallow_later', '   ```'].join('\n');
+    expect(normalizeCodeIndentation(input)).toBe(expected);
+  });
 });
