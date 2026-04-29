@@ -1,7 +1,9 @@
+import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
+import { AlignmentPendingContext } from '../global-state/alignment-pending-context';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Mock requirements checker utility
@@ -666,11 +668,6 @@ describe('useStepChecker return shape (regression)', () => {
 // is pending so step 1 can't race the user's redirect decision.
 // =============================================================================
 describe('useStepChecker — AlignmentPendingContext gate', () => {
-  // Local imports kept inside the describe to avoid disturbing the file's
-  // existing import block.
-  const React = require('react');
-  const { AlignmentPendingContext } = require('../global-state/alignment-pending-context');
-
   it('does not call checkRequirements when the context is true, even with isEligibleForChecking: true', async () => {
     mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
 
