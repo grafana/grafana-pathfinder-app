@@ -150,6 +150,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # Required for `npm publish --provenance` to mint a sigstore
+      # attestation tied to this workflow run's OIDC identity.
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -181,7 +184,10 @@ jobs:
             echo "Add NPM_TOKEN to repository secrets to enable real publishes."
             exit 0
           fi
-          npm publish --access public
+          # --provenance attaches a sigstore-backed build attestation
+          # tying the published tarball to this workflow run. Verifiable
+          # with `npm view pathfinder-cli@<version> --json | jq '.dist.attestations'`.
+          npm publish --access public --provenance
 
   publish-docker:
     name: Publish Docker image
@@ -191,45 +197,53 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Required for keyless cosign signing (sigstore OIDC).
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
-      - name: Check Docker secrets
+      - name: Check Docker Hub secrets
         id: docker-secrets
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
+          # GHCR push is independent: it authenticates with GITHUB_TOKEN
+          # which is always present in this workflow. Only Docker Hub is
+          # secret-gated. A revoked or unset Docker Hub credential must
+          # not dark out the GHCR mirror.
           if [ -z "${DOCKERHUB_USERNAME:-}" ] || [ -z "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not configured; skipping Docker publish."
-            echo "Add both to repository secrets to enable real publishes."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not configured; skipping Docker Hub publish (GHCR still publishes)."
+            echo "Add both to repository secrets to enable Docker Hub publishes."
+            echo "dockerhub-skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "dockerhub-skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3
-        if: steps.docker-secrets.outputs.skip == 'false'
 
       - name: Login to Docker Hub
-        if: steps.docker-secrets.outputs.skip == 'false'
+        if: steps.docker-secrets.outputs.dockerhub-skip == 'false'
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GHCR
-        if: steps.docker-secrets.outputs.skip == 'false'
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        if: steps.docker-secrets.outputs.skip == 'false'
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+
+      - name: Build and push to Docker Hub
+        id: dockerhub-push
+        if: steps.docker-secrets.outputs.dockerhub-skip == 'false'
         uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6
         with:
           context: .
@@ -238,8 +252,35 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ needs.build.outputs.schema-version }}
             ${{ env.IMAGE_NAME_DOCKERHUB }}:latest
+
+      - name: Sign Docker Hub image with cosign (keyless)
+        if: steps.docker-secrets.outputs.dockerhub-skip == 'false'
+        env:
+          DIGEST: ${{ steps.dockerhub-push.outputs.digest }}
+          VERSION: ${{ needs.build.outputs.schema-version }}
+        run: |
+          set -euo pipefail
+          # Sign the digest so both the version tag and :latest are
+          # covered (tags are mutable; digest is canonical).
+          cosign sign --yes "${{ env.IMAGE_NAME_DOCKERHUB }}@${DIGEST}"
+
+      - name: Build and push to GHCR
+        id: ghcr-push
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6
+        with:
+          context: .
+          file: Dockerfile.cli
+          push: true
+          tags: |
             ${{ env.IMAGE_NAME_GHCR }}:${{ needs.build.outputs.schema-version }}
             ${{ env.IMAGE_NAME_GHCR }}:latest
+
+      - name: Sign GHCR image with cosign (keyless)
+        env:
+          DIGEST: ${{ steps.ghcr-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${{ env.IMAGE_NAME_GHCR }}@${DIGEST}"
 
   smoke-registry:
     name: Smoke-test the registry copy
@@ -275,9 +316,18 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "DOCKERHUB_TOKEN absent — Docker publish was skipped, nothing to smoke."
+            echo "DOCKERHUB_TOKEN absent — Docker Hub publish was skipped, nothing to smoke."
             exit 0
           fi
           version="${{ needs.build.outputs.schema-version }}"
           observed="$(docker run --rm ${{ env.IMAGE_NAME_DOCKERHUB }}:${version} --version)"
-          [ "$observed" = "$version" ] || { echo "Docker registry smoke failed: observed=$observed expected=$version"; exit 1; }
+          [ "$observed" = "$version" ] || { echo "Docker Hub registry smoke failed: observed=$observed expected=$version"; exit 1; }
+
+      - name: docker run ghcr.io/grafana/pathfinder-cli:<version> --version
+        # Unconditional: GHCR publish is gated only on the cli-v* tag, not
+        # on any external secret, so the image is always present here.
+        run: |
+          set -euo pipefail
+          version="${{ needs.build.outputs.schema-version }}"
+          observed="$(docker run --rm ${{ env.IMAGE_NAME_GHCR }}:${version} --version)"
+          [ "$observed" = "$version" ] || { echo "GHCR registry smoke failed: observed=$observed expected=$version"; exit 1; }
