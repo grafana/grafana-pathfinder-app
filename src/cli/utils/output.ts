@@ -14,6 +14,7 @@
  */
 
 import type { Command } from 'commander';
+import { ZodError, z } from 'zod';
 
 import { describeField, fieldNameToFlag, STRUCTURAL_SKIP_FIELDS } from './schema-options';
 import type { PackageIOIssue } from './package-io';
@@ -62,6 +63,13 @@ export interface SuccessOutcome {
   summary: string;
   /** Optional structured details rendered under the summary in text mode. */
   details?: Record<string, string | number | boolean | string[] | undefined>;
+  /**
+   * Optional multi-line block rendered after details (and before hints) in
+   * text mode. Used for tree views and similar prose-shaped content where
+   * `details` would force everything to a single line. JSON mode ignores
+   * this field — consumers should read structured data from `data`.
+   */
+  text?: string;
   /** Optional next-step hints. Hidden in --quiet; rendered as bullets in text. */
   hints?: string[];
   /** Stable JSON-format payload. Authoritative when --format json is requested. */
@@ -92,6 +100,39 @@ export function issueToOutcome(issue: PackageIOIssue, data?: Record<string, unkn
     message: issue.message,
     data: data ?? (issue.path ? { path: issue.path } : undefined),
   };
+}
+
+/**
+ * Render a single Zod issue as a one-line `<path>: <message>` string. Used to
+ * keep error output prose-shaped instead of leaking raw `{origin, code, ...}`
+ * JSON when Zod schemas reject mid-mutation.
+ */
+function formatZodIssue(issue: z.core.$ZodIssue): string {
+  const path = issue.path
+    .map((segment) => (typeof segment === 'number' ? `[${segment}]` : String(segment)))
+    .filter((s) => s.length > 0)
+    .join('.')
+    .replace(/\.\[/g, '[');
+  const where = path.length > 0 ? path : '<root>';
+  return `${where}: ${issue.message}`;
+}
+
+/**
+ * Render a thrown error from a CLI mutation into a clean prose string.
+ *
+ * Zod's default `.message` is a JSON-stringified issue array, which leaked
+ * through to the user when a `.parse()` call inside a mutator failed.
+ * Prefer the per-issue prettifier; fall back to the error's message text for
+ * non-Zod errors.
+ */
+export function renderError(err: unknown): string {
+  if (err instanceof ZodError) {
+    return err.issues.map(formatZodIssue).join('; ');
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +172,23 @@ function formatSuccessText(outcome: SuccessOutcome, quiet: boolean): string {
       if (value === undefined) {
         continue;
       }
+      // `tree` is a list of pre-formatted lines from buildTree/renderTreeText
+      // — render under a labeled block so each entry stays on its own line.
+      // Other arrays use the inline comma-joined form.
+      if (key === 'tree' && Array.isArray(value)) {
+        lines.push(`  ${key}:`);
+        for (const treeLine of value) {
+          lines.push(`    ${treeLine}`);
+        }
+        continue;
+      }
       lines.push(`  ${key}: ${formatDetailValue(value)}`);
+    }
+  }
+  if (outcome.text && outcome.text.length > 0) {
+    lines.push('');
+    for (const textLine of outcome.text.split('\n')) {
+      lines.push(textLine);
     }
   }
   if (outcome.hints && outcome.hints.length > 0) {

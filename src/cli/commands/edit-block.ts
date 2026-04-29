@@ -7,8 +7,9 @@
 import { Command, Option } from 'commander';
 
 import { editBlock, findBlockById, mutateAndValidate, PackageIOError, readPackage } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
+import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 
 export const editBlockCommand = new Command('edit-block')
@@ -33,10 +34,26 @@ for (const schema of Object.values(BLOCK_SCHEMA_MAP)) {
   registerSchemaOptions(editBlockCommand, schema, { skipExisting: true, forceOptional: true });
 }
 
+// `--id` is in `id` is in the forbid-list inside editBlock (block-level rename
+// requires updating every reference in the package, which is non-trivial),
+// so hide it from --help. Keeping the flag registered (rather than removing)
+// preserves Commander parsing — passing `--id` still produces a structured
+// error from editBlock rather than Commander's "unknown option".
+const idOption = editBlockCommand.options.find((o) => o.long === '--id');
+if (idOption) {
+  idOption.hideHelp(true);
+}
+
 editBlockCommand
   // After the schema-derived options register, ensure --quiet / --format
   // remain visible from the parent.
   .addOption(new Option('--no-validate', 'Skip post-edit validation (advanced)').hideHelp())
+  // Recognize position-shaped flags so Commander's "too many arguments" error
+  // doesn't mislead authors. The action handler intercepts and redirects to
+  // move-block.
+  .addOption(new Option('--position <n>', 'Reordering is not handled here — use move-block').hideHelp())
+  .addOption(new Option('--before <id>', 'Reordering is not handled here — use move-block').hideHelp())
+  .addOption(new Option('--after <id>', 'Reordering is not handled here — use move-block').hideHelp())
   .action(async function (this: Command, dir: string, id: string) {
     const opts = this.opts() as Record<string, unknown>;
     const output = readOutputOptions(this);
@@ -51,6 +68,18 @@ interface EditBlockArgs {
 }
 
 export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome> {
+  // Reordering attempts are accepted by the parser (so users don't see
+  // Commander's misleading "too many arguments") but redirected here.
+  for (const reorderFlag of ['position', 'before', 'after'] as const) {
+    if (args.flagValues[reorderFlag] !== undefined) {
+      return {
+        status: 'error',
+        code: 'SCHEMA_VALIDATION',
+        message: `edit-block does not change block position. Use: pathfinder-cli move-block <dir> ${args.id} --${reorderFlag === 'position' ? 'to-position' : reorderFlag} <value>`,
+      };
+    }
+  }
+
   // Inspect the block first to figure out which schema its flags must
   // project through. This is the price of a single command targeting any
   // block type — we pay one read up front.
@@ -70,7 +99,7 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
     }
-    return { status: 'error', code: 'NOT_FOUND', message: err instanceof Error ? err.message : String(err) };
+    return { status: 'error', code: 'NOT_FOUND', message: renderError(err) };
   }
 
   const schema = BLOCK_SCHEMA_MAP[blockType];
@@ -99,6 +128,16 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     };
   }
 
+  // CLI-strict semantic checks against the patch values.
+  try {
+    assertCliBlockFields(blockType, patch);
+  } catch (err) {
+    if (err instanceof CliValidationError) {
+      return { status: 'error', code: 'SCHEMA_VALIDATION', message: err.message };
+    }
+    throw err;
+  }
+
   let changed: string[] = [];
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
@@ -118,7 +157,7 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     return {
       status: 'error',
       code: 'SCHEMA_VALIDATION',
-      message: err instanceof Error ? err.message : String(err),
+      message: renderError(err),
     };
   }
 

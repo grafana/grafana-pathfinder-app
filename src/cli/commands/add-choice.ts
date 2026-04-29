@@ -7,8 +7,9 @@ import { Command, Option } from 'commander';
 
 import { JsonQuizChoiceSchema } from '../../types/json-guide.schema';
 import type { JsonQuizChoice } from '../../types/json-guide.types';
+import { assertCliChoiceFields, CliValidationError } from '../utils/cli-validators';
 import { appendChoice, mutateAndValidate, PackageIOError } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 
 export const addChoiceCommand = new Command('add-choice')
@@ -34,6 +35,15 @@ interface AddChoiceArgs {
 export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome> {
   const projected = parseOptionValues(JsonQuizChoiceSchema, args.flagValues) as Record<string, unknown>;
   delete projected.parent;
+
+  try {
+    assertCliChoiceFields(projected);
+  } catch (err) {
+    if (err instanceof CliValidationError) {
+      return { status: 'error', code: 'SCHEMA_VALIDATION', message: err.message };
+    }
+    throw err;
+  }
 
   const candidate = JsonQuizChoiceSchema.safeParse(projected);
   if (!candidate.success) {
@@ -64,7 +74,7 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
     return {
       status: 'error',
       code: 'SCHEMA_VALIDATION',
-      message: err instanceof Error ? err.message : String(err),
+      message: renderError(err),
     };
   }
 
@@ -73,7 +83,7 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
     summary: `Added choice "${candidate.data.id}" to quiz "${args.parentId}" at ${position}`,
     details: { id: candidate.data.id, correct: candidate.data.correct ?? false, position, 'package valid': true },
     hints: [
-      `Add another choice with: pathfinder-cli add-choice <dir> --parent ${args.parentId} --id <id> --text <text>`,
+      `Add another choice with: pathfinder-cli add-choice ${args.dir} --parent ${args.parentId} --id <id> --text <text>`,
     ],
     data: { position, parent: args.parentId, id: candidate.data.id },
   };

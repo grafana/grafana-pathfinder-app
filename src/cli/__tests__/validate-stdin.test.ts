@@ -5,7 +5,22 @@
  * rather than spawning a subprocess, following the existing test patterns.
  */
 
+import { execFileSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
 import { validateGuideFromString, toLegacyResult } from '../../validation';
+
+const CLI_ENTRY = path.resolve(__dirname, '../index.ts');
+
+function runCli(args: string[], input?: string): string {
+  return execFileSync(process.execPath, ['-r', 'ts-node/register/transpile-only', CLI_ENTRY, ...args], {
+    cwd: path.resolve(__dirname, '../../..'),
+    encoding: 'utf-8',
+    input,
+  });
+}
 
 describe('validate --stdin', () => {
   describe('valid guide', () => {
@@ -114,6 +129,49 @@ describe('validate --stdin', () => {
       expect(Array.isArray(parsed.warnings)).toBe(true);
       expect(parsed.guide).toBeUndefined();
       expect(Object.keys(parsed).sort()).toEqual(['errors', 'isValid', 'warnings']);
+    });
+
+    it('emits JSON for the actual --stdin --format json CLI path', () => {
+      const input = JSON.stringify({
+        id: 'json-guide',
+        title: 'JSON guide',
+        blocks: [{ type: 'markdown', content: '# Hello' }],
+      });
+      const stdout = runCli(['validate', '--stdin', '--format', 'json'], input);
+      const parsed = JSON.parse(stdout);
+      expect(parsed.isValid).toBe(true);
+      expect(Object.keys(parsed).sort()).toEqual(['errors', 'isValid', 'warnings']);
+    });
+
+    it('emits JSON for an auto-detected package directory', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-json-package-'));
+      try {
+        fs.writeFileSync(
+          path.join(dir, 'content.json'),
+          JSON.stringify({
+            id: 'json-package',
+            title: 'JSON package',
+            blocks: [{ type: 'markdown', content: '# Hello' }],
+          })
+        );
+        fs.writeFileSync(
+          path.join(dir, 'manifest.json'),
+          JSON.stringify({
+            id: 'json-package',
+            type: 'guide',
+            description: 'Valid package for CLI JSON output',
+            category: 'test',
+            targeting: { match: { urlPrefix: '/' } },
+          })
+        );
+
+        const stdout = runCli(['validate', dir, '--format', 'json']);
+        const parsed = JSON.parse(stdout);
+        expect(parsed.isValid).toBe(true);
+        expect(parsed.packageId).toBe('json-package');
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 });

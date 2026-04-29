@@ -7,11 +7,12 @@
  * registry; this command picks it up automatically.
  */
 
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 
 import { BLOCK_SCHEMA_MAP, isContainerBlockType, type BlockType } from '../utils/block-registry';
+import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { appendBlock, mutateAndValidate, PackageIOError, type AppendBlockOptions } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 import type { JsonBlock } from '../../types/json-guide.types';
 
@@ -29,8 +30,30 @@ for (const [type, schema] of Object.entries(BLOCK_SCHEMA_MAP) as Array<
     .addOption(
       new Option('--branch <branch>', 'Target branch when --parent is a conditional').choices(['true', 'false'])
     )
+    .addOption(new Option('--if-absent', 'Idempotent create: no-op when a matching container with --id already exists'))
     .addOption(
-      new Option('--if-absent', 'Idempotent create: no-op when a matching container with --id already exists')
+      new Option(
+        '--before <id>',
+        'Insert before this sibling id within the resolved parent (use at most one of --before/--after/--position)'
+      )
+    )
+    .addOption(
+      new Option(
+        '--after <id>',
+        'Insert after this sibling id within the resolved parent (use at most one of --before/--after/--position)'
+      )
+    )
+    .addOption(
+      new Option(
+        '--position <n>',
+        "0-based index in the parent's child array; 0 is first, length is append (use at most one of --before/--after/--position)"
+      ).argParser((value: string) => {
+        const n = Number(value);
+        if (!Number.isInteger(n) || n < 0) {
+          throw new InvalidArgumentError(`--position must be a non-negative integer, got "${value}"`);
+        }
+        return n;
+      })
     );
 
   // Bridge: derive flags from the block's schema. The bridge skips `type`
@@ -48,6 +71,9 @@ for (const [type, schema] of Object.entries(BLOCK_SCHEMA_MAP) as Array<
       branch: opts.branch === 'true' || opts.branch === 'false' ? (opts.branch as 'true' | 'false') : undefined,
       ifAbsent: opts.ifAbsent === true,
       explicitId: typeof opts.id === 'string' ? opts.id : undefined,
+      before: typeof opts.before === 'string' ? opts.before : undefined,
+      after: typeof opts.after === 'string' ? opts.after : undefined,
+      position: typeof opts.position === 'number' ? opts.position : undefined,
       flagValues: opts,
     });
 
@@ -64,6 +90,9 @@ interface AddBlockArgs {
   branch?: 'true' | 'false';
   ifAbsent?: boolean;
   explicitId?: string;
+  before?: string;
+  after?: string;
+  position?: number;
   flagValues: Record<string, unknown>;
 }
 
@@ -82,6 +111,47 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   delete projected.parent;
   delete projected.branch;
   delete projected.ifAbsent;
+
+  // CLI-strict semantic checks (URLs, regex, selectors, ranges) — schemas
+  // stay loose so existing content keeps loading; the CLI is what holds new
+  // authoring input to a higher bar. See cli-validators.ts.
+  try {
+    assertCliBlockFields(args.type, projected);
+  } catch (err) {
+    if (err instanceof CliValidationError) {
+      return {
+        status: 'error',
+        code: 'SCHEMA_VALIDATION',
+        message: err.message,
+      };
+    }
+    throw err;
+  }
+
+  // CLI-level structural guards that don't live in the schemas:
+  // - `--branch` only makes sense when --parent is a conditional block.
+  //   We can't fully verify the parent kind until the package is read, but
+  //   we can refuse the case where no --parent was supplied at all.
+  if (args.branch !== undefined && !args.parentId) {
+    return {
+      status: 'error',
+      code: 'SCHEMA_VALIDATION',
+      message:
+        '--branch can only be set when --parent points at a conditional block; pass --parent <conditional-id> or drop --branch.',
+    };
+  }
+  // - `conditional` blocks must declare at least one condition at creation
+  //   time (an empty conditions array is structurally meaningless).
+  if (args.type === 'conditional') {
+    const conds = projected.conditions;
+    if (!Array.isArray(conds) || conds.length === 0) {
+      return {
+        status: 'error',
+        code: 'SCHEMA_VALIDATION',
+        message: 'conditional: at least one --conditions value is required when adding a conditional block.',
+      };
+    }
+  }
 
   const block: Record<string, unknown> = { type: args.type, ...projected };
   if (args.explicitId) {
@@ -127,6 +197,9 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
     parentId: args.parentId,
     branch: args.branch,
     ifAbsent: args.ifAbsent,
+    before: args.before,
+    after: args.after,
+    position: args.position,
   };
 
   let summary = '';
@@ -155,7 +228,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
     return {
       status: 'error',
       code: 'SCHEMA_VALIDATION',
-      message: err instanceof Error ? err.message : String(err),
+      message: renderError(err),
     };
   }
 
@@ -201,12 +274,12 @@ function hintsFor(type: BlockType, parentId: string | undefined, assignedId: str
     ];
   }
   if (type === 'section' || type === 'assistant') {
-    return [`Add child blocks with: pathfinder-cli add-block <dir> <type> --parent ${assignedId ?? '<id>'}`];
+    return [`Add child blocks with: pathfinder-cli add-block <type> <dir> --parent ${assignedId ?? '<id>'}`];
   }
   if (parentId) {
-    return [`Continue inside "${parentId}" or add a new top-level block with: pathfinder-cli add-block <dir> <type>`];
+    return [`Continue inside "${parentId}" or add a new top-level block with: pathfinder-cli add-block <type> <dir>`];
   }
-  return [`Add another block with: pathfinder-cli add-block <dir> <type>`];
+  return [`Add another block with: pathfinder-cli add-block <type> <dir>`];
 }
 
 /**

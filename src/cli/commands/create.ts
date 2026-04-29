@@ -11,7 +11,7 @@ import * as path from 'path';
 
 import { defaultPackageId } from '../utils/auto-id';
 import { newPackageState, PackageIOError, validatePackageState, writePackage } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
 
 export const createCommand = new Command('create')
   .description('Create a new guide package directory with content.json and manifest.json')
@@ -89,7 +89,7 @@ export async function runCreate(args: CreateArgs): Promise<CommandOutcome> {
     return {
       status: 'error',
       code: 'SCHEMA_VALIDATION',
-      message: err instanceof Error ? err.message : String(err),
+      message: renderError(err),
     };
   }
 
@@ -114,7 +114,7 @@ export async function runCreate(args: CreateArgs): Promise<CommandOutcome> {
     return {
       status: 'error',
       code: 'WRITE_FAILED',
-      message: err instanceof Error ? err.message : String(err),
+      message: renderError(err),
     };
   }
 
@@ -126,9 +126,12 @@ export async function runCreate(args: CreateArgs): Promise<CommandOutcome> {
       title: args.title,
       type: args.type,
       schemaVersion: state.content.schemaVersion ?? '',
+      repository: state.manifest?.repository ?? '',
+      language: state.manifest?.language ?? '',
+      'testEnvironment.tier': state.manifest?.testEnvironment?.tier ?? '',
       blocks: 0,
     },
-    hints: [`Add blocks with: pathfinder-cli add-block ${args.dir} <type> [flags]`],
+    hints: [`Add blocks with: pathfinder-cli add-block <type> ${args.dir} [flags]`],
     data: {
       id: args.id,
       dir: args.dir,

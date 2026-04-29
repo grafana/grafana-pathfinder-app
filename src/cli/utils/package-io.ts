@@ -55,6 +55,7 @@ export type PackageIOErrorCode =
   | 'INVALID_JSON'
   | 'SCHEMA_VALIDATION'
   | 'ID_MISMATCH'
+  | 'SCHEMA_VERSION_MISMATCH'
   | 'BLOCK_NOT_FOUND'
   | 'CONTAINER_NOT_FOUND'
   | 'PARENT_NOT_CONTAINER'
@@ -64,6 +65,7 @@ export type PackageIOErrorCode =
   | 'CONTAINER_REQUIRES_ID'
   | 'CONTAINER_HAS_CHILDREN'
   | 'IF_ABSENT_CONFLICT'
+  | 'INVALID_OPTIONS'
   | 'WRITE_FAILED';
 
 export interface PackageIOIssue {
@@ -96,6 +98,20 @@ export interface PackageState {
    * `create` writes both files, but read paths must tolerate its absence.
    */
   manifest: ManifestJson | undefined;
+  /**
+   * Whether `manifest.json` on disk explicitly set `schemaVersion`. Zod fills
+   * in a default at parse time, so once read we cannot tell the difference
+   * from `manifest.schemaVersion` alone. Callers that compare manifest and
+   * content schemaVersions (the drift check) must skip the comparison when
+   * this flag is false — otherwise legacy packages with a manifest that
+   * never set schemaVersion (and therefore inherits today's default) would
+   * spuriously fail against an older content.json.
+   *
+   * Optional because write-only callers (`writePackage`) and synthetic
+   * states constructed in tests don't need to track it; the default at the
+   * validator boundary is "authored" (strict).
+   */
+  manifestSchemaVersionAuthored?: boolean;
 }
 
 /**
@@ -132,11 +148,49 @@ export function readPackage(packageDir: string): PackageState {
   const content = parseFileWithSchema(contentPath, ContentJsonSchema, 'content.json') as ContentJson;
 
   const manifestPath = path.join(packageDir, 'manifest.json');
-  const manifest = fs.existsSync(manifestPath)
-    ? (parseFileWithSchema(manifestPath, ManifestJsonSchema, 'manifest.json') as ManifestJson)
-    : undefined;
+  let manifest: ManifestJson | undefined;
+  let manifestSchemaVersionAuthored = false;
+  if (fs.existsSync(manifestPath)) {
+    // Detect whether manifest.json authored schemaVersion explicitly before
+    // Zod applies its default; the drift check downstream depends on this.
+    const rawManifest = readRawJson(manifestPath, 'manifest.json');
+    manifestSchemaVersionAuthored =
+      typeof rawManifest === 'object' &&
+      rawManifest !== null &&
+      typeof (rawManifest as Record<string, unknown>).schemaVersion === 'string';
+    manifest = parseFileWithSchema(manifestPath, ManifestJsonSchema, 'manifest.json') as ManifestJson;
+  }
 
-  return { content, manifest };
+  // Auto-id migration: mint stable `<type>-<n>` ids for any block lacking
+  // one. This is what lets the rest of the CLI address bundled / legacy /
+  // hand-authored content with `move-block`, `remove-block`, etc. The walk
+  // order is deterministic so a read-only inspect and a subsequent mutation
+  // see the same ids; mutateAndValidate persists them on the next write.
+  assignMissingIds(content);
+
+  return { content, manifest, manifestSchemaVersionAuthored };
+}
+
+function readRawJson(filePath: string, label: string): unknown {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new PackageIOError({
+      code: 'INVALID_JSON',
+      message: `Cannot read ${label}: ${detail}`,
+    });
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new PackageIOError({
+      code: 'INVALID_JSON',
+      message: `${label} is not valid JSON: ${detail}`,
+    });
+  }
 }
 
 /**
@@ -154,7 +208,15 @@ export function writePackage(packageDir: string, state: PackageState): void {
   try {
     fs.writeFileSync(path.join(packageDir, 'content.json'), serializeJson(state.content));
     if (state.manifest) {
-      fs.writeFileSync(path.join(packageDir, 'manifest.json'), serializeJson(state.manifest));
+      // Don't persist a Zod-defaulted `schemaVersion` back to disk — round
+      // tripping it would turn a never-authored field into an "authored"
+      // value on the next read, retroactively activating the drift check
+      // against content.json's explicit version. The state is the source of
+      // truth for whether the field was authored on entry; we honor that.
+      const compacted = compactManifest(state.manifest, {
+        stripSchemaVersion: state.manifestSchemaVersionAuthored === false,
+      });
+      fs.writeFileSync(path.join(packageDir, 'manifest.json'), serializeJson(compacted));
     }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -167,6 +229,34 @@ export function writePackage(packageDir: string, state: PackageState): void {
 
 function serializeJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+/**
+ * Strip empty-array fields from the manifest so freshly-created packages don't
+ * carry visual noise (e.g., `"depends": []`, `"recommends": []`) that the
+ * hand-authored bundled guides also omit. Schema parsing keeps these as the
+ * default for ergonomics in code; we only suppress them at serialization time.
+ */
+const SUPPRESSIBLE_EMPTY_ARRAY_KEYS = [
+  'depends',
+  'recommends',
+  'suggests',
+  'provides',
+  'conflicts',
+  'replaces',
+] as const;
+function compactManifest(manifest: ManifestJson, options: { stripSchemaVersion?: boolean } = {}): ManifestJson {
+  const out: Record<string, unknown> = { ...manifest };
+  for (const key of SUPPRESSIBLE_EMPTY_ARRAY_KEYS) {
+    const value = out[key];
+    if (Array.isArray(value) && value.length === 0) {
+      delete out[key];
+    }
+  }
+  if (options.stripSchemaVersion) {
+    delete out.schemaVersion;
+  }
+  return out as unknown as ManifestJson;
 }
 
 // `readJsonFile` from `src/validation/package-io.ts` returns a result object;
@@ -241,6 +331,18 @@ export interface ValidationOutcome {
   issues: PackageIOIssue[];
 }
 
+export interface ValidatePackageStateOptions {
+  /**
+   * Whether `manifest.schemaVersion` was authored explicitly (vs. defaulted by
+   * Zod at parse time). When false, the cross-file drift check is skipped —
+   * a defaulted manifest value cannot conflict with content.json. Defaults to
+   * `true` (strict) so callers that don't have authored-ness information
+   * (e.g., commands that built a manifest in-memory) keep the historical
+   * strict behavior.
+   */
+  manifestSchemaVersionAuthored?: boolean;
+}
+
 /**
  * Validate a fully-parsed package state.
  *
@@ -254,7 +356,11 @@ export interface ValidationOutcome {
  * routinely want to surface multiple issues to the user in one go (e.g.,
  * structured `--format json` output listing every problem).
  */
-export function validatePackageState(content: ContentJson, manifest: ManifestJson | undefined): ValidationOutcome {
+export function validatePackageState(
+  content: ContentJson,
+  manifest: ManifestJson | undefined,
+  options: ValidatePackageStateOptions = {}
+): ValidationOutcome {
   const issues: PackageIOIssue[] = [];
 
   const contentParsed = ContentJsonSchema.safeParse(content);
@@ -303,12 +409,34 @@ export function validatePackageState(content: ContentJson, manifest: ManifestJso
           path: ['manifest.json', ...issue.path.map(String)],
         });
       }
-    } else if (manifest.id !== content.id) {
-      issues.push({
-        code: 'ID_MISMATCH',
-        message: `ID mismatch: content.json has "${content.id}", manifest.json has "${manifest.id}"`,
-        path: ['id'],
-      });
+    } else {
+      if (manifest.id !== content.id) {
+        issues.push({
+          code: 'ID_MISMATCH',
+          message: `ID mismatch: content.json has "${content.id}", manifest.json has "${manifest.id}". Fix: pathfinder-cli rename-id <dir> <chosen-id>`,
+          path: ['id'],
+        });
+      }
+      // Skip the drift check when the manifest's schemaVersion was filled in
+      // by a Zod default rather than authored on disk — comparing a defaulted
+      // value against an explicitly-authored content.json version yields false
+      // drift on legacy packages whose manifest predates the field. The
+      // authored flag defaults to `true` for callers that don't supply it, so
+      // in-memory mutations (e.g. set-manifest after parsing through the
+      // schema) keep the historical strict semantics.
+      const manifestSchemaVersionAuthored = options.manifestSchemaVersionAuthored ?? true;
+      if (
+        manifestSchemaVersionAuthored &&
+        content.schemaVersion !== undefined &&
+        manifest.schemaVersion !== undefined &&
+        manifest.schemaVersion !== content.schemaVersion
+      ) {
+        issues.push({
+          code: 'SCHEMA_VERSION_MISMATCH',
+          message: `schemaVersion mismatch: content.json has "${content.schemaVersion}", manifest.json has "${manifest.schemaVersion}". Use set-manifest --schema-version to align them (the manifest patch mirrors to content.json automatically).`,
+          path: ['schemaVersion'],
+        });
+      }
     }
   }
 
@@ -462,6 +590,47 @@ export function nextAutoBlockId(content: ContentJson, blockType: string): string
   return `${prefix}${max + 1}`;
 }
 
+/**
+ * Mint stable `<type>-<n>` ids for any block in `content` that lacks one.
+ *
+ * This is the migration step that makes the rest of the CLI's id-only
+ * addressing model work on legacy / hand-authored / bundled content. Without
+ * it, structural primitives like `move-block` and `remove-block` cannot
+ * target blocks that came from outside the authoring CLI.
+ *
+ * Walk order is deterministic (depth-first, root → containers → children) so
+ * read-only commands like `inspect` mint the same ids that mutating commands
+ * subsequently persist. Counters per type extend whatever `<type>-<n>` ids
+ * already exist, so manually-authored ids are never clobbered.
+ */
+export function assignMissingIds(content: ContentJson): { assigned: number } {
+  const counters: Record<string, number> = {};
+  for (const id of collectAllIds(content)) {
+    const match = /^([a-z]+)-(\d+)$/.exec(id);
+    if (!match) {
+      continue;
+    }
+    const type = match[1];
+    const n = Number(match[2]);
+    if (!type || !Number.isFinite(n)) {
+      continue;
+    }
+    if (n > (counters[type] ?? 0)) {
+      counters[type] = n;
+    }
+  }
+  let assigned = 0;
+  for (const { block } of walkBlocks(content)) {
+    if (typeof block.id === 'string' && block.id.length > 0) {
+      continue;
+    }
+    counters[block.type] = (counters[block.type] ?? 0) + 1;
+    block.id = `${block.type}-${counters[block.type]}`;
+    assigned++;
+  }
+  return { assigned };
+}
+
 // ---------------------------------------------------------------------------
 // Mutators
 // ---------------------------------------------------------------------------
@@ -478,6 +647,19 @@ export interface AppendBlockOptions {
    * retries — see [docs/design/AGENT-AUTHORING.md#idempotent-retries-with---if-absent].
    */
   ifAbsent?: boolean;
+  /**
+   * Position-aware insertion. At most one of `before`/`after`/`position` may
+   * be set; supplying more than one is an `INVALID_OPTIONS` error.
+   * - `before`/`after`: sibling-id reference within the resolved parent's
+   *   child array. If the named id exists elsewhere in the tree but not in
+   *   that array, the error names the actual parent.
+   * - `position`: 0-based index in the parent's child array, where 0 means
+   *   "first" and `array.length` means "append" (same as no option).
+   * Without any of these, the block is appended (current behavior).
+   */
+  before?: string;
+  after?: string;
+  position?: number;
 }
 
 export interface AppendBlockResult {
@@ -547,13 +729,79 @@ export function appendBlock(
 
   // Resolve target array.
   const target = resolveAppendTarget(content, options);
-  target.array.push(block);
+  const insertIndex = resolveInsertIndex(content, target, options);
+  target.array.splice(insertIndex, 0, block);
 
   return {
     appended: true,
     id: block.id ?? '',
-    position: `${target.path}[${target.array.length - 1}]`,
+    position: `${target.path}[${insertIndex}]`,
   };
+}
+
+/**
+ * Compute the splice index for an insertion. Default is "append to end".
+ * `before`/`after`/`position` are mutually exclusive; at most one may be set.
+ *
+ * `before`/`after` reference a sibling id within the *target parent's* child
+ * array. If the id exists elsewhere in the tree, the error message names the
+ * actual parent so authors can correct their --parent flag.
+ */
+function resolveInsertIndex(content: ContentJson, target: AppendTarget, options: AppendBlockOptions): number {
+  const positionalCount =
+    (options.before !== undefined ? 1 : 0) +
+    (options.after !== undefined ? 1 : 0) +
+    (options.position !== undefined ? 1 : 0);
+  if (positionalCount > 1) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: '--before, --after, and --position are mutually exclusive; pass at most one.',
+    });
+  }
+
+  if (options.position !== undefined) {
+    const pos = options.position;
+    if (!Number.isInteger(pos) || pos < 0 || pos > target.array.length) {
+      throw new PackageIOError({
+        code: 'INVALID_OPTIONS',
+        message: `--position must be an integer in [0, ${target.array.length}] for ${target.path}; got ${pos}`,
+      });
+    }
+    return pos;
+  }
+
+  if (options.before !== undefined) {
+    return resolveSiblingIndex(content, target, options.before, 'before');
+  }
+  if (options.after !== undefined) {
+    return resolveSiblingIndex(content, target, options.after, 'after') + 1;
+  }
+  return target.array.length;
+}
+
+function resolveSiblingIndex(
+  content: ContentJson,
+  target: AppendTarget,
+  siblingId: string,
+  mode: 'before' | 'after'
+): number {
+  const idx = target.array.findIndex((b) => typeof b.id === 'string' && b.id === siblingId);
+  if (idx >= 0) {
+    return idx;
+  }
+  // The sibling id doesn't live in our target array — see if it exists
+  // elsewhere so we can give a helpful "wrong parent" message.
+  const elsewhere = findBlockById(content, siblingId);
+  if (elsewhere) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: `--${mode} "${siblingId}" is not a sibling in ${target.path}; the block exists elsewhere in the tree. Adjust --parent / --branch to target its actual parent first.`,
+    });
+  }
+  throw new PackageIOError({
+    code: 'BLOCK_NOT_FOUND',
+    message: `--${mode} "${siblingId}" not found in package`,
+  });
 }
 
 interface AppendTarget {
@@ -675,10 +923,23 @@ export function editBlock(content: ContentJson, id: string, options: EditBlockOp
     });
   }
 
+  // TODO(p5.8): block-level id rename is non-trivial — every conditional/quiz/
+  // guided reference and every cross-block link in the package would need
+  // updating. Until that walker exists, `id` stays in the forbid-list and
+  // authors who guess wrong on a leaf id must remove + re-add. For package-id
+  // renames there's a dedicated `rename-id` command.
   const forbidden = new Set(['type', 'blocks', 'whenTrue', 'whenFalse', 'steps', 'choices', 'id']);
   const changed: string[] = [];
   for (const [field, value] of Object.entries(options.patch)) {
     if (forbidden.has(field)) {
+      // Specialized hint when the user tried to reorder via edit-block; point
+      // them at the structural commands.
+      if (field === 'position' || field === 'before' || field === 'after') {
+        throw new PackageIOError({
+          code: 'SCHEMA_VALIDATION',
+          message: `edit-block does not change block position. Use: pathfinder-cli move-block <dir> ${id} --to-position <n>`,
+        });
+      }
       throw new PackageIOError({
         code: 'SCHEMA_VALIDATION',
         message: `Cannot edit field "${field}" via edit-block (structural or discriminator fields are managed by other commands)`,
@@ -693,37 +954,310 @@ export function editBlock(content: ContentJson, id: string, options: EditBlockOp
 export interface RemoveBlockOptions {
   /** Required to remove a non-empty container; otherwise the call fails with CONTAINER_HAS_CHILDREN. */
   cascade?: boolean;
+  /**
+   * Promote the removed block's children into the parent's child array at
+   * the removed block's position, instead of cascading them out. Mutually
+   * exclusive with `cascade`. Only works for "section"-style containers
+   * whose children are themselves blocks; for multistep/guided/quiz the
+   * children aren't blocks and there's no sensible parent to splice into,
+   * so we reject with `INVALID_OPTIONS`.
+   */
+  orphanChildren?: boolean;
 }
 
 /**
  * Remove a block by id. Refuses to drop a non-empty container without
- * `--cascade` so authors don't accidentally lose work.
+ * `--cascade` (or `--orphan-children`) so authors don't accidentally lose
+ * work.
  */
 export function removeBlock(
   content: ContentJson,
   id: string,
   options: RemoveBlockOptions = {}
-): { removed: string; childrenRemoved: number } {
+): { removed: string; childrenRemoved: number; childrenOrphaned: number } {
+  if (options.cascade && options.orphanChildren) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: '--cascade and --orphan-children are mutually exclusive; pass at most one.',
+    });
+  }
+
   for (const { block, parent, index } of walkBlocks(content)) {
     if (block.id !== id) {
       continue;
     }
 
     const childCount = countChildren(block);
+
+    if (childCount > 0 && options.orphanChildren) {
+      // Promote children into the parent array. Only "block-container" types
+      // qualify — multistep/guided/quiz hold steps/choices, not blocks, so
+      // promoting them into a JsonBlock[] would corrupt the schema.
+      if (block.type !== 'section' && block.type !== 'assistant' && block.type !== 'conditional') {
+        throw new PackageIOError({
+          code: 'INVALID_OPTIONS',
+          message: `--orphan-children only works on section, assistant, or conditional blocks (got "${block.type}"). Use --cascade to remove it and its children.`,
+        });
+      }
+      const children = collectChildBlocks(block);
+      parent.splice(index, 1, ...children);
+      return { removed: block.type, childrenRemoved: 0, childrenOrphaned: children.length };
+    }
+
     if (childCount > 0 && !options.cascade) {
       throw new PackageIOError({
         code: 'CONTAINER_HAS_CHILDREN',
-        message: `Block "${id}" has ${childCount} child(ren); pass --cascade to remove it and its children`,
+        message: `Block "${id}" has ${childCount} child(ren); pass --cascade to remove it and its children, or --orphan-children to promote them to the parent.`,
       });
     }
 
     parent.splice(index, 1);
-    return { removed: block.type, childrenRemoved: childCount };
+    return { removed: block.type, childrenRemoved: childCount, childrenOrphaned: 0 };
   }
 
   throw new PackageIOError({
     code: 'BLOCK_NOT_FOUND',
     message: `Block "${id}" not found`,
+  });
+}
+
+/**
+ * Gather all child blocks of a container into a flat array, in declaration
+ * order. For conditional blocks, whenTrue children precede whenFalse.
+ */
+function collectChildBlocks(block: JsonBlock): JsonBlock[] {
+  const childKeys = CONTAINER_CHILD_KEYS[block.type];
+  if (!childKeys) {
+    return [];
+  }
+  const out: JsonBlock[] = [];
+  for (const key of childKeys) {
+    const children = (block as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        out.push(child as JsonBlock);
+      }
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Move
+// ---------------------------------------------------------------------------
+
+export interface MoveBlockOptions {
+  /** Move so the block ends up immediately before this sibling. */
+  before?: string;
+  /** Move so the block ends up immediately after this sibling. */
+  after?: string;
+  /** Move to this 0-based index. Position is in `into`'s child array when reparenting; otherwise in the current parent. */
+  toPosition?: number;
+  /** Reparent into this container id (section, assistant, or conditional). */
+  into?: string;
+  /** Required when `into` targets a conditional block: which branch receives the moved block. */
+  branch?: 'true' | 'false';
+}
+
+export interface MoveBlockResult {
+  from: number;
+  to: number;
+  /** True when the block changed parents (i.e. `into` was set and the resolved target differs from the source). */
+  reparented: boolean;
+  /** Id of the destination container when reparenting; undefined for in-place moves. */
+  toContainer?: string;
+}
+
+/**
+ * Move a block. Without `into`, the block stays in its current parent and at
+ * least one of `before`/`after`/`toPosition` is required. With `into`, the
+ * block is reparented; positional flags are optional (default: append).
+ */
+export function moveBlock(content: ContentJson, id: string, options: MoveBlockOptions): MoveBlockResult {
+  const positionalCount =
+    (options.before !== undefined ? 1 : 0) +
+    (options.after !== undefined ? 1 : 0) +
+    (options.toPosition !== undefined ? 1 : 0);
+
+  if (positionalCount === 0 && options.into === undefined) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: 'move-block requires --into <containerId>, or one of --before, --after, --position.',
+    });
+  }
+  if (positionalCount > 1) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: '--before, --after, and --position are mutually exclusive; pass at most one.',
+    });
+  }
+
+  // Locate the source block first so error messages can fire before any
+  // splice happens.
+  let source: { block: JsonBlock; parent: JsonBlock[]; index: number } | undefined;
+  for (const hit of walkBlocks(content)) {
+    if (hit.block.id === id) {
+      source = hit;
+      break;
+    }
+  }
+  if (!source) {
+    throw new PackageIOError({
+      code: 'BLOCK_NOT_FOUND',
+      message: `Block "${id}" not found`,
+    });
+  }
+
+  if (options.into !== undefined) {
+    return moveBlockInto(content, source, options);
+  }
+
+  return moveBlockWithinParent(content, source, options);
+}
+
+function moveBlockWithinParent(
+  content: ContentJson,
+  source: { block: JsonBlock; parent: JsonBlock[]; index: number },
+  options: MoveBlockOptions
+): MoveBlockResult {
+  const { parent, index: fromIndex } = source;
+  let toIndex: number;
+  if (options.toPosition !== undefined) {
+    const pos = options.toPosition;
+    if (!Number.isInteger(pos) || pos < 0 || pos >= parent.length) {
+      throw new PackageIOError({
+        code: 'INVALID_OPTIONS',
+        message: `--position must be an integer in [0, ${parent.length - 1}] within the block's parent; got ${pos}. To reparent into another container, pass --into <containerId>.`,
+      });
+    }
+    toIndex = pos;
+  } else if (options.before !== undefined) {
+    toIndex = findSiblingIndexOrThrow(content, parent, options.before, 'before');
+  } else {
+    toIndex = findSiblingIndexOrThrow(content, parent, options.after!, 'after') + 1;
+  }
+
+  if (toIndex === fromIndex || toIndex === fromIndex + 1) {
+    return { from: fromIndex, to: fromIndex, reparented: false };
+  }
+
+  const [moved] = parent.splice(fromIndex, 1) as [JsonBlock];
+  const adjusted = toIndex > fromIndex ? toIndex - 1 : toIndex;
+  parent.splice(adjusted, 0, moved);
+  return { from: fromIndex, to: adjusted, reparented: false };
+}
+
+function moveBlockInto(
+  content: ContentJson,
+  source: { block: JsonBlock; parent: JsonBlock[]; index: number },
+  options: MoveBlockOptions
+): MoveBlockResult {
+  const containerId = options.into!;
+
+  if (source.block.id === containerId) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: `Cannot move block "${containerId}" into itself.`,
+    });
+  }
+
+  const target = resolveAppendTarget(content, { parentId: containerId, branch: options.branch });
+
+  // Reject moving a container into one of its own descendants — that would
+  // create a cycle and orphan the entire subtree.
+  if (isContainerBlockType(source.block.type as never) && containerHasDescendant(source.block, target.array)) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: `Cannot move container "${source.block.id}" into one of its own descendants (would create a cycle).`,
+    });
+  }
+
+  // Splice the source out first, then resolve the insert index in the target
+  // array. Because the target array may be the same array as the source's
+  // parent (when reparenting inside a sibling-of-self via id reference),
+  // computing the index after the splice keeps the math simple.
+  const [moved] = source.parent.splice(source.index, 1) as [JsonBlock];
+
+  let toIndex: number;
+  if (options.toPosition !== undefined) {
+    const pos = options.toPosition;
+    if (!Number.isInteger(pos) || pos < 0 || pos > target.array.length) {
+      // Roll back the splice so on-disk state is unchanged on error.
+      source.parent.splice(source.index, 0, moved);
+      throw new PackageIOError({
+        code: 'INVALID_OPTIONS',
+        message: `--position must be an integer in [0, ${target.array.length}] within ${target.path}; got ${pos}`,
+      });
+    }
+    toIndex = pos;
+  } else if (options.before !== undefined) {
+    try {
+      toIndex = findSiblingIndexOrThrow(content, target.array, options.before, 'before');
+    } catch (err) {
+      source.parent.splice(source.index, 0, moved);
+      throw err;
+    }
+  } else if (options.after !== undefined) {
+    try {
+      toIndex = findSiblingIndexOrThrow(content, target.array, options.after, 'after') + 1;
+    } catch (err) {
+      source.parent.splice(source.index, 0, moved);
+      throw err;
+    }
+  } else {
+    toIndex = target.array.length;
+  }
+
+  target.array.splice(toIndex, 0, moved);
+  return { from: source.index, to: toIndex, reparented: true, toContainer: containerId };
+}
+
+/**
+ * True if `targetArray` is `subject`'s own child array (any depth). Used by
+ * `--into` to refuse cycle-creating moves.
+ */
+function containerHasDescendant(subject: JsonBlock, targetArray: JsonBlock[]): boolean {
+  const childKeys = CONTAINER_CHILD_KEYS[subject.type];
+  if (!childKeys) {
+    return false;
+  }
+  for (const key of childKeys) {
+    const children = (subject as unknown as Record<string, unknown>)[key];
+    if (!Array.isArray(children)) {
+      continue;
+    }
+    if (children === targetArray) {
+      return true;
+    }
+    for (const child of children as JsonBlock[]) {
+      if (containerHasDescendant(child, targetArray)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function findSiblingIndexOrThrow(
+  content: ContentJson,
+  parentArr: JsonBlock[],
+  siblingId: string,
+  flagName: 'before' | 'after'
+): number {
+  const idx = parentArr.findIndex((b) => typeof b.id === 'string' && b.id === siblingId);
+  if (idx >= 0) {
+    return idx;
+  }
+  const elsewhere = findBlockById(content, siblingId);
+  if (elsewhere) {
+    throw new PackageIOError({
+      code: 'INVALID_OPTIONS',
+      message: `--${flagName} "${siblingId}" is in a different parent than the block you're moving. Cross-parent moves are not supported; use remove-block + add-block.`,
+    });
+  }
+  throw new PackageIOError({
+    code: 'BLOCK_NOT_FOUND',
+    message: `--${flagName} "${siblingId}" not found in package`,
   });
 }
 
@@ -777,7 +1311,9 @@ export async function mutateAndValidate(packageDir: string, mutator: Mutator): P
   const state = readPackage(packageDir);
   await mutator(state);
 
-  const validation = validatePackageState(state.content, state.manifest);
+  const validation = validatePackageState(state.content, state.manifest, {
+    manifestSchemaVersionAuthored: state.manifestSchemaVersionAuthored,
+  });
   if (validation.ok) {
     writePackage(packageDir, state);
   }
@@ -817,7 +1353,9 @@ export function newPackageState(args: {
     description: args.description,
   }) as ManifestJson;
 
-  return { content, manifest };
+  // `create` writes schemaVersion explicitly, so a freshly-created package
+  // is "authored" for the drift check.
+  return { content, manifest, manifestSchemaVersionAuthored: true };
 }
 
 // ---------------------------------------------------------------------------

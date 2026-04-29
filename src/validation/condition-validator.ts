@@ -20,7 +20,7 @@ import type { JsonGuide, JsonBlock, JsonStep } from '../types/json-guide.types';
 const MAX_CONDITION_COMPONENTS = 10;
 
 // Semver regex pattern (simplified: major.minor.patch)
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+$/;
+export const SEMVER_PATTERN = /^\d+\.\d+\.\d+$/;
 
 /**
  * Issue found during condition validation.

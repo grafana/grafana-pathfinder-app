@@ -23,7 +23,9 @@ import { createCommand } from './commands/create';
 import { e2eCommand } from './commands/e2e';
 import { editBlockCommand } from './commands/edit-block';
 import { inspectCommand } from './commands/inspect';
+import { moveBlockCommand } from './commands/move-block';
 import { removeBlockCommand } from './commands/remove-block';
+import { renameIdCommand } from './commands/rename-id';
 import { schemaCommand } from './commands/schema';
 import { setManifestCommand } from './commands/set-manifest';
 import { validateCommand } from './commands/validate';
@@ -82,6 +84,9 @@ program.addCommand(setManifestCommand);
 program.addCommand(inspectCommand);
 program.addCommand(editBlockCommand);
 program.addCommand(removeBlockCommand);
+// Structural edits (P2).
+program.addCommand(moveBlockCommand);
+program.addCommand(renameIdCommand);
 
 // Existing commands (validation, build, schema export, e2e).
 program.addCommand(validateCommand);

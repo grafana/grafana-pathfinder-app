@@ -5,6 +5,7 @@
  */
 
 import { Command } from 'commander';
+import * as fs from 'fs';
 import * as path from 'path';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
@@ -121,6 +122,9 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
   for (const msg of result.messages) {
     const icon = msg.severity === 'error' ? '❌' : msg.severity === 'warn' ? '⚠️ ' : 'ℹ️ ';
     console.log(`  ${icon} ${msg.severity.toUpperCase()}: ${msg.message}`);
+    if (msg.remediation) {
+      console.log(`      Fix: ${msg.remediation}`);
+    }
   }
 }
 
@@ -227,6 +231,51 @@ function runStdinValidation(input: string, options: ValidateOptions): void {
   }
 }
 
+/**
+ * Recognize when a single positional argument points at a package directory
+ * (or a tree of them) so users don't have to remember `--package` /
+ * `--packages` flags. Returns null on anything ambiguous so the file-loading
+ * code path can take over.
+ *
+ * Heuristics:
+ * - Single arg + dir contains `content.json` → 'package'
+ * - Single arg + dir contains zero `content.json` directly but at least one
+ *   immediate child has `content.json` → 'packages' (treats it as a tree)
+ * - Anything else → null (let the existing file loader handle it).
+ */
+function autoDetectPositionals(files: string[]): { kind: 'package' | 'packages'; path: string } | null {
+  if (files.length !== 1) {
+    return null;
+  }
+  const target = files[0]!;
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(target);
+  } catch {
+    return null;
+  }
+  if (!stat.isDirectory()) {
+    return null;
+  }
+  if (fs.existsSync(path.join(target, 'content.json'))) {
+    return { kind: 'package', path: target };
+  }
+  // Look one level deep for a child that's itself a package.
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(target, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const hasChildPackage = entries.some(
+    (entry) => entry.isDirectory() && fs.existsSync(path.join(target, entry.name, 'content.json'))
+  );
+  if (hasChildPackage) {
+    return { kind: 'packages', path: target };
+  }
+  return null;
+}
+
 export const validateCommand = new Command('validate')
   .description('Validate JSON guide files or package directories')
   .arguments('[files...]')
@@ -236,7 +285,8 @@ export const validateCommand = new Command('validate')
   .option('--format <format>', 'Output format: text or json', 'text')
   .option('--package <dir>', 'Validate a single package directory (expects content.json)')
   .option('--packages <dir>', 'Validate a tree of package directories')
-  .action(async (files: string[], options: ValidateOptions) => {
+  .action(async function (this: Command, files: string[]) {
+    const options = this.optsWithGlobals<ValidateOptions>();
     try {
       if (options.stdin) {
         if (files.length > 0 || options.bundled || options.package || options.packages) {
@@ -253,6 +303,20 @@ export const validateCommand = new Command('validate')
 
       if (options.packages) {
         return runPackagesValidation(options.packages, options);
+      }
+
+      // Auto-detect when a positional path is a directory: the top-level
+      // command description promises "JSON guide files or package
+      // directories", so a bare positional dir should Just Work without
+      // forcing the user to discover --package via help text.
+      const autoDetected = autoDetectPositionals(files);
+      if (autoDetected) {
+        if (autoDetected.kind === 'package') {
+          return runPackageValidation(autoDetected.path, options);
+        }
+        if (autoDetected.kind === 'packages') {
+          return runPackagesValidation(autoDetected.path, options);
+        }
       }
 
       let guides: LoadedGuide[] = [];

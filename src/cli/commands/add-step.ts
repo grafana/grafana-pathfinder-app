@@ -7,8 +7,9 @@ import { Command, Option } from 'commander';
 
 import { JsonStepSchema } from '../../types/json-guide.schema';
 import type { JsonStep } from '../../types/json-guide.types';
+import { assertCliStepFields, CliValidationError } from '../utils/cli-validators';
 import { appendStep, mutateAndValidate, PackageIOError } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 
 export const addStepCommand = new Command('add-step')
@@ -43,6 +44,15 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
   ) as Record<string, unknown>;
   delete projected.parent;
 
+  try {
+    assertCliStepFields(projected);
+  } catch (err) {
+    if (err instanceof CliValidationError) {
+      return { status: 'error', code: 'SCHEMA_VALIDATION', message: err.message };
+    }
+    throw err;
+  }
+
   const candidate = JsonStepSchema.safeParse(projected);
   if (!candidate.success) {
     const first = candidate.error.issues[0];
@@ -72,7 +82,7 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
     return {
       status: 'error',
       code: 'SCHEMA_VALIDATION',
-      message: err instanceof Error ? err.message : String(err),
+      message: renderError(err),
     };
   }
 
@@ -81,8 +91,8 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
     summary: `Added step (action: ${String(candidate.data.action)}) to "${args.parentId}" at ${position}`,
     details: { action: String(candidate.data.action), position, 'package valid': true },
     hints: [
-      `Add another step with: pathfinder-cli add-step <dir> --parent ${args.parentId} --action <action>`,
-      `Or move on with: pathfinder-cli add-block <dir> <type>`,
+      `Add another step with: pathfinder-cli add-step ${args.dir} --parent ${args.parentId} --action <action>`,
+      `Or move on with: pathfinder-cli add-block <type> ${args.dir}`,
     ],
     data: { position, parent: args.parentId },
   };

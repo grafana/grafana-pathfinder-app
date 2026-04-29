@@ -10,7 +10,7 @@
  * type mapping table and rationale.
  */
 
-import { Option, type Command } from 'commander';
+import { InvalidArgumentError, Option, type Command } from 'commander';
 import { z } from 'zod';
 
 /**
@@ -196,7 +196,7 @@ export function zodFieldToOption(name: string, field: z.ZodType): Option | null 
     option.argParser((value: string) => {
       const n = Number(value);
       if (Number.isNaN(n)) {
-        throw new Error(`--${flag} must be a number, got "${value}"`);
+        throw new InvalidArgumentError(`--${flag} must be a number, got "${value}"`);
       }
       return n;
     });
