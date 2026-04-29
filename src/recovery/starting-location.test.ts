@@ -54,6 +54,18 @@ describe('resolveStartingLocation', () => {
     expect(resolveStartingLocation('https://interactive-learning.grafana.net/foo')).toBeNull();
   });
 
+  // Regression: the system accepts both `bundled:<id>` (legacy) and
+  // `bundled:<id>/content.json` (package format). Earlier versions of the
+  // resolver passed the full slice to the index lookup, which meant the
+  // package-format URL silently missed its index entry.
+  it('strips a /content.json suffix before consulting the bundled index', () => {
+    expect(resolveStartingLocation('bundled:array-shape/content.json')).toBe('/explore');
+  });
+
+  it('strips any trailing path segment before consulting the bundled index', () => {
+    expect(resolveStartingLocation('bundled:string-shape/manifest.json')).toBe('/dashboards');
+  });
+
   it('returns null when manifest has a non-string startingLocation', () => {
     const result = resolveStartingLocation('https://example/foo', { startingLocation: 42 });
     expect(result).toBeNull();

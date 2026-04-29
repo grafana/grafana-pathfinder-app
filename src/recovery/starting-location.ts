@@ -32,10 +32,28 @@ export function resolveStartingLocation(url: string, packageManifest?: Record<st
   }
 
   if (url.startsWith(BUNDLED_PREFIX)) {
-    return resolveFromBundledIndex(url.slice(BUNDLED_PREFIX.length));
+    return resolveFromBundledIndex(extractBundledId(url));
   }
 
   return null;
+}
+
+/**
+ * Pulls the bare guide ID out of a `bundled:` URL. The system accepts two
+ * formats:
+ *   - `bundled:<id>` — legacy bare ID (e.g. `bundled:welcome-to-grafana`)
+ *   - `bundled:<id>/content.json` — package-format path
+ *
+ * The index.json index keys on the bare ID, so we strip the suffix before
+ * looking up. Without this, `bundled:welcome-to-grafana/content.json` would
+ * miss its index entry and the bundled fallback would silently return null.
+ */
+function extractBundledId(url: string): string {
+  const path = url.slice(BUNDLED_PREFIX.length);
+  // The bare ID is everything before the first '/'. This collapses both the
+  // `<id>` and `<id>/content.json` (and any future `<id>/something`) formats.
+  const slash = path.indexOf('/');
+  return slash === -1 ? path : path.slice(0, slash);
 }
 
 function resolveFromBundledIndex(id: string): string | null {
