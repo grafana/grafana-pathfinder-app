@@ -129,18 +129,13 @@ describe('navigationHandler', () => {
     expect(navigationHandler.canHandle(ctx)).toBe(true);
   });
 
-  it('matches when requirements include navmenu-open even without explicit fixType (legacy fallback)', () => {
-    const ctx = makeContext({ fixType: undefined, requirements: 'navmenu-open' });
-    expect(navigationHandler.canHandle(ctx)).toBe(true);
+  it('does not match when fixType is undefined', () => {
+    const ctx = makeContext({ fixType: undefined });
+    expect(navigationHandler.canHandle(ctx)).toBe(false);
   });
 
-  it('matches navmenu-open in a comma-separated requirements string', () => {
-    const ctx = makeContext({ fixType: undefined, requirements: 'navmenu-open, exists-reftarget' });
-    expect(navigationHandler.canHandle(ctx)).toBe(true);
-  });
-
-  it('does not match when neither fixType nor requirements signal navigation', () => {
-    const ctx = makeContext({ fixType: 'has-datasource', requirements: 'has-datasource:prom' });
+  it('does not match when fixType is something other than navigation', () => {
+    const ctx = makeContext({ fixType: 'has-datasource' });
     expect(navigationHandler.canHandle(ctx)).toBe(false);
   });
 

@@ -167,8 +167,9 @@ export function createRequirementsState(
         skippable
       );
 
-  // Extract fix metadata from the first fixable failed check. The fix-handler
-  // registry (`navigation` handler) owns the legacy `navmenu-open` fallback.
+  // Extract fix metadata from the first fixable failed check. Each check is
+  // responsible for setting its own `fixType` (e.g. `navmenuOpenCheck` returns
+  // `fixType: 'navigation'`); the registry routes strictly on that value.
   const fixableError = failedChecks.find((e) => e.canFix);
   const fixType = fixableError?.fixType;
   const targetHref = fixableError?.targetHref;

@@ -31,8 +31,6 @@ export interface FixContext {
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
-  /** Raw requirements string from the step; used by the navigation handler's legacy fallback. */
-  requirements?: string;
   stepId: string;
   /** May be null if the lazy `import('../interactive-engine')` has not yet resolved. */
   navigationManager: FixHandlerNavigationManager | null;
