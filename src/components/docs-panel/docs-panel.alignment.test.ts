@@ -331,6 +331,44 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
     });
 
+    // Regression: `initializeRestoredActiveTab` must tag its loader call with
+    // `browser_restore` so the alignment evaluator treats restored tabs as
+    // aligned-by-construction. Without that tag, `_consumeAutoLaunchSource()`
+    // returns `null` → `launchSource: undefined` → not in
+    // `ALIGNED_BY_CONSTRUCTION_SOURCES` → prompt fires on every refresh whose
+    // path no longer matches the guide's `startingLocation`.
+    it('does NOT set pendingAlignment for restored tabs (initializeRestoredActiveTab path)', async () => {
+      const utilsMock = jest.requireMock('./utils');
+      utilsMock.shouldUseDocsLoader.mockReturnValue(true);
+      utilsMock.restoreTabsFromStorage.mockResolvedValue([
+        {
+          id: 'tab-restored-1',
+          title: 'Restored Guide',
+          baseUrl: 'bundled:connections-guide',
+          currentUrl: 'bundled:connections-guide',
+          type: 'docs',
+          content: null,
+          isLoading: false,
+          error: null,
+          packageInfo: { packageManifest: { startingLocation: '/connections' } },
+        },
+      ]);
+      utilsMock.restoreActiveTabFromStorage.mockResolvedValue('tab-restored-1');
+
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      // User is somewhere unrelated when the page reloads.
+      mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
+
+      const panel = new CombinedLearningJourneyPanel();
+      await panel.restoreTabsAsync();
+      await new Promise((r) => setTimeout(r, 0));
+
+      const tab = getTab(panel, 'tab-restored-1');
+      expect(tab.pendingAlignment).toBeUndefined();
+      // Sanity check that the loader actually ran for this tab.
+      expect(mockLoadDocsTabContentResult).toHaveBeenCalled();
+    });
+
     it('does NOT set pendingAlignment when source is mcp_launch', async () => {
       mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();

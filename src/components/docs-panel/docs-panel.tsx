@@ -221,6 +221,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
       if (shouldUseDocsLoader(activeTab)) {
+        // Tag the loader call so the implied-0th-step evaluator sees
+        // `browser_restore` (an aligned-by-construction source) instead of an
+        // undefined source. Without this, a restored tab whose path no longer
+        // matches its guide's `startingLocation` would incorrectly trigger the
+        // alignment prompt — second-guessing a user mid-tutorial, which is
+        // exactly what `browser_restore` is meant to suppress.
+        this._recordAutoLaunchSource('browser_restore');
         this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       } else {
         this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
