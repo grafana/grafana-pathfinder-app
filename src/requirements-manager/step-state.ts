@@ -130,6 +130,11 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
       };
 
     case 'SET_COMPLETED':
+      // Clear *all* fix metadata (canFix / fixType / targetHref / scrollContainer).
+      // A completed step has nothing to fix, and stale values would leak into
+      // consumers like the `data-test-fix-type` attribute. This matches the
+      // shape of `createObjectivesCompletedState`, which the old setState path
+      // overwrote wholesale.
       return {
         ...state,
         status: 'completed',
@@ -137,6 +142,8 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         explanation: action.explanation ?? 'Completed',
         error: undefined,
         canFix: false,
+        fixType: undefined,
+        targetHref: undefined,
         scrollContainer: undefined,
       };
 
@@ -169,9 +176,16 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
 /**
  * Helper functions to derive boolean flags from state
  * These maintain backward compatibility with the existing API
+ *
+ * Legacy quirk: a step is "enabled" in the user-facing sense (Redo is
+ * available) when its FSM status is `enabled` *or* it's been completed
+ * because objectives were already met. Consumers like
+ * `interactive-step.tsx`, `interactive-multi-step.tsx`, and
+ * `interactive-guided.tsx` depend on this. `toLegacyState` delegates here
+ * so the two can never drift.
  */
 export function deriveIsEnabled(state: StepState): boolean {
-  return state.status === 'enabled';
+  return state.status === 'enabled' || (state.status === 'completed' && state.completionReason === 'objectives');
 }
 
 export function deriveIsCompleted(state: StepState): boolean {
@@ -195,16 +209,13 @@ export function deriveIsRetrying(state: StepState): boolean {
  * Used for backward compatibility during migration so consumers of useStepChecker
  * keep seeing the same shape they always have.
  *
- * Legacy quirk: isEnabled is true for objectives-completed steps. Those steps are
- * "interactive" in the user-facing sense (Redo is available) even though the FSM
- * status is `completed`. Preserved here so consumers like interactive-step.tsx,
- * interactive-multi-step.tsx, and interactive-guided.tsx don't change behaviour.
+ * The legacy "objectives-completed → isEnabled: true" quirk lives in
+ * `deriveIsEnabled`; this function just delegates so the two API surfaces
+ * (the barrel-exported helper and the legacy shape) cannot disagree.
  */
 export function toLegacyState(state: StepState) {
-  const isEnabled =
-    state.status === 'enabled' || (state.status === 'completed' && state.completionReason === 'objectives');
   return {
-    isEnabled,
+    isEnabled: deriveIsEnabled(state),
     isCompleted: deriveIsCompleted(state),
     isChecking: deriveIsChecking(state),
     isSkipped: deriveIsSkipped(state),
