@@ -1,0 +1,57 @@
+# Dockerfile.cli only needs the CLI source tree and the bits it imports
+# from src/types and src/validation. Everything else bloats the build
+# context and triggers cache busts on unrelated changes.
+
+.git
+.github
+.husky
+.cursor
+.config
+.planning
+.vscode
+
+node_modules
+dist
+coverage
+test-results
+playwright-report
+
+src/components
+src/pages
+src/integrations
+src/learning-paths
+src/context-engine
+src/interactive-engine
+src/requirements-manager
+src/docs-retrieval
+src/global-state
+src/styles
+src/lib
+src/locales
+src/img
+src/test-utils
+src/utils
+src/security
+src/bundled-interactives
+
+pkg
+e2e
+tests
+docs
+playground
+scripts/copy-static.js
+scripts/sync-terms-and-conditions.js
+scripts/peerjs-server.js
+scripts/load-bigquery.bash
+scripts/manage-peerjs.sh
+
+docker-compose.yaml
+webpack.config.ts
+*.md
+!README-cli.md
+
+# Keep:
+# - package.json, package-lock.json, tsconfig.cli.json
+# - src/cli, src/types/{json-guide,package}.{types,schema}.ts, src/validation
+# - scripts/prepublish-cli.js, scripts/docker-entrypoint.sh
+# - Dockerfile.cli

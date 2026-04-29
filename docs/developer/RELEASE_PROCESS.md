@@ -4,9 +4,9 @@ This document describes how releases are created and managed for the Grafana Pat
 
 ## Release Workflows
 
-The project uses **three distinct GitHub Actions workflows** for different release scenarios:
+The project uses several GitHub Actions workflows for different release scenarios:
 
-### 1. Tag-Based Releases (`.github/workflows/release.yml`)
+### 1. Tag-Based Plugin Releases (`.github/workflows/release.yml`)
 
 - **Trigger**: Push of version tags matching pattern `v*` (e.g., `v1.0.0`)
 - **Process**:
@@ -24,6 +24,20 @@ The project uses **three distinct GitHub Actions workflows** for different relea
   - Supports docs-only publishing option
   - Uses Grafana's shared CI workflows
   - Does not publish to plugin catalog as pending (disabled via `publish-to-catalog-as-pending: false`)
+
+### 3. CLI / MCP Releases (`.github/workflows/cli-publish.yml`)
+
+- **Trigger**:
+  - Push to `main` and `pull_request` (with paths filtering on CLI-relevant files): build, pack, image build, local smoke. No publish.
+  - Push of a `cli-v*` tag (e.g., `cli-v1.1.0`): same, plus npm publish and Docker push, then a registry smoke test.
+- **Process**:
+  - Builds the CLI via `npm run build:cli`.
+  - Packs an npm tarball via `scripts/pack-cli.js` (rewrites `package.json` → `name: pathfinder-cli`, `version: <CURRENT_SCHEMA_VERSION>`, narrows `files` to `dist/cli/`, restores the working tree).
+  - Builds `Dockerfile.cli` and tags `grafana/pathfinder-cli:<version>` (Docker Hub) plus `ghcr.io/grafana/pathfinder-cli:<version>` (GHCR mirror).
+  - Asserts the tag matches `CURRENT_SCHEMA_VERSION` from `src/types/json-guide.schema.ts`. Mismatched tags fail loud.
+  - Publish steps gracefully skip when secrets (`NPM_TOKEN`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) are absent — useful while the registry credentials are being provisioned. The build/pack/image-build path is exercised on every run regardless.
+
+See [CLI and MCP releases](#cli-and-mcp-releases) below for the operator playbook.
 
 ## Build Process
 
@@ -115,6 +129,48 @@ Plugin signing is available but currently disabled. To enable:
 1. Generate an access policy token from Grafana
 2. Add token to repository secrets as `policy_token`
 3. Uncomment the signing configuration in `.github/workflows/release.yml`
+
+## CLI and MCP releases
+
+The `pathfinder-cli` npm package and `grafana/pathfinder-cli` Docker image (mirrored to `ghcr.io/grafana/pathfinder-cli`) are released independently from the plugin tarball. The plugin and CLI release cadences are decoupled.
+
+### Versioning
+
+CLI and MCP versions are pinned to `CURRENT_SCHEMA_VERSION` exported from `src/types/json-guide.schema.ts`. The repo's `package.json#version` (which carries the plugin version) is **not** used for the published CLI artifact — it is rewritten at publish time by `scripts/prepublish-cli.js`. The published `name` and `dependencies` are likewise rewritten so the published artifact contains only what the CLI runtime needs.
+
+### Tag scheme
+
+CLI releases use `cli-v*` tags. Plugin releases continue to use `v*`. Distinct prefixes prevent the two release workflows from fighting over the same tag.
+
+### Dry-run locally
+
+```bash
+npm run pack:cli                                              # produce pathfinder-cli-<version>.tgz
+docker build -f Dockerfile.cli -t pathfinder-cli:local .      # produce the image
+docker run --rm pathfinder-cli:local --version                # CLI smoke
+docker run --rm pathfinder-cli:local mcp                      # routes to placeholder, exits 1
+```
+
+### Cutting a release
+
+1. Verify `CURRENT_SCHEMA_VERSION` in `src/types/json-guide.schema.ts` is the version you intend to ship.
+2. Tag and push: `git tag cli-v<version> && git push origin cli-v<version>`. The `<version>` must match `CURRENT_SCHEMA_VERSION` exactly — the workflow asserts this.
+3. The `cli-publish.yml` workflow runs the build, packs the artifact, builds the image, and (if secrets are configured) publishes to npm + Docker Hub + GHCR, then runs a registry smoke test.
+
+### Required secrets
+
+| Secret               | Purpose                                                                       |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `NPM_TOKEN`          | npm publish auth (`pathfinder-cli`).                                          |
+| `DOCKERHUB_USERNAME` | Docker Hub login (push to `grafana/pathfinder-cli`).                          |
+| `DOCKERHUB_TOKEN`    | Docker Hub login.                                                             |
+| `GITHUB_TOKEN`       | GHCR mirror push. Provided automatically by Actions; needs `packages: write`. |
+
+If any required secret is missing, the corresponding publish job logs a `::warning::` and exits 0 — the workflow stays green so the build/pack/image-build path is still validated. The registry smoke test auto-skips for the same reason.
+
+### Plugin tarball is unaffected
+
+The CLI is not bundled into the plugin tarball. Webpack only enters from `src/module.tsx` and never traverses `src/cli/`, so the plugin's `dist/` output is identical with or without the CLI changes. Verify by running `npm run build` on this branch and on `main` and diffing the file lists; they should match exactly.
 
 ## Troubleshooting
 

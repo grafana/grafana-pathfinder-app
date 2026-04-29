@@ -33,6 +33,35 @@ The CLI is built from the source code within this repository. To set it up:
 
 This compiles the TypeScript source in `src/cli` to `dist/cli`.
 
+### Distribution: npm and Docker
+
+The CLI also ships as a standalone npm package (`pathfinder-cli`) and Docker image (`grafana/pathfinder-cli`, mirrored to `ghcr.io/grafana/pathfinder-cli`). Both are version-pinned to `CURRENT_SCHEMA_VERSION` from `src/types/json-guide.schema.ts`, so the CLI version and the guide schema version cannot drift.
+
+Install from npm:
+
+```bash
+npx pathfinder-cli@latest --version
+npx pathfinder-cli@1.1.0 --version   # pin to a specific schema version
+```
+
+Run via Docker:
+
+```bash
+docker run --rm grafana/pathfinder-cli:latest --version
+docker run --rm -v "$PWD:/workspace" grafana/pathfinder-cli:latest create my-guide --title "My guide"
+```
+
+The image's first positional argument selects the entrypoint: the default is `pathfinder-cli`; `mcp` routes to `pathfinder-mcp` (a placeholder until P3 of the AI authoring rollout — see [`docs/design/AI-AUTHORING-IMPLEMENTATION.md`](../design/AI-AUTHORING-IMPLEMENTATION.md)).
+
+Build and pack locally without going to the registry:
+
+```bash
+npm run pack:cli                   # rewrite manifest, run `npm pack`, restore working tree
+docker build -f Dockerfile.cli -t pathfinder-cli:local .
+```
+
+The publish flow is documented in [`RELEASE_PROCESS.md`](./RELEASE_PROCESS.md#cli-and-mcp-releases).
+
 ## Usage
 
 You can run the CLI directly using Node.js after building it.

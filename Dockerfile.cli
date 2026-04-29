@@ -1,0 +1,74 @@
+# Pathfinder CLI / MCP Docker image.
+#
+# Builds the pathfinder-cli npm package from this repo, packs it, and
+# installs it globally into a small runtime image. The result is the same
+# artifact that would land on npm — installed via the same `npm install`
+# codepath — so the image can be exercised pre-publish without registry
+# access. Once the npm package is published, this Dockerfile can be
+# simplified to `npm install -g pathfinder-cli@<version>`; until then,
+# building from the local context is the source of truth.
+#
+# Routing: the first positional argument selects the entrypoint.
+#   docker run grafana/pathfinder-cli                 -> pathfinder-cli (no args)
+#   docker run grafana/pathfinder-cli --version       -> pathfinder-cli --version
+#   docker run grafana/pathfinder-cli create my-guide -> pathfinder-cli create my-guide
+#   docker run grafana/pathfinder-cli mcp             -> pathfinder-mcp
+#   docker run grafana/pathfinder-cli mcp --transport stdio -> pathfinder-mcp --transport stdio
+#
+# See docs/design/phases/ai-authoring-2-distribution.md for the rationale
+# and the multi-registry publish plan (Docker Hub canonical + ghcr.io
+# mirror).
+
+# ---- Build stage ---------------------------------------------------------
+FROM node:22-alpine AS builder
+
+WORKDIR /build
+
+# Copy only what the CLI build needs. Keeps the build context tight and
+# avoids invalidating the npm cache when unrelated frontend files change.
+COPY package.json package-lock.json tsconfig.cli.json README-cli.md ./
+COPY scripts/prepublish-cli.js scripts/
+COPY src/cli ./src/cli
+# Copy the entire types/ tree — tsconfig.cli.json scopes the compile to the
+# specific files it needs, and types/ is small. Listing individual files
+# here is brittle because schema files transitively import siblings (e.g.,
+# json-guide.schema imports requirements.types).
+COPY src/types ./src/types
+COPY src/validation ./src/validation
+
+# `npm ci` installs both deps and devDeps because we need typescript
+# (devDep) to build. Production-only install happens in the runtime stage.
+RUN npm ci --no-audit --no-fund
+
+RUN npm run build:cli
+
+# Rewrite package.json to the published shape and pack into a tarball.
+# `npm pack` honors the rewritten `files` allowlist, so the tarball
+# contains only `dist/cli/` plus the manifest.
+RUN node scripts/prepublish-cli.js --write \
+    && npm pack \
+    && mv pathfinder-cli-*.tgz /tmp/pathfinder-cli.tgz
+
+# ---- Runtime stage -------------------------------------------------------
+FROM node:22-alpine AS runtime
+
+# Install the packed CLI globally. This is the same `npm install` codepath
+# a consumer of `npm install -g pathfinder-cli@<version>` would hit, so the
+# image exercises the published artifact's install behavior — not a
+# bespoke "copy dist/ into /app" shortcut.
+COPY --from=builder /tmp/pathfinder-cli.tgz /tmp/pathfinder-cli.tgz
+RUN npm install -g /tmp/pathfinder-cli.tgz \
+    && rm /tmp/pathfinder-cli.tgz
+
+# Routing entrypoint: `mcp` first-arg routes to pathfinder-mcp; otherwise
+# pathfinder-cli is the default.
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Run as a non-root user. Node's image ships a `node` user; reusing it
+# avoids creating yet another uid.
+USER node
+WORKDIR /workspace
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD []

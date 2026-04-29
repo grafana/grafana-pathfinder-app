@@ -13,7 +13,7 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 | ----- | -------------------------------------- | ----------- | ------------------------------------------------------------------------------- | ---------------- |
 | P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md) | _epic issue TBD_ |
 | P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)   | _epic issue TBD_ |
-| P2    | npm + Docker distribution              | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
+| P2    | npm + Docker distribution              | Complete    | [ai-authoring-2-distribution.md](./phases/ai-authoring-2-distribution.md)       | _epic issue TBD_ |
 | P3    | TypeScript MCP server                  | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 | P4    | Assistant handoff and viewer link      | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 | P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                               | —                |
@@ -232,3 +232,36 @@ The "long-lived Node sidecar" item from earlier drafts of this design is no long
 - **Server-provided context, not client-cached instructions.** P3 onward, agents must call `pathfinder_authoring_start` and follow server-provided guidance rather than carrying authoring instructions locally. Skill files for Cursor/Claude Desktop should remain thin.
 - **Assistant write-tool surface is a P4 coordination point** (from [P0 spike](./phases/ai-authoring-0-assistant-spike.md)). Assistant exposes no generic "call this App Platform path" tool today. P4 must pick a write-tool surface and coordinate with the Assistant team.
 - **Assistant connection target is a P4 coordination point.** Since the authoring MCP no longer lives at the per-instance plugin URL, P4 must coordinate with the Assistant team on where the centrally hosted TS MCP runs and how Assistant's tool list points at it.
+
+## Open questions
+
+### Does the hosted HTTP MCP need auth at all?
+
+**Status.** Open. Decision needed before P3 HTTP transport lands.
+
+**Context.** P3 scope currently specifies `MultiAuth + GrafanaGoogleTokenVerifier` on the HTTP transport, inherited from an earlier design where the MCP itself was going to write to App Platform. Under the current design that write is performed by the controlling agent (Grafana Assistant in P4), using _its_ credentials — the MCP itself touches no privileged resource. The tools are a stateless RPC wrapper around the same open-source CLI anyone can `npx` locally. So the original reason for auth (the MCP holding write capability) no longer applies.
+
+**Arguments for leaving it fully open.**
+
+- No privileged resource behind the endpoint — pure CPU on a JSON artifact.
+- OSS / airgapped Grafana users get a hosted authoring path without needing a Grafana Cloud account. This is a meaningful product story: "Pathfinder authoring works for everyone, not just Cloud customers."
+- One less coordination dependency on the Assistant token surface.
+- Local stdio (`npx pathfinder-mcp`) already covers the no-account case, but a hosted open endpoint removes the install step.
+
+**Arguments for requiring auth.**
+
+- Abuse attribution and per-subject rate limiting become trivial.
+- A signed-in identity gives a natural cost-control knob if usage explodes.
+- Reduces public attack surface (though the surface is small — see "what an abuser gets" below).
+
+**What an abuser actually gets if it's open.** Free Zod validation as a service. Not valuable enough to attract targeted abuse, but trivially easy to point a botnet at for resource exhaustion. The realistic threat is _cost_, not _compromise_.
+
+**Mitigations that don't require auth.** Per-IP rate limits at the edge, request size caps, CPU/wallclock budget per call, autoscaling ceiling. These are cheap and address the dominant threat (DoS / runaway cost) without excluding airgapped or non-Cloud users.
+
+**Resolution criteria.** Pick one of:
+
+1. **Open + edge rate-limiting.** Preserves the OSS / airgapped story. Accept DoS-via-cost as a managed risk with hard autoscaling caps.
+2. **Auth required, broad audience.** Accept any signed-in Grafana Cloud user (not just Assistant). Loses the airgapped story; gains attribution.
+3. **Both.** Anonymous tier with strict rate limits + authenticated tier with higher limits. More surface, more ops.
+
+This must be resolved before the P3 HTTP transport ships, since it determines the verifier configuration and the SLO/cost model for the hosted deployment.
