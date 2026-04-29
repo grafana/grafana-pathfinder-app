@@ -35,8 +35,8 @@ export const TERMS_AND_CONDITIONS_CONTENT = `
 <h3>Your control</h3>
 <ul>
 <li>You can disable the context-aware recommendations feature at any time in the plugin configuration.</li>
-<li>When disabled, Interactive learning only displays bundled examples and documentation.</li>
-<li>When disabled, Interactive learning won't send any data to the recommendation service.</li>
+<li>When disabled, Interactive learning doesn't send any contextual data, user identifiers, or Grafana instance information to the recommendation service.</li>
+<li>When disabled, Interactive learning displays bundled examples and documentation by default. If your browser is online, the plugin may also fetch a public guide catalog from Grafana's content delivery network (interactive-learning.grafana.net) so it can offer additional learning content. These fetches are limited to public catalog and guide files; they don't include user identifiers, dashboard data, or any other contextual information beyond standard HTTP request metadata such as your IP address and browser User-Agent. Air-gapped installations and browsers reporting offline status make no such fetches.</li>
 </ul>
 
 <h3>Changes to data usage</h3>

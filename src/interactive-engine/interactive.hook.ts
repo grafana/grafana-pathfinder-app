@@ -17,6 +17,7 @@ import {
   FormFillHandler,
   HoverHandler,
   GuidedHandler,
+  PopoutHandler,
 } from './action-handlers';
 import type { UseInteractiveElementsOptions } from '../types/hooks.types';
 
@@ -88,6 +89,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [stateManager, navigationManager]
   );
 
+  const popoutHandler = useMemo(() => new PopoutHandler(stateManager, waitForReactUpdates), [stateManager]);
+
   // Inject the global style tag once on mount — idempotent, no cleanup needed.
   useEffect(() => {
     addGlobalInteractiveStyles();
@@ -146,6 +149,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [guidedHandler]
   );
 
+  const interactivePopout = useCallback(
+    async (data: InteractiveElementData, perform: boolean) => {
+      await popoutHandler.execute(data, perform);
+    },
+    [popoutHandler]
+  );
+
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
@@ -161,9 +171,19 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         await interactiveHover(data, click);
       } else if (data.targetaction === 'guided') {
         await interactiveGuided(data, click);
+      } else if (data.targetaction === 'popout') {
+        await interactivePopout(data, click);
       }
     },
-    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveHover, interactiveGuided]
+    [
+      interactiveFocus,
+      interactiveButton,
+      interactiveFormFill,
+      interactiveNavigate,
+      interactiveHover,
+      interactiveGuided,
+      interactivePopout,
+    ]
   );
 
   /**
@@ -401,6 +421,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             await interactiveGuided(elementData, !isShowMode);
             break;
 
+          case 'popout':
+            await interactivePopout(elementData, !isShowMode);
+            break;
+
           case 'sequence':
             await interactiveSequence(elementData, isShowMode);
             break;
@@ -434,6 +458,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       interactiveNavigate,
       interactiveHover,
       interactiveGuided,
+      interactivePopout,
       interactiveSequence,
       stateManager,
       navigationManager,

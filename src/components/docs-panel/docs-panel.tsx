@@ -114,19 +114,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public static Component = CombinedPanelRenderer;
 
   /**
-   * Module-level guard: prevents restoreTabsAsync() from running more than once,
-   * even across model instances (which can be recreated by Scenes framework).
+   * Instance-level guard: prevents restoreTabsAsync() from running more than
+   * once on the same instance (e.g. React StrictMode double-mount re-fires
+   * the effect on the same cached useMemo panel). Because the flag is
+   * per-instance, a genuinely new panel (created when the sidebar remounts
+   * after toggle off → on) starts with the guard unset and can restore tabs.
    */
-  private static _hasRestoredTabs = false;
-
-  /**
-   * Reset the tab restoration guard so a new model instance can restore tabs.
-   * Called when switching display modes (floating ↔ sidebar) because each mode
-   * creates its own model instance that needs to restore independently.
-   */
-  public static resetTabRestorationGuard(): void {
-    CombinedLearningJourneyPanel._hasRestoredTabs = false;
-  }
+  private _hasRestoredTabs = false;
 
   public get renderBeforeActivation(): boolean {
     return true;
@@ -173,10 +167,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Guard: only restore once per model lifetime to prevent double-restore race condition
     // where a second restore (triggered by component remount or React Strict Mode) replaces
     // tabs that already had content loaded, leaving them in {content: null} blank state
-    if (CombinedLearningJourneyPanel._hasRestoredTabs) {
+    if (this._hasRestoredTabs) {
       return;
     }
-    CombinedLearningJourneyPanel._hasRestoredTabs = true;
+    this._hasRestoredTabs = true;
 
     // Use extracted restore module with dev mode detection
     const currentUserId = config.bootData.user?.id;
@@ -1256,13 +1250,38 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
       const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
 
-      if (activeTab && activeTab.id !== 'recommendations' && guideUrl) {
-        panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
+      // Editor tab popout: the block editor itself moves into the floating panel.
+      // No pendingGuide handoff — the floating panel detects the editor tab and
+      // renders <BlockEditor /> directly (see FloatingPanelManager).
+      if (activeTab?.type === 'editor') {
+        reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
+          guide_url: '',
+          guide_title: activeTab.title,
+        });
+        panelModeManager.snapshotSidebarTabs();
+        // The floating panel creates a new CombinedLearningJourneyPanel instance
+        // with its own per-instance `_hasRestoredTabs` guard, so it can rehydrate
+        // the editor tab from localStorage without any cross-instance reset.
+        panelModeManager.setMode('floating');
+        return;
       }
 
+      // Refuse to pop out when there's no guide context — without this guard the
+      // sidebar would close and the floating panel would have nothing to show.
+      // Surface a notification so the user understands why nothing happened.
+      if (!activeTab || activeTab.id === 'recommendations' || !guideUrl) {
+        getAppEvents().publish({
+          type: 'alert-info',
+          payload: ['Open a guide before popping out the panel.'],
+        });
+        return;
+      }
+
+      panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
+
       reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
-        guide_url: guideUrl || '',
-        guide_title: activeTab?.title || '',
+        guide_url: guideUrl,
+        guide_title: activeTab.title,
       });
 
       // Snapshot sidebar tabs before switching — the floating panel's model

@@ -174,6 +174,17 @@ export const INTERACTIVE_ACTIONS = [
   { value: 'navigate', label: '🧭 Navigate', description: 'Go to a URL' },
   { value: 'hover', label: '👆 Hover', description: 'Hover over an element' },
   { value: 'noop', label: '📖 Info', description: 'Non-interactive informational step' },
+  { value: 'popout', label: '🪟 Popout', description: 'Dock or undock the guide panel' },
+] as const;
+
+/**
+ * Target mode options for popout interactive actions.
+ * - 'floating' undocks the guide into a floating window.
+ * - 'sidebar' docks the guide back into the Grafana sidebar.
+ */
+export const POPOUT_TARGET_MODES = [
+  { value: 'floating', label: 'Undock (move to floating window)' },
+  { value: 'sidebar', label: 'Dock (return to sidebar)' },
 ] as const;
 
 /**

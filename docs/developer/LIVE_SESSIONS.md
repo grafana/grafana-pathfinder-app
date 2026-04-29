@@ -2,6 +2,14 @@
 
 Live Sessions is an experimental feature that enables collaborative, real-time guide presentations using peer-to-peer WebRTC connections.
 
+## Presenter authentication (ECDSA P-256)
+
+Since v2.3.6, the presenter authenticates to attendees with an ECDSA P-256 key pair. The presenter's browser generates the key pair when a session is created; the public key is embedded in the join code, and the private key never leaves the presenter. Attendees verify a challenge-response on join, which prevents peer-ID impersonation on the PeerJS signalling layer.
+
+The legacy unauthenticated join path has been removed entirely. Older clients that pre-date the ECDSA flow cannot join authenticated sessions.
+
+For implementation details, see [`docs/developer/integrations/workshop.md`](integrations/workshop.md) (`session-crypto.ts`, `session-manager.ts`, `session-state.tsx`).
+
 ## Quick Start
 
 ### Setup (3 Terminals)

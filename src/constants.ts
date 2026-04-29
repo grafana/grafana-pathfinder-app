@@ -42,7 +42,7 @@ export function isKnownRecommenderUrl(url: string): boolean {
 export const DEFAULT_RECOMMENDER_SERVICE_URL = RECOMMENDER_PROD_URL;
 export const DEFAULT_TERMS_ACCEPTED = false;
 export const DEFAULT_TUTORIAL_URL = '';
-export const TERMS_VERSION = '1.0.0';
+export const TERMS_VERSION = '1.1.0';
 
 // Interactive Features defaults
 export const DEFAULT_ENABLE_AUTO_DETECTION = true; // Enabled by default

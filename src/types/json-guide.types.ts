@@ -209,8 +209,11 @@ export interface JsonConditionalBlock {
 /**
  * Action types for JSON guide interactive elements.
  * Named differently from collaboration.types.ts InteractiveAction to avoid conflicts.
+ *
+ * The `popout` action toggles the docs panel between sidebar and floating modes.
+ * It uses `targetvalue` ('sidebar' | 'floating') to select the target panel mode.
  */
-export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover' | 'noop';
+export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover' | 'noop' | 'popout';
 
 /**
  * Single-action interactive step.
@@ -224,7 +227,10 @@ export interface JsonInteractiveBlock extends AssistantProps {
   action: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element (optional for noop actions) */
   reftarget?: string;
-  /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
+  /**
+   * Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/).
+   * For popout actions, must be 'sidebar' (dock) or 'floating' (undock).
+   */
   targetvalue?: string;
   /** Markdown description shown to the user */
   content: string;
@@ -319,7 +325,10 @@ export interface JsonStep {
   action: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element (optional for noop actions) */
   reftarget?: string;
-  /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
+  /**
+   * Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/).
+   * For popout actions, must be 'sidebar' (dock) or 'floating' (undock).
+   */
   targetvalue?: string;
   /** Requirements for this specific step */
   requirements?: string[];

@@ -123,6 +123,36 @@ With an optional `reftarget` to highlight an area for reference:
 }
 ```
 
+### popout
+
+- **Purpose**: dock or undock the docs panel without interacting with the page. Useful when something else needs the right-hand sidebar (e.g., Grafana Assistant) and the guide should move out of the way, or when the guide is in a floating window and should return to the sidebar.
+- **reftarget**: not used (omit).
+- **targetvalue**: required, must be either `"floating"` (undock to a floating window) or `"sidebar"` (dock back into the sidebar).
+- **Buttons**: a single button — labeled **Undock** when `targetvalue` is `"floating"`, **Dock** when `targetvalue` is `"sidebar"`. There is no "Show me" preview.
+- **Use when**: the guide needs to make room for another sidebar, or to bring itself back after the user finishes a side task.
+
+Move the guide out of the way:
+
+```json
+{
+  "type": "interactive",
+  "action": "popout",
+  "targetvalue": "floating",
+  "content": "Move this guide to a floating window so you can use the assistant on the right."
+}
+```
+
+Bring the guide back into the sidebar:
+
+```json
+{
+  "type": "interactive",
+  "action": "popout",
+  "targetvalue": "sidebar",
+  "content": "Dock this guide back into the sidebar."
+}
+```
+
 ## Block types
 
 ### section
@@ -211,6 +241,7 @@ See [guided-interactions.md](./guided-interactions.md) for detailed documentatio
 | Route change                            | `navigate`        |
 | Hover to reveal hidden UI               | `hover`           |
 | Informational step (no action)          | `noop`            |
+| Dock or undock the guide panel          | `popout`          |
 | Teach a linear section                  | `section`         |
 | Bundle micro-steps into one (automated) | `multistep`       |
 | User performs steps manually            | `guided`          |

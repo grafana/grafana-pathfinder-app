@@ -10,6 +10,20 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-04-27**: `docs/sources/_index.md` — Added Block editor card; refreshed feature bullets for v2.9 (custom guides, floating panel mode).
+- **2026-04-27**: `docs/sources/getting-started/_index.md` — Modernized for v2.9.x: added hover/popout actions, floating panel section, link to block editor doc.
+- **2026-04-27**: `docs/sources/architecture/_index.md` — Rebuilt against current architecture (was 5+ months stale). Added package engine, custom guides backend, floating panel, selector resilience, live sessions, Coda subsystems.
+- **2026-04-27**: `docs/sources/upgrade-notes/_index.md` — Synced with CHANGELOG for v2.4–v2.9 (was 4+ months stale).
+- **2026-04-27**: `docs/sources/administrators-reference/_index.md` — Added kiosk, Coda terminal, live sessions sections; updated dev-mode admonition to note block editor and kiosk are no longer dev-mode-gated.
+- **2026-04-27**: `docs/sources/block-editor/_index.md` — NEW user-facing block editor guide with Playwright-generated screenshots referenced via `/media/docs/pathfinder/`.
+- **2026-04-27**: `docs/developer/GETTING_STARTED.md` — NEW onboarding entrypoint: 5-min quickstart, 15-min full setup, IDE setup, first-week reading list, troubleshooting.
+- **2026-04-27**: `docs/developer/LOCAL_DEV.md` — Added prerequisites table, `npm run check` documentation, IDE setup, mage installation, troubleshooting section, container port table.
+- **2026-04-27**: `docs/developer/DEV_MODE.md` — Added admonition noting block editor and kiosk mode no longer require dev mode.
+- **2026-04-27**: `docs/developer/CUSTOM_GUIDES.md` — Cross-link to user-facing block editor doc; removed dev-mode caveat from creation flow; added floating panel + popout step section.
+- **2026-04-27**: `docs/developer/interactive-examples/json-guide-format.md` — Added popout action; added schema sections for code-block, terminal, terminal-connect, grot-guide block types; updated block summary table.
+- **2026-04-27**: `docs/developer/interactive-examples/selectors-reference.md` — Added selector resilience pipeline section (retry/backoff, `:text()` exact match, `data-testid` prefix matching, `panel:` domain prefix, confidence scoring, Selector Health badge).
+- **2026-04-27**: `docs/developer/LIVE_SESSIONS.md` — Added ECDSA P-256 presenter authentication section; noted legacy unauthenticated path removed.
+- **2026-04-27**: `README.md` — Updated authoring section to point to block editor user guide; added For developers pointer to `GETTING_STARTED.md`; refreshed action type list to include `popout`.
 - **2026-03-20**: `.cursor/rules/systemPatterns.mdc` — Updated Utils description (removed stale keyboard-shortcuts/link-handling refs), added Package Engine subsystem, updated Learning Paths Critical Path for `paths-cloud.json` and `paths-data.ts`.
 - **2026-03-20**: `docs/developer/CLI_TOOLS.md` — Updated `--bundled` option description to reflect two-mode discovery (package directories + legacy flat JSON; `repository.json` exclusion; `static-links/` skip).
 - **2026-03-20**: `.cursor/rules/interactiveRequirements.mdc` — Added `code-block` to `data-targetaction` values in Core Interactive Attributes table.

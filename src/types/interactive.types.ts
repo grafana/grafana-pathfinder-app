@@ -6,7 +6,8 @@ export type InteractiveActionType =
   | 'hover'
   | 'sequence'
   | 'multistep'
-  | 'guided'; // User-performed actions with detection
+  | 'guided' // User-performed actions with detection
+  | 'popout'; // Toggle the docs panel between sidebar and floating modes
 
 export interface InteractiveElementData {
   // Core interactive attributes

@@ -149,7 +149,10 @@ export function BlockList({ blocks, operations }: BlockListProps) {
       const overId = String(over.id);
       setActiveDropZone(overId);
 
-      // Auto-expand collapsed sections/conditionals when hovering over their drop zones
+      // Auto-expand collapsed sections/conditionals when hovering over their drop zones.
+      // 500 ms requires a deliberate hover-and-pause — short enough that intentional
+      // drag-into-section feels responsive, long enough that we don't expand every
+      // section the cursor merely passes over while reordering root-level blocks.
       const overData = over.data.current as DropZoneData | undefined;
       const blockIdToExpand = overData?.sectionId ?? overData?.conditionalId;
 
@@ -178,7 +181,9 @@ export function BlockList({ blocks, operations }: BlockListProps) {
    */
   const handleDropOnSectionInsert = useCallback(
     (activeId: string, activeData: DragData, sectionId: string, insertIndex: number) => {
-      // Guard against nesting sections (conditionals ARE allowed in sections)
+      // Sections cannot nest because the JSON guide schema doesn't model recursive
+      // sections — every section is a flat container of leaf blocks. Conditionals
+      // ARE allowed inside sections because their branches render leaf blocks too.
       if (activeData.blockType === 'section') {
         return;
       }

@@ -37,6 +37,9 @@ jest.mock('./action-handlers', () => ({
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
     cancel: jest.fn(),
   })),
+  PopoutHandler: jest.fn().mockImplementation(() => ({
+    execute: jest.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 // Mock managers

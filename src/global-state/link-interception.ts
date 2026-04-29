@@ -65,6 +65,8 @@ class GlobalLinkInterceptionState {
     this._isInterceptionEnabled = enabled;
 
     if (enabled) {
+      // Capture phase: page handlers may stopPropagation() in bubble, so we have to
+      // see the click before they do or we miss every link inside React event trees.
       document.addEventListener('click', this.handleGlobalClick, { capture: true });
     } else {
       document.removeEventListener('click', this.handleGlobalClick, { capture: true });

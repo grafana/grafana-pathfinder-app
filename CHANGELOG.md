@@ -1,5 +1,71 @@
 # Changelog
 
+## 2.10.0
+
+> **⚠️ Terms and conditions updated (TERMS_VERSION 1.1.0)**
+>
+> The data-usage notice in plugin settings was revised to disclose a new behaviour introduced by online package recommendations (see below). When context-aware recommendations are **disabled**, an online browser may now fetch a public guide catalog from `interactive-learning.grafana.net`. These fetches are limited to public catalog and guide files and don't include user identifiers, dashboard data, or any other contextual information beyond standard HTTP request metadata (IP address, User-Agent). Air-gapped installs and browsers reporting offline status make no such fetches. The terms text in `src/components/AppConfig/terms-content.ts` is now the single source of truth and is mirrored to `docs/sources/terms-and-conditions/_index.md` via `npm run docs:sync-terms`. Existing users will be re-prompted to review and accept the updated terms (#802).
+
+### Added
+
+- **Online package recommendations for OSS recommender-disabled mode**: When the online recommender is off (OSS default) and the browser is online, Pathfinder now surfaces packages from the public CDN catalog alongside bundled guides (#802)
+  - New Go backend endpoint proxies the public package index and inlines per-package manifests (bounded concurrency, per-fetch timeouts, single-flight cache refresh)
+  - Frontend filters with the existing low-weight URL + platform matchers; entries with unsupported predicates fail closed
+  - Auto-disabled when the recommender is enabled, when `navigator.onLine === false`, and sticky-disabled for the page session after the first failed fetch so air-gapped installs never re-probe
+  - New `OnlineCdnPackageResolver` registered as the third tier of the composite resolver so milestone / recommends / suggests IDs from CDN learning paths resolve correctly
+- **Popout step type and editor popout mode**: New interactive step type and corresponding editor mode that pops the editor out into its own surface (#791)
+
+### Changed
+
+- **Terms and conditions disclosure**: Reworded the "Your control" section of the in-app data-usage notice to accurately disclose the new public CDN catalog fetch and bumped `TERMS_VERSION` to `1.1.0` so existing users re-acknowledge (#802)
+- **Public terms and conditions docs page**: Published `docs/sources/terms-and-conditions/_index.md` generated from `terms-content.ts` via `scripts/sync-terms-and-conditions.js`. `npm run docs:sync-terms` regenerates the page and `npm run docs:sync-terms:check` (wired into `npm run check`) prevents the in-app and docs copy from drifting (#802)
+- **New starter docs**: Comprehensive refresh of the new-starter onboarding documentation (#794)
+
+### Fixed
+
+- **Nested nav reveal for guided steps**: Guided steps now correctly reveal nested navigation when targeting deeply-nested menu items (#796)
+- **My Learning "Continue" for URL-based paths**: Clicking "Continue" on URL-based learning paths now opens the next module instead of re-opening the current one (#744, #798)
+- **Double skip buttons in guided blocks**: Await React flush before guided execution to prevent a second skip button from briefly appearing
+- **Off-axis section header spinner**: Removed the off-axis spinner that could appear in section headers
+- **Sidebar tabs lost after toggle**: Restore sidebar tabs after toggling the sidebar off and back on (#790)
+- **Plural resolution copy**: Pluralize item count copy and use a static default for plural resolution to avoid empty strings during initial render
+
+### Chore
+
+- Partial Grafana 13 baseline plus multi-version e2e fix (#797)
+- CI: parallelised backend tests and removed build job overhead
+- Pinned dependencies (#761)
+- Updated `grafana-plugin-sdk-go` to v0.291.1 (#801)
+- Updated `golang.org/x/crypto` to v0.50.0 (#784)
+- Updated `grafana/plugin-ci-workflows/ci-cd-workflows` action to v7.1.0 (#785)
+- Updated `actions/setup-node` digest to 48b55a0 (#777)
+- Updated npm to v11.13.0 (#787)
+- Updated `prettier` to v3.8.3
+
+## 2.9.2
+
+### Changed
+
+- **Feature-flag analytics scope**: `pathfinder_feature_flag_evaluated` now fires only on experiment exposures rather than every flag read, reducing analytics noise (#771)
+
+## 2.9.1
+
+### Added
+
+- **Grot guide block type**: New `grot-guide` block type for use in the block editor (#766)
+
+### Changed
+
+- **Selector generator pipeline**: Redesigned the selector generator as a candidate-rank pipeline for more deterministic and explainable selector output (#768)
+
+### Fixed
+
+- **Horizontal overflow oscillation**: Switched overlay elements to `position: fixed` to prevent horizontal overflow oscillation on certain pages (#769)
+
+### Chore
+
+- Added the real `include` for `AGENTS.md` (#765)
+
 ## 2.9.0
 
 ### Added

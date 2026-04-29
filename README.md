@@ -68,16 +68,23 @@ Admins can configure Interactive learning from the plugin's configuration page i
 
 ## Creating interactive guides
 
-Interactive learning supports creating custom interactive guides in JSON format. These guides combine content (markdown, images, video) with interactive elements that can highlight UI elements, click buttons, and fill forms.
+Editors and admins can author custom interactive guides in two ways:
+
+- **In the block editor inside Grafana** — open the **Editor** tab in the Pathfinder docs panel. No JSON required; the editor handles save, draft, publish, and update for you. See the [Block editor user guide](docs/sources/block-editor/_index.md).
+- **By writing JSON directly** — for guides that ship in the plugin bundle or are versioned in git.
 
 ### Documentation
 
-- **[JSON Guide Format Reference](docs/developer/interactive-examples/json-guide-format.md)** - Complete reference for the JSON guide structure and all block types
-- **[Interactive Types](docs/developer/interactive-examples/interactive-types.md)** - Action types, block types, and when to use each
-- **[Requirements Reference](docs/developer/interactive-examples/requirements-reference.md)** - Available requirements for controlling when interactive elements are accessible
-- **[Selectors Reference](docs/developer/interactive-examples/selectors-reference.md)** - How to target DOM elements with the enhanced selector engine
+- **[JSON Guide Format Reference](docs/developer/interactive-examples/json-guide-format.md)** — Complete reference for the JSON guide structure and all block types (markdown, image, video, section, conditional, interactive, multistep, guided, code-block, terminal, terminal-connect, grot-guide, quiz, input, assistant)
+- **[Interactive Types](docs/developer/interactive-examples/interactive-types.md)** — Action types (`highlight`, `button`, `formfill`, `navigate`, `hover`, `noop`, `popout`) and when to use each
+- **[Requirements Reference](docs/developer/interactive-examples/requirements-reference.md)** — Available requirements for controlling when interactive elements are accessible
+- **[Selectors Reference](docs/developer/interactive-examples/selectors-reference.md)** — How to target DOM elements with the enhanced selector engine and the resilience pipeline
 
 See the [JSON Guide Demo](src/bundled-interactives/json-guide-demo.json) for a complete example of all block types.
+
+## For developers
+
+If you're new to the codebase, start at **[`docs/developer/GETTING_STARTED.md`](docs/developer/GETTING_STARTED.md)** for the five-minute quickstart and first-week reading list. The full developer doc index lives in **[`AGENTS.md`](AGENTS.md)**.
 
 ## Contributing
 

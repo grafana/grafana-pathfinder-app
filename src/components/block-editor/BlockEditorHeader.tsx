@@ -8,12 +8,13 @@
  * - Publishing controls
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button, Badge, ButtonGroup, Tooltip, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import type { ViewMode } from './types';
 import { testIds } from '../../constants/testIds';
+import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
@@ -192,6 +193,30 @@ export function BlockEditorHeader({
   // Inline title editing
   const [titleDraft, setTitleDraft] = useState(guideTitle);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Track the current panel mode so the Pop out button can swap between
+  // "Pop out" (sidebar) and "Dock" (floating) at runtime.
+  const [panelMode, setPanelMode] = useState<PanelMode>(() => panelModeManager.getMode());
+  useEffect(() => {
+    const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
+      setPanelMode(e.detail.mode);
+    };
+    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    return () => {
+      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    };
+  }, []);
+
+  // Dispatch the same document-level events used by interactive popout steps.
+  // The sidebar's docs-panel handler picks up pop-out for the editor tab; the
+  // FloatingPanelManager handles dock requests.
+  const handleTogglePanelMode = useCallback(() => {
+    if (panelMode === 'sidebar') {
+      document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
+    } else {
+      document.dispatchEvent(new CustomEvent('pathfinder-request-dock'));
+    }
+  }, [panelMode]);
 
   // Keep draft in sync when title changes externally (e.g. guide loaded from library)
   useEffect(() => {
@@ -459,6 +484,22 @@ export function BlockEditorHeader({
               {renderBackendButton()}
             </>
           )}
+
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={panelMode === 'sidebar' ? 'corner-up-right' : 'arrow-to-right'}
+            onClick={handleTogglePanelMode}
+            tooltip={
+              panelMode === 'sidebar'
+                ? 'Pop out the editor into a floating window'
+                : 'Dock the editor back into the sidebar'
+            }
+            aria-label={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
+            data-testid="pathfinder-block-editor-toggle-popout"
+          >
+            {panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
+          </Button>
 
           <div className={styles.moreButton}>
             <Dropdown overlay={moreMenu} placement="bottom-end">

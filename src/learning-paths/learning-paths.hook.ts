@@ -136,17 +136,30 @@ export function useLearningPaths(): UseLearningPathsReturn {
   }, [rawPaths, dynamicGuideData]);
 
   /**
-   * Gets guide metadata, checking dynamic data first then static
+   * Gets guide metadata, scoped to a specific path when provided.
+   *
+   * URL-based paths can share guide slugs (e.g. two paths each have an
+   * "intro" guide). When `pathId` is supplied, only that path's dynamic
+   * metadata is consulted, preventing cross-path collisions. When `pathId`
+   * is omitted (callers without path context), all dynamic metadata is
+   * scanned for backwards compatibility.
+   *
+   * Falls back to static metadata from paths.json / paths-cloud.json.
    */
   const resolveGuideMetadata = useCallback(
-    (guideId: string): GuideMetadataEntry => {
-      // Check dynamic metadata from all fetched URL-based paths
-      for (const data of Object.values(dynamicGuideData)) {
-        if (data.guideMetadata[guideId]) {
-          return data.guideMetadata[guideId];
+    (guideId: string, pathId?: string): GuideMetadataEntry => {
+      if (pathId) {
+        const scoped = dynamicGuideData[pathId]?.guideMetadata[guideId];
+        if (scoped) {
+          return scoped;
+        }
+      } else {
+        for (const data of Object.values(dynamicGuideData)) {
+          if (data.guideMetadata[guideId]) {
+            return data.guideMetadata[guideId];
+          }
         }
       }
-      // Fall back to static metadata from paths.json / paths-cloud.json
       const { guideMetadata } = getPathsData();
       return guideMetadata[guideId] || { title: guideId, estimatedMinutes: 5 };
     },
@@ -269,17 +282,29 @@ export function useLearningPaths(): UseLearningPathsReturn {
           foundCurrent = true;
         }
 
-        const metadata = resolveGuideMetadata(guideId);
+        // Scope metadata to this path so two paths sharing a guide slug do
+        // not bleed URLs/titles across each other.
+        const metadata = resolveGuideMetadata(guideId, pathId);
 
         return {
           id: guideId,
           title: metadata.title,
           completed,
           isCurrent,
+          url: metadata.url,
         };
       });
     },
     [paths, progress.completedGuides, resolveGuideMetadata]
+  );
+
+  // Path-scoped per-guide URL lookup. Used by handlers that receive
+  // (guideId, pathId) and need to navigate to the correct module.
+  const getGuideUrlForPath = useCallback(
+    (guideId: string, pathId: string): string | undefined => {
+      return resolveGuideMetadata(guideId, pathId).url;
+    },
+    [resolveGuideMetadata]
   );
 
   // Get completion percentage for a path
@@ -410,6 +435,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
     getPathGuides,
     getPathProgress,
     isPathCompleted,
+    getGuideUrlForPath,
     markGuideCompleted,
     resetPath,
     dismissCelebration,
