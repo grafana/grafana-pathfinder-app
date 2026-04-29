@@ -47,22 +47,19 @@ export function FloatingPanelContent({
     );
   }
 
-  if (pendingAlignment && onAlignmentConfirm && onAlignmentCancel) {
-    return (
-      <div ref={contentRef} style={{ padding: 16 }}>
-        <AlignmentPrompt
-          startingLocation={pendingAlignment.startingLocation}
-          onConfirm={onAlignmentConfirm}
-          onCancel={onAlignmentCancel}
-        />
-      </div>
-    );
-  }
-
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
   return (
     <div ref={contentRef}>
+      {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
+        <div style={{ padding: 16 }}>
+          <AlignmentPrompt
+            startingLocation={pendingAlignment.startingLocation}
+            onConfirm={onAlignmentConfirm}
+            onCancel={onAlignmentCancel}
+          />
+        </div>
+      )}
       <ContentRenderer
         key={content.url}
         content={content}

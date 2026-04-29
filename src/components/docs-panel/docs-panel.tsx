@@ -2240,18 +2240,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     minHeight: 0,
                   }}
                 >
-                  {stableContent &&
-                    (activeTab?.pendingAlignment ? (
-                      <AlignmentPrompt
-                        startingLocation={activeTab.pendingAlignment.startingLocation}
-                        onConfirm={() => {
-                          void model.confirmAlignment(activeTab.id);
-                        }}
-                        onCancel={() => {
-                          model.dismissAlignment(activeTab.id);
-                        }}
-                      />
-                    ) : (
+                  {stableContent && (
+                    <>
+                      {activeTab?.pendingAlignment && (
+                        <AlignmentPrompt
+                          startingLocation={activeTab.pendingAlignment.startingLocation}
+                          onConfirm={() => {
+                            void model.confirmAlignment(activeTab.id);
+                          }}
+                          onCancel={() => {
+                            model.dismissAlignment(activeTab.id);
+                          }}
+                        />
+                      )}
                       <ContentRenderer
                         key={activeTab?.currentUrl || stableContent.url}
                         content={stableContent}
@@ -2285,7 +2286,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           }
                         }}
                       />
-                    ))}
+                    </>
+                  )}
 
                   {/* Go home button - always visible at bottom of content */}
                   <div className={styles.contentFooterAction}>
