@@ -17,6 +17,22 @@ export interface PathContext {
 }
 
 /**
+ * Captured at decision time so the implied-0th-step prompt is stable across
+ * subsequent location changes. Set on the tab when the alignment evaluator
+ * decides a prompt is needed; cleared on confirm or dismiss. Suppresses
+ * `<ContentRenderer>` mount while present.
+ *
+ * @see src/recovery/alignment-evaluator.ts
+ */
+export interface PendingAlignment {
+  startingLocation: string;
+  currentPath: string;
+  launchSource: string;
+  /** ms epoch — used to compute prompt latency in telemetry */
+  decidedAt: number;
+}
+
+/**
  * Learning Path or Documentation Tab
  * Represents an open tab in the docs panel
  */
@@ -33,6 +49,8 @@ export interface LearningJourneyTab {
   /** Cached milestone data from initial path package load, used to persist
    *  learningJourney metadata across milestone arrow navigation. */
   pathContext?: PathContext;
+  /** Set when the implied-0th-step alignment check decides a prompt is needed. */
+  pendingAlignment?: PendingAlignment;
 }
 
 /**

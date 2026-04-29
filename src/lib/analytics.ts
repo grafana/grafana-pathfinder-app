@@ -90,6 +90,11 @@ export enum UserInteraction {
 
   // Kiosk Mode
   KioskDemoStarted = 'kiosk_demo_started',
+
+  // Initial-state alignment ("implied 0th step") — Phase 1 auto-recovery
+  AlignmentPromptShown = 'alignment_prompt_shown',
+  AlignmentPromptConfirmed = 'alignment_prompt_confirmed',
+  AlignmentPromptDismissed = 'alignment_prompt_dismissed',
 }
 
 // ============================================================================

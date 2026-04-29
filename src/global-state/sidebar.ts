@@ -112,6 +112,7 @@ class GlobalSidebarState {
               url: `bundled:${guideId}`,
               title: guideId,
               type: 'docs-page',
+              source: 'mcp_launch',
             },
           })
         );

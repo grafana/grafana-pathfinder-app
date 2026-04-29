@@ -127,9 +127,11 @@ function FloatingPanelInner() {
 
   // Listen for auto-launch-tutorial events (same as docs-panel)
   useEffect(() => {
-    const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string }>) => {
+    const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string; source?: string }>) => {
       guideOpenInFlightRef.current = true;
-      const { url, title } = e.detail;
+      const { url, title, source } = e.detail;
+      // Record launch source for the implied-0th-step alignment check.
+      panel._recordAutoLaunchSource(source ?? null);
       panel.openDocsPage(url, title);
     };
 
@@ -226,7 +228,12 @@ function FloatingPanelInner() {
           <BlockEditor />
         </Suspense>
       ) : (
-        <FloatingPanelContent content={content} />
+        <FloatingPanelContent
+          content={content}
+          pendingAlignment={activeTab?.pendingAlignment}
+          onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
+          onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
+        />
       )}
     </FloatingPanel>
   );

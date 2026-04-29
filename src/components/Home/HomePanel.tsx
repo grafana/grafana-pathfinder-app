@@ -35,7 +35,7 @@ export function HomePanelRenderer() {
   const styles = useStyles2(getHomePageStyles);
 
   const handleOpenGuide = useCallback((url: string, title: string) => {
-    const detail = { url, title };
+    const detail = { url, title, source: 'home_page' };
 
     if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));

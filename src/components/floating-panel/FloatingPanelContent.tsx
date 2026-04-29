@@ -5,12 +5,20 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import type { RawContent } from '../../types/content.types';
+import type { PendingAlignment } from '../../types/content-panel.types';
+import { AlignmentPrompt } from '../docs-panel/components';
 
 interface FloatingPanelContentProps {
   /** The guide content to render */
   content: RawContent | null;
   /** Called when a guide completes all interactive sections */
   onGuideComplete?: () => void;
+  /** Active tab's pending alignment (implied 0th step) — when set, suppresses ContentRenderer */
+  pendingAlignment?: PendingAlignment;
+  /** Confirm callback for the alignment prompt */
+  onAlignmentConfirm?: () => void;
+  /** Cancel callback for the alignment prompt */
+  onAlignmentCancel?: () => void;
 }
 
 /**
@@ -20,7 +28,13 @@ interface FloatingPanelContentProps {
  * identically with all sections, auto-collapse on completion, and the
  * full interactive engine. No pagination or step slicing.
  */
-export function FloatingPanelContent({ content, onGuideComplete }: FloatingPanelContentProps) {
+export function FloatingPanelContent({
+  content,
+  onGuideComplete,
+  pendingAlignment,
+  onAlignmentConfirm,
+  onAlignmentCancel,
+}: FloatingPanelContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -30,6 +44,18 @@ export function FloatingPanelContent({ content, onGuideComplete }: FloatingPanel
   if (!content) {
     return (
       <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary)' }}>No guide content loaded</div>
+    );
+  }
+
+  if (pendingAlignment && onAlignmentConfirm && onAlignmentCancel) {
+    return (
+      <div ref={contentRef} style={{ padding: 16 }}>
+        <AlignmentPrompt
+          startingLocation={pendingAlignment.startingLocation}
+          onConfirm={onAlignmentConfirm}
+          onCancel={onAlignmentCancel}
+        />
+      </div>
     );
   }
 

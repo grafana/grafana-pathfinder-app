@@ -74,7 +74,8 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { config, getAppEvents } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
+import { evaluateAlignment, resolveStartingLocation } from '../../recovery';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
@@ -84,7 +85,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
-import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
+import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop, AlignmentPrompt } from './components';
 // Import extracted utilities
 import {
   isDocsLikeTab,
@@ -121,6 +122,25 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * after toggle off → on) starts with the guard unset and can restore tabs.
    */
   private _hasRestoredTabs = false;
+
+  /**
+   * Transient launch-source carrier for the implied-0th-step alignment check.
+   * Listeners (`handleAutoLaunchTutorial`, `handleAutoOpen`) set this
+   * immediately before calling `openDocsPage`/`openLearningJourney`;
+   * `loadDocsTabContent` consumes it. Mirrors the consume-once pattern in
+   * `sidebarState.consumePendingOpenSource`.
+   */
+  private _pendingLaunchSource: string | null = null;
+
+  public _recordAutoLaunchSource(source: string | null): void {
+    this._pendingLaunchSource = source;
+  }
+
+  private _consumeAutoLaunchSource(): string | null {
+    const s = this._pendingLaunchSource;
+    this._pendingLaunchSource = null;
+    return s;
+  }
 
   public get renderBeforeActivation(): boolean {
     return true;
@@ -387,6 +407,62 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return index >= 0 ? index + 1 : 0;
   }
 
+  /**
+   * Confirm the implied-0th-step alignment prompt. Navigates to the guide's
+   * `startingLocation` and clears the pending state so step 1 can mount.
+   */
+  public async confirmAlignment(tabId: string): Promise<void> {
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    const pending = tab?.pendingAlignment;
+    if (!tab || !pending) {
+      return;
+    }
+
+    reportAppInteraction(UserInteraction.AlignmentPromptConfirmed, {
+      guide_url: tab.baseUrl || tab.currentUrl || '',
+      guide_title: tab.title,
+      launch_source: pending.launchSource,
+      current_path: pending.currentPath,
+      starting_location: pending.startingLocation,
+      latency_ms: Date.now() - pending.decidedAt,
+    });
+
+    locationService.push(pending.startingLocation);
+    // Brief settle so the next step's on-page check (if any) sees the new
+    // pathname after Grafana's location subscriber processes the push.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    this.setState({
+      tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
+    });
+  }
+
+  /**
+   * Dismiss the implied-0th-step alignment prompt without navigating. Step 1
+   * mounts and the existing `on-page` `Fix this` will fire if the guide
+   * requires it.
+   */
+  public dismissAlignment(tabId: string): void {
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    const pending = tab?.pendingAlignment;
+    if (!tab || !pending) {
+      return;
+    }
+
+    reportAppInteraction(UserInteraction.AlignmentPromptDismissed, {
+      guide_url: tab.baseUrl || tab.currentUrl || '',
+      guide_title: tab.title,
+      launch_source: pending.launchSource,
+      current_path: pending.currentPath,
+      starting_location: pending.startingLocation,
+      latency_ms: Date.now() - pending.decidedAt,
+    });
+
+    this.setState({
+      tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
+    });
+  }
+
   public closeTab(tabId: string) {
     if (tabId === 'recommendations') {
       return; // Can't close recommendations tab
@@ -616,6 +692,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({ tabs: updatedTabs });
 
     try {
+      const launchSource = this._consumeAutoLaunchSource();
       const packageInfo = packageInfoArg ?? this.state.tabs.find((t) => t.id === tabId)?.packageInfo;
       const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
 
@@ -627,6 +704,25 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         const pathContext = fetchedContent.metadata.learningJourney
           ? { learningJourney: fetchedContent.metadata.learningJourney }
           : undefined;
+
+        // Implied 0th step: decide whether to prompt the user to navigate to
+        // the guide's declared starting location before step 1 begins.
+        const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
+        const currentPath = locationService.getLocation().pathname;
+        const evaluation = evaluateAlignment({
+          currentPath,
+          startingLocation,
+          launchSource: launchSource ?? undefined,
+        });
+        const pendingAlignment =
+          evaluation.shouldPrompt && startingLocation
+            ? {
+                startingLocation,
+                currentPath,
+                launchSource: launchSource ?? 'unknown',
+                decidedAt: Date.now(),
+              }
+            : undefined;
 
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
@@ -644,10 +740,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                       ? 'interactive'
                       : t.type,
                 pathContext,
+                pendingAlignment,
               }
             : t
         );
         this.setState({ tabs: finalUpdatedTabs });
+
+        if (pendingAlignment) {
+          reportAppInteraction(UserInteraction.AlignmentPromptShown, {
+            guide_url: url,
+            guide_title: this.state.tabs.find((t) => t.id === tabId)?.title ?? '',
+            launch_source: pendingAlignment.launchSource,
+            current_path: pendingAlignment.currentPath,
+            starting_location: pendingAlignment.startingLocation,
+          });
+        }
 
         // Save tabs to storage after content is loaded
         this.saveTabsToStorage();
@@ -912,8 +1019,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
   React.useEffect(() => {
     const handleAutoOpen = (event: Event) => {
-      const customEvent = event as CustomEvent<{ url: string; title: string; origin: string }>;
-      const { url, title } = customEvent.detail;
+      const customEvent = event as CustomEvent<{ url: string; title: string; source?: string }>;
+      const { url, title, source } = customEvent.detail;
+
+      // Record the launch source for the implied-0th-step alignment check.
+      // Consumed by `loadDocsTabContent` post-content-fetch.
+      model._recordAutoLaunchSource(source ?? null);
 
       // Always create a new tab for each intercepted link
       // Call the model method directly to ensure new tabs are created
@@ -1222,6 +1333,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       });
 
       if (url && title) {
+        // Record the launch source for the implied-0th-step alignment check.
+        // Consumed by `loadDocsTabContent` post-content-fetch.
+        model._recordAutoLaunchSource(source ?? null);
+
         if (openAsLearningJourney) {
           model.openLearningJourney(url, title);
         } else {
@@ -2125,41 +2240,52 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     minHeight: 0,
                   }}
                 >
-                  {stableContent && (
-                    <ContentRenderer
-                      key={activeTab?.currentUrl || stableContent.url}
-                      content={stableContent}
-                      containerRef={contentRef}
-                      className={`${
-                        stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
-                      } ${interactiveStyles} ${prismStyles}`}
-                      onContentReady={() => {
-                        // Restore scroll position after content is ready
-                        restoreScrollPosition();
-                      }}
-                      onGuideComplete={() => {
-                        const baseUrl = activeTab?.baseUrl || stableContent.url;
+                  {stableContent &&
+                    (activeTab?.pendingAlignment ? (
+                      <AlignmentPrompt
+                        startingLocation={activeTab.pendingAlignment.startingLocation}
+                        onConfirm={() => {
+                          void model.confirmAlignment(activeTab.id);
+                        }}
+                        onCancel={() => {
+                          model.dismissAlignment(activeTab.id);
+                        }}
+                      />
+                    ) : (
+                      <ContentRenderer
+                        key={activeTab?.currentUrl || stableContent.url}
+                        content={stableContent}
+                        containerRef={contentRef}
+                        className={`${
+                          stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
+                        } ${interactiveStyles} ${prismStyles}`}
+                        onContentReady={() => {
+                          // Restore scroll position after content is ready
+                          restoreScrollPosition();
+                        }}
+                        onGuideComplete={() => {
+                          const baseUrl = activeTab?.baseUrl || stableContent.url;
 
-                        // Mark bundled guides as 100% complete when all interactive steps finish
-                        if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100);
-                        }
-
-                        // Mark learning journey milestones as done when all interactive steps finish
-                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                          const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = activeTab.baseUrl;
-                          if (slug && journeyBase) {
-                            markMilestoneDone(
-                              journeyBase,
-                              slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones
-                            );
+                          // Mark bundled guides as 100% complete when all interactive steps finish
+                          if (baseUrl?.startsWith('bundled:')) {
+                            setJourneyCompletionPercentage(baseUrl, 100);
                           }
-                        }
-                      }}
-                    />
-                  )}
+
+                          // Mark learning journey milestones as done when all interactive steps finish
+                          if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
+                            const slug = getMilestoneSlug(activeTab.currentUrl);
+                            const journeyBase = activeTab.baseUrl;
+                            if (slug && journeyBase) {
+                              markMilestoneDone(
+                                journeyBase,
+                                slug,
+                                stableContent.metadata?.learningJourney?.totalMilestones
+                              );
+                            }
+                          }
+                        }}
+                      />
+                    ))}
 
                   {/* Go home button - always visible at bottom of content */}
                   <div className={styles.contentFooterAction}>

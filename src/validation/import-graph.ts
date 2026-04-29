@@ -26,6 +26,7 @@ export const TIER_MAP: Record<string, number> = {
   'global-state': 1,
   utils: 1,
   validation: 1,
+  recovery: 1,
   'context-engine': 2,
   'docs-retrieval': 2,
   'interactive-engine': 2,
