@@ -153,12 +153,13 @@ export function createRequirementsState(
         skippable
       );
 
-  // Check for fixable errors and extract fix information
+  // Extract fix metadata from the first fixable failed check. The fix-handler
+  // registry (`navigation` handler) owns the legacy `navmenu-open` fallback.
   const fixableError = failedChecks.find((e) => e.canFix);
-  const fixType = fixableError?.fixType || (requirements.includes('navmenu-open') ? 'navigation' : undefined);
+  const fixType = fixableError?.fixType;
   const targetHref = fixableError?.targetHref;
   const scrollContainer = fixableError?.scrollContainer;
-  const canFixRequirement = !!fixableError || requirements.includes('navmenu-open');
+  const canFixRequirement = !!fixableError;
 
   return {
     isEnabled: requirementsResult.pass,

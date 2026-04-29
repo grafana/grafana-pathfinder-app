@@ -266,9 +266,39 @@ describe('check-phases', () => {
       expect(result.targetHref).toBe('/x');
     });
 
-    it('should handle navmenu-open special case', () => {
+    it('does not synthesize fix metadata for navmenu-open: the navigation fix handler owns that fallback', () => {
+      // Historically, check-phases set canFixRequirement=true / fixType='navigation' when
+      // requirements included `navmenu-open`, even if the check result lacked canFix.
+      // That magic-string knowledge now lives in `fix-handlers/navigation.ts` (canHandle
+      // checks the requirements string), so check-phases reports the literal contract:
+      // no canFix in the result → no fix metadata in state.
       const result = createRequirementsState(
         { pass: false, error: [{ pass: false, error: 'Menu closed' }] },
+        'navmenu-open',
+        undefined,
+        false
+      );
+
+      expect(result.canFixRequirement).toBe(false);
+      expect(result.fixType).toBeUndefined();
+    });
+
+    it('uses fix metadata from a fixable check result (the realistic navmenu-open path)', () => {
+      // In production, `navmenuOpenCheck` returns canFix:true / fixType:'navigation' on
+      // failure, so this is the path users actually hit.
+      const result = createRequirementsState(
+        {
+          pass: false,
+          error: [
+            {
+              requirement: 'navmenu-open',
+              pass: false,
+              error: 'Menu closed',
+              canFix: true,
+              fixType: 'navigation',
+            },
+          ],
+        },
         'navmenu-open',
         undefined,
         false

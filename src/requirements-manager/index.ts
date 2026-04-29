@@ -49,3 +49,7 @@ export {
 } from './step-state';
 
 export type { StepStatus, CompletionReason, StepState, StepAction } from './step-state';
+
+// Fix type constants — re-exported here so UI consumers (Tier 3-4) can import via the barrel.
+export { FIX_TYPES } from './fix-types';
+export type { FixTypeValue } from './fix-types';

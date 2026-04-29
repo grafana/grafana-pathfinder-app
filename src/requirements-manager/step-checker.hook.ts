@@ -20,6 +20,7 @@ import {
 } from './check-phases';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useRequirementsManager } from './requirements-context';
+import { dispatchFix } from './fix-registry';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> interactive-engine
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
@@ -440,7 +441,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeSetState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * Attempt to automatically fix failed requirements
+   * Attempt to automatically fix failed requirements via the fix-handler registry.
+   * Wraps `dispatchFix` with mount-safety, the post-fix recheck, and error reporting.
    */
   const fixRequirement = useCallback(async () => {
     if (!state.canFixRequirement) {
@@ -455,46 +457,25 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     try {
       safeSetState((prev) => ({ ...prev, isChecking: true }));
 
-      if (state.fixType === 'expand-parent-navigation' && state.targetHref && navigationManagerRef.current) {
-        // Attempt to expand parent navigation section
-        const success = await navigationManagerRef.current.expandParentNavigationSection(state.targetHref);
+      const result = await dispatchFix({
+        fixType: state.fixType,
+        targetHref: state.targetHref,
+        scrollContainer: state.scrollContainer,
+        requirements,
+        stepId,
+        navigationManager: navigationManagerRef.current,
+        fixNavigationRequirements,
+      });
 
-        if (!success) {
-          console.error('Failed to expand parent navigation section');
+      if (!result.ok) {
+        console.warn('Fix failed:', result.error);
+        if (isMountedRef.current) {
           safeSetState((prev) => ({
             ...prev,
             isChecking: false,
-            error: 'Failed to expand parent navigation section',
+            error: result.error,
           }));
-          return;
         }
-      } else if (state.fixType === 'location' && state.targetHref && navigationManagerRef.current) {
-        // Fix location requirements by navigating to the expected path
-        await navigationManagerRef.current.fixLocationRequirement(state.targetHref);
-      } else if (state.fixType === 'expand-options-group') {
-        // Expand all collapsed Options Group panels in the Grafana panel editor
-        const collapsedToggles = document.querySelectorAll(
-          'button[data-testid*="Options group"][aria-expanded="false"]'
-        ) as NodeListOf<HTMLButtonElement>;
-
-        for (const toggle of collapsedToggles) {
-          toggle.click();
-        }
-        // Wait for React to render the newly expanded children
-        await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
-      } else if (state.fixType === 'navigation') {
-        // Fix basic navigation requirements (menu open/dock)
-        await fixNavigationRequirements();
-      } else if (requirements?.includes('navmenu-open') && fixNavigationRequirements) {
-        // Only fix navigation requirements if no other specific fix type is available
-        await fixNavigationRequirements();
-      } else {
-        console.warn('Unknown fix type:', state.fixType);
-        safeSetState((prev) => ({
-          ...prev,
-          isChecking: false,
-          error: 'Unable to automatically fix this requirement',
-        }));
         return;
       }
 
@@ -524,6 +505,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     state.canFixRequirement,
     state.fixType,
     state.targetHref,
+    state.scrollContainer,
     requirements,
     fixNavigationRequirements,
     checkStep,
