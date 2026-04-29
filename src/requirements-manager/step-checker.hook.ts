@@ -322,21 +322,39 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       // PHASE 1: Check objectives first (they always win).
       // Same checker as requirements; just no retries and a short timeout — objectives are
       // a snapshot of "is this already done?", not a target to wait for.
+      //
+      // Failures inside this block (including the 3s `timeoutMs` rejection from
+      // `checkRequirementsWithStateUpdates`) must NOT abort `checkStep`. The legacy
+      // `checkConditions` swallowed timeouts and returned `{ pass: false }`, allowing
+      // the flow to fall through to eligibility (Phase 2) and requirements (Phase 3).
+      // Letting an objectives-check rejection propagate to the outer `catch` would
+      // strand the step in an error state on slow networks. Treat any objectives
+      // failure here as "objectives unmet" and continue.
       if (objectives && objectives.trim() !== '') {
-        const objectivesResult = await checkRequirementsWithStateUpdates(
-          {
-            requirements: objectives,
-            targetAction: targetAction || 'button',
-            refTarget: refTarget || stepId,
-            stepId,
-            maxRetriesOverride: 0,
-            timeoutMs: 3000,
-          },
-          () => {
-            /* no-op: objectives don't surface retry state to the UI */
-          }
-        );
-        if (objectivesResult.pass) {
+        let objectivesPassed = false;
+        try {
+          const objectivesResult = await checkRequirementsWithStateUpdates(
+            {
+              requirements: objectives,
+              targetAction: targetAction || 'button',
+              refTarget: refTarget || stepId,
+              stepId,
+              maxRetriesOverride: 0,
+              timeoutMs: 3000,
+            },
+            () => {
+              /* no-op: objectives don't surface retry state to the UI */
+            }
+          );
+          objectivesPassed = objectivesResult.pass;
+        } catch (objectivesError) {
+          // Timeout or unexpected error: log and fall through. The outer `catch`
+          // is reserved for failures in Phase 2/3, where erroring is the correct
+          // user-facing outcome.
+          console.warn('Objectives check failed; falling through to requirements:', objectivesError);
+        }
+
+        if (objectivesPassed) {
           const finalState = createObjectivesCompletedState(skippable);
           // REACT: Check mounted before state update (R4)
           if (isMountedRef.current) {

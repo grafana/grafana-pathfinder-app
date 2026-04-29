@@ -389,6 +389,67 @@ describe('useStepChecker priority ordering (regression)', () => {
     expect(result.current.isCompleted).toBe(false);
     expect(callsFor('on-page:/explore').length).toBeGreaterThan(0);
   });
+
+  // REGRESSION: a slow / hung objectives check (3s timeoutMs in the hook) used to
+  // reject up to checkStep's outer catch and strand the step in an error state.
+  // The legacy `checkConditions` swallowed the timeout and returned { pass: false },
+  // letting the flow continue to Phase 2 (eligibility) and Phase 3 (requirements).
+  // The objectives-check rejection only happens via Promise.race timeout (the
+  // inner attemptCheck swallows checkRequirements rejections), so we use fake
+  // timers and a hung objectives mock to drive that path.
+  it('falls through to requirements when the objectives check times out', async () => {
+    jest.useFakeTimers();
+    // Silence the warning the production code emits on this fall-through path.
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockCheckRequirements.mockImplementation(({ requirements }) => {
+      if (requirements === 'has-datasources') {
+        // Hang forever; the hook's 3s Promise.race timeout will reject for us.
+        return new Promise(() => {});
+      }
+      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
+    });
+
+    try {
+      const rendered = renderHook(() =>
+        useStepChecker({
+          stepId: 'test-step',
+          isEligibleForChecking: true,
+          objectives: 'has-datasources',
+          requirements: 'on-page:/explore',
+        })
+      );
+
+      // Flush the lazy `import('../interactive-engine')` so navigationManagerRef is set.
+      // Microtasks resolve under fake timers, but real `import()` does not — wrap
+      // in act + real microtask flushes via Promise.resolve.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Kick off checkStep. The objectives check enters Promise.race and hangs.
+      let checkStepPromise!: Promise<void>;
+      await act(async () => {
+        checkStepPromise = rendered.result.current.checkStep();
+      });
+
+      // Trip the 3000ms timeoutMs. Promise.race rejects; in the fixed code, the
+      // inner try/catch turns that into "objectives unmet" and the flow continues.
+      await act(async () => {
+        jest.advanceTimersByTime(3001);
+        await checkStepPromise;
+      });
+
+      expect(rendered.result.current.isEnabled).toBe(true);
+      expect(rendered.result.current.isCompleted).toBe(false);
+      expect(rendered.result.current.error).toBeUndefined();
+      expect(callsFor('on-page:/explore').length).toBeGreaterThan(0);
+    } finally {
+      warnSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
 });
 
 // =============================================================================
