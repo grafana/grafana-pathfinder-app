@@ -662,10 +662,40 @@ describe('step-state', () => {
         canSkip: true,
         fixType: 'navigation',
         targetHref: '/dashboard',
+        scrollContainer: undefined,
         retryCount: 1,
         maxRetries: 3,
         isRetrying: false, // Not checking, so not retrying
       });
+    });
+
+    it('should report isEnabled:true for objectives-completed steps (legacy compat)', () => {
+      const state: StepState = {
+        ...createInitialState(),
+        status: 'completed',
+        completionReason: 'objectives',
+        explanation: 'Already done!',
+      };
+
+      const legacy = toLegacyState(state);
+
+      expect(legacy.isEnabled).toBe(true);
+      expect(legacy.isCompleted).toBe(true);
+      expect(legacy.completionReason).toBe('objectives');
+    });
+
+    it('should report isEnabled:false for manually-completed steps (legacy compat)', () => {
+      const state: StepState = {
+        ...createInitialState(),
+        status: 'completed',
+        completionReason: 'manual',
+        explanation: 'Completed',
+      };
+
+      const legacy = toLegacyState(state);
+
+      expect(legacy.isEnabled).toBe(false);
+      expect(legacy.isCompleted).toBe(true);
     });
 
     it('should derive isRetrying correctly in legacy format', () => {

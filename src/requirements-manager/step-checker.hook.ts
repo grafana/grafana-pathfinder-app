@@ -9,7 +9,7 @@
  * 4. Smart performance: skip requirements if objectives are satisfied
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useReducer, useCallback, useEffect, useRef } from 'react';
 // getRequirementExplanation is used in check-phases.ts
 import {
   createObjectivesCompletedState,
@@ -21,6 +21,7 @@ import {
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useRequirementsManager } from './requirements-context';
 import { dispatchFix } from './fix-registry';
+import { stepReducer, createInitialState, toLegacyState, type StepAction } from './step-state';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> interactive-engine
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
@@ -30,6 +31,46 @@ import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.t
 
 // Re-export for convenience
 export type { UseStepCheckerProps, UseStepCheckerReturn };
+
+// The legacy state shape returned by check-phases.ts factory functions.
+// Used here as the input to `actionFromBaseStepState` (the FSM adapter).
+type LegacyStateShape = ReturnType<typeof createObjectivesCompletedState>;
+
+/**
+ * Translate a legacy `BaseStepState` (from a check-phases factory) into the
+ * matching `StepAction`. This is a transitional adapter: phase factories still
+ * compute the user-facing state, the reducer owns transitions. A follow-up
+ * refactor will collapse the two by having phase functions return actions
+ * directly.
+ */
+function actionFromBaseStepState(s: LegacyStateShape): StepAction {
+  if (s.isCompleted) {
+    return { type: 'SET_COMPLETED', reason: s.completionReason, explanation: s.explanation };
+  }
+  // createBlockedState's distinguishing marker — see check-phases.ts:createBlockedState.
+  if (s.error === 'Sequential dependency not met') {
+    return { type: 'SET_BLOCKED', error: s.error, explanation: s.explanation };
+  }
+  if (s.isEnabled) {
+    return {
+      type: 'SET_ENABLED',
+      canFix: s.canFixRequirement,
+      fixType: s.fixType,
+      targetHref: s.targetHref,
+      scrollContainer: s.scrollContainer,
+    };
+  }
+  // Failed requirements or check-time errors land here (status -> 'blocked' with metadata).
+  return {
+    type: 'SET_ERROR',
+    error: s.error ?? 'Unknown error',
+    explanation: s.explanation,
+    canFix: s.canFixRequirement,
+    fixType: s.fixType,
+    targetHref: s.targetHref,
+    scrollContainer: s.scrollContainer,
+  };
+}
 
 /**
  * Unified step checker that handles both requirements and objectives
@@ -52,23 +93,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     onStepComplete,
     onComplete,
   } = props;
-  const [state, setState] = useState({
-    isEnabled: false,
-    isCompleted: false,
-    isChecking: false,
-    isSkipped: false,
-    completionReason: 'none' as 'none' | 'objectives' | 'manual' | 'skipped',
-    explanation: undefined as string | undefined,
-    error: undefined as string | undefined,
-    canFixRequirement: false,
-    canSkip: skippable,
-    fixType: undefined as string | undefined,
-    targetHref: undefined as string | undefined,
-    scrollContainer: undefined as string | undefined, // For lazy-scroll fixes
-    retryCount: 0,
-    maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
-    isRetrying: false,
-  });
+  const [fsmState, dispatch] = useReducer(stepReducer, undefined, () => createInitialState({ canSkip: skippable }));
+  const state = toLegacyState(fsmState);
 
   // REACT: Track mounted state to prevent state updates after unmount (R4)
   const isMountedRef = useRef(true);
@@ -79,10 +105,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     };
   }, []);
 
-  // Safe setState wrapper that checks if component is still mounted
-  const safeSetState = useCallback((updater: typeof state | ((prev: typeof state) => typeof state)) => {
+  // Safe dispatch wrapper that checks if component is still mounted
+  const safeDispatch = useCallback((action: StepAction) => {
     if (isMountedRef.current) {
-      setState(updater as any);
+      dispatch(action);
     }
   }, []);
 
@@ -290,7 +316,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
-    safeSetState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
+    safeDispatch({ type: 'START_CHECK' });
 
     try {
       // PHASE 1: Check objectives first (they always win).
@@ -314,7 +340,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           const finalState = createObjectivesCompletedState(skippable);
           // REACT: Check mounted before state update (R4)
           if (isMountedRef.current) {
-            setState(finalState);
+            dispatch(actionFromBaseStepState(finalState));
             prevIsEnabledRef.current = true;
             enabledTimestampRef.current = Date.now();
             updateManager(finalState);
@@ -328,7 +354,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       const currentEligibility = isEligibleRef.current;
       if (!currentEligibility) {
         const blockedState = createBlockedState(stepId);
-        safeSetState(blockedState);
+        safeDispatch(actionFromBaseStepState(blockedState));
         updateManager(blockedState);
         return;
       }
@@ -342,14 +368,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             refTarget: refTarget || stepId,
             stepId,
           },
-          (retryCount, maxRetries, isRetrying) => {
-            safeSetState((prev) => ({
-              ...prev,
-              retryCount,
-              maxRetries,
-              isRetrying,
-              isChecking: true,
-            }));
+          (retryCount, _maxRetries, isRetrying) => {
+            safeDispatch({ type: 'UPDATE_RETRY', retryCount, isRetrying });
           }
         );
 
@@ -360,14 +380,15 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           return;
         }
 
+        const action = actionFromBaseStepState(requirementsState);
         const isTransitioningToEnabled = !prevIsEnabledRef.current && requirementsResult.pass;
         if (isTransitioningToEnabled) {
-          setState(requirementsState);
+          dispatch(action);
           prevIsEnabledRef.current = true;
           enabledTimestampRef.current = Date.now();
           updateManager(requirementsState);
         } else {
-          safeSetState(requirementsState);
+          safeDispatch(action);
           prevIsEnabledRef.current = requirementsResult.pass;
           if (requirementsResult.pass) {
             enabledTimestampRef.current = Date.now();
@@ -385,22 +406,23 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         return;
       }
 
+      const enabledAction = actionFromBaseStepState(enabledState);
       const wasDisabled = !prevIsEnabledRef.current;
       if (wasDisabled) {
-        setState(enabledState);
+        dispatch(enabledAction);
         prevIsEnabledRef.current = true;
         enabledTimestampRef.current = Date.now();
       } else {
-        safeSetState(enabledState);
+        safeDispatch(enabledAction);
       }
       updateManager(enabledState);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
       const errorState = createErrorState(errorMessage, requirements || objectives, hints, skippable);
-      safeSetState(errorState);
+      safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeSetState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
@@ -417,7 +439,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     }
 
     try {
-      safeSetState((prev) => ({ ...prev, isChecking: true }));
+      safeDispatch({ type: 'START_CHECK' });
 
       const result = await dispatchFix({
         fixType: state.fixType,
@@ -432,11 +454,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       if (!result.ok) {
         console.warn('Fix failed:', result.error);
         if (isMountedRef.current) {
-          safeSetState((prev) => ({
-            ...prev,
-            isChecking: false,
-            error: result.error,
-          }));
+          safeDispatch({ type: 'SET_ERROR', error: result.error });
         }
         return;
       }
@@ -457,11 +475,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       await checkStep();
     } catch (error) {
       console.error('Failed to fix requirements:', error);
-      safeSetState((prev) => ({
-        ...prev,
-        isChecking: false,
-        error: 'Failed to fix requirements',
-      }));
+      safeDispatch({ type: 'SET_ERROR', error: 'Failed to fix requirements' });
     }
   }, [
     state.canFixRequirement,
@@ -473,39 +487,37 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     checkStep,
     stepId,
     timeoutManager,
-    safeSetState,
+    safeDispatch,
   ]);
 
   /**
    * Manual completion (for user-executed steps)
    */
   const markCompleted = useCallback(() => {
-    const completedState = {
+    dispatch({ type: 'SET_COMPLETED', reason: 'manual', explanation: 'Completed' });
+    updateManager({
       ...state,
       isCompleted: true,
-      isEnabled: false, // Completed steps are disabled
+      isEnabled: false,
       isSkipped: false,
-      completionReason: 'manual' as const,
+      completionReason: 'manual',
       explanation: 'Completed',
-    };
-    setState(completedState);
-    updateManager(completedState);
+    });
   }, [state, updateManager]);
 
   /**
    * Mark step as skipped (for steps that can't meet requirements but are skippable)
    */
   const markSkipped = useCallback(() => {
-    const skippedState = {
+    dispatch({ type: 'SET_COMPLETED', reason: 'skipped', explanation: 'Skipped due to requirements' });
+    updateManager({
       ...state,
-      isCompleted: true, // Skipped steps count as completed for flow purposes
+      isCompleted: true,
+      isEnabled: false,
       isSkipped: true,
-      isEnabled: false, // Skipped steps are disabled
-      completionReason: 'skipped' as const,
+      completionReason: 'skipped',
       explanation: 'Skipped due to requirements',
-    };
-    setState(skippedState);
-    updateManager(skippedState);
+    });
 
     // Trigger check for dependent steps when this step is skipped
     if (managerRef.current) {
@@ -523,12 +535,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * Reset step to initial state (including skipped state) and recheck requirements
    */
   const resetStep = useCallback(() => {
-    const resetState = {
+    dispatch({ type: 'RESET', canSkip: skippable });
+    updateManager({
       isEnabled: false,
       isCompleted: false,
       isChecking: false,
       isSkipped: false,
-      completionReason: 'none' as const,
+      completionReason: 'none',
       explanation: undefined,
       error: undefined,
       canFixRequirement: false,
@@ -539,9 +552,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       retryCount: 0,
       maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
       isRetrying: false,
-    };
-    setState(resetState);
-    updateManager(resetState);
+    });
 
     // Recheck requirements after reset
     timeoutManager.setTimeout(

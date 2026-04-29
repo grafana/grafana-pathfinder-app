@@ -35,6 +35,8 @@ export interface StepState {
   canFix: boolean;
   fixType?: string;
   targetHref?: string;
+  /** CSS selector for the scroll container when the failure can be fixed via lazy scroll. */
+  scrollContainer?: string;
   retryCount: number;
   maxRetries: number;
   canSkip: boolean;
@@ -46,9 +48,23 @@ export interface StepState {
 export type StepAction =
   | { type: 'START_CHECK' }
   | { type: 'SET_BLOCKED'; error: string; explanation?: string }
-  | { type: 'SET_ENABLED'; canFix?: boolean; fixType?: string; targetHref?: string }
+  | {
+      type: 'SET_ENABLED';
+      canFix?: boolean;
+      fixType?: string;
+      targetHref?: string;
+      scrollContainer?: string;
+    }
   | { type: 'SET_COMPLETED'; reason: CompletionReason; explanation?: string }
-  | { type: 'SET_ERROR'; error: string; explanation?: string; canFix?: boolean; fixType?: string; targetHref?: string }
+  | {
+      type: 'SET_ERROR';
+      error: string;
+      explanation?: string;
+      canFix?: boolean;
+      fixType?: string;
+      targetHref?: string;
+      scrollContainer?: string;
+    }
   | { type: 'UPDATE_RETRY'; retryCount: number; isRetrying: boolean }
   | { type: 'RESET'; canSkip?: boolean };
 
@@ -64,6 +80,7 @@ export function createInitialState(options?: { canSkip?: boolean }): StepState {
     canFix: false,
     fixType: undefined,
     targetHref: undefined,
+    scrollContainer: undefined,
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     canSkip: options?.canSkip ?? false,
@@ -97,6 +114,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         canFix: false,
         fixType: undefined,
         targetHref: undefined,
+        scrollContainer: undefined,
       };
 
     case 'SET_ENABLED':
@@ -108,6 +126,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         canFix: action.canFix ?? false,
         fixType: action.fixType,
         targetHref: action.targetHref,
+        scrollContainer: action.scrollContainer,
       };
 
     case 'SET_COMPLETED':
@@ -118,6 +137,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         explanation: action.explanation ?? 'Completed',
         error: undefined,
         canFix: false,
+        scrollContainer: undefined,
       };
 
     case 'SET_ERROR':
@@ -129,6 +149,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         canFix: action.canFix ?? false,
         fixType: action.fixType,
         targetHref: action.targetHref,
+        scrollContainer: action.scrollContainer,
       };
 
     case 'UPDATE_RETRY':
@@ -170,12 +191,20 @@ export function deriveIsRetrying(state: StepState): boolean {
 }
 
 /**
- * Convert new StepState to legacy state object format
- * Used for backward compatibility during migration
+ * Convert new StepState to legacy state object format.
+ * Used for backward compatibility during migration so consumers of useStepChecker
+ * keep seeing the same shape they always have.
+ *
+ * Legacy quirk: isEnabled is true for objectives-completed steps. Those steps are
+ * "interactive" in the user-facing sense (Redo is available) even though the FSM
+ * status is `completed`. Preserved here so consumers like interactive-step.tsx,
+ * interactive-multi-step.tsx, and interactive-guided.tsx don't change behaviour.
  */
 export function toLegacyState(state: StepState) {
+  const isEnabled =
+    state.status === 'enabled' || (state.status === 'completed' && state.completionReason === 'objectives');
   return {
-    isEnabled: deriveIsEnabled(state),
+    isEnabled,
     isCompleted: deriveIsCompleted(state),
     isChecking: deriveIsChecking(state),
     isSkipped: deriveIsSkipped(state),
@@ -186,6 +215,7 @@ export function toLegacyState(state: StepState) {
     canSkip: state.canSkip,
     fixType: state.fixType,
     targetHref: state.targetHref,
+    scrollContainer: state.scrollContainer,
     retryCount: state.retryCount,
     maxRetries: state.maxRetries,
     isRetrying: deriveIsRetrying(state),
