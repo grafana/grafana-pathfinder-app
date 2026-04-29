@@ -259,6 +259,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async openLearningJourney(url: string, title?: string): Promise<string> {
+    // Drain any auto-launch source that the listener recorded before branching
+    // here. Learning journeys go through `loadTabContent`, which never consumes
+    // `_pendingLaunchSource`, so without this the value would leak to the next
+    // `loadDocsTabContent` call (e.g. a subsequent recommender or tab-restore
+    // open) and contaminate its alignment evaluation. Until learning journeys
+    // grow their own implied-0th-step logic, we just drop the value.
+    this._consumeAutoLaunchSource();
+
     const finalTitle = title || 'Learning path';
     const tabId = this.generateTabId();
 
@@ -2242,7 +2250,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 >
                   {stableContent && (
                     <>
-                      {activeTab?.pendingAlignment && (
+                      {activeTab?.pendingAlignment ? (
+                        // While an alignment prompt is pending, suppress the
+                        // ContentRenderer entirely. This keeps the implied 0th
+                        // step from racing with step 1's mount and matches the
+                        // documented contract on `PendingAlignment`.
                         <AlignmentPrompt
                           startingLocation={activeTab.pendingAlignment.startingLocation}
                           onConfirm={() => {
@@ -2252,40 +2264,41 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             model.dismissAlignment(activeTab.id);
                           }}
                         />
-                      )}
-                      <ContentRenderer
-                        key={activeTab?.currentUrl || stableContent.url}
-                        content={stableContent}
-                        containerRef={contentRef}
-                        className={`${
-                          stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
-                        } ${interactiveStyles} ${prismStyles}`}
-                        onContentReady={() => {
-                          // Restore scroll position after content is ready
-                          restoreScrollPosition();
-                        }}
-                        onGuideComplete={() => {
-                          const baseUrl = activeTab?.baseUrl || stableContent.url;
+                      ) : (
+                        <ContentRenderer
+                          key={activeTab?.currentUrl || stableContent.url}
+                          content={stableContent}
+                          containerRef={contentRef}
+                          className={`${
+                            stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
+                          } ${interactiveStyles} ${prismStyles}`}
+                          onContentReady={() => {
+                            // Restore scroll position after content is ready
+                            restoreScrollPosition();
+                          }}
+                          onGuideComplete={() => {
+                            const baseUrl = activeTab?.baseUrl || stableContent.url;
 
-                          // Mark bundled guides as 100% complete when all interactive steps finish
-                          if (baseUrl?.startsWith('bundled:')) {
-                            setJourneyCompletionPercentage(baseUrl, 100);
-                          }
-
-                          // Mark learning journey milestones as done when all interactive steps finish
-                          if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                            const slug = getMilestoneSlug(activeTab.currentUrl);
-                            const journeyBase = activeTab.baseUrl;
-                            if (slug && journeyBase) {
-                              markMilestoneDone(
-                                journeyBase,
-                                slug,
-                                stableContent.metadata?.learningJourney?.totalMilestones
-                              );
+                            // Mark bundled guides as 100% complete when all interactive steps finish
+                            if (baseUrl?.startsWith('bundled:')) {
+                              setJourneyCompletionPercentage(baseUrl, 100);
                             }
-                          }
-                        }}
-                      />
+
+                            // Mark learning journey milestones as done when all interactive steps finish
+                            if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
+                              const slug = getMilestoneSlug(activeTab.currentUrl);
+                              const journeyBase = activeTab.baseUrl;
+                              if (slug && journeyBase) {
+                                markMilestoneDone(
+                                  journeyBase,
+                                  slug,
+                                  stableContent.metadata?.learningJourney?.totalMilestones
+                                );
+                              }
+                            }
+                          }}
+                        />
+                      )}
                     </>
                   )}
 

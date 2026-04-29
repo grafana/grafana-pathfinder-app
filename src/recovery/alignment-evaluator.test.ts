@@ -16,6 +16,31 @@ describe('pathMatchesStartingLocation', () => {
   it('returns true for the root starting location when current is also root', () => {
     expect(pathMatchesStartingLocation('/', '/')).toBe(true);
   });
+
+  // Regression: `currentPath.includes(startingLocation)` falsely matched
+  // unrelated paths that happened to contain the target as a substring.
+  it('returns false when currentPath shares a prefix string but not a path segment', () => {
+    expect(pathMatchesStartingLocation('/connections-new', '/connections')).toBe(false);
+  });
+
+  it('returns false when startingLocation appears mid-path rather than at the start', () => {
+    expect(pathMatchesStartingLocation('/explore/metrics', '/metrics')).toBe(false);
+  });
+
+  it('returns false when paths are unrelated despite overlapping characters', () => {
+    expect(pathMatchesStartingLocation('/dashboards', '/dash')).toBe(false);
+  });
+
+  it('treats a trailing slash on either side as equivalent', () => {
+    expect(pathMatchesStartingLocation('/connections/', '/connections')).toBe(true);
+    expect(pathMatchesStartingLocation('/connections', '/connections/')).toBe(true);
+  });
+
+  it('does not treat root as an ancestor of every path', () => {
+    // Root only matches root; a guide that declares `/` as its starting
+    // location should not be considered aligned for arbitrary deeper pages.
+    expect(pathMatchesStartingLocation('/explore', '/')).toBe(false);
+  });
 });
 
 describe('evaluateAlignment', () => {

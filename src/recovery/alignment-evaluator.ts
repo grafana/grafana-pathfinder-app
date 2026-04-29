@@ -30,14 +30,33 @@ export interface EvaluateAlignmentInput {
 /**
  * True when `currentPath` satisfies a guide that declares `startingLocation`.
  *
- * Mirrors `onPageCheck` semantics in
- * `src/requirements-manager/checks/location.ts`: a path is aligned if it is
- * an exact match OR contains the starting location as a substring. Keeping
- * the rule consistent ensures step 1's `on-page` requirement (if declared)
- * also passes once we navigate.
+ * Path-prefix match with a segment boundary: `currentPath` must be either an
+ * exact match for `startingLocation` or a strict descendant of it.
+ *
+ * Earlier versions used `currentPath.includes(startingLocation)` to mirror
+ * `onPageCheck` in `src/requirements-manager/checks/location.ts`, but that
+ * substring rule yields false positives for unrelated paths whose names
+ * happen to contain the starting location: `/connections-new` would match
+ * `/connections`, and `/explore/metrics` would match `/metrics`. We do
+ * proper segment-boundary matching here; the legacy `onPageCheck` rule is
+ * a separate concern.
+ *
+ * Trailing slashes are normalized so `/connections` and `/connections/`
+ * compare equal.
  */
 export function pathMatchesStartingLocation(currentPath: string, startingLocation: string): boolean {
-  return currentPath === startingLocation || currentPath.includes(startingLocation);
+  const stripTrailingSlash = (p: string): string => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);
+  const cur = stripTrailingSlash(currentPath);
+  const target = stripTrailingSlash(startingLocation);
+
+  // Root special case: only `/` matches `/`. Without this branch, a `target`
+  // of `/` would slip into the `startsWith('/' + '/')` check below and never
+  // match anything except literal `//foo`.
+  if (target === '/' || target === '') {
+    return cur === '/' || cur === '';
+  }
+
+  return cur === target || cur.startsWith(target + '/');
 }
 
 export function evaluateAlignment(input: EvaluateAlignmentInput): AlignmentEvaluation {
