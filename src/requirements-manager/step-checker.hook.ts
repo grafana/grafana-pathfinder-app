@@ -100,25 +100,40 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   const timeoutManager = useTimeoutManager();
 
-  // Requirements checking is now handled by the pure requirements utility
-  const { checkRequirementsFromData } = useInteractiveElements();
-
   // Subscribe to manager state changes via useSyncExternalStore
   // This ensures React renders are synchronized with manager state updates
   // Note: We keep this subscription active but don't use the value directly in effects
   // to prevent infinite loops. The registered step checker callback handles rechecks instead.
   useSequentialStepState(stepId);
 
-  // Custom requirements checker that provides state updates for retry feedback
+  // Unified condition checker: handles both requirements and objectives.
+  // Objectives pass `maxRetriesOverride: 0` and a short `timeoutMs`; requirements
+  // get the default retry behaviour and (optional) lazyRender gating.
   const checkRequirementsWithStateUpdates = useCallback(
     async (
-      options: { requirements: string; targetAction?: string; refTarget?: string; stepId?: string },
+      options: {
+        requirements: string;
+        targetAction?: string;
+        refTarget?: string;
+        stepId?: string;
+        /** Force a specific retry count (0 disables retries entirely). */
+        maxRetriesOverride?: number;
+        /** Wrap the entire call in Promise.race with this timeout. Reject propagates to caller. */
+        timeoutMs?: number;
+      },
       onStateUpdate: (retryCount: number, maxRetries: number, isRetrying: boolean) => void
     ) => {
-      const { requirements, targetAction = 'button', refTarget = '', stepId: optionsStepId } = options;
-      // When lazyRender is enabled, don't do automatic retries - let the button handle lazy scroll
-      // This prevents continuous checking loop before user initiates lazy scroll
-      const maxRetries = lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries;
+      const {
+        requirements,
+        targetAction = 'button',
+        refTarget = '',
+        stepId: optionsStepId,
+        maxRetriesOverride,
+        timeoutMs,
+      } = options;
+      // When lazyRender is enabled, don't do automatic retries - let the button handle lazy scroll.
+      // The explicit override (passed by the objectives path) takes precedence.
+      const maxRetries = maxRetriesOverride ?? (lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries);
 
       const attemptCheck = async (retryCount: number): Promise<any> => {
         // REACT: Check mounted before state updates to prevent updates after unmount (R4)
@@ -194,7 +209,14 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         }
       };
 
-      return attemptCheck(0);
+      const work = attemptCheck(0);
+      if (timeoutMs === undefined) {
+        return work;
+      }
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Conditions check timed out after ${timeoutMs}ms`)), timeoutMs);
+      });
+      return Promise.race([work, timeoutPromise]);
     },
     [lazyRender, scrollContainer] // checkRequirements is an imported function but lazyRender/scrollContainer are props
   );
@@ -245,80 +267,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   }
 
   /**
-   * Check conditions (requirements or objectives) using proper DOM check functions
-   */
-  const checkConditions = useCallback(
-    async (conditions: string, type: 'requirements' | 'objectives') => {
-      try {
-        // For objectives, still use the original method since objectives don't need retries
-        if (type === 'objectives') {
-          // Create proper InteractiveElementData structure
-          const actionData = {
-            requirements: conditions,
-            targetaction: targetAction || 'button',
-            reftarget: refTarget || stepId, // Use actual refTarget if available, fallback to stepId
-            textContent: stepId,
-            tagName: 'div' as const,
-            objectives: conditions,
-          };
-
-          // Add timeout to prevent hanging
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error(`${type} check timeout`)), 3000);
-          });
-
-          const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
-
-          const conditionsMet = result.pass;
-          const errorMessage = conditionsMet
-            ? undefined
-            : result.error?.map((e: any) => e.error || e.requirement).join(', ');
-
-          const fixableError = result.error?.find((e: any) => e.canFix);
-
-          return {
-            pass: conditionsMet,
-            error: errorMessage,
-            canFix: !!fixableError,
-            fixType: fixableError?.fixType,
-            targetHref: fixableError?.targetHref,
-          };
-        }
-
-        // For requirements, use the new retry-enabled checker
-        const result = await checkRequirements({
-          requirements: conditions,
-          targetAction: targetAction || 'button',
-          refTarget: refTarget || stepId,
-          stepId,
-          lazyRender,
-          scrollContainer,
-        });
-
-        const conditionsMet = result.pass;
-        const errorMessage = conditionsMet
-          ? undefined
-          : result.error?.map((e: any) => e.error || e.requirement).join(', ');
-
-        // Check if any error has fix capability
-        const fixableError = result.error?.find((e: any) => e.canFix);
-
-        return {
-          pass: conditionsMet,
-          error: errorMessage,
-          canFix: !!fixableError,
-          fixType: fixableError?.fixType,
-          targetHref: fixableError?.targetHref,
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : `Failed to check ${type}`;
-        return { pass: false, error: errorMessage };
-      }
-    },
-    [stepId, refTarget, targetAction, checkRequirementsFromData, lazyRender, scrollContainer]
-  );
-
-  /**
    * Check step conditions with priority logic:
    * 1. Objectives (auto-complete if met)
    * 2. Sequential eligibility (block if previous steps incomplete)
@@ -345,9 +293,23 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     safeSetState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
 
     try {
-      // PHASE 1: Check objectives first (they always win)
+      // PHASE 1: Check objectives first (they always win).
+      // Same checker as requirements; just no retries and a short timeout — objectives are
+      // a snapshot of "is this already done?", not a target to wait for.
       if (objectives && objectives.trim() !== '') {
-        const objectivesResult = await checkConditions(objectives, 'objectives');
+        const objectivesResult = await checkRequirementsWithStateUpdates(
+          {
+            requirements: objectives,
+            targetAction: targetAction || 'button',
+            refTarget: refTarget || stepId,
+            stepId,
+            maxRetriesOverride: 0,
+            timeoutMs: 3000,
+          },
+          () => {
+            /* no-op: objectives don't surface retry state to the UI */
+          }
+        );
         if (objectivesResult.pass) {
           const finalState = createObjectivesCompletedState(skippable);
           // REACT: Check mounted before state update (R4)

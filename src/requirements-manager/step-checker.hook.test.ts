@@ -307,12 +307,22 @@ describe('useStepChecker fix dispatch (regression)', () => {
 // Documents the contract at step-checker.hook.ts:1-10 before refactor (Phase C).
 // =============================================================================
 describe('useStepChecker priority ordering (regression)', () => {
-  it('auto-completes via objectives without ever calling checkRequirements', async () => {
-    mockCheckRequirementsFromData.mockResolvedValue({
-      pass: true,
-      requirements: 'has-datasources',
-      error: [],
-    });
+  // After unification, objectives and requirements share a single underlying
+  // `checkRequirements` call — so the priority contract is verified by which
+  // requirement strings are passed, not by which mock function fires.
+
+  function callsFor(requirementsString: string) {
+    return mockCheckRequirements.mock.calls.filter(([opts]) => opts.requirements === requirementsString);
+  }
+
+  it('auto-completes via objectives and never checks the requirements string', async () => {
+    mockCheckRequirements.mockImplementation(({ requirements }) =>
+      Promise.resolve({
+        pass: requirements === 'has-datasources',
+        requirements: requirements || '',
+        error: requirements === 'has-datasources' ? [] : [failedRequirement({ requirement: requirements || '' })],
+      })
+    );
 
     const { result } = await renderStepChecker({
       objectives: 'has-datasources',
@@ -325,15 +335,17 @@ describe('useStepChecker priority ordering (regression)', () => {
 
     expect(result.current.isCompleted).toBe(true);
     expect(result.current.completionReason).toBe('objectives');
-    expect(mockCheckRequirements).not.toHaveBeenCalled();
+    expect(callsFor('on-page:/explore')).toHaveLength(0);
   });
 
-  it('blocks on ineligibility before checking requirements (objectives unmet)', async () => {
-    mockCheckRequirementsFromData.mockResolvedValue({
-      pass: false,
-      requirements: 'has-datasources',
-      error: [failedRequirement({ requirement: 'has-datasources' })],
-    });
+  it('blocks on ineligibility before checking the requirements string (objectives unmet)', async () => {
+    mockCheckRequirements.mockImplementation(({ requirements }) =>
+      Promise.resolve({
+        pass: false,
+        requirements: requirements || '',
+        error: [failedRequirement({ requirement: requirements || '' })],
+      })
+    );
 
     const { result } = await renderStepChecker({
       objectives: 'has-datasources',
@@ -348,19 +360,19 @@ describe('useStepChecker priority ordering (regression)', () => {
     expect(result.current.isEnabled).toBe(false);
     expect(result.current.isCompleted).toBe(false);
     expect(result.current.error).toBe('Sequential dependency not met');
-    expect(mockCheckRequirements).not.toHaveBeenCalled();
+    expect(callsFor('on-page:/explore')).toHaveLength(0);
   });
 
-  it('falls through to requirements when objectives unmet and step is eligible', async () => {
-    mockCheckRequirementsFromData.mockResolvedValue({
-      pass: false,
-      requirements: 'has-datasources',
-      error: [failedRequirement({ requirement: 'has-datasources' })],
-    });
-    mockCheckRequirements.mockResolvedValue({
-      pass: true,
-      requirements: 'on-page:/explore',
-      error: [],
+  it('falls through to the requirements string when objectives unmet and step is eligible', async () => {
+    mockCheckRequirements.mockImplementation(({ requirements }) => {
+      if (requirements === 'has-datasources') {
+        return Promise.resolve({
+          pass: false,
+          requirements,
+          error: [failedRequirement({ requirement: 'has-datasources' })],
+        });
+      }
+      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
     });
 
     const { result } = await renderStepChecker({
@@ -375,7 +387,7 @@ describe('useStepChecker priority ordering (regression)', () => {
 
     expect(result.current.isEnabled).toBe(true);
     expect(result.current.isCompleted).toBe(false);
-    expect(mockCheckRequirements).toHaveBeenCalled();
+    expect(callsFor('on-page:/explore').length).toBeGreaterThan(0);
   });
 });
 
