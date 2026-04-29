@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { usePendingGuideLaunch } from '../../hooks';
@@ -6,6 +7,7 @@ import { panelModeManager, type PanelMode } from '../../global-state/panel-mode'
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { interactiveStepStorage } from '../../lib/user-storage';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -181,6 +183,48 @@ function FloatingPanelInner() {
       panelModeManager.setMode('sidebar');
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
+
+  // Reactive implied-0th-step re-evaluation. Mirrors the sidebar behavior:
+  // while the user has not made progress on the active guide, listen for
+  // location changes and update `pendingAlignment` so the prompt appears
+  // (or clears) as they move.
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const progressKey = activeTab?.currentUrl || activeTab?.baseUrl || '';
+  const [hasInteractiveProgress, setHasInteractiveProgress] = useState(false);
+  useEffect(() => {
+    if (progressKey) {
+      void interactiveStepStorage.hasProgress(progressKey).then(setHasInteractiveProgress);
+    } else {
+      setHasInteractiveProgress(false);
+    }
+  }, [progressKey]);
+  useEffect(() => {
+    const handleProgressSaved = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.contentKey === progressKey && detail?.hasProgress) {
+        setHasInteractiveProgress(true);
+      }
+    };
+    window.addEventListener('interactive-progress-saved', handleProgressSaved);
+    return () => window.removeEventListener('interactive-progress-saved', handleProgressSaved);
+  }, [progressKey]);
+  const hasInteractiveProgressRef = useRef(hasInteractiveProgress);
+  hasInteractiveProgressRef.current = hasInteractiveProgress;
+  useEffect(() => {
+    const history = locationService.getHistory();
+    const unlisten = history.listen((newLocation: { pathname: string }) => {
+      if (hasInteractiveProgressRef.current) {
+        return;
+      }
+      const tabId = activeTabIdRef.current;
+      if (!tabId || tabId === 'recommendations' || tabId === 'editor' || tabId === 'devtools') {
+        return;
+      }
+      panel.reevaluateAlignment(tabId, newLocation.pathname);
+    });
+    return unlisten;
+  }, [panel]);
   const guideUrl = isEditorTab ? undefined : activeTab?.baseUrl || activeTab?.currentUrl;
 
   const handleSwitchToSidebar = useCallback(() => {

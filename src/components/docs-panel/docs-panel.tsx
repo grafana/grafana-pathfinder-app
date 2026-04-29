@@ -75,7 +75,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { evaluateAlignment, resolveStartingLocation } from '../../recovery';
+import { evaluateAlignment, pathMatchesStartingLocation, resolveStartingLocation } from '../../recovery';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
@@ -477,6 +477,61 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({
       tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
     });
+  }
+
+  /**
+   * Re-evaluate alignment for a tab on a location change. Sets/clears
+   * `pendingAlignment` based on whether the user's new path still matches
+   * the guide's `startingLocation`. Caller is responsible for the "user
+   * hasn't made progress yet" gate; this method just compares paths.
+   *
+   * Source classification is bypassed (not at launch time anymore) — any
+   * misalignment during the no-progress phase prompts.
+   */
+  public reevaluateAlignment(tabId: string, currentPath: string): void {
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    // Only re-evaluate tabs with loaded content; skip recommendations / blank tabs.
+    if (!tab || !tab.content) {
+      return;
+    }
+
+    const guideUrl = tab.baseUrl || tab.currentUrl;
+    const startingLocation = resolveStartingLocation(guideUrl, tab.packageInfo?.packageManifest);
+    if (!startingLocation) {
+      return;
+    }
+
+    const isAligned = pathMatchesStartingLocation(currentPath, startingLocation);
+    const currentlyPending = !!tab.pendingAlignment;
+
+    if (isAligned && currentlyPending) {
+      // User navigated to (or into) the starting location — clear silently.
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
+      });
+      return;
+    }
+
+    if (!isAligned && !currentlyPending) {
+      // User drifted away from a previously-aligned start. Surface the prompt.
+      const next = {
+        startingLocation,
+        currentPath,
+        launchSource: 'location_change',
+        decidedAt: Date.now(),
+      };
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: next } : t)),
+      });
+      reportAppInteraction(UserInteraction.AlignmentPromptShown, {
+        guide_url: guideUrl,
+        guide_title: tab.title,
+        launch_source: next.launchSource,
+        current_path: currentPath,
+        starting_location: startingLocation,
+      });
+    }
+    // Other cases are no-ops: aligned-and-not-pending, misaligned-and-already-pending.
   }
 
   public closeTab(tabId: string) {
@@ -1113,6 +1168,30 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       window.removeEventListener('interactive-progress-saved', handleProgressSaved);
     };
   }, [progressKey]);
+
+  // Reactive implied-0th-step re-evaluation. While the user has not made
+  // progress on the active tab, listen for location changes and update
+  // `pendingAlignment` so the prompt appears (or clears) as they move.
+  // Once the user completes any step, this gate flips off — we trust they
+  // are "in" the guide and should not be second-guessed by location alone.
+  const activeTabIdRef = React.useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const hasInteractiveProgressRef = React.useRef(hasInteractiveProgress);
+  hasInteractiveProgressRef.current = hasInteractiveProgress;
+  React.useEffect(() => {
+    const history = locationService.getHistory();
+    const unlisten = history.listen((newLocation: { pathname: string }) => {
+      if (hasInteractiveProgressRef.current) {
+        return;
+      }
+      const tabId = activeTabIdRef.current;
+      if (!tabId || tabId === 'recommendations' || tabId === 'editor' || tabId === 'devtools') {
+        return;
+      }
+      model.reevaluateAlignment(tabId, newLocation.pathname);
+    });
+    return unlisten;
+  }, [model]);
 
   const styles = useStyles2(getComponentStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
@@ -2257,7 +2336,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   }}
                 >
                   {stableContent && (
-                    <AlignmentPendingContext.Provider value={!!activeTab?.pendingAlignment}>
+                    <AlignmentPendingContext.Provider
+                      value={{
+                        isPending: !!activeTab?.pendingAlignment,
+                        startingLocation: activeTab?.pendingAlignment?.startingLocation ?? null,
+                      }}
+                    >
                       {activeTab?.pendingAlignment && (
                         <AlignmentPrompt
                           startingLocation={activeTab.pendingAlignment.startingLocation}

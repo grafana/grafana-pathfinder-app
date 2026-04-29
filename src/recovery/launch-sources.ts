@@ -51,6 +51,8 @@ export const NEEDS_ALIGNMENT_CHECK_SOURCES: ReadonlySet<string> = new Set([
   'link_interception',
   'queued_link',
   'content_link',
+  // Reactive re-evaluation on location change while the user has no progress yet.
+  'location_change',
 ]);
 
 /**

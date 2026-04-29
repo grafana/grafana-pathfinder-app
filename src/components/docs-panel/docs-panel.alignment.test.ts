@@ -540,6 +540,96 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
   });
 
+  describe('reevaluateAlignment', () => {
+    it('sets pendingAlignment when the user navigates away from a previously aligned start', async () => {
+      mockGetLocation.mockReturnValue({ pathname: '/connections', search: '' });
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      // Initial load while already aligned — no prompt.
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+      mockReportAppInteraction.mockClear();
+
+      // User navigates somewhere unrelated — re-evaluator should surface a prompt.
+      panel.reevaluateAlignment(tabId, '/dashboards');
+
+      const tab = getTab(panel, tabId);
+      expect(tab.pendingAlignment).toBeDefined();
+      expect(tab.pendingAlignment.startingLocation).toBe('/connections');
+      expect(tab.pendingAlignment.currentPath).toBe('/dashboards');
+      expect(tab.pendingAlignment.launchSource).toBe('location_change');
+
+      const shown = mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown');
+      expect(shown).toBeDefined();
+      expect(shown![1]).toEqual(
+        expect.objectContaining({
+          launch_source: 'location_change',
+          current_path: '/dashboards',
+          starting_location: '/connections',
+        })
+      );
+    });
+
+    it('clears pendingAlignment when the user navigates back into the starting location', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(getTab(panel, tabId).pendingAlignment).toBeDefined();
+
+      panel.reevaluateAlignment(tabId, '/connections/datasources');
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    it('is a no-op when the tab does not exist', () => {
+      const panel = new CombinedLearningJourneyPanel();
+      panel.reevaluateAlignment('does-not-exist', '/anywhere');
+      expect(mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown')).toBeUndefined();
+    });
+
+    it('is a no-op when the guide has no resolvable startingLocation', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(
+        panel,
+        'https://interactive-learning.grafana.net/foo/content.json',
+        'home_page'
+      );
+      await new Promise((r) => setTimeout(r, 0));
+
+      mockReportAppInteraction.mockClear();
+      panel.reevaluateAlignment(tabId, '/anywhere');
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+      expect(mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown')).toBeUndefined();
+    });
+
+    it('does not re-fire telemetry when the tab is already pending and still misaligned', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      mockReportAppInteraction.mockClear();
+
+      // Move from one misaligned path to another — still pending, no new prompt.
+      panel.reevaluateAlignment(tabId, '/dashboards');
+
+      expect(mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown')).toBeUndefined();
+    });
+  });
+
   describe('dismissAlignment', () => {
     it('clears pendingAlignment without navigating, and fires telemetry', async () => {
       mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));

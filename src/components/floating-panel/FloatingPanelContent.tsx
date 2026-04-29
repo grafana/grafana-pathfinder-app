@@ -51,7 +51,12 @@ export function FloatingPanelContent({
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
   return (
-    <AlignmentPendingContext.Provider value={!!pendingAlignment}>
+    <AlignmentPendingContext.Provider
+      value={{
+        isPending: !!pendingAlignment,
+        startingLocation: pendingAlignment?.startingLocation ?? null,
+      }}
+    >
       <div ref={contentRef}>
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>

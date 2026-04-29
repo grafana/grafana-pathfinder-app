@@ -668,16 +668,18 @@ describe('useStepChecker return shape (regression)', () => {
 describe('useStepChecker — AlignmentPendingContext gate', () => {
   // Local imports kept inside the describe to avoid disturbing the file's
   // existing import block.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { AlignmentPendingContext } = require('../global-state/alignment-pending-context');
 
   it('does not call checkRequirements when the context is true, even with isEligibleForChecking: true', async () => {
     mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
 
     const wrapper = ({ children }: { children: React.ReactNode }) =>
-      React.createElement(AlignmentPendingContext.Provider, { value: true }, children);
+      React.createElement(
+        AlignmentPendingContext.Provider,
+        { value: { isPending: true, startingLocation: '/connections' } },
+        children
+      );
 
     const { result } = renderHook(
       () =>

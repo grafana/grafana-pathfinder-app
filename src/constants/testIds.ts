@@ -46,6 +46,7 @@ export const testIds = {
     container: 'alignment-prompt-container',
     confirmButton: 'alignment-prompt-confirm-button',
     cancelButton: 'alignment-prompt-cancel-button',
+    sectionHint: 'alignment-prompt-section-hint',
   },
 
   // Context Panel - Recommendations and content
