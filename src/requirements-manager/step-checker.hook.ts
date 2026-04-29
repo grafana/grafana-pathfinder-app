@@ -9,7 +9,7 @@
  * 4. Smart performance: skip requirements if objectives are satisfied
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 // getRequirementExplanation is used in check-phases.ts
 import {
   createObjectivesCompletedState,
@@ -20,6 +20,8 @@ import {
 } from './check-phases';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useRequirementsManager } from './requirements-context';
+import { dispatchFix } from './fix-registry';
+import { stepReducer, createInitialState, toLegacyState, type StepAction } from './step-state';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> interactive-engine
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
@@ -29,6 +31,48 @@ import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.t
 
 // Re-export for convenience
 export type { UseStepCheckerProps, UseStepCheckerReturn };
+
+// The legacy state shape returned by check-phases.ts factory functions.
+// Used here as the input to `actionFromBaseStepState` (the FSM adapter).
+type LegacyStateShape = ReturnType<typeof createObjectivesCompletedState>;
+
+/**
+ * Translate a legacy `BaseStepState` (from a check-phases factory) into the
+ * matching `StepAction`. This is a transitional adapter: phase factories still
+ * compute the user-facing state, the reducer owns transitions. A follow-up
+ * refactor will collapse the two by having phase functions return actions
+ * directly.
+ */
+function actionFromBaseStepState(s: LegacyStateShape): StepAction {
+  if (s.isCompleted) {
+    return { type: 'SET_COMPLETED', reason: s.completionReason, explanation: s.explanation };
+  }
+  // Structural marker set only by `createBlockedState` (see check-phases.ts).
+  // Replaces a fragile `error === 'Sequential dependency not met'` check that
+  // would silently misclassify the state as SET_ERROR if the message changed.
+  if (s.isSequentialBlock) {
+    return { type: 'SET_BLOCKED', error: s.error ?? 'Sequential dependency not met', explanation: s.explanation };
+  }
+  if (s.isEnabled) {
+    return {
+      type: 'SET_ENABLED',
+      canFix: s.canFixRequirement,
+      fixType: s.fixType,
+      targetHref: s.targetHref,
+      scrollContainer: s.scrollContainer,
+    };
+  }
+  // Failed requirements or check-time errors land here (status -> 'blocked' with metadata).
+  return {
+    type: 'SET_ERROR',
+    error: s.error ?? 'Unknown error',
+    explanation: s.explanation,
+    canFix: s.canFixRequirement,
+    fixType: s.fixType,
+    targetHref: s.targetHref,
+    scrollContainer: s.scrollContainer,
+  };
+}
 
 /**
  * Unified step checker that handles both requirements and objectives
@@ -51,23 +95,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     onStepComplete,
     onComplete,
   } = props;
-  const [state, setState] = useState({
-    isEnabled: false,
-    isCompleted: false,
-    isChecking: false,
-    isSkipped: false,
-    completionReason: 'none' as 'none' | 'objectives' | 'manual' | 'skipped',
-    explanation: undefined as string | undefined,
-    error: undefined as string | undefined,
-    canFixRequirement: false,
-    canSkip: skippable,
-    fixType: undefined as string | undefined,
-    targetHref: undefined as string | undefined,
-    scrollContainer: undefined as string | undefined, // For lazy-scroll fixes
-    retryCount: 0,
-    maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
-    isRetrying: false,
-  });
+  const [fsmState, dispatch] = useReducer(stepReducer, undefined, () => createInitialState({ canSkip: skippable }));
+  // Memoize the legacy projection so its identity only changes on real FSM
+  // transitions. `toLegacyState` returns a fresh object literal every call, so
+  // without this memo every parent re-render would produce a new `state` and
+  // recreate downstream `useCallback`s (e.g. `markCompleted` depends on
+  // `[state, updateManager]`), propagating new function references to children.
+  const state = useMemo(() => toLegacyState(fsmState), [fsmState]);
 
   // REACT: Track mounted state to prevent state updates after unmount (R4)
   const isMountedRef = useRef(true);
@@ -78,10 +112,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     };
   }, []);
 
-  // Safe setState wrapper that checks if component is still mounted
-  const safeSetState = useCallback((updater: typeof state | ((prev: typeof state) => typeof state)) => {
+  // Safe dispatch wrapper that checks if component is still mounted
+  const safeDispatch = useCallback((action: StepAction) => {
     if (isMountedRef.current) {
-      setState(updater as any);
+      dispatch(action);
     }
   }, []);
 
@@ -99,25 +133,40 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   const timeoutManager = useTimeoutManager();
 
-  // Requirements checking is now handled by the pure requirements utility
-  const { checkRequirementsFromData } = useInteractiveElements();
-
   // Subscribe to manager state changes via useSyncExternalStore
   // This ensures React renders are synchronized with manager state updates
   // Note: We keep this subscription active but don't use the value directly in effects
   // to prevent infinite loops. The registered step checker callback handles rechecks instead.
   useSequentialStepState(stepId);
 
-  // Custom requirements checker that provides state updates for retry feedback
+  // Unified condition checker: handles both requirements and objectives.
+  // Objectives pass `maxRetriesOverride: 0` and a short `timeoutMs`; requirements
+  // get the default retry behaviour and (optional) lazyRender gating.
   const checkRequirementsWithStateUpdates = useCallback(
     async (
-      options: { requirements: string; targetAction?: string; refTarget?: string; stepId?: string },
+      options: {
+        requirements: string;
+        targetAction?: string;
+        refTarget?: string;
+        stepId?: string;
+        /** Force a specific retry count (0 disables retries entirely). */
+        maxRetriesOverride?: number;
+        /** Wrap the entire call in Promise.race with this timeout. Reject propagates to caller. */
+        timeoutMs?: number;
+      },
       onStateUpdate: (retryCount: number, maxRetries: number, isRetrying: boolean) => void
     ) => {
-      const { requirements, targetAction = 'button', refTarget = '', stepId: optionsStepId } = options;
-      // When lazyRender is enabled, don't do automatic retries - let the button handle lazy scroll
-      // This prevents continuous checking loop before user initiates lazy scroll
-      const maxRetries = lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries;
+      const {
+        requirements,
+        targetAction = 'button',
+        refTarget = '',
+        stepId: optionsStepId,
+        maxRetriesOverride,
+        timeoutMs,
+      } = options;
+      // When lazyRender is enabled, don't do automatic retries - let the button handle lazy scroll.
+      // The explicit override (passed by the objectives path) takes precedence.
+      const maxRetries = maxRetriesOverride ?? (lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries);
 
       const attemptCheck = async (retryCount: number): Promise<any> => {
         // REACT: Check mounted before state updates to prevent updates after unmount (R4)
@@ -193,7 +242,22 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         }
       };
 
-      return attemptCheck(0);
+      const work = attemptCheck(0);
+      if (timeoutMs === undefined) {
+        return work;
+      }
+      // Capture the timer ID so we can clear it once `work` settles. Without
+      // this the rejection handler keeps firing after unmount or success,
+      // constructing an Error and rejecting an already-settled promise.
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`Conditions check timed out after ${timeoutMs}ms`)), timeoutMs);
+      });
+      return Promise.race([work, timeoutPromise]).finally(() => {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+      });
     },
     [lazyRender, scrollContainer] // checkRequirements is an imported function but lazyRender/scrollContainer are props
   );
@@ -244,80 +308,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   }
 
   /**
-   * Check conditions (requirements or objectives) using proper DOM check functions
-   */
-  const checkConditions = useCallback(
-    async (conditions: string, type: 'requirements' | 'objectives') => {
-      try {
-        // For objectives, still use the original method since objectives don't need retries
-        if (type === 'objectives') {
-          // Create proper InteractiveElementData structure
-          const actionData = {
-            requirements: conditions,
-            targetaction: targetAction || 'button',
-            reftarget: refTarget || stepId, // Use actual refTarget if available, fallback to stepId
-            textContent: stepId,
-            tagName: 'div' as const,
-            objectives: conditions,
-          };
-
-          // Add timeout to prevent hanging
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error(`${type} check timeout`)), 3000);
-          });
-
-          const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
-
-          const conditionsMet = result.pass;
-          const errorMessage = conditionsMet
-            ? undefined
-            : result.error?.map((e: any) => e.error || e.requirement).join(', ');
-
-          const fixableError = result.error?.find((e: any) => e.canFix);
-
-          return {
-            pass: conditionsMet,
-            error: errorMessage,
-            canFix: !!fixableError,
-            fixType: fixableError?.fixType,
-            targetHref: fixableError?.targetHref,
-          };
-        }
-
-        // For requirements, use the new retry-enabled checker
-        const result = await checkRequirements({
-          requirements: conditions,
-          targetAction: targetAction || 'button',
-          refTarget: refTarget || stepId,
-          stepId,
-          lazyRender,
-          scrollContainer,
-        });
-
-        const conditionsMet = result.pass;
-        const errorMessage = conditionsMet
-          ? undefined
-          : result.error?.map((e: any) => e.error || e.requirement).join(', ');
-
-        // Check if any error has fix capability
-        const fixableError = result.error?.find((e: any) => e.canFix);
-
-        return {
-          pass: conditionsMet,
-          error: errorMessage,
-          canFix: !!fixableError,
-          fixType: fixableError?.fixType,
-          targetHref: fixableError?.targetHref,
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : `Failed to check ${type}`;
-        return { pass: false, error: errorMessage };
-      }
-    },
-    [stepId, refTarget, targetAction, checkRequirementsFromData, lazyRender, scrollContainer]
-  );
-
-  /**
    * Check step conditions with priority logic:
    * 1. Objectives (auto-complete if met)
    * 2. Sequential eligibility (block if previous steps incomplete)
@@ -341,17 +331,49 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
-    safeSetState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
+    safeDispatch({ type: 'START_CHECK' });
 
     try {
-      // PHASE 1: Check objectives first (they always win)
+      // PHASE 1: Check objectives first (they always win).
+      // Same checker as requirements; just no retries and a short timeout — objectives are
+      // a snapshot of "is this already done?", not a target to wait for.
+      //
+      // Failures inside this block (including the 3s `timeoutMs` rejection from
+      // `checkRequirementsWithStateUpdates`) must NOT abort `checkStep`. The legacy
+      // `checkConditions` swallowed timeouts and returned `{ pass: false }`, allowing
+      // the flow to fall through to eligibility (Phase 2) and requirements (Phase 3).
+      // Letting an objectives-check rejection propagate to the outer `catch` would
+      // strand the step in an error state on slow networks. Treat any objectives
+      // failure here as "objectives unmet" and continue.
       if (objectives && objectives.trim() !== '') {
-        const objectivesResult = await checkConditions(objectives, 'objectives');
-        if (objectivesResult.pass) {
+        let objectivesPassed = false;
+        try {
+          const objectivesResult = await checkRequirementsWithStateUpdates(
+            {
+              requirements: objectives,
+              targetAction: targetAction || 'button',
+              refTarget: refTarget || stepId,
+              stepId,
+              maxRetriesOverride: 0,
+              timeoutMs: 3000,
+            },
+            () => {
+              /* no-op: objectives don't surface retry state to the UI */
+            }
+          );
+          objectivesPassed = objectivesResult.pass;
+        } catch (objectivesError) {
+          // Timeout or unexpected error: log and fall through. The outer `catch`
+          // is reserved for failures in Phase 2/3, where erroring is the correct
+          // user-facing outcome.
+          console.warn('Objectives check failed; falling through to requirements:', objectivesError);
+        }
+
+        if (objectivesPassed) {
           const finalState = createObjectivesCompletedState(skippable);
           // REACT: Check mounted before state update (R4)
           if (isMountedRef.current) {
-            setState(finalState);
+            dispatch(actionFromBaseStepState(finalState));
             prevIsEnabledRef.current = true;
             enabledTimestampRef.current = Date.now();
             updateManager(finalState);
@@ -365,7 +387,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       const currentEligibility = isEligibleRef.current;
       if (!currentEligibility) {
         const blockedState = createBlockedState(stepId);
-        safeSetState(blockedState);
+        safeDispatch(actionFromBaseStepState(blockedState));
         updateManager(blockedState);
         return;
       }
@@ -379,14 +401,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             refTarget: refTarget || stepId,
             stepId,
           },
-          (retryCount, maxRetries, isRetrying) => {
-            safeSetState((prev) => ({
-              ...prev,
-              retryCount,
-              maxRetries,
-              isRetrying,
-              isChecking: true,
-            }));
+          (retryCount, _maxRetries, isRetrying) => {
+            safeDispatch({ type: 'UPDATE_RETRY', retryCount, isRetrying });
           }
         );
 
@@ -397,14 +413,15 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           return;
         }
 
+        const action = actionFromBaseStepState(requirementsState);
         const isTransitioningToEnabled = !prevIsEnabledRef.current && requirementsResult.pass;
         if (isTransitioningToEnabled) {
-          setState(requirementsState);
+          dispatch(action);
           prevIsEnabledRef.current = true;
           enabledTimestampRef.current = Date.now();
           updateManager(requirementsState);
         } else {
-          safeSetState(requirementsState);
+          safeDispatch(action);
           prevIsEnabledRef.current = requirementsResult.pass;
           if (requirementsResult.pass) {
             enabledTimestampRef.current = Date.now();
@@ -422,25 +439,27 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         return;
       }
 
+      const enabledAction = actionFromBaseStepState(enabledState);
       const wasDisabled = !prevIsEnabledRef.current;
       if (wasDisabled) {
-        setState(enabledState);
+        dispatch(enabledAction);
         prevIsEnabledRef.current = true;
         enabledTimestampRef.current = Date.now();
       } else {
-        safeSetState(enabledState);
+        safeDispatch(enabledAction);
       }
       updateManager(enabledState);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
-      const errorState = createErrorState(errorMessage, requirements, objectives, hints, skippable);
-      safeSetState(errorState);
+      const errorState = createErrorState(errorMessage, requirements || objectives, hints, skippable);
+      safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeSetState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * Attempt to automatically fix failed requirements
+   * Attempt to automatically fix failed requirements via the fix-handler registry.
+   * Wraps `dispatchFix` with mount-safety, the post-fix recheck, and error reporting.
    */
   const fixRequirement = useCallback(async () => {
     if (!state.canFixRequirement) {
@@ -452,55 +471,48 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
+    // `lazy-scroll` is a hint to the consumer (the action button in
+    // `interactive-step.tsx` runs the discovery scroll via `tryLazyScrollAndExecute`),
+    // not a fix the registry can dispatch. Short-circuit so we don't call
+    // `dispatchFix` (which would return `{ ok: false }` for an unmatched handler
+    // and clobber the state into `SET_ERROR`). Leaving state untouched keeps
+    // `canFixRequirement` and `fixType` intact so the action button remains
+    // available — matching the pre-FSM behaviour.
+    if (state.fixType === 'lazy-scroll') {
+      return;
+    }
+
     try {
-      safeSetState((prev) => ({ ...prev, isChecking: true }));
+      safeDispatch({ type: 'START_CHECK' });
 
-      if (state.fixType === 'expand-parent-navigation' && state.targetHref && navigationManagerRef.current) {
-        // Attempt to expand parent navigation section
-        const success = await navigationManagerRef.current.expandParentNavigationSection(state.targetHref);
+      const result = await dispatchFix({
+        fixType: state.fixType,
+        targetHref: state.targetHref,
+        scrollContainer: state.scrollContainer,
+        requirements,
+        stepId,
+        navigationManager: navigationManagerRef.current,
+        fixNavigationRequirements,
+      });
 
-        if (!success) {
-          console.error('Failed to expand parent navigation section');
-          safeSetState((prev) => ({
-            ...prev,
-            isChecking: false,
-            error: 'Failed to expand parent navigation section',
-          }));
-          return;
+      if (!result.ok) {
+        console.warn('Fix failed:', result.error);
+        if (isMountedRef.current) {
+          // Preserve the existing fix metadata so the user can retry.
+          // The reducer's `SET_ERROR` defaults `canFix` to `false` and clears
+          // the rest, so we must pass them explicitly — otherwise the fix
+          // button vanishes after a single failed attempt. (The pre-FSM code
+          // used `setState(prev => ({ ...prev, error }))`, which preserved
+          // these fields via spread.)
+          safeDispatch({
+            type: 'SET_ERROR',
+            error: result.error,
+            canFix: state.canFixRequirement,
+            fixType: state.fixType,
+            targetHref: state.targetHref,
+            scrollContainer: state.scrollContainer,
+          });
         }
-      } else if (state.fixType === 'location' && state.targetHref && navigationManagerRef.current) {
-        // Fix location requirements by navigating to the expected path
-        await navigationManagerRef.current.fixLocationRequirement(state.targetHref);
-      } else if (state.fixType === 'lazy-scroll') {
-        // lazy-scroll is now handled transparently in Show me/Do it buttons
-        // This case should not be reached - buttons are enabled and handle scroll automatically
-        console.warn('lazy-scroll fixType should be handled by button click, not fixRequirement');
-        safeSetState((prev) => ({ ...prev, isChecking: false }));
-        return;
-      } else if (state.fixType === 'expand-options-group') {
-        // Expand all collapsed Options Group panels in the Grafana panel editor
-        const collapsedToggles = document.querySelectorAll(
-          'button[data-testid*="Options group"][aria-expanded="false"]'
-        ) as NodeListOf<HTMLButtonElement>;
-
-        for (const toggle of collapsedToggles) {
-          toggle.click();
-        }
-        // Wait for React to render the newly expanded children
-        await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
-      } else if (state.fixType === 'navigation') {
-        // Fix basic navigation requirements (menu open/dock)
-        await fixNavigationRequirements();
-      } else if (requirements?.includes('navmenu-open') && fixNavigationRequirements) {
-        // Only fix navigation requirements if no other specific fix type is available
-        await fixNavigationRequirements();
-      } else {
-        console.warn('Unknown fix type:', state.fixType);
-        safeSetState((prev) => ({
-          ...prev,
-          isChecking: false,
-          error: 'Unable to automatically fix this requirement',
-        }));
         return;
       }
 
@@ -520,54 +532,57 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       await checkStep();
     } catch (error) {
       console.error('Failed to fix requirements:', error);
-      safeSetState((prev) => ({
-        ...prev,
-        isChecking: false,
+      // Same preservation rationale as the `!result.ok` branch above.
+      safeDispatch({
+        type: 'SET_ERROR',
         error: 'Failed to fix requirements',
-      }));
+        canFix: state.canFixRequirement,
+        fixType: state.fixType,
+        targetHref: state.targetHref,
+        scrollContainer: state.scrollContainer,
+      });
     }
   }, [
     state.canFixRequirement,
     state.fixType,
     state.targetHref,
+    state.scrollContainer,
     requirements,
     fixNavigationRequirements,
     checkStep,
     stepId,
     timeoutManager,
-    safeSetState,
+    safeDispatch,
   ]);
 
   /**
    * Manual completion (for user-executed steps)
    */
   const markCompleted = useCallback(() => {
-    const completedState = {
+    dispatch({ type: 'SET_COMPLETED', reason: 'manual', explanation: 'Completed' });
+    updateManager({
       ...state,
       isCompleted: true,
-      isEnabled: false, // Completed steps are disabled
+      isEnabled: false,
       isSkipped: false,
-      completionReason: 'manual' as const,
+      completionReason: 'manual',
       explanation: 'Completed',
-    };
-    setState(completedState);
-    updateManager(completedState);
+    });
   }, [state, updateManager]);
 
   /**
    * Mark step as skipped (for steps that can't meet requirements but are skippable)
    */
   const markSkipped = useCallback(() => {
-    const skippedState = {
+    dispatch({ type: 'SET_COMPLETED', reason: 'skipped', explanation: 'Skipped due to requirements' });
+    updateManager({
       ...state,
-      isCompleted: true, // Skipped steps count as completed for flow purposes
+      isCompleted: true,
+      isEnabled: false,
       isSkipped: true,
-      isEnabled: false, // Skipped steps are disabled
-      completionReason: 'skipped' as const,
+      completionReason: 'skipped',
       explanation: 'Skipped due to requirements',
-    };
-    setState(skippedState);
-    updateManager(skippedState);
+    });
 
     // Trigger check for dependent steps when this step is skipped
     if (managerRef.current) {
@@ -585,12 +600,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * Reset step to initial state (including skipped state) and recheck requirements
    */
   const resetStep = useCallback(() => {
-    const resetState = {
+    dispatch({ type: 'RESET', canSkip: skippable });
+    updateManager({
       isEnabled: false,
       isCompleted: false,
       isChecking: false,
       isSkipped: false,
-      completionReason: 'none' as const,
+      completionReason: 'none',
       explanation: undefined,
       error: undefined,
       canFixRequirement: false,
@@ -601,9 +617,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       retryCount: 0,
       maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
       isRetrying: false,
-    };
-    setState(resetState);
-    updateManager(resetState);
+    });
 
     // Recheck requirements after reset
     timeoutManager.setTimeout(

@@ -539,7 +539,10 @@ export class ContextService {
         );
 
         // SECURITY: Sanitize featured recommendations using same logic
-        const mappedFeaturedRecommendations = (data.featured ?? []).map((rec) => this.sanitizeV1Recommendation(rec));
+        const mappedFeaturedRecommendations = this.promoteFeaturedPackageMatches(
+          (data.featured ?? []).map((rec) => this.sanitizeV1Recommendation(rec)),
+          mappedExternalRecommendations
+        );
 
         // Deduplicate: bundled content always wins for packages that exist locally
         const deduplicatedExternal = this.deduplicateRecommendations(
@@ -705,6 +708,120 @@ export class ContextService {
     }
 
     return base;
+  }
+
+  private static promoteFeaturedPackageMatches(
+    featuredRecommendations: Recommendation[],
+    recommendations: Recommendation[]
+  ): Recommendation[] {
+    const packageRecommendationByKey = new Map<string, Recommendation>();
+
+    for (const recommendation of recommendations) {
+      if (recommendation.type !== 'package') {
+        continue;
+      }
+
+      for (const key of this.getRecommendationIdentityKeys(recommendation)) {
+        if (!packageRecommendationByKey.has(key)) {
+          packageRecommendationByKey.set(key, recommendation);
+        }
+      }
+    }
+
+    return featuredRecommendations.map((featuredRecommendation) => {
+      if (featuredRecommendation.type === 'package') {
+        return featuredRecommendation;
+      }
+
+      const matchingPackageRecommendation = this.getRecommendationIdentityKeys(featuredRecommendation)
+        .map((key) => packageRecommendationByKey.get(key))
+        .find((recommendation): recommendation is Recommendation => recommendation != null);
+
+      if (!matchingPackageRecommendation) {
+        return featuredRecommendation;
+      }
+
+      return {
+        ...featuredRecommendation,
+        type: 'package',
+        url: matchingPackageRecommendation.url,
+        summary: featuredRecommendation.summary || matchingPackageRecommendation.summary,
+        matchAccuracy: featuredRecommendation.matchAccuracy ?? matchingPackageRecommendation.matchAccuracy,
+        contentUrl: matchingPackageRecommendation.contentUrl,
+        manifestUrl: matchingPackageRecommendation.manifestUrl,
+        repository: matchingPackageRecommendation.repository,
+        manifest: matchingPackageRecommendation.manifest,
+      };
+    });
+  }
+
+  private static getRecommendationIdentityKeys(recommendation: Recommendation): string[] {
+    const keys = new Set<string>();
+    const manifest = recommendation.manifest;
+
+    if (manifest != null && typeof manifest === 'object') {
+      const manifestId = (manifest as Record<string, unknown>).id;
+      if (typeof manifestId === 'string') {
+        const normalizedManifestId = this.normalizeRecommendationIdentityKey(manifestId);
+        if (normalizedManifestId) {
+          keys.add(normalizedManifestId);
+        }
+      }
+    }
+
+    for (const rawUrl of [recommendation.url, recommendation.contentUrl, recommendation.manifestUrl]) {
+      const urlKey = this.extractRecommendationIdentityFromUrl(rawUrl);
+      if (urlKey) {
+        keys.add(urlKey);
+      }
+    }
+
+    return [...keys];
+  }
+
+  private static extractRecommendationIdentityFromUrl(rawUrl?: string): string | undefined {
+    if (!rawUrl) {
+      return undefined;
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(rawUrl, 'https://pathfinder.local');
+    } catch {
+      return undefined;
+    }
+
+    const segments = parsedUrl.pathname.split('/').filter(Boolean);
+    const packagesIndex = segments.indexOf('packages');
+    const packageId = segments[packagesIndex + 1];
+    if (packagesIndex >= 0 && packageId) {
+      return this.normalizeRecommendationIdentityKey(packageId);
+    }
+
+    const guidesIndex = segments.indexOf('guides');
+    const guideId = segments[guidesIndex + 1];
+    if (guidesIndex >= 0 && guideId) {
+      return this.normalizeRecommendationIdentityKey(guideId);
+    }
+
+    const contentIndex = segments.lastIndexOf('content.json');
+    const contentId = segments[contentIndex - 1];
+    if (contentIndex > 0 && contentId) {
+      return this.normalizeRecommendationIdentityKey(contentId);
+    }
+
+    const manifestIndex = segments.lastIndexOf('manifest.json');
+    const manifestId = segments[manifestIndex - 1];
+    if (manifestIndex > 0 && manifestId) {
+      return this.normalizeRecommendationIdentityKey(manifestId);
+    }
+
+    return undefined;
+  }
+
+  private static normalizeRecommendationIdentityKey(value: string): string | undefined {
+    const normalized = value.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   /**

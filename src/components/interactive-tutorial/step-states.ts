@@ -38,13 +38,12 @@ export const FORM_STATES = {
 
 export type FormStateValue = (typeof FORM_STATES)[keyof typeof FORM_STATES];
 
-/** Fix types for data-test-fix-type attribute */
-export const FIX_TYPES = {
-  NONE: 'none',
-  NAVIGATION: 'navigation',
-  LAZY_SCROLL: 'lazy-scroll',
-  LOCATION: 'location',
-  EXPAND_PARENT_NAVIGATION: 'expand-parent-navigation',
-} as const;
-
-export type FixTypeValue = (typeof FIX_TYPES)[keyof typeof FIX_TYPES];
+/**
+ * Fix type constants for the data-test-fix-type attribute.
+ * The canonical definition lives in `src/requirements-manager/fix-types.ts`
+ * (Tier 2) so the fix-handler registry can reference it without crossing the
+ * Tier 2 → Tier 3-4 import boundary. Re-exported here for UI consumers via the
+ * requirements-manager barrel.
+ */
+export { FIX_TYPES } from '../../requirements-manager';
+export type { FixTypeValue } from '../../requirements-manager';
