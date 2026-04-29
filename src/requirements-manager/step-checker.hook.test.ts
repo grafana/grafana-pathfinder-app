@@ -450,6 +450,50 @@ describe('useStepChecker priority ordering (regression)', () => {
       jest.useRealTimers();
     }
   });
+
+  // REGRESSION: when the objectives check resolves *before* the 3s timeoutMs
+  // fires, the Promise.race timer used to leak — the setTimeout was never
+  // cleared, so it would fire later and call reject() on an already-settled
+  // promise. The fix attaches a .finally that calls clearTimeout. Verified by
+  // asserting jest's pending-timer count returns to zero after settlement.
+  it('clears the objectives-check timeout timer when the check resolves first', async () => {
+    jest.useFakeTimers();
+
+    mockCheckRequirements.mockResolvedValue({
+      pass: false, // Don't auto-complete; just resolve quickly so we don't get stuck on objectives.
+      requirements: 'has-datasources',
+      error: [failedRequirement({ requirement: 'has-datasources' })],
+    });
+
+    try {
+      const rendered = renderHook(() =>
+        useStepChecker({
+          stepId: 'test-step',
+          isEligibleForChecking: true,
+          objectives: 'has-datasources',
+        })
+      );
+
+      // Flush lazy `import('../interactive-engine')`.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const beforeTimers = jest.getTimerCount();
+
+      await act(async () => {
+        await rendered.result.current.checkStep();
+      });
+
+      // After settle, the 3s timeout from Promise.race must have been cleared.
+      // We allow for unrelated heartbeat / re-render timers by asserting the
+      // count did not *grow* — i.e. no leaked 3s timer is now pending.
+      expect(jest.getTimerCount()).toBeLessThanOrEqual(beforeTimers);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 // =============================================================================

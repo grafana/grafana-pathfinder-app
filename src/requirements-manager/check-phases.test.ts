@@ -580,6 +580,31 @@ describe('check-phases', () => {
         expect(createEnabledState(false).isSkipped).toBe(false);
         expect(createErrorState('err', 'req', undefined, false).isSkipped).toBe(false);
       });
+
+      it('sets isSequentialBlock only on the sequential-dependency blocked state', () => {
+        // The FSM adapter (`actionFromBaseStepState` in step-checker.hook.ts)
+        // uses this flag — instead of a magic-string match on `error` — to
+        // route the state to SET_BLOCKED. Only `createBlockedState` should set
+        // it; everything else must report `false` so failed-requirements states
+        // continue to land in SET_ERROR.
+        expect(createBlockedState('step').isSequentialBlock).toBe(true);
+
+        expect(createCheckingState(false).isSequentialBlock).toBe(false);
+        expect(createObjectivesCompletedState(false).isSequentialBlock).toBe(false);
+        expect(
+          createRequirementsState(
+            { pass: false, error: [{ pass: false, error: 'Not found' }] },
+            'req',
+            undefined,
+            false
+          ).isSequentialBlock
+        ).toBe(false);
+        expect(createRequirementsState({ pass: true, error: [] }, 'req', undefined, false).isSequentialBlock).toBe(
+          false
+        );
+        expect(createEnabledState(false).isSequentialBlock).toBe(false);
+        expect(createErrorState('err', 'req', undefined, false).isSequentialBlock).toBe(false);
+      });
     });
   });
 

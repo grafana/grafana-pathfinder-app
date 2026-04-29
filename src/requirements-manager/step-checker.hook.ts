@@ -47,9 +47,11 @@ function actionFromBaseStepState(s: LegacyStateShape): StepAction {
   if (s.isCompleted) {
     return { type: 'SET_COMPLETED', reason: s.completionReason, explanation: s.explanation };
   }
-  // createBlockedState's distinguishing marker — see check-phases.ts:createBlockedState.
-  if (s.error === 'Sequential dependency not met') {
-    return { type: 'SET_BLOCKED', error: s.error, explanation: s.explanation };
+  // Structural marker set only by `createBlockedState` (see check-phases.ts).
+  // Replaces a fragile `error === 'Sequential dependency not met'` check that
+  // would silently misclassify the state as SET_ERROR if the message changed.
+  if (s.isSequentialBlock) {
+    return { type: 'SET_BLOCKED', error: s.error ?? 'Sequential dependency not met', explanation: s.explanation };
   }
   if (s.isEnabled) {
     return {
@@ -239,10 +241,18 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       if (timeoutMs === undefined) {
         return work;
       }
+      // Capture the timer ID so we can clear it once `work` settles. Without
+      // this the rejection handler keeps firing after unmount or success,
+      // constructing an Error and rejecting an already-settled promise.
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Conditions check timed out after ${timeoutMs}ms`)), timeoutMs);
+        timeoutId = setTimeout(() => reject(new Error(`Conditions check timed out after ${timeoutMs}ms`)), timeoutMs);
       });
-      return Promise.race([work, timeoutPromise]);
+      return Promise.race([work, timeoutPromise]).finally(() => {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+      });
     },
     [lazyRender, scrollContainer] // checkRequirements is an imported function but lazyRender/scrollContainer are props
   );

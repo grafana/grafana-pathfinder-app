@@ -30,6 +30,14 @@ interface BaseStepState {
   retryCount: number;
   maxRetries: number;
   isRetrying: boolean;
+  /**
+   * Structural marker for "blocked because a previous step in the sequence is
+   * not yet complete" (Phase 2). Only `createBlockedState` sets this to `true`;
+   * everything else sets it to `false`. Consumed by the FSM adapter
+   * (`actionFromBaseStepState`) to choose `SET_BLOCKED` over `SET_ERROR`,
+   * replacing the previous magic-string check on `error`.
+   */
+  isSequentialBlock: boolean;
 }
 
 /**
@@ -57,6 +65,7 @@ export function createCheckingState(skippable: boolean): BaseStepState {
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
+    isSequentialBlock: false,
   };
 }
 
@@ -83,6 +92,7 @@ export function createObjectivesCompletedState(skippable: boolean): BaseStepStat
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
+    isSequentialBlock: false,
   };
 }
 
@@ -112,6 +122,10 @@ export function createBlockedState(_stepId: string): BaseStepState {
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
+    // The structural marker the FSM adapter uses to distinguish "blocked by an
+    // unmet sequential dependency" from "blocked by a failed requirements
+    // check"; the latter routes to SET_ERROR.
+    isSequentialBlock: true,
   };
 }
 
@@ -177,6 +191,7 @@ export function createRequirementsState(
     retryCount: 0, // Reset retry count after completion
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
+    isSequentialBlock: false,
   };
 }
 
@@ -200,6 +215,7 @@ export function createEnabledState(skippable: boolean): BaseStepState {
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
+    isSequentialBlock: false,
   };
 }
 
@@ -230,5 +246,6 @@ export function createErrorState(
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     isRetrying: false,
+    isSequentialBlock: false,
   };
 }
