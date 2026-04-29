@@ -25,6 +25,10 @@ interface HomePanelState extends SceneObjectState {}
 
 export class HomePanel extends SceneObjectBase<HomePanelState> {
   public static Component = HomePanelRenderer;
+
+  public get renderBeforeActivation(): boolean {
+    return true;
+  }
 }
 
 // ============================================================================
