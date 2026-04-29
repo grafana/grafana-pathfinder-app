@@ -15,10 +15,13 @@ describe('normalizeCodeIndentation', () => {
     expect(normalizeCodeIndentation(input)).toBe(expected);
   });
 
-  it('re-aligns fence markers to match 6-space content indent (deeper nesting)', () => {
+  it('does NOT re-align flat fences when content is indented 4+ spaces (would violate CommonMark)', () => {
+    // CommonMark specifies fence markers can only have 0-3 spaces of indentation.
+    // A flat code block with deeply indented content (e.g., pasted from inside a
+    // class/function) must NOT have its fence markers indented to match, as 4+
+    // spaces would cause the fence line to be parsed as an indented code block.
     const input = ['```', '      DEEP CODE', '```'].join('\n');
-    const expected = ['      ```', '      DEEP CODE', '      ```'].join('\n');
-    expect(normalizeCodeIndentation(input)).toBe(expected);
+    expect(normalizeCodeIndentation(input)).toBe(input);
   });
 
   it('handles tilde fences', () => {
