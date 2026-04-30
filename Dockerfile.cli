@@ -61,9 +61,9 @@ RUN npm install --no-audit --no-fund --omit=optional \
 # expose them on PATH at the canonical names used by the entrypoint
 # script.
 COPY --from=builder /build/dist/cli /app/dist/cli
-RUN chmod +x /app/dist/cli/cli/index.js /app/dist/cli/cli/mcp-placeholder.js \
+RUN chmod +x /app/dist/cli/cli/index.js /app/dist/cli/cli/mcp/index.js \
     && ln -s /app/dist/cli/cli/index.js /usr/local/bin/pathfinder-cli \
-    && ln -s /app/dist/cli/cli/mcp-placeholder.js /usr/local/bin/pathfinder-mcp
+    && ln -s /app/dist/cli/cli/mcp/index.js /usr/local/bin/pathfinder-mcp
 
 # Routing entrypoint: `mcp` first-arg routes to pathfinder-mcp; otherwise
 # pathfinder-cli is the default.

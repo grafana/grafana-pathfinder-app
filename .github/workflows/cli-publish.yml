@@ -112,12 +112,10 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.schema-version }}"
-          observed="$(docker run --rm pathfinder-cli:smoke --version)"
-          [ "$observed" = "$version" ] || { echo "Docker CLI version mismatch: observed=$observed expected=$version"; exit 1; }
-          if docker run --rm pathfinder-cli:smoke mcp; then
-            echo "MCP placeholder should exit non-zero"
-            exit 1
-          fi
+          observed_cli="$(docker run --rm pathfinder-cli:smoke --version)"
+          [ "$observed_cli" = "$version" ] || { echo "Docker CLI version mismatch: observed=$observed_cli expected=$version"; exit 1; }
+          observed_mcp="$(docker run --rm pathfinder-cli:smoke mcp --version)"
+          [ "$observed_mcp" = "$version" ] || { echo "Docker MCP version mismatch: observed=$observed_mcp expected=$version"; exit 1; }
 
   publish-ghcr-main:
     name: Push :latest and :main-<sha> to GHCR
