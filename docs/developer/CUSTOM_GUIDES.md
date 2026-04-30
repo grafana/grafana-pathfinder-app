@@ -95,7 +95,7 @@ The library (**Library** button) lists all guides stored in the Pathfinder backe
 
 Guides can also be pushed into a stack from outside the editor — useful for CI pipelines, Terraform, or one-off scripts. The Pathfinder backend exposes a plugin resource endpoint at `POST /api/plugins/pathfinderbackend-app/resources/v1/import` that accepts the same `spec` shape the editor exports, slugifies the resource name, and either creates a new guide or replaces an existing one (when `overwrite: true`).
 
-Authentication is a Grafana service-account Bearer token; the namespace is server-derived (`stacks-<stack_id>` in Cloud, `default` in OSS). See [EXTERNAL_API.md](EXTERNAL_API.md) for the full reference, including request/response shape, error codes, and curl examples.
+Authentication is a Grafana service-account Bearer token; the namespace is server-derived (`stacks-<stack_id>` in Cloud, `default` in OSS). The handler enforces `pathfinderbackend-app.guides:write`, so the calling token needs the **Editor** or **Admin** role. `spec.status` is round-tripped — pass `"draft"` or `"published"` to land in the right state without a separate publish step. See [EXTERNAL_API.md](EXTERNAL_API.md) for the full reference, including request/response shape, error codes, and curl examples.
 
 The editor's **Library → Export** flow produces a JSON payload compatible with this endpoint after stripping the Kubernetes envelope (e.g. `jq .spec my-export.json`).
 
