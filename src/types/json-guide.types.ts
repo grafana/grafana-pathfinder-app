@@ -72,6 +72,8 @@ export interface AssistantProps {
  */
 export interface JsonMarkdownBlock extends AssistantProps {
   type: 'markdown';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** Markdown-formatted content */
   content: string;
 }
@@ -83,6 +85,8 @@ export interface JsonMarkdownBlock extends AssistantProps {
  */
 export interface JsonHtmlBlock {
   type: 'html';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** Raw HTML content (will be sanitized) */
   content: string;
 }
@@ -92,6 +96,8 @@ export interface JsonHtmlBlock {
  */
 export interface JsonImageBlock {
   type: 'image';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** Image source URL */
   src: string;
   /** Alt text for accessibility */
@@ -107,6 +113,8 @@ export interface JsonImageBlock {
  */
 export interface JsonVideoBlock {
   type: 'video';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** Video source URL */
   src: string;
   /** Video provider - determines embed method */
@@ -126,6 +134,8 @@ export interface JsonVideoBlock {
  */
 export interface JsonAssistantBlock {
   type: 'assistant';
+  /** Stable identifier for the assistant block (required for container blocks via CLI) */
+  id?: string;
   /** Unique ID prefix for wrapped elements (auto-generated if not provided) */
   assistantId?: string;
   /** Type of content - affects AI prompts and customization behavior */
@@ -186,6 +196,8 @@ export interface ConditionalSectionConfig {
  */
 export interface JsonConditionalBlock {
   type: 'conditional';
+  /** Stable identifier for the conditional block (required for container blocks via CLI) */
+  id?: string;
   /** Conditions that determine which branch to show (uses requirement syntax) */
   conditions: string[];
   /** Blocks shown when ALL conditions pass */
@@ -223,6 +235,8 @@ export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navig
  */
 export interface JsonInteractiveBlock extends AssistantProps {
   type: 'interactive';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** The action to perform */
   action: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element (optional for noop actions) */
@@ -278,6 +292,8 @@ export interface JsonInteractiveBlock extends AssistantProps {
  */
 export interface JsonMultistepBlock {
   type: 'multistep';
+  /** Stable identifier for this block (required for container blocks via CLI) */
+  id?: string;
   /** Markdown description shown to the user */
   content: string;
   /** Sequence of steps to execute automatically */
@@ -296,6 +312,8 @@ export interface JsonMultistepBlock {
  */
 export interface JsonGuidedBlock {
   type: 'guided';
+  /** Stable identifier for this block (required for container blocks via CLI) */
+  id?: string;
   /** Markdown description shown to the user */
   content: string;
   /** Sequence of steps for user to perform */
@@ -356,6 +374,8 @@ export interface JsonStep {
  */
 export interface JsonQuizBlock {
   type: 'quiz';
+  /** Stable identifier for this block (required for container blocks via CLI) */
+  id?: string;
   /** The question text (supports markdown) */
   question: string;
   /** Answer choices */
@@ -398,6 +418,8 @@ export interface JsonQuizChoice {
  */
 export interface JsonInputBlock {
   type: 'input';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** The prompt/question text (supports markdown) */
   prompt: string;
   /** Input type determines the UI: text input, checkbox, or datasource picker */
@@ -435,6 +457,8 @@ export interface JsonInputBlock {
  */
 export interface JsonTerminalBlock {
   type: 'terminal';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** The shell command to display and execute */
   command: string;
   /** Markdown description shown to the user */
@@ -459,6 +483,8 @@ export interface JsonTerminalBlock {
  */
 export interface JsonTerminalConnectBlock {
   type: 'terminal-connect';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** Markdown description shown above the button */
   content: string;
   /** Custom button text (defaults to "Try in terminal") */
@@ -482,6 +508,8 @@ export interface JsonTerminalConnectBlock {
  */
 export interface JsonCodeBlockBlock {
   type: 'code-block';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
   /** CSS selector for the Monaco editor container */
   reftarget: string;
   /** Programming language for syntax highlighting (e.g., 'javascript', 'typescript', 'python') */
@@ -588,6 +616,8 @@ export type GrotGuideScreen = GrotGuideQuestionScreen | GrotGuideResultScreen;
  */
 export interface JsonGrotGuideBlock {
   type: 'grot-guide';
+  /** Stable identifier for edit-block / remove-block addressing (not exposed via the authoring CLI; grot-guide is authored in the dedicated decision-tree editor) */
+  id?: string;
   /** Welcome screen shown at start */
   welcome: GrotGuideWelcome;
   /** All screens (questions and results) in the guide */

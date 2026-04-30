@@ -9,7 +9,45 @@
 
 import { z } from 'zod';
 
+import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
+
+// ============ COMPLETENESS MESSAGES ============
+//
+// These message strings are referenced by the CLI's empty-container filters
+// (src/cli/utils/package-io.ts and src/cli/commands/add-block.ts). Authoring
+// commands legitimately produce transient empty containers between
+// `add-block <container>` and the first `add-step` / `add-choice`; the
+// filters drop these specific Zod issues so a mid-flight package is still
+// persistable. The standalone `pathfinder-cli validate --package` path
+// surfaces them as expected.
+//
+// Keep schema-side message text and CLI-side filter checks in lockstep by
+// importing these constants on both sides instead of grepping by literal.
+
+export const EMPTY_STEPS_MESSAGE = 'At least one step is required';
+export const EMPTY_CHOICES_MESSAGE = 'At least one choice is required';
+export const EMPTY_SCREENS_MESSAGE = 'At least one screen is required';
+export const EMPTY_CONDITIONS_MESSAGE = 'At least one condition is required';
+export const QUIZ_NO_CORRECT_CHOICE_PREFIX = 'Quiz has no correct choice yet';
+export const QUIZ_MULTI_CORRECT_PREFIX = 'Single-select quiz has more than one correct choice';
+
 // ============ PRIMITIVE SCHEMAS ============
+
+/**
+ * Schema for a single requirement / condition token. Wraps a plain string
+ * with a refinement that rejects tokens not recognized by
+ * `isValidRequirement` and suggests a fix via `unknownRequirementMessage`.
+ *
+ * Used wherever the JSON model accepts requirement expressions
+ * (`requirements`, `conditions`). The check fires at every Zod parse, which
+ * means `validatePackage()`, the CLI's in-flight `validatePackageState`, and
+ * any future MCP-layer schema parse all enforce the same vocabulary.
+ */
+const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
+  if (!isValidRequirement(token)) {
+    ctx.addIssue({ code: 'custom', message: unknownRequirementMessage(token) });
+  }
+});
 
 /**
  * Schema for safe URLs (http/https only).
@@ -57,10 +95,10 @@ const POPOUT_TARGET_VALUES = ['sidebar', 'floating'] as const;
  * @coupling Type: JsonQuizChoice
  */
 export const JsonQuizChoiceSchema = z.object({
-  id: z.string().min(1, 'Choice id is required'),
-  text: z.string().min(1, 'Choice text is required'),
-  correct: z.boolean().optional(),
-  hint: z.string().optional(),
+  id: z.string().min(1, 'Choice id is required').describe('Choice identifier (e.g., "a", "b", "c")'),
+  text: z.string().min(1, 'Choice text is required').describe('Visible choice text'),
+  correct: z.boolean().optional().describe('Mark this choice as correct'),
+  hint: z.string().optional().describe('Hint shown when this choice is selected'),
 });
 
 // ============ STEP SCHEMA ============
@@ -71,19 +109,25 @@ export const JsonQuizChoiceSchema = z.object({
  */
 export const JsonStepSchema = z
   .object({
-    action: JsonInteractiveActionSchema,
+    action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
     // reftarget is optional for noop actions (informational steps)
-    reftarget: z.string().optional(),
+    reftarget: z
+      .string()
+      .optional()
+      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
 
-    targetvalue: z.string().optional(),
-    requirements: z.array(z.string()).optional(),
-    tooltip: z.string().optional(),
-    description: z.string().optional(),
-    skippable: z.boolean().optional(),
-    formHint: z.string().optional(),
-    validateInput: z.boolean().optional(),
-    lazyRender: z.boolean().optional(),
-    scrollContainer: z.string().optional(),
+    targetvalue: z
+      .string()
+      .optional()
+      .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+    tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
+    description: z.string().optional().describe('Step description shown to the user'),
+    skippable: z.boolean().optional().describe('Allow user to skip this step'),
+    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
+    lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
+    scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
   })
   .refine(
     (step) => {
@@ -137,7 +181,8 @@ export const AssistantPropsSchema = z.object({
  */
 export const JsonMarkdownBlockSchema = z.object({
   type: z.literal('markdown'),
-  content: z.string().min(1, 'Markdown content is required'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  content: z.string().min(1, 'Markdown content is required').describe('Markdown body shown to the user'),
   // Assistant customization props
   ...AssistantPropsSchema.shape,
 });
@@ -148,7 +193,8 @@ export const JsonMarkdownBlockSchema = z.object({
  */
 export const JsonHtmlBlockSchema = z.object({
   type: z.literal('html'),
-  content: z.string().min(1, 'HTML content is required'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  content: z.string().min(1, 'HTML content is required').describe('Sanitized HTML body shown to the user'),
 });
 
 /**
@@ -157,10 +203,11 @@ export const JsonHtmlBlockSchema = z.object({
  */
 export const JsonImageBlockSchema = z.object({
   type: z.literal('image'),
-  src: SafeUrlSchema,
-  alt: z.string().optional(),
-  width: z.number().optional(),
-  height: z.number().optional(),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  src: SafeUrlSchema.describe('Image URL (http/https only)'),
+  alt: z.string().optional().describe('Alt text for accessibility'),
+  width: z.number().optional().describe('Display width in pixels'),
+  height: z.number().optional().describe('Display height in pixels'),
 });
 
 /**
@@ -169,11 +216,12 @@ export const JsonImageBlockSchema = z.object({
  */
 export const JsonVideoBlockSchema = z.object({
   type: z.literal('video'),
-  src: SafeUrlSchema,
-  provider: z.enum(['youtube', 'native']).optional(),
-  title: z.string().optional(),
-  start: z.number().min(0).optional(),
-  end: z.number().min(0).optional(),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  src: SafeUrlSchema.describe('Video URL (http/https only)'),
+  provider: z.enum(['youtube', 'native']).optional().describe('Video provider hint'),
+  title: z.string().optional().describe('Display title'),
+  start: z.number().min(0).optional().describe('Start time in seconds'),
+  end: z.number().min(0).optional().describe('End time in seconds'),
 });
 
 // ============ INTERACTIVE BLOCK SCHEMAS ============
@@ -185,26 +233,39 @@ export const JsonVideoBlockSchema = z.object({
 export const JsonInteractiveBlockSchema = z
   .object({
     type: z.literal('interactive'),
-    action: JsonInteractiveActionSchema,
+    id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+    action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
     // reftarget is optional for noop actions (informational steps)
-    reftarget: z.string().optional(),
+    reftarget: z
+      .string()
+      .optional()
+      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
 
-    targetvalue: z.string().optional(),
-    content: z.string().min(1, 'Interactive content is required'),
-    tooltip: z.string().optional(),
-    requirements: z.array(z.string()).optional(),
-    objectives: z.array(z.string()).optional(),
-    skippable: z.boolean().optional(),
-    hint: z.string().optional(),
-    formHint: z.string().optional(),
-    validateInput: z.boolean().optional(),
-    showMe: z.boolean().optional(),
-    doIt: z.boolean().optional(),
-    completeEarly: z.boolean().optional(),
-    verify: z.string().optional(),
-    lazyRender: z.boolean().optional(),
-    scrollContainer: z.string().optional(),
-    openGuide: z.string().optional(),
+    targetvalue: z
+      .string()
+      .optional()
+      .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    content: z
+      .string()
+      .min(1, 'Interactive content is required')
+      .describe('Instructional text shown to user (markdown)'),
+    tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
+    requirements: z
+      .array(RequirementTokenSchema)
+      .optional()
+      .describe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)'),
+    objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+    skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    hint: z.string().optional().describe('Hint text shown if user is stuck'),
+    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
+    showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
+    doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
+    completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
+    verify: z.string().optional().describe('CSS selector to check for verification after action'),
+    lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
+    scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
+    openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
   })
@@ -245,11 +306,12 @@ export const JsonInteractiveBlockSchema = z
  */
 export const JsonMultistepBlockSchema = z.object({
   type: z.literal('multistep'),
-  content: z.string().min(1, 'Multistep content is required'),
-  steps: z.array(JsonStepSchema).min(1, 'At least one step is required'),
-  requirements: z.array(z.string()).optional(),
-  objectives: z.array(z.string()).optional(),
-  skippable: z.boolean().optional(),
+  id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
+  content: z.string().min(1, 'Multistep content is required').describe('Block heading/intro text'),
+  steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  skippable: z.boolean().optional().describe('Allow user to skip this block'),
 });
 
 /**
@@ -258,29 +320,83 @@ export const JsonMultistepBlockSchema = z.object({
  */
 export const JsonGuidedBlockSchema = z.object({
   type: z.literal('guided'),
-  content: z.string().min(1, 'Guided content is required'),
-  steps: z.array(JsonStepSchema).min(1, 'At least one step is required'),
-  stepTimeout: z.number().optional(),
-  requirements: z.array(z.string()).optional(),
-  objectives: z.array(z.string()).optional(),
-  skippable: z.boolean().optional(),
-  completeEarly: z.boolean().optional(),
+  id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
+  content: z.string().min(1, 'Guided content is required').describe('Block heading/intro text'),
+  steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
+  stepTimeout: z.number().optional().describe('Per-step timeout in milliseconds'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
 });
 
 /**
  * Schema for quiz block.
+ *
+ * Single-select quizzes (`multiSelect !== true`) must have exactly one
+ * `correct: true` choice; multi-select quizzes must have at least one. The
+ * empty-choices case is left to the standalone `validatePackage` completeness
+ * check so the authoring flow can hold a transient empty quiz between
+ * `add-block quiz` and the first `add-choice`.
+ *
  * @coupling Type: JsonQuizBlock
  */
-export const JsonQuizBlockSchema = z.object({
-  type: z.literal('quiz'),
-  question: z.string().min(1, 'Quiz question is required'),
-  choices: z.array(JsonQuizChoiceSchema).min(1, 'At least one choice is required'),
-  multiSelect: z.boolean().optional(),
-  completionMode: z.enum(['correct-only', 'max-attempts']).optional(),
-  maxAttempts: z.number().optional(),
-  requirements: z.array(z.string()).optional(),
-  skippable: z.boolean().optional(),
-});
+export const JsonQuizBlockSchema = z
+  .object({
+    type: z.literal('quiz'),
+    id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
+    question: z.string().min(1, 'Quiz question is required').describe('Question text shown to the user'),
+    choices: z
+      .array(JsonQuizChoiceSchema)
+      .min(1, EMPTY_CHOICES_MESSAGE)
+      .describe('Quiz choices; populated via add-choice'),
+    multiSelect: z.boolean().optional().describe('Allow selecting more than one choice'),
+    completionMode: z.enum(['correct-only', 'max-attempts']).optional().describe('How the quiz is considered complete'),
+    maxAttempts: z.number().optional().describe('Number of attempts allowed when completionMode=max-attempts'),
+    requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+    skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  })
+  .superRefine((quiz, ctx) => {
+    // Empty quizzes are a transient authoring state; the publish-time
+    // `validatePackage` completeness check covers them. Skip here so
+    // `add-block quiz --id q` doesn't fail before the first `add-choice`.
+    if (!quiz.choices || quiz.choices.length === 0) {
+      return;
+    }
+    const correctCount = quiz.choices.filter((c) => c.correct === true).length;
+    if (quiz.multiSelect === true) {
+      if (correctCount === 0) {
+        // "No correct yet" is a transient authoring state — the publish-time
+        // `validatePackage` enforces it, the in-flight authoring filter
+        // (`isEmptyContainerCompletenessMessage`) tolerates it so an agent
+        // can add the un-marked choice before the correct one.
+        ctx.addIssue({
+          code: 'custom',
+          path: ['choices'],
+          message: `${QUIZ_NO_CORRECT_CHOICE_PREFIX} (mark a choice with --correct on add-choice or edit-block).`,
+        });
+      }
+      return;
+    }
+    // Default: single-select. Two distinct failure modes — split so the
+    // CLI can tolerate "no correct yet" (transient) but reject "two correct"
+    // (genuine authoring bug) at write time.
+    if (correctCount === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['choices'],
+        message: `${QUIZ_NO_CORRECT_CHOICE_PREFIX} (mark a choice with --correct on add-choice or edit-block).`,
+      });
+      return;
+    }
+    if (correctCount > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['choices'],
+        message: `${QUIZ_MULTI_CORRECT_PREFIX} (got ${correctCount}). Pass --multi-select on the quiz, or unset --correct on the extras with edit-block.`,
+      });
+    }
+  });
 
 /**
  * Schema for input block (collects user responses).
@@ -288,21 +404,23 @@ export const JsonQuizBlockSchema = z.object({
  */
 export const JsonInputBlockSchema = z.object({
   type: z.literal('input'),
-  prompt: z.string().min(1, 'Input prompt is required'),
-  inputType: z.enum(['text', 'boolean', 'datasource']),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
+  inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
   variableName: z
     .string()
     .min(1, 'Variable name is required')
-    .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Variable name must be a valid identifier'),
-  placeholder: z.string().optional(),
-  checkboxLabel: z.string().optional(),
-  defaultValue: z.union([z.string(), z.boolean()]).optional(),
-  required: z.boolean().optional(),
-  pattern: z.string().optional(),
-  validationMessage: z.string().optional(),
-  requirements: z.array(z.string()).optional(),
-  skippable: z.boolean().optional(),
-  datasourceFilter: z.string().optional(),
+    .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Variable name must be a valid identifier')
+    .describe('Variable name used to reference the captured value (valid JS identifier)'),
+  placeholder: z.string().optional().describe('Placeholder text for text input'),
+  checkboxLabel: z.string().optional().describe('Label shown next to a boolean checkbox'),
+  defaultValue: z.union([z.string(), z.boolean()]).optional().describe('Default value (string or boolean)'),
+  required: z.boolean().optional().describe('Whether the input must be provided to continue'),
+  pattern: z.string().optional().describe('Regex pattern the value must match (text inputs only)'),
+  validationMessage: z.string().optional().describe('Message shown when validation fails'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+  skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
 });
 
 // ============ TERMINAL BLOCK SCHEMA ============
@@ -313,12 +431,13 @@ export const JsonInputBlockSchema = z.object({
  */
 export const JsonTerminalBlockSchema = z.object({
   type: z.literal('terminal'),
-  command: z.string().min(1, 'Terminal command is required'),
-  content: z.string().min(1, 'Terminal content is required'),
-  requirements: z.array(z.string()).optional(),
-  objectives: z.array(z.string()).optional(),
-  skippable: z.boolean().optional(),
-  hint: z.string().optional(),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  command: z.string().min(1, 'Terminal command is required').describe('Command to execute in the terminal'),
+  content: z.string().min(1, 'Terminal content is required').describe('Instructional text shown to the user'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  hint: z.string().optional().describe('Hint text shown if user is stuck'),
 });
 
 // ============ TERMINAL CONNECT BLOCK SCHEMA ============
@@ -329,11 +448,12 @@ export const JsonTerminalBlockSchema = z.object({
  */
 export const JsonTerminalConnectBlockSchema = z.object({
   type: z.literal('terminal-connect'),
-  content: z.string().min(1, 'Terminal connect content is required'),
-  buttonText: z.string().optional(),
-  vmTemplate: z.string().optional(),
-  vmApp: z.string().optional(),
-  vmScenario: z.string().optional(),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  content: z.string().min(1, 'Terminal connect content is required').describe('Instructional text shown to the user'),
+  buttonText: z.string().optional().describe('Connect button label'),
+  vmTemplate: z.string().optional().describe('VM template to provision'),
+  vmApp: z.string().optional().describe('App to launch in the VM'),
+  vmScenario: z.string().optional().describe('Scenario to run in the VM'),
 });
 
 // ============ CODE BLOCK SCHEMA ============
@@ -344,14 +464,18 @@ export const JsonTerminalConnectBlockSchema = z.object({
  */
 export const JsonCodeBlockBlockSchema = z.object({
   type: z.literal('code-block'),
-  reftarget: z.string().min(1, 'Code block reftarget is required'),
-  language: z.string().optional(),
-  code: z.string().min(1, 'Code is required'),
-  content: z.string().optional(),
-  requirements: z.array(z.string()).optional(),
-  objectives: z.array(z.string()).optional(),
-  skippable: z.boolean().optional(),
-  hint: z.string().optional(),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  reftarget: z
+    .string()
+    .min(1, 'Code block reftarget is required')
+    .describe('CSS selector for the target Monaco editor'),
+  language: z.string().optional().describe('Source language hint (e.g., promql, logql, sql)'),
+  code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
+  content: z.string().optional().describe('Optional instructional text shown above the code'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  hint: z.string().optional().describe('Hint text shown if user is stuck'),
 });
 
 // ============ GROT GUIDE BLOCK SCHEMA ============
@@ -435,8 +559,12 @@ export const GrotGuideScreenSchema = z.discriminatedUnion('type', [
 export const JsonGrotGuideBlockSchema = z
   .object({
     type: z.literal('grot-guide'),
+    id: z
+      .string()
+      .optional()
+      .describe('Stable identifier; grot-guide blocks are authored in the dedicated editor, not the CLI'),
     welcome: GrotGuideWelcomeSchema,
-    screens: z.array(GrotGuideScreenSchema).min(1, 'At least one screen is required'),
+    screens: z.array(GrotGuideScreenSchema).min(1, EMPTY_SCREENS_MESSAGE),
   })
   .refine(
     (block) => {
@@ -488,17 +616,24 @@ const NonRecursiveBlockSchema = z.union([
 // Common properties for recursive blocks to avoid duplication
 const SectionProps = {
   type: z.literal('section'),
-  id: z.string().optional(),
-  title: z.string().optional(),
-  requirements: z.array(z.string()).optional(),
-  objectives: z.array(z.string()).optional(),
-  autoCollapse: z.boolean().optional(),
+  id: z.string().optional().describe('Stable identifier for the section (required for container blocks via CLI)'),
+  title: z.string().optional().describe('Section heading'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+  objectives: z.array(z.string()).optional().describe('Learning objectives this section addresses'),
+  autoCollapse: z.boolean().optional().describe('Collapse the section after the user completes its contents'),
 };
 
 const AssistantProps = {
   type: z.literal('assistant'),
-  assistantId: z.string().optional(),
-  assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
+  id: z
+    .string()
+    .optional()
+    .describe('Stable identifier for the assistant block (required for container blocks via CLI)'),
+  assistantId: z.string().optional().describe('Assistant configuration identifier'),
+  assistantType: z
+    .enum(['query', 'config', 'code', 'text'])
+    .optional()
+    .describe('Kind of AI customization to enable inside this block'),
 };
 
 /**
@@ -508,18 +643,32 @@ const AssistantProps = {
  */
 const ConditionalSectionConfigSchema = z.object({
   title: z.string().optional(),
-  requirements: z.array(z.string()).optional(),
+  requirements: z.array(RequirementTokenSchema).optional(),
   objectives: z.array(z.string()).optional(),
 });
 
 const ConditionalProps = {
   type: z.literal('conditional'),
-  conditions: z.array(z.string()).min(1, 'At least one condition is required'),
-  description: z.string().optional(),
-  display: z.enum(['inline', 'section']).optional(),
-  reftarget: z.string().optional(),
-  whenTrueSectionConfig: ConditionalSectionConfigSchema.optional(),
-  whenFalseSectionConfig: ConditionalSectionConfigSchema.optional(),
+  id: z
+    .string()
+    .optional()
+    .describe('Stable identifier for the conditional block (required for container blocks via CLI)'),
+  conditions: z
+    .array(RequirementTokenSchema)
+    .min(1, EMPTY_CONDITIONS_MESSAGE)
+    .describe('Requirement expressions evaluated to choose the active branch'),
+  description: z.string().optional().describe('Description shown when the conditional acts as a section'),
+  display: z
+    .enum(['inline', 'section'])
+    .optional()
+    .describe('Render the conditional inline or as a collapsible section'),
+  reftarget: z.string().optional().describe('CSS selector consumed by certain conditional styles'),
+  whenTrueSectionConfig: ConditionalSectionConfigSchema.optional().describe(
+    'Section config applied to the whenTrue branch'
+  ),
+  whenFalseSectionConfig: ConditionalSectionConfigSchema.optional().describe(
+    'Section config applied to the whenFalse branch'
+  ),
 };
 
 const MAX_NESTING_DEPTH = 5;
@@ -647,12 +796,13 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'scrollContainer',
   ]),
   _choice: new Set(['id', 'text', 'correct', 'hint']),
-  markdown: new Set(['type', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
-  html: new Set(['type', 'content']),
-  image: new Set(['type', 'src', 'alt', 'width', 'height']),
-  video: new Set(['type', 'src', 'provider', 'title', 'start', 'end']),
+  markdown: new Set(['type', 'id', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
+  html: new Set(['type', 'id', 'content']),
+  image: new Set(['type', 'id', 'src', 'alt', 'width', 'height']),
+  video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end']),
   interactive: new Set([
     'type',
+    'id',
     'action',
     'reftarget',
 
@@ -675,9 +825,10 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'assistantId',
     'assistantType',
   ]),
-  multistep: new Set(['type', 'content', 'steps', 'requirements', 'objectives', 'skippable']),
+  multistep: new Set(['type', 'id', 'content', 'steps', 'requirements', 'objectives', 'skippable']),
   guided: new Set([
     'type',
+    'id',
     'content',
     'steps',
     'stepTimeout',
@@ -689,6 +840,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse']),
   conditional: new Set([
     'type',
+    'id',
     'conditions',
     'whenTrue',
     'whenFalse',
@@ -701,6 +853,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   _conditionalSectionConfig: new Set(['title', 'requirements', 'objectives']),
   quiz: new Set([
     'type',
+    'id',
     'question',
     'choices',
     'multiSelect',
@@ -711,6 +864,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   input: new Set([
     'type',
+    'id',
     'prompt',
     'inputType',
     'variableName',
@@ -724,11 +878,12 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'datasourceFilter',
   ]),
-  assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
-  terminal: new Set(['type', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
-  'terminal-connect': new Set(['type', 'content', 'buttonText', 'vmTemplate', 'vmApp', 'vmScenario']),
+  assistant: new Set(['type', 'id', 'assistantId', 'assistantType', 'blocks']),
+  terminal: new Set(['type', 'id', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
+  'terminal-connect': new Set(['type', 'id', 'content', 'buttonText', 'vmTemplate', 'vmApp', 'vmScenario']),
   'code-block': new Set([
     'type',
+    'id',
     'reftarget',
 
     'language',
@@ -739,7 +894,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'hint',
   ]),
-  'grot-guide': new Set(['type', 'welcome', 'screens']),
+  'grot-guide': new Set(['type', 'id', 'welcome', 'screens']),
   _manifest: new Set([
     'schemaVersion',
     'id',

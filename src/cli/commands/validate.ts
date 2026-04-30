@@ -5,6 +5,7 @@
  */
 
 import { Command } from 'commander';
+import * as fs from 'fs';
 import * as path from 'path';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
@@ -18,7 +19,16 @@ interface ValidateOptions {
   format?: 'text' | 'json';
   package?: string;
   packages?: string;
+  verbose?: boolean;
 }
+
+/**
+ * Stable regexes for default-array INFO messages emitted by
+ * `validatePackage`. Used to collapse the six "depends/recommends/.../replaces
+ * defaulting to []" lines that fire on every fresh package into a single
+ * summary line, freeing screen budget for real WARN/ERROR signals.
+ */
+const DEFAULT_ARRAY_INFO_REGEX = /^manifest\.json: "([a-zA-Z]+)" not specified, defaulting to \[\]/;
 
 interface ValidationSummary {
   totalFiles: number;
@@ -104,7 +114,7 @@ function formatJsonOutput(summary: ValidationSummary): void {
 
 // --- Package validation output ---
 
-function formatPackageResult(dirName: string, result: PackageValidationResult, strict: boolean): void {
+function formatPackageResult(dirName: string, result: PackageValidationResult, strict: boolean, verbose = false): void {
   const status = result.isValid ? '✅' : '❌';
   console.log(`\n${status} ${dirName} (${result.packageId ?? 'unknown id'})`);
 
@@ -118,9 +128,38 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
     }
   }
 
+  // Collapse the default-array INFO messages into a single summary line
+  // unless --verbose. Six identical-shape "defaulting to []" lines on every
+  // fresh package drown out real warnings; one summary keeps validate output
+  // scannable without losing information for authors who want it.
+  const defaultArrayFields: string[] = [];
   for (const msg of result.messages) {
+    if (msg.severity === 'info' && !verbose) {
+      const m = DEFAULT_ARRAY_INFO_REGEX.exec(msg.message);
+      if (m) {
+        defaultArrayFields.push(m[1]!);
+        continue;
+      }
+    }
     const icon = msg.severity === 'error' ? '❌' : msg.severity === 'warn' ? '⚠️ ' : 'ℹ️ ';
     console.log(`  ${icon} ${msg.severity.toUpperCase()}: ${msg.message}`);
+    if (msg.remediation) {
+      console.log(`      Fix: ${msg.remediation}`);
+    }
+  }
+  if (defaultArrayFields.length > 0) {
+    console.log(
+      `  ℹ️  INFO: ${defaultArrayFields.length} optional manifest field(s) not set (${defaultArrayFields.join(', ')}) — run with --verbose for details.`
+    );
+  }
+
+  // Explicit PASS / FAIL trailer so success is unambiguous when WARNs are
+  // present in the body. Tested by every audit scenario; previously authors
+  // had to scan for `❌ ERROR` lines or rely on exit code.
+  if (result.isValid) {
+    console.log('\n✅ PASS');
+  } else {
+    console.log('\n❌ FAIL');
   }
 }
 
@@ -131,7 +170,7 @@ function runPackageValidation(packageDir: string, options: ValidateOptions): voi
   if (options.format === 'json') {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    formatPackageResult(path.basename(absoluteDir), result, !!options.strict);
+    formatPackageResult(path.basename(absoluteDir), result, !!options.strict, !!options.verbose);
   }
 
   if (!result.isValid) {
@@ -227,6 +266,51 @@ function runStdinValidation(input: string, options: ValidateOptions): void {
   }
 }
 
+/**
+ * Recognize when a single positional argument points at a package directory
+ * (or a tree of them) so users don't have to remember `--package` /
+ * `--packages` flags. Returns null on anything ambiguous so the file-loading
+ * code path can take over.
+ *
+ * Heuristics:
+ * - Single arg + dir contains `content.json` → 'package'
+ * - Single arg + dir contains zero `content.json` directly but at least one
+ *   immediate child has `content.json` → 'packages' (treats it as a tree)
+ * - Anything else → null (let the existing file loader handle it).
+ */
+function autoDetectPositionals(files: string[]): { kind: 'package' | 'packages'; path: string } | null {
+  if (files.length !== 1) {
+    return null;
+  }
+  const target = files[0]!;
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(target);
+  } catch {
+    return null;
+  }
+  if (!stat.isDirectory()) {
+    return null;
+  }
+  if (fs.existsSync(path.join(target, 'content.json'))) {
+    return { kind: 'package', path: target };
+  }
+  // Look one level deep for a child that's itself a package.
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(target, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const hasChildPackage = entries.some(
+    (entry) => entry.isDirectory() && fs.existsSync(path.join(target, entry.name, 'content.json'))
+  );
+  if (hasChildPackage) {
+    return { kind: 'packages', path: target };
+  }
+  return null;
+}
+
 export const validateCommand = new Command('validate')
   .description('Validate JSON guide files or package directories')
   .arguments('[files...]')
@@ -236,7 +320,9 @@ export const validateCommand = new Command('validate')
   .option('--format <format>', 'Output format: text or json', 'text')
   .option('--package <dir>', 'Validate a single package directory (expects content.json)')
   .option('--packages <dir>', 'Validate a tree of package directories')
-  .action(async (files: string[], options: ValidateOptions) => {
+  .option('--verbose', 'Show every INFO message individually (default: collapse default-array INFOs)')
+  .action(async function (this: Command, files: string[]) {
+    const options = this.optsWithGlobals<ValidateOptions>();
     try {
       if (options.stdin) {
         if (files.length > 0 || options.bundled || options.package || options.packages) {
@@ -253,6 +339,20 @@ export const validateCommand = new Command('validate')
 
       if (options.packages) {
         return runPackagesValidation(options.packages, options);
+      }
+
+      // Auto-detect when a positional path is a directory: the top-level
+      // command description promises "JSON guide files or package
+      // directories", so a bare positional dir should Just Work without
+      // forcing the user to discover --package via help text.
+      const autoDetected = autoDetectPositionals(files);
+      if (autoDetected) {
+        if (autoDetected.kind === 'package') {
+          return runPackageValidation(autoDetected.path, options);
+        }
+        if (autoDetected.kind === 'packages') {
+          return runPackagesValidation(autoDetected.path, options);
+        }
       }
 
       let guides: LoadedGuide[] = [];

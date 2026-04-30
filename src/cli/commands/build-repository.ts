@@ -243,6 +243,11 @@ export const buildRepositoryCommand = new Command('build-repository')
       console.error(`❌ ${error}`);
     }
 
+    if (errors.length > 0) {
+      console.error(`❌ ${errors.length} error(s) prevented building repository.json; no output written.`);
+      process.exit(1);
+    }
+
     const unformattedJson = JSON.stringify(repository, null, 2);
     const json = await formatRepositoryJson(unformattedJson);
 
@@ -252,9 +257,5 @@ export const buildRepositoryCommand = new Command('build-repository')
       console.log(`✅ Wrote repository.json to ${outputPath} (${Object.keys(repository).length} packages)`);
     } else {
       process.stdout.write(json);
-    }
-
-    if (errors.length > 0) {
-      process.exit(1);
     }
   });

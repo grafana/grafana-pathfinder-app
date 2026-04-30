@@ -22,6 +22,13 @@ export interface PackageValidationMessage {
   severity: MessageSeverity;
   message: string;
   path?: string[];
+  /**
+   * Optional copy-paste-runnable command that addresses this message. Set on
+   * warnings/infos that have a clear CLI remediation (e.g., a missing
+   * `author` field that `set-manifest --author-name X` would fix). The CLI
+   * renderer prints this as a `Fix:` line under the message.
+   */
+  remediation?: string;
 }
 
 export interface PackageValidationResult {
@@ -261,6 +268,7 @@ function emitManifestMessages(
         severity: 'info',
         message: `manifest.json: "${field}" not specified, defaulting to "${defaultValue}"`,
         path: ['manifest.json', field],
+        remediation: `pathfinder-cli set-manifest <dir> --${kebab(field)} "${defaultValue}"`,
       });
     }
   }
@@ -272,6 +280,7 @@ function emitManifestMessages(
         severity: 'info',
         message: `manifest.json: "${field}" not specified, defaulting to []`,
         path: ['manifest.json', field],
+        remediation: `pathfinder-cli set-manifest <dir> --${field} <package-id> [--${field} <package-id> ...]`,
       });
     }
   }
@@ -288,6 +297,7 @@ function emitManifestMessages(
         severity: 'warn',
         message: msg,
         path: ['manifest.json', field],
+        remediation: remediationFor(field),
       });
     }
   }
@@ -298,6 +308,7 @@ function emitManifestMessages(
       severity: 'info',
       message: 'manifest.json: "author" not specified',
       path: ['manifest.json', 'author'],
+      remediation: 'pathfinder-cli set-manifest <dir> --author-name "<name>" --author-team "<team>"',
     });
   }
 
@@ -306,7 +317,27 @@ function emitManifestMessages(
       severity: 'info',
       message: 'manifest.json: "testEnvironment" not specified, using default cloud environment',
       path: ['manifest.json', 'testEnvironment'],
+      remediation: 'pathfinder-cli set-manifest <dir> --test-tier <local|cloud> --test-min-version <semver>',
     });
+  }
+}
+
+function kebab(field: string): string {
+  return field.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+function remediationFor(field: string): string | undefined {
+  switch (field) {
+    case 'description':
+      return 'pathfinder-cli set-manifest <dir> --description "<short description>"';
+    case 'category':
+      return 'pathfinder-cli set-manifest <dir> --category "<category>"';
+    case 'startingLocation':
+      return 'pathfinder-cli set-manifest <dir> --starting-location "<path>"';
+    case 'targeting':
+      return 'pathfinder-cli set-manifest <dir> --target-url-prefix "/" --target-platform <oss|cloud|enterprise>';
+    default:
+      return undefined;
   }
 }
 

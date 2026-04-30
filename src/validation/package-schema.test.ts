@@ -20,12 +20,52 @@ import {
   GraphNodeSchema,
   GraphEdgeSchema,
   DependencyGraphSchema,
+  PACKAGE_ID_REGEX,
+  PACKAGE_ID_MAX_LENGTH,
 } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
+
+// ============ PACKAGE_ID_REGEX ============
+
+describe('PACKAGE_ID_REGEX', () => {
+  it.each(['a', 'loki-101', 'welcome-to-grafana-cloud', 'prometheus-advanced-queries', 'abc123', 'a-b-c'])(
+    'accepts %s',
+    (id) => {
+      expect(PACKAGE_ID_REGEX.test(id)).toBe(true);
+    }
+  );
+
+  it.each(['', 'Loki', 'loki_101', '-loki', 'loki-', 'loki/101', 'loki..101', '../etc/passwd'])('rejects %s', (id) => {
+    expect(PACKAGE_ID_REGEX.test(id)).toBe(false);
+  });
+
+  it('exposes the Kubernetes resource-name length limit', () => {
+    expect(PACKAGE_ID_MAX_LENGTH).toBe(253);
+  });
+
+  it('rejects ids longer than 253 chars at the schema layer', () => {
+    const tooLong = 'a' + 'b'.repeat(PACKAGE_ID_MAX_LENGTH);
+    const result = ContentJsonSchema.safeParse({
+      id: tooLong,
+      title: 'Too long',
+      blocks: [],
+    });
+    expect(result.success).toBe(false);
+  });
+});
 
 // ============ ContentJsonSchema ============
 
 describe('ContentJsonSchema', () => {
+  it('rejects ids that violate kebab format', () => {
+    const result = ContentJsonSchema.safeParse({
+      id: 'Bad_ID',
+      title: 'Bad',
+      blocks: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('should accept a minimal valid content.json', () => {
     const result = ContentJsonSchema.safeParse({
       id: 'test-guide',
