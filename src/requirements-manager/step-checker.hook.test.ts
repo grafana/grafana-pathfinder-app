@@ -1,5 +1,5 @@
 import type React from 'react';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
@@ -104,52 +104,73 @@ beforeEach(() => {
 // EXISTING: heartbeat behavior (preserved verbatim except for shared mocks)
 // =============================================================================
 describe('useStepChecker heartbeat', () => {
-  let callCount: number;
-
   beforeEach(() => {
-    callCount = 0;
-
-    mockCheckRequirements.mockImplementation(({ requirements }) => {
-      // Toggle behavior: first call passes, second call fails for nav fragile case
-      if (requirements?.includes('navmenu-open')) {
-        callCount++;
-        if (callCount === 1) {
-          return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
-        }
-        return Promise.resolve({
-          pass: false,
-          requirements: requirements || '',
-          error: [{ requirement: 'navmenu-open', pass: false, error: 'Navigation menu not detected' }],
-        });
-      }
-      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
-    });
-
     (INTERACTIVE_CONFIG as any).requirements.heartbeat.enabled = true;
     (INTERACTIVE_CONFIG as any).requirements.heartbeat.intervalMs = 50;
     (INTERACTIVE_CONFIG as any).requirements.heartbeat.watchWindowMs = 200;
   });
 
   it('reverts enabled step to disabled if fragile requirement becomes false', async () => {
+    // The previous toggle-by-callCount mock relied on a race between the
+    // mount-effect's auto-checkStep and a manual `result.current.checkStep()`.
+    // Under CI's `--maxWorkers 4` contention the manual call sometimes
+    // short-circuited on `state.isChecking`, callCount stayed at 1, the
+    // heartbeat-driven re-render path stayed busy, the test hit its 5s
+    // timeout, and every subsequent test in the file failed with
+    // "Cannot read properties of null (reading 'checkStep')".
+    //
+    // Drive the two states explicitly: mock pass=true, settle to enabled,
+    // flip the mock to pass=false, call checkStep again. Same intent (a
+    // re-evaluated fragile requirement reverts an enabled step) without the
+    // call-ordering race.
+    mockCheckRequirements.mockResolvedValue({
+      pass: true,
+      requirements: 'navmenu-open',
+      error: [],
+    });
+
     const { result } = renderHook(() =>
       useStepChecker({
         requirements: 'navmenu-open',
         objectives: undefined,
         hints: undefined,
+        // Standalone stepId triggers the mount-effect auto-checkStep that
+        // will move us into the enabled state below.
         stepId: 'test-step',
         isEligibleForChecking: true,
       })
     );
 
+    // Mount effects auto-fire checkStep; wait for state to settle as enabled.
+    await waitFor(
+      () => {
+        expect(result.current.isEnabled).toBe(true);
+      },
+      { timeout: 3000 }
+    );
+
+    // Flip the mock so the next checkRequirements call fails — simulating
+    // a fragile requirement (e.g. navmenu-open) becoming false after the
+    // step was enabled. This is the condition the heartbeat tick observes.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'navmenu-open',
+      error: [{ requirement: 'navmenu-open', pass: false, error: 'Navigation menu not detected' }],
+    });
+
     await act(async () => {
       await result.current.checkStep();
     });
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 80));
-    });
-
-    expect(result.current.isEnabled).toBe(false);
+    // The re-check might also short-circuit if a heartbeat tick fired
+    // concurrently and state.isChecking is briefly true; poll until the
+    // failed result has been dispatched.
+    await waitFor(
+      () => {
+        expect(result.current.isEnabled).toBe(false);
+      },
+      { timeout: 3000 }
+    );
   });
 });
 
