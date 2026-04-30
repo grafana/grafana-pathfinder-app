@@ -21,6 +21,23 @@ function isImageBlock(block: JsonBlock): block is JsonImageBlock {
 }
 
 /**
+ * Validate a URL string — rejects empty, relative paths, and javascript: URIs.
+ */
+function isValidUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  // Reject javascript: and data: URIs for security
+  if (/^javascript:/i.test(trimmed)) return false;
+  // Accept http/https URLs
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  // Accept protocol-relative URLs
+  if (/^\/\//.test(trimmed)) return true;
+  // Accept relative paths (e.g., /images/foo.png, ../img.png)
+  if (/^\//.test(trimmed) || /^[a-zA-Z0-9_.-]+\.(png|jpe?g|gif|webp|svg|avif)$/i.test(trimmed)) return true;
+  return false;
+}
+
+/**
  * Image block form component
  */
 export function ImageBlockForm({
@@ -57,7 +74,8 @@ export function ImageBlockForm({
     [src, alt, width, height, onSubmit]
   );
 
-  const isValid = src.trim().length > 0;
+  const isValid = isValidUrl(src);
+  const [urlError, setUrlError] = useState<string | null>(null);
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -67,12 +85,21 @@ export function ImageBlockForm({
         </Alert>
       )}
 
-      <Field label="Image URL" description="Full URL to the image" required>
+      <Field label="Image URL" description="Full URL to the image" required error={urlError ?? undefined}>
         <Input
           value={src}
-          onChange={(e) => setSrc(e.currentTarget.value)}
+          onChange={(e) => {
+            setSrc(e.currentTarget.value);
+            setUrlError(null);
+          }}
           placeholder="https://example.com/image.png"
           autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !isValidUrl(src)) {
+              setUrlError('Please enter a valid image URL (e.g., https://example.com/image.png)');
+              e.preventDefault();
+            }
+          }}
         />
       </Field>
 
