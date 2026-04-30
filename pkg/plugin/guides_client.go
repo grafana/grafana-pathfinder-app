@@ -72,8 +72,8 @@ type guidesMetadata struct {
 // response. We only read the fields we actually surface to API callers
 // — the aggregator may include many more.
 type guidesResponse struct {
-	Metadata guidesMetadata  `json:"metadata"`
-	Spec     specWithStatus  `json:"spec"`
+	Metadata guidesMetadata `json:"metadata"`
+	Spec     specWithStatus `json:"spec"`
 }
 
 // specWithStatus extracts spec.status without re-validating the rest
@@ -87,9 +87,10 @@ type specWithStatus struct {
 // 4xx/5xx aggregator responses. We bubble Code and Message so callers
 // see a useful message rather than just an HTTP status.
 type k8sStatusError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Reason  string `json:"reason,omitempty"`
+	Code       int    `json:"code"`
+	Message    string `json:"message"`
+	Reason     string `json:"reason,omitempty"`
+	Collection bool   `json:"-"`
 }
 
 func (e *k8sStatusError) Error() string {
@@ -114,12 +115,12 @@ func (e *k8sStatusError) statusCode() int {
 // of these, the feature toggle is off or the route hasn't been rolled
 // out — distinct from a real failure.
 var guidesUnavailableStatuses = map[int]bool{
-	http.StatusBadRequest:          true, // 400
-	http.StatusForbidden:           true, // 403
-	http.StatusNotFound:            true, // 404 (only at the "list" level — single-resource 404 is not "unavailable")
-	http.StatusMethodNotAllowed:    true, // 405
-	http.StatusNotImplemented:      true, // 501
-	http.StatusServiceUnavailable:  true, // 503
+	http.StatusBadRequest:         true, // 400
+	http.StatusForbidden:          true, // 403
+	http.StatusNotFound:           true, // 404 (only at the "list" level — single-resource 404 is not "unavailable")
+	http.StatusMethodNotAllowed:   true, // 405
+	http.StatusNotImplemented:     true, // 501
+	http.StatusServiceUnavailable: true, // 503
 }
 
 // guidesClient is a thin HTTP wrapper for the Pathfinder Backend
@@ -155,12 +156,18 @@ type guidesRequestConfig struct {
 func configFromRequest(ctx context.Context, namespace string) (*guidesRequestConfig, error) {
 	cfg := backend.GrafanaConfigFromContext(ctx)
 	appURL, err := cfg.AppURL()
-	if err != nil || appURL == "" {
+	if err != nil {
 		return nil, fmt.Errorf("grafana app URL unavailable: %w", err)
 	}
+	if appURL == "" {
+		return nil, errors.New("grafana app URL unavailable")
+	}
 	token, err := cfg.PluginAppClientSecret()
-	if err != nil || token == "" {
+	if err != nil {
 		return nil, fmt.Errorf("plugin app client secret unavailable: %w", err)
+	}
+	if token == "" {
+		return nil, errors.New("plugin app client secret unavailable")
 	}
 	if namespace == "" {
 		return nil, errors.New("namespace unavailable from plugin context")
@@ -245,7 +252,12 @@ func (c *guidesClient) send(ctx context.Context, rc *guidesRequestConfig, method
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
-		return nil, parseStatusError(respBody, resp.StatusCode)
+		err := parseStatusError(respBody, resp.StatusCode)
+		var se *k8sStatusError
+		if errors.As(err, &se) {
+			se.Collection = name == ""
+		}
+		return nil, err
 	}
 
 	var out guidesResponse
@@ -280,5 +292,8 @@ func isAggregatorUnavailable(err error) bool {
 	if !errors.As(err, &s) {
 		return false
 	}
-	return guidesUnavailableStatuses[s.Code] && s.Code != http.StatusNotFound
+	if s.Code == http.StatusNotFound {
+		return guidesUnavailableStatuses[s.Code] && s.Collection
+	}
+	return guidesUnavailableStatuses[s.Code]
 }

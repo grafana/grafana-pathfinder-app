@@ -102,6 +102,27 @@ func buildImportRequest(t *testing.T, role, namespace, appURL, body string, aggr
 	return r.WithContext(ctx)
 }
 
+func importRequestWithClientSecret(t *testing.T, role, namespace, appURL, clientSecret, body string) *http.Request {
+	t.Helper()
+	pluginCtx := backend.PluginContext{
+		Namespace: namespace,
+	}
+	if role != "" {
+		pluginCtx.User = &backend.User{Login: "test-user", Role: role}
+	}
+	cfg := backend.NewGrafanaCfg(map[string]string{
+		backend.AppURL:                       appURL,
+		backend.AppClientSecret:              clientSecret,
+		"GF_INSTANCE_FEATURE_TOGGLES_ENABLE": guidesAggregatorFeatureToggle,
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/guides/import", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	ctx := backend.WithPluginContext(r.Context(), pluginCtx)
+	ctx = backend.WithGrafanaConfig(ctx, cfg)
+	return r.WithContext(ctx)
+}
+
 // readBody pulls the response body out of an httptest recorder and
 // returns it as a string for assertion.
 func readBody(t *testing.T, w *httptest.ResponseRecorder) string {
@@ -462,6 +483,27 @@ func TestImport_AggregatorUnavailableMaps502(t *testing.T) {
 	}
 }
 
+func TestImport_CreateCollectionNotFoundMaps502(t *testing.T) {
+	srv := stubAggregator(t, map[string]http.HandlerFunc{
+		"GET /resource": func(w http.ResponseWriter, r *http.Request) {
+			writeK8sStatus(w, http.StatusNotFound, "not found")
+		},
+		"POST /collection": func(w http.ResponseWriter, r *http.Request) {
+			writeK8sStatus(w, http.StatusNotFound, "the API group itself is missing")
+		},
+	})
+	defer srv.Close()
+
+	app := newImportTestApp()
+	r := importRequest(t, "Editor", "default", srv.URL, validImportBody(t))
+	w := httptest.NewRecorder()
+	app.handleGuidesImport(w, r)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected 502 for collection-level 404, got %d, body=%s", w.Code, readBody(t, w))
+	}
+}
+
 func TestImport_RejectsWrongMethod(t *testing.T) {
 	app := newImportTestApp()
 	r := httptest.NewRequest(http.MethodGet, "/v1/guides/import", bytes.NewReader(nil))
@@ -509,6 +551,26 @@ func TestImport_MissingAppURL(t *testing.T) {
 
 	if w.Code != http.StatusBadGateway {
 		t.Errorf("expected 502 when AppURL is missing, got %d", w.Code)
+	}
+	if strings.Contains(readBody(t, w), "<nil>") {
+		t.Errorf("expected missing AppURL error not to include <nil>, got %q", readBody(t, w))
+	}
+}
+
+func TestImport_MissingClientSecret(t *testing.T) {
+	srv := stubAggregator(t, nil)
+	defer srv.Close()
+
+	app := newImportTestApp()
+	r := importRequestWithClientSecret(t, "Editor", "default", srv.URL, "", validImportBody(t))
+	w := httptest.NewRecorder()
+	app.handleGuidesImport(w, r)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected 502 when client secret is missing, got %d", w.Code)
+	}
+	if strings.Contains(readBody(t, w), "<nil>") {
+		t.Errorf("expected missing client secret error not to include <nil>, got %q", readBody(t, w))
 	}
 }
 
