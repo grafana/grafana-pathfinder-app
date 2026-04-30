@@ -83,17 +83,46 @@
         "name": "Interactive learning User",
         "description": "Access to Interactive learning",
         "permissions": [
-          {
-            "action": "plugins.app:access",
-            "scope": "plugins:id:grafana-pathfinder-app"
-          },
-          {
-            "action": "grafana-pathfinder-app.docs:read"
-          }
+          { "action": "plugins.app:access", "scope": "plugins:id:grafana-pathfinder-app" },
+          { "action": "grafana-pathfinder-app.docs:read" },
+          { "action": "grafana-pathfinder-app.guides:read" }
+        ]
+      }
+    },
+    {
+      "grants": ["Editor"],
+      "role": {
+        "name": "Interactive learning Writer",
+        "description": "Create and update interactive guides — including via the external import API.",
+        "permissions": [
+          { "action": "plugins.app:access", "scope": "plugins:id:grafana-pathfinder-app" },
+          { "action": "grafana-pathfinder-app.docs:read" },
+          { "action": "grafana-pathfinder-app.guides:read" },
+          { "action": "grafana-pathfinder-app.guides:write" }
+        ]
+      }
+    },
+    {
+      "grants": ["Admin"],
+      "role": {
+        "name": "Interactive learning Admin",
+        "description": "Interactive learning Writer, plus the ability to delete guides.",
+        "permissions": [
+          { "action": "plugins.app:access", "scope": "plugins:id:grafana-pathfinder-app" },
+          { "action": "grafana-pathfinder-app.docs:read" },
+          { "action": "grafana-pathfinder-app.guides:read" },
+          { "action": "grafana-pathfinder-app.guides:write" },
+          { "action": "grafana-pathfinder-app.guides:delete" }
         ]
       }
     }
   ],
+  "iam": {
+    "permissions": [
+      { "action": "pathfinderbackend.ext.grafana.com/interactiveguides:read" },
+      { "action": "pathfinderbackend.ext.grafana.com/interactiveguides:write" }
+    ]
+  },
   "languages": [
     "en-US",
     "id-ID",

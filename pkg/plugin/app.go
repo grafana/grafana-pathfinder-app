@@ -25,6 +25,12 @@ type App struct {
 	// Coda client for VM management (uses JWT Bearer token auth)
 	coda *CodaClient
 
+	// Guides aggregator client for the external import API
+	// (POST /v1/guides/import). Constructed unconditionally; calls into
+	// pathfinderbackend.ext.grafana.com via Grafana's K8s aggregator
+	// using the plugin SA token from cfg.PluginAppClientSecret().
+	guidesClient *guidesClient
+
 	// Plugin settings
 	settings *Settings
 
@@ -54,6 +60,7 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 	app := &App{
 		settings:       settings,
 		logger:         logger,
+		guidesClient:   newGuidesClient(),
 		streamSessions: make(map[string]*streamSession),
 		userVMs:        make(map[string]string),
 	}

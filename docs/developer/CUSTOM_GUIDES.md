@@ -91,6 +91,16 @@ The library (**Library** button) lists all guides stored in the Pathfinder backe
 
 ---
 
+## External import
+
+Guides can also be pushed into a stack from outside the editor — useful for CI pipelines, Terraform, or one-off scripts. The plugin exposes a resource endpoint at `POST /api/plugins/grafana-pathfinder-app/resources/v1/guides/import` that accepts the same `spec` shape the editor exports, slugifies the resource name, and either creates a new guide or replaces an existing one (when `overwrite: true`).
+
+Authentication is a Grafana service-account Bearer token; the namespace is server-derived. The handler enforces the `grafana-pathfinder-app.guides:write` action, so the calling token needs the **Editor** or **Admin** role. `spec.status` is round-tripped — pass `"draft"` or `"published"` to land in the right state without a separate publish step.
+
+See [EXTERNAL_API.md](EXTERNAL_API.md) for the full reference, including request/response shape, error codes, and curl examples. The editor's **Library → Export** flow produces a JSON payload compatible with this endpoint after stripping the Kubernetes envelope (e.g. `jq .spec my-export.json`).
+
+---
+
 ## Status badges
 
 The badge in the top-right of the header reflects the backend sync state:

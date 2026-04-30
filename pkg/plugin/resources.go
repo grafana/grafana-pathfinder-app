@@ -20,6 +20,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)
 	mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)
 	mux.HandleFunc("/package-recommendations", a.handlePackageRecommendations)
+	mux.HandleFunc("/v1/guides/import", a.handleGuidesImport)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 
