@@ -287,6 +287,36 @@ describe('step-state', () => {
         expect(state.error).toBeUndefined();
         expect(state.canFix).toBe(false);
       });
+
+      it('should clear stale fixType, targetHref, and scrollContainer carried over from a prior fixable state', () => {
+        // A step that was previously blocked with a fixable requirement
+        // (e.g., navmenu-open) carries fix metadata. When it transitions to
+        // completed (objectives met, manually marked, or skipped), that
+        // metadata must not leak through to consumers like the
+        // `data-test-fix-type` attribute or the fix-handler registry.
+        const fixableBlockedState: StepState = {
+          ...initialState,
+          status: 'blocked',
+          error: 'Menu closed',
+          canFix: true,
+          fixType: 'navigation',
+          targetHref: '/connections',
+          scrollContainer: '.scrollable-list',
+        };
+
+        const state = stepReducer(fixableBlockedState, {
+          type: 'SET_COMPLETED',
+          reason: 'objectives',
+          explanation: 'Already done!',
+        });
+
+        expect(state.status).toBe('completed');
+        expect(state.completionReason).toBe('objectives');
+        expect(state.canFix).toBe(false);
+        expect(state.fixType).toBeUndefined();
+        expect(state.targetHref).toBeUndefined();
+        expect(state.scrollContainer).toBeUndefined();
+      });
     });
 
     describe('SET_ERROR action', () => {
@@ -513,12 +543,34 @@ describe('step-state', () => {
   // ============================================================
   describe('derive functions', () => {
     describe('deriveIsEnabled', () => {
-      it('should return true only when status is enabled', () => {
+      it('should return true when status is enabled', () => {
         expect(deriveIsEnabled({ ...createInitialState(), status: 'enabled' })).toBe(true);
         expect(deriveIsEnabled({ ...createInitialState(), status: 'idle' })).toBe(false);
         expect(deriveIsEnabled({ ...createInitialState(), status: 'checking' })).toBe(false);
         expect(deriveIsEnabled({ ...createInitialState(), status: 'blocked' })).toBe(false);
-        expect(deriveIsEnabled({ ...createInitialState(), status: 'completed' })).toBe(false);
+      });
+
+      it('should also return true for objectives-completed steps (legacy quirk)', () => {
+        // Steps completed because their objectives were already met are still
+        // user-facing "enabled" (Redo is available). This must match
+        // toLegacyState.isEnabled — the consistency test below enforces that.
+        expect(
+          deriveIsEnabled({
+            ...createInitialState(),
+            status: 'completed',
+            completionReason: 'objectives',
+          })
+        ).toBe(true);
+      });
+
+      it('should return false for completed steps with other reasons', () => {
+        expect(deriveIsEnabled({ ...createInitialState(), status: 'completed', completionReason: 'manual' })).toBe(
+          false
+        );
+        expect(deriveIsEnabled({ ...createInitialState(), status: 'completed', completionReason: 'skipped' })).toBe(
+          false
+        );
+        expect(deriveIsEnabled({ ...createInitialState(), status: 'completed', completionReason: 'none' })).toBe(false);
       });
     });
 
@@ -662,10 +714,40 @@ describe('step-state', () => {
         canSkip: true,
         fixType: 'navigation',
         targetHref: '/dashboard',
+        scrollContainer: undefined,
         retryCount: 1,
         maxRetries: 3,
         isRetrying: false, // Not checking, so not retrying
       });
+    });
+
+    it('should report isEnabled:true for objectives-completed steps (legacy compat)', () => {
+      const state: StepState = {
+        ...createInitialState(),
+        status: 'completed',
+        completionReason: 'objectives',
+        explanation: 'Already done!',
+      };
+
+      const legacy = toLegacyState(state);
+
+      expect(legacy.isEnabled).toBe(true);
+      expect(legacy.isCompleted).toBe(true);
+      expect(legacy.completionReason).toBe('objectives');
+    });
+
+    it('should report isEnabled:false for manually-completed steps (legacy compat)', () => {
+      const state: StepState = {
+        ...createInitialState(),
+        status: 'completed',
+        completionReason: 'manual',
+        explanation: 'Completed',
+      };
+
+      const legacy = toLegacyState(state);
+
+      expect(legacy.isEnabled).toBe(false);
+      expect(legacy.isCompleted).toBe(true);
     });
 
     it('should derive isRetrying correctly in legacy format', () => {
@@ -702,6 +784,9 @@ describe('step-state', () => {
         { ...createInitialState(), status: 'enabled' },
         { ...createInitialState(), status: 'completed', completionReason: 'manual' },
         { ...createInitialState(), status: 'completed', completionReason: 'skipped' },
+        // Objectives-completed must also be covered: this is the case that
+        // exposed the deriveIsEnabled / toLegacyState divergence.
+        { ...createInitialState(), status: 'completed', completionReason: 'objectives' },
       ];
 
       for (const state of states) {

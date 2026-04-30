@@ -25,6 +25,28 @@ import type {
   TestEnvironment,
 } from './package.types';
 
+// ============ PACKAGE ID FORMAT ============
+
+/**
+ * Canonical kebab-case regex for package IDs.
+ *
+ * The same string flows unchanged from CLI authoring through `content.id`,
+ * `manifest.id`, the package directory name, the App Platform `metadata.name`,
+ * and the `?doc=api:<id>` viewer link key. Aligned with the Kubernetes
+ * resource-name format so a valid package ID is always a valid k8s resource
+ * name. The Go-side regex in `pkg/plugin/mcp.go` mirrors this exactly.
+ */
+export const PACKAGE_ID_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * Maximum length for a package ID. Matches the Kubernetes resource-name limit.
+ */
+export const PACKAGE_ID_MAX_LENGTH = 253;
+
+const packageIdSchema = z.string().min(1).max(PACKAGE_ID_MAX_LENGTH).regex(PACKAGE_ID_REGEX, {
+  error: 'Package id must be kebab-case (lowercase alphanumeric and hyphens, no leading/trailing hyphen)',
+});
+
 // ============ CONTENT SCHEMA (content.json) ============
 
 /**
@@ -34,7 +56,7 @@ import type {
  */
 export const ContentJsonSchema = z.object({
   schemaVersion: z.string().optional(),
-  id: z.string().min(1, 'Content id is required'),
+  id: packageIdSchema,
   title: z.string().min(1, 'Content title is required'),
   blocks: z.array(JsonBlockSchema),
 });
@@ -111,7 +133,7 @@ export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies 
  */
 export const ManifestJsonObjectSchema = z.object({
   schemaVersion: z.string().default(CURRENT_SCHEMA_VERSION),
-  id: z.string().min(1, 'Manifest id is required'),
+  id: packageIdSchema,
   type: PackageTypeSchema,
   repository: z.string().default('interactive-tutorials'),
 

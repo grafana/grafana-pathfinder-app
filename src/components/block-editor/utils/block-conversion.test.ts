@@ -127,7 +127,7 @@ describe('getConversionWarning', () => {
         action: 'button',
         reftarget: '[data-testid="btn"]',
         content: 'Test',
-        requirements: ['req1', 'req2'],
+        requirements: ['is-admin', 'is-editor'],
         objectives: ['obj1'],
         skippable: true,
       };
@@ -214,10 +214,10 @@ describe('convertBlockType', () => {
         type: 'interactive',
         action: 'noop',
         content: 'Test',
-        requirements: ['req1', 'req2'],
+        requirements: ['is-admin', 'is-editor'],
       };
       const result = convertBlockType(source, 'multistep');
-      expect((result as { requirements?: string[] }).requirements).toEqual(['req1', 'req2']);
+      expect((result as { requirements?: string[] }).requirements).toEqual(['is-admin', 'is-editor']);
     });
 
     it('should preserve objectives field', () => {

@@ -29,6 +29,7 @@ import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonMarkdownBlock } from '../../../types/json-guide.types';
+import { normalizeCodeIndentation } from './normalizeCodeIndentation';
 
 /** Assistant content type options */
 const ASSISTANT_TYPE_OPTIONS: Array<ComboboxOption<'query' | 'config' | 'code' | 'text'>> = [
@@ -560,7 +561,7 @@ export function MarkdownBlockForm({
   // Switch to raw mode - get Markdown from editor
   const handleSwitchToRaw = useCallback(() => {
     if (editor) {
-      const markdown = editor.getMarkdown() || editor.getText();
+      const markdown = normalizeCodeIndentation(editor.getMarkdown() || editor.getText());
       setRawContent(markdown);
     }
     setEditMode('raw');
@@ -582,7 +583,7 @@ export function MarkdownBlockForm({
       if (editMode === 'raw') {
         markdown = rawContent.trim();
       } else if (editor) {
-        markdown = editor.getMarkdown() || editor.getText();
+        markdown = normalizeCodeIndentation(editor.getMarkdown() || editor.getText());
       } else {
         return;
       }

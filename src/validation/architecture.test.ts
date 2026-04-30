@@ -106,7 +106,7 @@ const ALLOWED_VERTICAL_VIOLATIONS = new Set([
   'lib/user-storage.ts -> learning-paths',
   // Terminal requirement check needs to query terminal connection status from the integrations layer.
   // The dynamic import minimizes coupling and makes terminal code tree-shakeable when disabled.
-  'requirements-manager/requirements-checker.utils.ts -> integrations',
+  'requirements-manager/checks/terminal.ts -> integrations',
 ]);
 
 /**
@@ -120,7 +120,7 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
   // Cluster A: interactive-engine <-> requirements-manager cycle
   'interactive-engine/interactive.hook.ts -> requirements-manager',
   'interactive-engine/use-sequential-step-state.hook.ts -> requirements-manager',
-  'requirements-manager/requirements-checker.utils.ts -> context-engine',
+  'requirements-manager/checks/grafana-api.ts -> context-engine',
   'requirements-manager/step-checker.hook.ts -> interactive-engine',
   // Cluster B: context-engine -> docs-retrieval
   'context-engine/context.service.ts -> docs-retrieval',
