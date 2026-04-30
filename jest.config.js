@@ -2,9 +2,16 @@
 // generally used by snapshots, but can affect specific tests
 process.env.TZ = 'UTC';
 
+const baseConfig = require('./.config/jest.config');
+
 module.exports = {
   // Jest configuration provided by Grafana scaffolding
-  ...require('./.config/jest.config'),
+  ...baseConfig,
+
+  // Polyfill jsdom-only globals before the scaffolded setup runs so test
+  // files can opt into `@jest-environment node` without breaking the
+  // scaffolded setup's HTMLCanvasElement / matchMedia references.
+  setupFilesAfterEnv: ['<rootDir>/.config/jest-env-polyfill.js', ...(baseConfig.setupFilesAfterEnv ?? [])],
 
   // Add SVG file handling to base config
   moduleNameMapper: {

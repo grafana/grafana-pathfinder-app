@@ -31,7 +31,24 @@ node dist/cli/cli/mcp/index.js --transport http --port 8080
 
 The HTTP transport uses the SDK's StreamableHTTP transport in **stateless mode** — `sessionIdGenerator` is omitted so each request gets a fresh transport and there is no server-side session state.
 
-**The HTTP transport ships without authentication for the MVP.** See the resolved open question in `docs/design/AI-AUTHORING-IMPLEMENTATION.md` ("Does the hosted HTTP MCP need auth at all?"). The MCP holds no privileged resource — Assistant performs the App Platform write with its own credentials downstream. Abuse mitigation is in code (`MAX_REQUEST_BYTES`, `PER_CALL_WALLCLOCK_MS` in `transports/http.ts`) plus deploy-time edge rate limits and autoscaling ceilings.
+**The HTTP transport ships without authentication for the MVP.** See the resolved open question in `docs/design/AI-AUTHORING-IMPLEMENTATION.md` ("Does the hosted HTTP MCP need auth at all?"). The MCP holds no privileged resource — Assistant performs the App Platform write with its own credentials downstream.
+
+In-process abuse mitigations (all in `transports/http.ts`):
+
+| Constant                  | Default | Behavior on breach                                             |
+| ------------------------- | ------- | -------------------------------------------------------------- |
+| `MAX_REQUEST_BYTES`       | 1 MB    | 413 with structured JSON-RPC error                             |
+| `PER_CALL_WALLCLOCK_MS`   | 30 s    | 504 with structured JSON-RPC error; tool call abandoned        |
+| `MAX_CONCURRENT_REQUESTS` | 100     | 503 with `Retry-After: 1`; LB should shed to a healthy replica |
+| `KEEPALIVE_TIMEOUT_MS`    | 5 s     | Idle keep-alive connections close (slowloris mitigation)       |
+| `HEADERS_TIMEOUT_MS`      | 10 s    | Header-stalling clients are dropped                            |
+| `REQUEST_TIMEOUT_MS`      | 60 s    | Hard cap on the full request lifecycle                         |
+
+Every request emits one JSON line to stderr with `{ts, remote, method, path, status, durationMs, bytesIn, outcome}` for operational triage. Deploy-time edge rate limits and autoscaling ceilings stack on top.
+
+### Healthcheck
+
+`GET /healthz` returns `{"status":"ok"}` without constructing an `McpServer`. Use this for k8s liveness/readiness probes — do **not** point probes at `/mcp` (would consume a concurrency slot and tmpdir on every probe).
 
 ## Building and running the Docker image locally
 

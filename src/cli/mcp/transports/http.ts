@@ -10,9 +10,13 @@
  * **No authentication.** Per the resolved open question in
  * AI-AUTHORING-IMPLEMENTATION.md, the MVP HTTP transport ships open. The
  * MCP holds no privileged resource; the App Platform write is performed
- * downstream by the agent's own credentials. Abuse mitigations are in
- * code (request body size cap, per-call wallclock budget) and at the
- * deployment edge (per-IP rate limits, autoscaling ceiling).
+ * downstream by the agent's own credentials. Abuse mitigations live here:
+ *   - request body size cap (`MAX_REQUEST_BYTES`)
+ *   - per-call wallclock budget (`PER_CALL_WALLCLOCK_MS`)
+ *   - global concurrency cap (`MAX_CONCURRENT_REQUESTS`) — excess returns 503
+ *   - slowloris / idle timeouts on the underlying http.Server
+ *   - structured access log to stderr (one JSON line per request)
+ *   - GET /healthz endpoint that does not construct an McpServer
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -36,12 +40,43 @@ export const MAX_REQUEST_BYTES = 1_000_000;
  */
 export const PER_CALL_WALLCLOCK_MS = 30_000;
 
+/**
+ * Maximum number of MCP requests in flight at once. Each in-flight request
+ * holds a fresh McpServer, a per-call tmpdir, and up to PER_CALL_WALLCLOCK_MS
+ * of wallclock. Cap chosen to bound worst-case resource use on a single
+ * replica: 100 × 30s × ~1MB tmpdir is the upper envelope. Exceeding this
+ * returns 503 immediately so the load balancer can shed to a healthy
+ * replica or rate-limit upstream.
+ */
+export const MAX_CONCURRENT_REQUESTS = 100;
+
+/**
+ * Idle / header timeouts on the underlying http.Server. These close the
+ * slowloris door — a client that opens a TCP connection and dribbles bytes
+ * cannot tie up a connection slot indefinitely.
+ *   - keepAliveTimeout: how long an idle keep-alive connection lingers.
+ *   - headersTimeout: max time to receive the full request headers.
+ *   - requestTimeout: max wallclock from connection accept to body end.
+ *     Set higher than PER_CALL_WALLCLOCK_MS so the handler-level timeout
+ *     produces a structured 504 instead of a TCP reset.
+ */
+export const KEEPALIVE_TIMEOUT_MS = 5_000;
+export const HEADERS_TIMEOUT_MS = 10_000;
+export const REQUEST_TIMEOUT_MS = 60_000;
+
 export interface RunHttpOptions {
   port: number;
   /** Hostname to bind. Defaults to '0.0.0.0'. */
   host?: string;
   /** Path prefix for the MCP endpoint. Defaults to '/mcp'. */
   path?: string;
+  /** Healthcheck path. Defaults to '/healthz'. */
+  healthPath?: string;
+  /**
+   * Override the access logger (one structured JSON line per request).
+   * Defaults to writing to stderr. Pass `() => {}` to silence in tests.
+   */
+  log?: (entry: AccessLogEntry) => void;
 }
 
 export interface HttpHandle {
@@ -50,13 +85,36 @@ export interface HttpHandle {
   close(): Promise<void>;
 }
 
+export interface AccessLogEntry {
+  ts: string;
+  remote: string;
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  bytesIn: number;
+  outcome: 'ok' | 'too_large' | 'bad_json' | 'overloaded' | 'timeout' | 'not_found' | 'error';
+}
+
+const defaultLog = (entry: AccessLogEntry): void => {
+  process.stderr.write(JSON.stringify(entry) + '\n');
+};
+
 export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const path = options.path ?? '/mcp';
+  const healthPath = options.healthPath ?? '/healthz';
   const host = options.host ?? '0.0.0.0';
+  const log = options.log ?? defaultLog;
+
+  const state = { inFlight: 0 };
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, path);
+    void handleRequest(req, res, path, healthPath, state, log);
   });
+
+  server.keepAliveTimeout = KEEPALIVE_TIMEOUT_MS;
+  server.headersTimeout = HEADERS_TIMEOUT_MS;
+  server.requestTimeout = REQUEST_TIMEOUT_MS;
 
   await new Promise<void>((resolve) => server.listen(options.port, host, resolve));
   const address = server.address();
@@ -69,61 +127,140 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   };
 }
 
-async function handleRequest(req: IncomingMessage, res: ServerResponse, mcpPath: string): Promise<void> {
-  if (!req.url || !req.url.startsWith(mcpPath)) {
-    res.writeHead(404, { 'content-type': 'application/json' }).end(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        error: { code: -32601, message: `Not found: ${req.url}` },
-        id: null,
-      })
-    );
+interface ConcurrencyState {
+  inFlight: number;
+}
+
+async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  mcpPath: string,
+  healthPath: string,
+  state: ConcurrencyState,
+  log: (entry: AccessLogEntry) => void
+): Promise<void> {
+  const start = Date.now();
+  const remote = req.socket.remoteAddress ?? 'unknown';
+  const method = req.method ?? 'GET';
+  const reqPath = parsePath(req.url);
+  let bytesIn = 0;
+
+  const finish = (status: number, outcome: AccessLogEntry['outcome']): void => {
+    log({
+      ts: new Date().toISOString(),
+      remote,
+      method,
+      path: reqPath,
+      status,
+      durationMs: Date.now() - start,
+      bytesIn,
+      outcome,
+    });
+  };
+
+  // Healthcheck: cheap, no McpServer, no body parsing. Probes hit this on
+  // every replica every few seconds — keep it allocation-light.
+  if (method === 'GET' && reqPath === healthPath) {
+    res.writeHead(200, { 'content-type': 'application/json' }).end('{"status":"ok"}');
+    finish(200, 'ok');
     return;
   }
 
-  let body: unknown;
+  if (reqPath !== mcpPath) {
+    writeJsonRpcError(res, 404, -32601, `Not found: ${reqPath}`);
+    finish(404, 'not_found');
+    return;
+  }
+
+  // Concurrency gate. We bump `inFlight` only after we've decided to handle
+  // the request so 503-rejected requests don't double-count against the cap.
+  if (state.inFlight >= MAX_CONCURRENT_REQUESTS) {
+    res.writeHead(503, { 'content-type': 'application/json', 'retry-after': '1' }).end(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        error: {
+          code: -32002,
+          message: `Server at capacity (${MAX_CONCURRENT_REQUESTS} concurrent requests). Retry shortly.`,
+        },
+        id: null,
+      })
+    );
+    finish(503, 'overloaded');
+    return;
+  }
+
+  state.inFlight += 1;
   try {
-    body = await readJsonBody(req);
-  } catch (err) {
-    const code = err instanceof RequestTooLarge ? 413 : 400;
-    res.writeHead(code, { 'content-type': 'application/json' }).end(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        error: { code: -32700, message: err instanceof Error ? err.message : 'Bad request' },
-        id: null,
-      })
-    );
-    return;
-  }
-
-  // Stateless mode: build a fresh server + transport per request. This is
-  // intentional — the authoring tool surface holds no per-session state, and
-  // sharing one transport across requests would require session tracking
-  // we explicitly do not want.
-  const mcp = buildServer();
-  const transport = new StreamableHTTPServerTransport({});
-
-  const timer = setTimeout(() => {
-    if (!res.headersSent) {
-      res.writeHead(504, { 'content-type': 'application/json' }).end(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          error: { code: -32001, message: `Wallclock budget exceeded (${PER_CALL_WALLCLOCK_MS}ms)` },
-          id: null,
-        })
-      );
+    let body: unknown;
+    try {
+      const read = await readJsonBody(req);
+      body = read.body;
+      bytesIn = read.bytes;
+    } catch (err) {
+      if (err instanceof RequestTooLarge) {
+        writeJsonRpcError(res, 413, -32700, err.message);
+        finish(413, 'too_large');
+      } else {
+        writeJsonRpcError(res, 400, -32700, err instanceof Error ? err.message : 'Bad request');
+        finish(400, 'bad_json');
+      }
+      return;
     }
-    void transport.close();
-  }, PER_CALL_WALLCLOCK_MS);
 
-  try {
-    await mcp.connect(transport);
-    await transport.handleRequest(req, res, body);
+    // Stateless mode: build a fresh server + transport per request. This is
+    // intentional — the authoring tool surface holds no per-session state, and
+    // sharing one transport across requests would require session tracking
+    // we explicitly do not want.
+    const mcp = buildServer();
+    const transport = new StreamableHTTPServerTransport({});
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (!res.headersSent) {
+        writeJsonRpcError(res, 504, -32001, `Wallclock budget exceeded (${PER_CALL_WALLCLOCK_MS}ms)`);
+      }
+      void transport.close();
+    }, PER_CALL_WALLCLOCK_MS);
+
+    try {
+      await mcp.connect(transport);
+      await transport.handleRequest(req, res, body);
+      finish(res.statusCode, timedOut ? 'timeout' : 'ok');
+    } catch (err) {
+      if (!res.headersSent) {
+        writeJsonRpcError(res, 500, -32000, err instanceof Error ? err.message : 'Internal error');
+      }
+      finish(res.statusCode || 500, 'error');
+    } finally {
+      clearTimeout(timer);
+      void transport.close();
+      void mcp.close();
+    }
   } finally {
-    clearTimeout(timer);
-    void transport.close();
-    void mcp.close();
+    state.inFlight -= 1;
   }
+}
+
+function parsePath(url: string | undefined): string {
+  if (!url) {
+    return '/';
+  }
+  const q = url.indexOf('?');
+  return q === -1 ? url : url.slice(0, q);
+}
+
+function writeJsonRpcError(res: ServerResponse, httpStatus: number, code: number, message: string): void {
+  if (res.headersSent) {
+    return;
+  }
+  res.writeHead(httpStatus, { 'content-type': 'application/json' }).end(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      error: { code, message },
+      id: null,
+    })
+  );
 }
 
 class RequestTooLarge extends Error {
@@ -132,22 +269,35 @@ class RequestTooLarge extends Error {
   }
 }
 
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
+interface ReadResult {
+  body: unknown;
+  bytes: number;
+}
+
+function readJsonBody(req: IncomingMessage): Promise<ReadResult> {
   return new Promise((resolve, reject) => {
     if (req.method === 'GET' || req.method === 'DELETE') {
       // The streamable transport handles GET (SSE polling) and DELETE
       // (session termination) without a body. Pass undefined so the
       // transport's own parsing path runs.
-      resolve(undefined);
+      resolve({ body: undefined, bytes: 0 });
       return;
     }
 
     let total = 0;
+    let aborted = false;
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => {
+      if (aborted) {
+        return;
+      }
       total += chunk.length;
       if (total > MAX_REQUEST_BYTES) {
-        req.destroy();
+        aborted = true;
+        // Pause rather than destroy: destroying tears down the shared
+        // request/response socket before our 413 body has flushed, leaving
+        // the client to see a TCP RST instead of the structured error.
+        req.pause();
         reject(new RequestTooLarge());
         return;
       }
@@ -155,11 +305,11 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
     });
     req.on('end', () => {
       if (chunks.length === 0) {
-        resolve(undefined);
+        resolve({ body: undefined, bytes: total });
         return;
       }
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')));
+        resolve({ body: JSON.parse(Buffer.concat(chunks).toString('utf-8')), bytes: total });
       } catch (err) {
         reject(err instanceof Error ? err : new Error('Invalid JSON'));
       }
