@@ -1,27 +1,21 @@
 # Pathfinder CLI / MCP Docker image.
 #
-# Builds the pathfinder-cli npm package from this repo, packs it, and
-# installs it globally into a small runtime image. The result is the same
-# artifact that would land on npm — installed via the same `npm install`
-# codepath — so the image can be exercised pre-publish without registry
-# access. Once the npm package is published, this Dockerfile can be
-# simplified to `npm install -g pathfinder-cli@<version>`; until then,
-# building from the local context is the source of truth.
+# Multi-stage build. Builder compiles the TypeScript CLI; runtime stage
+# copies the build output and installs only the CLI's runtime
+# dependencies (commander, zod). The plugin's full dependency tree is
+# never installed in the runtime image.
 #
 # Routing: the first positional argument selects the entrypoint.
 #   docker run grafana/pathfinder-cli                 -> pathfinder-cli (no args)
 #   docker run grafana/pathfinder-cli --version       -> pathfinder-cli --version
 #   docker run grafana/pathfinder-cli create my-guide -> pathfinder-cli create my-guide
 #   docker run grafana/pathfinder-cli mcp             -> pathfinder-mcp
-#   docker run grafana/pathfinder-cli mcp --transport stdio -> pathfinder-mcp --transport stdio
 #
-# See docs/design/phases/ai-authoring-2-distribution.md for the rationale
-# and the multi-registry publish plan (Docker Hub canonical + ghcr.io
-# mirror).
+# See docs/design/phases/ai-authoring-2-distribution.md for context.
 
 # ---- Build stage ---------------------------------------------------------
-# Pinned by digest for reproducible image builds across rebuilds of the
-# same git tag. Refresh on a new cli-v* release with:
+# Pinned by digest for reproducible image builds. Refresh on a new release
+# with:
 #   docker pull node:22-alpine && \
 #     docker inspect --format='{{index .RepoDigests 0}}' node:22-alpine
 # Use the same digest for both stages.
@@ -31,40 +25,45 @@ WORKDIR /build
 
 # Copy only what the CLI build needs. Keeps the build context tight and
 # avoids invalidating the npm cache when unrelated frontend files change.
-COPY package.json package-lock.json tsconfig.cli.json README-cli.md ./
-COPY scripts/prepublish-cli.js scripts/
+COPY package.json package-lock.json tsconfig.cli.json ./
+COPY scripts/cli-build-utils.js scripts/
 COPY src/cli ./src/cli
 # Copy the entire types/ tree — tsconfig.cli.json scopes the compile to the
 # specific files it needs, and types/ is small. Listing individual files
-# here is brittle because schema files transitively import siblings (e.g.,
-# json-guide.schema imports requirements.types).
+# here is brittle because schema files transitively import siblings.
 COPY src/types ./src/types
 COPY src/validation ./src/validation
 
-# `npm ci` installs both deps and devDeps because we need typescript
-# (devDep) to build. Production-only install happens in the runtime stage.
 RUN npm ci --no-audit --no-fund
 
 RUN npm run build:cli
 
-# Rewrite package.json to the published shape and pack into a tarball.
-# `npm pack` honors the rewritten `files` allowlist, so the tarball
-# contains only `dist/cli/` plus the manifest.
-RUN node scripts/prepublish-cli.js --write \
-    && npm pack \
-    && mv pathfinder-cli-*.tgz /tmp/pathfinder-cli.tgz
+# Generate a minimal runtime package.json (commander + zod only) so the
+# runtime stage doesn't pull in the plugin's full dependency tree.
+RUN node scripts/cli-build-utils.js runtime-package /build/runtime-package.json
 
 # ---- Runtime stage -------------------------------------------------------
 # Same digest as the build stage above. Refresh both together.
 FROM node:22-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f AS runtime
 
-# Install the packed CLI globally. This is the same `npm install` codepath
-# a consumer of `npm install -g pathfinder-cli@<version>` would hit, so the
-# image exercises the published artifact's install behavior — not a
-# bespoke "copy dist/ into /app" shortcut.
-COPY --from=builder /tmp/pathfinder-cli.tgz /tmp/pathfinder-cli.tgz
-RUN npm install -g /tmp/pathfinder-cli.tgz \
-    && rm /tmp/pathfinder-cli.tgz
+WORKDIR /app
+
+# Install just the CLI runtime deps. `npm install` (not ci) is fine here
+# because the slim package.json has no companion lockfile — the deps are
+# pinned by their version specifiers in the source package.json, which
+# cli-build-utils.js copied verbatim.
+COPY --from=builder /build/runtime-package.json /app/package.json
+RUN npm install --no-audit --no-fund --omit=optional \
+    && npm cache clean --force
+
+# Copy the compiled CLI. Bin entrypoints retain their `#!/usr/bin/env node`
+# shebangs from source; `chmod +x` makes them executable, then symlinks
+# expose them on PATH at the canonical names used by the entrypoint
+# script.
+COPY --from=builder /build/dist/cli /app/dist/cli
+RUN chmod +x /app/dist/cli/cli/index.js /app/dist/cli/cli/mcp-placeholder.js \
+    && ln -s /app/dist/cli/cli/index.js /usr/local/bin/pathfinder-cli \
+    && ln -s /app/dist/cli/cli/mcp-placeholder.js /usr/local/bin/pathfinder-mcp
 
 # Routing entrypoint: `mcp` first-arg routes to pathfinder-mcp; otherwise
 # pathfinder-cli is the default.

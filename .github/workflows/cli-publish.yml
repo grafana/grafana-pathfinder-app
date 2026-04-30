@@ -24,16 +24,13 @@ on:
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
-      - 'scripts/prepublish-cli.js'
-      - 'scripts/pack-cli.js'
+      - 'scripts/cli-build-utils.js'
       - 'scripts/docker-entrypoint.sh'
-      - 'scripts/__tests__/**'
       - 'tsconfig.cli.json'
       - 'package.json'
       - 'package-lock.json'
       - 'Dockerfile.cli'
       - '.dockerignore'
-      - 'README-cli.md'
       - '.github/workflows/cli-publish.yml'
   pull_request:
     branches:
@@ -42,16 +39,13 @@ on:
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
-      - 'scripts/prepublish-cli.js'
-      - 'scripts/pack-cli.js'
+      - 'scripts/cli-build-utils.js'
       - 'scripts/docker-entrypoint.sh'
-      - 'scripts/__tests__/**'
       - 'tsconfig.cli.json'
       - 'package.json'
       - 'package-lock.json'
       - 'Dockerfile.cli'
       - '.dockerignore'
-      - 'README-cli.md'
       - '.github/workflows/cli-publish.yml'
 
 permissions: read-all
@@ -66,7 +60,7 @@ env:
 
 jobs:
   build:
-    name: Build, pack, image, local smoke
+    name: Build CLI, build image, smoke test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -93,34 +87,15 @@ jobs:
       - name: Read CURRENT_SCHEMA_VERSION
         id: version
         run: |
-          version="$(node -e "console.log(require('./scripts/prepublish-cli').readSchemaVersion())")"
+          version="$(node scripts/cli-build-utils.js schema-version)"
           echo "schema-version=${version}" >> "$GITHUB_OUTPUT"
           echo "Schema version: ${version}"
 
-      - name: Unit tests (prepublish + CLI)
-        run: npx jest --no-coverage scripts/__tests__ src/cli
+      - name: Unit tests (CLI)
+        run: npx jest --no-coverage src/cli
 
       - name: Build CLI
         run: npm run build:cli
-
-      - name: Pack
-        run: npm run pack:cli
-
-      - name: Smoke test the local pack
-        run: |
-          set -euo pipefail
-          version="${{ steps.version.outputs.schema-version }}"
-          tarball="pathfinder-cli-${version}.tgz"
-          test -f "$tarball" || { echo "Expected $tarball"; ls -la *.tgz; exit 1; }
-          installdir="$(mktemp -d)"
-          (cd "$installdir" && npm init -y >/dev/null && npm install "$GITHUB_WORKSPACE/$tarball" >/dev/null)
-          observed="$("$installdir/node_modules/.bin/pathfinder-cli" --version)"
-          [ "$observed" = "$version" ] || { echo "CLI version mismatch: observed=$observed expected=$version"; exit 1; }
-          set +e
-          "$installdir/node_modules/.bin/pathfinder-mcp"
-          mcp_exit=$?
-          set -e
-          [ "$mcp_exit" -ne 0 ] || { echo "pathfinder-mcp placeholder should exit non-zero"; exit 1; }
 
       - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3
 

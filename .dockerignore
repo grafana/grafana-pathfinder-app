@@ -48,10 +48,9 @@ scripts/manage-peerjs.sh
 docker-compose.yaml
 webpack.config.ts
 *.md
-!README-cli.md
 
 # Keep:
 # - package.json, package-lock.json, tsconfig.cli.json
-# - src/cli, src/types/{json-guide,package}.{types,schema}.ts, src/validation
-# - scripts/prepublish-cli.js, scripts/docker-entrypoint.sh
+# - src/cli, src/types, src/validation
+# - scripts/cli-build-utils.js, scripts/docker-entrypoint.sh
 # - Dockerfile.cli

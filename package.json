@@ -44,22 +44,11 @@
     "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
     "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
     "schema:export": "node dist/cli/cli/index.js schema --all",
-    "prepublish-cli": "node scripts/prepublish-cli.js",
-    "prepublish-cli:write": "node scripts/prepublish-cli.js --write",
-    "pack:cli": "node scripts/pack-cli.js",
     "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:ci",
     "prepare": "husky"
   },
   "author": "Grafanalabs",
   "license": "AGPL-3.0",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/grafana/grafana-pathfinder-app.git"
-  },
-  "homepage": "https://github.com/grafana/grafana-pathfinder-app#readme",
-  "bugs": {
-    "url": "https://github.com/grafana/grafana-pathfinder-app/issues"
-  },
   "devDependencies": {
     "@grafana/eslint-config": "^9.0.0",
     "@grafana/faro-webpack-plugin": "^0.11.0",

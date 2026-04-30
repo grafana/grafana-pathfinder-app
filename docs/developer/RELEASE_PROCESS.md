@@ -28,11 +28,11 @@ The project uses several GitHub Actions workflows for different release scenario
 ### 3. CLI / MCP continuous publish (`.github/workflows/cli-publish.yml`)
 
 - **Trigger**:
-  - `pull_request` to `main` (CLI-relevant paths): build, pack, image build, local smoke. No push.
+  - `pull_request` to `main` (CLI-relevant paths): build CLI, build image, smoke test. No push.
   - `push` to `main` (CLI-relevant paths): same, plus push the resulting Docker image to GHCR as `:latest` and `:main-<short-sha>`, cosign-sign the digest, and smoke-test the pushed image.
 - **Process**:
   - Builds the CLI via `npm run build:cli`.
-  - Packs an npm tarball via `scripts/pack-cli.js` (rewrites `package.json` → `name: pathfinder-cli`, `version: <CURRENT_SCHEMA_VERSION>`, narrows `files` to `dist/cli/`, restores the working tree). The Dockerfile installs this packed tarball globally inside the runtime image, so the pack-rewrite logic is exercised on every build.
+  - Generates a minimal runtime `package.json` (commander + zod only) via `scripts/cli-build-utils.js runtime-package <out>` so the image doesn't pull the plugin's full dependency tree.
   - Builds `Dockerfile.cli` and pushes to `ghcr.io/grafana/pathfinder-cli:latest` plus `ghcr.io/grafana/pathfinder-cli:main-<short-sha>`.
   - Authenticates to GHCR with the always-present `GITHUB_TOKEN` — no repo secrets are required to operate this workflow.
 - **No npm publish, no Docker Hub, no tag-driven release.** The image is the only consumable artifact. Pin to `:main-<sha>` for reproducibility; track `:latest` for "tip of trunk."
@@ -143,14 +143,14 @@ The `pathfinder-cli` Docker image at `ghcr.io/grafana/pathfinder-cli` is rebuilt
 
 ### Versioning
 
-The CLI inside the image carries `CURRENT_SCHEMA_VERSION` (from `src/types/json-guide.schema.ts`) as its `--version` output. The repo's `package.json#version` (the plugin version) is rewritten at image-build time by `scripts/prepublish-cli.js`, so the CLI version always tracks the schema version, not the plugin.
+The CLI's `--version` output is sourced from `CURRENT_SCHEMA_VERSION` in `src/types/json-guide.schema.ts`. The repo's `package.json#version` (the plugin version) is unrelated to the CLI version — they evolve independently.
 
 To bump what `pathfinder-cli --version` returns, bump `CURRENT_SCHEMA_VERSION` in source and merge — the next `:latest` will reflect it.
 
 ### Dry-run locally
 
 ```bash
-npm run pack:cli                                              # produce pathfinder-cli-<version>.tgz
+npm run build:cli                                             # compile dist/cli/
 docker build -f Dockerfile.cli -t pathfinder-cli:local .      # produce the image
 docker run --rm pathfinder-cli:local --version                # CLI smoke
 docker run --rm pathfinder-cli:local mcp                      # routes to placeholder, exits 1

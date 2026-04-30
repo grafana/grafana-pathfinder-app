@@ -52,7 +52,7 @@ The image's first positional argument selects the entrypoint: the default is `pa
 Build and run locally without going to the registry:
 
 ```bash
-npm run pack:cli                                              # produce pathfinder-cli-<version>.tgz
+npm run build:cli                                             # compile dist/cli/
 docker build -f Dockerfile.cli -t pathfinder-cli:local .      # produce the image
 docker run --rm pathfinder-cli:local --version
 ```

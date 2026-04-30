@@ -13,11 +13,9 @@ module.exports = {
   },
 
   // Extend testMatch to include tests/e2e-runner/utils unit tests
-  // and scripts/ unit tests (e.g., prepublish-cli)
   testMatch: [
     ...require('./.config/jest.config').testMatch,
     '<rootDir>/tests/e2e-runner/utils/**/*.test.{js,jsx,ts,tsx}',
-    '<rootDir>/scripts/__tests__/**/*.test.{js,jsx,ts,tsx}',
   ],
 
   // Coverage configuration
