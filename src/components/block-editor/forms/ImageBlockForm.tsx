@@ -25,15 +25,25 @@ function isImageBlock(block: JsonBlock): block is JsonImageBlock {
  */
 function isValidUrl(value: string): boolean {
   const trimmed = value.trim();
-  if (!trimmed) return false;
+  if (!trimmed) {
+    return false;
+  }
   // Reject javascript: and data: URIs for security
-  if (/^javascript:/i.test(trimmed)) return false;
+  if (/^javascript:/i.test(trimmed)) {
+    return false;
+  }
   // Accept http/https URLs
-  if (/^https?:\/\//i.test(trimmed)) return true;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return true;
+  }
   // Accept protocol-relative URLs
-  if (/^\/\//.test(trimmed)) return true;
+  if (/^\/\//.test(trimmed)) {
+    return true;
+  }
   // Accept relative paths (e.g., /images/foo.png, ../img.png)
-  if (/^\//.test(trimmed) || /^[a-zA-Z0-9_.-]+\.(png|jpe?g|gif|webp|svg|avif)$/i.test(trimmed)) return true;
+  if (/^\//.test(trimmed) || /^[a-zA-Z0-9_.-]+\.(png|jpe?g|gif|webp|svg|avif)$/i.test(trimmed)) {
+    return true;
+  }
   return false;
 }
 
