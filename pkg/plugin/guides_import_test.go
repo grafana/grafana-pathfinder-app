@@ -87,8 +87,7 @@ func buildImportRequest(t *testing.T, role, namespace, appURL, body string, aggr
 		pluginCtx.User = &backend.User{Login: "test-user", Role: role}
 	}
 	cfgMap := map[string]string{
-		backend.AppURL:          appURL,
-		backend.AppClientSecret: "fake-sa-token",
+		backend.AppURL: appURL,
 	}
 	if aggregatorEnabled {
 		cfgMap["GF_INSTANCE_FEATURE_TOGGLES_ENABLE"] = guidesAggregatorFeatureToggle
@@ -97,6 +96,9 @@ func buildImportRequest(t *testing.T, role, namespace, appURL, body string, aggr
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/guides/import", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
+	// The handler forwards Authorization to the aggregator verbatim;
+	// tests inject a sentinel value that aggregator stubs assert against.
+	r.Header.Set("Authorization", "Bearer test-caller-token")
 	ctx := backend.WithPluginContext(r.Context(), pluginCtx)
 	ctx = backend.WithGrafanaConfig(ctx, cfg)
 	return r.WithContext(ctx)
@@ -140,8 +142,8 @@ func TestImport_CreateOnNotFound(t *testing.T) {
 		},
 		"POST /collection": func(w http.ResponseWriter, r *http.Request) {
 			addCalled = true
-			if got := r.Header.Get("Authorization"); got != "Bearer fake-sa-token" {
-				t.Errorf("expected plugin SA Bearer token, got %q", got)
+			if got := r.Header.Get("Authorization"); got != "Bearer test-caller-token" {
+				t.Errorf("expected caller's Authorization to be forwarded, got %q", got)
 			}
 			var env map[string]any
 			body, _ := io.ReadAll(r.Body)

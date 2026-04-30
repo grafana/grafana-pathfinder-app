@@ -123,9 +123,9 @@ var guidesUnavailableStatuses = map[int]bool{
 }
 
 // guidesClient is a thin HTTP wrapper for the Pathfinder Backend
-// aggregated K8s API. It does NOT cache the SA token or AppURL —
-// those come from request context every call so they survive plugin
-// re-deploys and rotation.
+// aggregated K8s API. It does NOT cache auth or AppURL — those come
+// from request context every call so the caller's identity is
+// preserved and the AppURL survives plugin re-deploys.
 type guidesClient struct {
 	httpClient *http.Client
 }
@@ -139,33 +139,40 @@ func newGuidesClient() *guidesClient {
 }
 
 // guidesRequestConfig captures everything needed for a single call.
-// It's derived from request context (not stored on the client) because
-// the SA token can rotate and the AppURL is environment-specific.
+// AuthHeader is the inbound Authorization header forwarded verbatim
+// to the aggregator so the K8s RBAC layer evaluates the user's own
+// permissions on `interactiveguides`.
 type guidesRequestConfig struct {
-	AppURL    string
-	Token     string
-	Namespace string
+	AppURL     string
+	AuthHeader string
+	Namespace  string
 }
 
-// configFromRequest pulls the AppURL and plugin SA token from
-// backend.GrafanaConfigFromContext, and the namespace from the plugin
-// context. Returns a friendly error if any of them is missing — this
-// is the failure mode if the plugin runs in an environment that hasn't
-// been configured for app-platform aggregator calls.
-func configFromRequest(ctx context.Context, namespace string) (*guidesRequestConfig, error) {
+// configFromRequest pulls the AppURL from backend.GrafanaConfigFromContext,
+// the namespace from the plugin context, and forwards the caller's
+// Authorization header verbatim for the outbound call.
+//
+// We forward the caller's identity (rather than using the plugin SA via
+// cfg.PluginAppClientSecret) so the aggregator's RBAC evaluates the
+// actual user's permissions on `interactiveguides`. This mirrors how
+// grafana-slo-app and grafana-assistant-app authorise their outbound
+// calls, and avoids the action-name guessing game an `iam.permissions`
+// block on the plugin SA would require — confirmed against the
+// pathfinder dev stack where direct K8s writes succeed with a user SA
+// token but a plugin-SA path is rejected by aggregator RBAC.
+func configFromRequest(ctx context.Context, namespace, authHeader string) (*guidesRequestConfig, error) {
 	cfg := backend.GrafanaConfigFromContext(ctx)
 	appURL, err := cfg.AppURL()
 	if err != nil || appURL == "" {
 		return nil, fmt.Errorf("grafana app URL unavailable: %w", err)
 	}
-	token, err := cfg.PluginAppClientSecret()
-	if err != nil || token == "" {
-		return nil, fmt.Errorf("plugin app client secret unavailable: %w", err)
+	if authHeader == "" {
+		return nil, errors.New("authorization header missing — cannot forward caller identity to the aggregator")
 	}
 	if namespace == "" {
 		return nil, errors.New("namespace unavailable from plugin context")
 	}
-	return &guidesRequestConfig{AppURL: appURL, Token: token, Namespace: namespace}, nil
+	return &guidesRequestConfig{AppURL: appURL, AuthHeader: authHeader, Namespace: namespace}, nil
 }
 
 // resourceURL composes the aggregator endpoint for a named resource
@@ -187,7 +194,7 @@ func (c *guidesClient) Get(ctx context.Context, rc *guidesRequestConfig, name st
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+rc.Token)
+	req.Header.Set("Authorization", rc.AuthHeader)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -233,7 +240,7 @@ func (c *guidesClient) send(ctx context.Context, rc *guidesRequestConfig, method
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+rc.Token)
+	req.Header.Set("Authorization", rc.AuthHeader)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 

@@ -176,7 +176,12 @@ func (a *App) handleGuidesImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rc, err := configFromRequest(r.Context(), pluginCtx.Namespace)
+	// Forward the caller's Authorization header verbatim so the
+	// aggregator's RBAC evaluates the user's own permissions on the
+	// `interactiveguides` resource. See guides_client.go::configFromRequest
+	// for the rationale.
+	authHeader := r.Header.Get("Authorization")
+	rc, err := configFromRequest(r.Context(), pluginCtx.Namespace, authHeader)
 	if err != nil {
 		a.logger.FromContext(r.Context()).Error("Guides aggregator config unavailable", "error", err)
 		a.writeError(w, "guides aggregator unavailable: "+err.Error(), http.StatusBadGateway)

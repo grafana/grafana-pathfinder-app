@@ -117,12 +117,6 @@
       }
     }
   ],
-  "iam": {
-    "permissions": [
-      { "action": "pathfinderbackend.ext.grafana.com/interactiveguides:read" },
-      { "action": "pathfinderbackend.ext.grafana.com/interactiveguides:write" }
-    ]
-  },
   "languages": [
     "en-US",
     "id-ID",

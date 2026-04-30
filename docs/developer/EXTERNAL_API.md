@@ -51,9 +51,14 @@ Import requires the **Editor** or **Admin** role. The handler enforces
 this server-side via `req.PluginContext.User.Role`. Calls from a Viewer
 token return **403**; calls without a user context return **401**.
 
-The plugin also declares `iam.permissions` granting its own service
-account read/write on `pathfinderbackend.ext.grafana.com/interactiveguides`
-so the outbound aggregator call succeeds.
+**Outbound auth.** The handler forwards the caller's `Authorization`
+header verbatim to the K8s aggregator. That means the aggregator's
+RBAC evaluates the **user's own** permissions on the
+`interactiveguides` resource — exactly as if the user had called
+`/apis/pathfinderbackend.ext.grafana.com/v1alpha1/...` directly.
+This mirrors how `grafana-slo-app` and `grafana-assistant-app`
+authorise their outbound calls. The plugin does **not** declare an
+`iam.permissions` block — it never calls Grafana with its own SA.
 
 ## Request
 
