@@ -191,6 +191,8 @@ The runtime tools that endpoint exposes (`list_guides`, `get_guide`, `get_guide_
 
 The authoring tools described in this document are **not** added to the Go endpoint. They live exclusively in the TS MCP server.
 
+The same rule applies to the **CDN repository tools** planned for P6 (`pathfinder_list_packages`, `pathfinder_get_package`, `pathfinder_get_manifest`, `pathfinder_launch_package`; see [`AI-AUTHORING-IMPLEMENTATION.md` — P6](./AI-AUTHORING-IMPLEMENTATION.md#p6--cdn-repository-tools-ts-mcp)). Those tools operate against the public package repository on the CDN, are stateless, and have no per-instance frontend coupling — there is no reason to host them in the in-process Go endpoint, and doing so would split the tool surface across two servers. P6 adds them to the TS MCP server only. The Go endpoint (`pkg/plugin/mcp.go`) is explicitly out of scope for P6 and is not extended with CDN-aware variants of its existing runtime tools.
+
 ## Failure behavior
 
 The server degrades in predictable ways:

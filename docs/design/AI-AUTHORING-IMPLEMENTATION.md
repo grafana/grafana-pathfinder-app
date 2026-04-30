@@ -17,6 +17,7 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 | P3    | TypeScript MCP server                  | Complete    | [ai-authoring-3-ts-mcp.md](./phases/ai-authoring-3-ts-mcp.md)                   | _epic issue TBD_ |
 | P4    | Assistant handoff and viewer link      | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 | P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                               | —                |
+| P6    | CDN repository tools (TS MCP)          | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 
 Each row's "Detailed plan" cell is filled in when an agent runs the per-phase planning step and writes `docs/design/phases/ai-authoring-N-<slug>.md`.
 
@@ -51,6 +52,8 @@ P0 (spike) -----------------------+
 P1 (CLI) --> P2 (distribution) --+--> P3 (TS MCP) --> P4 (Assistant + link)
                                   |
                                   +--> P5 (deferred follow-ups)
+                                  |
+                                  +--> P6 (CDN repository tools)
 ```
 
 P0 is non-blocking until P4. P1 is the critical path for everything downstream. P2 lands before P3 because the TS MCP server is published as a second entrypoint of the same npm package the CLI ships in — once the package layout and publishing pipeline exist (P2), P3 adds the MCP entrypoint to it. There is no shell-out boundary, no bundled binary, and no plugin-tarball coupling.
@@ -222,6 +225,41 @@ Tracked here so they don't get lost; not scoped for the MVP.
 - CRD extension to round-trip manifest fields, lighting up recommendation-engine parity for custom guides for both block-editor and AI-authored guides simultaneously.
 
 The "long-lived Node sidecar" item from earlier drafts of this design is no longer applicable — the MCP server itself is a Node process, so there is no Go-Node bridge to optimize.
+
+---
+
+## P6 — CDN repository tools (TS MCP)
+
+**Goal.** Expose a small set of read-only tools on the TS MCP server that operate against the public Pathfinder package repository on the CDN (default: `https://interactive-learning.grafana.net/packages/`). Lets MCP clients discover, inspect, and deep-link to published packages without any per-instance Grafana plugin involvement.
+
+**Scope.**
+
+- New CDN client `src/cli/mcp/lib/repository-client.ts` — Node `fetch` against `repository.json` and per-package `content.json` / `manifest.json`. 60-second in-process TTL on `repository.json` only; per-package fetches are uncached. Repository base URL is read from `PATHFINDER_REPOSITORY_URL` (env var) with the CDN URL above as the default. Slash-normalization mirrors `buildPackageFileUrl` in `src/lib/package-recommendations-client.ts`.
+- New tool group `src/cli/mcp/tools/repository-tools.ts`, registered alongside the existing groups in `src/cli/mcp/tools/index.ts`. Stateless; no artifact in/out.
+- Tools:
+  - `pathfinder_list_packages` — list packages from `repository.json`. Optional filters: `type` (`guide`/`path`/`journey`), `category`, `q` (substring on title and description). Returns `{ baseUrl, packages: [...] }`.
+  - `pathfinder_get_package` — fetch full `content.json` + `manifest.json` for one package by `id`. Returns the raw JSON plus a non-fatal `validation` field (Zod parse result via `ContentJsonSchema` and `ManifestJsonObjectSchema.loose()`); schema drift does not hard-fail the tool.
+  - `pathfinder_get_manifest` — manifest-only fetch for one package by `id`. Cheaper variant for dependency / composition exploration.
+  - `pathfinder_launch_package` — construct the existing `?doc=<cdn-content-url>` deep link the Pathfinder app already understands (see `src/utils/find-doc-page.ts` case 2 — `interactive-learning.grafana.net` URLs are already accepted via `isInteractiveLearningUrl`). Returns a relative `launchPath` (`/a/grafana-pathfinder-app?doc=...`) plus an absolute `launchUrl` when the caller passes `instanceUrl`. Optional `panelMode: "floating"` matches `finalize.ts`.
+- Tests follow the pattern in `src/package-engine/online-cdn-resolver.test.ts` — mock `fetch` and exercise: filtered list, unknown id, malformed JSON (validation fallback), CDN 5xx, env var override, launch URL construction with and without `instanceUrl`, slash-normalization edges.
+- Docker image passes `PATHFINDER_REPOSITORY_URL` through unchanged (env vars flow through; no Dockerfile changes needed).
+
+**Out of scope.**
+
+- **The Go MCP server (`pkg/plugin/mcp.go`) is explicitly out of scope.** These tools are added to the TypeScript MCP server only. The Go endpoint is not extended, and no equivalent of these tools is added there. The existing P5 migration item (moving `list_guides` / `get_guide` / `get_guide_schema` / `validate_guide_json` / `create_guide_template` from Go to TS) is independent of P6 and remains deferred.
+- App-side changes — none needed; the `?doc=<interactive-learning.grafana.net URL>` deep-link pattern already works.
+- Multi-repository discovery, registry-scoped IDs, or anything from the [`PATHFINDER-PACKAGE-DESIGN.md`](./PATHFINDER-PACKAGE-DESIGN.md) Phase 7 work — P6 reads one repository, configured by env var.
+- Authentication on the CDN client — the repository is public.
+
+**Dependencies.** P3 (TS MCP server must exist before adding tools to it).
+
+**Exit criteria.**
+
+- An MCP client can call `pathfinder_list_packages`, `pathfinder_get_package`, `pathfinder_get_manifest`, and `pathfinder_launch_package` against the default CDN with no configuration.
+- Setting `PATHFINDER_REPOSITORY_URL` overrides the default, end-to-end (process env → tool → fetch URL).
+- `pathfinder_launch_package` returns a `launchPath` that, when appended to a Grafana instance origin, opens the targeted CDN guide in Pathfinder.
+- Schema drift in a CDN-hosted manifest does not hard-fail `pathfinder_get_package` or `pathfinder_get_manifest` — raw JSON is still returned alongside the validation issues.
+- `pkg/plugin/mcp.go` is unchanged.
 
 ## Cross-cutting concerns
 
