@@ -14,7 +14,7 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 | P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md) | _epic issue TBD_ |
 | P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)   | _epic issue TBD_ |
 | P2    | npm + Docker distribution              | Complete    | [ai-authoring-2-distribution.md](./phases/ai-authoring-2-distribution.md)       | _epic issue TBD_ |
-| P3    | TypeScript MCP server                  | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
+| P3    | TypeScript MCP server                  | Complete    | [ai-authoring-3-ts-mcp.md](./phases/ai-authoring-3-ts-mcp.md)                   | _epic issue TBD_ |
 | P4    | Assistant handoff and viewer link      | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
 | P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                               | —                |
 
@@ -156,7 +156,7 @@ The split is mechanical; the exit criterion above belongs to P1b.
 - Stateless artifact model — every mutation tool takes the artifact in and returns the artifact out. No `sessionId`, no server-side cache.
 - Two transports from one codebase:
   - **stdio** — the default for local MCP clients (Cursor, Claude Desktop, MCP Inspector). Trust-the-local-user auth model.
-  - **HTTP** — for centrally hosted deployment. Auth via the Grafana MCP token-verifier pattern (FastMCP `MultiAuth` + `GrafanaGoogleTokenVerifier`).
+  - **HTTP** — for centrally hosted deployment. **MVP ships without auth** (see [open question resolution](#does-the-hosted-http-mcp-need-auth-at-all)); abuse mitigations are edge rate-limiting, request size caps, and autoscaling ceilings. Auth is deferred to a later phase if usage patterns demand it.
 - Tools (per [`HOSTED-AUTHORING-MCP.md` — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)):
   - `pathfinder_authoring_start` — first tool, returns context + workflow + tutorial + discovery hints.
   - `pathfinder_help` — composes the same `--help --format json` surface the CLI exposes, as a function call.
@@ -237,7 +237,15 @@ The "long-lived Node sidecar" item from earlier drafts of this design is no long
 
 ### Does the hosted HTTP MCP need auth at all?
 
-**Status.** Open. Decision needed before P3 HTTP transport lands.
+**Status.** Resolved 2026-04-30 — **Option 1: Open + edge rate-limiting for the MVP.** Auth is deferred. Re-evaluate if usage patterns or abuse warrant it; the decision is reversible since adding a token verifier later does not change the tool surface.
+
+**Why.** The MCP holds no privileged resource — Assistant performs the App Platform write with its own credentials in P4, and the tools wrap the open-source CLI anyone can `npx` locally. Shipping open preserves the OSS / airgapped story and removes a coordination dependency on the Assistant token surface. The dominant threat is cost (DoS), addressable with edge rate limits, request size caps, CPU/wallclock budgets, and autoscaling ceilings — none of which require an identity provider.
+
+**What this means for P3.** The HTTP transport ships without `MultiAuth` / `GrafanaGoogleTokenVerifier`. P3 plan should call out the rate-limit / size-cap / budget posture as the abuse-mitigation surface. The original auth context below is preserved for posterity and for any future re-evaluation.
+
+---
+
+**Original context (preserved for posterity):**
 
 **Context.** P3 scope currently specifies `MultiAuth + GrafanaGoogleTokenVerifier` on the HTTP transport, inherited from an earlier design where the MCP itself was going to write to App Platform. Under the current design that write is performed by the controlling agent (Grafana Assistant in P4), using _its_ credentials — the MCP itself touches no privileged resource. The tools are a stateless RPC wrapper around the same open-source CLI anyone can `npx` locally. So the original reason for auth (the MCP holding write capability) no longer applies.
 
@@ -264,4 +272,4 @@ The "long-lived Node sidecar" item from earlier drafts of this design is no long
 2. **Auth required, broad audience.** Accept any signed-in Grafana Cloud user (not just Assistant). Loses the airgapped story; gains attribution.
 3. **Both.** Anonymous tier with strict rate limits + authenticated tier with higher limits. More surface, more ops.
 
-This must be resolved before the P3 HTTP transport ships, since it determines the verifier configuration and the SLO/cost model for the hosted deployment.
+_Resolved — see status note at the top of this section._

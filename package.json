@@ -3,7 +3,7 @@
   "version": "2.10.0",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js",
-    "pathfinder-mcp": "./dist/cli/cli/mcp-placeholder.js"
+    "pathfinder-mcp": "./dist/cli/cli/mcp/index.js"
   },
   "files": [
     "dist/"
@@ -123,6 +123,7 @@
     "@grafana/scenes": "^7.4.2",
     "@grafana/schema": "^12.4.3",
     "@grafana/ui": "^12.4.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@openfeature/ofrep-web-provider": "^0.3.5",
     "@openfeature/react-sdk": "^1.0.0",
     "@openfeature/web-sdk": "^1.7.2",

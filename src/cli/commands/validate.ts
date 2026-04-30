@@ -8,9 +8,12 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import type { ContentJson, ManifestJson } from '../../types/package.types';
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
+import { validatePackageState } from '../utils/package-io';
+import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
 
 interface ValidateOptions {
   bundled?: boolean;
@@ -309,6 +312,40 @@ function autoDetectPositionals(files: string[]): { kind: 'package' | 'packages';
     return { kind: 'packages', path: target };
   }
   return null;
+}
+
+export interface ValidateArgs {
+  content: ContentJson;
+  manifest?: ManifestJson;
+  manifestSchemaVersionAuthored?: boolean;
+}
+
+/**
+ * In-memory artifact validation runner used by the MCP `pathfinder_validate`
+ * tool. Composes the same `validatePackageState` gate every authoring write
+ * goes through, but takes the artifact directly rather than reading it from
+ * disk. The Commander `validate` command stays disk-oriented for CLI users;
+ * this runner exists so the MCP can validate the in-flight artifact without
+ * a temp directory or file IO.
+ */
+export function runValidate(args: ValidateArgs): CommandOutcome {
+  const outcome = validatePackageState(args.content, args.manifest, {
+    manifestSchemaVersionAuthored: args.manifestSchemaVersionAuthored ?? args.manifest !== undefined,
+  });
+
+  if (!outcome.ok) {
+    return manyIssuesOutcome(outcome.issues, 'package');
+  }
+
+  return {
+    status: 'ok',
+    summary: 'Package state is valid',
+    data: {
+      id: args.content.id,
+      schemaVersion: args.content.schemaVersion,
+      blocks: Array.isArray(args.content.blocks) ? args.content.blocks.length : 0,
+    },
+  };
 }
 
 export const validateCommand = new Command('validate')

@@ -54,6 +54,50 @@ export function assertSafeUrl(value: unknown, fieldPath: string): void {
   }
 }
 
+const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com']);
+
+/**
+ * Video `src` must be an embeddable URL — Pathfinder renders video blocks in
+ * an `<iframe>` and YouTube's standard `/watch?v=...` page refuses to be
+ * iframed. Catching this at authoring time (instead of at runtime when the
+ * iframe silently fails) is the difference between a clear error and a
+ * mystery blank panel for the learner.
+ *
+ * Caught shapes (all rewritten to `https://www.youtube.com/embed/<id>`):
+ *   - https://www.youtube.com/watch?v=ID
+ *   - https://youtube.com/watch?v=ID
+ *   - https://m.youtube.com/watch?v=ID
+ *   - https://youtu.be/ID  (the share-link short form)
+ *
+ * Anything else passes through `assertSafeUrl` and is left alone — Vimeo,
+ * Loom, self-hosted MP4s, etc. all embed without rewriting.
+ */
+export function assertEmbeddableVideoUrl(value: unknown, fieldPath: string): void {
+  assertSafeUrl(value, fieldPath);
+  // assertSafeUrl narrows to string for us, but TS doesn't see through `fail`.
+  const url = new URL(value as string);
+
+  if (YOUTUBE_HOSTS.has(url.hostname) && url.pathname === '/watch') {
+    const id = url.searchParams.get('v');
+    const suggestion = id ? `https://www.youtube.com/embed/${id}` : 'https://www.youtube.com/embed/<VIDEO_ID>';
+    fail(
+      fieldPath,
+      `YouTube watch URL is not embeddable in an iframe — use the embed URL instead. ` +
+        `Replace "${value as string}" with "${suggestion}".`
+    );
+  }
+
+  if (url.hostname === 'youtu.be') {
+    const id = url.pathname.replace(/^\//, '').split('/')[0] ?? '';
+    const suggestion = id ? `https://www.youtube.com/embed/${id}` : 'https://www.youtube.com/embed/<VIDEO_ID>';
+    fail(
+      fieldPath,
+      `youtu.be share URLs are not embeddable in an iframe — use the embed URL instead. ` +
+        `Replace "${value as string}" with "${suggestion}".`
+    );
+  }
+}
+
 export function assertSemver(value: unknown, fieldPath: string): void {
   if (typeof value !== 'string') {
     fail(fieldPath, 'must be a semver string');
@@ -194,7 +238,7 @@ export const BLOCK_FIELD_VALIDATORS: Record<string, Record<string, FieldValidato
     height: [assertNonNegativeInt],
   },
   video: {
-    src: [assertSafeUrl],
+    src: [assertEmbeddableVideoUrl],
     start: [assertNonNegativeInt],
     end: [assertNonNegativeInt],
   },

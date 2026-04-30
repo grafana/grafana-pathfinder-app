@@ -10,6 +10,7 @@ import { runEditBlock } from '../commands/edit-block';
 import { runInspect } from '../commands/inspect';
 import { runRemoveBlock } from '../commands/remove-block';
 import { runSetManifest } from '../commands/set-manifest';
+import { runValidate } from '../commands/validate';
 import { readPackage } from '../utils/package-io';
 import type { ContentJson } from '../../types/package.types';
 
@@ -92,6 +93,56 @@ describe('runAddBlock', () => {
     expect(result.data?.position).toBe('blocks[0]');
     const content = readContent(dir);
     expect(content.blocks).toHaveLength(1);
+  });
+
+  describe('video src', () => {
+    it('accepts a YouTube embed URL', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'video',
+        flagValues: { src: 'https://www.youtube.com/embed/dQw4w9WgXcQ' },
+      });
+      expect(result.status).toBe('ok');
+    });
+
+    it('rejects a YouTube watch URL with a remediation hint', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'video',
+        flagValues: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.code).toBe('SCHEMA_VALIDATION');
+        expect(result.message).toContain('not embeddable');
+        expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      }
+    });
+
+    it('rejects a youtu.be share URL with a remediation hint', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'video',
+        flagValues: { src: 'https://youtu.be/dQw4w9WgXcQ' },
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      }
+    });
+
+    it('passes non-YouTube URLs through unchanged (e.g. Vimeo)', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'video',
+        flagValues: { src: 'https://player.vimeo.com/video/12345' },
+      });
+      expect(result.status).toBe('ok');
+    });
   });
 
   it('appends inside a section by --parent', async () => {
@@ -429,6 +480,44 @@ describe('runInspect', () => {
     if (result.status === 'error') {
       expect(result.code).toBe('BLOCK_NOT_FOUND');
       expect((result.data?.availableIds as string[]).includes('intro')).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runValidate (in-memory artifact validation, used by the MCP)
+// ---------------------------------------------------------------------------
+
+describe('runValidate', () => {
+  it('returns ok for a freshly built valid package', async () => {
+    const dir = await bootstrap();
+    await runAddBlock({ dir, type: 'markdown', flagValues: { content: 'Hi' } });
+    const state = readPackage(dir);
+    const result = runValidate({
+      content: state.content,
+      manifest: state.manifest,
+      manifestSchemaVersionAuthored: state.manifestSchemaVersionAuthored,
+    });
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data?.id).toBe('cmd-test-abc123');
+      expect(result.data?.blocks).toBe(1);
+    }
+  });
+
+  it('surfaces structured issues for a broken artifact', () => {
+    // Force a content/manifest id mismatch — a cross-file check that
+    // validatePackageState flags but a Zod parse on either file alone misses.
+    const result = runValidate({
+      content: { id: 'one', schemaVersion: '1.1.0', title: 'X', type: 'guide', blocks: [] } as unknown as ContentJson,
+      manifest: { id: 'two', schemaVersion: '1.1.0', repository: 'interactive-tutorials' } as unknown as Parameters<
+        typeof runValidate
+      >[0]['manifest'],
+    });
+    expect(result.status).toBe('error');
+    if (result.status === 'error') {
+      expect(result.code).toBe('SCHEMA_VALIDATION');
+      expect(Array.isArray(result.data?.issues)).toBe(true);
     }
   });
 });
