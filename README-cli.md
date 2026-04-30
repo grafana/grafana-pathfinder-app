@@ -6,24 +6,21 @@ Command-line authoring tool for [Grafana Pathfinder](https://github.com/grafana/
 
 ## Install
 
-```sh
-npx pathfinder-cli@latest --version
-```
-
-Or pin to a specific guide-schema version:
+The CLI ships as a Docker image at `ghcr.io/grafana/pathfinder-cli`, rebuilt and pushed on every merge to `main`.
 
 ```sh
-npx pathfinder-cli@1.1.0 --version
+docker run --rm ghcr.io/grafana/pathfinder-cli:latest --version
+docker run --rm -v "$PWD:/workspace" \
+  ghcr.io/grafana/pathfinder-cli:latest create my-guide --title "My guide"
 ```
 
-The published version of this package matches the guide schema version it understands. CLI and schema cannot drift.
-
-### Docker
+For reproducible CI / deploys, pin to a specific main commit:
 
 ```sh
-docker run --rm grafana/pathfinder-cli:latest --version
-docker run --rm -v "$PWD:/workspace" grafana/pathfinder-cli:latest create my-guide --title "My guide"
+docker run --rm ghcr.io/grafana/pathfinder-cli:main-abc1234 --version
 ```
+
+The CLI's `--version` matches the guide schema version it understands — they cannot drift.
 
 The image's first positional argument selects the entrypoint. The default is `pathfinder-cli`. `mcp` routes to `pathfinder-mcp` (added in a future release).
 

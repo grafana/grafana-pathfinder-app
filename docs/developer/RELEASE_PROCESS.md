@@ -25,19 +25,19 @@ The project uses several GitHub Actions workflows for different release scenario
   - Uses Grafana's shared CI workflows
   - Does not publish to plugin catalog as pending (disabled via `publish-to-catalog-as-pending: false`)
 
-### 3. CLI / MCP Releases (`.github/workflows/cli-publish.yml`)
+### 3. CLI / MCP continuous publish (`.github/workflows/cli-publish.yml`)
 
 - **Trigger**:
-  - Push to `main` and `pull_request` (with paths filtering on CLI-relevant files): build, pack, image build, local smoke. No publish.
-  - Push of a `cli-v*` tag (e.g., `cli-v1.1.0`): same, plus npm publish and Docker push, then a registry smoke test.
+  - `pull_request` to `main` (CLI-relevant paths): build, pack, image build, local smoke. No push.
+  - `push` to `main` (CLI-relevant paths): same, plus push the resulting Docker image to GHCR as `:latest` and `:main-<short-sha>`, cosign-sign the digest, and smoke-test the pushed image.
 - **Process**:
   - Builds the CLI via `npm run build:cli`.
-  - Packs an npm tarball via `scripts/pack-cli.js` (rewrites `package.json` → `name: pathfinder-cli`, `version: <CURRENT_SCHEMA_VERSION>`, narrows `files` to `dist/cli/`, restores the working tree).
-  - Builds `Dockerfile.cli` and tags `grafana/pathfinder-cli:<version>` (Docker Hub) plus `ghcr.io/grafana/pathfinder-cli:<version>` (GHCR mirror).
-  - Asserts the tag matches `CURRENT_SCHEMA_VERSION` from `src/types/json-guide.schema.ts`. Mismatched tags fail loud.
-  - Publish steps gracefully skip when secrets (`NPM_TOKEN`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) are absent — useful while the registry credentials are being provisioned. The build/pack/image-build path is exercised on every run regardless.
+  - Packs an npm tarball via `scripts/pack-cli.js` (rewrites `package.json` → `name: pathfinder-cli`, `version: <CURRENT_SCHEMA_VERSION>`, narrows `files` to `dist/cli/`, restores the working tree). The Dockerfile installs this packed tarball globally inside the runtime image, so the pack-rewrite logic is exercised on every build.
+  - Builds `Dockerfile.cli` and pushes to `ghcr.io/grafana/pathfinder-cli:latest` plus `ghcr.io/grafana/pathfinder-cli:main-<short-sha>`.
+  - Authenticates to GHCR with the always-present `GITHUB_TOKEN` — no repo secrets are required to operate this workflow.
+- **No npm publish, no Docker Hub, no tag-driven release.** The image is the only consumable artifact. Pin to `:main-<sha>` for reproducibility; track `:latest` for "tip of trunk."
 
-See [CLI and MCP releases](#cli-and-mcp-releases) below for the operator playbook.
+See [CLI and MCP continuous publish](#cli-and-mcp-continuous-publish) below for the operator playbook.
 
 ## Build Process
 
@@ -130,17 +130,22 @@ Plugin signing is available but currently disabled. To enable:
 2. Add token to repository secrets as `policy_token`
 3. Uncomment the signing configuration in `.github/workflows/release.yml`
 
-## CLI and MCP releases
+## CLI and MCP continuous publish
 
-The `pathfinder-cli` npm package and `grafana/pathfinder-cli` Docker image (mirrored to `ghcr.io/grafana/pathfinder-cli`) are released independently from the plugin tarball. The plugin and CLI release cadences are decoupled.
+The `pathfinder-cli` Docker image at `ghcr.io/grafana/pathfinder-cli` is rebuilt and pushed on every merge to `main`. There is no tag-driven release flow, no npm publish, and no Docker Hub push — the GHCR image is the single consumable artifact and the only registry. Authentication uses the always-present `GITHUB_TOKEN`; no repo secrets are required to operate the pipeline.
+
+### Tags published on every main merge
+
+| Tag                                               | Stability                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------- |
+| `ghcr.io/grafana/pathfinder-cli:latest`           | Tip of `main`. Moves on every merge. Use for "follow trunk."      |
+| `ghcr.io/grafana/pathfinder-cli:main-<short-sha>` | Immutable per-commit pointer. Use for reproducible deploys / pin. |
 
 ### Versioning
 
-CLI and MCP versions are pinned to `CURRENT_SCHEMA_VERSION` exported from `src/types/json-guide.schema.ts`. The repo's `package.json#version` (which carries the plugin version) is **not** used for the published CLI artifact — it is rewritten at publish time by `scripts/prepublish-cli.js`. The published `name` and `dependencies` are likewise rewritten so the published artifact contains only what the CLI runtime needs.
+The CLI inside the image carries `CURRENT_SCHEMA_VERSION` (from `src/types/json-guide.schema.ts`) as its `--version` output. The repo's `package.json#version` (the plugin version) is rewritten at image-build time by `scripts/prepublish-cli.js`, so the CLI version always tracks the schema version, not the plugin.
 
-### Tag scheme
-
-CLI releases use `cli-v*` tags. Plugin releases continue to use `v*`. Distinct prefixes prevent the two release workflows from fighting over the same tag.
+To bump what `pathfinder-cli --version` returns, bump `CURRENT_SCHEMA_VERSION` in source and merge — the next `:latest` will reflect it.
 
 ### Dry-run locally
 
@@ -151,46 +156,39 @@ docker run --rm pathfinder-cli:local --version                # CLI smoke
 docker run --rm pathfinder-cli:local mcp                      # routes to placeholder, exits 1
 ```
 
-### Cutting a release
+### Consuming the image
 
-1. Verify `CURRENT_SCHEMA_VERSION` in `src/types/json-guide.schema.ts` is the version you intend to ship.
-2. Tag and push: `git tag cli-v<version> && git push origin cli-v<version>`. The `<version>` must match `CURRENT_SCHEMA_VERSION` exactly — the workflow asserts this.
-3. The `cli-publish.yml` workflow runs the build, packs the artifact, builds the image, and (if secrets are configured) publishes to npm + Docker Hub + GHCR, then runs a registry smoke test.
+```bash
+# Latest from main
+docker run --rm ghcr.io/grafana/pathfinder-cli:latest --version
 
-### Required secrets
+# Pinned to a specific main commit (recommended for CI / Cloud Run)
+docker run --rm ghcr.io/grafana/pathfinder-cli:main-abc1234 --version
 
-| Secret               | Purpose                                                                       |
-| -------------------- | ----------------------------------------------------------------------------- |
-| `NPM_TOKEN`          | npm publish auth (`pathfinder-cli`).                                          |
-| `DOCKERHUB_USERNAME` | Docker Hub login (push to `grafana/pathfinder-cli`).                          |
-| `DOCKERHUB_TOKEN`    | Docker Hub login.                                                             |
-| `GITHUB_TOKEN`       | GHCR mirror push. Provided automatically by Actions; needs `packages: write`. |
+# Validate a Pathfinder package directory from another repo's CI
+docker run --rm -v "$PWD:/workspace" \
+  ghcr.io/grafana/pathfinder-cli:latest validate /workspace/path/to/package
+```
 
-If any required secret is missing, the corresponding publish job logs a `::warning::` and exits 0 — the workflow stays green so the build/pack/image-build path is still validated. The registry smoke test auto-skips for the same reason.
+### Package visibility
 
-GHCR publishes independently of Docker Hub: it authenticates with the always-present `GITHUB_TOKEN`, so a missing or revoked Docker Hub credential does not dark out the GHCR mirror.
+The first push creates the GHCR package as **private**. To consume it without authentication (e.g., from another org's GitHub Actions, or from Google Cloud Run via an Artifact Registry remote repository), an org admin must flip the package to public via GitHub Settings → Packages → `pathfinder-cli` → Change visibility → Public. One-time action.
 
 ### Supply-chain attestation
 
-Both artifact streams attach sigstore-backed attestations on every published `cli-v*` tag:
+Every push attaches a sigstore-backed signature to the image digest via `cosign sign`. Verify with:
 
-- **npm**: published with `npm publish --provenance`. Verify with:
-  ```bash
-  npm view pathfinder-cli@<version> --json | jq '.dist.attestations'
-  ```
-- **Docker images** (Docker Hub and GHCR): signed keyless via `cosign sign`. Verify with:
-  ```bash
-  cosign verify <image>:<version> \
-    --certificate-identity-regexp 'https://github.com/grafana/grafana-pathfinder-app/.+' \
-    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
-  ```
-  (Replace `<image>` with `grafana/pathfinder-cli` or `ghcr.io/grafana/pathfinder-cli`.)
+```bash
+cosign verify ghcr.io/grafana/pathfinder-cli:latest \
+  --certificate-identity-regexp 'https://github.com/grafana/grafana-pathfinder-app/.+' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+```
 
-Both rely on the `id-token: write` permission granted to `publish-npm` and `publish-docker`.
+This relies on the `id-token: write` permission granted to the `publish-ghcr-main` job.
 
 ### Refreshing the Docker base-image digest
 
-`Dockerfile.cli` pins `node:22-alpine` by digest (same digest in both stages) so two builds of the same `cli-v*` git tag produce identical images. Refresh the digest periodically — at minimum, when cutting a new `cli-v*` release that's more than a few weeks behind the previous one — by running:
+`Dockerfile.cli` pins `node:22-alpine` by digest (same digest in both stages) so two builds of the same git commit produce identical images. Refresh the digest periodically by running:
 
 ```bash
 docker pull node:22-alpine

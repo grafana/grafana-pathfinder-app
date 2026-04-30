@@ -1,15 +1,18 @@
 # Pathfinder CLI / MCP build and publish.
 #
 # Triggers:
-#   - push to main / pull_request: build, pack, image-build, local smoke test.
-#     No publish.
-#   - push of a `cli-v*` tag (e.g., cli-v1.1.0): same, plus npm publish and
-#     Docker push. Publish steps gracefully skip if secrets are absent so
-#     the workflow is fully wired and validated end-to-end before tokens
-#     exist.
+#   - pull_request to main: build, pack, image-build, local smoke. No push.
+#   - push to main: same, plus push the resulting Docker image to GHCR as
+#     `:latest` and `:main-<short-sha>`. The image is the canonical
+#     consumable artifact: it can be pulled by Cloud Run (via an Artifact
+#     Registry remote repository), used in other repos' GitHub Actions to
+#     validate Pathfinder packages, or run locally with `docker run`.
 #
-# See docs/design/phases/ai-authoring-2-distribution.md (decision log
-# entries "Tag scheme: cli-v*" and "Secret-gated publish") for rationale.
+# No npm publish, no Docker Hub push, no tag-driven release flow. The
+# only registry is GHCR, authenticated by the always-present GITHUB_TOKEN —
+# no repo secrets are needed to operate this workflow.
+#
+# See docs/design/phases/ai-authoring-2-distribution.md for the rationale.
 
 name: CLI publish
 
@@ -17,8 +20,21 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'cli-v*'
+    paths:
+      - 'src/cli/**'
+      - 'src/types/**'
+      - 'src/validation/**'
+      - 'scripts/prepublish-cli.js'
+      - 'scripts/pack-cli.js'
+      - 'scripts/docker-entrypoint.sh'
+      - 'scripts/__tests__/**'
+      - 'tsconfig.cli.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile.cli'
+      - '.dockerignore'
+      - 'README-cli.md'
+      - '.github/workflows/cli-publish.yml'
   pull_request:
     branches:
       - main
@@ -46,7 +62,6 @@ concurrency:
 
 env:
   NODE_VERSION: '22'
-  IMAGE_NAME_DOCKERHUB: grafana/pathfinder-cli
   IMAGE_NAME_GHCR: ghcr.io/grafana/pathfinder-cli
 
 jobs:
@@ -81,17 +96,6 @@ jobs:
           version="$(node -e "console.log(require('./scripts/prepublish-cli').readSchemaVersion())")"
           echo "schema-version=${version}" >> "$GITHUB_OUTPUT"
           echo "Schema version: ${version}"
-
-      - name: Validate cli-v* tag matches CURRENT_SCHEMA_VERSION
-        if: startsWith(github.ref, 'refs/tags/cli-v')
-        run: |
-          tag_version="${GITHUB_REF_NAME#cli-v}"
-          schema_version="${{ steps.version.outputs.schema-version }}"
-          if [ "$tag_version" != "$schema_version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match CURRENT_SCHEMA_VERSION ($schema_version)."
-            echo "Either retag with cli-v${schema_version} or bump CURRENT_SCHEMA_VERSION." >&2
-            exit 1
-          fi
 
       - name: Unit tests (prepublish + CLI)
         run: npx jest --no-coverage scripts/__tests__ src/cli
@@ -140,65 +144,12 @@ jobs:
             exit 1
           fi
 
-      - name: Upload tarball (release runs only)
-        if: startsWith(github.ref, 'refs/tags/cli-v')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: pathfinder-cli-tarball
-          path: pathfinder-cli-*.tgz
-          retention-days: 7
-
-  publish-npm:
-    name: Publish to npm
+  publish-ghcr-main:
+    name: Push :latest and :main-<sha> to GHCR
     needs: build
-    if: startsWith(github.ref, 'refs/tags/cli-v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # Required for `npm publish --provenance` to mint a sigstore
-      # attestation tied to this workflow run's OIDC identity.
-      id-token: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-
-      # SECURITY: Explicit cache disable — see build job comment.
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org
-
-      - name: Install
-        run: npm ci --no-audit --no-fund
-
-      - name: Build CLI
-        run: npm run build:cli
-
-      - name: Rewrite manifest for publish
-        run: node scripts/prepublish-cli.js --write
-
-      - name: npm publish (skipped if NPM_TOKEN absent)
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "::warning::NPM_TOKEN not configured; skipping npm publish."
-            echo "Add NPM_TOKEN to repository secrets to enable real publishes."
-            exit 0
-          fi
-          # --provenance attaches a sigstore-backed build attestation
-          # tying the published tarball to this workflow run. Verifiable
-          # with `npm view pathfinder-cli@<version> --json | jq '.dist.attestations'`.
-          npm publish --access public --provenance
-
-  publish-docker:
-    name: Publish Docker image
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/cli-v')
+    # Only on push events to main — never on PRs (PRs may originate from
+    # forks or untrusted contributors and must not push images).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -210,32 +161,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check Docker Hub secrets
-        id: docker-secrets
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          # GHCR push is independent: it authenticates with GITHUB_TOKEN
-          # which is always present in this workflow. Only Docker Hub is
-          # secret-gated. A revoked or unset Docker Hub credential must
-          # not dark out the GHCR mirror.
-          if [ -z "${DOCKERHUB_USERNAME:-}" ] || [ -z "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not configured; skipping Docker Hub publish (GHCR still publishes)."
-            echo "Add both to repository secrets to enable Docker Hub publishes."
-            echo "dockerhub-skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "dockerhub-skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3
-
-      - name: Login to Docker Hub
-        if: steps.docker-secrets.outputs.dockerhub-skip == 'false'
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GHCR
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
@@ -247,28 +173,13 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
 
-      - name: Build and push to Docker Hub
-        id: dockerhub-push
-        if: steps.docker-secrets.outputs.dockerhub-skip == 'false'
-        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6
-        with:
-          context: .
-          file: Dockerfile.cli
-          push: true
-          tags: |
-            ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ needs.build.outputs.schema-version }}
-            ${{ env.IMAGE_NAME_DOCKERHUB }}:latest
-
-      - name: Sign Docker Hub image with cosign (keyless)
-        if: steps.docker-secrets.outputs.dockerhub-skip == 'false'
-        env:
-          DIGEST: ${{ steps.dockerhub-push.outputs.digest }}
-          VERSION: ${{ needs.build.outputs.schema-version }}
+      - name: Compute image tags
+        id: tags
         run: |
           set -euo pipefail
-          # Sign the digest so both the version tag and :latest are
-          # covered (tags are mutable; digest is canonical).
-          cosign sign --yes "${{ env.IMAGE_NAME_DOCKERHUB }}@${DIGEST}"
+          short_sha="${GITHUB_SHA::7}"
+          echo "short-sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "main-tag=main-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push to GHCR
         id: ghcr-push
@@ -278,64 +189,25 @@ jobs:
           file: Dockerfile.cli
           push: true
           tags: |
-            ${{ env.IMAGE_NAME_GHCR }}:${{ needs.build.outputs.schema-version }}
             ${{ env.IMAGE_NAME_GHCR }}:latest
+            ${{ env.IMAGE_NAME_GHCR }}:${{ steps.tags.outputs.main-tag }}
 
       - name: Sign GHCR image with cosign (keyless)
         env:
           DIGEST: ${{ steps.ghcr-push.outputs.digest }}
         run: |
           set -euo pipefail
+          # Sign the digest so both `:latest` and `:main-<sha>` are
+          # covered (tags are mutable; digest is canonical).
           cosign sign --yes "${{ env.IMAGE_NAME_GHCR }}@${DIGEST}"
 
-  smoke-registry:
-    name: Smoke-test the registry copy
-    needs: [build, publish-npm, publish-docker]
-    if: |
-      startsWith(github.ref, 'refs/tags/cli-v') &&
-      needs.publish-npm.result == 'success' &&
-      needs.publish-docker.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      # SECURITY: Explicit cache disable — see build job comment.
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-
-      - name: npx pathfinder-cli@<version> --version
+      - name: Smoke-test the pushed image
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          MAIN_TAG: ${{ steps.tags.outputs.main-tag }}
         run: |
           set -euo pipefail
-          if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "NPM_TOKEN absent — publish was skipped, nothing to smoke."
-            exit 0
-          fi
-          version="${{ needs.build.outputs.schema-version }}"
-          observed="$(npx --yes pathfinder-cli@${version} --version)"
-          [ "$observed" = "$version" ] || { echo "npm registry smoke failed: observed=$observed expected=$version"; exit 1; }
-
-      - name: docker run grafana/pathfinder-cli:<version> --version
-        env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "DOCKERHUB_TOKEN absent — Docker Hub publish was skipped, nothing to smoke."
-            exit 0
-          fi
-          version="${{ needs.build.outputs.schema-version }}"
-          observed="$(docker run --rm ${{ env.IMAGE_NAME_DOCKERHUB }}:${version} --version)"
-          [ "$observed" = "$version" ] || { echo "Docker Hub registry smoke failed: observed=$observed expected=$version"; exit 1; }
-
-      - name: docker run ghcr.io/grafana/pathfinder-cli:<version> --version
-        # Unconditional: GHCR publish is gated only on the cli-v* tag, not
-        # on any external secret, so the image is always present here.
-        run: |
-          set -euo pipefail
-          version="${{ needs.build.outputs.schema-version }}"
-          observed="$(docker run --rm ${{ env.IMAGE_NAME_GHCR }}:${version} --version)"
-          [ "$observed" = "$version" ] || { echo "GHCR registry smoke failed: observed=$observed expected=$version"; exit 1; }
+          observed_latest="$(docker run --rm ${{ env.IMAGE_NAME_GHCR }}:latest --version)"
+          observed_sha="$(docker run --rm ${{ env.IMAGE_NAME_GHCR }}:${MAIN_TAG} --version)"
+          expected="${{ needs.build.outputs.schema-version }}"
+          [ "$observed_latest" = "$expected" ] || { echo "GHCR :latest smoke failed: observed=$observed_latest expected=$expected"; exit 1; }
+          [ "$observed_sha" = "$expected" ] || { echo "GHCR :${MAIN_TAG} smoke failed: observed=$observed_sha expected=$expected"; exit 1; }

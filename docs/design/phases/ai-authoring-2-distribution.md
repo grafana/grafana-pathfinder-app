@@ -10,6 +10,24 @@
 
 ---
 
+## Plan revision — 2026-04-30: GHCR-only continuous publish
+
+Mid-PR, the scope was narrowed: **the CLI ships only as a GHCR Docker image, rebuilt and pushed on every merge to `main`**. No npm publish, no Docker Hub push, no `cli-v*` tag-driven release. Auth uses the always-present `GITHUB_TOKEN` so no repo secrets are required to operate the pipeline.
+
+The original tag-driven publish-to-three-registries plan is retained below as historical record. It traded freshness for ceremony — every release required a tag, version-assertion, and three sets of credentials. The continuous-publish model fits the actual consumer needs better:
+
+- Cloud Run deploys can pin `:main-<sha7>` for reproducibility, or follow `:latest` for tip-of-trunk.
+- Other repos' GitHub Actions can `docker run ghcr.io/grafana/pathfinder-cli` to validate Pathfinder packages — no install step.
+- A future `pathfinder-mcp` entrypoint (P3) inherits the same image, same publish flow, no additional CI work.
+
+What's kept from the original plan: the `prepublish-cli.js` manifest rewrite (the Dockerfile still uses it to produce the npm tarball that gets installed inside the runtime image), the `pack:cli` local equivalent, the dep-allowlist test, the cosign keyless signing of the published digest, the `node:22-alpine` digest pinning, and all the local smoke tests.
+
+What's removed: the `cli-v*` tag trigger and version-assertion, the `publish-npm` job, the Docker Hub leg of `publish-docker`, the secret-gating of the GHCR push (now unconditional on main pushes), the `smoke-registry` job (rolled into the publish job).
+
+Sections below preserve the original decision log for context. Where the live system disagrees with the doc, the live system (`.github/workflows/cli-publish.yml`, `docs/developer/RELEASE_PROCESS.md`) wins.
+
+---
+
 ## Preconditions
 
 **Prior-phase exit criteria to re-verify before starting:**
