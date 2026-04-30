@@ -96,9 +96,12 @@ func buildImportRequest(t *testing.T, role, namespace, appURL, body string, aggr
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/guides/import", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
-	// The handler forwards Authorization to the aggregator verbatim;
-	// tests inject a sentinel value that aggregator stubs assert against.
-	r.Header.Set("Authorization", "Bearer test-caller-token")
+	// The handler reads X-Grafana-Id (the user's ID JWT, set by Grafana
+	// when idForwarding is on) and forwards it as both
+	// `Authorization: Bearer <id>` and `X-Grafana-Id` on the outbound
+	// aggregator call. Tests inject a sentinel that aggregator stubs
+	// assert against.
+	r.Header.Set("X-Grafana-Id", "test-id-token")
 	ctx := backend.WithPluginContext(r.Context(), pluginCtx)
 	ctx = backend.WithGrafanaConfig(ctx, cfg)
 	return r.WithContext(ctx)
@@ -142,8 +145,11 @@ func TestImport_CreateOnNotFound(t *testing.T) {
 		},
 		"POST /collection": func(w http.ResponseWriter, r *http.Request) {
 			addCalled = true
-			if got := r.Header.Get("Authorization"); got != "Bearer test-caller-token" {
-				t.Errorf("expected caller's Authorization to be forwarded, got %q", got)
+			if got := r.Header.Get("Authorization"); got != "Bearer test-id-token" {
+				t.Errorf("expected Authorization=Bearer test-id-token, got %q", got)
+			}
+			if got := r.Header.Get("X-Grafana-Id"); got != "test-id-token" {
+				t.Errorf("expected X-Grafana-Id=test-id-token to be forwarded, got %q", got)
 			}
 			var env map[string]any
 			body, _ := io.ReadAll(r.Body)

@@ -139,40 +139,46 @@ func newGuidesClient() *guidesClient {
 }
 
 // guidesRequestConfig captures everything needed for a single call.
-// AuthHeader is the inbound Authorization header forwarded verbatim
-// to the aggregator so the K8s RBAC layer evaluates the user's own
-// permissions on `interactiveguides`.
+// IDToken is the user's signed ID JWT from the inbound `X-Grafana-Id`
+// header — forwarded to the aggregator so K8s RBAC evaluates the
+// user's own permissions on `interactiveguides`.
 type guidesRequestConfig struct {
-	AppURL     string
-	AuthHeader string
-	Namespace  string
+	AppURL    string
+	IDToken   string
+	Namespace string
 }
 
 // configFromRequest pulls the AppURL from backend.GrafanaConfigFromContext,
-// the namespace from the plugin context, and forwards the caller's
-// Authorization header verbatim for the outbound call.
+// the namespace from the plugin context, and accepts the user's ID
+// token (X-Grafana-Id) for outbound forwarding.
 //
 // We forward the caller's identity (rather than using the plugin SA via
 // cfg.PluginAppClientSecret) so the aggregator's RBAC evaluates the
 // actual user's permissions on `interactiveguides`. This mirrors how
 // grafana-slo-app and grafana-assistant-app authorise their outbound
 // calls, and avoids the action-name guessing game an `iam.permissions`
-// block on the plugin SA would require — confirmed against the
-// pathfinder dev stack where direct K8s writes succeed with a user SA
-// token but a plugin-SA path is rejected by aggregator RBAC.
-func configFromRequest(ctx context.Context, namespace, authHeader string) (*guidesRequestConfig, error) {
+// block on the plugin SA would require.
+//
+// Grafana strips the inbound `Authorization` header before reaching
+// plugin resource handlers, but populates `X-Grafana-Id` with the
+// user's ID JWT when the `idForwarding` feature toggle is on. We use
+// that header as our auth source — confirmed against the pathfinder
+// dev stack where direct K8s writes succeed with a user SA token, the
+// plugin-SA path is rejected by aggregator RBAC, and `Authorization`
+// is empty by the time the plugin sees the request.
+func configFromRequest(ctx context.Context, namespace, idToken string) (*guidesRequestConfig, error) {
 	cfg := backend.GrafanaConfigFromContext(ctx)
 	appURL, err := cfg.AppURL()
 	if err != nil || appURL == "" {
 		return nil, fmt.Errorf("grafana app URL unavailable: %w", err)
 	}
-	if authHeader == "" {
-		return nil, errors.New("authorization header missing — cannot forward caller identity to the aggregator")
+	if idToken == "" {
+		return nil, errors.New("X-Grafana-Id header missing — Grafana's `idForwarding` feature toggle must be on to use this endpoint")
 	}
 	if namespace == "" {
 		return nil, errors.New("namespace unavailable from plugin context")
 	}
-	return &guidesRequestConfig{AppURL: appURL, AuthHeader: authHeader, Namespace: namespace}, nil
+	return &guidesRequestConfig{AppURL: appURL, IDToken: idToken, Namespace: namespace}, nil
 }
 
 // resourceURL composes the aggregator endpoint for a named resource
@@ -194,7 +200,8 @@ func (c *guidesClient) Get(ctx context.Context, rc *guidesRequestConfig, name st
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", rc.AuthHeader)
+	req.Header.Set("Authorization", "Bearer "+rc.IDToken)
+	req.Header.Set("X-Grafana-Id", rc.IDToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -240,7 +247,8 @@ func (c *guidesClient) send(ctx context.Context, rc *guidesRequestConfig, method
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", rc.AuthHeader)
+	req.Header.Set("Authorization", "Bearer "+rc.IDToken)
+	req.Header.Set("X-Grafana-Id", rc.IDToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 

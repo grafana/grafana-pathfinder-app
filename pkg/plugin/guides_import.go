@@ -176,12 +176,15 @@ func (a *App) handleGuidesImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Forward the caller's Authorization header verbatim so the
-	// aggregator's RBAC evaluates the user's own permissions on the
-	// `interactiveguides` resource. See guides_client.go::configFromRequest
-	// for the rationale.
-	authHeader := r.Header.Get("Authorization")
-	rc, err := configFromRequest(r.Context(), pluginCtx.Namespace, authHeader)
+	// Forward the caller's identity to the aggregator. Grafana strips
+	// the inbound `Authorization` header before it reaches plugin
+	// resource handlers, so we use `X-Grafana-Id` (the user's ID JWT)
+	// instead — the same pattern grafana-slo-app uses
+	// (`auth_handler_decorator.go:225`). Requires the `idForwarding`
+	// Grafana feature toggle to be on so that Grafana populates the
+	// header in the first place.
+	idToken := r.Header.Get("X-Grafana-Id")
+	rc, err := configFromRequest(r.Context(), pluginCtx.Namespace, idToken)
 	if err != nil {
 		a.logger.FromContext(r.Context()).Error("Guides aggregator config unavailable", "error", err)
 		a.writeError(w, "guides aggregator unavailable: "+err.Error(), http.StatusBadGateway)
