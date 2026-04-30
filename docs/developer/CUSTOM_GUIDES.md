@@ -91,6 +91,23 @@ The library (**Library** button) lists all guides stored in the Pathfinder backe
 
 ---
 
+## External import (CI / Terraform / scripts)
+
+Guides can also be pushed into a stack from outside the editor — useful for CI pipelines, Terraform, or one-off scripts. The Pathfinder backend's Kubernetes-style API at `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides` accepts the same `spec` shape the editor reads and writes, and exposes the full lifecycle (`list`/`get`/`create`/`update`/`delete`).
+
+Authentication is a Grafana service-account Bearer token; writes need the **Editor** or **Admin** role. The repo ships a small helper at [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) that handles the GET-then-create-or-update dance:
+
+```bash
+scripts/upsert-guide.sh \
+  --stack learn.grafana.net \
+  --token "$GRAFANA_SA_TOKEN" \
+  --spec ./my-guide.json
+```
+
+See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, error codes, and curl recipes for each operation.
+
+---
+
 ## Status badges
 
 The badge in the top-right of the header reflects the backend sync state:

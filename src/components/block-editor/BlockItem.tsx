@@ -56,6 +56,10 @@ export interface BlockItemProps {
   isJustDropped?: boolean;
   /** Whether this block was the last one modified (persistent highlight) */
   isLastModified?: boolean;
+  /** Called to preview this block */
+  onPreview?: () => void;
+  /** Whether this block preview is currently open */
+  isPreviewActive?: boolean;
 }
 
 /**
@@ -79,6 +83,8 @@ export function BlockItem({
   childCount = 0,
   isJustDropped = false,
   isLastModified = false,
+  onPreview,
+  isPreviewActive = false,
 }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
@@ -227,6 +233,20 @@ export function BlockItem({
               onClick={handleRecord}
               className={isRecording ? styles.recordingButton : styles.recordButton}
               tooltip={isRecording ? 'Stop recording' : 'Record into section'}
+            />
+          )}
+          {onPreview && (
+            <IconButton
+              name={isPreviewActive ? 'eye-slash' : 'eye'}
+              size="md"
+              aria-label={isPreviewActive ? `Hide preview for ${meta.name} block` : `Preview ${meta.name} block`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview();
+              }}
+              className={styles.actionButton}
+              tooltip={isPreviewActive ? 'Hide preview' : 'Preview block'}
+              data-testid="block-preview-button"
             />
           )}
           <IconButton

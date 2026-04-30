@@ -16,6 +16,7 @@ import type {
   JsonStep,
 } from '../../../types/json-guide.types';
 import { DEFAULT_GUIDE_METADATA } from '../constants';
+import { copyNestedInstanceId } from '../nestedBlockInstanceId';
 
 /**
  * Type guard for section blocks
@@ -69,6 +70,11 @@ export interface UseBlockEditorOptions {
   onChange?: (guide: JsonGuide) => void;
 }
 
+export interface UpdateNestedBlockOptions {
+  markDirty?: boolean;
+  notifyChange?: boolean;
+}
+
 /**
  * Hook return type
  */
@@ -100,7 +106,12 @@ export interface UseBlockEditorReturn {
   /** Add a new block directly to a section */
   addBlockToSection: (block: JsonBlock, sectionId: string, index?: number) => string;
   /** Update a nested block */
-  updateNestedBlock: (sectionId: string, nestedIndex: number, block: JsonBlock) => void;
+  updateNestedBlock: (
+    sectionId: string,
+    nestedIndex: number,
+    block: JsonBlock,
+    options?: UpdateNestedBlockOptions
+  ) => void;
   /** Delete a nested block */
   deleteNestedBlock: (sectionId: string, nestedIndex: number) => void;
   /** Duplicate a nested block */
@@ -510,7 +521,8 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
   // Update a nested block
   const updateNestedBlock = useCallback(
-    (sectionId: string, nestedIndex: number, block: JsonBlock) => {
+    (sectionId: string, nestedIndex: number, block: JsonBlock, options: UpdateNestedBlockOptions = {}) => {
+      const { markDirty = true, notifyChange: shouldNotify = true } = options;
       setState((prev) => {
         const sectionIndex = prev.blocks.findIndex((b) => b.id === sectionId);
         if (sectionIndex === -1) {
@@ -527,7 +539,8 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        sectionBlocksCopy[nestedIndex] = block;
+        const prevNested = sectionBlocksCopy[nestedIndex];
+        sectionBlocksCopy[nestedIndex] = copyNestedInstanceId(prevNested, block);
 
         const newBlocks = [...prev.blocks];
         newBlocks[sectionIndex] = {
@@ -541,9 +554,11 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         const newState = {
           ...prev,
           blocks: newBlocks,
-          isDirty: true,
+          isDirty: markDirty ? true : prev.isDirty,
         };
-        notifyChange(newState);
+        if (shouldNotify) {
+          notifyChange(newState);
+        }
         return newState;
       });
     },

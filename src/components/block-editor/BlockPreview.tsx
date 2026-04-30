@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { useStyles2, Alert, Badge, Icon } from '@grafana/ui';
+import { useStyles2, Alert, Icon } from '@grafana/ui';
 import { getBlockPreviewStyles } from './block-editor.styles';
 import { parseJsonGuide, ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml } from '../../styles/content-html.styles';
@@ -20,12 +20,14 @@ import { testIds } from '../../constants/testIds';
 export interface BlockPreviewProps {
   /** The guide to preview */
   guide: JsonGuide;
+  /** Whether to render the guide title above native JSON content. */
+  showTitle?: boolean;
 }
 
 /**
  * Block preview component
  */
-export function BlockPreview({ guide }: BlockPreviewProps) {
+export function BlockPreview({ guide, showTitle = true }: BlockPreviewProps) {
   const styles = useStyles2(getBlockPreviewStyles);
   // Apply the same styles as the main docs panel for consistent appearance
   const journeyStyles = useStyles2(journeyContentHtml);
@@ -113,7 +115,7 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
     const rawContent: RawContent = {
       content: JSON.stringify(guide),
       metadata: {
-        title: guide.title,
+        title: showTitle ? guide.title : '',
       },
       type: 'learning-journey',
       url: `block-editor://preview/${guide.id}`,
@@ -127,13 +129,13 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
       warnings: parseResult.warnings || [],
       isEmpty: false,
     };
-  }, [guide]);
+  }, [guide, showTitle]);
 
   // Show error state if parsing failed
   if (errors.length > 0) {
     return (
       <div className={styles.container}>
-        <Alert title="Preview Error" severity="error">
+        <Alert title="Preview error" severity="error">
           <ul>
             {errors.map((error, i) => (
               <li key={i}>{error.message}</li>
@@ -148,13 +150,7 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
   if (isEmpty || !content) {
     return (
       <div className={styles.container}>
-        <div className={styles.previewHeader}>
-          <h3 className={styles.previewTitle}>{guide.title}</h3>
-          <div className={styles.previewActions}>
-            <Badge text="Preview" color="blue" className={styles.previewBadge} />
-          </div>
-        </div>
-        <Alert title="Empty Guide" severity="info">
+        <Alert title="Empty guide" severity="info">
           Add blocks to see a preview of your guide.
         </Alert>
       </div>
@@ -163,25 +159,6 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
 
   return (
     <div className={styles.container}>
-      <div className={styles.previewHeader}>
-        <h3 className={styles.previewTitle}>{guide.title}</h3>
-        <div className={styles.previewActions}>
-          {hasInteractiveProgress && (
-            <button
-              className={styles.resetButton}
-              onClick={handleReset}
-              aria-label="Reset guide"
-              title="Resets all interactive steps"
-              data-testid={testIds.blockEditor.previewResetButton}
-            >
-              <Icon name="history-alt" size="sm" />
-              <span>Reset guide</span>
-            </button>
-          )}
-          <Badge text="Preview" color="blue" className={styles.previewBadge} />
-        </div>
-      </div>
-
       {/* Show warnings if any */}
       {warnings.length > 0 && (
         <Alert title="Warnings" severity="warning">
@@ -191,6 +168,22 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
             ))}
           </ul>
         </Alert>
+      )}
+
+      {/* Keep reset functionality without rendering the preview header bar. */}
+      {hasInteractiveProgress && (
+        <div className={styles.resetActions}>
+          <button
+            className={styles.resetButton}
+            onClick={handleReset}
+            aria-label="Reset guide"
+            title="Resets all interactive steps"
+            data-testid={testIds.blockEditor.previewResetButton}
+          >
+            <Icon name="history-alt" size="sm" />
+            <span>Reset guide</span>
+          </button>
+        </div>
       )}
 
       {/* Render the content using existing pipeline with proper styling */}
