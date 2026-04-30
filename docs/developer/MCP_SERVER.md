@@ -33,6 +33,71 @@ The HTTP transport uses the SDK's StreamableHTTP transport in **stateless mode**
 
 **The HTTP transport ships without authentication for the MVP.** See the resolved open question in `docs/design/AI-AUTHORING-IMPLEMENTATION.md` ("Does the hosted HTTP MCP need auth at all?"). The MCP holds no privileged resource — Assistant performs the App Platform write with its own credentials downstream. Abuse mitigation is in code (`MAX_REQUEST_BYTES`, `PER_CALL_WALLCLOCK_MS` in `transports/http.ts`) plus deploy-time edge rate limits and autoscaling ceilings.
 
+## Building and running the Docker image locally
+
+```bash
+# Build (multi-stage; no host node_modules needed)
+docker build -f Dockerfile.cli -t pathfinder-cli:dev .
+
+# CLI entrypoint
+docker run --rm pathfinder-cli:dev --version            # → 1.1.0
+docker run --rm -v "$PWD:/workspace" pathfinder-cli:dev validate ./my-guide
+
+# MCP entrypoint (stdio — `-i` keeps stdin attached)
+docker run --rm -i pathfinder-cli:dev mcp
+
+# MCP entrypoint (HTTP)
+docker run --rm -p 8080:8080 pathfinder-cli:dev mcp --transport http --port 8080 --host 0.0.0.0
+```
+
+The `mcp` first-arg routes through `scripts/docker-entrypoint.sh` to `pathfinder-mcp`; anything else routes to `pathfinder-cli`.
+
+## Wiring a local agent to the running MCP
+
+### Claude Code
+
+```bash
+# Local build (after npm run build:cli)
+claude mcp add pathfinder -- node "$PWD/dist/cli/cli/mcp/index.js"
+
+# Or via the local Docker image
+claude mcp add pathfinder -- docker run --rm -i pathfinder-cli:dev mcp
+
+# Or project-scoped — drop a .mcp.json at the repo root:
+# {
+#   "mcpServers": {
+#     "pathfinder": { "command": "node", "args": ["./dist/cli/cli/mcp/index.js"] }
+#   }
+# }
+```
+
+Restart Claude Code, then run `/mcp` to confirm `pathfinder` is connected. Try: _"Use the `pathfinder_authoring_start` tool and show me what it returns."_
+
+### Cursor
+
+Settings → MCP → "Add new MCP server", or edit `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "pathfinder": {
+      "command": "node",
+      "args": ["/absolute/path/to/dist/cli/cli/mcp/index.js"]
+    }
+  }
+}
+```
+
+Swap the `command`/`args` for `docker run --rm -i pathfinder-cli:dev mcp` if you'd rather run from the image.
+
+### MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector node "$PWD/dist/cli/cli/mcp/index.js"
+```
+
+Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the loop.
+
 ## Tool surface
 
 12 tools, registered in `src/cli/mcp/tools/`:
