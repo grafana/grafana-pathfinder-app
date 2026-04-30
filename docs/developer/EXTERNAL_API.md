@@ -52,12 +52,10 @@ The repo ships [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh),
 a small bash helper that handles the create-or-update dance for you:
 
 ```bash
-# spec.json:
+# spec.json — only `title` and `blocks` are strictly required; the
+# script fills in everything else.
 # {
-#   "id": "intro-to-loki",
 #   "title": "Intro to Loki",
-#   "schemaVersion": "1.0",
-#   "status": "draft",
 #   "blocks": [{ "type": "markdown", "content": "# Welcome" }]
 # }
 
@@ -69,23 +67,15 @@ scripts/upsert-guide.sh \
 
 The script:
 
-1. Auto-detects the stack namespace from `/api/frontend/settings` (or accepts `--namespace`).
-2. Slugifies the resource name from `spec.id` (or `spec.title` if `id` is empty).
-3. GETs the existing resource to discover its `resourceVersion`.
-4. POSTs (create) or PUTs (update) accordingly.
-5. Prints the persisted resource as JSON.
+1. **Auto-detects the input format** — accepts either a bare spec or a full Kubernetes envelope (e.g. from Library → Export).
+2. **Auto-detects the stack namespace** from `/api/frontend/settings` (or accepts `--namespace`).
+3. **Fills in missing required fields**: defaults `status` to `"published"` and `schemaVersion` to `"1.0.0"`, and backfills `spec.id` from the slugified `title` when absent.
+4. Slugifies the resource name from `spec.id` (or the slugified `spec.title` if `id` is missing).
+5. GETs the existing resource to discover its `resourceVersion`.
+6. POSTs (create) or PUTs (update) accordingly.
+7. Prints the persisted resource as JSON.
 
-If the spec you have is a **full editor export** (Library → Export — includes a
-Kubernetes envelope), pass `--from-export` and the script will pick out the
-`.spec` field for you:
-
-```bash
-scripts/upsert-guide.sh \
-  --stack learn.grafana.net \
-  --token "$GRAFANA_SA_TOKEN" \
-  --spec ./my-export.json \
-  --from-export
-```
+To upload as a draft instead of publishing, set `"status": "draft"` explicitly in the spec — values you supply are always preserved.
 
 Requirements: `curl`, `jq`. Run `scripts/upsert-guide.sh --help` for the full reference.
 

@@ -22,10 +22,12 @@
 #     --token "$GRAFANA_SA_TOKEN" \
 #     --spec ./my-guide.json
 #
-# The spec file should contain just the InteractiveGuide spec (no
-# Kubernetes envelope). The editor's Library → Export emits a full
-# K8s envelope; strip it with `jq .spec my-export.json > my-spec.json`
-# first, or pass --from-export to skip the strip.
+# The spec file may be either a bare InteractiveGuide spec or a full
+# Kubernetes envelope (e.g. the editor's Library → Export); the script
+# auto-detects the format. Missing fields default to
+# `status: "published"` and `schemaVersion: "1.0.0"`, and `spec.id` is
+# backfilled from the slugified title when absent — so a guide JSON
+# containing just `title` and `blocks` uploads as-is.
 #
 # Requirements:
 #   - curl, jq
@@ -45,22 +47,25 @@ set -euo pipefail
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") --stack <host> --token <token> --spec <file> [--namespace <ns>] [--from-export]
+Usage: $(basename "$0") --stack <host> --token <token> --spec <file> [--namespace <ns>]
 
 Required:
   -s, --stack       Grafana stack hostname (e.g. learn.grafana.net or
                     <stack>.grafana.net). Without scheme.
   -t, --token       Service-account token (glsa_...) with Editor role.
-  -f, --spec        Path to a JSON file containing the InteractiveGuide
-                    spec (the editor's spec field, without K8s envelope).
+  -f, --spec        Path to a JSON file containing the InteractiveGuide.
+                    Either a bare spec or a full Kubernetes envelope
+                    (e.g. from Library → Export); format is auto-detected.
 
 Optional:
   -n, --namespace   Override stack namespace (e.g. stacks-12345). Auto-
                     detected from /api/frontend/settings if omitted.
-      --from-export Treat --spec as a full editor export (with K8s
-                    envelope) and read \`.spec\` from it instead of
-                    using the file as-is.
   -h, --help        Show this message.
+
+Defaults applied to the spec when missing:
+  status            "published"  (set "status": "draft" in the spec to override)
+  schemaVersion     "1.0.0"
+  id                slugified from .title
 
 Reads the spec, derives a slugified resource name from spec.id (or
 spec.title), GETs the existing guide to discover its resourceVersion,
@@ -73,7 +78,6 @@ STACK=
 TOKEN=
 SPEC=
 NAMESPACE=
-FROM_EXPORT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -81,7 +85,6 @@ while [[ $# -gt 0 ]]; do
     -t|--token) TOKEN="$2"; shift 2 ;;
     -f|--spec) SPEC="$2"; shift 2 ;;
     -n|--namespace) NAMESPACE="$2"; shift 2 ;;
-    --from-export) FROM_EXPORT=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 64 ;;
   esac
@@ -116,17 +119,26 @@ if [[ -z "$NAMESPACE" ]]; then
   fi
 fi
 
-# Extract the spec object — either the file as-is, or .spec from a
-# full editor export.
-if (( FROM_EXPORT )); then
+# Auto-detect the input format. A full Kubernetes envelope has
+# top-level `apiVersion` and an object `spec`; anything else is a
+# bare spec.
+IS_ENVELOPE=$(jq -r '
+  if (has("apiVersion") and has("spec") and (.spec | type) == "object")
+  then "yes" else "no" end
+' "$SPEC")
+if [[ "$IS_ENVELOPE" == "yes" ]]; then
   SPEC_JSON=$(jq '.spec' "$SPEC")
-  if [[ "$SPEC_JSON" == "null" ]]; then
-    echo "--from-export was set but $SPEC has no .spec field" >&2
-    exit 1
-  fi
 else
   SPEC_JSON=$(jq '.' "$SPEC")
 fi
+
+# Apply defaults for fields the CRD requires that authors commonly
+# omit. Existing values are preserved — set "status": "draft" in the
+# spec to upload as a draft instead of published.
+SPEC_JSON=$(echo "$SPEC_JSON" | jq '
+  (if (.schemaVersion // "") == "" then .schemaVersion = "1.0.0" else . end)
+  | (if (.status // "") == "" then .status = "published" else . end)
+')
 
 RAW_NAME=$(echo "$SPEC_JSON" | jq -r '.id // .title // empty')
 if [[ -z "$RAW_NAME" ]]; then
@@ -137,6 +149,12 @@ NAME=$(slugify "$RAW_NAME")
 if [[ -z "$NAME" ]]; then
   echo "spec.id/.title produced an empty slug after sanitisation" >&2
   exit 1
+fi
+
+# Backfill spec.id from the derived slug when missing, so the
+# persisted spec round-trips with a stable identifier.
+if [[ -z "$(echo "$SPEC_JSON" | jq -r '.id // ""')" ]]; then
+  SPEC_JSON=$(echo "$SPEC_JSON" | jq --arg id "$NAME" '.id = $id')
 fi
 
 BASE="https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
