@@ -4,6 +4,16 @@ import { useStepChecker } from './index';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
+// Raise the per-test timeout from jest's 5000ms default. This file exercises
+// real timer-driven fix flows (`timeoutManager.setTimeout(fix-recheck-…)`,
+// `timeoutManager.setTimeout(skip-reactive-check-…)`, the lazy
+// `import('../interactive-engine')` for NavigationManager) that can each
+// account for 1-2s on a constrained CI worker. The 5s default leaves no
+// headroom and produces a cascading "Cannot read properties of null"
+// failure mode where the first test times out and shared NavigationManager
+// mock state corrupts every subsequent test in the file.
+jest.setTimeout(15000);
+
 // Mock requirements checker utility
 jest.mock('./requirements-checker.utils', () => ({
   checkRequirements: jest.fn(),
