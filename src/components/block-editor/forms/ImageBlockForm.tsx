@@ -77,6 +77,10 @@ export function ImageBlockForm({
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      if (!isValidUrl(src)) {
+        setUrlError('Please enter a valid image URL (e.g., https://example.com/image.png)');
+        return;
+      }
       const block: JsonImageBlock = {
         type: 'image',
         src: src.trim(),
