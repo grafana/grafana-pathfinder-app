@@ -175,6 +175,24 @@ The HTTP transport emits one structured JSON line per request with these fields.
 }
 ```
 
+### Inspecting deployed logs
+
+The hosted HTTP transport runs on Google Cloud Run. The deploy is operator-local — the script lives at `deploy-mcp.sh` in this repo and is gitignored, so the project ID, region, service name, and resulting URL are not in tracked files. Ask the operator (or read `deploy-mcp.sh` if you have a copy) for the specifics; the runtime model is fixed.
+
+Once you know the project and service, the canonical query for the structured access log fields above is:
+
+```bash
+gcloud logging read \
+  'resource.type=cloud_run_revision AND resource.labels.service_name=<service-name>' \
+  --project=<project-id> \
+  --limit=50 \
+  --format=json
+```
+
+The fields documented in [Access log fields](#access-log-fields) appear under each entry's `jsonPayload`. To filter for a single request shape, add `jsonPayload.path="/mcp"` or `jsonPayload.outcome="error"` to the filter expression. For a recent test run, sort newest-first with `--freshness=10m`.
+
+This is the verification path for any change that emits or modifies access-log fields, structured outcomes, or tool-call telemetry — drive the deployed service, then read the logs back. A local stdio run will not exercise the HTTP transport's logging code path.
+
 ## CLI is the sole validator
 
 The MCP performs no schema validation of its own. Each mutation tool dispatches to the corresponding CLI `runX` function, which is the only place block-shape, condition syntax, and cross-file checks live.
