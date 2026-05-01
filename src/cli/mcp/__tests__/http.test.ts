@@ -132,8 +132,46 @@ describe('HTTP transport', () => {
         expect(typeof entry.ts).toBe('string');
         expect(typeof entry.durationMs).toBe('number');
         expect(typeof entry.status).toBe('number');
+        expect(typeof entry.bytesIn).toBe('number');
+        expect(typeof entry.bytesOut).toBe('number');
+        expect(typeof entry.tokensInEstimate).toBe('number');
+        expect(typeof entry.tokensOutEstimate).toBe('number');
         expect(['ok', 'too_large', 'bad_json', 'overloaded', 'timeout', 'not_found', 'error']).toContain(entry.outcome);
       }
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('counts response bytes and emits proportional token estimates', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/healthz`);
+      const entry = h.logs.at(-1)!;
+      expect(entry.bytesOut).toBeGreaterThan(0);
+      // {"status":"ok"} is 15 bytes -> ceil(15/4) = 4 tokens.
+      expect(entry.tokensOutEstimate).toBe(Math.ceil(entry.bytesOut / 4));
+      expect(entry.tokensInEstimate).toBe(Math.ceil(entry.bytesIn / 4));
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('counts inbound and outbound bytes on a real MCP request', async () => {
+    const h = await start();
+    try {
+      const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+      const res = await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body,
+      });
+      expect(res.status).toBe(200);
+      const entry = h.logs.at(-1)!;
+      expect(entry.bytesIn).toBe(Buffer.byteLength(body));
+      expect(entry.bytesOut).toBeGreaterThan(0);
+      expect(entry.tokensInEstimate).toBeGreaterThan(0);
+      expect(entry.tokensOutEstimate).toBeGreaterThan(0);
     } finally {
       await h.close();
     }

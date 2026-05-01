@@ -12,6 +12,7 @@
  *     identical fidelity, simpler contract.
  */
 
+import type { TreeNode } from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
 
 export function textResult(
@@ -36,11 +37,15 @@ export function textResult(
  */
 export function outcomeResult(
   outcome: CommandOutcome,
-  artifact?: { content: unknown; manifest?: unknown }
+  artifact?: { content: unknown; manifest?: unknown },
+  summary?: TreeNode[]
 ): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
   const payload: Record<string, unknown> = { ...outcome };
   if (artifact) {
     payload.artifact = artifact;
+  }
+  if (summary) {
+    payload.summary = summary;
   }
   return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
 }

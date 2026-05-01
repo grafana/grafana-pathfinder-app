@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { runInspect } from '../../commands/inspect';
 import { runValidate } from '../../commands/validate';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { buildArtifactSummary } from '../../utils/package-io';
 import { outcomeResult } from './result';
 import { withArtifact } from './state-bridge';
 
@@ -44,7 +45,7 @@ export function registerInspectionTools(server: McpServer): void {
         },
         (dir) => runInspect({ dir, blockId, at })
       );
-      return outcomeResult(result.outcome, result.artifact);
+      return outcomeResult(result.outcome, result.artifact, result.summary);
     }
   );
 
@@ -58,15 +59,17 @@ export function registerInspectionTools(server: McpServer): void {
       },
     },
     async ({ artifact }) => {
+      const content = artifact.content as unknown as ContentJson;
       const outcome = runValidate({
-        content: artifact.content as unknown as ContentJson,
+        content,
         manifest: artifact.manifest as unknown as ManifestJson | undefined,
         manifestSchemaVersionAuthored: artifact.manifest !== undefined,
       });
-      return outcomeResult(outcome, {
-        content: artifact.content,
-        manifest: artifact.manifest,
-      });
+      return outcomeResult(
+        outcome,
+        { content: artifact.content, manifest: artifact.manifest },
+        buildArtifactSummary(content)
+      );
     }
   );
 }

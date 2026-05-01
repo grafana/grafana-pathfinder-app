@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 import { runCreate } from '../../commands/create';
 import { defaultPackageId } from '../../utils/auto-id';
-import { readPackage } from '../../utils/package-io';
+import { buildArtifactSummary, readPackage } from '../../utils/package-io';
 import { outcomeResult } from './result';
 
 export function registerArtifactTools(server: McpServer): void {
@@ -49,7 +49,11 @@ export function registerArtifactTools(server: McpServer): void {
           return outcomeResult(outcome);
         }
         const state = readPackage(pkgDir);
-        return outcomeResult(outcome, { content: state.content, manifest: state.manifest });
+        return outcomeResult(
+          outcome,
+          { content: state.content, manifest: state.manifest },
+          buildArtifactSummary(state.content)
+        );
       } finally {
         try {
           fs.rmSync(dir, { recursive: true, force: true });

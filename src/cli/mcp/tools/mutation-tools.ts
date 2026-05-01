@@ -78,7 +78,7 @@ export function registerMutationTools(server: McpServer): void {
           flagValues: fields ?? {},
         })
       );
-      return outcomeResult(result.outcome, result.artifact);
+      return outcomeResult(result.outcome, result.artifact, result.summary);
     }
   );
 
@@ -96,7 +96,7 @@ export function registerMutationTools(server: McpServer): void {
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddStep({ dir, parentId, flagValues: fields })
       );
-      return outcomeResult(result.outcome, result.artifact);
+      return outcomeResult(result.outcome, result.artifact, result.summary);
     }
   );
 
@@ -114,7 +114,7 @@ export function registerMutationTools(server: McpServer): void {
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddChoice({ dir, parentId, flagValues: fields })
       );
-      return outcomeResult(result.outcome, result.artifact);
+      return outcomeResult(result.outcome, result.artifact, result.summary);
     }
   );
 
@@ -130,7 +130,7 @@ export function registerMutationTools(server: McpServer): void {
     },
     async ({ artifact, id, fields }) => {
       const result = await withArtifact(asArtifact(artifact), (dir) => runEditBlock({ dir, id, flagValues: fields }));
-      return outcomeResult(result.outcome, result.artifact);
+      return outcomeResult(result.outcome, result.artifact, result.summary);
     }
   );
 
@@ -152,7 +152,7 @@ export function registerMutationTools(server: McpServer): void {
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runRemoveBlock({ dir, id, cascade, orphanChildren })
       );
-      return outcomeResult(result.outcome, result.artifact);
+      return outcomeResult(result.outcome, result.artifact, result.summary);
     }
   );
 
@@ -167,7 +167,7 @@ export function registerMutationTools(server: McpServer): void {
     },
     async ({ artifact, fields }) => {
       const result = await withArtifact(asArtifact(artifact), (dir) => runSetManifest({ dir, flagValues: fields }));
-      return outcomeResult(result.outcome, result.artifact);
+      return outcomeResult(result.outcome, result.artifact, result.summary);
     }
   );
 }

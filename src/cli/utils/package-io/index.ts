@@ -33,6 +33,9 @@ export type { PackageIOErrorCode, PackageIOIssue } from './errors';
 
 export { walkBlocks, findBlockById, findContainerById, collectAllIds } from './tree';
 
+export { buildArtifactSummary, buildTree, buildChildrenTree } from './summary';
+export type { TreeNode } from './summary';
+
 export { nextAutoBlockId, assignMissingIds } from './auto-id';
 
 export { validatePackageState } from './state-validation';

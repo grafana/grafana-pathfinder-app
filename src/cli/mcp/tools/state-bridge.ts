@@ -32,7 +32,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
-import { readPackage, writePackage, type PackageState } from '../../utils/package-io';
+import {
+  buildArtifactSummary,
+  readPackage,
+  writePackage,
+  type PackageState,
+  type TreeNode,
+} from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
 
 export interface ArtifactInput {
@@ -44,6 +50,12 @@ export interface ArtifactOutcome {
   outcome: CommandOutcome;
   /** The updated artifact, present whether the runner succeeded or not (the runner only writes on success, so this reflects post-success state or the unchanged input on failure). */
   artifact: ArtifactInput;
+  /**
+   * Compact navigation tree of the (post-mutation) artifact. The agent reads
+   * this instead of re-parsing `artifact.content` after every mutation —
+   * strictly additive; the full artifact still ships alongside.
+   */
+  summary: TreeNode[];
 }
 
 /**
@@ -67,13 +79,15 @@ export async function withArtifact(
     const outcome = await runner(dir);
 
     if (outcome.status !== 'ok') {
-      return { outcome, artifact };
+      return { outcome, artifact, summary: buildArtifactSummary(artifact.content) };
     }
 
     const updated = readPackage(dir);
+    const updatedArtifact = { content: updated.content, manifest: updated.manifest };
     return {
       outcome,
-      artifact: { content: updated.content, manifest: updated.manifest },
+      artifact: updatedArtifact,
+      summary: buildArtifactSummary(updatedArtifact.content),
     };
   } finally {
     try {

@@ -17,6 +17,11 @@
  *   - slowloris / idle timeouts on the underlying http.Server
  *   - structured access log to stderr (one JSON line per request)
  *   - GET /healthz endpoint that does not construct an McpServer
+ *
+ * The access log includes `bytesIn`, `bytesOut`, and heuristic token
+ * estimates (`bytes / 4`, rounded up). Token estimates are useful for
+ * spotting outliers and trends; authoritative billing comes from the
+ * model host, not this log.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -93,7 +98,21 @@ export interface AccessLogEntry {
   status: number;
   durationMs: number;
   bytesIn: number;
+  bytesOut: number;
+  /**
+   * Heuristic token estimate: ceil(bytes / 4). Rough lower bound for
+   * English/JSON tokens under common BPE tokenizers; over-estimates for
+   * CJK / base64 / random binary. Useful for spotting outliers; not
+   * authoritative for billing.
+   */
+  tokensInEstimate: number;
+  tokensOutEstimate: number;
   outcome: 'ok' | 'too_large' | 'bad_json' | 'overloaded' | 'timeout' | 'not_found' | 'error';
+}
+
+/** Heuristic char-to-token estimate. See AccessLogEntry doc. */
+function estimateTokens(bytes: number): number {
+  return Math.ceil(bytes / 4);
 }
 
 const defaultLog = (entry: AccessLogEntry): void => {
@@ -144,6 +163,30 @@ async function handleRequest(
   const method = req.method ?? 'GET';
   const reqPath = parsePath(req.url);
   let bytesIn = 0;
+  let bytesOut = 0;
+
+  // Wrap res.write/end so every byte path (SSE chunks, error helpers, the
+  // SDK's StreamableHTTPServerTransport writes) gets counted in one place.
+  // The wrapper preserves the original `this` binding by calling through to
+  // the captured originals on `res`.
+  const origWrite = res.write.bind(res);
+  const origEnd = res.end.bind(res);
+  const countChunk = (chunk: unknown): void => {
+    if (chunk === undefined || chunk === null) {
+      return;
+    }
+    if (typeof chunk === 'string' || Buffer.isBuffer(chunk) || chunk instanceof Uint8Array) {
+      bytesOut += Buffer.byteLength(chunk as string | Buffer);
+    }
+  };
+  res.write = ((chunk: unknown, ...rest: unknown[]) => {
+    countChunk(chunk);
+    return (origWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof res.write;
+  res.end = ((chunk?: unknown, ...rest: unknown[]) => {
+    countChunk(chunk);
+    return (origEnd as (...args: unknown[]) => ServerResponse)(chunk, ...rest);
+  }) as typeof res.end;
 
   const finish = (status: number, outcome: AccessLogEntry['outcome']): void => {
     log({
@@ -154,6 +197,9 @@ async function handleRequest(
       status,
       durationMs: Date.now() - start,
       bytesIn,
+      bytesOut,
+      tokensInEstimate: estimateTokens(bytesIn),
+      tokensOutEstimate: estimateTokens(bytesOut),
       outcome,
     });
   };

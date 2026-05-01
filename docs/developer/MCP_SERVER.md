@@ -136,6 +136,45 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 
+### Response `summary` field
+
+Every mutation, creation, inspection, and validation tool response includes a `summary` field alongside `artifact`:
+
+```jsonc
+{
+  "status": "ok",
+  "artifact": { "content": { ... }, "manifest": { ... } },
+  "summary": [
+    { "path": "blocks[0]", "id": "intro", "type": "section", "hint": "Intro",
+      "children": [
+        { "path": "blocks[0].blocks[0]", "id": "markdown-1", "type": "markdown" }
+      ] }
+  ]
+}
+```
+
+`summary` is a compact ordered tree of every block (`TreeNode[]` from `src/cli/utils/package-io/summary.ts`). Agents should read this for navigation and id lookup instead of re-parsing `artifact.content` after every mutation — strictly additive (the full artifact still ships) and a meaningful win on token cost. `pathfinder_finalize_for_app_platform` does not include a summary because it is the terminal call.
+
+### Access log fields
+
+The HTTP transport emits one structured JSON line per request with these fields. `tokens{In,Out}Estimate` are heuristic (`ceil(bytes / 4)`); use them for spotting outliers and trends, not for billing reconciliation.
+
+```jsonc
+{
+  "ts": "2026-05-01T12:34:56.789Z",
+  "remote": "10.0.0.1",
+  "method": "POST",
+  "path": "/mcp",
+  "status": 200,
+  "durationMs": 17,
+  "bytesIn": 432,
+  "bytesOut": 1180,
+  "tokensInEstimate": 108,
+  "tokensOutEstimate": 295,
+  "outcome": "ok",
+}
+```
+
 ## CLI is the sole validator
 
 The MCP performs no schema validation of its own. Each mutation tool dispatches to the corresponding CLI `runX` function, which is the only place block-shape, condition syntax, and cross-file checks live.
@@ -154,7 +193,7 @@ The CLI runners read and write directories on disk; the MCP's stateless artifact
 2. Import the relevant `runX` (and any related types).
 3. Define a permissive zod input schema — schema knowledge stays in the CLI.
 4. Wrap the call: `withArtifact(artifact, (dir) => runX({ dir, ... }))` for mutations, or call the runner directly for read-only/validation tools.
-5. Return `outcomeResult(outcome, updatedArtifact)`.
+5. Return `outcomeResult(outcome, updatedArtifact, summary)` — `withArtifact` returns `summary` automatically; for tools that don't go through the bridge, build it with `buildArtifactSummary(content)` from `package-io/summary`.
 6. Register the new function call from `tools/index.ts`.
 7. Add a test in `src/cli/mcp/__tests__/server.test.ts` that drives the new tool through the in-memory transport pair.
 

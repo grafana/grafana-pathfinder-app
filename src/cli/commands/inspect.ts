@@ -8,12 +8,15 @@ import { Command, Option } from 'commander';
 
 import { isContainerBlockType, type BlockType } from '../utils/block-registry';
 import {
+  buildChildrenTree,
+  buildTree,
   collectAllIds,
   findBlockById,
   PackageIOError,
   readPackage,
   validatePackageState,
   walkBlocks,
+  type TreeNode,
 } from '../utils/package-io';
 import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
 import type { JsonBlock } from '../../types/json-guide.types';
@@ -39,15 +42,6 @@ interface InspectArgs {
   dir: string;
   blockId?: string;
   at?: string;
-}
-
-interface TreeNode {
-  path: string;
-  id: string;
-  type: string;
-  /** Type-specific hint shown after the type, e.g. interactive's action or section's title. */
-  hint?: string;
-  children?: TreeNode[];
 }
 
 export function runInspect(args: InspectArgs): CommandOutcome {
@@ -182,67 +176,6 @@ function arrayToOutcome(jsonPath: string, blocks: JsonBlock[]): CommandOutcome {
       tree,
     },
   };
-}
-
-/**
- * Build a tree representation of an ordered block array. Every node carries
- * its full JSONPath, id, type, and a type-specific hint; containers also carry
- * their children recursively.
- */
-function buildTree(blocks: JsonBlock[], pathPrefix: string): TreeNode[] {
-  const nodes: TreeNode[] = [];
-  for (let i = 0; i < blocks.length; i++) {
-    const block = blocks[i];
-    if (!block) {
-      continue;
-    }
-    const path = `${pathPrefix}[${i}]`;
-    const node: TreeNode = {
-      path,
-      id: typeof block.id === 'string' && block.id.length > 0 ? block.id : '<unset>',
-      type: block.type,
-    };
-    const hint = blockHint(block);
-    if (hint) {
-      node.hint = hint;
-    }
-    const children = buildChildrenTree(block, path);
-    if (children) {
-      node.children = children;
-    }
-    nodes.push(node);
-  }
-  return nodes;
-}
-
-function buildChildrenTree(block: JsonBlock, path: string): TreeNode[] | undefined {
-  if (block.type === 'section' || block.type === 'assistant') {
-    const arr = (block as unknown as { blocks?: JsonBlock[] }).blocks;
-    return Array.isArray(arr) ? buildTree(arr, `${path}.blocks`) : undefined;
-  }
-  if (block.type === 'conditional') {
-    const c = block as unknown as { whenTrue?: JsonBlock[]; whenFalse?: JsonBlock[] };
-    const out: TreeNode[] = [];
-    if (Array.isArray(c.whenTrue)) {
-      out.push(...buildTree(c.whenTrue, `${path}.whenTrue`));
-    }
-    if (Array.isArray(c.whenFalse)) {
-      out.push(...buildTree(c.whenFalse, `${path}.whenFalse`));
-    }
-    return out;
-  }
-  return undefined;
-}
-
-function blockHint(block: JsonBlock): string | undefined {
-  const record = block as unknown as Record<string, unknown>;
-  if (block.type === 'interactive' && typeof record.action === 'string') {
-    return record.action;
-  }
-  if ((block.type === 'section' || block.type === 'assistant') && typeof record.title === 'string') {
-    return record.title;
-  }
-  return undefined;
 }
 
 /**

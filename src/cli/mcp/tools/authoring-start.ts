@@ -27,6 +27,7 @@ const AUTHORING_CONTEXT = {
     'Every authoring tool is stateless — pass {content, manifest} in, use the returned {content, manifest} for the next call. There is no sessionId.',
     'The CLI runners are the sole validator. If a tool returns status "error" with code "SCHEMA_VALIDATION", the message lists every issue at once — fix all of them before retrying.',
     'Block ids: leaf blocks auto-id as <type>-<n> if you do not pass an id. Container blocks (section, multistep, guided, conditional, assistant, quiz) require an explicit id.',
+    'Mutation responses include a `summary` field — a compact tree of every block ({path, id, type, hint?, children?}). Use the summary for navigation and to reference block ids; you do not need to re-read `artifact.content` after every mutation.',
   ],
   discovery: [
     'pathfinder_help — returns the structured CLI help surface, equivalent to `pathfinder-cli <cmd> --help --format json`. Use this when you need exact flag names or block-type field schemas.',
