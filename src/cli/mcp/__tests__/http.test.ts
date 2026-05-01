@@ -12,6 +12,7 @@
  */
 
 import { runHttp, MAX_REQUEST_BYTES, type AccessLogEntry, type HttpHandle } from '../transports/http';
+import { SessionHopCounter } from '../transports/instrumentation';
 
 interface Harness {
   handle: HttpHandle;
@@ -22,7 +23,14 @@ interface Harness {
 
 async function start(): Promise<Harness> {
   const logs: AccessLogEntry[] = [];
-  const handle = await runHttp({ port: 0, host: '127.0.0.1', log: (entry) => logs.push(entry) });
+  // Use a fresh counter per harness so test ordering doesn't bleed hop
+  // counts across cases.
+  const handle = await runHttp({
+    port: 0,
+    host: '127.0.0.1',
+    log: (entry) => logs.push(entry),
+    sessionHopCounter: new SessionHopCounter(),
+  });
   return {
     handle,
     base: `http://127.0.0.1:${handle.port}`,
@@ -172,6 +180,170 @@ describe('HTTP transport', () => {
       expect(entry.bytesOut).toBeGreaterThan(0);
       expect(entry.tokensInEstimate).toBeGreaterThan(0);
       expect(entry.tokensOutEstimate).toBeGreaterThan(0);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('logs the JSON-RPC method on a parsed request', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'tools/list' }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.rpcMethod).toBe('tools/list');
+      expect(entry.rpcId).toBe(7);
+      expect(entry.rpcToolName).toBeUndefined();
+      expect(entry.batchSize).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('logs the tool name on tools/call requests', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'abc',
+          method: 'tools/call',
+          params: { name: 'pathfinder_authoring_start', arguments: {} },
+        }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.rpcMethod).toBe('tools/call');
+      expect(entry.rpcToolName).toBe('pathfinder_authoring_start');
+      expect(entry.rpcId).toBe('abc');
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('marks JSON-RPC batches with rpcMethod=batch and a size', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify([
+          { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+          { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+        ]),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.rpcMethod).toBe('batch');
+      expect(entry.batchSize).toBe(2);
+      expect(entry.rpcToolName).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('omits rpc fields entirely on non-RPC requests', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/healthz`);
+      const entry = h.logs.at(-1)!;
+      expect(entry.rpcMethod).toBeUndefined();
+      expect(entry.rpcToolName).toBeUndefined();
+      expect(entry.rpcId).toBeUndefined();
+      expect(entry.batchSize).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('records sessionId from the mcp-session-id header', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          'mcp-session-id': 'sess-123',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.sessionId).toBe('sess-123');
+      // tools/list does not bump the hop counter.
+      expect(entry.sessionHopCount).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('omits sessionId when the client sends no header', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.sessionId).toBeUndefined();
+      expect(entry.sessionHopCount).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('bumps sessionHopCount only on tools/call and surfaces tool fields', async () => {
+    const h = await start();
+    try {
+      const callBody = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'tools/call',
+        params: { name: 'pathfinder_authoring_start', arguments: {} },
+      });
+      const callOnce = () =>
+        fetch(`${h.base}/mcp`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            'mcp-session-id': 'sess-hop',
+          },
+          body: callBody,
+        });
+
+      await callOnce();
+      const first = h.logs.at(-1)!;
+      expect(first.rpcMethod).toBe('tools/call');
+      expect(first.rpcToolName).toBe('pathfinder_authoring_start');
+      expect(first.sessionId).toBe('sess-hop');
+      expect(first.sessionHopCount).toBe(1);
+      expect(first.toolError).toBe(false);
+
+      await callOnce();
+      const second = h.logs.at(-1)!;
+      expect(second.sessionHopCount).toBe(2);
+
+      // A non-tools/call request mid-session must not bump the counter.
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          'mcp-session-id': 'sess-hop',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'tools/list' }),
+      });
+      const listEntry = h.logs.at(-1)!;
+      expect(listEntry.sessionHopCount).toBeUndefined();
+
+      // Next tools/call resumes from 3, not 1.
+      await callOnce();
+      expect(h.logs.at(-1)!.sessionHopCount).toBe(3);
     } finally {
       await h.close();
     }

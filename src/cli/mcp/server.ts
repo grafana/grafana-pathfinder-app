@@ -15,10 +15,18 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
 import { registerAuthoringTools } from './tools';
+import { instrumentServer, type ToolCallInstrumentation } from './transports/instrumentation';
 
 export interface BuildServerOptions {
   /** Override the advertised server name (used in tests). */
   name?: string;
+  /**
+   * Optional callback invoked once per resolved tool call with structured
+   * observations (tool name, error flag, artifact byte sizes, parsed
+   * outcome status). Wired by the HTTP transport to populate access-log
+   * fields the wire-level byte counters can't see; stdio passes nothing.
+   */
+  instrumentation?: ToolCallInstrumentation;
 }
 
 export function buildServer(options: BuildServerOptions = {}): McpServer {
@@ -33,6 +41,10 @@ export function buildServer(options: BuildServerOptions = {}): McpServer {
       },
     }
   );
+
+  if (options.instrumentation) {
+    instrumentServer(server, options.instrumentation);
+  }
 
   registerAuthoringTools(server);
 
