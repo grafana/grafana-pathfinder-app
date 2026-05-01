@@ -110,10 +110,15 @@ describe('useLinkClickHandler', () => {
       // Simulate click
       fireEvent.click(docsLink);
 
-      // Verify expected behavior
+      // Verify expected behavior — link clicks must tag source as
+      // `content_link` so the implied-0th-step alignment evaluator runs
+      // (links open new tabs from rendered guide content; they don't
+      // guarantee the user's current location matches the new guide's
+      // startingLocation).
       expect(mockModel.openDocsPage).toHaveBeenCalledWith(
         'https://grafana.com/docs/grafana/latest/whatever',
-        'Grafana Docs'
+        'Grafana Docs',
+        { source: 'content_link' }
       );
     });
 
@@ -135,7 +140,9 @@ describe('useLinkClickHandler', () => {
       fireEvent.click(relativeLink);
 
       // Should resolve against current page URL
-      expect(mockModel.openDocsPage).toHaveBeenCalledWith(expect.stringContaining('/relative/path'), 'Relative Link');
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith(expect.stringContaining('/relative/path'), 'Relative Link', {
+        source: 'content_link',
+      });
     });
   });
 
@@ -203,7 +210,8 @@ describe('useLinkClickHandler', () => {
       // Should open in app
       expect(mockModel.openDocsPage).toHaveBeenCalledWith(
         'https://interactive-learning.grafana.net/tutorial/content.json',
-        'interactive guide'
+        'interactive guide',
+        { source: 'content_link' }
       );
       expect(windowOpen).not.toHaveBeenCalled();
     });
@@ -261,7 +269,8 @@ describe('useLinkClickHandler', () => {
 
       expect(mockModel.openDocsPage).toHaveBeenCalledWith(
         'https://interactive-learning.grafana-dev.net/tutorial/',
-        'Dev Tutorial'
+        'Dev Tutorial',
+        { source: 'content_link' }
       );
       expect(windowOpen).not.toHaveBeenCalled();
     });
@@ -318,7 +327,9 @@ describe('useLinkClickHandler', () => {
 
       fireEvent.click(sideJourneyLink);
 
-      expect(mockModel.openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/side-journey', 'Side Journey');
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/side-journey', 'Side Journey', {
+        source: 'content_link',
+      });
     });
 
     it('should open external side journey links in browser tab', () => {
@@ -380,7 +391,8 @@ describe('useLinkClickHandler', () => {
 
       expect(mockModel.openLearningJourney).toHaveBeenCalledWith(
         'https://grafana.com/docs/grafana/latest/related-journey',
-        'Related Journey'
+        'Related Journey',
+        { source: 'content_link' }
       );
     });
 

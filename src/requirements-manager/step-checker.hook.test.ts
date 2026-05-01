@@ -1,5 +1,5 @@
 import type React from 'react';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
@@ -668,5 +668,85 @@ describe('useStepChecker — AlignmentPendingContext gate', () => {
     });
 
     expect(mockCheckRequirements).toHaveBeenCalled();
+  });
+
+  // "Continue here" integration regression: when the user dismisses the
+  // implied-0th-step prompt (`dismissAlignment`), `pendingAlignment` clears,
+  // `useIsAlignmentPaused()` flips false, the eligibility gate opens, and the
+  // step-checker's eligibility-change effect (line 692-698 in this file)
+  // re-runs `checkStep`. Step 1 then evaluates its on-page requirement and,
+  // for guides whose `requirements` aren't met, transitions into a state that
+  // exposes `fixRequirement` — i.e. the "Fix this" button — restoring parity
+  // with the pre-alignment behaviour.
+  //
+  // The PR review flagged this as untested: the existing test only verified
+  // `dismissAlignment` clears state without navigating, not that step 1 then
+  // runs its requirement check end-to-end.
+  it('runs checkStep when the alignment context flips from pending to cleared (Continue here flow)', async () => {
+    // Start with the prompt up — checkStep is gated.
+    mockUseIsAlignmentPaused.mockReturnValue(true);
+    // While paused, the gate short-circuits before checkRequirements runs.
+    // Once the prompt is dismissed and the gate opens, checkRequirements
+    // returns the realistic pre-fix shape: requirement failed but auto-
+    // fixable. Use `mockResolvedValue` (not `Once`) so any post-dismiss
+    // re-checks (heartbeat, etc.) continue returning the same shape rather
+    // than falling back to the test-suite-global pass:true default.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'on-page:/connections',
+      error: [
+        failedRequirement({
+          requirement: 'on-page:/connections',
+          canFix: true,
+          fixType: 'location',
+          targetHref: '/connections',
+        }),
+      ],
+    });
+
+    const { result, rerender } = renderHook(() =>
+      useStepChecker({
+        requirements: 'on-page:/connections',
+        stepId: 'continue-here-step-1',
+        isEligibleForChecking: true,
+      })
+    );
+
+    // While paused, even an explicit checkStep call must not fire the
+    // requirements check — the eligibility gate short-circuits at PHASE 2.
+    await act(async () => {
+      await result.current.checkStep();
+    });
+    expect(mockCheckRequirements).not.toHaveBeenCalled();
+    expect(result.current.isEnabled).toBe(false);
+    expect(result.current.fixRequirement).toBeUndefined();
+
+    // User clicks "Continue here" → `dismissAlignment` clears pendingAlignment
+    // → context flips → re-render with the new context value.
+    mockUseIsAlignmentPaused.mockReturnValue(false);
+    rerender();
+
+    // The eligibility-change effect (line 692) fires checkStep on its own;
+    // wait for the async retry cycle to settle. We use `waitFor` rather
+    // than a fixed `setTimeout` because checkRequirements goes through up to
+    // `maxRetries` retry iterations between failed attempts before
+    // surfacing the can-fix state — the exact wall-clock duration is a
+    // function of the retry-delay constant, which we don't want to hard-code
+    // into the test.
+    await waitFor(
+      () => {
+        expect(mockCheckRequirements).toHaveBeenCalled();
+        expect(result.current.isChecking).toBe(false);
+      },
+      { timeout: 5000 }
+    );
+
+    // The realistic on-page failure carries a fixable requirement → the
+    // "Fix this" affordance must be exposed. Without the alignment context
+    // gate flipping off and re-running step 1's check, the button would never
+    // appear after a user chose "Continue here" and step 1 would hang in a
+    // checking/blocked limbo on guides that need a same-page redirect.
+    expect(result.current.canFixRequirement).toBe(true);
+    expect(typeof result.current.fixRequirement).toBe('function');
   });
 });

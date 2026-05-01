@@ -76,8 +76,15 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { evaluateAlignment, pathMatchesStartingLocation, resolveStartingLocation } from '../../recovery';
+import {
+  coerceLaunchSource,
+  evaluateAlignment,
+  pathMatchesStartingLocation,
+  resolveStartingLocation,
+  type LaunchSource,
+} from '../../recovery';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
+import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
@@ -111,7 +118,7 @@ import {
   PackageOpenInfo,
 } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
-import type { DocsPanelModelOperations } from './types';
+import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
@@ -127,18 +134,30 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   /**
    * Transient launch-source carrier for the implied-0th-step alignment check.
-   * Listeners (`handleAutoLaunchTutorial`, `handleAutoOpen`) set this
-   * immediately before calling `openDocsPage`/`openLearningJourney`;
-   * `loadDocsTabContent` consumes it. Mirrors the consume-once pattern in
-   * `sidebarState.consumePendingOpenSource`.
+   *
+   * Set immediately before a `loadDocsTabContent` call so the loader can read
+   * it after content fetch and classify the launch. There are two ways to
+   * populate it:
+   *
+   *   1. Preferred: pass `{ source }` to `openDocsPage` /
+   *      `openLearningJourney`. The wrapper records the source for you,
+   *      keeping the contract visible at the call site.
+   *   2. Legacy: call `_recordAutoLaunchSource(source)` directly, then call
+   *      `openDocsPage` / `openLearningJourney` / `loadDocsTabContent`. Used
+   *      where (a) a callback signature can't carry the source (e.g.
+   *      `ContextPanel`'s recommender callbacks), or (b) `loadDocsTabContent`
+   *      is called without going through the public open methods (e.g.
+   *      `useContentReset`'s reload path).
+   *
+   * Mirrors the consume-once pattern in `sidebarState.consumePendingOpenSource`.
    */
-  private _pendingLaunchSource: string | null = null;
+  private _pendingLaunchSource: LaunchSource | null = null;
 
-  public _recordAutoLaunchSource(source: string | null): void {
+  public _recordAutoLaunchSource(source: LaunchSource | null): void {
     this._pendingLaunchSource = source;
   }
 
-  private _consumeAutoLaunchSource(): string | null {
+  private _consumeAutoLaunchSource(): LaunchSource | null {
     const s = this._pendingLaunchSource;
     this._pendingLaunchSource = null;
     return s;
@@ -169,12 +188,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         // it; without this the source would consume as null and an
         // unrelated `home_page` source previously stashed could leak
         // through, prompting on a recommender click.
-        this._recordAutoLaunchSource('recommender');
-        return this.openLearningJourney(url, title);
+        return this.openLearningJourney(url, title, { source: 'recommender' });
       },
       (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-        this._recordAutoLaunchSource('recommender');
-        return this.openDocsPage(url, title, undefined, packageInfo);
+        return this.openDocsPage(url, title, { source: 'recommender', packageInfo });
       },
       () => this.openEditorTab()
     );
@@ -239,6 +256,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         // matches its guide's `startingLocation` would incorrectly trigger the
         // alignment prompt — second-guessing a user mid-tutorial, which is
         // exactly what `browser_restore` is meant to suppress.
+        //
+        // We use the legacy flag pattern here (not `openDocsPage`'s options)
+        // because we are calling `loadDocsTabContent` directly to populate
+        // an already-existing restored tab — going through `openDocsPage`
+        // would create a duplicate tab.
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use (see comment above)
         this._recordAutoLaunchSource('browser_restore');
         this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       } else {
@@ -277,13 +300,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  public async openLearningJourney(url: string, title?: string): Promise<string> {
-    // Drain any auto-launch source that the listener recorded before branching
-    // here. Learning journeys go through `loadTabContent`, which never consumes
-    // `_pendingLaunchSource`, so without this the value would leak to the next
-    // `loadDocsTabContent` call (e.g. a subsequent recommender or tab-restore
-    // open) and contaminate its alignment evaluation. Until learning journeys
-    // grow their own implied-0th-step logic, we just drop the value.
+  public async openLearningJourney(url: string, title?: string, options?: OpenLearningJourneyOptions): Promise<string> {
+    // Honour an explicit options.source by recording it first, so any
+    // legacy stash is overwritten and we have a single source of truth for
+    // the drain below.
+    if (options?.source) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
+      this._recordAutoLaunchSource(options.source);
+    }
+    // Drain any auto-launch source that the listener (or options.source above)
+    // recorded before branching here. Learning journeys go through
+    // `loadTabContent`, which never consumes `_pendingLaunchSource`, so
+    // without this the value would leak to the next `loadDocsTabContent`
+    // call (e.g. a subsequent recommender or tab-restore open) and
+    // contaminate its alignment evaluation. Until learning journeys grow
+    // their own implied-0th-step logic, we just drop the value.
     this._consumeAutoLaunchSource();
 
     const finalTitle = title || 'Learning path';
@@ -454,10 +485,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       latency_ms: Date.now() - pending.decidedAt,
     });
 
-    locationService.push(pending.startingLocation);
-    // Brief settle so the next step's on-page check (if any) sees the new
-    // pathname after Grafana's location subscriber processes the push.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Tag this push as a guide-driven navigation so `useAlignmentReevaluation`'s
+    // `history.listen` callback (which fires synchronously during `push`) skips
+    // its own clear path. Without this tag, the listener observes the now-aligned
+    // pathname, calls `reevaluateAlignment`, and silently clears
+    // `pendingAlignment` BEFORE we do — flipping the AlignmentPendingContext
+    // gate off while the route transition is still in flight. Step-1's checker
+    // then runs against a pre-transition DOM and may flash a spurious
+    // "Fix this" / "waiting for element" state.
+    //
+    // The flag pair is the structural fix; the prior 100ms `setTimeout` was a
+    // band-aid that masked the same race on most devices.
+    beginInteractiveNavigation();
+    try {
+      locationService.push(pending.startingLocation);
+    } finally {
+      endInteractiveNavigation();
+    }
 
     this.setState({
       tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
@@ -541,8 +585,30 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         current_path: currentPath,
         starting_location: startingLocation,
       });
+      return;
     }
-    // Other cases are no-ops: aligned-and-not-pending, misaligned-and-already-pending.
+
+    if (!isAligned && currentlyPending && tab.pendingAlignment!.currentPath !== currentPath) {
+      // User wandered between misaligned pages while the prompt was already
+      // showing. Don't re-fire the `alignment_prompt_shown` telemetry (the
+      // user has been seeing the prompt the whole time), but do refresh
+      // `currentPath` and `decidedAt` so that:
+      //   - if they later confirm/dismiss, the telemetry payload reflects the
+      //     path they were on when they decided (not where they were when the
+      //     prompt first appeared);
+      //   - `latency_ms` measures responsiveness since the most recent surface
+      //     of the prompt's relevance, not since the original launch — which
+      //     could be minutes ago after they explored unrelated pages.
+      const updated = {
+        ...tab.pendingAlignment!,
+        currentPath,
+        decidedAt: Date.now(),
+      };
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: updated } : t)),
+      });
+    }
+    // Aligned-and-not-pending is a no-op.
   }
 
   public closeTab(tabId: string) {
@@ -715,12 +781,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.saveTabsToStorage();
   }
 
-  public async openDocsPage(
-    url: string,
-    title?: string,
-    skipReadyToBegin?: boolean,
-    packageInfo?: PackageOpenInfo
-  ): Promise<string> {
+  public async openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string> {
+    const { source, skipReadyToBegin, packageInfo } = options ?? {};
+
+    // Make the launch source explicit at the call site if provided. This
+    // narrows the surface area of the legacy `_recordAutoLaunchSource` flag —
+    // a bug where a caller forgot to record before invoking this method
+    // would now manifest as a missing `options.source` (visible in code
+    // review) instead of a silent default-to-"needs-check".
+    if (source) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
+      this._recordAutoLaunchSource(source);
+    }
+
     const finalTitle = title || 'Documentation';
     const tabId = this.generateTabId();
 
@@ -1105,9 +1178,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const customEvent = event as CustomEvent<{ url: string; title: string; source?: string }>;
       const { url, title, source } = customEvent.detail;
 
-      // Record the launch source for the implied-0th-step alignment check.
-      // Consumed by `loadDocsTabContent` post-content-fetch.
-      model._recordAutoLaunchSource(source ?? null);
+      // Coerce the untrusted event.detail.source to a typed LaunchSource at
+      // the boundary. Unknown literals fall through to `null` ("needs check"),
+      // which is the safer default than passing typo'd strings into the model.
+      const typedSource = coerceLaunchSource(source);
 
       // Always create a new tab for each intercepted link
       // Call the model method directly to ensure new tabs are created
@@ -1117,9 +1191,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
 
       if (isLearningJourney) {
-        model.openLearningJourney(url, title);
+        model.openLearningJourney(url, title, { source: typedSource ?? undefined });
       } else {
-        model.openDocsPage(url, title);
+        model.openDocsPage(url, title, { source: typedSource ?? undefined });
       }
     };
 
@@ -1216,6 +1290,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
       if (shouldUseDocsLoader(tab)) {
+        // Calling loadDocsTabContent directly (not openDocsPage) to reuse the
+        // existing tab; the consume-once flag is the right mechanism here.
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use; loadDocsTabContent has no source param
         model._recordAutoLaunchSource('internal_reload');
         model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
       } else {
@@ -1377,13 +1454,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       // The presenter coordinates location for attendees; treat as
       // aligned-by-construction so the implied-0th-step prompt doesn't
       // second-guess them.
-      model._recordAutoLaunchSource('live_session_attendee');
+      const opts = { source: 'live_session_attendee' as const };
 
       // Open the tutorial in a new tab
       if (url.includes('/learning-journeys/') || url.includes('/learning-paths/')) {
-        model.openLearningJourney(url, title);
+        model.openLearningJourney(url, title, opts);
       } else {
-        model.openDocsPage(url, title);
+        model.openDocsPage(url, title, opts);
       }
     }
   }, [sessionRole, sessionInfo, model, logSession]);
@@ -1415,14 +1492,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       });
 
       if (url && title) {
-        // Record the launch source for the implied-0th-step alignment check.
-        // Consumed by `loadDocsTabContent` post-content-fetch.
-        model._recordAutoLaunchSource(source ?? null);
-
+        // Coerce the untrusted event.detail.source to a typed LaunchSource at
+        // the boundary. Unknown literals fall through to undefined ("needs
+        // check"), which is the safer default than passing typo'd strings
+        // through to the model.
+        const typedSource = coerceLaunchSource(source) ?? undefined;
         if (openAsLearningJourney) {
-          model.openLearningJourney(url, title);
+          model.openLearningJourney(url, title, { source: typedSource });
         } else {
-          model.openDocsPage(url, title);
+          model.openDocsPage(url, title, { source: typedSource });
         }
       }
 
@@ -1858,12 +1936,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     onOpenDocsPage={(url: string, title: string) => {
                       // Dev tools is a power-user surface; tag as aligned-by-construction
                       // so the implied-0th-step doesn't prompt during selector work.
-                      model._recordAutoLaunchSource('devtools');
-                      return model.openDocsPage(url, title, true);
+                      return model.openDocsPage(url, title, { source: 'devtools', skipReadyToBegin: true });
                     }}
                     onOpenLearningJourney={(url: string, title: string) => {
-                      model._recordAutoLaunchSource('devtools');
-                      return model.openLearningJourney(url, title);
+                      return model.openLearningJourney(url, title, { source: 'devtools' });
                     }}
                   />
                 </Suspense>

@@ -6,6 +6,7 @@ import { panelModeManager, type PanelMode } from '../../global-state/panel-mode'
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { coerceLaunchSource } from '../../recovery';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -96,8 +97,7 @@ function FloatingPanelInner() {
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
-      panel._recordAutoLaunchSource('floating_panel_dock');
-      panel.openDocsPage(pendingGuide.url, pendingGuide.title);
+      panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
     }
 
     return () => {
@@ -139,12 +139,14 @@ function FloatingPanelInner() {
       // navigation and progress tracking. Interactive guides from `?doc=`
       // fall through to `openDocsPage`, which auto-detects interactive content.
       const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
-      // Record launch source for the implied-0th-step alignment check.
-      panel._recordAutoLaunchSource(source ?? null);
+      // Coerce the untrusted event.detail.source to a typed LaunchSource at
+      // the boundary so a typo or unknown literal falls through to the safe
+      // "needs check" default rather than entering the model untyped.
+      const typedSource = coerceLaunchSource(source) ?? undefined;
       if (openAsLearningJourney) {
-        panel.openLearningJourney(url, title);
+        panel.openLearningJourney(url, title, { source: typedSource });
       } else {
-        panel.openDocsPage(url, title);
+        panel.openDocsPage(url, title, { source: typedSource });
       }
     };
 

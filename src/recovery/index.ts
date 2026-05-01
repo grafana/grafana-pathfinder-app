@@ -20,6 +20,8 @@ export {
   ALIGNED_BY_CONSTRUCTION_SOURCES,
   NEEDS_ALIGNMENT_CHECK_SOURCES,
   isAlignedByConstruction,
+  coerceLaunchSource,
+  type LaunchSource,
 } from './launch-sources';
 
 export { resolveStartingLocation } from './starting-location';

@@ -246,6 +246,8 @@ jest.mock(
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import type { LaunchSource } from '../../recovery';
+import type { PackageOpenInfo } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -270,8 +272,13 @@ async function openTabAndLoad(
   source: string | null,
   packageInfo?: { packageManifest?: Record<string, unknown> }
 ): Promise<string> {
-  panel._recordAutoLaunchSource(source);
-  return panel.openDocsPage(url, 'Test Guide', undefined, packageInfo);
+  // The fixtures pass valid LaunchSource literals; we cast at the boundary
+  // to keep the test helper signature ergonomic (`string | null`) while the
+  // production API enforces the typed union.
+  return panel.openDocsPage(url, 'Test Guide', {
+    source: (source ?? undefined) as LaunchSource | undefined,
+    packageInfo: packageInfo as PackageOpenInfo | undefined,
+  });
 }
 
 function getTab(panel: CombinedLearningJourneyPanel, tabId: string) {
@@ -686,6 +693,219 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(
         mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_dismissed')
       ).toBeUndefined();
+    });
+  });
+
+  // F3 regression: confirmAlignment must wrap its `locationService.push` with
+  // begin/endInteractiveNavigation so the reactive `useAlignmentReevaluation`
+  // listener (which fires synchronously during `push`) skips itself instead
+  // of clearing `pendingAlignment` ahead of `confirmAlignment`'s own clear
+  // (a race that surfaces a "Fix this" flash on the next step).
+  describe('confirmAlignment — interactive-navigation guard', () => {
+    let interactiveNav: typeof import('../../global-state/interactive-navigation');
+
+    beforeAll(() => {
+      // Imported lazily so the mock setup at the top of the file doesn't
+      // intercept it (it isn't in any of the jest.mock(...) calls above).
+      interactiveNav = jest.requireActual('../../global-state/interactive-navigation');
+    });
+
+    afterEach(() => {
+      interactiveNav.__resetInteractiveNavigationForTesting();
+    });
+
+    it('marks the navigation as interactive while pushing the new location', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      let inProgressDuringPush = false;
+      mockLocationServicePush.mockImplementationOnce(() => {
+        // Capture the flag state at the precise moment a `history.listen`
+        // callback would fire. The fix relies on this being true.
+        inProgressDuringPush = interactiveNav.isInteractiveNavigationInProgress();
+      });
+
+      await panel.confirmAlignment(tabId);
+
+      expect(inProgressDuringPush).toBe(true);
+      // And after confirmAlignment returns, the counter must be back to 0
+      // (otherwise subsequent genuine user navigations would be silently
+      // suppressed forever).
+      expect(interactiveNav.isInteractiveNavigationInProgress()).toBe(false);
+    });
+
+    it('still clears pendingAlignment even when locationService.push throws', async () => {
+      // Defensive test: we use try/finally to balance the counter on throw.
+      // Because the synchronous push throws, the setState below it never
+      // runs, but the counter must still be balanced — otherwise a later
+      // user navigation would be silently suppressed.
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      mockLocationServicePush.mockImplementationOnce(() => {
+        throw new Error('simulated push failure');
+      });
+
+      await expect(panel.confirmAlignment(tabId)).rejects.toThrow('simulated push failure');
+      // Counter must be balanced even on the failure path — that's the whole
+      // reason we used try/finally rather than a manual end-after-push.
+      expect(interactiveNav.isInteractiveNavigationInProgress()).toBe(false);
+    });
+  });
+
+  // F4 regression: when the user wanders between misaligned pages while the
+  // prompt is already showing, `currentPath` and `decidedAt` must update so
+  // a subsequent confirm/dismiss telemetry payload reflects where the user
+  // actually was when they decided — not where they were when the prompt
+  // first appeared (potentially minutes ago).
+  describe('reevaluateAlignment — stale currentPath refresh', () => {
+    it('refreshes currentPath and decidedAt on misaligned-and-already-pending re-evaluation', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      const initialPending = getTab(panel, tabId).pendingAlignment;
+      expect(initialPending).toBeDefined();
+      expect(initialPending.currentPath).toBe('/explore');
+      const initialDecidedAt = initialPending.decidedAt;
+
+      // Force a clock advance so decidedAt change is observable.
+      const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(initialDecidedAt + 1000);
+      try {
+        panel.reevaluateAlignment(tabId, '/dashboards');
+      } finally {
+        dateSpy.mockRestore();
+      }
+
+      const updated = getTab(panel, tabId).pendingAlignment;
+      expect(updated).toBeDefined();
+      expect(updated.currentPath).toBe('/dashboards'); // refreshed
+      expect(updated.startingLocation).toBe('/connections'); // unchanged
+      expect(updated.launchSource).toBe('home_page'); // unchanged
+      expect(updated.decidedAt).toBe(initialDecidedAt + 1000); // refreshed
+    });
+
+    it('does not refresh decidedAt if the user re-evaluates against the same misaligned path', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      const initialDecidedAt = getTab(panel, tabId).pendingAlignment.decidedAt;
+
+      const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(initialDecidedAt + 5000);
+      try {
+        // Same path the prompt was originally pinned to (`/explore`); should be a no-op.
+        panel.reevaluateAlignment(tabId, '/explore');
+      } finally {
+        dateSpy.mockRestore();
+      }
+
+      // Unchanged: no setState, no telemetry
+      expect(getTab(panel, tabId).pendingAlignment.decidedAt).toBe(initialDecidedAt);
+    });
+  });
+
+  // The PR review asked for a property-style test that exercises the
+  // explicit-source channel through every aligned-by-construction launch
+  // path. Without per-source coverage, a regression that swallows source
+  // (e.g. a refactor that drops options.source on the floor) would only be
+  // caught by the one or two spot-check tests above and could land
+  // silently.
+  describe('openDocsPage — explicit source channel coverage', () => {
+    const ALIGNED_SOURCES_TO_VERIFY = [
+      'recommender',
+      'browser_restore',
+      'internal_reload',
+      'mcp_launch',
+      'navigate-action',
+      'grot_guide_block',
+      'auto_open',
+      'floating_panel_dock',
+      'live_session_attendee',
+      'devtools',
+    ] as const;
+
+    it.each(ALIGNED_SOURCES_TO_VERIFY)(
+      'does NOT set pendingAlignment when openDocsPage is called with options.source=%s',
+      async (source) => {
+        mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+        const panel = new CombinedLearningJourneyPanel();
+
+        // Use the new options API directly (not the legacy flag pattern via
+        // openTabAndLoad). This is the contract we want covered.
+        const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide', {
+          source,
+          packageInfo: { packageManifest: { startingLocation: '/connections' } } as any,
+        });
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+      }
+    );
+
+    const NEEDS_CHECK_SOURCES_TO_VERIFY = [
+      'home_page',
+      'url_param',
+      'command_palette',
+      'external_suggestion',
+      'link_interception',
+      'queued_link',
+      'content_link',
+      'block_editor_preview',
+      'custom_guide',
+    ] as const;
+
+    it.each(NEEDS_CHECK_SOURCES_TO_VERIFY)(
+      'DOES set pendingAlignment when openDocsPage is called with options.source=%s on a misaligned path',
+      async (source) => {
+        mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+        const panel = new CombinedLearningJourneyPanel();
+
+        const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide', {
+          source,
+          packageInfo: { packageManifest: { startingLocation: '/connections' } } as any,
+        });
+        await new Promise((r) => setTimeout(r, 0));
+
+        const pending = getTab(panel, tabId).pendingAlignment;
+        expect(pending).toBeDefined();
+        expect(pending.launchSource).toBe(source);
+      }
+    );
+
+    it('options.source overrides any value previously stashed via _recordAutoLaunchSource', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      // Stash a NEEDS_CHECK source first; the explicit aligned-by-construction
+      // options.source must win — otherwise the explicit param's contract
+      // ("at the call site, this is the source") is meaningless.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: test verifies the legacy stash is overridden by options.source
+      panel._recordAutoLaunchSource('home_page');
+
+      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide', {
+        source: 'recommender',
+        packageInfo: { packageManifest: { startingLocation: '/connections' } } as any,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
     });
   });
 });

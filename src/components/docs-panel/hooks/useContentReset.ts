@@ -71,6 +71,10 @@ export function useContentReset({ model }: UseContentResetOptions) {
         // branch runs alignment evaluation; the learning-journey branch
         // (`loadTabContent`) doesn't consume this source.
         if (shouldUseDocsLoader(activeTab)) {
+          // Calling loadDocsTabContent directly (not openDocsPage) so we
+          // reuse the existing tab; the consume-once flag is the right
+          // mechanism here.
+          // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use; loadDocsTabContent has no source param
           model._recordAutoLaunchSource('internal_reload');
           await model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
