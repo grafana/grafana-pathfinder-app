@@ -25,7 +25,6 @@ const mockInteractiveCompletionStorage = interactiveCompletionStorage as jest.Mo
 
 describe('useContentReset', () => {
   let mockModel: any;
-  let mockSetHasInteractiveProgress: jest.Mock;
   let mockDispatchEvent: jest.SpyInstance;
 
   const createMockTab = (overrides?: Partial<LearningJourneyTab>): LearningJourneyTab => ({
@@ -51,7 +50,6 @@ describe('useContentReset', () => {
       loadDocsTabContent: jest.fn().mockResolvedValue(undefined),
       loadTabContent: jest.fn().mockResolvedValue(undefined),
     };
-    mockSetHasInteractiveProgress = jest.fn();
     mockDispatchEvent = jest.spyOn(window, 'dispatchEvent');
 
     // Setup mocks
@@ -66,10 +64,8 @@ describe('useContentReset', () => {
     mockDispatchEvent.mockRestore();
   });
 
-  it('performs all 5 steps in order for docs-like tab', async () => {
-    const { result } = renderHook(() =>
-      useContentReset({ model: mockModel, setHasInteractiveProgress: mockSetHasInteractiveProgress })
-    );
+  it('performs all 4 steps in order for docs-like tab', async () => {
+    const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const tab = createMockTab({ type: 'interactive' });
     await result.current('progress-key-123', tab);
@@ -86,10 +82,7 @@ describe('useContentReset', () => {
     expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalledWith('progress-key-123');
     expect(mockInteractiveCompletionStorage.clear).toHaveBeenCalledWith('progress-key-123');
 
-    // Step 3: State update
-    expect(mockSetHasInteractiveProgress).toHaveBeenCalledWith(false);
-
-    // Step 4: Event dispatch
+    // Step 3: Event dispatch
     expect(mockDispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'interactive-progress-cleared',
@@ -97,15 +90,13 @@ describe('useContentReset', () => {
       })
     );
 
-    // Step 5: Content reload (docs-like uses loadDocsTabContent)
+    // Step 4: Content reload (docs-like uses loadDocsTabContent)
     expect(mockModel.loadDocsTabContent).toHaveBeenCalledWith('test-tab', 'https://example.com/guide');
     expect(mockModel.loadTabContent).not.toHaveBeenCalled();
   });
 
   it('uses loadTabContent for learning-journey type', async () => {
-    const { result } = renderHook(() =>
-      useContentReset({ model: mockModel, setHasInteractiveProgress: mockSetHasInteractiveProgress })
-    );
+    const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const tab = createMockTab({ type: 'learning-journey' });
     await result.current('progress-key-123', tab);
@@ -115,9 +106,7 @@ describe('useContentReset', () => {
   });
 
   it('uses baseUrl as fallback for analytics when content.url is missing', async () => {
-    const { result } = renderHook(() =>
-      useContentReset({ model: mockModel, setHasInteractiveProgress: mockSetHasInteractiveProgress })
-    );
+    const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const tab = createMockTab({
       content: undefined,
@@ -134,9 +123,7 @@ describe('useContentReset', () => {
   });
 
   it('uses empty string as fallback when both content.url and baseUrl are missing', async () => {
-    const { result } = renderHook(() =>
-      useContentReset({ model: mockModel, setHasInteractiveProgress: mockSetHasInteractiveProgress })
-    );
+    const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const tab = createMockTab({
       content: undefined,
@@ -153,9 +140,7 @@ describe('useContentReset', () => {
   });
 
   it('handles storage clearing errors', async () => {
-    const { result } = renderHook(() =>
-      useContentReset({ model: mockModel, setHasInteractiveProgress: mockSetHasInteractiveProgress })
-    );
+    const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const error = new Error('Storage error');
     mockInteractiveStepStorage.clearAllForContent.mockRejectedValue(error);
@@ -166,14 +151,12 @@ describe('useContentReset', () => {
     // Analytics should have been called before error
     expect(mockReportAppInteraction).toHaveBeenCalled();
 
-    // State update should NOT have been called after error
-    expect(mockSetHasInteractiveProgress).not.toHaveBeenCalled();
+    // Event should NOT have been dispatched after error
+    expect(mockDispatchEvent).not.toHaveBeenCalled();
   });
 
   it('handles content reload errors', async () => {
-    const { result } = renderHook(() =>
-      useContentReset({ model: mockModel, setHasInteractiveProgress: mockSetHasInteractiveProgress })
-    );
+    const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const error = new Error('Reload error');
     mockModel.loadDocsTabContent.mockRejectedValue(error);
@@ -184,14 +167,11 @@ describe('useContentReset', () => {
     // All previous steps should have completed
     expect(mockReportAppInteraction).toHaveBeenCalled();
     expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalled();
-    expect(mockSetHasInteractiveProgress).toHaveBeenCalled();
     expect(mockDispatchEvent).toHaveBeenCalled();
   });
 
   it('returns stable function reference', () => {
-    const { result, rerender } = renderHook(() =>
-      useContentReset({ model: mockModel, setHasInteractiveProgress: mockSetHasInteractiveProgress })
-    );
+    const { result, rerender } = renderHook(() => useContentReset({ model: mockModel }));
 
     const firstRef = result.current;
     rerender();

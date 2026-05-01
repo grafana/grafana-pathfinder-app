@@ -48,7 +48,8 @@ import {
   UserInteraction,
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
-import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/user-storage';
+import { tabStorage, useUserStorage } from '../../lib/user-storage';
+import { useAlignmentReevaluation } from '../../hooks';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 import {
@@ -939,9 +940,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     onDismiss: handleDismissGlobalCelebration,
   } = useBadgeCelebrationQueue();
 
-  // Interactive progress state - shows reset button when user has completed steps
-  const [hasInteractiveProgress, setHasInteractiveProgress] = React.useState(false);
-
   const {
     isActive: isSessionActive,
     sessionRole,
@@ -1164,64 +1162,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     [alignmentPendingIsPending, alignmentPendingStartingLocation]
   );
 
-  // Check for interactive progress when content changes to show reset button
-  // MUST use currentUrl || baseUrl (not content.url) to match getContentKey() in interactive sections.
-  // content.url includes "/content.json" suffix which causes a key mismatch with saved progress.
-  const progressKey = activeTab?.currentUrl || activeTab?.baseUrl || '';
-
-  // Helper to check and update progress state
-  const checkProgress = React.useCallback(() => {
-    if (progressKey) {
-      interactiveStepStorage.hasProgress(progressKey).then(setHasInteractiveProgress);
-    } else {
-      setHasInteractiveProgress(false);
-    }
-  }, [progressKey]);
-
-  // Check progress when content key changes
-  React.useEffect(() => {
-    checkProgress();
-  }, [checkProgress]);
-
-  // Listen for progress saved events to update reset button reactively
-  React.useEffect(() => {
-    const handleProgressSaved = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      // Only update if this event is for the current tab's content
-      if (detail?.contentKey === progressKey && detail?.hasProgress) {
-        setHasInteractiveProgress(true);
-      }
-    };
-
-    window.addEventListener('interactive-progress-saved', handleProgressSaved);
-    return () => {
-      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
-    };
-  }, [progressKey]);
-
-  // Reactive implied-0th-step re-evaluation. While the user has not made
-  // progress on the active tab, listen for location changes and update
-  // `pendingAlignment` so the prompt appears (or clears) as they move.
-  // Once the user completes any step, this gate flips off — we trust they
-  // are "in" the guide and should not be second-guessed by location alone.
-  const activeTabIdRef = React.useRef(activeTabId);
-  activeTabIdRef.current = activeTabId;
-  const hasInteractiveProgressRef = React.useRef(hasInteractiveProgress);
-  hasInteractiveProgressRef.current = hasInteractiveProgress;
-  React.useEffect(() => {
-    const history = locationService.getHistory();
-    const unlisten = history.listen((newLocation: { pathname: string }) => {
-      if (hasInteractiveProgressRef.current) {
-        return;
-      }
-      const tabId = activeTabIdRef.current;
-      if (!tabId || tabId === 'recommendations' || tabId === 'editor' || tabId === 'devtools') {
-        return;
-      }
-      model.reevaluateAlignment(tabId, newLocation.pathname);
-    });
-    return unlisten;
-  }, [model]);
+  // Reactive alignment re-evaluation + interactive progress tracking.
+  // MUST use currentUrl || baseUrl (not content.url) for the progress key, to match
+  // getContentKey() in interactive sections. content.url includes "/content.json"
+  // which would mismatch saved progress.
+  const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(model, activeTabId, activeTab);
 
   const styles = useStyles2(getComponentStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
@@ -1258,8 +1203,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     activeTab?.currentUrl
   );
 
-  // Content reset hook - handles complex storage/state/reload orchestration
-  const handleResetGuide = useContentReset({ model, setHasInteractiveProgress });
+  // Content reset hook - handles complex storage/state/reload orchestration.
+  // It dispatches `interactive-progress-cleared`, which `useAlignmentReevaluation`
+  // listens for to clear `hasInteractiveProgress` for this content key.
+  const handleResetGuide = useContentReset({ model });
 
   // Helper: Reload active tab content (DRY - was duplicated 3x)
   const reloadActiveTab = useCallback(

@@ -21,7 +21,6 @@ import type { DocsPanelModelOperations } from '../types';
 
 interface UseContentResetOptions {
   model: DocsPanelModelOperations;
-  setHasInteractiveProgress: (value: boolean) => void;
 }
 
 /**
@@ -29,14 +28,14 @@ interface UseContentResetOptions {
  * The reset includes:
  * 1. Analytics tracking
  * 2. Storage clearing (interactive steps + completion percentage)
- * 3. Local state update
- * 4. Cross-component event dispatch (notifies recommendations panel)
- * 5. Content reload to reset UI state
+ * 3. Cross-component event dispatch (notifies recommendations panel and
+ *    `useAlignmentReevaluation`, which clears its `hasInteractiveProgress` flag)
+ * 4. Content reload to reset UI state
  *
- * @param options - Configuration object with model and state setter
+ * @param options - Configuration object with model
  * @returns Async function that performs the reset
  */
-export function useContentReset({ model, setHasInteractiveProgress }: UseContentResetOptions) {
+export function useContentReset({ model }: UseContentResetOptions) {
   return useCallback(
     async (progressKey: string, activeTab: LearningJourneyTab) => {
       try {
@@ -55,18 +54,16 @@ export function useContentReset({ model, setHasInteractiveProgress }: UseContent
         await interactiveStepStorage.clearAllForContent(progressKey);
         await interactiveCompletionStorage.clear(progressKey);
 
-        // Step 3: Update local state
-        setHasInteractiveProgress(false);
-
-        // Step 4: Dispatch cross-component event
-        // This notifies the recommendations panel to refresh
+        // Step 3: Dispatch cross-component event.
+        // Notifies the recommendations panel to refresh and `useAlignmentReevaluation`
+        // to clear its `hasInteractiveProgress` flag for this contentKey.
         window.dispatchEvent(
           new CustomEvent('interactive-progress-cleared', {
             detail: { contentKey: progressKey },
           })
         );
 
-        // Step 5: Reload content to reset UI state
+        // Step 4: Reload content to reset UI state
         if (shouldUseDocsLoader(activeTab)) {
           await model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
@@ -78,6 +75,6 @@ export function useContentReset({ model, setHasInteractiveProgress }: UseContent
         throw error; // Re-throw so caller can handle if needed
       }
     },
-    [model, setHasInteractiveProgress]
+    [model]
   );
 }
