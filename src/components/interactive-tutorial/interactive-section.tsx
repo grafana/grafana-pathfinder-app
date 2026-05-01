@@ -1673,11 +1673,22 @@ export function InteractiveSection({
           prompt is up, so users who scroll past the top banner still see why
           steps are inactive. */}
       {!isCollapsed && isAlignmentPaused && alignmentStartingLocation && (
-        <div className="interactive-section-requirements-banner" data-testid={testIds.alignmentPrompt.sectionHint}>
-          <span className="interactive-section-requirements-icon">📍</span>
-          <span className="interactive-section-requirements-message">
-            Steps are paused. This guide starts on <code>{alignmentStartingLocation}</code> — use the prompt above to
-            navigate.
+        <div className="interactive-section-alignment-banner" data-testid={testIds.alignmentPrompt.sectionHint}>
+          <span className="interactive-section-alignment-message">
+            Steps are paused.{' '}
+            <button
+              type="button"
+              className="interactive-section-alignment-link"
+              onClick={() => {
+                const target = document.querySelector(`[data-testid="${testIds.alignmentPrompt.container}"]`);
+                if (target) {
+                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+            >
+              Open the navigation prompt
+            </button>{' '}
+            to continue.
           </span>
         </div>
       )}
