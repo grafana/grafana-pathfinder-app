@@ -739,11 +739,17 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(interactiveNav.isInteractiveNavigationInProgress()).toBe(false);
     });
 
-    it('still clears pendingAlignment even when locationService.push throws', async () => {
-      // Defensive test: we use try/finally to balance the counter on throw.
-      // Because the synchronous push throws, the setState below it never
-      // runs, but the counter must still be balanced — otherwise a later
-      // user navigation would be silently suppressed.
+    it('still clears pendingAlignment AND balances the nav counter when locationService.push throws', async () => {
+      // Defensive test for two finally-block invariants:
+      //   1. The interactive-navigation counter must be balanced even on the
+      //      failure path (a leak would silently suppress every later user
+      //      navigation in `useAlignmentReevaluation`).
+      //   2. `pendingAlignment` must be cleared even on the failure path —
+      //      `AlignmentPromptConfirmed` telemetry has already fired (above
+      //      the try/finally), so leaving the prompt visible would be
+      //      inconsistent with the recorded event and force the user to
+      //      click "Continue here" to dismiss a prompt for an action they
+      //      already confirmed.
       mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
@@ -751,15 +757,23 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
         packageManifest: { startingLocation: '/connections' },
       });
       await new Promise((r) => setTimeout(r, 0));
+      // Sanity: the prompt is up before we attempt the (failing) confirm.
+      expect(getTab(panel, tabId).pendingAlignment).toBeDefined();
 
       mockLocationServicePush.mockImplementationOnce(() => {
         throw new Error('simulated push failure');
       });
 
       await expect(panel.confirmAlignment(tabId)).rejects.toThrow('simulated push failure');
-      // Counter must be balanced even on the failure path — that's the whole
-      // reason we used try/finally rather than a manual end-after-push.
+
+      // Counter balanced via the try/finally pair.
       expect(interactiveNav.isInteractiveNavigationInProgress()).toBe(false);
+      // Prompt cleared via the same finally — UI now matches the
+      // AlignmentPromptConfirmed event we already fired.
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+      // And the telemetry was indeed fired before the throw.
+      const confirmed = mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_confirmed');
+      expect(confirmed).toBeDefined();
     });
   });
 
@@ -862,6 +876,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     const NEEDS_CHECK_SOURCES_TO_VERIFY = [
       'home_page',
       'url_param',
+      'learning-hub',
       'command_palette',
       'external_suggestion',
       'link_interception',

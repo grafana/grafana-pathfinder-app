@@ -37,6 +37,12 @@ export type LaunchSource =
   // Needs alignment check
   | 'home_page'
   | 'url_param'
+  // Deep-link surface (`?doc=foo&source=learning-hub`). Also doubles as a
+  // routing flag in the auto-launch handlers (`source === 'learning-hub'`
+  // forces `openLearningJourney`). Same alignment semantics as `url_param`:
+  // the URL navigates the user to whatever path it encodes, which may or
+  // may not match the guide's `startingLocation`.
+  | 'learning-hub'
   | 'command_palette'
   | 'command_palette_help'
   | 'command_palette_learn'
@@ -93,6 +99,7 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<LaunchSource> = new Se
 export const NEEDS_ALIGNMENT_CHECK_SOURCES: ReadonlySet<LaunchSource> = new Set<LaunchSource>([
   'home_page',
   'url_param',
+  'learning-hub',
   'command_palette',
   'command_palette_help',
   'command_palette_learn',

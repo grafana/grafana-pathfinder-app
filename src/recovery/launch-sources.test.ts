@@ -32,6 +32,7 @@ const ALL_LAUNCH_SOURCES = [
   // Needs alignment check
   'home_page',
   'url_param',
+  'learning-hub',
   'command_palette',
   'command_palette_help',
   'command_palette_learn',
@@ -118,7 +119,19 @@ describe('coerceLaunchSource', () => {
 
   it('returns null for an unknown literal', () => {
     expect(coerceLaunchSource('typo_recommander')).toBeNull();
-    expect(coerceLaunchSource('learning-hub')).toBeNull(); // not in union
+    expect(coerceLaunchSource('not_a_real_source')).toBeNull();
+  });
+
+  // Regression for the "learning-hub source silently dropped" bug:
+  // `learning-hub` is dispatched via the `?doc=foo&source=learning-hub`
+  // deep-link path AND used as a routing flag in the auto-launch handlers
+  // (`source === 'learning-hub'` → `openLearningJourney`). It used to be
+  // missing from the union, which made `coerceLaunchSource` return null
+  // and the typed source silently fall through to `undefined` — meaning
+  // alignment evaluation classified the launch as "unknown" rather than
+  // the appropriate `learning-hub` (needs-check) bucket.
+  it('preserves the `learning-hub` deep-link literal', () => {
+    expect(coerceLaunchSource('learning-hub')).toBe('learning-hub');
   });
 
   it('returns null for null, undefined, and empty string', () => {

@@ -496,16 +496,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     //
     // The flag pair is the structural fix; the prior 100ms `setTimeout` was a
     // band-aid that masked the same race on most devices.
+    //
+    // The pendingAlignment clear lives in `finally` so it runs whether the
+    // push succeeded or threw. We've already fired the
+    // `AlignmentPromptConfirmed` telemetry above — leaving the prompt
+    // visible after a thrown push would be inconsistent with the recorded
+    // event and would force the user to click "Continue here" separately
+    // to dismiss a prompt for an action they already confirmed. The
+    // ordering (endInteractiveNavigation before setState) preserves the
+    // listener-race protection: by the time the gate flips off via
+    // setState, the synchronous push (and its synchronous `history.listen`
+    // callback) has already settled.
     beginInteractiveNavigation();
     try {
       locationService.push(pending.startingLocation);
     } finally {
       endInteractiveNavigation();
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
+      });
     }
-
-    this.setState({
-      tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
-    });
   }
 
   /**
