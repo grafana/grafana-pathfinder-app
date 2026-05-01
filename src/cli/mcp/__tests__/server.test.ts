@@ -167,6 +167,141 @@ describe('MCP server', () => {
     }
   });
 
+  it('returns the CLI command list from pathfinder_help when called with no command', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const result = await callTool(client, 'pathfinder_help');
+      expect(Array.isArray(result.commands)).toBe(true);
+      const names = (result.commands as Array<{ name: string }>).map((c) => c.name);
+      // Spot-check a couple of commands that authors hit constantly; the full
+      // list is enforced by the CLI command registry, not this test.
+      expect(names).toEqual(expect.arrayContaining(['create', 'add-block', 'validate']));
+    } finally {
+      await close();
+    }
+  });
+
+  it('returns per-command help shape from pathfinder_help when given a command', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const result = await callTool(client, 'pathfinder_help', { command: 'add-block' });
+      // formatHelpAsJson surfaces `command` and `summary` at minimum; we
+      // don't pin the full shape here (it's a CLI-owned contract).
+      expect(result.command).toBe('add-block');
+      expect(typeof result.summary).toBe('string');
+    } finally {
+      await close();
+    }
+  });
+
+  it('appends a step to a multistep block via pathfinder_add_step', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'step test', type: 'guide' });
+      let artifact = created.artifact!;
+
+      // Need a multistep container before add-step has somewhere to land.
+      const withMs = await callTool(client, 'pathfinder_add_block', {
+        artifact,
+        type: 'multistep',
+        explicitId: 'ms-1',
+        fields: { content: 'walkthrough heading' },
+      });
+      expect(withMs.status).toBe('ok');
+      artifact = withMs.artifact!;
+
+      const stepped = await callTool(client, 'pathfinder_add_step', {
+        artifact,
+        parentId: 'ms-1',
+        fields: { action: 'noop', description: 'just look' },
+      });
+      expect(stepped.status).toBe('ok');
+      const ms = (stepped.artifact!.content.blocks as Array<{ id: string; steps?: unknown[] }>).find(
+        (b) => b.id === 'ms-1'
+      );
+      expect(ms?.steps?.length).toBe(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it('appends a choice to a quiz block via pathfinder_add_choice', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'quiz test', type: 'guide' });
+      let artifact = created.artifact!;
+
+      const withQuiz = await callTool(client, 'pathfinder_add_block', {
+        artifact,
+        type: 'quiz',
+        explicitId: 'q-1',
+        fields: { question: 'Is this a test?', completionMode: 'correct-only' },
+      });
+      expect(withQuiz.status).toBe('ok');
+      artifact = withQuiz.artifact!;
+
+      const choiced = await callTool(client, 'pathfinder_add_choice', {
+        artifact,
+        parentId: 'q-1',
+        fields: { id: 'a', text: 'Yes', correct: true },
+      });
+      expect(choiced.status).toBe('ok');
+      const quiz = (choiced.artifact!.content.blocks as Array<{ id: string; choices?: unknown[] }>).find(
+        (b) => b.id === 'q-1'
+      );
+      expect(quiz?.choices?.length).toBe(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it('updates an existing block in place via pathfinder_edit_block', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'edit test', type: 'guide' });
+      let artifact = created.artifact!;
+
+      const added = await callTool(client, 'pathfinder_add_block', {
+        artifact,
+        type: 'markdown',
+        explicitId: 'md-1',
+        fields: { content: 'before' },
+      });
+      expect(added.status).toBe('ok');
+      artifact = added.artifact!;
+
+      const edited = await callTool(client, 'pathfinder_edit_block', {
+        artifact,
+        id: 'md-1',
+        fields: { content: 'after' },
+      });
+      expect(edited.status).toBe('ok');
+      const block = (edited.artifact!.content.blocks as Array<{ id: string; content?: string }>).find(
+        (b) => b.id === 'md-1'
+      );
+      expect(block?.content).toBe('after');
+    } finally {
+      await close();
+    }
+  });
+
+  it('updates manifest fields via pathfinder_set_manifest', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'manifest test', type: 'guide' });
+      const artifact = created.artifact!;
+
+      const updated = await callTool(client, 'pathfinder_set_manifest', {
+        artifact,
+        fields: { description: 'a brand-new description' },
+      });
+      expect(updated.status).toBe('ok');
+      expect(updated.artifact?.manifest?.description).toBe('a brand-new description');
+    } finally {
+      await close();
+    }
+  });
+
   it('refuses finalize with status invalid when validation fails', async () => {
     const { client, close } = await spinUp();
     try {

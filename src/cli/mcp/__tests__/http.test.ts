@@ -11,6 +11,10 @@
  * stderr scraping.
  */
 
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+
+import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { runHttp, MAX_REQUEST_BYTES, type AccessLogEntry, type HttpHandle } from '../transports/http';
 import { SessionHopCounter } from '../transports/instrumentation';
 
@@ -21,7 +25,13 @@ interface Harness {
   close(): Promise<void>;
 }
 
-async function start(): Promise<Harness> {
+interface StartOptions {
+  wallclockMs?: number;
+  /** Sleep duration injected into a `slow_sleep` tool, when buildServer is overridden. */
+  slowSleepMs?: number;
+}
+
+async function start(opts: StartOptions = {}): Promise<Harness> {
   const logs: AccessLogEntry[] = [];
   // Use a fresh counter per harness so test ordering doesn't bleed hop
   // counts across cases.
@@ -30,6 +40,32 @@ async function start(): Promise<Harness> {
     host: '127.0.0.1',
     log: (entry) => logs.push(entry),
     sessionHopCounter: new SessionHopCounter(),
+    wallclockMs: opts.wallclockMs,
+    buildServer:
+      opts.slowSleepMs !== undefined
+        ? () => {
+            // Tiny synthetic server that exposes a tool which deliberately
+            // sleeps. The server replies after the sleep, so the wallclock
+            // timer can win the race deterministically.
+            const ms = opts.slowSleepMs!;
+            const server = new McpServer(
+              { name: 'test-slow', version: CURRENT_SCHEMA_VERSION },
+              { capabilities: { tools: {} } }
+            );
+            server.registerTool(
+              'slow_sleep',
+              {
+                description: 'Sleeps for the configured duration before replying.',
+                inputSchema: { _: z.unknown().optional() },
+              },
+              async () => {
+                await new Promise<void>((resolve) => setTimeout(resolve, ms));
+                return { content: [{ type: 'text', text: 'done' }] };
+              }
+            );
+            return server;
+          }
+        : undefined,
   });
   return {
     handle,
@@ -344,6 +380,37 @@ describe('HTTP transport', () => {
       // Next tools/call resumes from 3, not 1.
       await callOnce();
       expect(h.logs.at(-1)!.sessionHopCount).toBe(3);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('logs outcome=timeout when a tool call exceeds the wallclock budget', async () => {
+    // Inject a synthetic server with a tool that sleeps 500ms; cap the
+    // wallclock at 50ms. With Accept: text/event-stream, the SDK opens SSE
+    // and writes 200 + headers before the tool runs, so the wire status
+    // stays 200 even on timeout. What we *can* assert is that the timer
+    // fired (transport closed under the handler) and the access log
+    // surfaces `outcome: 'timeout'` — which is the field SREs actually
+    // alert on. A buffered-JSON 504 path exists in code (if headers are
+    // still unsent when the timer fires), but is unreachable through the
+    // SDK on tools/call because SSE always wins the race.
+    const h = await start({ wallclockMs: 50, slowSleepMs: 500 });
+    try {
+      const res = await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'slow_sleep', arguments: {} },
+        }),
+      });
+      // Drain the body so the connection cleans up regardless of stream shape.
+      await res.arrayBuffer().catch(() => undefined);
+      expect(h.logs.at(-1)?.outcome).toBe('timeout');
+      expect(h.logs.at(-1)?.rpcToolName).toBe('slow_sleep');
     } finally {
       await h.close();
     }

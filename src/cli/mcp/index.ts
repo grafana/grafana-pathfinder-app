@@ -31,7 +31,12 @@ program
   .addOption(
     new Option('--port <port>', 'HTTP port (when --transport http)').default('8080').argParser((v) => Number(v))
   )
-  .addOption(new Option('--host <host>', 'HTTP bind host (when --transport http)').default('0.0.0.0'))
+  .addOption(
+    new Option(
+      '--host <host>',
+      'HTTP bind host (when --transport http). Defaults to 127.0.0.1 so a local dev run is not exposed on the network; pass --host 0.0.0.0 in container deployments.'
+    ).default('127.0.0.1')
+  )
   .action(async function (this: Command) {
     const opts = this.opts() as { transport: 'stdio' | 'http'; port: number; host: string };
 

@@ -26,6 +26,7 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 import { buildServer } from '../server';
@@ -88,6 +89,19 @@ export interface RunHttpOptions {
    * instance for isolation; production uses the module singleton.
    */
   sessionHopCounter?: SessionHopCounter;
+  /**
+   * Override the per-call wallclock budget in milliseconds. Tests use a tiny
+   * value to assert the 504 timeout path; production omits this and gets
+   * `PER_CALL_WALLCLOCK_MS`.
+   */
+  wallclockMs?: number;
+  /**
+   * Override the server factory. Default constructs the production
+   * `buildServer({ instrumentation })`. Tests override this to register a
+   * deliberately-slow tool that exercises the wallclock timeout path
+   * without racing against real authoring tools.
+   */
+  buildServer?: (instrumentation: (obs: ToolCallObservation) => void) => McpServer;
 }
 
 export interface HttpHandle {
@@ -227,11 +241,14 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const host = options.host ?? '0.0.0.0';
   const log = options.log ?? defaultLog;
   const sessionHopCounter = options.sessionHopCounter ?? defaultSessionHopCounter;
+  const wallclockMs = options.wallclockMs ?? PER_CALL_WALLCLOCK_MS;
+  const factory =
+    options.buildServer ?? ((instrumentation: (obs: ToolCallObservation) => void) => buildServer({ instrumentation }));
 
   const state = { inFlight: 0 };
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, path, healthPath, state, log, sessionHopCounter);
+    void handleRequest(req, res, path, healthPath, state, log, sessionHopCounter, wallclockMs, factory);
   });
 
   server.keepAliveTimeout = KEEPALIVE_TIMEOUT_MS;
@@ -260,7 +277,9 @@ async function handleRequest(
   healthPath: string,
   state: ConcurrencyState,
   log: (entry: AccessLogEntry) => void,
-  sessionHopCounter: SessionHopCounter
+  sessionHopCounter: SessionHopCounter,
+  wallclockMs: number,
+  factory: (instrumentation: (obs: ToolCallObservation) => void) => McpServer
 ): Promise<void> {
   const start = Date.now();
   const remote = req.socket.remoteAddress ?? 'unknown';
@@ -378,10 +397,8 @@ async function handleRequest(
     // we explicitly do not want. The instrumentation callback only fires
     // for `tools/call`; on tools/list and initialize `observation` stays
     // undefined and the log line elides the tool fields.
-    const mcp = buildServer({
-      instrumentation: (obs) => {
-        observation = obs;
-      },
+    const mcp = factory((obs) => {
+      observation = obs;
     });
     const transport = new StreamableHTTPServerTransport({});
 
@@ -389,10 +406,10 @@ async function handleRequest(
     const timer = setTimeout(() => {
       timedOut = true;
       if (!res.headersSent) {
-        writeJsonRpcError(res, 504, -32001, `Wallclock budget exceeded (${PER_CALL_WALLCLOCK_MS}ms)`);
+        writeJsonRpcError(res, 504, -32001, `Wallclock budget exceeded (${wallclockMs}ms)`);
       }
       void transport.close();
-    }, PER_CALL_WALLCLOCK_MS);
+    }, wallclockMs);
 
     try {
       await mcp.connect(transport);
@@ -402,7 +419,11 @@ async function handleRequest(
       if (!res.headersSent) {
         writeJsonRpcError(res, 500, -32000, err instanceof Error ? err.message : 'Internal error');
       }
-      finish(res.statusCode || 500, 'error');
+      // If the wallclock timer fired, the response is already a 504 and the
+      // handler typically rejects because the transport was closed under it.
+      // Surface that as `timeout` so the access log doesn't misclassify
+      // timeouts as generic errors.
+      finish(res.statusCode || 500, timedOut ? 'timeout' : 'error');
     } finally {
       clearTimeout(timer);
       void transport.close();

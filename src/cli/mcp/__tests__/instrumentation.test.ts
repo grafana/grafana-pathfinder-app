@@ -48,12 +48,12 @@ describe('instrumentServer', () => {
       ],
     }));
 
-    const handler = fake.registered[0].handler;
+    const handler = fake.registered[0]!.handler;
     const args = { artifact: { content: { blocks: [] } }, type: 'markdown' };
     await handler(args);
 
     expect(observed).toHaveLength(1);
-    const obs = observed[0];
+    const obs = observed[0]!;
     expect(obs.toolName).toBe('pathfinder_add_block');
     expect(obs.isError).toBe(false);
     expect(obs.toolStatus).toBe('ok');
@@ -71,11 +71,11 @@ describe('instrumentServer', () => {
       isError: true,
     }));
 
-    await fake.registered[0].handler({ artifact: { content: {} } });
+    await fake.registered[0]!.handler({ artifact: { content: {} } });
 
-    expect(observed[0].isError).toBe(true);
-    expect(observed[0].toolStatus).toBe('error');
-    expect(observed[0].artifactBytesOut).toBeUndefined();
+    expect(observed[0]!.isError).toBe(true);
+    expect(observed[0]!.toolStatus).toBe('error');
+    expect(observed[0]!.artifactBytesOut).toBeUndefined();
   });
 
   it('omits artifact byte fields when args/result have no artifact', async () => {
@@ -87,11 +87,11 @@ describe('instrumentServer', () => {
       content: [{ type: 'text', text: JSON.stringify({ status: 'ok', workflow: '...' }) }],
     }));
 
-    await fake.registered[0].handler({});
+    await fake.registered[0]!.handler({});
 
-    expect(observed[0].artifactBytesIn).toBeUndefined();
-    expect(observed[0].artifactBytesOut).toBeUndefined();
-    expect(observed[0].toolStatus).toBe('ok');
+    expect(observed[0]!.artifactBytesIn).toBeUndefined();
+    expect(observed[0]!.artifactBytesOut).toBeUndefined();
+    expect(observed[0]!.toolStatus).toBe('ok');
   });
 
   it('treats unparseable text content as missing toolStatus, not as failure', async () => {
@@ -103,10 +103,10 @@ describe('instrumentServer', () => {
       content: [{ type: 'text', text: 'not json' }],
     }));
 
-    await fake.registered[0].handler({});
+    await fake.registered[0]!.handler({});
 
-    expect(observed[0].isError).toBe(false);
-    expect(observed[0].toolStatus).toBeUndefined();
+    expect(observed[0]!.isError).toBe(false);
+    expect(observed[0]!.toolStatus).toBeUndefined();
   });
 
   it('preserves the original handler return value', async () => {
@@ -116,7 +116,7 @@ describe('instrumentServer', () => {
     const expected = { content: [{ type: 'text', text: '{}' }] };
     fake.registerTool('pathfinder_inspect', {}, async () => expected);
 
-    const result = await fake.registered[0].handler({ artifact: { content: {} } });
+    const result = await fake.registered[0]!.handler({ artifact: { content: {} } });
     expect(result).toBe(expected);
   });
 });

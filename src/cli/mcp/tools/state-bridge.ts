@@ -27,7 +27,7 @@
  * Tracked in P3 deviations.
  */
 
-import * as fs from 'node:fs';
+import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -67,7 +67,7 @@ export async function withArtifact(
   artifact: ArtifactInput,
   runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
 ): Promise<ArtifactOutcome> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-mcp-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pathfinder-mcp-'));
   try {
     const state: PackageState = {
       content: artifact.content,
@@ -91,7 +91,7 @@ export async function withArtifact(
     };
   } finally {
     try {
-      fs.rmSync(dir, { recursive: true, force: true });
+      await fs.rm(dir, { recursive: true, force: true });
     } catch {
       // Tmpdir cleanup is best-effort. The OS will reclaim it on reboot.
     }
