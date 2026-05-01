@@ -100,7 +100,38 @@ Atomic-commit-sized. Reference epic in every commit message (`P4: <subject>` + `
 
 _Appended during execution. Each entry: date, decision, alternatives considered, rationale._
 
-_(empty)_
+### 2026-05-01 — A1: client-capability branches and wire shape
+
+- **Decision.** Three client branches: `grafanaAppPlatform` (Grafana-aware client with `aggregation.pathfinderbackend-ext-grafana-com.enabled` true — Cloud, or OSS with the aggregator on), `grafanaOss` (Grafana-aware client without App Platform — OSS, or Cloud with the toggle off, or any signed-in client whose POST hits 404 on the collection path), and `nonGrafanaClient` (Cursor, Claude Desktop, any stdio MCP client with no Grafana session). Wire shape: a new top-level `clientGuidance` object keyed by branch, plus a short routing-only `instructions[]` that names the branches and tells the agent which one applies.
+- **Alternatives considered.** (1) Single labeled `instructions[]` with `## Branch A`-style headers — simpler diff, but agents have to skim past two-thirds of the prose every call; doesn't scale if a fourth branch ever appears. (2) Single `instructions[]` with three numbered sections, no branch object — same readability problem, plus it forces the agent to do the routing in prose. (3) Branch keyed by HTTP probe rather than by client identity — wrong primitive; non-Grafana clients have no instance origin to probe at all.
+- **Rationale.** Three branches are different enough to warrant first-class structure, and a keyed object lets a model jump directly to the relevant block instead of re-reading the whole instruction surface every call. The routing `instructions[]` stays for clients that do not introspect the structured field, so the contract degrades gracefully.
+- **Touches.** `src/cli/mcp/tools/finalize.ts` (new field, rewrites `instructions`), `src/cli/mcp/__tests__/finalize.test.ts` (snapshot), `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md` (handoff output example).
+
+### 2026-05-01 — A1: error-code → action mapping for the App Platform write
+
+- **Decision.** Encoded in `clientGuidance.grafanaAppPlatform.errorHandling`:
+  - `404` on collection POST → CRD or aggregator missing → switch to the `grafanaOss` flow (`localExport`, surface block-editor import path). Do not retry.
+  - `403` → user lacks `interactiveguides.create` permission → tell the user, offer `localExport`, do not retry.
+  - `409` on PUT → stale `resourceVersion` → re-GET, copy the new `metadata.resourceVersion`, ask the user to confirm overwrite, retry once. Second 409 → tell the user, offer `localExport`.
+  - `5xx`, network error, or timeout → retry once with short backoff, then surface error and offer `localExport`.
+  - Any other 4xx → surface error verbatim to the user, offer `localExport`. No retry.
+- **Alternatives considered.** Generic "on any failure, fall back to localExport" — simpler, but loses the user-actionable distinction between "you don't have permission" (a real answer) and "the CRD isn't installed here" (also a real answer, different next step). Retry-everything-three-times — wastes tokens on permission denials and produces confusing user UX on real errors.
+- **Rationale.** Each status maps to a distinct user-actionable narrative. The agent should not have to invent the rule. The fallback path is identical (`localExport`); the diagnostic the user sees differs.
+- **Touches.** Same files as the prior decision.
+
+### 2026-05-01 — A1: confirmation prompt and viewer URL absolutization
+
+- **Decision.** (a) Suggested confirmation prompt copy in `clientGuidance.grafanaAppPlatform.confirmationPrompt`: `Publish guide "<title>" to <namespace> as <status>?`. Sentence-cased per the Grafana Writers' Toolkit, names the action, the destination namespace, and the draft/published status. (b) An explicit step in the success path: `Resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL before showing it (e.g., https://example.grafana.net + /a/grafana-pathfinder-app?...).`
+- **Alternatives considered.** Confirmation: leaving the prompt to the model — produces inconsistent, often title-cased copy. Saying "publish" without naming the namespace — leaves the user unsure where it lands on multi-instance clients. Absolute URL: returning an absolute URL from the handoff — the MCP doesn't know the user's instance origin (it serves multiple instances from one Cloud Run service); the agent does.
+- **Rationale.** Both are agent-side decisions that the agent will make incorrectly often enough to warrant explicit instruction; both fit naturally in the structured `clientGuidance` block.
+- **Touches.** `src/cli/mcp/tools/finalize.ts` (`clientGuidance.grafanaAppPlatform.confirmationPrompt`, `clientGuidance.grafanaAppPlatform.steps`).
+
+### 2026-05-01 — A1: OSS re-publish path through the block-editor import flow
+
+- **Decision.** `clientGuidance.grafanaOss.steps` and `clientGuidance.nonGrafanaClient.steps` both surface the block-editor import flow as the user's path back into a Grafana instance: open Pathfinder in any Grafana → block editor → Import → paste the contents of `content.json` or upload the file. The handoff names the entry point explicitly so the user can find it without screenshots.
+- **Alternatives considered.** Leave `localExport` as a dead end ("here are your files, good luck"). Tell the user to use the CLI to re-publish — no published `pathfinder-cli` publish command exists; this is a lie. Tell the user to file a PR against the bundled-interactives repo — that's the long path, not the short one.
+- **Rationale.** `src/components/block-editor/ImportGuideModal.tsx` already accepts paste/upload of guide JSON. This is the existing OSS re-publish loop; the handoff just has to point at it.
+- **Touches.** `src/cli/mcp/tools/finalize.ts` (`clientGuidance.grafanaOss.steps`, `clientGuidance.nonGrafanaClient.steps`, `localExport.instructions`).
 
 ---
 
