@@ -21,7 +21,8 @@ function isImageBlock(block: JsonBlock): block is JsonImageBlock {
 }
 
 /**
- * Validate a URL string — rejects empty, relative paths, and javascript: URIs.
+ * Validate a URL string — rejects empty, javascript: URIs, and accepts
+ * http/https, protocol-relative, and relative paths (including ../ and nested).
  */
 function isValidUrl(value: string): boolean {
   const trimmed = value.trim();
@@ -40,8 +41,12 @@ function isValidUrl(value: string): boolean {
   if (/^\/\//.test(trimmed)) {
     return true;
   }
-  // Accept relative paths (e.g., /images/foo.png, ../img.png)
-  if (/^\//.test(trimmed) || /^[a-zA-Z0-9_.-]+\.(png|jpe?g|gif|webp|svg|avif)$/i.test(trimmed)) {
+  // Accept absolute relative paths (e.g., /images/foo.png)
+  if (/^\/[a-zA-Z0-9_.\/\-]+$/.test(trimmed)) {
+    return true;
+  }
+  // Accept relative paths with ../ or ./ (e.g., ../img.png, ./images/foo.png)
+  if (/^(?:[a-zA-Z0-9_.\-]+\/)*[a-zA-Z0-9_.\-]+\.(png|jpe?g|gif|webp|svg|avif)$/i.test(trimmed)) {
     return true;
   }
   return false;
