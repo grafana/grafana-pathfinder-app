@@ -20,6 +20,12 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<string> = new Set([
   'recommender',
   // User was mid-tutorial; restoring their state shouldn't second-guess location.
   'browser_restore',
+  // Internal reloads of an already-open tab (reset guide progress, error retry,
+  // dev-mode refresh). The user is already viewing this guide — re-running
+  // the fetch shouldn't surface a fresh alignment prompt on top of the
+  // reloaded content. The existing on-page `Fix this` flow still handles
+  // misalignment when step 1 mounts.
+  'internal_reload',
   // Agents (MCP) coordinate their own context.
   'mcp_launch',
   // Step-1 navigate actions land us on the right page already.

@@ -63,8 +63,15 @@ export function useContentReset({ model }: UseContentResetOptions) {
           })
         );
 
-        // Step 4: Reload content to reset UI state
+        // Step 4: Reload content to reset UI state.
+        // Tag the loader call as `internal_reload` (aligned-by-construction)
+        // so the implied-0th-step evaluator doesn't surface a spurious
+        // alignment prompt on top of the freshly reloaded guide when the
+        // user happens to be on a non-matching page. Only the docs-like
+        // branch runs alignment evaluation; the learning-journey branch
+        // (`loadTabContent`) doesn't consume this source.
         if (shouldUseDocsLoader(activeTab)) {
+          model._recordAutoLaunchSource('internal_reload');
           await model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
         } else {
           await model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);

@@ -1208,10 +1208,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // listens for to clear `hasInteractiveProgress` for this content key.
   const handleResetGuide = useContentReset({ model });
 
-  // Helper: Reload active tab content (DRY - was duplicated 3x)
+  // Helper: Reload active tab content (DRY - was duplicated 3x).
+  // Used by error-retry and dev-mode refresh. Tag the loader call as
+  // `internal_reload` so the implied-0th-step evaluator doesn't prompt the
+  // user on top of content they're already looking at. See
+  // `ALIGNED_BY_CONSTRUCTION_SOURCES` for the semantics.
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
       if (shouldUseDocsLoader(tab)) {
+        model._recordAutoLaunchSource('internal_reload');
         model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
       } else {
         model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);

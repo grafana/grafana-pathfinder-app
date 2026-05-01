@@ -59,6 +59,15 @@ export interface DocsPanelModelOperations {
 
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;
+
+  /**
+   * Record the launch source for the next `loadDocsTabContent` call so the
+   * implied-0th-step evaluator classifies it correctly. Consumed once by the
+   * loader; callers that bypass `openDocsPage`/`openLearningJourney` (e.g.
+   * internal reloads from `useContentReset`) must set this explicitly or
+   * risk a spurious alignment prompt.
+   */
+  _recordAutoLaunchSource(source: string | null): void;
 }
 
 /**

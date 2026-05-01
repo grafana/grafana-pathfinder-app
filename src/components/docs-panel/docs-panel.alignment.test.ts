@@ -331,6 +331,24 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
     });
 
+    // Regression for the "spurious alignment prompt on reset / retry" bug:
+    // internal reloads (`useContentReset`, `reloadActiveTab` for error-retry
+    // and dev-refresh) tag the loader call as `internal_reload`. Without
+    // that tag, `_consumeAutoLaunchSource()` returns `null` → `launchSource:
+    // undefined` → not aligned-by-construction → prompt appears on top of
+    // the freshly reloaded guide when the user is on a non-matching path.
+    it('does NOT set pendingAlignment when source is internal_reload', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'internal_reload', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
     // Regression: `initializeRestoredActiveTab` must tag its loader call with
     // `browser_restore` so the alignment evaluator treats restored tabs as
     // aligned-by-construction. Without that tag, `_consumeAutoLaunchSource()`
