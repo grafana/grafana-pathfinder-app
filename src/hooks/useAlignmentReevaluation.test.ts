@@ -97,7 +97,7 @@ describe('useAlignmentReevaluation', () => {
       const panel = makePanel();
       const { result, rerender } = renderHook(
         ({ tab }: { tab: { currentUrl?: string } | undefined }) => useAlignmentReevaluation(panel, 'tab-1', tab),
-        { initialProps: { tab: { currentUrl: 'guide-a' } } }
+        { initialProps: { tab: { currentUrl: 'guide-a' } } as { tab: { currentUrl?: string } | undefined } }
       );
 
       await act(async () => {
