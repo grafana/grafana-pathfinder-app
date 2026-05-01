@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { locationService } from '@grafana/runtime';
 import { interactiveStepStorage } from '../lib/user-storage';
+import { isInteractiveNavigationInProgress } from '../global-state/interactive-navigation';
 
 interface ActiveTabSummary {
   currentUrl?: string;
@@ -36,7 +37,6 @@ export function useAlignmentReevaluation(
     if (progressKey) {
       void interactiveStepStorage.hasProgress(progressKey).then(setHasInteractiveProgress);
     } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: reset progress flag when the active tab has no key (e.g. recommendations tab).
       setHasInteractiveProgress(false);
     }
   }, [progressKey]);
@@ -64,14 +64,25 @@ export function useAlignmentReevaluation(
 
   const activeTabIdRef = useRef(activeTabId);
   const hasInteractiveProgressRef = useRef(hasInteractiveProgress);
-  useEffect(() => {
-    activeTabIdRef.current = activeTabId;
-    hasInteractiveProgressRef.current = hasInteractiveProgress;
-  });
+  // Refs must be current at the moment the listener fires. `history.listen`
+  // can fire synchronously during a `locationService.push`, before any
+  // pending effect from the same render cycle has run — so updating the refs
+  // in an effect leaves a stale-read window. Assigning during render matches
+  // commit timing and is the established pattern for closure-mirror refs.
+  /* eslint-disable react-hooks/refs -- Intentional: closure-mirror refs must be in sync at commit time, not after effects. */
+  activeTabIdRef.current = activeTabId;
+  hasInteractiveProgressRef.current = hasInteractiveProgress;
+  /* eslint-enable react-hooks/refs */
 
   useEffect(() => {
     const history = locationService.getHistory();
     const unlisten = history.listen((newLocation: { pathname: string }) => {
+      // Skip guide-driven navigations (e.g. "Go there", "Fix this") — they are
+      // not user wandering, and at this moment the just-completed step's
+      // progress flag may not have propagated yet.
+      if (isInteractiveNavigationInProgress()) {
+        return;
+      }
       if (hasInteractiveProgressRef.current) {
         return;
       }

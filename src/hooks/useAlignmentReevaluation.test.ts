@@ -1,5 +1,10 @@
 import { renderHook, act } from '@testing-library/react';
 import { useAlignmentReevaluation } from './useAlignmentReevaluation';
+import {
+  beginInteractiveNavigation,
+  endInteractiveNavigation,
+  __resetInteractiveNavigationForTesting,
+} from '../global-state/interactive-navigation';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -37,6 +42,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   listenCallback = null;
   mockHasProgress.mockResolvedValue(false);
+  __resetInteractiveNavigationForTesting();
 });
 
 // ---------------------------------------------------------------------------
@@ -227,6 +233,27 @@ describe('useAlignmentReevaluation', () => {
       act(() => {
         listenCallback?.({ pathname: '/explore/metrics' });
       });
+
+      expect(panel.reevaluateAlignment).not.toHaveBeenCalled();
+    });
+
+    it('skips reevaluation while an interactive navigation is in progress', async () => {
+      const panel = makePanel();
+      renderHook(() => useAlignmentReevaluation(panel, 'tab-1', { currentUrl: 'guide-a' }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Simulate the navigate-handler tagging a guide-driven push.
+      beginInteractiveNavigation();
+      try {
+        act(() => {
+          listenCallback?.({ pathname: '/explore/metrics' });
+        });
+      } finally {
+        endInteractiveNavigation();
+      }
 
       expect(panel.reevaluateAlignment).not.toHaveBeenCalled();
     });

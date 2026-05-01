@@ -3,6 +3,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { config, locationService } from '@grafana/runtime';
 import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
+import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
 
 export class NavigateHandler {
   constructor(
@@ -88,7 +89,14 @@ export class NavigateHandler {
       // SECURITY: Navigate using validated pathname + original query/fragment.
       // Never push raw data.reftarget — even if the comparison above were bypassed,
       // locationService only receives the validated path.
-      locationService.push(safePath + parsed.search + parsed.hash);
+      // Tag the push so `useAlignmentReevaluation` skips reevaluating: this
+      // navigation is part of the guide flow, not a user wandering off.
+      beginInteractiveNavigation();
+      try {
+        locationService.push(safePath + parsed.search + parsed.hash);
+      } finally {
+        endInteractiveNavigation();
+      }
 
       // After SPA navigation, open a guide if specified
       if (guideParam) {
