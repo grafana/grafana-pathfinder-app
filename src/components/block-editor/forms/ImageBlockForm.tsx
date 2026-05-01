@@ -21,7 +21,7 @@ function isImageBlock(block: JsonBlock): block is JsonImageBlock {
 }
 
 /**
- * Validate a URL string — rejects empty, javascript: URIs, and accepts
+ * Validate a URL string — rejects empty, javascript: and data: URIs, and accepts
  * http/https, protocol-relative, and relative paths (including ../ and nested).
  */
 function isValidUrl(value: string): boolean {
@@ -100,7 +100,7 @@ export function ImageBlockForm({
         </Alert>
       )}
 
-      <Field label="Image URL" description="Full URL to the image" required error={urlError ?? undefined}>
+      <Field label="Image URL" description="Full URL to the image" required invalid={!!urlError} error={urlError ?? undefined}>
         <Input
           value={src}
           onChange={(e) => {
