@@ -186,32 +186,34 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 ## P4 — Assistant handoff and viewer deep link
 
-**Goal.** Grafana Assistant on Cloud can take a finalization payload, perform the App Platform write, and return a working floating-mode viewer link. Assistant on OSS falls through cleanly to `localExport`.
+**Goal.** Per-instance Grafana Assistant integration with the deployed `pathfinder-mcp` succeeds: the agent receives capability-branched, deterministic instructions; the App Platform write performed by Assistant lands and the user clicks through to a working floating-mode viewer link; OSS and non-Grafana clients fall through to `localExport` cleanly and are pointed at the block-editor Import flow as the re-publish path.
 
 **Scope.**
 
-- Teach Grafana Assistant to consume the handoff structure and execute the POST/PUT against `interactiveguides` using its existing namespace-resolution and authenticated-write capabilities.
-- Implement the create-vs-update branching from [`APP-PLATFORM-PUBLISH-HANDOFF.md` — Create and update behavior](./APP-PLATFORM-PUBLISH-HANDOFF.md#create-and-update-behavior): POST for the auto-ID common path, GET-then-PUT only when an explicit `--id` was supplied at create time.
-- Draft/published confirmation prompt — default to draft.
-- Viewer deep link: return `floatingPath` on App Platform success; suppress on `localExport`.
-- OSS fallback: detect absent App Platform and follow `localExport` without offering a link.
-- Verify the existing `doc=api:<id>` resolution path (`module.tsx` → `findDocPage` → `fetchContent`) works for AI-authored resources unchanged.
+- Rewrite `src/cli/mcp/tools/finalize.ts` instructions to a structured `clientGuidance` object keyed by client capability (`grafanaAppPlatform` / `grafanaOss` / `nonGrafanaClient`), each with explicit `appliesWhen`, `steps`, and (where applicable) `errorHandling` and `confirmationPrompt` fields. Replace the prose `instructions[]` with a routing-only preamble.
+- Encode deterministic error-code → action rules (404 → switch to `grafanaOss`; 403 → tell user, offer `localExport`; 409 on PUT → re-GET, confirm, retry once; 5xx/timeout → retry once, then `localExport`; other 4xx → surface verbatim, offer `localExport`).
+- Surface the existing block-editor Import flow (`src/components/block-editor/ImportGuideModal.tsx`) in `localExport.instructions` and in both fallback branches as the user's re-publish path.
+- Verify the `?doc=api:<id>` resolution path works for AI-authored resources unchanged (`src/module.tsx` → `src/utils/find-doc-page.ts` → `fetchContent` `backend-guide:` branch).
+- Capture the cross-doc canonical-`id` consistency snapshot at every boundary.
+- Sync [`APP-PLATFORM-PUBLISH-HANDOFF.md`](./APP-PLATFORM-PUBLISH-HANDOFF.md), [`HOSTED-AUTHORING-MCP.md`](./HOSTED-AUTHORING-MCP.md), and [`docs/developer/MCP_SERVER.md`](../developer/MCP_SERVER.md) with deployed reality (Cloud Run, open + edge mitigations) and add a deployed-logs runbook.
+- Real-instance integration tests: Cloud (Assistant configured per [the per-instance MCP-server docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/)), OSS / aggregator-off, and a non-Grafana client (Cursor or Claude Desktop over stdio).
 
-**Out of scope.** Recommendation-engine parity for custom guides (downstream of CRD work, not this design). CRD extension to round-trip manifest fields.
+**Out of scope.**
 
-**Dependencies.** P0 (resolved 2026-04-28 — green-light, see [spike report](./phases/ai-authoring-0-assistant-spike.md)), P3.
+- **Broad rollout to all Assistant instances via Assistant's default MCP list.** Requires Assistant-team coordination on the write-tool surface from the [P0 spike Handoff](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase). Moved to [P5 — Deferred follow-ups](#p5--deferred-follow-ups).
+- MCP agent UX hardening issues #1–#5 from [`MCP-AGENT-UX-HARDENING.md`](./MCP-AGENT-UX-HARDENING.md) — owned by a separate hardening phase. Issue #6 (deploy/log-inspection discoverability) is incidentally closed by the runbook task in this phase.
+- Recommendation-engine parity for custom guides (downstream of CRD work).
+- CRD extension to round-trip manifest fields.
 
-**Wiring items inherited from P0 (must be addressed in P4 planning):**
+**Dependencies.** P0 (resolved 2026-04-28 — green-light, see [spike report](./phases/ai-authoring-0-assistant-spike.md)), P3. The hosted Cloud Run deploy already exists; P4 redeploys after the instruction rewrite lands.
 
-- **Pick the Assistant write-tool surface.** Assistant has no generic "call this App Platform path with this JSON body and method" tool. P4 must coordinate with the Assistant team and choose among: a Pathfinder-specific publish tool exposed by Assistant; a small generic App Platform write tool in Assistant; or documented reuse of an existing pattern. This is the first concrete decision in P4's plan.
-- **Path is component-shaped, not template-shaped, on the Assistant side.** Assistant builds App Platform paths from `(group, version, namespace, resource, name)`. The handoff already exposes those component fields; P4 should not assume `itemPathTemplate`/`collectionPathTemplate` are consumed verbatim by Assistant. They remain useful for non-Assistant clients.
-- **Confirmation UX is in the loop.** Assistant's per-tool confirmation layer means a publish action will surface a user-visible prompt. Design the handoff so that prompt reads sensibly and the boundary-decision-4 "AI client owns user agency" flow lands on this confirmation rather than an extra one in front of it.
-- **Where does the centrally hosted TS MCP run such that Assistant can reach it?** Assistant connects to a hosted MCP URL, not to the per-instance plugin endpoint. P4 must coordinate with the Assistant team to choose a hosting model (Grafana-org service, similar to `mcp/mcp-data` from `grafana/data-platform-tools`) and to wire Assistant's tool list with that URL. See [`HOSTED-AUTHORING-MCP.md` — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs).
+**Detailed plan.** [`phases/ai-authoring-4-assistant-handoff.md`](./phases/ai-authoring-4-assistant-handoff.md). Tracked under epic [grafana/grafana-pathfinder-app#811](https://github.com/grafana/grafana-pathfinder-app/issues/811); commits on the `p4-assistant-handoff-rescoped` branch reference the epic via `Refs #811`.
 
 **Exit criteria.**
 
-- End-to-end: user asks Assistant on Cloud to create a guide → Assistant authors via MCP → asks for save/publish → POSTs to App Platform → returns floating viewer link → user clicks link → guide opens in Pathfinder.
-- End-to-end on OSS: same flow up to publish, then `localExport` triggers, files written, no viewer link offered.
+- End-to-end on Cloud (per-instance Assistant config): user asks Assistant to create a guide → Assistant authors via MCP → asks draft/published → user confirms → POST to App Platform → Assistant returns absolute floating viewer URL → user clicks → guide opens in Pathfinder.
+- End-to-end on OSS / aggregator-off: same flow up to publish, then `localExport` triggers, files written, user pointed at the block-editor Import flow, no viewer link offered.
+- Non-Grafana client (Cursor or Claude Desktop over stdio): the `nonGrafanaClient` branch fires, no POST attempted, files land in the workspace, block-editor Import path surfaced.
 - Cross-doc consistency check: `id`, `metadata.name`, `?doc=api:<id>` are the same string at every boundary.
 
 ---
@@ -220,6 +222,7 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 Tracked here so they don't get lost; not scoped for the MVP.
 
+- **Broad rollout to all Assistant instances via Assistant's default MCP list (deferred from P4).** P4 ships per-instance Assistant integration via [the public MCP-server config docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/) — operators add the deployed Cloud Run URL on their own instance. Broad rollout, where every Cloud Assistant instance reaches `pathfinder-mcp` by default, requires coordination with the Assistant team on the write-tool surface (see [P0 spike Handoff](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase) — Pathfinder-specific publish tool vs. generic App Platform write tool vs. existing-pattern reuse) and on the default-MCP-list mechanism. Re-evaluate after P4 ships and per-instance integration is exercised in production.
 - Migrate Go MCP runtime tools to the TS package: `list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, `create_guide_template`. These are stateless and could move cleanly. `launch_guide` and the `pending-launch` queue stay in `pkg/plugin/mcp.go` indefinitely — they are coupled to per-instance frontend polling (`src/hooks/usePendingGuideLaunch.ts`) and genuinely belong in-process. Migration retires the hand-maintained Go schema summaries in `pkg/plugin/mcp.go` (`guideSchemas`).
 - `pathfinder-cli apply` batch command — collapse N mutations into one CLI invocation if it becomes useful for human authors. Originally motivated by amortizing Node cold-start across MCP tool calls, which no longer applies once the MCP imports the CLI directly. Re-evaluate against the human-authoring use case.
 - CRD extension to round-trip manifest fields, lighting up recommendation-engine parity for custom guides for both block-editor and AI-authored guides simultaneously.
