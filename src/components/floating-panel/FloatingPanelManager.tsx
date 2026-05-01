@@ -133,10 +133,19 @@ function FloatingPanelInner() {
   useEffect(() => {
     const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string; source?: string }>) => {
       guideOpenInFlightRef.current = true;
-      const { url, title, source } = e.detail;
+      const { url, title, type, source } = e.detail;
+      // Match the sidebar's routing in `handleAutoLaunchTutorial`: learning
+      // journeys must go through `openLearningJourney` to get milestone
+      // navigation and progress tracking. Interactive guides from `?doc=`
+      // fall through to `openDocsPage`, which auto-detects interactive content.
+      const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
       // Record launch source for the implied-0th-step alignment check.
       panel._recordAutoLaunchSource(source ?? null);
-      panel.openDocsPage(url, title);
+      if (openAsLearningJourney) {
+        panel.openLearningJourney(url, title);
+      } else {
+        panel.openDocsPage(url, title);
+      }
     };
 
     document.addEventListener('auto-launch-tutorial', handleAutoLaunch as EventListener);
