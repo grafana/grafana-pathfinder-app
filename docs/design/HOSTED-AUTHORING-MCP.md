@@ -35,6 +35,18 @@ Auth strategy by transport:
 
 Pathfinder is OSS, the authoring tools are publicly available on GitHub, and the agent's authority to write into a Grafana instance is delegated downstream through the App Platform path. There is no new identity provider, rate limiter, or tenant model introduced by the MCP layer itself.
 
+### The MCP server does not write to App Platform — by deployment design
+
+The MCP server is **deployed centrally** (a single Cloud Run service shared across all Grafana instances) and intentionally holds **no per-instance credentials**. The App Platform write is performed downstream by a Grafana-authorized client — Grafana Assistant, the block-editor Import flow, or a `kubectl`-style operator pipeline — using that client's own session against the user's Grafana instance.
+
+This is a load-bearing property, not a phasing artifact:
+
+- The MCP server has no path to obtain a token for an arbitrary Grafana instance. There is no service-account model that scales across customer tenancies, and bouncing user OAuth tokens through Cloud Run would introduce a credential surface this server is not designed to hold.
+- Adding a write tool to the MCP would require either (a) per-instance token configuration shipped from each calling client (UX wart, security surface), (b) federated auth (substantial new work, off-roadmap), or (c) accepting the MCP-must-hold-credentials risk (rejected).
+- The current split — MCP authors, the calling client writes — keeps the OSS / airgapped story intact and lets the hosted endpoint stay open + edge-mitigated rather than identity-gated.
+
+When a calling client cannot perform the write itself (e.g. Grafana Assistant on Cloud today, which lacks a generic "call this App Platform path with this body" tool — see [`AI-AUTHORING-IMPLEMENTATION.md` — P4](./AI-AUTHORING-IMPLEMENTATION.md#p4--assistant-handoff-and-viewer-deep-link)), the resolution is to give that client a write capability, not to move the write into the MCP. Currently exercised resolutions: the block-editor Import flow (manual paste/upload of `content.json`) on every branch, and `localExport` on the OSS / non-Grafana paths.
+
 ## Server responsibilities
 
 The service owns:

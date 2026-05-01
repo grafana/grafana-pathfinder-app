@@ -216,6 +216,8 @@ The split is mechanical; the exit criterion above belongs to P1b.
 - Non-Grafana client (Cursor or Claude Desktop over stdio): the `nonGrafanaClient` branch fires, no POST attempted, files land in the workspace, block-editor Import path surfaced.
 - Cross-doc consistency check: `id`, `metadata.name`, `?doc=api:<id>` are the same string at every boundary.
 
+**Status note (2026-05-01, after first integration tests).** D3 (non-Grafana client) passes end-to-end. D1 (Cloud Assistant) is **partial**: Assistant correctly drives the authoring loop and reads `clientGuidance.grafanaAppPlatform`, then stops at the publish step because it has no generic App Platform write tool, falling through to the block-editor Import flow. This is the [P0 spike](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase) executor gap, not an instruction-quality gap. **The MCP server will not be extended to perform the write itself** — the central Cloud Run deployment holds no per-instance credentials by design (see [HOSTED-AUTHORING-MCP.md — The MCP server does not write to App Platform — by deployment design](./HOSTED-AUTHORING-MCP.md#the-mcp-server-does-not-write-to-app-platform--by-deployment-design)). Closing D1 requires giving Assistant a write capability, drafted in Assistant's tool-pattern (operation enum, scoping field, format hints, endpoint + payload shape, confirmation policy). Tracked as P4 OQ6 in the [phase plan](./phases/ai-authoring-4-assistant-handoff.md).
+
 ---
 
 ## P5 — Deferred follow-ups
