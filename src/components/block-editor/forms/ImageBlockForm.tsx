@@ -33,6 +33,9 @@ function isValidUrl(value: string): boolean {
   if (/^javascript:/i.test(trimmed)) {
     return false;
   }
+  if (/^data:/i.test(trimmed)) {
+    return false;
+  }
   // Accept http/https URLs
   if (/^https?:\/\//i.test(trimmed)) {
     return true;
