@@ -641,6 +641,46 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     lineHeight: 1.4,
   },
 
+  // Alignment paused banner (implied 0th step) — info-blue to match the top
+  // AlignmentPrompt (which uses Alert severity="info"), no icon, with link
+  // back to the top prompt. Distinct from the generic requirements banner
+  // because the paused state is recoverable via the prompt above.
+  '.interactive-section-alignment-banner': {
+    margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
+    padding: '8px 12px',
+    background: theme.colors.info.transparent,
+    border: `1px solid ${theme.colors.info.border}`,
+    borderLeft: `3px solid ${theme.colors.info.main}`,
+    borderRadius: '4px',
+  },
+
+  '.interactive-section-alignment-message': {
+    color: theme.colors.info.text,
+    fontSize: '0.875rem',
+    lineHeight: 1.4,
+  },
+
+  '.interactive-section-alignment-link': {
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    margin: 0,
+    color: theme.colors.info.text,
+    fontSize: 'inherit',
+    fontFamily: 'inherit',
+    fontWeight: theme.typography.fontWeightMedium,
+    textDecoration: 'underline',
+    cursor: 'pointer',
+    '&:hover': {
+      textDecoration: 'none',
+    },
+    '&:focus-visible': {
+      outline: `2px solid ${theme.colors.info.main}`,
+      outlineOffset: '2px',
+      borderRadius: '2px',
+    },
+  },
+
   '.interactive-section-actions': {
     padding: theme.spacing(2),
     borderTop: `1px solid ${theme.colors.border.weak}`,

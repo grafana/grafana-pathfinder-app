@@ -115,7 +115,7 @@ describe('HomePanelRenderer', () => {
       expect(dispatchSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'pathfinder-auto-open-docs',
-          detail: { url: 'bundled:first-dashboard', title: 'Create your first dashboard' },
+          detail: { url: 'bundled:first-dashboard', title: 'Create your first dashboard', source: 'home_page' },
         })
       );
 
@@ -152,7 +152,7 @@ describe('HomePanelRenderer', () => {
       expect(dispatchSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'pathfinder-auto-open-docs',
-          detail: { url: remoteUrl, title: 'Add the Prometheus data source' },
+          detail: { url: remoteUrl, title: 'Add the Prometheus data source', source: 'home_page' },
         })
       );
 

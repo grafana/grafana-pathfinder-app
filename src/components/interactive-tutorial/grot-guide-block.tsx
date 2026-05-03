@@ -217,7 +217,7 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, subHtml, onBac
           const openInSidebar = () => {
             document.dispatchEvent(
               new CustomEvent('pathfinder-auto-open-docs', {
-                detail: { url: href, title, origin: 'grot_guide_result' },
+                detail: { url: href, title, source: 'grot_guide_block' },
               })
             );
           };

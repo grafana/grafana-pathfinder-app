@@ -41,6 +41,14 @@ export const testIds = {
     retryButton: 'docs-panel-retry-button',
   },
 
+  // Alignment prompt (implied 0th step) — Phase 1 auto-recovery
+  alignmentPrompt: {
+    container: 'alignment-prompt-container',
+    confirmButton: 'alignment-prompt-confirm-button',
+    cancelButton: 'alignment-prompt-cancel-button',
+    sectionHint: 'alignment-prompt-section-hint',
+  },
+
   // Context Panel - Recommendations and content
   contextPanel: {
     container: 'context-panel-container',

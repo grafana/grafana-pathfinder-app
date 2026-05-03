@@ -26,6 +26,7 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { useTimeoutManager } from '../utils/timeout-manager';
+import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
@@ -86,7 +87,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     stepId,
     targetAction,
     refTarget,
-    isEligibleForChecking = true,
+    isEligibleForChecking: rawIsEligibleForChecking = true,
     skippable = false,
     stepIndex,
     lazyRender,
@@ -95,6 +96,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     onStepComplete,
     onComplete,
   } = props;
+
+  // Pause requirement checks while an implied-0th-step alignment prompt is
+  // pending — keeps step 1 from racing the user's redirect decision and
+  // showing a redundant "Fix this" alongside the prompt.
+  const isAlignmentPaused = useIsAlignmentPaused();
+  const isEligibleForChecking = rawIsEligibleForChecking && !isAlignmentPaused;
+
   const [fsmState, dispatch] = useReducer(stepReducer, undefined, () => createInitialState({ canSkip: skippable }));
   // Memoize the legacy projection so its identity only changes on real FSM
   // transitions. `toLegacyState` returns a fresh object literal every call, so
@@ -130,6 +138,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // use a stale captured value. This ref always has the current value.
   const isEligibleRef = useRef(isEligibleForChecking);
   isEligibleRef.current = isEligibleForChecking;
+
+  // Same stale-closure rationale as `isEligibleRef`. Tracked separately so the
+  // alignment pause can short-circuit Phase 1 (objectives) explicitly — the
+  // eligibility gate alone only blocks Phase 2/3, which lets a coincidentally
+  // satisfied objective auto-complete the step out from under the prompt.
+  const isAlignmentPausedRef = useRef(isAlignmentPaused);
+  isAlignmentPausedRef.current = isAlignmentPaused;
 
   const timeoutManager = useTimeoutManager();
 
@@ -334,6 +349,29 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     safeDispatch({ type: 'START_CHECK' });
 
     try {
+      // PHASE 0: Honor the alignment pause as a global freeze.
+      //
+      // The implied-0th-step alignment prompt asks the user whether to navigate
+      // to the guide's `startingLocation` before step 1's checks should
+      // produce any UI. `isEligibleForChecking` is already gated against this
+      // pause (see line ~104), but that gate only blocks Phase 2 — and Phase 1
+      // (objectives) runs first. If the user's current page coincidentally
+      // satisfies the objectives selector, Phase 1 would auto-complete the
+      // step and dispatch `SET_COMPLETED` *before* the eligibility gate ever
+      // ran, bypassing the pause entirely (and racing the user's redirect
+      // decision).
+      //
+      // Dispatch a blocked state (rather than just returning) so the existing
+      // "AlignmentPendingContext gate" contract holds — `isEnabled` stays
+      // false while the prompt is up, matching what the requirements-only
+      // path already produces via Phase 2.
+      if (isAlignmentPausedRef.current) {
+        const blockedState = createBlockedState(stepId);
+        safeDispatch(actionFromBaseStepState(blockedState));
+        updateManager(blockedState);
+        return;
+      }
+
       // PHASE 1: Check objectives first (they always win).
       // Same checker as requirements; just no retries and a short timeout — objectives are
       // a snapshot of "is this already done?", not a target to wait for.

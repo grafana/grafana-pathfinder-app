@@ -460,7 +460,7 @@ function ContentWithVariables({
     // Open as a new tab in the sidebar
     document.dispatchEvent(
       new CustomEvent('pathfinder-auto-open-docs', {
-        detail: { url: contentUrl, title, origin: 'content_link' },
+        detail: { url: contentUrl, title, source: 'content_link' },
       })
     );
   }, []);

@@ -4,6 +4,7 @@ import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
 import { useStepChecker } from '../../requirements-manager';
+import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
@@ -562,6 +563,12 @@ export function InteractiveSection({
   // UNIFIED completion calculation - objectives always win (clarification 1, 2)
   const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
   const isCompleted = isCompletedByObjectives || stepsCompleted;
+
+  // Implied-0th-step alignment: when paused, show an inline hint so the user
+  // understands why steps appear inactive — useful when they've scrolled past
+  // the top alignment banner.
+  const isAlignmentPaused = useIsAlignmentPaused();
+  const alignmentStartingLocation = useAlignmentStartingLocation();
 
   // Section completion status tracking (debug logging removed)
 
@@ -1659,6 +1666,30 @@ export function InteractiveSection({
         <div className="interactive-section-requirements-banner">
           <span className="interactive-section-requirements-icon">🔒</span>
           <span className="interactive-section-requirements-message">Requirements not yet met</span>
+        </div>
+      )}
+
+      {/* Implied-0th-step alignment hint: surfaces in every section while a
+          prompt is up, so users who scroll past the top banner still see why
+          steps are inactive. */}
+      {!isCollapsed && isAlignmentPaused && alignmentStartingLocation && (
+        <div className="interactive-section-alignment-banner" data-testid={testIds.alignmentPrompt.sectionHint}>
+          <span className="interactive-section-alignment-message">
+            Steps are paused.{' '}
+            <button
+              type="button"
+              className="interactive-section-alignment-link"
+              onClick={() => {
+                const target = document.querySelector(`[data-testid="${testIds.alignmentPrompt.container}"]`);
+                if (target) {
+                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+            >
+              Open the navigation prompt
+            </button>{' '}
+            to continue.
+          </span>
         </div>
       )}
 

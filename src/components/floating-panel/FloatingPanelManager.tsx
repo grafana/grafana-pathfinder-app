@@ -1,11 +1,12 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
-import { usePendingGuideLaunch } from '../../hooks';
+import { usePendingGuideLaunch, useAlignmentReevaluation } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { coerceLaunchSource } from '../../recovery';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -89,11 +90,14 @@ function FloatingPanelInner() {
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
 
-    // If a guide was handed off from the sidebar (pop-out), open it now
+    // If a guide was handed off from the sidebar (pop-out), open it now.
+    // Tag the source as `floating_panel_dock` (aligned-by-construction) so
+    // the implied-0th-step evaluator doesn't second-guess a guide the user
+    // is already viewing.
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
-      panel.openDocsPage(pendingGuide.url, pendingGuide.title);
+      panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
     }
 
     return () => {
@@ -127,10 +131,23 @@ function FloatingPanelInner() {
 
   // Listen for auto-launch-tutorial events (same as docs-panel)
   useEffect(() => {
-    const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string }>) => {
+    const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string; source?: string }>) => {
       guideOpenInFlightRef.current = true;
-      const { url, title } = e.detail;
-      panel.openDocsPage(url, title);
+      const { url, title, type, source } = e.detail;
+      // Match the sidebar's routing in `handleAutoLaunchTutorial`: learning
+      // journeys must go through `openLearningJourney` to get milestone
+      // navigation and progress tracking. Interactive guides from `?doc=`
+      // fall through to `openDocsPage`, which auto-detects interactive content.
+      const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
+      // Coerce the untrusted event.detail.source to a typed LaunchSource at
+      // the boundary so a typo or unknown literal falls through to the safe
+      // "needs check" default rather than entering the model untyped.
+      const typedSource = coerceLaunchSource(source) ?? undefined;
+      if (openAsLearningJourney) {
+        panel.openLearningJourney(url, title, { source: typedSource });
+      } else {
+        panel.openDocsPage(url, title, { source: typedSource });
+      }
     };
 
     document.addEventListener('auto-launch-tutorial', handleAutoLaunch as EventListener);
@@ -179,6 +196,8 @@ function FloatingPanelInner() {
       panelModeManager.setMode('sidebar');
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
+
+  useAlignmentReevaluation(panel, activeTabId, activeTab);
   const guideUrl = isEditorTab ? undefined : activeTab?.baseUrl || activeTab?.currentUrl;
 
   const handleSwitchToSidebar = useCallback(() => {
@@ -226,7 +245,12 @@ function FloatingPanelInner() {
           <BlockEditor />
         </Suspense>
       ) : (
-        <FloatingPanelContent content={content} />
+        <FloatingPanelContent
+          content={content}
+          pendingAlignment={activeTab?.pendingAlignment}
+          onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
+          onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
+        />
       )}
     </FloatingPanel>
   );

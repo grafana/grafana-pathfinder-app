@@ -18,6 +18,7 @@ import {
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { LearningJourneyTab } from '../../types/content-panel.types';
+import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 interface UseLinkClickHandlerProps {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -25,8 +26,8 @@ interface UseLinkClickHandlerProps {
   theme: GrafanaTheme2;
   model: {
     loadTabContent: (tabId: string, url: string) => void;
-    openLearningJourney: (url: string, title: string) => void;
-    openDocsPage?: (url: string, title: string) => void;
+    openLearningJourney: (url: string, title: string, options?: OpenLearningJourneyOptions) => void;
+    openDocsPage?: (url: string, title: string, options?: OpenDocsOptions) => void;
     getActiveTab: () => LearningJourneyTab | null;
     navigateToNextMilestone: () => void;
     navigateToPreviousMilestone: () => void;
@@ -34,6 +35,13 @@ interface UseLinkClickHandlerProps {
     canNavigatePrevious: () => boolean;
   };
 }
+
+// All link clicks intercepted by this hook are sourced from rendered guide
+// content — the user is reading docs and clicking an embedded link. This
+// surface needs the alignment check (it's in NEEDS_ALIGNMENT_CHECK_SOURCES)
+// since clicking a link in the docs panel doesn't guarantee the user is on
+// the right page for the new guide.
+const CONTENT_LINK_OPTS = { source: 'content_link' as const };
 
 /**
  * SECURITY: Validate URL is from a trusted Grafana source
@@ -116,9 +124,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             });
             const linkText = anchor.textContent?.trim() || 'interactive guide';
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-              (model as any).openDocsPage(href, linkText);
+              model.openDocsPage(href, linkText, CONTENT_LINK_OPTS);
             } else {
-              model.openLearningJourney(href, linkText);
+              model.openLearningJourney(href, linkText, CONTENT_LINK_OPTS);
             }
             reportAppInteraction(
               UserInteraction.OpenExtraResource,
@@ -193,13 +201,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Determine if it's a learning path or regular docs/tutorials
             if (isLearningJourney) {
-              model.openLearningJourney(fullUrl, linkText);
+              model.openLearningJourney(fullUrl, linkText, CONTENT_LINK_OPTS);
             } else {
               // For regular docs and guides, use openDocsPage if available, otherwise openLearningJourney
               if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-                (model as any).openDocsPage(fullUrl, linkText);
+                model.openDocsPage(fullUrl, linkText, CONTENT_LINK_OPTS);
               } else {
-                model.openLearningJourney(fullUrl, linkText);
+                model.openLearningJourney(fullUrl, linkText, CONTENT_LINK_OPTS);
               }
             }
 
@@ -229,9 +237,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Open interactive learning content in app
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-              (model as any).openDocsPage(resolvedUrl, linkText);
+              model.openDocsPage(resolvedUrl, linkText, CONTENT_LINK_OPTS);
             } else {
-              model.openLearningJourney(resolvedUrl, linkText);
+              model.openLearningJourney(resolvedUrl, linkText, CONTENT_LINK_OPTS);
             }
 
             // Track analytics for interactive learning link
@@ -340,10 +348,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           if (isValidGrafanaContentUrl(fullUrl)) {
             // Open side journey links in new app tabs (as docs pages)
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-              (model as any).openDocsPage(fullUrl, linkTitle);
+              model.openDocsPage(fullUrl, linkTitle, CONTENT_LINK_OPTS);
             } else {
               // Fallback to learning journey handler
-              model.openLearningJourney(fullUrl, linkTitle);
+              model.openLearningJourney(fullUrl, linkTitle, CONTENT_LINK_OPTS);
             }
 
             // Track analytics for side journey clicks as extra resource
@@ -426,7 +434,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Check if URL passes security validation for in-app opening
           if (isValidGrafanaContentUrl(fullUrl)) {
-            model.openLearningJourney(fullUrl, linkTitle);
+            model.openLearningJourney(fullUrl, linkTitle, CONTENT_LINK_OPTS);
 
             // Track analytics for related journey clicks
             reportAppInteraction(

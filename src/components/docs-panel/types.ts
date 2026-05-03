@@ -6,6 +6,35 @@ import { RefObject } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { LearningJourneyTab, PackageOpenInfo } from '../../types/content-panel.types';
 import { RawContent } from '../../types/content.types';
+import type { LaunchSource } from '../../recovery';
+
+/**
+ * Options for opening a guide or docs page in a tab.
+ *
+ * `source` should be supplied by every call site so the implied-0th-step
+ * alignment evaluator can classify the launch correctly. Omitting it means
+ * the evaluator falls through to "needs check" — which is safe by default
+ * (it only surfaces a prompt the user can dismiss) but tends to mask bugs:
+ * a missed source produces spurious prompts that are hard to reproduce.
+ *
+ * Prefer `options.source` over the legacy `_recordAutoLaunchSource()` flag
+ * for new code. The flag is retained for callers that cross a callback
+ * boundary (e.g. `ContextPanel`'s callbacks have a fixed signature owned by
+ * a third party) and for events whose `source` is supplied by a remote
+ * dispatcher.
+ */
+export interface OpenDocsOptions {
+  source?: LaunchSource;
+  /** Skip the "Ready to begin?" gate (devtools / dev-mode preview). */
+  skipReadyToBegin?: boolean;
+  /** Optional package context for bundled or remote package guides. */
+  packageInfo?: PackageOpenInfo;
+}
+
+/** @see OpenDocsOptions */
+export interface OpenLearningJourneyOptions {
+  source?: LaunchSource;
+}
 
 /**
  * Operations interface for docs-panel model
@@ -17,10 +46,10 @@ import { RawContent } from '../../types/content.types';
  */
 export interface DocsPanelModelOperations {
   /** Open a learning journey in a new tab */
-  openLearningJourney(url: string, title?: string): Promise<string>;
+  openLearningJourney(url: string, title?: string, options?: OpenLearningJourneyOptions): Promise<string>;
 
   /** Open a docs page in a new tab */
-  openDocsPage(url: string, title?: string, skipReadyToBegin?: boolean, packageInfo?: PackageOpenInfo): Promise<string>;
+  openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string>;
 
   /** Load content for a learning path tab */
   loadTabContent(tabId: string, url: string): Promise<void>;
@@ -59,6 +88,21 @@ export interface DocsPanelModelOperations {
 
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;
+
+  /**
+   * Record the launch source for the next `loadDocsTabContent` call so the
+   * implied-0th-step evaluator classifies it correctly. Consumed once by the
+   * loader; callers that bypass `openDocsPage`/`openLearningJourney` (e.g.
+   * internal reloads from `useContentReset`) must set this explicitly or
+   * risk a spurious alignment prompt.
+   *
+   * @deprecated Prefer `openDocsPage(url, title, { source })` /
+   * `openLearningJourney(url, title, { source })`. Retained for callers that
+   * cross a callback boundary owned elsewhere (e.g. `ContextPanel`'s
+   * recommender callbacks) and for `loadDocsTabContent` callers that don't
+   * go through `openDocsPage` (e.g. `useContentReset`'s reload path).
+   */
+  _recordAutoLaunchSource(source: LaunchSource | null): void;
 }
 
 /**

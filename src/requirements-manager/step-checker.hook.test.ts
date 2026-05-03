@@ -1,13 +1,37 @@
+import type React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
+// Raise the per-test timeout from jest's 5000ms default. This file exercises
+// real timer-driven fix flows (`timeoutManager.setTimeout(fix-recheck-…)`,
+// `timeoutManager.setTimeout(skip-reactive-check-…)`, the lazy
+// `import('../interactive-engine')` for NavigationManager) that can each
+// account for 1-2s on a constrained CI worker. The 5s default leaves no
+// headroom and produces a cascading "Cannot read properties of null"
+// failure mode where the first test times out and shared NavigationManager
+// mock state corrupts every subsequent test in the file.
+jest.setTimeout(15000);
+
 // Mock requirements checker utility
 jest.mock('./requirements-checker.utils', () => ({
   checkRequirements: jest.fn(),
 }));
+
+// The alignment-pending context is a Tier 1 dependency the hook reads to decide
+// whether to gate `isEligibleForChecking`. Mock it explicitly so the default
+// behaviour (paused=false) is deterministic; the "AlignmentPendingContext
+// gate" describe block overrides the mock per-test.
+jest.mock('../global-state/alignment-pending-context', () => ({
+  AlignmentPendingContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
+  useIsAlignmentPaused: jest.fn(() => false),
+  useAlignmentStartingLocation: jest.fn(() => null),
+}));
+
+const mockUseIsAlignmentPaused = jest.requireMock('../global-state/alignment-pending-context')
+  .useIsAlignmentPaused as jest.Mock;
 
 // Mock interactive-engine to control NavigationManager (lazy-imported) and useInteractiveElements
 const mockExpandParentNavigationSection = jest.fn().mockResolvedValue(true);
@@ -84,55 +108,103 @@ beforeEach(() => {
 });
 
 // =============================================================================
-// EXISTING: heartbeat behavior (preserved verbatim except for shared mocks)
+// REGRESSION: heartbeat re-check loop — locks the runtime behavior of the
+// `useEffect` at step-checker.hook.ts:823-868 that periodically rechecks
+// fragile DOM-state requirements (`navmenu-open`, `exists-reftarget`,
+// `on-page:`) and reverts a step from enabled back to blocked when the
+// underlying state drifts.
+//
+// The reducer transition itself (SET_ERROR → blocked) is covered in
+// `step-state.test.ts`, and the per-fix-type dispatch tests below cover
+// `checkStep` end-to-end with a manual call. Neither exercises the
+// scheduling effect — without this test, the heartbeat config gating, the
+// fragility string-match, the `state.isCompleted || !state.isEnabled`
+// short-circuit, and the cleanup-on-disable path have no regression cover
+// and could be silently broken by future edits.
+//
+// History: a real-timer + `waitFor` version of this test (removed in
+// f3405b35) flaked under `--maxWorkers 4` because the mount-effect's
+// auto-checkStep raced the manual checkStep, the 200ms post-enable
+// settling guard short-circuited the second call, and the 3s waitFor
+// timed out under contention. Fake timers + `advanceTimersByTimeAsync`
+// remove all three races: we control `Date.now`, the heartbeat's
+// `setTimeout`, and the microtask flush in a single deterministic step.
 // =============================================================================
-describe('useStepChecker heartbeat', () => {
-  let callCount: number;
+describe('useStepChecker heartbeat (regression)', () => {
+  let originalHeartbeat: typeof INTERACTIVE_CONFIG.requirements.heartbeat;
 
   beforeEach(() => {
-    callCount = 0;
-
-    mockCheckRequirements.mockImplementation(({ requirements }) => {
-      // Toggle behavior: first call passes, second call fails for nav fragile case
-      if (requirements?.includes('navmenu-open')) {
-        callCount++;
-        if (callCount === 1) {
-          return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
-        }
-        return Promise.resolve({
-          pass: false,
-          requirements: requirements || '',
-          error: [{ requirement: 'navmenu-open', pass: false, error: 'Navigation menu not detected' }],
-        });
-      }
-      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
-    });
-
-    (INTERACTIVE_CONFIG as any).requirements.heartbeat.enabled = true;
-    (INTERACTIVE_CONFIG as any).requirements.heartbeat.intervalMs = 50;
-    (INTERACTIVE_CONFIG as any).requirements.heartbeat.watchWindowMs = 200;
+    // Snapshot/restore so heartbeat tweaks don't leak into other describe blocks.
+    originalHeartbeat = { ...INTERACTIVE_CONFIG.requirements.heartbeat };
+    (INTERACTIVE_CONFIG as any).requirements.heartbeat = {
+      enabled: true,
+      onlyForFragile: true,
+      intervalMs: 50,
+      watchWindowMs: 5000,
+    };
   });
 
-  it('reverts enabled step to disabled if fragile requirement becomes false', async () => {
-    const { result } = renderHook(() =>
-      useStepChecker({
+  afterEach(() => {
+    (INTERACTIVE_CONFIG as any).requirements.heartbeat = originalHeartbeat;
+  });
+
+  it('reverts isEnabled from true to false when a fragile requirement (navmenu-open) becomes false on a heartbeat tick', async () => {
+    jest.useFakeTimers();
+    try {
+      // Phase 1: requirement passes — step settles to enabled.
+      mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
+
+      const { result } = renderHook(() =>
+        useStepChecker({
+          requirements: 'navmenu-open',
+          stepId: 'heartbeat-step',
+          isEligibleForChecking: true,
+        })
+      );
+
+      // Flush mount-effect microtasks and the lazy `import('../interactive-engine')`
+      // promise so navigationManagerRef is set before checkStep runs.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await result.current.checkStep();
+      });
+
+      expect(result.current.isEnabled).toBe(true);
+
+      // Phase 2: flip the mock so the next check fails — simulating the
+      // navigation menu closing after the step was enabled. This is exactly
+      // the drift the heartbeat is designed to detect.
+      mockCheckRequirements.mockResolvedValue({
+        pass: false,
         requirements: 'navmenu-open',
-        objectives: undefined,
-        hints: undefined,
-        stepId: 'test-step',
-        isEligibleForChecking: true,
-      })
-    );
+        error: [
+          {
+            requirement: 'navmenu-open',
+            pass: false,
+            error: 'Navigation menu not detected',
+            canFix: false,
+          },
+        ],
+      });
 
-    await act(async () => {
-      await result.current.checkStep();
-    });
+      // Advance past:
+      //   - the heartbeat's initial delay (intervalMs + 500ms = 550ms)
+      //   - the 200ms post-enable settling guard inside checkStep
+      // → the first heartbeat tick fires, calls checkStepRef.current(),
+      //   the requirement fails, the reducer dispatches SET_ERROR, and
+      //   isEnabled flips back to false.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(800);
+      });
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 80));
-    });
-
-    expect(result.current.isEnabled).toBe(false);
+      expect(result.current.isEnabled).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -659,4 +731,116 @@ describe('useStepChecker return shape (regression)', () => {
     expect(result.current.canFixRequirement).toBe(true);
     expect(typeof result.current.fixRequirement).toBe('function');
   });
+});
+
+// =============================================================================
+// AlignmentPendingContext gating — pauses checks while the implied 0th step
+// is pending so step 1 can't race the user's redirect decision.
+// =============================================================================
+describe('useStepChecker — AlignmentPendingContext gate', () => {
+  afterEach(() => {
+    // Reset the mock to its default so pre-existing tests are not affected.
+    mockUseIsAlignmentPaused.mockReturnValue(false);
+  });
+
+  it('does not call checkRequirements when the context returns isPending: true', async () => {
+    mockUseIsAlignmentPaused.mockReturnValue(true);
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
+
+    const { result } = renderHook(() =>
+      useStepChecker({
+        requirements: 'navmenu-open',
+        stepId: 'paused-step',
+        isEligibleForChecking: true,
+      })
+    );
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+
+    expect(mockCheckRequirements).not.toHaveBeenCalled();
+    expect(result.current.isEnabled).toBe(false);
+  });
+
+  it('runs checkRequirements normally when the context returns isPending: false', async () => {
+    mockUseIsAlignmentPaused.mockReturnValue(false);
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'navmenu-open', error: [] });
+
+    const { result } = renderHook(() =>
+      useStepChecker({
+        requirements: 'navmenu-open',
+        stepId: 'unpaused-step',
+        isEligibleForChecking: true,
+      })
+    );
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+
+    expect(mockCheckRequirements).toHaveBeenCalled();
+  });
+
+  // Regression for the objectives-bypass bug: the alignment pause used to
+  // gate only `isEligibleForChecking` (Phase 2). But `checkStep` runs
+  // Phase 1 (objectives) *before* the eligibility gate — so a step whose
+  // `objectives` selector happens to match the user's current page
+  // would auto-complete (`SET_COMPLETED`, `completionReason: 'objectives'`)
+  // and fire `onStepComplete`/`onComplete` while the alignment prompt was
+  // still up, bypassing the intended pause and racing the user's redirect
+  // decision.
+  //
+  // The fix adds a Phase 0 alignment-pause guard at the top of `checkStep`
+  // that short-circuits to `blocked` regardless of which phases would
+  // otherwise run. This test locks that behaviour.
+  it('does NOT auto-complete via objectives when paused, even if the objectives selector passes', async () => {
+    mockUseIsAlignmentPaused.mockReturnValue(true);
+    // Both objectives and requirements checks would pass if reached — the
+    // alignment-pause guard must short-circuit before either runs.
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'exists-reftarget', error: [] });
+
+    const onStepComplete = jest.fn();
+    const onComplete = jest.fn();
+
+    const { result } = renderHook(() =>
+      useStepChecker({
+        objectives: 'exists-reftarget',
+        requirements: 'exists-reftarget',
+        targetAction: 'button',
+        refTarget: 'submit',
+        stepId: 'paused-objectives-step',
+        isEligibleForChecking: true,
+        onStepComplete,
+        onComplete,
+      })
+    );
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+
+    // The objectives check must not have been dispatched to the underlying
+    // requirements utility — Phase 0 short-circuits before Phase 1.
+    expect(mockCheckRequirements).not.toHaveBeenCalled();
+    // And critically: the step is NOT completed and the auto-complete
+    // notifications never fired.
+    expect(result.current.isCompleted).toBe(false);
+    expect(result.current.completionReason).not.toBe('objectives');
+    expect(onStepComplete).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    // Per the existing gate contract, `isEnabled` is false while paused.
+    expect(result.current.isEnabled).toBe(false);
+  });
+
+  // The end-to-end "Continue here → step-1 Fix this" flow (dismiss the
+  // alignment prompt → eligibility gate flips → step-1's requirement
+  // checker re-runs and exposes `fixRequirement`) lives in E2E rather
+  // than here. A unit-level version was tried but added ~1.5s of
+  // `waitFor`-driven retry-cycle wall time, which on the constrained CI
+  // runner pushed the first pre-existing test in this file past the
+  // 5000ms per-test timeout — once that test timed out, the cascading
+  // `Cannot read properties of null` errors took down the rest of the
+  // suite. The two unit tests above cover the gate's pause/unpause
+  // semantics deterministically; an E2E covers the full UX flow.
 });

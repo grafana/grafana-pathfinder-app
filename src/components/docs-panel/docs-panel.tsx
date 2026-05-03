@@ -48,7 +48,8 @@ import {
   UserInteraction,
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
-import { tabStorage, useUserStorage, interactiveStepStorage } from '../../lib/user-storage';
+import { tabStorage, useUserStorage } from '../../lib/user-storage';
+import { useAlignmentReevaluation } from '../../hooks';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 import {
@@ -74,7 +75,16 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { config, getAppEvents } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
+import {
+  coerceLaunchSource,
+  evaluateAlignment,
+  pathMatchesStartingLocation,
+  resolveStartingLocation,
+  type LaunchSource,
+} from '../../recovery';
+import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
+import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
@@ -84,7 +94,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
-import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop } from './components';
+import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop, AlignmentPrompt } from './components';
 // Import extracted utilities
 import {
   isDocsLikeTab,
@@ -108,7 +118,7 @@ import {
   PackageOpenInfo,
 } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
-import type { DocsPanelModelOperations } from './types';
+import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
@@ -121,6 +131,37 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * after toggle off → on) starts with the guard unset and can restore tabs.
    */
   private _hasRestoredTabs = false;
+
+  /**
+   * Transient launch-source carrier for the implied-0th-step alignment check.
+   *
+   * Set immediately before a `loadDocsTabContent` call so the loader can read
+   * it after content fetch and classify the launch. There are two ways to
+   * populate it:
+   *
+   *   1. Preferred: pass `{ source }` to `openDocsPage` /
+   *      `openLearningJourney`. The wrapper records the source for you,
+   *      keeping the contract visible at the call site.
+   *   2. Legacy: call `_recordAutoLaunchSource(source)` directly, then call
+   *      `openDocsPage` / `openLearningJourney` / `loadDocsTabContent`. Used
+   *      where (a) a callback signature can't carry the source (e.g.
+   *      `ContextPanel`'s recommender callbacks), or (b) `loadDocsTabContent`
+   *      is called without going through the public open methods (e.g.
+   *      `useContentReset`'s reload path).
+   *
+   * Mirrors the consume-once pattern in `sidebarState.consumePendingOpenSource`.
+   */
+  private _pendingLaunchSource: LaunchSource | null = null;
+
+  public _recordAutoLaunchSource(source: LaunchSource | null): void {
+    this._pendingLaunchSource = source;
+  }
+
+  private _consumeAutoLaunchSource(): LaunchSource | null {
+    const s = this._pendingLaunchSource;
+    this._pendingLaunchSource = null;
+    return s;
+  }
 
   public get renderBeforeActivation(): boolean {
     return true;
@@ -141,9 +182,17 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     ];
 
     const contextPanel = new ContextPanel(
-      (url: string, title: string) => this.openLearningJourney(url, title),
-      (url: string, title: string, packageInfo?: PackageOpenInfo) =>
-        this.openDocsPage(url, title, undefined, packageInfo),
+      (url: string, title: string) => {
+        // Recommender is aligned-by-construction (URL-filtered guide list).
+        // Tag the open so the implied-0th-step alignment evaluator skips
+        // it; without this the source would consume as null and an
+        // unrelated `home_page` source previously stashed could leak
+        // through, prompting on a recommender click.
+        return this.openLearningJourney(url, title, { source: 'recommender' });
+      },
+      (url: string, title: string, packageInfo?: PackageOpenInfo) => {
+        return this.openDocsPage(url, title, { source: 'recommender', packageInfo });
+      },
       () => this.openEditorTab()
     );
 
@@ -201,6 +250,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
       if (shouldUseDocsLoader(activeTab)) {
+        // Tag the loader call so the implied-0th-step evaluator sees
+        // `browser_restore` (an aligned-by-construction source) instead of an
+        // undefined source. Without this, a restored tab whose path no longer
+        // matches its guide's `startingLocation` would incorrectly trigger the
+        // alignment prompt — second-guessing a user mid-tutorial, which is
+        // exactly what `browser_restore` is meant to suppress.
+        //
+        // We use the legacy flag pattern here (not `openDocsPage`'s options)
+        // because we are calling `loadDocsTabContent` directly to populate
+        // an already-existing restored tab — going through `openDocsPage`
+        // would create a duplicate tab.
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use (see comment above)
+        this._recordAutoLaunchSource('browser_restore');
         this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       } else {
         this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
@@ -238,7 +300,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  public async openLearningJourney(url: string, title?: string): Promise<string> {
+  public async openLearningJourney(url: string, title?: string, options?: OpenLearningJourneyOptions): Promise<string> {
+    // Honour an explicit options.source by recording it first, so any
+    // legacy stash is overwritten and we have a single source of truth for
+    // the drain below.
+    if (options?.source) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
+      this._recordAutoLaunchSource(options.source);
+    }
+    // Drain any auto-launch source that the listener (or options.source above)
+    // recorded before branching here. Learning journeys go through
+    // `loadTabContent`, which never consumes `_pendingLaunchSource`, so
+    // without this the value would leak to the next `loadDocsTabContent`
+    // call (e.g. a subsequent recommender or tab-restore open) and
+    // contaminate its alignment evaluation. Until learning journeys grow
+    // their own implied-0th-step logic, we just drop the value.
+    this._consumeAutoLaunchSource();
+
     const finalTitle = title || 'Learning path';
     const tabId = this.generateTabId();
 
@@ -385,6 +463,162 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   private findCurrentMilestoneIndex(milestones: Array<{ url: string }>, currentUrl: string): number {
     const index = milestones.findIndex((m) => m.url === currentUrl);
     return index >= 0 ? index + 1 : 0;
+  }
+
+  /**
+   * Confirm the implied-0th-step alignment prompt. Navigates to the guide's
+   * `startingLocation` and clears the pending state so step 1 can mount.
+   */
+  public async confirmAlignment(tabId: string): Promise<void> {
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    const pending = tab?.pendingAlignment;
+    if (!tab || !pending) {
+      return;
+    }
+
+    reportAppInteraction(UserInteraction.AlignmentPromptConfirmed, {
+      guide_url: tab.baseUrl || tab.currentUrl || '',
+      guide_title: tab.title,
+      launch_source: pending.launchSource,
+      current_path: pending.currentPath,
+      starting_location: pending.startingLocation,
+      latency_ms: Date.now() - pending.decidedAt,
+    });
+
+    // Tag this push as a guide-driven navigation so `useAlignmentReevaluation`'s
+    // `history.listen` callback (which fires synchronously during `push`) skips
+    // its own clear path. Without this tag, the listener observes the now-aligned
+    // pathname, calls `reevaluateAlignment`, and silently clears
+    // `pendingAlignment` BEFORE we do — flipping the AlignmentPendingContext
+    // gate off while the route transition is still in flight. Step-1's checker
+    // then runs against a pre-transition DOM and may flash a spurious
+    // "Fix this" / "waiting for element" state.
+    //
+    // The flag pair is the structural fix; the prior 100ms `setTimeout` was a
+    // band-aid that masked the same race on most devices.
+    //
+    // The pendingAlignment clear lives in `finally` so it runs whether the
+    // push succeeded or threw. We've already fired the
+    // `AlignmentPromptConfirmed` telemetry above — leaving the prompt
+    // visible after a thrown push would be inconsistent with the recorded
+    // event and would force the user to click "Continue here" separately
+    // to dismiss a prompt for an action they already confirmed. The
+    // ordering (endInteractiveNavigation before setState) preserves the
+    // listener-race protection: by the time the gate flips off via
+    // setState, the synchronous push (and its synchronous `history.listen`
+    // callback) has already settled.
+    beginInteractiveNavigation();
+    try {
+      locationService.push(pending.startingLocation);
+    } finally {
+      endInteractiveNavigation();
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
+      });
+    }
+  }
+
+  /**
+   * Dismiss the implied-0th-step alignment prompt without navigating. Step 1
+   * mounts and the existing `on-page` `Fix this` will fire if the guide
+   * requires it.
+   */
+  public dismissAlignment(tabId: string): void {
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    const pending = tab?.pendingAlignment;
+    if (!tab || !pending) {
+      return;
+    }
+
+    reportAppInteraction(UserInteraction.AlignmentPromptDismissed, {
+      guide_url: tab.baseUrl || tab.currentUrl || '',
+      guide_title: tab.title,
+      launch_source: pending.launchSource,
+      current_path: pending.currentPath,
+      starting_location: pending.startingLocation,
+      latency_ms: Date.now() - pending.decidedAt,
+    });
+
+    this.setState({
+      tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
+    });
+  }
+
+  /**
+   * Re-evaluate alignment for a tab on a location change. Sets/clears
+   * `pendingAlignment` based on whether the user's new path still matches
+   * the guide's `startingLocation`. Caller is responsible for the "user
+   * hasn't made progress yet" gate; this method just compares paths.
+   *
+   * Source classification is bypassed (not at launch time anymore) — any
+   * misalignment during the no-progress phase prompts.
+   */
+  public reevaluateAlignment(tabId: string, currentPath: string): void {
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    // Only re-evaluate tabs with loaded content; skip recommendations / blank tabs.
+    if (!tab || !tab.content) {
+      return;
+    }
+
+    const guideUrl = tab.baseUrl || tab.currentUrl;
+    const startingLocation = resolveStartingLocation(guideUrl, tab.packageInfo?.packageManifest);
+    if (!startingLocation) {
+      return;
+    }
+
+    const isAligned = pathMatchesStartingLocation(currentPath, startingLocation);
+    const currentlyPending = !!tab.pendingAlignment;
+
+    if (isAligned && currentlyPending) {
+      // User navigated to (or into) the starting location — clear silently.
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
+      });
+      return;
+    }
+
+    if (!isAligned && !currentlyPending) {
+      // User drifted away from a previously-aligned start. Surface the prompt.
+      const next = {
+        startingLocation,
+        currentPath,
+        launchSource: 'location_change',
+        decidedAt: Date.now(),
+      };
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: next } : t)),
+      });
+      reportAppInteraction(UserInteraction.AlignmentPromptShown, {
+        guide_url: guideUrl,
+        guide_title: tab.title,
+        launch_source: next.launchSource,
+        current_path: currentPath,
+        starting_location: startingLocation,
+      });
+      return;
+    }
+
+    if (!isAligned && currentlyPending && tab.pendingAlignment!.currentPath !== currentPath) {
+      // User wandered between misaligned pages while the prompt was already
+      // showing. Don't re-fire the `alignment_prompt_shown` telemetry (the
+      // user has been seeing the prompt the whole time), but do refresh
+      // `currentPath` and `decidedAt` so that:
+      //   - if they later confirm/dismiss, the telemetry payload reflects the
+      //     path they were on when they decided (not where they were when the
+      //     prompt first appeared);
+      //   - `latency_ms` measures responsiveness since the most recent surface
+      //     of the prompt's relevance, not since the original launch — which
+      //     could be minutes ago after they explored unrelated pages.
+      const updated = {
+        ...tab.pendingAlignment!,
+        currentPath,
+        decidedAt: Date.now(),
+      };
+      this.setState({
+        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: updated } : t)),
+      });
+    }
+    // Aligned-and-not-pending is a no-op.
   }
 
   public closeTab(tabId: string) {
@@ -557,12 +791,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.saveTabsToStorage();
   }
 
-  public async openDocsPage(
-    url: string,
-    title?: string,
-    skipReadyToBegin?: boolean,
-    packageInfo?: PackageOpenInfo
-  ): Promise<string> {
+  public async openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string> {
+    const { source, skipReadyToBegin, packageInfo } = options ?? {};
+
+    // Make the launch source explicit at the call site if provided. This
+    // narrows the surface area of the legacy `_recordAutoLaunchSource` flag —
+    // a bug where a caller forgot to record before invoking this method
+    // would now manifest as a missing `options.source` (visible in code
+    // review) instead of a silent default-to-"needs-check".
+    if (source) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
+      this._recordAutoLaunchSource(source);
+    }
+
     const finalTitle = title || 'Documentation';
     const tabId = this.generateTabId();
 
@@ -616,6 +857,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({ tabs: updatedTabs });
 
     try {
+      const launchSource = this._consumeAutoLaunchSource();
       const packageInfo = packageInfoArg ?? this.state.tabs.find((t) => t.id === tabId)?.packageInfo;
       const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
 
@@ -627,6 +869,25 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         const pathContext = fetchedContent.metadata.learningJourney
           ? { learningJourney: fetchedContent.metadata.learningJourney }
           : undefined;
+
+        // Implied 0th step: decide whether to prompt the user to navigate to
+        // the guide's declared starting location before step 1 begins.
+        const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
+        const currentPath = locationService.getLocation().pathname;
+        const evaluation = evaluateAlignment({
+          currentPath,
+          startingLocation,
+          launchSource: launchSource ?? undefined,
+        });
+        const pendingAlignment =
+          evaluation.shouldPrompt && startingLocation
+            ? {
+                startingLocation,
+                currentPath,
+                launchSource: launchSource ?? 'unknown',
+                decidedAt: Date.now(),
+              }
+            : undefined;
 
         const finalUpdatedTabs = this.state.tabs.map((t) =>
           t.id === tabId
@@ -644,10 +905,25 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                       ? 'interactive'
                       : t.type,
                 pathContext,
+                pendingAlignment,
               }
             : t
         );
+        // Capture the title from the freshly-built tab BEFORE setState so the
+        // telemetry payload doesn't depend on the post-setState state shape
+        // (defensive against future async/batched setState behaviour).
+        const finalTab = finalUpdatedTabs.find((t) => t.id === tabId);
         this.setState({ tabs: finalUpdatedTabs });
+
+        if (pendingAlignment) {
+          reportAppInteraction(UserInteraction.AlignmentPromptShown, {
+            guide_url: url,
+            guide_title: finalTab?.title ?? '',
+            launch_source: pendingAlignment.launchSource,
+            current_path: pendingAlignment.currentPath,
+            starting_location: pendingAlignment.startingLocation,
+          });
+        }
 
         // Save tabs to storage after content is loaded
         this.saveTabsToStorage();
@@ -746,9 +1022,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     queueCount: badgeCelebrationQueueCount,
     onDismiss: handleDismissGlobalCelebration,
   } = useBadgeCelebrationQueue();
-
-  // Interactive progress state - shows reset button when user has completed steps
-  const [hasInteractiveProgress, setHasInteractiveProgress] = React.useState(false);
 
   const {
     isActive: isSessionActive,
@@ -912,8 +1185,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
   React.useEffect(() => {
     const handleAutoOpen = (event: Event) => {
-      const customEvent = event as CustomEvent<{ url: string; title: string; origin: string }>;
-      const { url, title } = customEvent.detail;
+      const customEvent = event as CustomEvent<{ url: string; title: string; source?: string }>;
+      const { url, title, source } = customEvent.detail;
+
+      // Coerce the untrusted event.detail.source to a typed LaunchSource at
+      // the boundary. Unknown literals fall through to `null` ("needs check"),
+      // which is the safer default than passing typo'd strings into the model.
+      const typedSource = coerceLaunchSource(source);
 
       // Always create a new tab for each intercepted link
       // Call the model method directly to ensure new tabs are created
@@ -923,9 +1201,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
 
       if (isLearningJourney) {
-        model.openLearningJourney(url, title);
+        model.openLearningJourney(url, title, { source: typedSource ?? undefined });
       } else {
-        model.openDocsPage(url, title);
+        model.openDocsPage(url, title, { source: typedSource ?? undefined });
       }
     };
 
@@ -952,40 +1230,27 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
 
-  // Check for interactive progress when content changes to show reset button
-  // MUST use currentUrl || baseUrl (not content.url) to match getContentKey() in interactive sections.
-  // content.url includes "/content.json" suffix which causes a key mismatch with saved progress.
-  const progressKey = activeTab?.currentUrl || activeTab?.baseUrl || '';
+  // STABILITY: Memoize the AlignmentPendingContext value keyed on the two
+  // underlying primitives so consumers (`useStepChecker` in every interactive
+  // section) don't re-render on every parent render. React context uses
+  // referential equality, so an inline object literal here cascades into
+  // re-evaluating step eligibility, recreating `checkStep`, and
+  // re-subscribing event listeners across all steps in long guides.
+  const alignmentPendingIsPending = !!activeTab?.pendingAlignment;
+  const alignmentPendingStartingLocation = activeTab?.pendingAlignment?.startingLocation ?? null;
+  const alignmentPendingValue = React.useMemo(
+    () => ({
+      isPending: alignmentPendingIsPending,
+      startingLocation: alignmentPendingStartingLocation,
+    }),
+    [alignmentPendingIsPending, alignmentPendingStartingLocation]
+  );
 
-  // Helper to check and update progress state
-  const checkProgress = React.useCallback(() => {
-    if (progressKey) {
-      interactiveStepStorage.hasProgress(progressKey).then(setHasInteractiveProgress);
-    } else {
-      setHasInteractiveProgress(false);
-    }
-  }, [progressKey]);
-
-  // Check progress when content key changes
-  React.useEffect(() => {
-    checkProgress();
-  }, [checkProgress]);
-
-  // Listen for progress saved events to update reset button reactively
-  React.useEffect(() => {
-    const handleProgressSaved = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      // Only update if this event is for the current tab's content
-      if (detail?.contentKey === progressKey && detail?.hasProgress) {
-        setHasInteractiveProgress(true);
-      }
-    };
-
-    window.addEventListener('interactive-progress-saved', handleProgressSaved);
-    return () => {
-      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
-    };
-  }, [progressKey]);
+  // Reactive alignment re-evaluation + interactive progress tracking.
+  // MUST use currentUrl || baseUrl (not content.url) for the progress key, to match
+  // getContentKey() in interactive sections. content.url includes "/content.json"
+  // which would mismatch saved progress.
+  const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(model, activeTabId, activeTab);
 
   const styles = useStyles2(getComponentStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
@@ -1022,13 +1287,23 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     activeTab?.currentUrl
   );
 
-  // Content reset hook - handles complex storage/state/reload orchestration
-  const handleResetGuide = useContentReset({ model, setHasInteractiveProgress });
+  // Content reset hook - handles complex storage/state/reload orchestration.
+  // It dispatches `interactive-progress-cleared`, which `useAlignmentReevaluation`
+  // listens for to clear `hasInteractiveProgress` for this content key.
+  const handleResetGuide = useContentReset({ model });
 
-  // Helper: Reload active tab content (DRY - was duplicated 3x)
+  // Helper: Reload active tab content (DRY - was duplicated 3x).
+  // Used by error-retry and dev-mode refresh. Tag the loader call as
+  // `internal_reload` so the implied-0th-step evaluator doesn't prompt the
+  // user on top of content they're already looking at. See
+  // `ALIGNED_BY_CONSTRUCTION_SOURCES` for the semantics.
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
       if (shouldUseDocsLoader(tab)) {
+        // Calling loadDocsTabContent directly (not openDocsPage) to reuse the
+        // existing tab; the consume-once flag is the right mechanism here.
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use; loadDocsTabContent has no source param
+        model._recordAutoLaunchSource('internal_reload');
         model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
       } else {
         model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);
@@ -1186,11 +1461,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const url = sessionInfo.config.tutorialUrl;
       const title = sessionInfo.config.name;
 
+      // The presenter coordinates location for attendees; treat as
+      // aligned-by-construction so the implied-0th-step prompt doesn't
+      // second-guess them.
+      const opts = { source: 'live_session_attendee' as const };
+
       // Open the tutorial in a new tab
       if (url.includes('/learning-journeys/') || url.includes('/learning-paths/')) {
-        model.openLearningJourney(url, title);
+        model.openLearningJourney(url, title, opts);
       } else {
-        model.openDocsPage(url, title);
+        model.openDocsPage(url, title, opts);
       }
     }
   }, [sessionRole, sessionInfo, model, logSession]);
@@ -1222,10 +1502,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       });
 
       if (url && title) {
+        // Coerce the untrusted event.detail.source to a typed LaunchSource at
+        // the boundary. Unknown literals fall through to undefined ("needs
+        // check"), which is the safer default than passing typo'd strings
+        // through to the model.
+        const typedSource = coerceLaunchSource(source) ?? undefined;
         if (openAsLearningJourney) {
-          model.openLearningJourney(url, title);
+          model.openLearningJourney(url, title, { source: typedSource });
         } else {
-          model.openDocsPage(url, title);
+          model.openDocsPage(url, title, { source: typedSource });
         }
       }
 
@@ -1658,8 +1943,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div className={styles.devToolsContent} data-testid="devtools-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                   <SelectorDebugPanel
-                    onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
-                    onOpenLearningJourney={(url: string, title: string) => model.openLearningJourney(url, title)}
+                    onOpenDocsPage={(url: string, title: string) => {
+                      // Dev tools is a power-user surface; tag as aligned-by-construction
+                      // so the implied-0th-step doesn't prompt during selector work.
+                      return model.openDocsPage(url, title, { source: 'devtools', skipReadyToBegin: true });
+                    }}
+                    onOpenLearningJourney={(url: string, title: string) => {
+                      return model.openLearningJourney(url, title, { source: 'devtools' });
+                    }}
                   />
                 </Suspense>
               </div>
@@ -2126,39 +2417,52 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   }}
                 >
                   {stableContent && (
-                    <ContentRenderer
-                      key={activeTab?.currentUrl || stableContent.url}
-                      content={stableContent}
-                      containerRef={contentRef}
-                      className={`${
-                        stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
-                      } ${interactiveStyles} ${prismStyles}`}
-                      onContentReady={() => {
-                        // Restore scroll position after content is ready
-                        restoreScrollPosition();
-                      }}
-                      onGuideComplete={() => {
-                        const baseUrl = activeTab?.baseUrl || stableContent.url;
+                    <AlignmentPendingContext.Provider value={alignmentPendingValue}>
+                      {activeTab?.pendingAlignment && (
+                        <AlignmentPrompt
+                          startingLocation={activeTab.pendingAlignment.startingLocation}
+                          onConfirm={() => {
+                            void model.confirmAlignment(activeTab.id);
+                          }}
+                          onCancel={() => {
+                            model.dismissAlignment(activeTab.id);
+                          }}
+                        />
+                      )}
+                      <ContentRenderer
+                        key={activeTab?.currentUrl || stableContent.url}
+                        content={stableContent}
+                        containerRef={contentRef}
+                        className={`${
+                          stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
+                        } ${interactiveStyles} ${prismStyles}`}
+                        onContentReady={() => {
+                          // Restore scroll position after content is ready
+                          restoreScrollPosition();
+                        }}
+                        onGuideComplete={() => {
+                          const baseUrl = activeTab?.baseUrl || stableContent.url;
 
-                        // Mark bundled guides as 100% complete when all interactive steps finish
-                        if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100);
-                        }
-
-                        // Mark learning journey milestones as done when all interactive steps finish
-                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                          const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = activeTab.baseUrl;
-                          if (slug && journeyBase) {
-                            markMilestoneDone(
-                              journeyBase,
-                              slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones
-                            );
+                          // Mark bundled guides as 100% complete when all interactive steps finish
+                          if (baseUrl?.startsWith('bundled:')) {
+                            setJourneyCompletionPercentage(baseUrl, 100);
                           }
-                        }
-                      }}
-                    />
+
+                          // Mark learning journey milestones as done when all interactive steps finish
+                          if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
+                            const slug = getMilestoneSlug(activeTab.currentUrl);
+                            const journeyBase = activeTab.baseUrl;
+                            if (slug && journeyBase) {
+                              markMilestoneDone(
+                                journeyBase,
+                                slug,
+                                stableContent.metadata?.learningJourney?.totalMilestones
+                              );
+                            }
+                          }
+                        }}
+                      />
+                    </AlignmentPendingContext.Provider>
                   )}
 
                   {/* Go home button - always visible at bottom of content */}

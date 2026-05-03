@@ -38,7 +38,7 @@ class GlobalLinkInterceptionState {
     if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(
         new CustomEvent('pathfinder-auto-open-docs', {
-          detail: docsLink,
+          detail: { ...docsLink, source: 'link_interception' },
         })
       );
     } else {
@@ -95,7 +95,7 @@ class GlobalLinkInterceptionState {
             detail: {
               url: docsLink.url,
               title: docsLink.title,
-              origin: 'queued_link',
+              source: 'queued_link',
             },
           })
         );
