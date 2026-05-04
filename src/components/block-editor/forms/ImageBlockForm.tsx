@@ -44,8 +44,8 @@ function isValidUrl(value: string): boolean {
   if (/^\/\//.test(trimmed)) {
     return true;
   }
-  // Accept absolute relative paths (e.g., /images/foo.png)
-  if (/^\/[a-zA-Z0-9_.\/\-]+$/.test(trimmed)) {
+  // Accept absolute relative paths (e.g., /images/foo.png, /assets/img%20name.png?v=2)
+  if (/^\/[a-zA-Z0-9_.\/\-?=&%#]+$/.test(trimmed)) {
     return true;
   }
   // Accept relative paths with ../ or ./ (e.g., ../img.png, ./images/foo.png)
