@@ -43,7 +43,7 @@ function getCurrentPath(): string {
 }
 
 export function OnPageHelper({ value, onChange, onSubmit, onValidityChange, testId }: ConditionHelperProps) {
-  const currentPath = useMemo(getCurrentPath, []);
+  const currentPath = useMemo(() => getCurrentPath(), []);
   const isValid = value.startsWith('/');
 
   useEffect(() => {

@@ -39,9 +39,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
+import { ConditionChipsField } from './ConditionChipsField';
 import {
   useFieldLint,
   ConditionLintMessages,
@@ -876,13 +876,14 @@ export function StepEditor({
                       {/* Per-step requirements */}
                       <Field
                         label="Step requirements (optional)"
-                        description="Conditions checked before this step executes (comma-separated)"
+                        description="Conditions checked before this step executes"
                         style={{ marginBottom: 0 }}
                       >
-                        <Input
+                        <ConditionChipsField
                           value={editRequirements}
-                          onChange={(e) => setEditRequirements(e.currentTarget.value)}
-                          placeholder="e.g., exists-reftarget, navmenu-open"
+                          onChange={setEditRequirements}
+                          mode="requirements"
+                          testId="step-editor-edit-requirements"
                         />
                       </Field>
                       <ConditionLintMessages
@@ -891,21 +892,6 @@ export function StepEditor({
                         onRemoveToken={removeEditRequirementsToken}
                         testId="step-editor-edit-requirements-lint"
                       />
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
-                        {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
-                          <Badge
-                            key={req}
-                            text={req}
-                            color="blue"
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => {
-                              setEditRequirements((prev) =>
-                                prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req
-                              );
-                            }}
-                          />
-                        ))}
-                      </div>
 
                       {/* Per-step skippable (guided only) */}
                       {isGuided && (
@@ -1174,13 +1160,14 @@ export function StepEditor({
           {/* Per-step requirements */}
           <Field
             label="Step requirements (optional)"
-            description="Conditions checked before this step executes (comma-separated)"
+            description="Conditions checked before this step executes"
             style={{ marginBottom: 0 }}
           >
-            <Input
+            <ConditionChipsField
               value={newRequirements}
-              onChange={(e) => setNewRequirements(e.currentTarget.value)}
-              placeholder="e.g., exists-reftarget, navmenu-open"
+              onChange={setNewRequirements}
+              mode="requirements"
+              testId="step-editor-new-requirements"
             />
           </Field>
           <ConditionLintMessages
@@ -1189,19 +1176,6 @@ export function StepEditor({
             onRemoveToken={removeNewRequirementsToken}
             testId="step-editor-new-requirements-lint"
           />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
-            {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
-              <Badge
-                key={req}
-                text={req}
-                color="blue"
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setNewRequirements((prev) => (prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req));
-                }}
-              />
-            ))}
-          </div>
 
           {/* Per-step skippable (guided only) */}
           {isGuided && (

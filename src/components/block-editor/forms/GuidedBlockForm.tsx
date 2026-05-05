@@ -5,11 +5,11 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, TextArea, Checkbox, Badge, useStyles2, Alert } from '@grafana/ui';
+import { Button, Field, Input, TextArea, Checkbox, useStyles2, Alert } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { ConditionChipsField } from './ConditionChipsField';
 import {
   useFieldLint,
   ConditionLintMessages,
@@ -86,15 +86,6 @@ export function GuidedBlockForm({
     [content, steps, stepTimeout, requirements, objectives, skippable, completeEarly, onSubmit]
   );
 
-  const handleRequirementClick = useCallback((req: string) => {
-    setRequirements((prev) => {
-      if (prev.includes(req)) {
-        return prev;
-      }
-      return prev ? `${prev}, ${req}` : req;
-    });
-  }, []);
-
   const requirementsLint = useFieldLint(requirements);
   const objectivesLint = useFieldLint(objectives);
   const fixRequirementsToken = useCallback((bad: string, good: string) => {
@@ -162,11 +153,12 @@ export function GuidedBlockForm({
       </Field>
 
       {/* Requirements */}
-      <Field label="Requirements" description="Conditions for the entire guided block (comma-separated)">
-        <Input
+      <Field label="Requirements" description="Conditions that must be met before this guided block runs">
+        <ConditionChipsField
           value={requirements}
-          onChange={(e) => setRequirements(e.currentTarget.value)}
-          placeholder="e.g., navmenu-open, exists-reftarget"
+          onChange={setRequirements}
+          mode="requirements"
+          testId="guided-block-requirements"
         />
       </Field>
       <ConditionLintMessages
@@ -175,27 +167,17 @@ export function GuidedBlockForm({
         onRemoveToken={removeRequirementsToken}
         testId="guided-block-requirements-lint"
       />
-      <div className={styles.requirementsContainer}>
-        <span className={styles.requirementsLabel}>Quick add:</span>
-        <div className={styles.requirementsChips}>
-          {COMMON_REQUIREMENTS.map((req) => (
-            <Badge
-              key={req}
-              text={req}
-              color="blue"
-              className={styles.requirementChip}
-              onClick={() => handleRequirementClick(req)}
-            />
-          ))}
-        </div>
-      </div>
 
       {/* Objectives */}
-      <Field label="Objectives" description="Objectives tracked for completion (comma-separated)">
-        <Input
+      <Field
+        label="Objectives"
+        description="Post-conditions checked after the guided block. If they're already met when it starts, it's skipped."
+      >
+        <ConditionChipsField
           value={objectives}
-          onChange={(e) => setObjectives(e.currentTarget.value)}
-          placeholder="e.g., completed-tutorial, learned-navigation"
+          onChange={setObjectives}
+          mode="objectives"
+          testId="guided-block-objectives"
         />
       </Field>
       <ConditionLintMessages

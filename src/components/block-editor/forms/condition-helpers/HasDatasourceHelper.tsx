@@ -34,7 +34,7 @@ function loadDatasourceOptions(): Array<ComboboxOption<string>> {
 }
 
 export function HasDatasourceHelper({ value, onChange, onValidityChange, testId }: ConditionHelperProps) {
-  const options = useMemo(loadDatasourceOptions, []);
+  const options = useMemo(() => loadDatasourceOptions(), []);
 
   useEffect(() => {
     onValidityChange?.(value.trim().length > 0);

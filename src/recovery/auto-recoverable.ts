@@ -24,7 +24,7 @@ import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/r
  * - `navmenu-open`: handled by the `navigation` fix type (open / dock the nav menu).
  * - `on-page:`: handled by the `location` fix type (navigate to the expected page).
  */
-export const AUTO_RECOVERABLE_REQUIREMENT_TOKENS: ReadonlyArray<string> = Object.freeze([
+export const AUTO_RECOVERABLE_REQUIREMENT_TOKENS: readonly string[] = Object.freeze([
   FixedRequirementType.EXISTS_REFTARGET,
   FixedRequirementType.NAVMENU_OPEN,
 ]);
@@ -33,7 +33,7 @@ export const AUTO_RECOVERABLE_REQUIREMENT_TOKENS: ReadonlyArray<string> = Object
  * Parameterized prefixes that are auto-recoverable. Any token starting with
  * one of these strings can be auto-fixed at runtime.
  */
-export const AUTO_RECOVERABLE_REQUIREMENT_PREFIXES: ReadonlyArray<string> = Object.freeze([
+export const AUTO_RECOVERABLE_REQUIREMENT_PREFIXES: readonly string[] = Object.freeze([
   ParameterizedRequirementPrefix.ON_PAGE,
 ]);
 
