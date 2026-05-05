@@ -38,17 +38,17 @@ describe('lintConditionField', () => {
     it('flags an unknown bare token', () => {
       const result = lintConditionField('totally-bogus');
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].severity).toBe('warning');
-      expect(result.diagnostics[0].code).toBe('condition.unknown_type');
-      expect(result.diagnostics[0].tokenAtFault).toBe('totally-bogus');
+      expect(result.diagnostics[0]!.severity).toBe('warning');
+      expect(result.diagnostics[0]!.code).toBe('condition.unknown_type');
+      expect(result.diagnostics[0]!.tokenAtFault).toBe('totally-bogus');
     });
 
     it('offers a near-match suggestion for misspelled fixed requirements', () => {
       // `is-amdin` is one transposition away from `is-admin`.
       const result = lintConditionField('is-amdin');
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].suggestion).toBe('is-admin');
-      expect(result.diagnostics[0].tokenAtFault).toBe('is-amdin');
+      expect(result.diagnostics[0]!.suggestion).toBe('is-admin');
+      expect(result.diagnostics[0]!.tokenAtFault).toBe('is-amdin');
     });
 
     it('offers a near-match suggestion for misspelled parameterized prefixes', () => {
@@ -57,26 +57,26 @@ describe('lintConditionField', () => {
       // user's argument.
       const result = lintConditionField('n-page:/foo');
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].suggestion).toBe('on-page:/foo');
-      expect(result.diagnostics[0].tokenAtFault).toBe('n-page:/foo');
+      expect(result.diagnostics[0]!.suggestion).toBe('on-page:/foo');
+      expect(result.diagnostics[0]!.tokenAtFault).toBe('n-page:/foo');
     });
 
     it('flags a parameterized requirement that is missing its argument', () => {
       const result = lintConditionField('on-page:');
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].code).toBe('condition.missing_argument');
+      expect(result.diagnostics[0]!.code).toBe('condition.missing_argument');
     });
 
     it('flags a fixed requirement that has been given an argument', () => {
       const result = lintConditionField('is-admin:true');
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].code).toBe('condition.unexpected_argument');
+      expect(result.diagnostics[0]!.code).toBe('condition.unexpected_argument');
     });
 
     it('flags an on-page argument that does not start with a slash', () => {
       const result = lintConditionField('on-page:explore');
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].code).toBe('condition.invalid_format');
+      expect(result.diagnostics[0]!.code).toBe('condition.invalid_format');
     });
   });
 
@@ -97,7 +97,7 @@ describe('lintConditionField', () => {
       // Tests that the suppression toggle works (used by the parity test).
       const result = lintConditionField('on-pa', { suppressInProgress: false });
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].code).toBe('condition.unknown_type');
+      expect(result.diagnostics[0]!.code).toBe('condition.unknown_type');
     });
 
     it('still flags a fully-typed unknown token even if it overlaps a prefix', () => {
@@ -109,7 +109,7 @@ describe('lintConditionField', () => {
       // SHOULD be flagged.
       const result = lintConditionField('on-pog');
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0].code).toBe('condition.unknown_type');
+      expect(result.diagnostics[0]!.code).toBe('condition.unknown_type');
     });
   });
 
