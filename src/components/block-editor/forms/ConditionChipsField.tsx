@@ -28,6 +28,7 @@ import {
   isValidRequirement,
 } from '../../../types/requirements.types';
 import { isAutoRecoverableRequirement } from '../../../recovery';
+import { HELPER_BY_PREFIX } from './condition-helpers';
 
 const RAW_MODE_PREFERENCE_KEY = 'pathfinder.blockEditor.conditionField.rawMode';
 
@@ -123,6 +124,10 @@ export function ConditionChipsField({
   const [isAdding, setIsAdding] = useState(false);
   const [pickedOption, setPickedOption] = useState<PickerOption | null>(null);
   const [argValue, setArgValue] = useState('');
+  // Per-prefix helpers may compute their own validity (e.g. semver for
+  // `min-version:`); when they do, we trust them over our naive emptiness
+  // check. Default `true` so prefixes without helpers stay enabled.
+  const [helperValid, setHelperValid] = useState(true);
 
   const toggleRawMode = useCallback(() => {
     setIsRawMode((prev) => {
@@ -145,12 +150,14 @@ export function ConditionChipsField({
     setIsAdding(true);
     setPickedOption(null);
     setArgValue('');
+    setHelperValid(true);
   }, []);
 
   const cancelAdd = useCallback(() => {
     setIsAdding(false);
     setPickedOption(null);
     setArgValue('');
+    setHelperValid(true);
   }, []);
 
   const commitAdd = useCallback(() => {
@@ -198,6 +205,7 @@ export function ConditionChipsField({
     ? (PARAMETERIZED_REQUIREMENT_EXAMPLES.find((ex) => ex.prefix === pickedOption.value)?.example ??
       `${pickedOption.value}value`)
     : '';
+  const HelperForPrefix = pickedOption?.isPrefix ? HELPER_BY_PREFIX[pickedOption.value] : undefined;
 
   return (
     <div data-testid={testId}>
@@ -242,14 +250,24 @@ export function ConditionChipsField({
               label="Value"
               description={REQUIREMENT_DESCRIPTIONS[pickedOption.value] ?? 'Value for the chosen prefix'}
             >
-              <Input
-                value={argValue}
-                onChange={(e) => setArgValue(e.currentTarget.value)}
-                onKeyDown={onArgKeyDown}
-                placeholder={argPlaceholder}
-                autoFocus
-                data-testid={testId ? `${testId}-add-arg` : undefined}
-              />
+              {HelperForPrefix ? (
+                <HelperForPrefix
+                  value={argValue}
+                  onChange={setArgValue}
+                  onSubmit={commitAdd}
+                  onValidityChange={setHelperValid}
+                  testId={testId ? `${testId}-add-arg` : undefined}
+                />
+              ) : (
+                <Input
+                  value={argValue}
+                  onChange={(e) => setArgValue(e.currentTarget.value)}
+                  onKeyDown={onArgKeyDown}
+                  placeholder={argPlaceholder}
+                  autoFocus
+                  data-testid={testId ? `${testId}-add-arg` : undefined}
+                />
+              )}
             </Field>
           )}
           <div className={styles.addActions}>
@@ -261,7 +279,9 @@ export function ConditionChipsField({
               variant="primary"
               type="button"
               onClick={commitAdd}
-              disabled={!pickedOption || (pickedOption.isPrefix && !argValue.trim())}
+              disabled={
+                !pickedOption || (pickedOption.isPrefix && (!argValue.trim() || (HelperForPrefix && !helperValid)))
+              }
             >
               Add
             </Button>
