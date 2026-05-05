@@ -4,8 +4,9 @@
  * Wraps the canonical `validateGuide` from `src/validation/validate-guide.ts`
  * and exposes the result in a shape useful to the editor UI:
  *   - flat `Diagnostic[]` for a Health-panel-style listing,
- *   - `byBlockId: Map<string, Diagnostic[]>` so `BlockItem` can render a
- *     per-block badge without re-traversing the tree.
+ *   - `forPath(prefix)` so consumers can query diagnostics that fall under
+ *     a specific JSON path prefix (e.g. `['blocks', 0]` for the first
+ *     top-level block, `['blocks', 1, 'blocks', 0]` for a section child).
  *
  * Phase 1 scope: only the diagnostics that already come out of `validateGuide`
  * (Zod errors → severity 'error', everything else → 'warning'). Cross-block
@@ -21,15 +22,19 @@ import type { Diagnostic } from './types';
 export interface GuideLintResult {
   /** All diagnostics in document order. */
   diagnostics: Diagnostic[];
-  /** Diagnostics keyed by block id (only populated for diagnostics whose path resolves to a block). */
-  byBlockId: Map<string, Diagnostic[]>;
+  /**
+   * Returns the subset of diagnostics whose `path` starts with `prefix`.
+   * Used by `<LintBadge>` to render a per-block diagnostic count without
+   * needing the block to have a stable JSON `id`.
+   */
+  forPath: (prefix: Array<string | number>) => Diagnostic[];
   /** True iff the underlying Zod validation succeeded (i.e. no errors). */
   isValid: boolean;
 }
 
 const EMPTY_RESULT: GuideLintResult = {
   diagnostics: [],
-  byBlockId: new Map(),
+  forPath: () => [],
   isValid: true,
 };
 
@@ -65,49 +70,6 @@ function warningToDiagnostic(warning: ValidationWarning): Diagnostic {
   };
 }
 
-/**
- * Walk a guide and build a `path-prefix → block.id` index. The prefix is the
- * canonical Zod path up to (but not including) the block's local fields, e.g.
- *   ['blocks', 0]                 -> top-level block id
- *   ['blocks', 1, 'blocks', 0]    -> first child of section at index 1
- *   ['blocks', 2, 'whenTrue', 0]  -> first whenTrue child of conditional
- *
- * Diagnostics whose path begins with one of these prefixes are attributed to
- * the corresponding block id.
- */
-function indexBlockPaths(guide: JsonGuide): Array<{ prefix: Array<string | number>; id: string }> {
-  const out: Array<{ prefix: Array<string | number>; id: string }> = [];
-
-  function visit(blocks: unknown, base: Array<string | number>): void {
-    if (!Array.isArray(blocks)) {
-      return;
-    }
-    blocks.forEach((block, i) => {
-      if (!block || typeof block !== 'object') {
-        return;
-      }
-      const prefix = [...base, i];
-      const id = (block as { id?: unknown }).id;
-      if (typeof id === 'string' && id) {
-        out.push({ prefix, id });
-      }
-      const blockObj = block as Record<string, unknown>;
-      if (Array.isArray(blockObj.blocks)) {
-        visit(blockObj.blocks, [...prefix, 'blocks']);
-      }
-      if (Array.isArray(blockObj.whenTrue)) {
-        visit(blockObj.whenTrue, [...prefix, 'whenTrue']);
-      }
-      if (Array.isArray(blockObj.whenFalse)) {
-        visit(blockObj.whenFalse, [...prefix, 'whenFalse']);
-      }
-    });
-  }
-
-  visit(guide.blocks, ['blocks']);
-  return out;
-}
-
 function pathStartsWith(path: Array<string | number>, prefix: Array<string | number>): boolean {
   if (path.length < prefix.length) {
     return false;
@@ -120,28 +82,13 @@ function pathStartsWith(path: Array<string | number>, prefix: Array<string | num
   return true;
 }
 
-function attributeToBlocks(
-  diagnostics: Diagnostic[],
-  blockIndex: Array<{ prefix: Array<string | number>; id: string }>
-): Map<string, Diagnostic[]> {
-  const byBlockId = new Map<string, Diagnostic[]>();
-  for (const diag of diagnostics) {
-    // Find the longest matching prefix (most specific block).
-    let best: { prefix: Array<string | number>; id: string } | null = null;
-    for (const entry of blockIndex) {
-      if (pathStartsWith(diag.path, entry.prefix)) {
-        if (!best || entry.prefix.length > best.prefix.length) {
-          best = entry;
-        }
-      }
+function makeForPath(diagnostics: Diagnostic[]): GuideLintResult['forPath'] {
+  return (prefix: Array<string | number>) => {
+    if (prefix.length === 0) {
+      return diagnostics;
     }
-    if (best) {
-      const list = byBlockId.get(best.id) ?? [];
-      list.push(diag);
-      byBlockId.set(best.id, list);
-    }
-  }
-  return byBlockId;
+    return diagnostics.filter((d) => pathStartsWith(d.path, prefix));
+  };
 }
 
 /**
@@ -163,11 +110,9 @@ export function lintGuide(guide: JsonGuide | null | undefined): GuideLintResult 
     ...result.warnings.map(warningToDiagnostic),
   ];
 
-  const byBlockId = attributeToBlocks(diagnostics, indexBlockPaths(guide));
-
   return {
     diagnostics,
-    byBlockId,
+    forPath: makeForPath(diagnostics),
     isValid: result.isValid,
   };
 }

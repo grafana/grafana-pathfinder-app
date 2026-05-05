@@ -34,6 +34,7 @@ import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
 import { BlockEditorModals } from './BlockEditorModals';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
+import { useGuideLint } from './lint';
 import { ConfirmModal } from './NotificationModals';
 import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
 import { testIds } from '../../constants/testIds';
@@ -244,7 +245,17 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const hasLoadedFromStorage = useRef(false);
 
   // Block editor context - replaces window globals for section/conditional editing
-  const { sectionContext, conditionalContext } = useBlockEditorContext();
+  const { sectionContext, conditionalContext, setGuideLintResult } = useBlockEditorContext();
+
+  // Compute guide-level lint and publish it to context so per-block badges
+  // (and the future Health panel) read from a single cached source.
+  // `useGuideLint` caches by structural hash, so this is cheap on re-renders
+  // that don't change the guide.
+  const currentGuide = editor.getGuide();
+  const guideLint = useGuideLint(currentGuide);
+  useEffect(() => {
+    setGuideLintResult(guideLint);
+  }, [guideLint, setGuideLintResult]);
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();

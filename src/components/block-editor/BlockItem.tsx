@@ -8,6 +8,7 @@ import React, { useCallback, useMemo } from 'react';
 import { IconButton, useStyles2, Badge, Checkbox } from '@grafana/ui';
 import { getBlockItemStyles } from './block-editor.styles';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
+import { LintBadge } from './LintBadge';
 import { BLOCK_TYPE_METADATA } from './constants';
 import type { EditorBlock, BlockType } from './types';
 import {
@@ -212,6 +213,7 @@ export function BlockItem({
               {block.block.display === 'section' && <Badge text="Section" color="green" />}
             </>
           )}
+          <LintBadge path={['blocks', index]} />
         </div>
         {preview && (
           <div className={styles.preview} title={preview}>
