@@ -201,10 +201,20 @@ export function ConditionChipsField({
     );
   }
 
-  const argPlaceholder = pickedOption?.isPrefix
-    ? (PARAMETERIZED_REQUIREMENT_EXAMPLES.find((ex) => ex.prefix === pickedOption.value)?.example ??
-      `${pickedOption.value}value`)
-    : '';
+  // The example in PARAMETERIZED_REQUIREMENT_EXAMPLES is the full token
+  // (e.g. `has-role:editor`), but the value input only accepts the part
+  // after the prefix. Strip the prefix so the placeholder doesn't
+  // mislead authors into typing the prefix twice.
+  const argPlaceholder = (() => {
+    if (!pickedOption?.isPrefix) {
+      return '';
+    }
+    const example = PARAMETERIZED_REQUIREMENT_EXAMPLES.find((ex) => ex.prefix === pickedOption.value)?.example;
+    if (example && example.startsWith(pickedOption.value)) {
+      return example.slice(pickedOption.value.length);
+    }
+    return 'value';
+  })();
   const HelperForPrefix = pickedOption?.isPrefix ? HELPER_BY_PREFIX[pickedOption.value] : undefined;
 
   return (
