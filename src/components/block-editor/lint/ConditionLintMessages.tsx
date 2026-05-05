@@ -72,12 +72,12 @@ export function ConditionLintMessages({ diagnostics, onApplyFix, onRemoveToken, 
               <Button
                 size="sm"
                 variant="secondary"
-                fill="outline"
+                fill="solid"
                 type="button"
                 icon="trash-alt"
                 onClick={() => onRemoveToken!(diag.tokenAtFault!)}
               >
-                Remove
+                Remove &lsquo;{diag.tokenAtFault}&rsquo;
               </Button>
             )}
           </div>

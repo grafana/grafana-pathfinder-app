@@ -104,15 +104,15 @@ describe('ConditionLintMessages', () => {
       tokenAtFault: 'foo',
     };
 
-    it('renders Remove when the diagnostic has a tokenAtFault but no suggestion', () => {
+    it('renders "Remove \'<token>\'" when the diagnostic has a tokenAtFault but no suggestion', () => {
       render(<ConditionLintMessages diagnostics={[fooDiagnostic]} onRemoveToken={jest.fn()} />);
-      expect(screen.getByRole('button', { name: /Remove/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Remove ['‘]foo['’]/i })).toBeInTheDocument();
     });
 
     it('calls onRemoveToken(badToken) when Remove is clicked', () => {
       const onRemoveToken = jest.fn();
       render(<ConditionLintMessages diagnostics={[fooDiagnostic]} onRemoveToken={onRemoveToken} />);
-      fireEvent.click(screen.getByRole('button', { name: /Remove/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Remove ['‘]foo['’]/i }));
       expect(onRemoveToken).toHaveBeenCalledWith('foo');
     });
 
@@ -131,7 +131,7 @@ describe('ConditionLintMessages', () => {
         />
       );
       expect(screen.getByRole('button', { name: /Use is-admin/i })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^Remove$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Remove/i })).not.toBeInTheDocument();
     });
 
     it('does NOT render Remove when onRemoveToken is not provided', () => {
