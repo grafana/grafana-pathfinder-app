@@ -5,6 +5,7 @@
  */
 
 import type { JsonGuide } from '../types';
+import { validateGuide as validateGuideCanonical, validateGuideFromString, toLegacyResult } from '../../../validation';
 
 /**
  * Copy JSON guide to clipboard
@@ -45,36 +46,22 @@ export function downloadGuideAsFile(guide: JsonGuide, filename?: string, pretty 
 /**
  * Validate a JSON guide structure
  *
+ * Delegates to the canonical Zod-based validator in `src/validation/`. This
+ * is the same pipeline the CLI and MCP server run, so the editor's
+ * "Copy JSON" / GitHub-PR paths now apply identical rules (Zod schema +
+ * condition-grammar + nesting depth) instead of the older shallow check.
+ *
+ * Unknown-field warnings are intentionally suppressed: those exist for
+ * detecting forward-incompatible additions in CI, not for nudging authors
+ * mid-edit.
+ *
  * @param guide - The guide to validate
  * @returns Object with isValid boolean and array of error messages
  */
 export function validateGuide(guide: JsonGuide): { isValid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  // Required fields
-  if (!guide.id || typeof guide.id !== 'string') {
-    errors.push('Guide must have a valid "id" string');
-  }
-
-  if (!guide.title || typeof guide.title !== 'string') {
-    errors.push('Guide must have a valid "title" string');
-  }
-
-  if (!Array.isArray(guide.blocks)) {
-    errors.push('Guide must have a "blocks" array');
-  } else {
-    // Validate each block has a type
-    guide.blocks.forEach((block, index) => {
-      if (!block.type) {
-        errors.push(`Block at index ${index} is missing "type" field`);
-      }
-    });
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-  };
+  const result = validateGuideCanonical(guide, { skipUnknownFieldCheck: true });
+  const legacy = toLegacyResult(result);
+  return { isValid: legacy.isValid, errors: legacy.errors };
 }
 
 /**
@@ -94,20 +81,15 @@ export function formatGuideJson(guide: JsonGuide): string {
  * @returns Parsed guide or null if invalid
  */
 export function parseGuideJson(json: string): JsonGuide | null {
-  try {
-    const parsed = JSON.parse(json);
-    const validation = validateGuide(parsed);
-
-    if (!validation.isValid) {
-      console.error('Invalid guide JSON:', validation.errors);
-      return null;
-    }
-
-    return parsed as JsonGuide;
-  } catch (e) {
-    console.error('Failed to parse guide JSON:', e);
+  const result = validateGuideFromString(json, { skipUnknownFieldCheck: true });
+  if (!result.isValid || !result.guide) {
+    console.error(
+      'Invalid guide JSON:',
+      result.errors.map((e) => e.message)
+    );
     return null;
   }
+  return result.guide;
 }
 
 /**
