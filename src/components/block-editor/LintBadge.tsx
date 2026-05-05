@@ -42,7 +42,11 @@ export function LintBadge({ path }: LintBadgeProps) {
     if (!lint) {
       return [];
     }
-    return lint.forPath(path);
+    // `forPathDirect` excludes diagnostics that belong to a nested child
+    // (section/conditional children have their own LintBadge). This keeps
+    // the parent badge from double-reporting issues already attributed to
+    // the offending step.
+    return lint.forPathDirect(path);
   }, [lint, path]);
 
   if (diagnostics.length === 0) {

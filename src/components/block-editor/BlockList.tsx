@@ -734,6 +734,7 @@ export function BlockList({
                 {isConditional && (
                   <ConditionalBranches
                     block={block}
+                    parentIndex={index}
                     isCollapsed={collapsedSections.has(block.id)}
                     conditionalStyles={conditionalStyles}
                     nestedStyles={nestedStyles}
@@ -766,6 +767,7 @@ export function BlockList({
                 {isSection && (
                   <SectionNestedBlocks
                     block={block}
+                    parentIndex={index}
                     sectionBlocks={sectionBlocks}
                     isCollapsed={collapsedSections.has(block.id)}
                     nestedStyles={nestedStyles}

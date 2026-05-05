@@ -18,6 +18,12 @@ import { type JsonConditionalBlock } from '../../types/json-guide.types';
 
 export interface ConditionalBranchesProps {
   block: EditorBlock;
+  /**
+   * Index of the parent conditional in the top-level guide blocks array.
+   * Used to construct the JSON path that nested branch blocks pass to
+   * `<LintBadge>`.
+   */
+  parentIndex: number;
   isCollapsed: boolean;
   conditionalStyles: ReturnType<typeof getConditionalStyles>;
   nestedStyles: ReturnType<typeof getNestedStyles>;
@@ -60,6 +66,7 @@ export interface ConditionalBranchesProps {
 
 export function ConditionalBranches({
   block,
+  parentIndex,
   isCollapsed,
   conditionalStyles,
   nestedStyles,
@@ -92,6 +99,7 @@ export function ConditionalBranches({
       {/* True branch */}
       <ConditionalBranch
         block={block}
+        parentIndex={parentIndex}
         branch="whenTrue"
         blocks={conditionalBlock.whenTrue}
         conditionalStyles={conditionalStyles}
@@ -116,6 +124,7 @@ export function ConditionalBranches({
       {/* False branch */}
       <ConditionalBranch
         block={block}
+        parentIndex={parentIndex}
         branch="whenFalse"
         blocks={conditionalBlock.whenFalse}
         conditionalStyles={conditionalStyles}
@@ -142,6 +151,7 @@ export function ConditionalBranches({
 
 interface ConditionalBranchProps {
   block: EditorBlock;
+  parentIndex: number;
   branch: 'whenTrue' | 'whenFalse';
   blocks: JsonBlock[];
   conditionalStyles: ReturnType<typeof getConditionalStyles>;
@@ -185,6 +195,7 @@ interface ConditionalBranchProps {
 
 function ConditionalBranch({
   block,
+  parentIndex,
   branch,
   blocks,
   conditionalStyles,
@@ -286,6 +297,7 @@ function ConditionalBranch({
                     <NestedBlockItem
                       block={nestedBlock}
                       index={nestedIndex}
+                      path={['blocks', parentIndex, branch, nestedIndex]}
                       onEdit={() => onConditionalBranchBlockEdit?.(block.id, branch, nestedIndex, nestedBlock)}
                       onDelete={() => onConditionalBranchBlockDelete?.(block.id, branch, nestedIndex)}
                       onDuplicate={() => onConditionalBranchBlockDuplicate?.(block.id, branch, nestedIndex)}

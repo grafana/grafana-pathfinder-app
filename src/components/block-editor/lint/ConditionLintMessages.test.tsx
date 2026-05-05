@@ -44,7 +44,7 @@ describe('ConditionLintMessages', () => {
       },
     ];
     render(<ConditionLintMessages diagnostics={diagnostics} onApplyFix={onApplyFix} />);
-    const button = screen.getByRole('button', { name: /Replace with is-admin/i });
+    const button = screen.getByRole('button', { name: /Use is-admin/i });
     expect(button).toBeInTheDocument();
   });
 
@@ -61,7 +61,7 @@ describe('ConditionLintMessages', () => {
       },
     ];
     render(<ConditionLintMessages diagnostics={diagnostics} onApplyFix={onApplyFix} />);
-    fireEvent.click(screen.getByRole('button', { name: /Replace with is-admin/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Use is-admin/i }));
     expect(onApplyFix).toHaveBeenCalledTimes(1);
     expect(onApplyFix).toHaveBeenCalledWith('is-amdin', 'is-admin');
   });
@@ -77,7 +77,7 @@ describe('ConditionLintMessages', () => {
       },
     ];
     render(<ConditionLintMessages diagnostics={diagnostics} onApplyFix={jest.fn()} />);
-    expect(screen.queryByRole('button', { name: /Replace with/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Use is-admin/i })).not.toBeInTheDocument();
   });
 
   it('does NOT render a Replace button if onApplyFix is not provided', () => {
@@ -92,6 +92,6 @@ describe('ConditionLintMessages', () => {
       },
     ];
     render(<ConditionLintMessages diagnostics={diagnostics} />);
-    expect(screen.queryByRole('button', { name: /Replace with/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Use is-admin/i })).not.toBeInTheDocument();
   });
 });

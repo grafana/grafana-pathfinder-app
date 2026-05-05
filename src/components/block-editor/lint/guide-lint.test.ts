@@ -79,6 +79,32 @@ describe('lintGuide', () => {
     expect(conditionDiag!.severity).toBe('warning');
   });
 
+  it('strips path prefix and CLI hint from canonical messages', () => {
+    const guide: JsonGuide = {
+      ...baseGuide,
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'highlight',
+          reftarget: 'button',
+          content: 'click',
+          requirements: ['is-amdin'],
+        },
+      ],
+    };
+    const result = lintGuide(guide);
+    const issue = result.diagnostics.find((d) => d.path.includes('requirements'));
+    expect(issue).toBeDefined();
+    // Path prefix should not appear in the user-facing message.
+    expect(issue!.message).not.toContain('blocks[0]');
+    expect(issue!.message).not.toContain('requirements[0]:');
+    // CLI hint should not appear either.
+    expect(issue!.message).not.toContain('pathfinder-cli');
+    // Suggestion should round-trip.
+    expect(issue!.suggestion).toBe('is-admin');
+    expect(issue!.tokenAtFault).toBe('is-amdin');
+  });
+
   it('reports Zod errors at severity error and marks the result invalid', () => {
     // A formfill action requires a reftarget; missing it is a Zod error.
     const guide = {
@@ -159,5 +185,62 @@ describe('lintGuide forPath', () => {
   it('returns ALL diagnostics when called with an empty prefix', () => {
     const result = lintGuide(guideWithMultipleBlocks);
     expect(result.forPath([])).toEqual(result.diagnostics);
+  });
+});
+
+describe('lintGuide forPathDirect', () => {
+  it('excludes diagnostics from nested-block children', () => {
+    // Section at ['blocks', 0] with one bad child at ['blocks', 0, 'blocks', 0].
+    const guide: JsonGuide = {
+      ...baseGuide,
+      blocks: [
+        {
+          type: 'section',
+          title: 'A section',
+          blocks: [
+            {
+              type: 'interactive',
+              action: 'highlight',
+              reftarget: 'button',
+              content: 'nested',
+              requirements: ['on-page:explore'], // format warning
+            },
+          ],
+        },
+      ],
+    };
+    const result = lintGuide(guide);
+    // forPath aggregates children; forPathDirect must NOT.
+    expect(result.forPath(['blocks', 0]).length).toBeGreaterThan(0);
+    expect(result.forPathDirect(['blocks', 0])).toEqual([]);
+    // The child path itself still surfaces its own diagnostics.
+    expect(result.forPathDirect(['blocks', 0, 'blocks', 0]).length).toBeGreaterThan(0);
+  });
+
+  it('keeps step-level diagnostics on the parent multistep block', () => {
+    // Steps are edited inline, so step diagnostics belong on the parent's badge.
+    const guide: JsonGuide = {
+      ...baseGuide,
+      blocks: [
+        {
+          type: 'multistep',
+          content: 'do these',
+          steps: [
+            {
+              action: 'highlight',
+              reftarget: 'button',
+              requirements: ['on-page:explore'], // format warning at ['blocks', 0, 'steps', 0, ...]
+            },
+          ],
+        },
+      ],
+    };
+    const result = lintGuide(guide);
+    expect(result.forPathDirect(['blocks', 0]).length).toBeGreaterThan(0);
+  });
+
+  it('returns nothing for an empty prefix', () => {
+    const result = lintGuide(baseGuide);
+    expect(result.forPathDirect([])).toEqual([]);
   });
 });

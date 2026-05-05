@@ -17,6 +17,11 @@ import { testIds } from '../../constants/testIds';
 
 export interface SectionNestedBlocksProps {
   block: EditorBlock;
+  /**
+   * Index of the parent section in the top-level guide blocks array.
+   * Used to construct the JSON path that nested blocks pass to `<LintBadge>`.
+   */
+  parentIndex: number;
   sectionBlocks: JsonBlock[];
   isCollapsed: boolean;
   nestedStyles: ReturnType<typeof getNestedStyles>;
@@ -47,6 +52,7 @@ export interface SectionNestedBlocksProps {
 
 export function SectionNestedBlocks({
   block,
+  parentIndex,
   sectionBlocks,
   isCollapsed,
   nestedStyles,
@@ -122,6 +128,7 @@ export function SectionNestedBlocks({
                     <NestedBlockItem
                       block={nestedBlock}
                       index={nestedIndex}
+                      path={['blocks', parentIndex, 'blocks', nestedIndex]}
                       onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
                       onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
                       onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}

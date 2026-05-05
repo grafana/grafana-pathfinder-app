@@ -8,6 +8,7 @@
 import React, { useCallback } from 'react';
 import { useStyles2, Badge, IconButton, Checkbox } from '@grafana/ui';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
+import { LintBadge } from './LintBadge';
 import { getNestedBlockItemStyles } from './BlockList.styles';
 import { BLOCK_TYPE_METADATA } from './constants';
 import type { BlockType, JsonBlock } from './types';
@@ -16,6 +17,12 @@ export interface NestedBlockItemProps {
   block: JsonBlock;
   /** Position index within the container (0-based) */
   index?: number;
+  /**
+   * JSON path of this nested block in the guide, e.g.
+   * `['blocks', 0, 'blocks', 1]` for the second child of the first
+   * top-level section. Required for the per-block `<LintBadge>` to render.
+   */
+  path?: Array<string | number>;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
@@ -39,6 +46,7 @@ export interface NestedBlockItemProps {
 export function NestedBlockItem({
   block,
   index,
+  path,
   onEdit,
   onDelete,
   onDuplicate,
@@ -126,6 +134,7 @@ export function NestedBlockItem({
           {'action' in block && (
             <Badge text={String(block.action).charAt(0).toUpperCase() + String(block.action).slice(1)} color="purple" />
           )}
+          {path && <LintBadge path={path} />}
         </div>
         {preview && (
           <div className={styles.preview} title={preview}>
