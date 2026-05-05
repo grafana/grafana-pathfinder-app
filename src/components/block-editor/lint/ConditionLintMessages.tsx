@@ -19,12 +19,23 @@ import type { Diagnostic } from './types';
 
 export interface ConditionLintMessagesProps {
   diagnostics: Diagnostic[];
+  /**
+   * Called when the user clicks "Use X" on a diagnostic that carries a
+   * near-match suggestion. The form replaces `badToken` with `replacement`
+   * inside the condition field.
+   */
   onApplyFix?: (badToken: string, replacement: string) => void;
+  /**
+   * Called when the user clicks "Remove" on a diagnostic for a token that
+   * is completely unknown (no near-match suggestion was available). The
+   * form drops `badToken` from the condition field.
+   */
+  onRemoveToken?: (badToken: string) => void;
   /** Optional `data-testid` on the container; useful for tests. */
   testId?: string;
 }
 
-export function ConditionLintMessages({ diagnostics, onApplyFix, testId }: ConditionLintMessagesProps) {
+export function ConditionLintMessages({ diagnostics, onApplyFix, onRemoveToken, testId }: ConditionLintMessagesProps) {
   const styles = useStyles2(getStyles);
   if (diagnostics.length === 0) {
     return null;
@@ -35,12 +46,17 @@ export function ConditionLintMessages({ diagnostics, onApplyFix, testId }: Condi
         const isError = diag.severity === 'error';
         const rowClass = isError ? styles.rowError : styles.rowWarning;
         const iconClass = isError ? styles.iconError : styles.iconWarning;
-        const canFix = !!(diag.suggestion && diag.tokenAtFault && onApplyFix);
+        const canReplace = !!(diag.suggestion && diag.tokenAtFault && onApplyFix);
+        // Offer "Remove" only when the token is unknown enough that we
+        // don't have a suggestion to replace it with — otherwise the
+        // primary action is "Use <suggestion>" and a remove button would
+        // just clutter the row.
+        const canRemove = !canReplace && !!(diag.tokenAtFault && onRemoveToken);
         return (
           <div key={`${diag.code}-${i}`} className={`${styles.row} ${rowClass}`}>
             <Icon name={isError ? 'times-circle' : 'exclamation-triangle'} size="sm" className={iconClass} />
             <span className={styles.message}>{diag.message}</span>
-            {canFix && (
+            {canReplace && (
               <Button
                 size="sm"
                 variant="secondary"
@@ -50,6 +66,18 @@ export function ConditionLintMessages({ diagnostics, onApplyFix, testId }: Condi
                 onClick={() => onApplyFix!(diag.tokenAtFault!, diag.suggestion!)}
               >
                 Use {diag.suggestion}
+              </Button>
+            )}
+            {canRemove && (
+              <Button
+                size="sm"
+                variant="secondary"
+                fill="outline"
+                type="button"
+                icon="trash-alt"
+                onClick={() => onRemoveToken!(diag.tokenAtFault!)}
+              >
+                Remove
               </Button>
             )}
           </div>
@@ -63,14 +91,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(0.5),
-    marginTop: theme.spacing(0.5),
+    gap: theme.spacing(0.25),
+    // Pull the warnings up close to the input — Grafana's `Field` adds a
+    // generous bottom margin, which makes the gap look disconnected.
+    marginTop: theme.spacing(-1),
+    marginBottom: theme.spacing(0.5),
   }),
   row: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
-    padding: theme.spacing(0.75, 1),
+    padding: theme.spacing(0.5, 1),
     borderRadius: theme.shape.radius.default,
     fontSize: theme.typography.bodySmall.fontSize,
     lineHeight: theme.typography.bodySmall.lineHeight,

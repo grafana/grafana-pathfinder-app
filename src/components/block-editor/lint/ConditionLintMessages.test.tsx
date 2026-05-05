@@ -94,4 +94,49 @@ describe('ConditionLintMessages', () => {
     render(<ConditionLintMessages diagnostics={diagnostics} />);
     expect(screen.queryByRole('button', { name: /Use is-admin/i })).not.toBeInTheDocument();
   });
+
+  describe('Remove button', () => {
+    const fooDiagnostic: Diagnostic = {
+      severity: 'warning',
+      code: 'condition.unknown_type',
+      message: "Unknown condition type 'foo'",
+      path: [],
+      tokenAtFault: 'foo',
+    };
+
+    it('renders Remove when the diagnostic has a tokenAtFault but no suggestion', () => {
+      render(<ConditionLintMessages diagnostics={[fooDiagnostic]} onRemoveToken={jest.fn()} />);
+      expect(screen.getByRole('button', { name: /Remove/i })).toBeInTheDocument();
+    });
+
+    it('calls onRemoveToken(badToken) when Remove is clicked', () => {
+      const onRemoveToken = jest.fn();
+      render(<ConditionLintMessages diagnostics={[fooDiagnostic]} onRemoveToken={onRemoveToken} />);
+      fireEvent.click(screen.getByRole('button', { name: /Remove/i }));
+      expect(onRemoveToken).toHaveBeenCalledWith('foo');
+    });
+
+    it('does NOT render Remove when a suggestion is available — Use takes precedence', () => {
+      const diagnosticWithSuggestion: Diagnostic = {
+        ...fooDiagnostic,
+        message: "Unknown condition type 'is-amdin'",
+        tokenAtFault: 'is-amdin',
+        suggestion: 'is-admin',
+      };
+      render(
+        <ConditionLintMessages
+          diagnostics={[diagnosticWithSuggestion]}
+          onApplyFix={jest.fn()}
+          onRemoveToken={jest.fn()}
+        />
+      );
+      expect(screen.getByRole('button', { name: /Use is-admin/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Remove$/i })).not.toBeInTheDocument();
+    });
+
+    it('does NOT render Remove when onRemoveToken is not provided', () => {
+      render(<ConditionLintMessages diagnostics={[fooDiagnostic]} />);
+      expect(screen.queryByRole('button', { name: /Remove/i })).not.toBeInTheDocument();
+    });
+  });
 });

@@ -23,7 +23,12 @@ import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
-import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
@@ -247,6 +252,15 @@ export function InteractiveBlockForm({
   }, []);
   const fixVerifyToken = useCallback((bad: string, good: string) => {
     setVerify((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const removeRequirementsToken = useCallback((bad: string) => {
+    setRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeObjectivesToken = useCallback((bad: string) => {
+    setObjectives((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeVerifyToken = useCallback((bad: string) => {
+    setVerify((prev) => removeTokenFromConditionField(prev, bad));
   }, []);
 
   // Swap an alternative selector into the primary reftarget position
@@ -483,6 +497,7 @@ export function InteractiveBlockForm({
           <ConditionLintMessages
             diagnostics={requirementsLint}
             onApplyFix={fixRequirementsToken}
+            onRemoveToken={removeRequirementsToken}
             testId="interactive-block-requirements-lint"
           />
           <div className={styles.requirementsContainer}>
@@ -612,6 +627,7 @@ export function InteractiveBlockForm({
           <ConditionLintMessages
             diagnostics={verifyLint}
             onApplyFix={fixVerifyToken}
+            onRemoveToken={removeVerifyToken}
             testId="interactive-block-verify-lint"
           />
 
@@ -626,6 +642,7 @@ export function InteractiveBlockForm({
           <ConditionLintMessages
             diagnostics={objectivesLint}
             onApplyFix={fixObjectivesToken}
+            onRemoveToken={removeObjectivesToken}
             testId="interactive-block-objectives-lint"
           />
         </>

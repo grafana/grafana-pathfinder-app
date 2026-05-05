@@ -10,7 +10,12 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
-import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock, JsonStep } from '../types';
 import type { JsonMultistepBlock } from '../../../types/json-guide.types';
@@ -94,6 +99,12 @@ export function MultistepBlockForm({
   const fixObjectivesToken = useCallback((bad: string, good: string) => {
     setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
   }, []);
+  const removeRequirementsToken = useCallback((bad: string) => {
+    setRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeObjectivesToken = useCallback((bad: string) => {
+    setObjectives((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
 
   const isValid = content.trim().length > 0 && steps.length > 0;
 
@@ -137,6 +148,7 @@ export function MultistepBlockForm({
       <ConditionLintMessages
         diagnostics={requirementsLint}
         onApplyFix={fixRequirementsToken}
+        onRemoveToken={removeRequirementsToken}
         testId="multistep-block-requirements-lint"
       />
       <div className={styles.requirementsContainer}>
@@ -165,6 +177,7 @@ export function MultistepBlockForm({
       <ConditionLintMessages
         diagnostics={objectivesLint}
         onApplyFix={fixObjectivesToken}
+        onRemoveToken={removeObjectivesToken}
         testId="multistep-block-objectives-lint"
       />
 

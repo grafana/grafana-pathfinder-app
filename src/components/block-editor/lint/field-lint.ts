@@ -110,3 +110,34 @@ export function replaceTokenInConditionField(value: string, oldToken: string, ne
     .join(',');
   return replaced ? next : value;
 }
+
+/**
+ * Remove the first occurrence of a specific token from a comma-separated
+ * condition field. Cleans up the resulting string so no double commas or
+ * trailing commas are left behind.
+ *
+ * Used by the inline "Remove" quick-fix button (for tokens that are
+ * completely unknown and have no near-match suggestion to replace with).
+ */
+export function removeTokenFromConditionField(value: string, badToken: string): string {
+  const parts = value.split(',');
+  let removed = false;
+  const kept: string[] = [];
+  for (const part of parts) {
+    if (!removed && part.trim() === badToken) {
+      removed = true;
+      continue;
+    }
+    kept.push(part);
+  }
+  if (!removed) {
+    return value;
+  }
+  // Re-join, then collapse leading/trailing whitespace and stray commas
+  // produced by removing a token at either end of the list.
+  return kept
+    .join(',')
+    .replace(/^\s*,\s*/, '')
+    .replace(/\s*,\s*$/, '')
+    .trim();
+}

@@ -42,7 +42,12 @@ import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
-import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import type { JsonStep, JsonInteractiveAction } from '../types';
 
 // Exclude our overlay UI from being recorded as steps
@@ -335,6 +340,12 @@ export function StepEditor({
   }, []);
   const fixEditRequirementsToken = useCallback((bad: string, good: string) => {
     setEditRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const removeNewRequirementsToken = useCallback((bad: string) => {
+    setNewRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeEditRequirementsToken = useCallback((bad: string) => {
+    setEditRequirements((prev) => removeTokenFromConditionField(prev, bad));
   }, []);
 
   // Keep a ref to current steps length so getStepCount always returns fresh value
@@ -877,6 +888,7 @@ export function StepEditor({
                       <ConditionLintMessages
                         diagnostics={editRequirementsLint}
                         onApplyFix={fixEditRequirementsToken}
+                        onRemoveToken={removeEditRequirementsToken}
                         testId="step-editor-edit-requirements-lint"
                       />
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
@@ -1174,6 +1186,7 @@ export function StepEditor({
           <ConditionLintMessages
             diagnostics={newRequirementsLint}
             onApplyFix={fixNewRequirementsToken}
+            onRemoveToken={removeNewRequirementsToken}
             testId="step-editor-new-requirements-lint"
           />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>

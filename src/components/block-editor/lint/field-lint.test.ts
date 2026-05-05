@@ -6,7 +6,7 @@
  * come from the canonical condition-validator and are tested there.
  */
 
-import { lintConditionField, replaceTokenInConditionField } from './field-lint';
+import { lintConditionField, replaceTokenInConditionField, removeTokenFromConditionField } from './field-lint';
 
 describe('lintConditionField', () => {
   describe('happy path', () => {
@@ -143,5 +143,33 @@ describe('replaceTokenInConditionField', () => {
   it('returns the original value unchanged if the bad token is not present', () => {
     const value = 'exists-reftarget, on-page:/x';
     expect(replaceTokenInConditionField(value, 'is-amdin', 'is-admin')).toBe(value);
+  });
+});
+
+describe('removeTokenFromConditionField', () => {
+  it('removes a single token and trims leading/trailing whitespace', () => {
+    expect(removeTokenFromConditionField('foo', 'foo')).toBe('');
+    expect(removeTokenFromConditionField('  foo  ', 'foo')).toBe('');
+  });
+
+  it('removes the first occurrence and leaves later duplicates intact', () => {
+    expect(removeTokenFromConditionField('foo, bar, foo', 'foo')).toBe('bar, foo');
+  });
+
+  it('cleans up commas left behind when the bad token is at the start', () => {
+    expect(removeTokenFromConditionField('foo, exists-reftarget, on-page:/x', 'foo')).toBe(
+      'exists-reftarget, on-page:/x'
+    );
+  });
+
+  it('cleans up commas left behind when the bad token is at the end', () => {
+    expect(removeTokenFromConditionField('exists-reftarget, on-page:/x, bar', 'bar')).toBe(
+      'exists-reftarget, on-page:/x'
+    );
+  });
+
+  it('returns the original value unchanged if the bad token is not present', () => {
+    const value = 'exists-reftarget, on-page:/x';
+    expect(removeTokenFromConditionField(value, 'foo')).toBe(value);
   });
 });

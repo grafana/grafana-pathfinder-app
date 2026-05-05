@@ -13,7 +13,12 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { BranchBlocksEditor } from './BranchBlocksEditor';
-import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type {
@@ -247,6 +252,21 @@ export function ConditionalBlockForm({
   const fixWhenFalseObjectivesToken = useCallback((bad: string, good: string) => {
     setWhenFalseObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
   }, []);
+  const removeConditionsToken = useCallback((bad: string) => {
+    setConditions((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenTrueRequirementsToken = useCallback((bad: string) => {
+    setWhenTrueRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenTrueObjectivesToken = useCallback((bad: string) => {
+    setWhenTrueObjectives((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenFalseRequirementsToken = useCallback((bad: string) => {
+    setWhenFalseRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenFalseObjectivesToken = useCallback((bad: string) => {
+    setWhenFalseObjectives((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
 
   // Parse conditions to check validity
   const conditionsArray = parseArray(conditions);
@@ -271,6 +291,7 @@ export function ConditionalBlockForm({
       <ConditionLintMessages
         diagnostics={conditionsLint}
         onApplyFix={fixConditionsToken}
+        onRemoveToken={removeConditionsToken}
         testId="conditional-block-conditions-lint"
       />
       <div className={styles.requirementsContainer}>
@@ -384,6 +405,7 @@ export function ConditionalBlockForm({
                 <ConditionLintMessages
                   diagnostics={whenTrueRequirementsLint}
                   onApplyFix={fixWhenTrueRequirementsToken}
+                  onRemoveToken={removeWhenTrueRequirementsToken}
                   testId="conditional-block-whenTrue-requirements-lint"
                 />
                 <Field label="Objectives" description="Completion goals for this section (comma-separated)">
@@ -397,6 +419,7 @@ export function ConditionalBlockForm({
                 <ConditionLintMessages
                   diagnostics={whenTrueObjectivesLint}
                   onApplyFix={fixWhenTrueObjectivesToken}
+                  onRemoveToken={removeWhenTrueObjectivesToken}
                   testId="conditional-block-whenTrue-objectives-lint"
                 />
               </div>
@@ -437,6 +460,7 @@ export function ConditionalBlockForm({
                 <ConditionLintMessages
                   diagnostics={whenFalseRequirementsLint}
                   onApplyFix={fixWhenFalseRequirementsToken}
+                  onRemoveToken={removeWhenFalseRequirementsToken}
                   testId="conditional-block-whenFalse-requirements-lint"
                 />
                 <Field label="Objectives" description="Completion goals for this section (comma-separated)">
@@ -450,6 +474,7 @@ export function ConditionalBlockForm({
                 <ConditionLintMessages
                   diagnostics={whenFalseObjectivesLint}
                   onApplyFix={fixWhenFalseObjectivesToken}
+                  onRemoveToken={removeWhenFalseObjectivesToken}
                   testId="conditional-block-whenFalse-objectives-lint"
                 />
               </div>

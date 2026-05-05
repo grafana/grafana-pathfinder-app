@@ -9,7 +9,12 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Button, Field, Input, Badge, useStyles2, Alert, Switch } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
-import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonSectionBlock } from '../../../types/json-guide.types';
@@ -119,6 +124,12 @@ export function SectionBlockForm({
   const fixObjectivesToken = useCallback((bad: string, good: string) => {
     setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
   }, []);
+  const removeRequirementsToken = useCallback((bad: string) => {
+    setRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeObjectivesToken = useCallback((bad: string) => {
+    setObjectives((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
 
   // Handle title change - just update title, don't auto-generate ID yet
   const handleTitleChange = useCallback((value: string) => {
@@ -184,6 +195,7 @@ export function SectionBlockForm({
       <ConditionLintMessages
         diagnostics={requirementsLint}
         onApplyFix={fixRequirementsToken}
+        onRemoveToken={removeRequirementsToken}
         testId="section-block-requirements-lint"
       />
       <div className={styles.requirementsContainer}>
@@ -212,6 +224,7 @@ export function SectionBlockForm({
       <ConditionLintMessages
         diagnostics={objectivesLint}
         onApplyFix={fixObjectivesToken}
+        onRemoveToken={removeObjectivesToken}
         testId="section-block-objectives-lint"
       />
 
