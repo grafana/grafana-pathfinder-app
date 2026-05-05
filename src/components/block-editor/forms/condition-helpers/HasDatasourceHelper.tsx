@@ -2,12 +2,17 @@
  * `HasDatasourceHelper` — argument input for `has-datasource:` and
  * `datasource-configured:` requirements.
  *
- * A plain text input plus a row of clickable suggestion badges
- * populated from `getDataSourceSrv().getList()`. Authors can either type
- * a name/type freehand or click a badge to fill the field. We avoid the
- * Grafana `Combobox` here because its `createCustomValue` mode has
- * surprising autocomplete behaviour that prepends partial matches when
- * the field is re-focused.
+ * A plain text input plus a row of clickable suggestion badges, one per
+ * **unique datasource type** the user has configured. We surface types
+ * (not names) because the runtime check matches either, and types are
+ * the more reliable authoring choice — users frequently rename their
+ * datasources but the type stays stable. Built-in pseudo-datasources
+ * (`-- Grafana --`, `-- Mixed --`, etc.) are filtered out since they're
+ * never the right thing for a tutorial to gate on.
+ *
+ * We avoid the Grafana `Combobox` here because its `createCustomValue`
+ * mode has surprising autocomplete behaviour that prepends partial
+ * matches when the field is re-focused.
  */
 
 import React, { useEffect, useMemo } from 'react';
@@ -17,38 +22,45 @@ import { css } from '@emotion/css';
 import { getDataSourceSrv } from '@grafana/runtime';
 import type { ConditionHelperProps } from './types';
 
-interface DatasourceSuggestion {
-  value: string;
-  description: string;
-  /** Whether this suggestion is a datasource name vs a datasource type. */
-  kind: 'name' | 'type';
+interface TypeSuggestion {
+  type: string;
+  /** Names of the user's datasources with this type — shown in tooltip. */
+  instanceNames: string[];
 }
 
-function loadSuggestions(): DatasourceSuggestion[] {
+function loadTypeSuggestions(): TypeSuggestion[] {
   try {
     const sources = getDataSourceSrv().getList();
-    const byName: DatasourceSuggestion[] = sources.map((ds) => ({
-      value: ds.name,
-      description: `Type: ${ds.type}`,
-      kind: 'name',
-    }));
-    const seenTypes = new Set<string>();
-    const byType: DatasourceSuggestion[] = [];
+    const byType = new Map<string, string[]>();
     for (const ds of sources) {
-      if (!seenTypes.has(ds.type)) {
-        seenTypes.add(ds.type);
-        byType.push({ value: ds.type, description: 'Match any datasource of this type', kind: 'type' });
+      // Skip Grafana's built-in pseudo-datasources (-- Grafana --, -- Mixed --,
+      // etc.). These are never useful targets for a tutorial requirement.
+      if (ds.meta?.builtIn) {
+        continue;
       }
+      const list = byType.get(ds.type) ?? [];
+      list.push(ds.name);
+      byType.set(ds.type, list);
     }
-    return [...byName, ...byType];
+    return Array.from(byType.entries()).map(([type, instanceNames]) => ({
+      type,
+      instanceNames,
+    }));
   } catch {
     return [];
   }
 }
 
+function tooltipFor(s: TypeSuggestion): string {
+  if (s.instanceNames.length === 1) {
+    return `Match the ${s.type} datasource (currently named "${s.instanceNames[0]}")`;
+  }
+  return `Match any of the ${s.instanceNames.length} ${s.type} datasources you have configured`;
+}
+
 export function HasDatasourceHelper({ value, onChange, onSubmit, onValidityChange, testId }: ConditionHelperProps) {
   const styles = useStyles2(getStyles);
-  const suggestions = useMemo(() => loadSuggestions(), []);
+  const suggestions = useMemo(() => loadTypeSuggestions(), []);
 
   useEffect(() => {
     onValidityChange?.(value.trim().length > 0);
@@ -73,18 +85,16 @@ export function HasDatasourceHelper({ value, onChange, onSubmit, onValidityChang
       />
       {suggestions.length > 0 && (
         <div className={styles.suggestionsContainer}>
-          <span className={styles.suggestionsLabel}>Click to use one of your datasources:</span>
+          <span className={styles.suggestionsLabel}>Click a datasource type to match any datasource of that type:</span>
           <div className={styles.suggestionsList}>
-            {suggestions.map((s, i) => (
+            {suggestions.map((s) => (
               <Badge
-                // Name and type lists may overlap (rare but possible),
-                // so include kind in the key to keep React happy.
-                key={`${s.kind}-${s.value}-${i}`}
-                text={s.value}
-                color={s.kind === 'name' ? 'blue' : 'orange'}
-                tooltip={s.description}
+                key={s.type}
+                text={s.type}
+                color="blue"
+                tooltip={tooltipFor(s)}
                 className={styles.suggestionBadge}
-                onClick={() => onChange(s.value)}
+                onClick={() => onChange(s.type)}
               />
             ))}
           </div>
