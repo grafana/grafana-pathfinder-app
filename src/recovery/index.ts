@@ -25,3 +25,9 @@ export {
 } from './launch-sources';
 
 export { resolveStartingLocation } from './starting-location';
+
+export {
+  AUTO_RECOVERABLE_REQUIREMENT_TOKENS,
+  AUTO_RECOVERABLE_REQUIREMENT_PREFIXES,
+  isAutoRecoverableRequirement,
+} from './auto-recoverable';
