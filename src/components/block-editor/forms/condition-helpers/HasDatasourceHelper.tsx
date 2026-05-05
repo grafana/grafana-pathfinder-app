@@ -2,13 +2,21 @@
  * `HasDatasourceHelper` — argument input for `has-datasource:` and
  * `datasource-configured:` requirements.
  *
- * A plain text input plus a row of clickable suggestion badges, one per
- * **unique datasource type** the user has configured. We surface types
- * (not names) because the runtime check matches either, and types are
- * the more reliable authoring choice — users frequently rename their
- * datasources but the type stays stable. Built-in pseudo-datasources
- * (`-- Grafana --`, `-- Mixed --`, etc.) are filtered out since they're
- * never the right thing for a tutorial to gate on.
+ * The runtime check matches a typed argument case-insensitively against
+ * either the datasource **name** or **type**, so authors have two valid
+ * choices:
+ *
+ * - **Type** (e.g. `prometheus`) — matches any prometheus datasource
+ *   regardless of what the user named it. The recommended choice for
+ *   "this guide needs a Prometheus datasource".
+ * - **Name** (e.g. `my-prod-prom`) — matches a specific configured
+ *   datasource. Useful when a learning path expects a particular one
+ *   to have been set up in an earlier step.
+ *
+ * We render both as separate groups of clickable badges with explicit
+ * labels so the choice is obvious. Built-in pseudo-datasources
+ * (`-- Grafana --`, the variables backer, etc.) are filtered out via
+ * `meta.builtIn` since they're never useful tutorial targets.
  *
  * We avoid the Grafana `Combobox` here because its `createCustomValue`
  * mode has surprising autocomplete behaviour that prepends partial
@@ -28,39 +36,57 @@ interface TypeSuggestion {
   instanceNames: string[];
 }
 
-function loadTypeSuggestions(): TypeSuggestion[] {
+interface NameSuggestion {
+  name: string;
+  type: string;
+}
+
+interface Suggestions {
+  types: TypeSuggestion[];
+  names: NameSuggestion[];
+}
+
+function loadSuggestions(): Suggestions {
   try {
     const sources = getDataSourceSrv().getList();
     const byType = new Map<string, string[]>();
+    const names: NameSuggestion[] = [];
     for (const ds of sources) {
       // Skip Grafana's built-in pseudo-datasources (-- Grafana --, -- Mixed --,
-      // etc.). These are never useful targets for a tutorial requirement.
+      // the variables-backer, etc.). These are never useful targets for a
+      // tutorial requirement.
       if (ds.meta?.builtIn) {
         continue;
       }
       const list = byType.get(ds.type) ?? [];
       list.push(ds.name);
       byType.set(ds.type, list);
+      names.push({ name: ds.name, type: ds.type });
     }
-    return Array.from(byType.entries()).map(([type, instanceNames]) => ({
+    const types = Array.from(byType.entries()).map(([type, instanceNames]) => ({
       type,
       instanceNames,
     }));
+    return { types, names };
   } catch {
-    return [];
+    return { types: [], names: [] };
   }
 }
 
-function tooltipFor(s: TypeSuggestion): string {
+function tooltipForType(s: TypeSuggestion): string {
   if (s.instanceNames.length === 1) {
     return `Match the ${s.type} datasource (currently named "${s.instanceNames[0]}")`;
   }
   return `Match any of the ${s.instanceNames.length} ${s.type} datasources you have configured`;
 }
 
+function tooltipForName(s: NameSuggestion): string {
+  return `Match this exact datasource (type: ${s.type}). Will not match if the user renames it.`;
+}
+
 export function HasDatasourceHelper({ value, onChange, onSubmit, onValidityChange, testId }: ConditionHelperProps) {
   const styles = useStyles2(getStyles);
-  const suggestions = useMemo(() => loadTypeSuggestions(), []);
+  const { types, names } = useMemo(() => loadSuggestions(), []);
 
   useEffect(() => {
     onValidityChange?.(value.trim().length > 0);
@@ -73,6 +99,8 @@ export function HasDatasourceHelper({ value, onChange, onSubmit, onValidityChang
     }
   };
 
+  const hasAny = types.length > 0 || names.length > 0;
+
   return (
     <Stack direction="column" gap={1}>
       <Input
@@ -83,21 +111,42 @@ export function HasDatasourceHelper({ value, onChange, onSubmit, onValidityChang
         autoFocus
         data-testid={testId}
       />
-      {suggestions.length > 0 && (
-        <div className={styles.suggestionsContainer}>
-          <span className={styles.suggestionsLabel}>Click a datasource type to match any datasource of that type:</span>
-          <div className={styles.suggestionsList}>
-            {suggestions.map((s) => (
-              <Badge
-                key={s.type}
-                text={s.type}
-                color="blue"
-                tooltip={tooltipFor(s)}
-                className={styles.suggestionBadge}
-                onClick={() => onChange(s.type)}
-              />
-            ))}
-          </div>
+      {hasAny && (
+        <div className={styles.groups}>
+          {types.length > 0 && (
+            <div className={styles.group}>
+              <span className={styles.groupLabel}>By type (recommended — survives renames)</span>
+              <div className={styles.badgesList}>
+                {types.map((s) => (
+                  <Badge
+                    key={`type-${s.type}`}
+                    text={s.type}
+                    color="blue"
+                    tooltip={tooltipForType(s)}
+                    className={styles.suggestionBadge}
+                    onClick={() => onChange(s.type)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {names.length > 0 && (
+            <div className={styles.group}>
+              <span className={styles.groupLabel}>Or by name (matches one specific datasource)</span>
+              <div className={styles.badgesList}>
+                {names.map((s) => (
+                  <Badge
+                    key={`name-${s.name}`}
+                    text={s.name}
+                    color="darkgrey"
+                    tooltip={tooltipForName(s)}
+                    className={styles.suggestionBadge}
+                    onClick={() => onChange(s.name)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </Stack>
@@ -105,16 +154,21 @@ export function HasDatasourceHelper({ value, onChange, onSubmit, onValidityChang
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  suggestionsContainer: css({
+  groups: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+  }),
+  group: css({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(0.5),
   }),
-  suggestionsLabel: css({
+  groupLabel: css({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
-  suggestionsList: css({
+  badgesList: css({
     display: 'flex',
     flexWrap: 'wrap',
     gap: theme.spacing(0.5),
