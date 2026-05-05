@@ -42,6 +42,7 @@ import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
+import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
 import type { JsonStep, JsonInteractiveAction } from '../types';
 
 // Exclude our overlay UI from being recorded as steps
@@ -324,6 +325,17 @@ export function StepEditor({
   const [editScrollContainer, setEditScrollContainer] = useState('');
   const [editRequirements, setEditRequirements] = useState('');
   const [editSkippable, setEditSkippable] = useState(false);
+
+  // Real-time lint for the per-step requirements fields (both add-form and
+  // edit-form). Cheap synchronous condition-validator pass behind a debounce.
+  const newRequirementsLint = useFieldLint(newRequirements);
+  const editRequirementsLint = useFieldLint(editRequirements);
+  const fixNewRequirementsToken = useCallback((bad: string, good: string) => {
+    setNewRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixEditRequirementsToken = useCallback((bad: string, good: string) => {
+    setEditRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
 
   // Keep a ref to current steps length so getStepCount always returns fresh value
   const stepsLengthRef = useRef(steps.length);
@@ -862,6 +874,11 @@ export function StepEditor({
                           placeholder="e.g., exists-reftarget, navmenu-open"
                         />
                       </Field>
+                      <ConditionLintMessages
+                        diagnostics={editRequirementsLint}
+                        onApplyFix={fixEditRequirementsToken}
+                        testId="step-editor-edit-requirements-lint"
+                      />
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
                         {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
                           <Badge
@@ -1154,6 +1171,11 @@ export function StepEditor({
               placeholder="e.g., exists-reftarget, navmenu-open"
             />
           </Field>
+          <ConditionLintMessages
+            diagnostics={newRequirementsLint}
+            onApplyFix={fixNewRequirementsToken}
+            testId="step-editor-new-requirements-lint"
+          />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
             {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
               <Badge

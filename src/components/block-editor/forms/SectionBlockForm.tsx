@@ -9,6 +9,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Button, Field, Input, Badge, useStyles2, Alert, Switch } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonSectionBlock } from '../../../types/json-guide.types';
@@ -110,6 +111,15 @@ export function SectionBlockForm({
     });
   }, []);
 
+  const requirementsLint = useFieldLint(requirements);
+  const objectivesLint = useFieldLint(objectives);
+  const fixRequirementsToken = useCallback((bad: string, good: string) => {
+    setRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixObjectivesToken = useCallback((bad: string, good: string) => {
+    setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+
   // Handle title change - just update title, don't auto-generate ID yet
   const handleTitleChange = useCallback((value: string) => {
     setTitle(value);
@@ -171,6 +181,11 @@ export function SectionBlockForm({
           placeholder="e.g., is-admin, on-page:/settings"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={requirementsLint}
+        onApplyFix={fixRequirementsToken}
+        testId="section-block-requirements-lint"
+      />
       <div className={styles.requirementsContainer}>
         <span className={styles.requirementsLabel}>Quick add:</span>
         <div className={styles.requirementsChips}>
@@ -194,6 +209,11 @@ export function SectionBlockForm({
           placeholder="e.g., completed-setup, configured-datasource"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={objectivesLint}
+        onApplyFix={fixObjectivesToken}
+        testId="section-block-objectives-lint"
+      />
 
       {/* Auto-collapse on completion */}
       <Field

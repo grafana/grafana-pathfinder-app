@@ -22,6 +22,12 @@ export interface Diagnostic {
    * the corrected token (e.g. `has-role:editor` for a misspelled `has-rle:editor`).
    */
   suggestion?: string;
+  /**
+   * The specific token in a condition string that is at fault. Set for
+   * condition diagnostics so the UI can replace just that token without
+   * touching neighbours. Undefined for whole-field or whole-guide diagnostics.
+   */
+  tokenAtFault?: string;
 }
 
 /**

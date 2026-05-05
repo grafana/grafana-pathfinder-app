@@ -50,7 +50,8 @@ function issueToDiagnostic(issue: ConditionIssue): Diagnostic {
     code: `condition.${issue.code}`,
     message: issue.message,
     path: issue.path,
-    suggestion: suggestion ?? undefined,
+    suggestion,
+    tokenAtFault: issue.condition,
   };
 }
 

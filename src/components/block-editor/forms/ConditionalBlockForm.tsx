@@ -13,6 +13,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { BranchBlocksEditor } from './BranchBlocksEditor';
+import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type {
@@ -225,6 +226,28 @@ export function ConditionalBlockForm({
     });
   }, []);
 
+  const conditionsLint = useFieldLint(conditions);
+  const whenTrueRequirementsLint = useFieldLint(whenTrueRequirements);
+  const whenTrueObjectivesLint = useFieldLint(whenTrueObjectives);
+  const whenFalseRequirementsLint = useFieldLint(whenFalseRequirements);
+  const whenFalseObjectivesLint = useFieldLint(whenFalseObjectives);
+
+  const fixConditionsToken = useCallback((bad: string, good: string) => {
+    setConditions((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenTrueRequirementsToken = useCallback((bad: string, good: string) => {
+    setWhenTrueRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenTrueObjectivesToken = useCallback((bad: string, good: string) => {
+    setWhenTrueObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenFalseRequirementsToken = useCallback((bad: string, good: string) => {
+    setWhenFalseRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenFalseObjectivesToken = useCallback((bad: string, good: string) => {
+    setWhenFalseObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+
   // Parse conditions to check validity
   const conditionsArray = parseArray(conditions);
   const isValid = conditionsArray.length > 0;
@@ -245,6 +268,11 @@ export function ConditionalBlockForm({
           autoFocus
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={conditionsLint}
+        onApplyFix={fixConditionsToken}
+        testId="conditional-block-conditions-lint"
+      />
       <div className={styles.requirementsContainer}>
         <span className={styles.requirementsLabel}>Quick add:</span>
         <div className={styles.requirementsChips}>
@@ -353,6 +381,11 @@ export function ConditionalBlockForm({
                     rows={2}
                   />
                 </Field>
+                <ConditionLintMessages
+                  diagnostics={whenTrueRequirementsLint}
+                  onApplyFix={fixWhenTrueRequirementsToken}
+                  testId="conditional-block-whenTrue-requirements-lint"
+                />
                 <Field label="Objectives" description="Completion goals for this section (comma-separated)">
                   <TextArea
                     value={whenTrueObjectives}
@@ -361,6 +394,11 @@ export function ConditionalBlockForm({
                     rows={2}
                   />
                 </Field>
+                <ConditionLintMessages
+                  diagnostics={whenTrueObjectivesLint}
+                  onApplyFix={fixWhenTrueObjectivesToken}
+                  testId="conditional-block-whenTrue-objectives-lint"
+                />
               </div>
             )}
           </div>
@@ -396,6 +434,11 @@ export function ConditionalBlockForm({
                     rows={2}
                   />
                 </Field>
+                <ConditionLintMessages
+                  diagnostics={whenFalseRequirementsLint}
+                  onApplyFix={fixWhenFalseRequirementsToken}
+                  testId="conditional-block-whenFalse-requirements-lint"
+                />
                 <Field label="Objectives" description="Completion goals for this section (comma-separated)">
                   <TextArea
                     value={whenFalseObjectives}
@@ -404,6 +447,11 @@ export function ConditionalBlockForm({
                     rows={2}
                   />
                 </Field>
+                <ConditionLintMessages
+                  diagnostics={whenFalseObjectivesLint}
+                  onApplyFix={fixWhenFalseObjectivesToken}
+                  testId="conditional-block-whenFalse-objectives-lint"
+                />
               </div>
             )}
           </div>

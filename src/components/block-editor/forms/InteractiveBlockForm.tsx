@@ -23,6 +23,7 @@ import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
+import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
 import { testIds } from '../../../constants/testIds';
 import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
@@ -230,6 +231,22 @@ export function InteractiveBlockForm({
       }
       return prev ? `${prev}, ${req}` : req;
     });
+  }, []);
+
+  // Real-time lint for the three condition-grammar fields. Debounced inside
+  // the hook so per-keystroke cost is just one synchronous tokenizer pass.
+  const requirementsLint = useFieldLint(requirements);
+  const objectivesLint = useFieldLint(objectives);
+  const verifyLint = useFieldLint(verify);
+
+  const fixRequirementsToken = useCallback((bad: string, good: string) => {
+    setRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixObjectivesToken = useCallback((bad: string, good: string) => {
+    setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixVerifyToken = useCallback((bad: string, good: string) => {
+    setVerify((prev) => replaceTokenInConditionField(prev, bad, good));
   }, []);
 
   // Swap an alternative selector into the primary reftarget position
@@ -463,6 +480,11 @@ export function InteractiveBlockForm({
               placeholder="e.g., exists-reftarget, on-page:/dashboards"
             />
           </Field>
+          <ConditionLintMessages
+            diagnostics={requirementsLint}
+            onApplyFix={fixRequirementsToken}
+            testId="interactive-block-requirements-lint"
+          />
           <div className={styles.requirementsContainer}>
             <span className={styles.requirementsLabel}>Quick add:</span>
             <div className={styles.requirementsChips}>
@@ -587,6 +609,11 @@ export function InteractiveBlockForm({
               placeholder="e.g., on-page:/dashboards"
             />
           </Field>
+          <ConditionLintMessages
+            diagnostics={verifyLint}
+            onApplyFix={fixVerifyToken}
+            testId="interactive-block-verify-lint"
+          />
 
           {/* Objectives (optional) */}
           <Field label="Objectives" description="Objectives tracked for completion (comma-separated)">
@@ -596,6 +623,11 @@ export function InteractiveBlockForm({
               placeholder="e.g., created-dashboard, saved-changes"
             />
           </Field>
+          <ConditionLintMessages
+            diagnostics={objectivesLint}
+            onApplyFix={fixObjectivesToken}
+            testId="interactive-block-objectives-lint"
+          />
         </>
       )}
 

@@ -10,6 +10,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock, JsonStep } from '../types';
 import type { JsonMultistepBlock } from '../../../types/json-guide.types';
@@ -85,6 +86,15 @@ export function MultistepBlockForm({
     });
   }, []);
 
+  const requirementsLint = useFieldLint(requirements);
+  const objectivesLint = useFieldLint(objectives);
+  const fixRequirementsToken = useCallback((bad: string, good: string) => {
+    setRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixObjectivesToken = useCallback((bad: string, good: string) => {
+    setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+
   const isValid = content.trim().length > 0 && steps.length > 0;
 
   return (
@@ -124,6 +134,11 @@ export function MultistepBlockForm({
           placeholder="e.g., navmenu-open, exists-reftarget"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={requirementsLint}
+        onApplyFix={fixRequirementsToken}
+        testId="multistep-block-requirements-lint"
+      />
       <div className={styles.requirementsContainer}>
         <span className={styles.requirementsLabel}>Quick add:</span>
         <div className={styles.requirementsChips}>
@@ -147,6 +162,11 @@ export function MultistepBlockForm({
           placeholder="e.g., opened-menu, selected-option"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={objectivesLint}
+        onApplyFix={fixObjectivesToken}
+        testId="multistep-block-objectives-lint"
+      />
 
       {/* Skippable */}
       <Checkbox

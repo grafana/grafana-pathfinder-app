@@ -10,6 +10,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { useFieldLint, ConditionLintMessages, replaceTokenInConditionField } from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock, JsonStep } from '../types';
 import type { JsonGuidedBlock } from '../../../types/json-guide.types';
@@ -89,6 +90,15 @@ export function GuidedBlockForm({
     });
   }, []);
 
+  const requirementsLint = useFieldLint(requirements);
+  const objectivesLint = useFieldLint(objectives);
+  const fixRequirementsToken = useCallback((bad: string, good: string) => {
+    setRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixObjectivesToken = useCallback((bad: string, good: string) => {
+    setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+
   const isValid = content.trim().length > 0 && steps.length > 0;
 
   return (
@@ -148,6 +158,11 @@ export function GuidedBlockForm({
           placeholder="e.g., navmenu-open, exists-reftarget"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={requirementsLint}
+        onApplyFix={fixRequirementsToken}
+        testId="guided-block-requirements-lint"
+      />
       <div className={styles.requirementsContainer}>
         <span className={styles.requirementsLabel}>Quick add:</span>
         <div className={styles.requirementsChips}>
@@ -171,6 +186,11 @@ export function GuidedBlockForm({
           placeholder="e.g., completed-tutorial, learned-navigation"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={objectivesLint}
+        onApplyFix={fixObjectivesToken}
+        testId="guided-block-objectives-lint"
+      />
 
       {/* Options */}
       <div className={styles.section}>
