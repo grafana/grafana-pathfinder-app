@@ -1,18 +1,20 @@
 /**
  * `OnPageHelper` — argument input for `on-page:` requirements.
  *
- * Provides an autocomplete combobox with a known-routes shortlist and a
- * "Use current page" button so authors don't have to type or remember
- * Grafana paths. Custom freeform input is still allowed (the underlying
- * combobox accepts arbitrary strings).
+ * A plain text input plus a "Use current page" shortcut and a row of
+ * clickable badges for the most-used Grafana paths. Validity: the value
+ * must start with `/` (the canonical condition validator enforces this;
+ * we mirror the rule here so the parent can gate the "Add" button).
  *
- * Validity: the value must start with `/` (the canonical condition
- * validator enforces this; we mirror the rule here so the parent can
- * gate the "Add" button).
+ * Avoids the Grafana `Combobox` because its `createCustomValue` mode
+ * has surprising autocomplete behaviour that prepends partial matches
+ * when the field is re-focused.
  */
 
 import React, { useEffect, useMemo } from 'react';
-import { Button, Combobox, Stack, type ComboboxOption } from '@grafana/ui';
+import { Badge, Button, Input, Stack, useStyles2 } from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
+import { css } from '@emotion/css';
 import type { ConditionHelperProps } from './types';
 
 const KNOWN_ROUTES: ReadonlyArray<{ value: string; description: string }> = [
@@ -28,12 +30,6 @@ const KNOWN_ROUTES: ReadonlyArray<{ value: string; description: string }> = [
   { value: '/profile', description: 'User profile' },
 ];
 
-const ROUTE_OPTIONS: Array<ComboboxOption<string>> = KNOWN_ROUTES.map((r) => ({
-  value: r.value,
-  label: r.value,
-  description: r.description,
-}));
-
 function getCurrentPath(): string {
   try {
     return window.location.pathname || '/';
@@ -43,42 +39,78 @@ function getCurrentPath(): string {
 }
 
 export function OnPageHelper({ value, onChange, onSubmit, onValidityChange, testId }: ConditionHelperProps) {
+  const styles = useStyles2(getStyles);
   const currentPath = useMemo(() => getCurrentPath(), []);
-  const isValid = value.startsWith('/');
+  const isValid = value.startsWith('/') && value.length > 1;
 
   useEffect(() => {
-    onValidityChange?.(isValid && value.length > 1);
-  }, [isValid, value, onValidityChange]);
+    onValidityChange?.(isValid);
+  }, [isValid, onValidityChange]);
 
-  const handleUseCurrent = () => {
-    onChange(currentPath);
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && isValid) {
+      e.preventDefault();
+      onSubmit();
+    }
   };
 
   return (
     <Stack direction="column" gap={1}>
-      <Combobox
-        options={ROUTE_OPTIONS}
+      <Input
         value={value}
-        onChange={(option) => onChange(option?.value ?? '')}
-        createCustomValue
-        placeholder="/explore, /dashboards, …"
+        onChange={(e) => onChange(e.currentTarget.value)}
+        onKeyDown={onKeyDown}
+        placeholder="e.g., /explore"
+        autoFocus
         data-testid={testId}
       />
       <Stack direction="row" gap={1} alignItems="center">
-        <Button size="sm" variant="secondary" fill="text" type="button" icon="map-marker" onClick={handleUseCurrent}>
+        <Button
+          size="sm"
+          variant="secondary"
+          fill="text"
+          type="button"
+          icon="map-marker"
+          onClick={() => onChange(currentPath)}
+        >
           Use current page ({currentPath})
         </Button>
       </Stack>
-      <input
-        type="hidden"
-        // Hidden submit hook so parent's Enter-to-add still works after path edits.
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            onSubmit();
-          }
-        }}
-      />
+      <div className={styles.suggestionsContainer}>
+        <span className={styles.suggestionsLabel}>Or pick a common page:</span>
+        <div className={styles.suggestionsList}>
+          {KNOWN_ROUTES.map((r) => (
+            <Badge
+              key={r.value}
+              text={r.value}
+              color="blue"
+              tooltip={r.description}
+              className={styles.suggestionBadge}
+              onClick={() => onChange(r.value)}
+            />
+          ))}
+        </div>
+      </div>
     </Stack>
   );
 }
+
+const getStyles = (theme: GrafanaTheme2) => ({
+  suggestionsContainer: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+  }),
+  suggestionsLabel: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
+  suggestionsList: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5),
+  }),
+  suggestionBadge: css({
+    cursor: 'pointer',
+  }),
+});
