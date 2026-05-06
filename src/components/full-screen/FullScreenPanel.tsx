@@ -271,7 +271,26 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     locationService.push(PLUGIN_BASE_URL);
   }, [guideUrl, title]);
 
+  /**
+   * Hand off to the floating panel — works for both guides and the editor.
+   *
+   * Editor branch sets a pending editor handoff so the floating panel
+   * picks the editor as its active tab on mount, instead of relying on
+   * whatever tabStorage happens to hold (mirrors the inbound direction
+   * `FloatingPanelManager.handleSwitchToFullScreen`).
+   */
   const handleSwitchToFloating = useCallback(() => {
+    if (isEditorTab) {
+      reportAppInteraction(UserInteraction.FullScreenExit, {
+        destination: 'floating',
+        guide_url: '',
+        guide_title: title,
+      });
+      panelModeManager.setPendingGuide({ title, type: 'editor' });
+      panelModeManager.setMode('floating');
+      locationService.push(PLUGIN_BASE_URL);
+      return;
+    }
     if (!guideUrl) {
       return;
     }
@@ -295,7 +314,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     });
     panelModeManager.setMode('floating');
     locationService.push(PLUGIN_BASE_URL);
-  }, [guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
+  }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
 
   // Stable ref to the latest exit-to-sidebar callback. Without it, the
   // empty-state fallback effect below would re-subscribe whenever
@@ -333,26 +352,18 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   }, [handleExitToSidebar]);
 
   useEffect(() => {
-    const handlePopOutRequest = () => {
-      // Editor: no guideUrl — just switch the route. The editor tab is
-      // already in tabStorage, so the floating panel rehydrates it.
-      if (isEditorTab) {
-        reportAppInteraction(UserInteraction.FullScreenExit, {
-          destination: 'floating',
-          guide_url: '',
-          guide_title: title,
-        });
-        panelModeManager.setMode('floating');
-        locationService.push(PLUGIN_BASE_URL);
-        return;
-      }
-      handleSwitchToFloating();
-    };
-    document.addEventListener('pathfinder-request-pop-out', handlePopOutRequest);
+    // `handleSwitchToFloating` already covers both editor and guide cases
+    // (with proper pending-guide handoff for both), so the event handler
+    // just delegates. Without this single source of truth the event path
+    // and the FullScreenLayout button could drift — the editor branch
+    // previously skipped `setPendingGuide` and the layout button was
+    // hidden for editor users (gated on `hasActiveGuide`, which excludes
+    // the editor tab).
+    document.addEventListener('pathfinder-request-pop-out', handleSwitchToFloating);
     return () => {
-      document.removeEventListener('pathfinder-request-pop-out', handlePopOutRequest);
+      document.removeEventListener('pathfinder-request-pop-out', handleSwitchToFloating);
     };
-  }, [isEditorTab, handleSwitchToFloating, title]);
+  }, [handleSwitchToFloating]);
 
   // In-fullscreen swap: when something dispatches `pathfinder-request-full-screen`
   // while we're already on the fullscreen route (e.g. the BlockEditor toolbar
@@ -543,7 +554,11 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       guideType={guideType}
       hasActiveGuide={hasActiveGuide}
       onExit={handleExitToSidebar}
-      onGoFloating={hasActiveGuide ? handleSwitchToFloating : undefined}
+      // Show the pop-out button for both guides AND the editor — the editor
+      // is poppable to floating via the same event/handler, and hiding the
+      // button would create an inconsistency with the BlockEditor toolbar's
+      // own "Pop out" button which dispatches the equivalent event.
+      onGoFloating={hasActiveGuide || isEditorTab ? handleSwitchToFloating : undefined}
       subHeader={journeyToolbar}
     >
       {isEditorTab ? (
