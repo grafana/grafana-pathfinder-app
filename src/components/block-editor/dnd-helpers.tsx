@@ -61,12 +61,14 @@ export const getSortableStyles = (theme: GrafanaTheme2) => ({
     height: '2px',
     backgroundColor: theme.colors.border.medium,
     borderRadius: '2px',
+    opacity: 0.5,
     transition: 'all 0.15s ease',
   }),
   dropIndicatorLineActive: css({
     height: '4px',
     backgroundColor: theme.colors.primary.main,
     boxShadow: `0 0 8px ${theme.colors.primary.main}`,
+    opacity: 1,
   }),
   dropIndicatorLabel: css({
     position: 'absolute',

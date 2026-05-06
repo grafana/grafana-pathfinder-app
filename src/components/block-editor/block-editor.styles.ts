@@ -69,7 +69,7 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
   // sits directly underneath them; leftover column space is absorbed by
   // the HealthStatusBar's `marginTop: auto`.
   content: css({
-    padding: theme.spacing(2),
+    padding: theme.spacing(1),
   }),
 
   // Empty state

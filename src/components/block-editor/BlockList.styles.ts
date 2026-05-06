@@ -34,20 +34,28 @@ export const getNestedStyles = (theme: GrafanaTheme2) => ({
     opacity: 0,
     overflow: 'hidden',
   }),
+  // Compact inline "+ Add block" affordance for sections / conditional
+  // branches. Shorter at rest (32px), lighter border, lower opacity;
+  // brightens to full strength on hover or while dragging
+  // (`dropZoneActive`). Bottom guide-level "+ Add block" footer is a
+  // separate component and stays full-size — that's the primary entry
+  // point.
   dropZone: css({
-    minHeight: '56px',
-    border: `2px dashed ${theme.colors.border.medium}`,
+    minHeight: '32px',
+    border: `1px dashed ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: 'transparent',
     color: theme.colors.text.secondary,
+    opacity: 0.6,
     transition: 'all 0.2s ease',
     cursor: 'pointer',
-    marginTop: theme.spacing(1),
+    marginTop: theme.spacing(0.25),
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
 
     '&:hover': {
+      opacity: 1,
       borderColor: theme.colors.primary.border,
       backgroundColor: theme.colors.action.hover,
       color: theme.colors.text.primary,
@@ -60,6 +68,7 @@ export const getNestedStyles = (theme: GrafanaTheme2) => ({
     minHeight: '60px',
     border: `3px solid ${theme.colors.primary.main}`,
     boxShadow: `0 0 12px ${theme.colors.primary.transparent}`,
+    opacity: 1,
   }),
   nestedBlockItem: css({
     marginBottom: theme.spacing(1),
