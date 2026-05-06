@@ -411,6 +411,26 @@ export async function fetchPrContentFilesFromUrl(prUrl: string, signal?: AbortSi
 }
 
 /**
+ * Compose multiple AbortSignals into one that aborts as soon as any of the
+ * inputs aborts. Equivalent to `AbortSignal.any` but without depending on
+ * the runtime supporting it (the project's existing `AbortSignal.timeout`
+ * mocks in tests show we can't assume the latest API surface).
+ */
+function composeAbortSignals(...signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) {
+      controller.abort(s.reason);
+      return controller.signal;
+    }
+  }
+  for (const s of signals) {
+    s.addEventListener('abort', () => controller.abort(s.reason), { once: true });
+  }
+  return controller.signal;
+}
+
+/**
  * Fetch and loosely parse a manifest.json from a PR raw URL.
  *
  * Uses {@link ManifestJsonObjectSchema} (no cross-field refinement) so partial
@@ -420,15 +440,20 @@ export async function fetchPrContentFilesFromUrl(prUrl: string, signal?: AbortSi
  * to per-guide testing in those cases.
  *
  * @param rawUrl - Raw GitHub URL to manifest.json (from {@link PrJsonFile.rawUrl})
- * @param signal - Optional AbortSignal for request cancellation
+ * @param signal - Optional AbortSignal for request cancellation. The fetch
+ *                 always carries its own timeout (`DEFAULT_CONTENT_FETCH_TIMEOUT`);
+ *                 the caller's signal is composed *with* the timeout so a
+ *                 hung GitHub endpoint can't block until component unmount
+ *                 even when the caller passes its own controller.
  */
 export async function fetchPrManifest(rawUrl: string, signal?: AbortSignal): Promise<ManifestJson | undefined> {
   try {
+    const timeoutSignal = AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT);
+    const composedSignal = signal ? composeAbortSignals(signal, timeoutSignal) : timeoutSignal;
+
     const response = await fetch(rawUrl, {
       method: 'GET',
-      // Compose with the supplied signal so explicit cancel still wins, but
-      // don't hang indefinitely if the caller forgets one.
-      signal: signal ?? AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT),
+      signal: composedSignal,
       redirect: 'follow',
     });
     if (!response.ok) {

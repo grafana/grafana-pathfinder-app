@@ -976,19 +976,54 @@ describe('fetchPrManifest', () => {
     expect(result).toBeUndefined();
   });
 
-  it('should forward an explicit AbortSignal when provided', async () => {
+  it('composes the caller signal with the fetch timeout — caller abort propagates', async () => {
+    // Capture whatever signal fetch actually receives so we can prove that
+    // aborting the caller's controller also aborts the composed signal.
+    let observedSignal: AbortSignal | undefined;
+    (global.fetch as jest.Mock).mockImplementation((_url: string, init: RequestInit) => {
+      observedSignal = init.signal ?? undefined;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+      });
+    });
+
     const controller = new AbortController();
+    await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
+
+    expect(observedSignal).toBeDefined();
+    // Composition means the signal passed to fetch is NOT the caller's
+    // original ref (it's a new controller fed by both inputs), but it must
+    // still propagate the caller's abort.
+    expect(observedSignal).not.toBe(controller.signal);
+    expect(observedSignal!.aborted).toBe(false);
+    controller.abort(new Error('user cancelled'));
+    expect(observedSignal!.aborted).toBe(true);
+  });
+
+  it('always carries a timeout even when the caller passes its own signal', async () => {
+    // Regression: the previous `signal ?? AbortSignal.timeout(...)` pattern
+    // skipped the timeout entirely when a caller signal was supplied, so a
+    // hung GitHub endpoint would block until component unmount.
+    const originalTimeout = AbortSignal.timeout;
+    const timeoutSpy = jest.fn(originalTimeout.bind(AbortSignal));
+    (AbortSignal as unknown as { timeout: typeof originalTimeout }).timeout =
+      timeoutSpy as unknown as typeof originalTimeout;
+
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
     });
 
-    await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ signal: controller.signal })
-    );
+    try {
+      const controller = new AbortController();
+      await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
+      expect(timeoutSpy).toHaveBeenCalledTimes(1);
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Number));
+    } finally {
+      (AbortSignal as unknown as { timeout: typeof originalTimeout }).timeout = originalTimeout;
+    }
   });
 });
