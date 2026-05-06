@@ -226,18 +226,10 @@ export function BlockItem({
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        {/* Edit is the primary action — always visible. */}
-        <IconButton
-          name="edit"
-          size="sm"
-          aria-label="Edit block"
-          onClick={handleEdit}
-          className={styles.editButton}
-          tooltip="Edit block"
-          data-testid={testIds.blockEditor.editButton}
-        />
         {/* Secondary actions — hidden by default, revealed on row hover or
-            keyboard focus via the parent container's data-attribute selectors. */}
+            keyboard focus via the parent container's data-attribute
+            selectors. They sit *before* Edit so the always-visible Edit
+            button stays anchored to the right edge of every row. */}
         <div className={styles.secondaryActions} data-secondary-actions>
           {isSection && onRecord && (
             <IconButton
@@ -280,6 +272,16 @@ export function BlockItem({
             blockType={meta.name.toLowerCase()}
           />
         </div>
+        {/* Edit is the primary action — always visible, right-anchored. */}
+        <IconButton
+          name="edit"
+          size="sm"
+          aria-label="Edit block"
+          onClick={handleEdit}
+          className={styles.editButton}
+          tooltip="Edit block"
+          data-testid={testIds.blockEditor.editButton}
+        />
       </div>
 
       {/* Collapse toggle for sections/conditionals */}

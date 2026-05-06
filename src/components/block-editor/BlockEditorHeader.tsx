@@ -430,7 +430,10 @@ export function BlockEditorHeader({
 
         <div className={styles.actions}>
           {/* Local-save indicator — subtle icon (replaces the green
-              chip). Only shown when backend isn't available. */}
+              chip). Only shown when backend isn't available. The icon
+              is deliberately a floppy `save` so it doesn't visually
+              clash with the `check-square` selection trigger that
+              follows. */}
           {!isBackendAvailable &&
             (isDirty ? (
               <Tooltip content="Saving changes to local storage">
@@ -441,7 +444,7 @@ export function BlockEditorHeader({
             ) : (
               <Tooltip content="All changes saved to local storage">
                 <span className={styles.savedIndicator} aria-label="Saved">
-                  <Icon name="check-circle" size="sm" />
+                  <Icon name="save" size="sm" />
                 </span>
               </Tooltip>
             ))}
@@ -449,6 +452,11 @@ export function BlockEditorHeader({
           {/* Backend publish status — kept as a Badge since the
               Draft/Published distinction is genuinely informative. */}
           {isBackendAvailable && backendBadge()}
+
+          {/* Divider separates the at-a-glance status from the
+              interactive controls so the saved icon and selection
+              trigger no longer read as a paired cluster. */}
+          <div className={styles.divider} />
 
           {/* Selection-mode trigger — only meaningful in edit mode
               with at least one block. Active state mirrors the

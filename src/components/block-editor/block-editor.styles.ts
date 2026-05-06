@@ -104,16 +104,18 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.secondary,
   }),
 
-  // Footer with add block button - entire area is clickable
+  // Footer "+ Add block" — the primary entry point. Matches the height
+  // of block cards and inline section "+ Add block" zones for a
+  // consistent vertical rhythm down the list.
   footer: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: theme.spacing(2),
-    minHeight: '56px',
-    border: `2px dashed ${theme.colors.border.medium}`,
+    margin: `${theme.spacing(0.25)} ${theme.spacing(1)} ${theme.spacing(1)}`,
+    minHeight: '40px',
+    border: `1px dashed ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: 'transparent',
     color: theme.colors.text.secondary,
     cursor: 'pointer',
     transition: 'all 0.2s ease',

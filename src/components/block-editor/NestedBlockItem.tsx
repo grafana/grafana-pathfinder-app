@@ -154,17 +154,8 @@ export function NestedBlockItem({
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        {/* Edit is the primary action — always visible. */}
-        <IconButton
-          name="edit"
-          size="sm"
-          aria-label="Edit"
-          onClick={onEdit}
-          className={styles.editButton}
-          tooltip="Edit block"
-        />
-        {/* Secondary actions — hidden by default, revealed on row hover or
-            keyboard focus via the parent container's data-attribute selectors. */}
+        {/* Secondary actions — hidden by default, revealed on row hover
+            or keyboard focus. Edit stays anchored to the right edge. */}
         <div className={styles.secondaryActions} data-secondary-actions>
           {onPreview && (
             <IconButton
@@ -200,6 +191,15 @@ export function NestedBlockItem({
             blockType={meta?.name.toLowerCase() ?? block.type}
           />
         </div>
+        {/* Edit is the primary action — always visible, right-anchored. */}
+        <IconButton
+          name="edit"
+          size="sm"
+          aria-label="Edit"
+          onClick={onEdit}
+          className={styles.editButton}
+          tooltip="Edit block"
+        />
       </div>
     </div>
   );

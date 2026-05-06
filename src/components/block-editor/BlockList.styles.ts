@@ -34,14 +34,12 @@ export const getNestedStyles = (theme: GrafanaTheme2) => ({
     opacity: 0,
     overflow: 'hidden',
   }),
-  // Compact inline "+ Add block" affordance for sections / conditional
-  // branches. Shorter at rest (32px), lighter border, lower opacity;
-  // brightens to full strength on hover or while dragging
-  // (`dropZoneActive`). Bottom guide-level "+ Add block" footer is a
-  // separate component and stays full-size — that's the primary entry
-  // point.
+  // Inline "+ Add block" affordance for sections / conditional
+  // branches. Matches the height of block cards (40px) so the rhythm
+  // of the list stays consistent. Brightens to full strength on hover
+  // or while dragging (`dropZoneActive`).
   dropZone: css({
-    minHeight: '32px',
+    minHeight: '40px',
     border: `1px dashed ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
     backgroundColor: 'transparent',
