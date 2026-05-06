@@ -22,6 +22,7 @@ import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { ConditionChipsField } from './ConditionChipsField';
+import { SuggestedRequirementsRow } from './SuggestedRequirementsRow';
 import {
   useFieldLint,
   ConditionLintMessages,
@@ -491,6 +492,14 @@ export function InteractiveBlockForm({
           onApplyFix={fixRequirementsToken}
           onRemoveToken={removeRequirementsToken}
           testId="interactive-block-requirements-lint"
+        />
+      )}
+      {!isNoop && (
+        <SuggestedRequirementsRow
+          action={action}
+          reftarget={reftarget}
+          requirements={requirements}
+          onApply={setRequirements}
         />
       )}
 
