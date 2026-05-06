@@ -237,7 +237,7 @@ export const getBlockListStyles = (theme: GrafanaTheme2) => ({
   list: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(0.5), // Tighter gap between blocks
+    gap: theme.spacing(0.25), // Compact: 2px between blocks
   }),
 
   insertZone: css({
@@ -275,8 +275,8 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     alignItems: 'stretch',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1),
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(0.75),
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.primary,
@@ -287,20 +287,27 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
       borderColor: theme.colors.border.medium,
       boxShadow: theme.shadows.z1,
     },
+    // Reveal hover-revealed affordances when the row is hovered or
+    // contains keyboard focus.
+    '&:hover [data-drag-handle], &:focus-within [data-drag-handle]': {
+      opacity: 1,
+    },
+    '&:hover [data-secondary-actions], &:focus-within [data-secondary-actions]': {
+      opacity: 1,
+      pointerEvents: 'auto',
+    },
   }),
 
   dragHandle: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '24px',
+    width: '16px',
     color: theme.colors.text.disabled,
+    opacity: 0.4,
+    transition: 'opacity 0.15s ease',
     flexShrink: 0,
     pointerEvents: 'none', // Visual indicator only - parent handles dragging
-
-    '&:hover': {
-      color: theme.colors.text.secondary,
-    },
   }),
 
   content: css({
@@ -341,19 +348,28 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: theme.spacing(1.5),
+    gap: theme.spacing(0.25),
     flexShrink: 0,
-    padding: theme.spacing(0.5),
   }),
 
+  // The "Edit" button always sits inline; secondary actions live in a
+  // separate hover-revealed group (see `secondaryActions`).
   actionGroup: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.5),
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
+    gap: theme.spacing(0.25),
+  }),
+
+  // Hover-revealed bucket for eye / copy / delete / record. Targeted
+  // by the parent container's `:hover` and `:focus-within` selectors
+  // via the `data-secondary-actions` attribute.
+  secondaryActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.25),
+    opacity: 0,
+    pointerEvents: 'none',
+    transition: 'opacity 0.15s ease',
   }),
 
   actionButton: css({

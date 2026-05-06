@@ -120,8 +120,8 @@ export function NestedBlockItem({
 
       {/* Drag handle - visual indicator only (hidden in selection mode) */}
       {!isSelectionMode && (
-        <div className={styles.dragHandle} title="Drag to reorder or move out of section">
-          <span style={{ fontSize: '12px' }}>⋮⋮</span>
+        <div className={styles.dragHandle} data-drag-handle title="Drag to reorder or move out of section">
+          <span style={{ fontSize: '14px', lineHeight: 1 }}>⋮</span>
         </div>
       )}
 
@@ -146,11 +146,22 @@ export function NestedBlockItem({
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        <div className={styles.actionGroup}>
+        {/* Edit is the primary action — always visible. */}
+        <IconButton
+          name="edit"
+          size="sm"
+          aria-label="Edit"
+          onClick={onEdit}
+          className={styles.editButton}
+          tooltip="Edit block"
+        />
+        {/* Secondary actions — hidden by default, revealed on row hover or
+            keyboard focus via the parent container's data-attribute selectors. */}
+        <div className={styles.secondaryActions} data-secondary-actions>
           {onPreview && (
             <IconButton
               name={isPreviewActive ? 'eye-slash' : 'eye'}
-              size="md"
+              size="sm"
               aria-label={
                 isPreviewActive
                   ? `Hide preview for ${meta?.name ?? block.type} block`
@@ -166,16 +177,8 @@ export function NestedBlockItem({
             />
           )}
           <IconButton
-            name="edit"
-            size="md"
-            aria-label="Edit"
-            onClick={onEdit}
-            className={styles.editButton}
-            tooltip="Edit block"
-          />
-          <IconButton
             name="copy"
-            size="md"
+            size="sm"
             aria-label="Duplicate"
             onClick={onDuplicate}
             className={styles.actionButton}

@@ -181,8 +181,8 @@ export function BlockItem({
 
       {/* Drag handle - visual indicator (hidden in selection mode) */}
       {!isSelectionMode && (
-        <div className={styles.dragHandle} title="Drag to reorder">
-          <span style={{ fontSize: '12px' }}>⋮⋮</span>
+        <div className={styles.dragHandle} data-drag-handle title="Drag to reorder">
+          <span style={{ fontSize: '14px', lineHeight: 1 }}>⋮</span>
         </div>
       )}
 
@@ -225,12 +225,23 @@ export function BlockItem({
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        <div className={styles.actionGroup}>
-          {/* Record button for sections */}
+        {/* Edit is the primary action — always visible. */}
+        <IconButton
+          name="edit"
+          size="sm"
+          aria-label="Edit block"
+          onClick={handleEdit}
+          className={styles.editButton}
+          tooltip="Edit block"
+          data-testid={testIds.blockEditor.editButton}
+        />
+        {/* Secondary actions — hidden by default, revealed on row hover or
+            keyboard focus via the parent container's data-attribute selectors. */}
+        <div className={styles.secondaryActions} data-secondary-actions>
           {isSection && onRecord && (
             <IconButton
               name={isRecording ? 'square-shape' : 'circle'}
-              size="md"
+              size="sm"
               aria-label={isRecording ? 'Stop recording' : 'Record into section'}
               onClick={handleRecord}
               className={isRecording ? styles.recordingButton : styles.recordButton}
@@ -240,7 +251,7 @@ export function BlockItem({
           {onPreview && (
             <IconButton
               name={isPreviewActive ? 'eye-slash' : 'eye'}
-              size="md"
+              size="sm"
               aria-label={isPreviewActive ? `Hide preview for ${meta.name} block` : `Preview ${meta.name} block`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -252,17 +263,8 @@ export function BlockItem({
             />
           )}
           <IconButton
-            name="edit"
-            size="md"
-            aria-label="Edit block"
-            onClick={handleEdit}
-            className={styles.editButton}
-            tooltip="Edit block"
-            data-testid={testIds.blockEditor.editButton}
-          />
-          <IconButton
             name="copy"
-            size="md"
+            size="sm"
             aria-label="Duplicate block"
             onClick={handleDuplicate}
             className={styles.actionButton}

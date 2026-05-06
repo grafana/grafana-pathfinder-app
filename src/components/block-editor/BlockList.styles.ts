@@ -14,8 +14,10 @@ import { GrafanaTheme2 } from '@grafana/data';
  */
 export const getNestedStyles = (theme: GrafanaTheme2) => ({
   nestedContainer: css({
-    marginLeft: theme.spacing(3),
-    paddingLeft: theme.spacing(2),
+    // Sidebar-tight indent: drop the 24px marginLeft, keep a slim
+    // border-left as the only nesting indicator (10px paddingLeft).
+    marginLeft: 0,
+    paddingLeft: theme.spacing(1.25),
     borderLeft: `3px solid ${theme.colors.primary.border}`,
     marginTop: theme.spacing(0.5),
     marginBottom: theme.spacing(0.5),
@@ -95,7 +97,8 @@ export const getNestedStyles = (theme: GrafanaTheme2) => ({
  */
 export const getConditionalStyles = (theme: GrafanaTheme2) => ({
   conditionalContainer: css({
-    marginLeft: theme.spacing(3),
+    // Match nested section indent: dropped 24px marginLeft.
+    marginLeft: 0,
     marginTop: theme.spacing(0.5),
     marginBottom: theme.spacing(0.5),
     overflow: 'hidden',
@@ -116,12 +119,12 @@ export const getConditionalStyles = (theme: GrafanaTheme2) => ({
   trueBranch: css({
     borderLeft: `3px solid ${theme.colors.success.border}`,
     backgroundColor: theme.isDark ? 'rgba(34, 166, 113, 0.05)' : 'rgba(34, 166, 113, 0.03)',
-    paddingLeft: theme.spacing(2),
+    paddingLeft: theme.spacing(1.25),
   }),
   falseBranch: css({
     borderLeft: `3px solid ${theme.colors.warning.border}`,
     backgroundColor: theme.isDark ? 'rgba(255, 152, 48, 0.05)' : 'rgba(255, 152, 48, 0.03)',
-    paddingLeft: theme.spacing(2),
+    paddingLeft: theme.spacing(1.25),
   }),
   branchHeader: css({
     display: 'flex',
@@ -178,17 +181,26 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1.5),
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(0.75),
     backgroundColor: theme.colors.background.primary,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
     transition: 'all 0.15s ease',
-    minHeight: '52px',
+    minHeight: '40px',
 
     '&:hover': {
       borderColor: theme.colors.border.medium,
       boxShadow: theme.shadows.z1,
+    },
+    // Mirror BlockItem: hover/focus reveals drag handle and secondary
+    // actions via data-attribute selectors.
+    '&:hover [data-drag-handle], &:focus-within [data-drag-handle]': {
+      opacity: 1,
+    },
+    '&:hover [data-secondary-actions], &:focus-within [data-secondary-actions]': {
+      opacity: 1,
+      pointerEvents: 'auto',
     },
   }),
   selectedContainer: css({
@@ -244,8 +256,10 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '24px',
+    width: '16px',
     color: theme.colors.text.disabled,
+    opacity: 0.4,
+    transition: 'opacity 0.15s ease',
     flexShrink: 0,
     pointerEvents: 'none', // Don't block drag events - parent handles dragging
   }),
@@ -279,18 +293,21 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: theme.spacing(1.5),
+    gap: theme.spacing(0.25),
     flexShrink: 0,
-    padding: theme.spacing(0.5),
   }),
   actionGroup: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.5),
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
+    gap: theme.spacing(0.25),
+  }),
+  secondaryActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.25),
+    opacity: 0,
+    pointerEvents: 'none',
+    transition: 'opacity 0.15s ease',
   }),
   actionButton: css({
     opacity: 0.7,
