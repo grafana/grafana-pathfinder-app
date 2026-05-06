@@ -17,6 +17,7 @@ import { validateGuide, type ValidationResult } from '../../../validation/valida
 import { formatPath, type ValidationError, type ValidationWarning } from '../../../validation/errors';
 import type { JsonGuide } from '../../../types/json-guide.types';
 import { suggestRequirement, unknownRequirementMessage } from '../../../types/requirements.types';
+import { runCrossBlockChecks } from './cross-block-checks';
 import type { Diagnostic } from './types';
 
 /**
@@ -190,6 +191,12 @@ export function lintGuide(guide: JsonGuide | null | undefined): GuideLintResult 
   const diagnostics: Diagnostic[] = [
     ...result.errors.map(errorToDiagnostic),
     ...result.warnings.map(warningToDiagnostic),
+    // Editor-only cross-block checks. These don't have a canonical
+    // counterpart — they exist purely to surface authoring resilience
+    // issues the per-field Zod / condition pipeline can't see.
+    // Only run them if the guide passed Zod (otherwise paths/types
+    // we'd traverse may be malformed).
+    ...(result.isValid ? runCrossBlockChecks(result.guide as JsonGuide) : []),
   ];
 
   return {

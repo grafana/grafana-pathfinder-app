@@ -1,16 +1,21 @@
 /**
  * CLI ↔ editor lint parity.
  *
- * The canonical `validateGuide` (used by the CLI, the MCP `pathfinder_validate`
- * tool, and the schema-export pipeline) and the editor's `lintGuide` MUST
- * emit the same set of diagnostics for the same input — same severity,
- * same JSON path, equivalent code (the editor prefixes canonical codes
- * with `zod.` for errors and `guide.` for warnings).
+ * The contract: every diagnostic the canonical `validateGuide` emits
+ * (used by the CLI, MCP `pathfinder_validate`, and the schema-export
+ * pipeline) MUST be reproduced by the editor's `lintGuide` at the same
+ * severity, same JSON path, with an equivalent code (the editor
+ * prefixes canonical codes with `zod.` for errors and `guide.` for
+ * warnings).
  *
- * If they drift, the editor's per-block badge would either miss issues
- * the CLI catches at build time, or surface false positives the CLI
- * doesn't. This test is the structural guard that prevents either kind
- * of drift.
+ * The editor MAY emit additional diagnostics that have no canonical
+ * counterpart — these are the editor-only cross-block checks (Phase 3+:
+ * destructive-action-without-objective, orphan-section-reference, etc.).
+ * Their codes always start with `editor.` so we can distinguish.
+ *
+ * If a canonical diagnostic is missing from the editor — or if the
+ * editor emits a `zod.`/`guide.`-coded diagnostic the canonical doesn't
+ * — the test fails. Editor-only `editor.*` codes pass through silently.
  *
  * Add a new fixture below whenever a new lint rule is introduced.
  */
@@ -162,46 +167,54 @@ function findMatchingWarning(warning: ValidationWarning, editorDiagnostics: Diag
   );
 }
 
+/** Returns true if the diagnostic's code is an editor-only check (no canonical source). */
+function isEditorOnly(diagnostic: Diagnostic): boolean {
+  return diagnostic.code.startsWith('editor.');
+}
+
 describe('CLI ↔ editor lint parity', () => {
   describe.each(FIXTURES)('$name', ({ guide }) => {
-    it('emits matching errors and warnings on both paths', () => {
+    it('every canonical diagnostic is reproduced by the editor (editor may emit additional editor.* checks)', () => {
       // Editor uses skipUnknownFieldCheck:true (it's not a forward-compat
       // signal in the editor context). Match that here.
       const canonical = validateGuide(guide, { skipUnknownFieldCheck: true });
       const editor = lintGuide(guide);
 
-      const editorErrors = editor.diagnostics.filter((d) => d.severity === 'error');
-      const editorWarnings = editor.diagnostics.filter((d) => d.severity === 'warning');
+      // Restrict the editor side to canonical-derived diagnostics —
+      // editor.* codes are the cross-block checks and have no canonical
+      // counterpart, so they pass through silently.
+      const editorCanonicalErrors = editor.diagnostics.filter((d) => d.severity === 'error' && !isEditorOnly(d));
+      const editorCanonicalWarnings = editor.diagnostics.filter((d) => d.severity === 'warning' && !isEditorOnly(d));
 
-      // Counts must match exactly.
-      expect(editorErrors).toHaveLength(canonical.errors.length);
-      expect(editorWarnings).toHaveLength(canonical.warnings.length);
+      // Counts of canonical-derived diagnostics must match exactly.
+      expect(editorCanonicalErrors).toHaveLength(canonical.errors.length);
+      expect(editorCanonicalWarnings).toHaveLength(canonical.warnings.length);
 
       // Every canonical error must have a corresponding editor error at
       // the same path with the prefixed code.
       for (const error of canonical.errors) {
-        const matched = findMatchingError(error, editorErrors);
+        const matched = findMatchingError(error, editorCanonicalErrors);
         if (!matched) {
           throw new Error(
             `No editor error matched canonical error: ${JSON.stringify({
               path: error.path,
               code: error.code,
               message: error.message,
-            })}\n\nEditor errors saw:\n${JSON.stringify(editorErrors, null, 2)}`
+            })}\n\nEditor errors saw:\n${JSON.stringify(editorCanonicalErrors, null, 2)}`
           );
         }
       }
 
       // Same for warnings.
       for (const warning of canonical.warnings) {
-        const matched = findMatchingWarning(warning, editorWarnings);
+        const matched = findMatchingWarning(warning, editorCanonicalWarnings);
         if (!matched) {
           throw new Error(
             `No editor warning matched canonical warning: ${JSON.stringify({
               path: warning.path,
               type: warning.type,
               message: warning.message,
-            })}\n\nEditor warnings saw:\n${JSON.stringify(editorWarnings, null, 2)}`
+            })}\n\nEditor warnings saw:\n${JSON.stringify(editorCanonicalWarnings, null, 2)}`
           );
         }
       }

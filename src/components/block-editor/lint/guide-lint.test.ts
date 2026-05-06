@@ -134,8 +134,9 @@ describe('lintGuide forPath', () => {
         action: 'highlight',
         reftarget: 'button',
         content: 'first',
-        // Clean block — no diagnostics expected here.
-        requirements: ['exists-reftarget'],
+        // Clean block — no diagnostics expected here. `on-page:` keeps
+        // the cross-block firstStepMissingOnPage check quiet.
+        requirements: ['exists-reftarget', 'on-page:/explore'],
       },
       {
         type: 'interactive',
