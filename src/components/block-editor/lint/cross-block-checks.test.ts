@@ -11,6 +11,7 @@ import {
   destructiveActionWithoutObjective,
   firstStepMissingOnPage,
   orphanSectionReference,
+  requirementsImpliedByActionButNotDeclared,
   runCrossBlockChecks,
   unusedSection,
 } from './cross-block-checks';
@@ -290,6 +291,72 @@ describe('unusedSection', () => {
         blocks: [{ type: 'section', title: 'Anonymous', blocks: [] }],
       })
     ).toEqual([]);
+  });
+});
+
+describe('requirementsImpliedByActionButNotDeclared', () => {
+  it('flags a highlight block missing exists-reftarget', () => {
+    const issues = requirementsImpliedByActionButNotDeclared({
+      ...baseGuide,
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'highlight',
+          reftarget: 'button',
+          content: 'click',
+          // no requirements declared
+        },
+      ],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe(CROSS_BLOCK_CHECK_CODES.REQUIREMENTS_IMPLIED_BUT_NOT_DECLARED);
+    expect(issues[0]!.severity).toBe('info');
+    expect(issues[0]!.message).toContain('exists-reftarget');
+  });
+
+  it('does not flag a highlight block that already declares exists-reftarget', () => {
+    const issues = requirementsImpliedByActionButNotDeclared({
+      ...baseGuide,
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'highlight',
+          reftarget: 'button',
+          content: 'click',
+          requirements: ['exists-reftarget'],
+        },
+      ],
+    });
+    expect(issues).toEqual([]);
+  });
+
+  it('does not flag noop / navigate / popout actions', () => {
+    const issues = requirementsImpliedByActionButNotDeclared({
+      ...baseGuide,
+      blocks: [
+        { type: 'interactive', action: 'noop', content: 'just text' },
+        { type: 'interactive', action: 'navigate', reftarget: '/explore', content: 'go' },
+        { type: 'interactive', action: 'popout', targetvalue: 'floating', content: 'pop' },
+      ],
+    });
+    expect(issues).toEqual([]);
+  });
+
+  it('flags nav-menu reftargets even when the action is button (non-highlight)', () => {
+    const issues = requirementsImpliedByActionButNotDeclared({
+      ...baseGuide,
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'button',
+          reftarget: 'a[data-testid="data-testid Nav menu item"]',
+          content: 'click nav',
+        },
+      ],
+    });
+    expect(issues).toHaveLength(1);
+    // exists-reftarget and navmenu-open are both expected
+    expect(issues[0]!.message).toContain('navmenu-open');
   });
 });
 

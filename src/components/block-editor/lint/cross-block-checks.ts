@@ -35,6 +35,7 @@ import {
   isConditionalBlock,
 } from '../../../types/json-guide.types';
 import { ParameterizedRequirementPrefix } from '../../../types/requirements.types';
+import { suggestRequirementsFromContext } from '../forms/requirements-suggester';
 import type { Diagnostic } from './types';
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,7 @@ export const CROSS_BLOCK_CHECK_CODES = Object.freeze({
   ORPHAN_SECTION_REFERENCE: 'editor.orphanSectionReference',
   DESTRUCTIVE_ACTION_WITHOUT_OBJECTIVE: 'editor.destructiveActionWithoutObjective',
   UNUSED_SECTION: 'editor.unusedSection',
+  REQUIREMENTS_IMPLIED_BUT_NOT_DECLARED: 'editor.requirementsImpliedByActionButNotDeclared',
 });
 
 // ---------------------------------------------------------------------------
@@ -302,6 +304,70 @@ export function unusedSection(guide: JsonGuide): Diagnostic[] {
 }
 
 // ---------------------------------------------------------------------------
+// requirementsImpliedByActionButNotDeclared
+// ---------------------------------------------------------------------------
+
+/**
+ * For every interactive block, compute the requirements
+ * `suggestRequirementsFromContext` would propose for the block's action
+ * + reftarget + position, and warn on any that aren't already declared.
+ * Surfaces gaps in declared requirements without silently mutating the
+ * guide.
+ *
+ * Severity: info, because the suggestions are inferential and not all
+ * are strictly required (e.g. `on-page:` may be redundant in a guide
+ * launched only from a page-pinned recommender). Authors can dismiss
+ * per-guide.
+ *
+ * Scope: only top-level interactive blocks, not steps inside multistep
+ * / guided blocks. Per-step suggestions live in the form-level
+ * "Suggested requirements" row instead.
+ */
+export function requirementsImpliedByActionButNotDeclared(guide: JsonGuide): Diagnostic[] {
+  const issues: Diagnostic[] = [];
+  let firstExecutableSeen = false;
+
+  for (const { block, path } of walkBlocks(guide.blocks, ['blocks'])) {
+    if (!isInteractiveBlock(block)) {
+      // Multistep / guided blocks are surfaced as a single unit at the
+      // guide level for these suggestions; their inner steps get
+      // suggestions in the form, not here.
+      if (isMultistepBlock(block) || isGuidedBlock(block)) {
+        firstExecutableSeen = true;
+      }
+      continue;
+    }
+    const isFirstStep = !firstExecutableSeen;
+    firstExecutableSeen = true;
+    if (block.action === 'noop' || block.action === 'navigate' || block.action === 'popout') {
+      // These actions have no DOM target / inherent page binding.
+      continue;
+    }
+
+    const expected = suggestRequirementsFromContext(block.action, block.reftarget ?? '', {
+      isFirstStepInGuide: isFirstStep,
+      isInsideMultistep: false,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
+    });
+    if (expected.length === 0) {
+      continue;
+    }
+    const declared = new Set(block.requirements ?? []);
+    const missing = expected.filter((r) => !declared.has(r));
+    if (missing.length === 0) {
+      continue;
+    }
+    issues.push({
+      severity: 'info',
+      code: CROSS_BLOCK_CHECK_CODES.REQUIREMENTS_IMPLIED_BUT_NOT_DECLARED,
+      message: `This ${block.action} step is missing recommended requirements: ${missing.join(', ')}`,
+      path: [...path, 'requirements'],
+    });
+  }
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
 // Entry point — runs every cross-block check and returns the combined list.
 // ---------------------------------------------------------------------------
 
@@ -311,5 +377,6 @@ export function runCrossBlockChecks(guide: JsonGuide): Diagnostic[] {
     ...orphanSectionReference(guide),
     ...destructiveActionWithoutObjective(guide),
     ...unusedSection(guide),
+    ...requirementsImpliedByActionButNotDeclared(guide),
   ];
 }
