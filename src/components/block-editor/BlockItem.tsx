@@ -161,22 +161,22 @@ export function BlockItem({
 
   return (
     <div className={containerClass} data-block-card>
-      {/* Selection checkbox (only for interactive blocks in selection mode) */}
-      {isSelectionMode && (
-        <div
-          className={styles.selectionCheckbox}
-          onClick={handleCheckboxClick}
-          title={
-            isSelectable
-              ? isSelected
-                ? 'Deselect'
-                : 'Select'
-              : 'Only interactive, multistep, and guided blocks can be selected'
-          }
-        >
-          <Checkbox value={isSelected} disabled={!isSelectable} onChange={handleToggleSelect} />
-        </div>
-      )}
+      {/* Selection checkbox — only for selectable block types
+          (interactive / multistep / guided). Non-selectable blocks
+          render an empty spacer of the same width so the row
+          alignment stays consistent across the list. */}
+      {isSelectionMode &&
+        (isSelectable ? (
+          <div
+            className={styles.selectionCheckbox}
+            onClick={handleCheckboxClick}
+            title={isSelected ? 'Deselect' : 'Select'}
+          >
+            <Checkbox value={isSelected} onChange={handleToggleSelect} />
+          </div>
+        ) : (
+          <div className={styles.selectionCheckbox} aria-hidden="true" />
+        ))}
 
       {/* Drag handle - visual indicator (hidden in selection mode) */}
       {!isSelectionMode && (

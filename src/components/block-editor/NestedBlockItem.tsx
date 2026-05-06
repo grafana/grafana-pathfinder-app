@@ -101,22 +101,21 @@ export function NestedBlockItem({
 
   return (
     <div className={containerClass} data-block-card>
-      {/* Selection checkbox (only for interactive blocks in selection mode) */}
-      {isSelectionMode && (
-        <div
-          className={styles.selectionCheckbox}
-          onClick={handleCheckboxClick}
-          title={
-            isSelectable
-              ? isSelected
-                ? 'Deselect'
-                : 'Select'
-              : 'Only interactive, multistep, and guided blocks can be selected'
-          }
-        >
-          <Checkbox value={isSelected} disabled={!isSelectable} onChange={onToggleSelect} />
-        </div>
-      )}
+      {/* Selection checkbox — only for selectable block types
+          (interactive / multistep / guided). Non-selectable blocks
+          render an empty spacer for alignment. */}
+      {isSelectionMode &&
+        (isSelectable ? (
+          <div
+            className={styles.selectionCheckbox}
+            onClick={handleCheckboxClick}
+            title={isSelected ? 'Deselect' : 'Select'}
+          >
+            <Checkbox value={isSelected} onChange={onToggleSelect} />
+          </div>
+        ) : (
+          <div className={styles.selectionCheckbox} aria-hidden="true" />
+        ))}
 
       {/* Drag handle - visual indicator only (hidden in selection mode) */}
       {!isSelectionMode && (
