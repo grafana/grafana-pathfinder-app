@@ -12,7 +12,8 @@ import { getNestedStyles } from './BlockList.styles';
 import { BlockPalette } from './BlockPalette';
 import { NestedBlockItem } from './NestedBlockItem';
 import { SortableBlock, DragData, DroppableInsertZone, DropZoneData, isInsertZoneRedundant } from './dnd-helpers';
-import type { EditorBlock, BlockType, JsonBlock } from './types';
+import { BlockPreview } from './BlockPreview';
+import type { EditorBlock, BlockType, JsonBlock, JsonGuide } from './types';
 import { testIds } from '../../constants/testIds';
 
 export interface SectionNestedBlocksProps {
@@ -48,6 +49,14 @@ export interface SectionNestedBlocksProps {
   canPreviewBlockType?: (type: BlockType) => boolean;
   /** Set of nested-block indices that currently have a pinned preview open. */
   pinnedNestedIndices?: ReadonlySet<number>;
+  /**
+   * Pinned previews keyed by nestedIndex. Rendered inline directly after
+   * the corresponding nested block so authors don't have to scroll past
+   * the whole section to see the preview.
+   */
+  nestedPreviews?: ReadonlyMap<number, JsonGuide>;
+  /** Container styles for inline previews (matches the root-block preview wrapper). */
+  previewClasses?: { container: string };
 }
 
 export function SectionNestedBlocks({
@@ -72,6 +81,8 @@ export function SectionNestedBlocks({
   onPreviewSection,
   canPreviewBlockType,
   pinnedNestedIndices,
+  nestedPreviews,
+  previewClasses,
 }: SectionNestedBlocksProps) {
   const nestedBlockIds = useMemo(
     () => sectionBlocks.map((_, i) => `${block.id}-nested-${i}`),
@@ -153,6 +164,15 @@ export function SectionNestedBlocks({
                     />
                   </div>
                 </SortableBlock>
+                {/* Inline preview directly after the previewed block — so
+                    authors don't have to scroll past the rest of the
+                    section's children to see the result of clicking the
+                    eye icon on a single nested block. */}
+                {nestedPreviews?.has(nestedIndex) && previewClasses && (
+                  <div className={previewClasses.container}>
+                    <BlockPreview guide={nestedPreviews.get(nestedIndex)!} />
+                  </div>
+                )}
               </React.Fragment>
             );
           })}
