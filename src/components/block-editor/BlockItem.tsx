@@ -161,7 +161,7 @@ export function BlockItem({
     .join(' ');
 
   return (
-    <div className={containerClass}>
+    <div className={containerClass} data-block-card>
       {/* Selection checkbox (only for interactive blocks in selection mode) */}
       {isSelectionMode && (
         <div

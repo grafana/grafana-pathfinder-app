@@ -695,6 +695,7 @@ export function BlockList({
                     index,
                   }}
                   disabled={isSelectionMode}
+                  path={['blocks', index]}
                 >
                   <BlockItem
                     block={block}

@@ -292,6 +292,7 @@ function ConditionalBranch({
                   }
                   disabled={isSelectionMode}
                   passThrough={isDraggingUnNestable}
+                  path={['blocks', parentIndex, branch, nestedIndex]}
                 >
                   <div style={{ marginBottom: '8px' }}>
                     <NestedBlockItem

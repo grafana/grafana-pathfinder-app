@@ -35,7 +35,7 @@ import { BlockEditorContent } from './BlockEditorContent';
 import { BlockEditorModals } from './BlockEditorModals';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
 import { useGuideLint } from './lint';
-import { HealthPanel } from './HealthPanel';
+import { HealthStatusBar } from './HealthStatusBar';
 import { ConfirmModal } from './NotificationModals';
 import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
 import { testIds } from '../../constants/testIds';
@@ -257,28 +257,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   useEffect(() => {
     setGuideLintResult(guideLint);
   }, [guideLint, setGuideLintResult]);
-
-  // Health panel open/closed. Persisted per-user so reopening the editor
-  // restores the author's preferred working state.
-  const [isHealthPanelOpen, setIsHealthPanelOpen] = useState<boolean>(() => {
-    try {
-      return window.localStorage.getItem('pathfinder.blockEditor.healthPanel.open') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const toggleHealthPanel = useCallback(() => {
-    setIsHealthPanelOpen((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem('pathfinder.blockEditor.healthPanel.open', String(next));
-      } catch {
-        // localStorage unavailable; in-memory is fine.
-      }
-      return next;
-    });
-  }, []);
-  const healthDiagnosticCount = guideLint.diagnostics.length;
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();
@@ -1022,53 +1000,44 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
-        healthDiagnosticCount={healthDiagnosticCount}
-        isHealthPanelOpen={isHealthPanelOpen}
-        onToggleHealthPanel={toggleHealthPanel}
       />
 
-      {/* Content + optional Health panel side-by-side */}
-      <div className={styles.contentRow}>
-        <div className={styles.contentMain}>
-          <BlockEditorContent
-            viewMode={state.viewMode}
-            blocks={state.blocks}
-            guide={editor.getGuide()}
-            operations={blockOperations}
-            hasBlocks={hasBlocks}
-            styles={{
-              content: styles.content,
-              selectionControls: styles.selectionControls,
-              selectionCount: styles.selectionCount,
-              emptyState: styles.emptyState,
-              emptyStateIcon: styles.emptyStateIcon,
-              emptyStateText: styles.emptyStateText,
-              blockPreviewContainer: styles.blockPreviewContainer,
-            }}
-            onToggleSelectionMode={selection.toggleSelectionMode}
-            onMergeToMultistep={handleMergeToMultistep}
-            onMergeToGuided={handleMergeToGuided}
-            onClearSelection={selection.clearSelection}
-            onLoadTemplate={guideOps.handleLoadTemplate}
-            onOpenTour={() => modals.open('tour')}
-            // JSON mode props (Phase 4)
-            jsonModeState={jsonMode.jsonModeState}
-            onJsonChange={jsonMode.handleJsonChange}
-            jsonValidationErrors={jsonMode.jsonValidationErrors}
-            isJsonValid={jsonMode.isJsonValid}
-            canJsonUndo={jsonMode.canUndo}
-            onJsonUndo={jsonMode.handleJsonUndo}
-            pinnedPreviews={pinnedPreviews}
-            canPreviewBlockType={canPreviewBlockType}
-          />
-        </div>
-        {isHealthPanelOpen && state.viewMode === 'edit' && (
-          <HealthPanel blocks={state.blocks} onClose={toggleHealthPanel} />
-        )}
-      </div>
+      <BlockEditorContent
+        viewMode={state.viewMode}
+        blocks={state.blocks}
+        guide={editor.getGuide()}
+        operations={blockOperations}
+        hasBlocks={hasBlocks}
+        styles={{
+          content: styles.content,
+          selectionControls: styles.selectionControls,
+          selectionCount: styles.selectionCount,
+          emptyState: styles.emptyState,
+          emptyStateIcon: styles.emptyStateIcon,
+          emptyStateText: styles.emptyStateText,
+          blockPreviewContainer: styles.blockPreviewContainer,
+        }}
+        onToggleSelectionMode={selection.toggleSelectionMode}
+        onMergeToMultistep={handleMergeToMultistep}
+        onMergeToGuided={handleMergeToGuided}
+        onClearSelection={selection.clearSelection}
+        onLoadTemplate={guideOps.handleLoadTemplate}
+        onOpenTour={() => modals.open('tour')}
+        // JSON mode props (Phase 4)
+        jsonModeState={jsonMode.jsonModeState}
+        onJsonChange={jsonMode.handleJsonChange}
+        jsonValidationErrors={jsonMode.jsonValidationErrors}
+        isJsonValid={jsonMode.isJsonValid}
+        canJsonUndo={jsonMode.canUndo}
+        onJsonUndo={jsonMode.handleJsonUndo}
+        pinnedPreviews={pinnedPreviews}
+        canPreviewBlockType={canPreviewBlockType}
+      />
 
       {/* Footer with add block button (only in edit mode) */}
       <BlockEditorFooter viewMode={state.viewMode} onBlockTypeSelect={handleBlockTypeSelect} />
+
+      {state.viewMode === 'edit' && <HealthStatusBar blocks={state.blocks} />}
 
       {/* Modals */}
       <BlockEditorModals

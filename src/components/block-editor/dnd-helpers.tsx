@@ -94,6 +94,7 @@ export function SortableBlock({
   disabled,
   children,
   passThrough = false,
+  path,
 }: {
   id: string;
   data: DragData;
@@ -101,6 +102,12 @@ export function SortableBlock({
   children: React.ReactNode;
   /** When true, disables pointer events so drops pass through to parent zones */
   passThrough?: boolean;
+  /**
+   * JSON path of this block in the guide, e.g. `['blocks', 0, 'blocks', 1]`.
+   * Emitted as `data-block-path` so the Health status bar can flash the
+   * exact nested block a diagnostic refers to.
+   */
+  path?: ReadonlyArray<string | number>;
 }) {
   const sortableStyles = useStyles2(getSortableStyles);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -121,6 +128,7 @@ export function SortableBlock({
       style={style}
       className={cx(sortableStyles.sortableItem, isDragging && sortableStyles.dragging)}
       data-block-id={id}
+      data-block-path={path ? path.join('.') : undefined}
       {...attributes}
       {...listeners}
     >

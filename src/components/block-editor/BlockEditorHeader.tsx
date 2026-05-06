@@ -62,12 +62,6 @@ export interface BlockEditorHeaderProps {
   onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
-  /** Total count of lint diagnostics for this guide. Drives the colored badge on the health-panel toggle. */
-  healthDiagnosticCount?: number;
-  /** Whether the health panel is currently open (drives the toggle's pressed state). */
-  isHealthPanelOpen?: boolean;
-  /** Toggle the health panel open/closed. Hides the toggle when undefined. */
-  onToggleHealthPanel?: () => void;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -193,9 +187,6 @@ export function BlockEditorHeader({
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
-  healthDiagnosticCount = 0,
-  isHealthPanelOpen = false,
-  onToggleHealthPanel,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -492,24 +483,6 @@ export function BlockEditorHeader({
               <div className={styles.divider} />
               {renderBackendButton()}
             </>
-          )}
-
-          {onToggleHealthPanel && (
-            <Button
-              variant={isHealthPanelOpen ? 'primary' : 'secondary'}
-              size="sm"
-              icon="heart"
-              onClick={onToggleHealthPanel}
-              tooltip={
-                healthDiagnosticCount > 0
-                  ? `${healthDiagnosticCount} guide-level ${healthDiagnosticCount === 1 ? 'issue' : 'issues'} found`
-                  : 'No issues — guide health'
-              }
-              aria-label="Toggle guide health panel"
-              data-testid="pathfinder-block-editor-toggle-health"
-            >
-              {healthDiagnosticCount > 0 ? `Health (${healthDiagnosticCount})` : 'Health'}
-            </Button>
           )}
 
           <Button

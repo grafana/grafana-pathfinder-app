@@ -123,6 +123,7 @@ export function SectionNestedBlocks({
                   }
                   disabled={isSelectionMode}
                   passThrough={isDraggingUnNestable}
+                  path={['blocks', parentIndex, 'blocks', nestedIndex]}
                 >
                   <div style={{ marginBottom: '8px' }}>
                     <NestedBlockItem

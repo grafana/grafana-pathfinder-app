@@ -15,7 +15,10 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: theme.colors.background.primary,
-    // No height constraint or overflow - let parent scroll container handle scrolling
+    // Fill the scrolling parent so the status bar (at the column's
+    // bottom) sits at the visible bottom of the editor; longer guides
+    // grow the column and trigger the parent's scroll.
+    minHeight: '100%',
   }),
 
   // Header with title and controls - sticky so it stays visible when scrolling
@@ -62,27 +65,11 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'nowrap',
   }),
 
-  // Main content area
+  // Main content area. Sizes to its blocks so the "Add Block" footer
+  // sits directly underneath them; leftover column space is absorbed by
+  // the HealthStatusBar's `marginTop: auto`.
   content: css({
-    flex: 1,
-    minHeight: 0,
     padding: theme.spacing(2),
-  }),
-
-  // Wraps the content and the optional HealthPanel side-by-side. When
-  // the panel is closed, contentMain takes the full width.
-  contentRow: css({
-    display: 'flex',
-    flexDirection: 'row',
-    flex: 1,
-    minHeight: 0,
-    minWidth: 0,
-  }),
-  contentMain: css({
-    flex: 1,
-    minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column',
   }),
 
   // Empty state
