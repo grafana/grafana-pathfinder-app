@@ -210,29 +210,34 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
       pointerEvents: 'auto',
     },
   }),
+  // Nested blocks live inside `nestedContainer` which has
+  // `overflow: hidden` (required for the section's collapse animation).
+  // Outset shadows would get clipped on the top of the first child and
+  // the right edge of every child, so all selection / drop / modified
+  // emphasis is drawn with INSET shadows here.
   selectedContainer: css({
     borderColor: theme.colors.primary.border,
     backgroundColor: theme.colors.primary.transparent,
-    boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
+    boxShadow: `inset 0 0 0 1px ${theme.colors.primary.border}`,
   }),
   // Just-dropped highlight animation
   justDroppedContainer: css({
-    animation: 'dropHighlight 1.5s ease-out',
-    '@keyframes dropHighlight': {
+    animation: 'dropHighlightNested 1.5s ease-out',
+    '@keyframes dropHighlightNested': {
       '0%': {
         borderColor: theme.colors.primary.main,
-        boxShadow: `0 0 0 3px ${theme.colors.primary.transparent}, 0 0 8px ${theme.colors.primary.main}`,
+        boxShadow: `inset 0 0 0 3px ${theme.colors.primary.transparent}`,
       },
       '100%': {
         borderColor: theme.colors.border.weak,
-        boxShadow: 'none',
+        boxShadow: 'inset 0 0 0 0 transparent',
       },
     },
   }),
   // Persistent highlight for the last modified block
   lastModifiedContainer: css({
     borderColor: theme.colors.warning.border,
-    boxShadow: `0 0 0 2px ${theme.colors.warning.transparent}`,
+    boxShadow: `inset 0 0 0 2px ${theme.colors.warning.transparent}`,
   }),
   // Block sequence number — matches BlockItem's borderless quiet style.
   blockNumber: css({
