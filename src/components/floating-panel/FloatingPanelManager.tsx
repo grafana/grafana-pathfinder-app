@@ -98,21 +98,27 @@ function FloatingPanelInner() {
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
-      // packageInfo (e.g. from the PR tester) carries the manifest +
-      // pre-resolved milestones, so openDocsPage creates a journey tab with
-      // the milestone toolbar even when the URL is a raw GitHub URL that
-      // openLearningJourney's package-URL detection wouldn't recognise.
-      if (pendingGuide.packageInfo) {
-        panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
-          source: 'floating_panel_dock',
-          packageInfo: pendingGuide.packageInfo,
-        });
-      } else if (pendingGuide.type === 'learning-journey') {
-        // Preserve the journey tab type so docking back to sidebar restores
-        // it as a journey (with milestone navigation) rather than a flat docs tab.
-        panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
-      } else {
-        panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
+      // Editor handoff: no URL — switch the active tab to the editor (or
+      // create it if needed). Mirrors the FullScreenPanel handler.
+      if (pendingGuide.type === 'editor') {
+        panel.openEditorTab();
+      } else if (pendingGuide.url) {
+        // packageInfo (e.g. from the PR tester) carries the manifest +
+        // pre-resolved milestones, so openDocsPage creates a journey tab with
+        // the milestone toolbar even when the URL is a raw GitHub URL that
+        // openLearningJourney's package-URL detection wouldn't recognise.
+        if (pendingGuide.packageInfo) {
+          panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
+            source: 'floating_panel_dock',
+            packageInfo: pendingGuide.packageInfo,
+          });
+        } else if (pendingGuide.type === 'learning-journey') {
+          // Preserve the journey tab type so docking back to sidebar restores
+          // it as a journey (with milestone navigation) rather than a flat docs tab.
+          panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
+        } else {
+          panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
+        }
       }
     }
 
@@ -248,8 +254,10 @@ function FloatingPanelInner() {
   }, []);
 
   const handleSwitchToFullScreen = useCallback(() => {
-    // Editor: no guide URL — just switch the route. The editor tab is
-    // already in tabStorage, so FullScreenPanel rehydrates it on mount.
+    // Editor: no guide URL — set a pending editor handoff so the receiving
+    // panel switches its active tab to the editor even when fullscreen is
+    // already mounted (e.g. journey was in fullscreen and the user wants
+    // the editor to replace it).
     if (isEditorTab) {
       reportAppInteraction(UserInteraction.FullScreenEnter, {
         guide_url: '',
@@ -257,6 +265,7 @@ function FloatingPanelInner() {
         source: 'floating_panel',
         content_type: 'editor',
       });
+      panelModeManager.setPendingGuide({ title, type: 'editor' });
       panelModeManager.setMode('fullscreen');
       locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
       return;

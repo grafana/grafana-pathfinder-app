@@ -114,6 +114,17 @@ describe('panelModeManager', () => {
       expect(panelModeManager.consumePendingGuide()).toBeNull();
     });
 
+    it('round-trips an editor handoff with no url', () => {
+      // Editor handoffs let the BlockEditor toolbar's "Full screen" button
+      // replace whatever's currently in fullscreen — even when setMode is
+      // a no-op because mode is already 'fullscreen'.
+      panelModeManager.setPendingGuide({ title: 'Guide editor', type: 'editor' });
+      const consumed = panelModeManager.consumePendingGuide();
+      expect(consumed).toEqual({ title: 'Guide editor', type: 'editor' });
+      expect(consumed?.url).toBeUndefined();
+      expect(panelModeManager.consumePendingGuide()).toBeNull();
+    });
+
     it('preserves packageInfo across the handoff (synthetic PR-tester journeys)', () => {
       // PR-tester journeys ship raw GitHub URLs that are not recognised
       // package URLs, so the receiving surface must rebuild the milestone

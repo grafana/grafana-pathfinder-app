@@ -12,14 +12,16 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { usePendingGuideLaunch, useAlignmentReevaluation } from '../../hooks';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
-import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
+import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { coerceLaunchSource } from '../../recovery';
 import { findDocPage } from '../../utils/find-doc-page';
 import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import { getMilestoneStyles } from '../../styles/docs-panel.styles';
+import pluginJson from '../../plugin.json';
 import { FullScreenLayout } from './FullScreenLayout';
 import { getFullScreenStyles } from './full-screen.styles';
+import { dockOnLeavingFullScreen } from './full-screen-autodock';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
 const BlockEditor = lazy(() =>
@@ -86,23 +88,31 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
-      // packageInfo (e.g. from the PR tester) carries the manifest +
-      // pre-resolved milestones, so openDocsPage creates a journey tab with
-      // the milestone toolbar even when the URL is a raw GitHub URL that
-      // openLearningJourney's package-URL detection wouldn't recognise.
-      if (pendingGuide.packageInfo) {
-        panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
-          source: 'fullscreen_handoff',
-          packageInfo: pendingGuide.packageInfo,
-        });
-      } else if (pendingGuide.type === 'learning-journey') {
-        // Preserve the original tab type. openDocsPage without packageInfo
-        // creates a 'docs' tab, so calling it for a recognised journey URL
-        // would strip the journey type and the milestone toolbar's gate
-        // would fail.
-        panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
-      } else {
-        panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
+      // Editor handoff: no URL — switch the active tab to the editor (or
+      // create it if needed). This is what makes the Block editor toolbar's
+      // "Full screen" button replace an active fullscreen guide instead of
+      // no-opping when mode is already 'fullscreen'.
+      if (pendingGuide.type === 'editor') {
+        panel.openEditorTab();
+      } else if (pendingGuide.url) {
+        // packageInfo (e.g. from the PR tester) carries the manifest +
+        // pre-resolved milestones, so openDocsPage creates a journey tab with
+        // the milestone toolbar even when the URL is a raw GitHub URL that
+        // openLearningJourney's package-URL detection wouldn't recognise.
+        if (pendingGuide.packageInfo) {
+          panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
+            source: 'fullscreen_handoff',
+            packageInfo: pendingGuide.packageInfo,
+          });
+        } else if (pendingGuide.type === 'learning-journey') {
+          // Preserve the original tab type. openDocsPage without packageInfo
+          // creates a 'docs' tab, so calling it for a recognised journey URL
+          // would strip the journey type and the milestone toolbar's gate
+          // would fail.
+          panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
+        } else {
+          panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
+        }
       }
     }
 
@@ -184,6 +194,27 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const title = isEditorTab ? EDITOR_FULL_SCREEN_TITLE : activeTab?.title || 'Interactive learning';
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
   const guideUrl = isEditorTab ? undefined : activeTab?.baseUrl || activeTab?.currentUrl;
+
+  // Auto-dock when something navigates the user off the fullscreen route.
+  // Without this the user lands on (e.g.) /dashboards with mode still stuck
+  // on 'fullscreen', no panel rendered, and no way to complete the step
+  // that took them there. Decision logic (sidebar vs floating fallback) is
+  // factored out into `dockOnLeavingFullScreen` for unit testability.
+  useEffect(() => {
+    const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
+    const history = locationService.getHistory();
+    const unlisten = history.listen((location: { pathname: string }) => {
+      dockOnLeavingFullScreen({
+        pathname: location.pathname,
+        fullScreenPathname,
+        myPluginId: pluginJson.id,
+        guideUrl,
+        title,
+        activeTab,
+      });
+    });
+    return unlisten;
+  }, [guideUrl, title, activeTab]);
 
   // Step progress for the header counter — same window-global polling as
   // the floating panel since the interactive engine writes those globals.
@@ -293,6 +324,40 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       document.removeEventListener('pathfinder-request-pop-out', handlePopOutRequest);
     };
   }, [isEditorTab, handleSwitchToFloating, title]);
+
+  // In-fullscreen swap: when something dispatches `pathfinder-request-full-screen`
+  // while we're already on the fullscreen route (e.g. the BlockEditor toolbar
+  // in a sidebar that's still mounted alongside fullscreen, see Issue 3), the
+  // host-side handler's `setMode('fullscreen')` is a no-op and the route push
+  // doesn't remount us. Consume any pending guide here too so the swap still
+  // happens — typically used to replace a journey with the editor or vice versa.
+  useEffect(() => {
+    const handleFullScreenRequest = () => {
+      const pendingGuide = panelModeManager.consumePendingGuide();
+      if (!pendingGuide) {
+        return;
+      }
+      guideOpenInFlightRef.current = true;
+      if (pendingGuide.type === 'editor') {
+        panel.openEditorTab();
+      } else if (pendingGuide.url) {
+        if (pendingGuide.packageInfo) {
+          panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
+            source: 'fullscreen_handoff',
+            packageInfo: pendingGuide.packageInfo,
+          });
+        } else if (pendingGuide.type === 'learning-journey') {
+          panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
+        } else {
+          panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
+        }
+      }
+    };
+    document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+    return () => {
+      document.removeEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+    };
+  }, [panel]);
 
   // Learning-journey milestone toolbar — the same arrow-nav + actions row
   // the sidebar shows. Renders as a sub-header beneath the layout's main

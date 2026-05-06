@@ -6,15 +6,21 @@ import type { PackageOpenInfo } from '../types/content-panel.types';
 export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
 
 export interface PendingGuide {
-  url: string;
+  /**
+   * URL of the guide to open. Optional — `'editor'` handoffs carry no URL
+   * (the receiving surface calls `panel.openEditor()`).
+   */
+  url?: string;
   title: string;
   /**
    * Type discriminator so the consumer routes to the right open method.
-   * `'learning-journey'` → `panel.openLearningJourney` (creates a journey
-   * tab with milestone navigation). Anything else → `panel.openDocsPage`.
+   * - `'learning-journey'` → `panel.openLearningJourney`
+   * - `'docs'` / `'interactive'` → `panel.openDocsPage`
+   * - `'editor'` → `panel.openEditor` (no URL)
+   *
    * Mirrors the `type` field on the `auto-launch-tutorial` event.
    */
-  type?: 'learning-journey' | 'docs' | 'interactive';
+  type?: 'learning-journey' | 'docs' | 'interactive' | 'editor';
   /**
    * Carry the manifest + pre-resolved milestones across surface handoffs.
    *

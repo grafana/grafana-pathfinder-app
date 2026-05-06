@@ -92,11 +92,18 @@ import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } 
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
-import { panelModeManager } from '../../global-state/panel-mode';
+import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
-import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop, AlignmentPrompt } from './components';
+import {
+  LoadingIndicator,
+  ErrorDisplay,
+  TabBarActions,
+  ModalBackdrop,
+  AlignmentPrompt,
+  FullScreenModeNotice,
+} from './components';
 // Import extracted utilities
 import {
   isDocsLikeTab,
@@ -1039,6 +1046,25 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     addGlobalModalStyles();
   }, []);
 
+  // Track the current panel mode so the sidebar's content area can render a
+  // "Pathfinder is in full screen" placeholder when the dedicated full-screen
+  // page owns the active session. Without this, opening Grafana's extension
+  // sidebar while full screen is active would mount a *second*
+  // CombinedLearningJourneyPanel instance racing on the shared tabStorage —
+  // see Issue 3 in the autodock plan and `pathfinder-panel-mode-change`
+  // listener in BlockEditorHeader for the same pattern.
+  const [panelMode, setPanelMode] = React.useState<PanelMode>(() => panelModeManager.getMode());
+  React.useEffect(() => {
+    const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
+      setPanelMode(e.detail.mode);
+    };
+    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    return () => {
+      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    };
+  }, []);
+  const isFullScreenActive = panelMode === 'fullscreen';
+
   // Get plugin configuration to check if live sessions are enabled
   const isLiveSessionsEnabled = pluginConfig.enableLiveSessions;
 
@@ -1155,6 +1181,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // Only restore if we haven't loaded tabs yet
     // Check if tabs only contain the default system tab (recommendations)
     const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
+
+    // Skip restoration when full screen owns the session — otherwise this
+    // sidebar instance would auto-load tab content in parallel with the
+    // FullScreenPanel instance (drift on tabStorage). Restoration runs as
+    // soon as the user actually returns to sidebar mode (auto-dock listener
+    // or explicit Exit), at which point this effect re-runs via the gate.
+    if (panelModeManager.getMode() === 'fullscreen') {
+      return;
+    }
 
     if (hasOnlyDefaultTabs) {
       model.restoreTabsAsync();
@@ -1639,9 +1674,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
       const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
 
-      // Editor tab: the block editor itself moves into full screen. No
-      // pendingGuide — the full screen page detects the editor tab and
-      // renders <BlockEditor /> directly (mirrors floating panel behavior).
+      // Editor tab: the block editor itself moves into full screen.
+      // We set a pending editor handoff so when the user clicks "Full screen"
+      // on the editor while another guide is already in fullscreen
+      // (`setMode('fullscreen')` no-ops in that case), the receiving panel
+      // still switches its active tab to the editor — replacing the journey.
       if (activeTab?.type === 'editor') {
         reportAppInteraction(UserInteraction.FullScreenEnter, {
           guide_url: '',
@@ -1649,6 +1686,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           content_type: 'editor',
         });
         panelModeManager.snapshotSidebarTabs();
+        panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
         panelModeManager.setMode('fullscreen');
         locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
         return;
@@ -2049,6 +2087,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
         {(() => {
+          // Full-screen mode owns the active session — render the notice
+          // here instead of mounting a parallel CombinedLearningJourneyPanel.
+          // Tab bar above stays interactive so users can switch tabs and
+          // queue what's shown when they return to full screen (the same
+          // tab id is read by FullScreenPanel.restoreTabsAsync on next
+          // mount). See `FullScreenModeNotice` for the full rationale.
+          if (isFullScreenActive) {
+            return <FullScreenModeNotice />;
+          }
+
           // Show recommendations tab
           if (isRecommendationsTab) {
             return <contextPanel.Component model={contextPanel} />;

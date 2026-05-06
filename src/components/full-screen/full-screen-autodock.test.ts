@@ -1,0 +1,184 @@
+/**
+ * Tests for `dockOnLeavingFullScreen` — the auto-dock decision that fires
+ * when something navigates the user off `/a/<plugin>/fullscreen` while
+ * panel mode is still `'fullscreen'`.
+ */
+
+import { dockOnLeavingFullScreen } from './full-screen-autodock';
+import { panelModeManager } from '../../global-state/panel-mode';
+import { sidebarState } from '../../global-state/sidebar';
+import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
+import { reportAppInteraction } from '../../lib/analytics';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
+
+jest.mock('../../global-state/panel-mode', () => ({
+  panelModeManager: {
+    getMode: jest.fn(),
+    setMode: jest.fn(),
+    setPendingGuide: jest.fn(),
+    restoreSidebarTabSnapshot: jest.fn(),
+  },
+}));
+
+jest.mock('../../global-state/sidebar', () => ({
+  sidebarState: {
+    setPendingOpenSource: jest.fn(),
+    openSidebar: jest.fn(),
+  },
+}));
+
+jest.mock('../../utils/experiments/experiment-utils', () => ({
+  isExtensionSidebarOwnedByOther: jest.fn(),
+}));
+
+jest.mock('../../lib/analytics', () => ({
+  reportAppInteraction: jest.fn(),
+  UserInteraction: { FullScreenExit: 'full_screen_exit' },
+}));
+
+const FULL_SCREEN_PATHNAME = '/a/grafana-pathfinder-app/fullscreen';
+const PLUGIN_ID = 'grafana-pathfinder-app';
+
+const baseTab: LearningJourneyTab = {
+  id: 'tab-1',
+  title: 'My journey',
+  baseUrl: 'https://raw.githubusercontent.com/x/y/z/cover/content.json',
+  currentUrl: 'https://raw.githubusercontent.com/x/y/z/cover/content.json',
+  content: null,
+  isLoading: false,
+  error: null,
+  type: 'learning-journey',
+  packageInfo: {
+    packageId: 'my-path',
+    packageManifest: { id: 'my-path', type: 'path', milestones: ['m1', 'm2'] },
+    resolvedMilestones: [],
+  },
+};
+
+function defaultInputs(overrides: Partial<Parameters<typeof dockOnLeavingFullScreen>[0]> = {}) {
+  return {
+    pathname: '/dashboards',
+    fullScreenPathname: FULL_SCREEN_PATHNAME,
+    myPluginId: PLUGIN_ID,
+    guideUrl: baseTab.baseUrl,
+    title: baseTab.title,
+    activeTab: baseTab,
+    ...overrides,
+  };
+}
+
+describe('dockOnLeavingFullScreen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (panelModeManager.getMode as jest.Mock).mockReturnValue('fullscreen');
+    (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
+  });
+
+  describe('guards', () => {
+    it('no-ops when panel mode is no longer fullscreen (explicit Exit ran first)', () => {
+      (panelModeManager.getMode as jest.Mock).mockReturnValue('sidebar');
+
+      const outcome = dockOnLeavingFullScreen(defaultInputs());
+
+      expect(outcome).toBe('noop');
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+      expect(reportAppInteraction).not.toHaveBeenCalled();
+    });
+
+    it('no-ops when only search/hash changed (pathname still on fullscreen route)', () => {
+      const outcome = dockOnLeavingFullScreen(defaultInputs({ pathname: FULL_SCREEN_PATHNAME }));
+
+      expect(outcome).toBe('noop');
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sidebar branch (sidebar free or owned by us)', () => {
+    it('switches to sidebar mode and opens the extension sidebar', () => {
+      const outcome = dockOnLeavingFullScreen(defaultInputs());
+
+      expect(outcome).toBe('sidebar');
+      expect(panelModeManager.restoreSidebarTabSnapshot).toHaveBeenCalledTimes(1);
+      expect(panelModeManager.setMode).toHaveBeenCalledWith('sidebar');
+      expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('fullscreen_handoff', 'open');
+      expect(sidebarState.openSidebar).toHaveBeenCalledWith('Interactive learning');
+      // No floating-handoff side effects.
+      expect(panelModeManager.setPendingGuide).not.toHaveBeenCalled();
+    });
+
+    it('reports analytics with destination=sidebar and reason=navigation_away', () => {
+      dockOnLeavingFullScreen(defaultInputs());
+
+      expect(reportAppInteraction).toHaveBeenCalledWith('full_screen_exit', {
+        destination: 'sidebar',
+        guide_url: baseTab.baseUrl,
+        guide_title: baseTab.title,
+        reason: 'navigation_away',
+      });
+    });
+
+    it('uses an empty guide_url when none is available (e.g. recommendations tab)', () => {
+      dockOnLeavingFullScreen(defaultInputs({ guideUrl: undefined }));
+
+      expect(reportAppInteraction).toHaveBeenCalledWith('full_screen_exit', expect.objectContaining({ guide_url: '' }));
+    });
+  });
+
+  describe('floating branch (sidebar owned by another plugin)', () => {
+    beforeEach(() => {
+      (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
+    });
+
+    it('switches to floating mode without opening the sidebar', () => {
+      const outcome = dockOnLeavingFullScreen(defaultInputs());
+
+      expect(outcome).toBe('floating');
+      expect(panelModeManager.setMode).toHaveBeenCalledWith('floating');
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+      expect(panelModeManager.restoreSidebarTabSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('hands off the active tab via setPendingGuide so the floating panel rebuilds the journey', () => {
+      dockOnLeavingFullScreen(defaultInputs());
+
+      expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith({
+        url: baseTab.baseUrl,
+        title: baseTab.title,
+        type: 'learning-journey',
+        packageInfo: baseTab.packageInfo,
+      });
+    });
+
+    it('reports analytics with destination=floating and reason=navigation_away_sidebar_occupied', () => {
+      dockOnLeavingFullScreen(defaultInputs());
+
+      expect(reportAppInteraction).toHaveBeenCalledWith('full_screen_exit', {
+        destination: 'floating',
+        guide_url: baseTab.baseUrl,
+        guide_title: baseTab.title,
+        reason: 'navigation_away_sidebar_occupied',
+      });
+    });
+
+    it('downgrades non-journey tabs to type=docs in the pending guide', () => {
+      const docsTab: LearningJourneyTab = { ...baseTab, type: 'docs', packageInfo: undefined };
+
+      dockOnLeavingFullScreen(defaultInputs({ activeTab: docsTab }));
+
+      expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'docs', packageInfo: undefined })
+      );
+    });
+
+    it('skips setPendingGuide when there is no guideUrl or activeTab', () => {
+      dockOnLeavingFullScreen(defaultInputs({ guideUrl: undefined, activeTab: undefined }));
+
+      expect(panelModeManager.setPendingGuide).not.toHaveBeenCalled();
+      // Mode change still fires so the floating panel mounts (it can fall
+      // back to tabStorage restoration when no pending guide is set).
+      expect(panelModeManager.setMode).toHaveBeenCalledWith('floating');
+    });
+  });
+});
