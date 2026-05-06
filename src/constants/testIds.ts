@@ -50,7 +50,6 @@ export const testIds = {
     goFloatingButton: 'full-screen-mode-go-floating-button',
     copyLinkButton: 'full-screen-mode-copy-link-button',
     notice: 'full-screen-mode-notice',
-    noticeReturnButton: 'full-screen-mode-notice-return-button',
   },
 
   // Alignment prompt (implied 0th step) — Phase 1 auto-recovery

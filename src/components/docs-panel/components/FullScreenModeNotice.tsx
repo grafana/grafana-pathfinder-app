@@ -11,25 +11,19 @@
  * instead keeps the tab bar interactive (so users can switch tabs and queue
  * the next active tab for full-screen) while keeping content fetch /
  * milestone state ownership with the full-screen instance.
+ *
+ * Intentionally informational only — no "Return to full screen" CTA. The
+ * full-screen page is already mounted on the dedicated route; the sidebar
+ * is just a parallel surface the user happened to open.
  */
 
-import React, { useCallback } from 'react';
-import { Button, Icon, useStyles2 } from '@grafana/ui';
+import React from 'react';
+import { Icon, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { locationService } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
-import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
-
-export interface FullScreenModeNoticeProps {
-  /**
-   * Override what happens when the user clicks "Return to full screen".
-   * Defaults to pushing `/a/<plugin>/fullscreen`. Useful in tests.
-   */
-  onReturn?: () => void;
-}
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -67,16 +61,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-export function FullScreenModeNotice({ onReturn }: FullScreenModeNoticeProps = {}) {
+export function FullScreenModeNotice() {
   const styles = useStyles2(getStyles);
-
-  const handleReturn = useCallback(() => {
-    if (onReturn) {
-      onReturn();
-      return;
-    }
-    locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
-  }, [onReturn]);
 
   return (
     <div className={styles.container} data-testid={testIds.fullScreenMode.notice}>
@@ -87,18 +73,9 @@ export function FullScreenModeNotice({ onReturn }: FullScreenModeNoticeProps = {
       <p className={styles.description}>
         {t(
           'docsPanel.fullScreenNoticeBody',
-          'Switch tabs in the sidebar to queue the next tab, or jump back to full screen to keep working.'
+          'Switch tabs in the sidebar to queue what shows the next time you return to the full-screen page.'
         )}
       </p>
-      <Button
-        variant="primary"
-        size="sm"
-        icon="external-link-alt"
-        onClick={handleReturn}
-        data-testid={testIds.fullScreenMode.noticeReturnButton}
-      >
-        {t('docsPanel.fullScreenNoticeReturn', 'Return to full screen')}
-      </Button>
     </div>
   );
 }
