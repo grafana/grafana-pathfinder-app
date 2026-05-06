@@ -748,11 +748,22 @@ export const CURRENT_SCHEMA_VERSION = '1.1.0';
  * Root schema for JSON guide (strict - no extra fields allowed).
  * @coupling Type: JsonGuide
  */
+/**
+ * Editor-only metadata — currently the Health panel's per-guide dismissals.
+ * Optional and additive. Runtime ignores this field.
+ */
+const GuideMetadataSchema = z
+  .object({
+    lintIgnores: z.array(z.string()).optional(),
+  })
+  .optional();
+
 export const JsonGuideSchemaStrict = z.object({
   schemaVersion: z.string().optional(),
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),
+  metadata: GuideMetadataSchema,
 });
 
 /**
