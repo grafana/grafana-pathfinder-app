@@ -69,6 +69,22 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(2),
   }),
 
+  // Wraps the content and the optional HealthPanel side-by-side. When
+  // the panel is closed, contentMain takes the full width.
+  contentRow: css({
+    display: 'flex',
+    flexDirection: 'row',
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+  }),
+  contentMain: css({
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+  }),
+
   // Empty state
   emptyState: css({
     display: 'flex',

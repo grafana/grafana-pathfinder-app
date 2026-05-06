@@ -120,6 +120,7 @@ export function SortableBlock({
       ref={setNodeRef}
       style={style}
       className={cx(sortableStyles.sortableItem, isDragging && sortableStyles.dragging)}
+      data-block-id={id}
       {...attributes}
       {...listeners}
     >

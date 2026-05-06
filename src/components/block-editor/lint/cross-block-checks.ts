@@ -19,20 +19,18 @@
  * page context.
  */
 
-import type {
-  JsonBlock,
-  JsonGuide,
-  JsonInteractiveBlock,
-  JsonMultistepBlock,
-  JsonGuidedBlock,
-  JsonSectionBlock,
-} from '../../../types/json-guide.types';
 import {
+  isConditionalBlock,
+  isGuidedBlock,
   isInteractiveBlock,
   isMultistepBlock,
-  isGuidedBlock,
   isSectionBlock,
-  isConditionalBlock,
+  type JsonBlock,
+  type JsonGuide,
+  type JsonGuidedBlock,
+  type JsonInteractiveBlock,
+  type JsonMultistepBlock,
+  type JsonSectionBlock,
 } from '../../../types/json-guide.types';
 import { ParameterizedRequirementPrefix } from '../../../types/requirements.types';
 import { suggestRequirementsFromContext } from '../forms/requirements-suggester';
