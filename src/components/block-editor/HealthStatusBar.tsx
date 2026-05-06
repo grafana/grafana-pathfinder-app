@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Icon, Tooltip, useStyles2 } from '@grafana/ui';
+import { Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { useGuideLintResult } from './BlockEditorContext';
@@ -297,20 +297,33 @@ export function HealthStatusBar({ blocks }: HealthStatusBarProps) {
             </div>
           ) : (
             <>
-              <Tooltip
-                content={
-                  'Errors block save. Warnings highlight resilience risks but are not blocking. ' +
-                  'Suggestions are inferential nudges — apply if they fit your guide.'
-                }
-                placement="top"
-              >
-                <div className={styles.legend}>What do these severities mean?</div>
-              </Tooltip>
               {SEVERITY_ORDER.map((sev) =>
                 grouped[sev].length === 0 ? null : (
                   <div key={sev} className={styles.section}>
                     <div className={styles.sectionLabel}>
-                      {SEVERITY_LABELS[sev]} ({grouped[sev].length})
+                      <span>
+                        {SEVERITY_LABELS[sev]} ({grouped[sev].length})
+                      </span>
+                      {/* Severity legend lives on a small ?-icon next to
+                          the first section header — same Tooltip content
+                          as the old underlined-dotted "What do these
+                          severities mean?" row, but no vertical-space cost. */}
+                      {sev === SEVERITY_ORDER.find((s) => grouped[s].length > 0) && (
+                        <Tooltip
+                          content={
+                            'Errors block save. Warnings highlight resilience risks but are not blocking. ' +
+                            'Suggestions are inferential nudges — apply if they fit your guide.'
+                          }
+                          placement="top"
+                        >
+                          <IconButton
+                            name="question-circle"
+                            size="sm"
+                            aria-label="What do these severities mean?"
+                            tooltip=""
+                          />
+                        </Tooltip>
+                      )}
                     </div>
                     <div className={styles.sectionRows}>
                       {grouped[sev].map((d, i) => (
@@ -415,19 +428,15 @@ const getStyles = (theme: GrafanaTheme2) => ({
     overflowY: 'auto',
     borderBottom: `1px solid ${theme.colors.border.weak}`,
   }),
-  legend: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    cursor: 'help',
-    textDecoration: 'underline dotted',
-    alignSelf: 'flex-start',
-  }),
   section: css({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(0.75),
   }),
   sectionLabel: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,

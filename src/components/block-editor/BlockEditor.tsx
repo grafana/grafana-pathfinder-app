@@ -1000,6 +1000,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
+        hasBlocks={hasBlocks}
+        isSelectionMode={selection.isSelectionMode}
+        onToggleSelectionMode={selection.toggleSelectionMode}
       />
 
       <BlockEditorContent
@@ -1017,7 +1020,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           emptyStateText: styles.emptyStateText,
           blockPreviewContainer: styles.blockPreviewContainer,
         }}
-        onToggleSelectionMode={selection.toggleSelectionMode}
         onMergeToMultistep={handleMergeToMultistep}
         onMergeToGuided={handleMergeToGuided}
         onClearSelection={selection.clearSelection}

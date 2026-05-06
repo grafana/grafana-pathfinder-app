@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, Badge, ButtonGroup, Tooltip, Dropdown, Menu, useStyles2 } from '@grafana/ui';
+import { Button, Badge, ButtonGroup, Icon, IconButton, Tooltip, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import type { ViewMode } from './types';
@@ -62,6 +62,12 @@ export interface BlockEditorHeaderProps {
   onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
+  /** Whether the guide has any blocks (drives selection-mode trigger visibility) */
+  hasBlocks: boolean;
+  /** Whether selection mode is currently active */
+  isSelectionMode: boolean;
+  /** Toggle selection mode on/off */
+  onToggleSelectionMode: () => void;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -71,24 +77,19 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     backgroundColor: theme.colors.background.primary,
   }),
-  topRow: css({
+  // Single-row toolbar: title (flex 1) + actions cluster on the right.
+  // Wraps to a second line below ~360px.
+  row: css({
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: `${theme.spacing(1.5)} ${theme.spacing(2)} ${theme.spacing(1)}`,
-    gap: theme.spacing(2),
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+    gap: theme.spacing(1),
     flexWrap: 'wrap',
   }),
-  guideInfo: css({
+  titleArea: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1.5),
-    minWidth: 0,
-    flex: 1,
-  }),
-  guideTitleContainer: css({
-    display: 'flex',
-    flexDirection: 'column',
+    gap: theme.spacing(0.5),
     minWidth: 0,
     flex: 1,
     '&:hover .guide-id': {
@@ -107,8 +108,8 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     padding: '0 2px',
     margin: 0,
     outline: 'none',
-    width: '100%',
     minWidth: 0,
+    flex: 1,
     '&:hover': {
       borderBottomColor: theme.colors.border.medium,
     },
@@ -124,36 +125,35 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     opacity: 0,
     transition: 'opacity 0.15s',
     padding: '0 2px',
+    flexShrink: 0,
   }),
-  statusBadges: css({
+  // Right-side action cluster.
+  actions: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
     flexShrink: 0,
   }),
-  toolbarRow: css({
-    display: 'flex',
+  // Subtler "Saved" indicator (replaces the green chip) — small
+  // check-circle icon. Tooltip preserved for context.
+  savedIndicator: css({
+    display: 'inline-flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: `${theme.spacing(1)} ${theme.spacing(2)} ${theme.spacing(1.5)}`,
-    gap: theme.spacing(2),
-    flexWrap: 'wrap',
+    color: theme.colors.success.text,
+    flexShrink: 0,
   }),
-  leftSection: css({
-    display: 'flex',
+  savingIndicator: css({
+    display: 'inline-flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
-  }),
-  rightSection: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
+    color: theme.colors.warning.text,
+    flexShrink: 0,
   }),
   divider: css({
     width: '1px',
     height: '20px',
     backgroundColor: theme.colors.border.weak,
-    margin: `0 ${theme.spacing(0.5)}`,
+    margin: `0 ${theme.spacing(0.25)}`,
+    flexShrink: 0,
   }),
   moreButton: css({
     '& > button': {
@@ -187,6 +187,9 @@ export function BlockEditorHeader({
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
+  hasBlocks,
+  isSelectionMode,
+  onToggleSelectionMode,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -271,9 +274,26 @@ export function BlockEditorHeader({
     );
   };
 
-  // More menu for less-used actions
+  // More menu for less-used actions. New + Library moved here (from
+  // the toolbar) — both are infrequent and "New" is destructive, so
+  // it's an improvement to guard them behind a menu.
   const moreMenu = (
     <Menu>
+      <Menu.Item
+        label="New guide"
+        icon="file-blank"
+        onClick={onNewGuide}
+        data-testid={testIds.blockEditor.newGuideButton}
+      />
+      {isBackendAvailable && (
+        <Menu.Item
+          label="Library"
+          icon="book-open"
+          onClick={onOpenGuideLibrary}
+          data-testid={testIds.blockEditor.libraryButton}
+        />
+      )}
+      <Menu.Divider />
       {moreMenuContextItem()}
       {isBackendAvailable && <Menu.Divider />}
       <Menu.Item label="Import" icon="upload" onClick={onOpenImport} />
@@ -391,69 +411,60 @@ export function BlockEditorHeader({
 
   return (
     <div className={styles.header}>
-      {/* Top Row: Guide info and status */}
-      <div className={styles.topRow}>
-        <div className={styles.guideInfo}>
-          <div className={styles.guideTitleContainer}>
-            <input
-              ref={titleInputRef}
-              className={styles.guideTitleInput}
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={commitTitle}
-              onKeyDown={handleTitleKeyDown}
-              aria-label="Guide title"
-            />
-            {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
-          </div>
+      {/* Single-row toolbar: title (flex 1) + actions on the right.
+          New / Library moved into the kebab menu; selection-mode
+          trigger is a small icon button next to the view-mode toggle. */}
+      <div className={styles.row}>
+        <div className={styles.titleArea}>
+          <input
+            ref={titleInputRef}
+            className={styles.guideTitleInput}
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={handleTitleKeyDown}
+            aria-label="Guide title"
+          />
+          {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
         </div>
 
-        <div className={styles.statusBadges}>
-          {/* Local save status — only shown when backend is unavailable */}
+        <div className={styles.actions}>
+          {/* Local-save indicator — subtle icon (replaces the green
+              chip). Only shown when backend isn't available. */}
           {!isBackendAvailable &&
             (isDirty ? (
               <Tooltip content="Saving changes to local storage">
-                <Badge text="Saving..." color="orange" icon="fa fa-spinner" />
+                <span className={styles.savingIndicator} aria-label="Saving">
+                  <Icon name="fa fa-spinner" size="sm" />
+                </span>
               </Tooltip>
             ) : (
               <Tooltip content="All changes saved to local storage">
-                <Badge text="Saved" color="green" icon="check" />
+                <span className={styles.savedIndicator} aria-label="Saved">
+                  <Icon name="check-circle" size="sm" />
+                </span>
               </Tooltip>
             ))}
 
-          {/* Backend publish status */}
+          {/* Backend publish status — kept as a Badge since the
+              Draft/Published distinction is genuinely informative. */}
           {isBackendAvailable && backendBadge()}
-        </div>
-      </div>
 
-      {/* Toolbar Row: Tools and actions */}
-      <div className={styles.toolbarRow}>
-        {/* Left: New + Library */}
-        <div className={styles.leftSection}>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="file-blank"
-            onClick={onNewGuide}
-            data-testid={testIds.blockEditor.newGuideButton}
-          >
-            New
-          </Button>
-          {isBackendAvailable && (
-            <Button
-              variant="secondary"
+          {/* Selection-mode trigger — only meaningful in edit mode
+              with at least one block. Active state mirrors the
+              view-mode toggle's primary highlight. */}
+          {viewMode === 'edit' && hasBlocks && (
+            <IconButton
+              name="check-square"
               size="sm"
-              icon="book-open"
-              onClick={onOpenGuideLibrary}
-              data-testid={testIds.blockEditor.libraryButton}
-            >
-              Library
-            </Button>
+              variant={isSelectionMode ? 'primary' : 'secondary'}
+              onClick={onToggleSelectionMode}
+              aria-label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+              tooltip={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+              data-testid={testIds.blockEditor.toggleSelectionButton}
+            />
           )}
-        </div>
 
-        {/* Right: View mode, publish, and more */}
-        <div className={styles.rightSection}>
           <ButtonGroup data-testid={testIds.blockEditor.viewModeToggle}>
             <Button
               variant={viewMode === 'edit' ? 'primary' : 'secondary'}
@@ -478,12 +489,7 @@ export function BlockEditorHeader({
             />
           </ButtonGroup>
 
-          {isBackendAvailable && (
-            <>
-              <div className={styles.divider} />
-              {renderBackendButton()}
-            </>
-          )}
+          {isBackendAvailable && renderBackendButton()}
 
           <Button
             variant="secondary"
