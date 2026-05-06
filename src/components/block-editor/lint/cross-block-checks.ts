@@ -223,6 +223,9 @@ export function destructiveActionWithoutObjective(guide: JsonGuide): Diagnostic[
     } else {
       // multistep / guided — check if any step is destructive.
       const steps = (block as GuidedOrMultistep).steps;
+      if (!Array.isArray(steps)) {
+        continue;
+      }
       const destructiveStep = steps.find(
         (s) => s.action === 'button' && s.reftarget && DESTRUCTIVE_REFTARGET_PATTERN.test(s.reftarget)
       );
@@ -370,6 +373,13 @@ export function requirementsImpliedByActionButNotDeclared(guide: JsonGuide): Dia
 // ---------------------------------------------------------------------------
 
 export function runCrossBlockChecks(guide: JsonGuide): Diagnostic[] {
+  // Defensive: an editor guide may have a missing/invalid `blocks` array
+  // (e.g. when the user is mid-edit and the canonical Zod parse failed).
+  // The individual checks all use type guards but they need a real array
+  // to walk.
+  if (!Array.isArray(guide?.blocks)) {
+    return [];
+  }
   return [
     ...firstStepMissingOnPage(guide),
     ...orphanSectionReference(guide),

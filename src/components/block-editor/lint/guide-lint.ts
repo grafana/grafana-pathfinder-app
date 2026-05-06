@@ -194,9 +194,16 @@ export function lintGuide(guide: JsonGuide | null | undefined): GuideLintResult 
     // Editor-only cross-block checks. These don't have a canonical
     // counterpart — they exist purely to surface authoring resilience
     // issues the per-field Zod / condition pipeline can't see.
-    // Only run them if the guide passed Zod (otherwise paths/types
-    // we'd traverse may be malformed).
-    ...(result.isValid ? runCrossBlockChecks(result.guide as JsonGuide) : []),
+    //
+    // Run them against the editor's input guide regardless of Zod
+    // validity. The checks are individually defensive (type guards +
+    // Array.isArray on every container), and the editor maintains a
+    // typed JsonGuide in memory at all times, so we can lint
+    // structural concerns even when a single field (e.g. an unknown
+    // requirement token) trips Zod. Without this, surfacing a single
+    // error would silently hide every existing warning/suggestion in
+    // the Health panel.
+    ...runCrossBlockChecks(guide),
   ];
 
   // Suppress diagnostics whose code the author has dismissed for this
