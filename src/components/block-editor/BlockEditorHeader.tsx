@@ -62,6 +62,14 @@ export interface BlockEditorHeaderProps {
   onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
+  /**
+   * The surface this header is rendered in. When provided, the toolbar
+   * uses it directly instead of reading the global panelModeManager,
+   * which can desync from the actual host (e.g. localStorage stuck on
+   * `'fullscreen'` after the user navigates back to the sidebar via
+   * Grafana's URL navigation).
+   */
+  surface?: PanelMode;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -139,15 +147,21 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(2),
     flexWrap: 'wrap',
   }),
+  // Both sections wrap their internal buttons when narrow (sidebar surface)
+  // so the Pop out / Full screen / Save controls reflow onto a second
+  // line instead of clipping past the panel's right edge.
   leftSection: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
+    flexWrap: 'wrap',
   }),
   rightSection: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
+    flexWrap: 'wrap',
+    rowGap: theme.spacing(0.5),
   }),
   divider: css({
     width: '1px',
@@ -187,6 +201,7 @@ export function BlockEditorHeader({
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
+  surface,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -194,29 +209,28 @@ export function BlockEditorHeader({
   const [titleDraft, setTitleDraft] = useState(guideTitle);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // Track the current panel mode so the Pop out button can swap between
-  // "Pop out" (sidebar) and "Dock" (floating) at runtime.
-  const [panelMode, setPanelMode] = useState<PanelMode>(() => panelModeManager.getMode());
+  // Effective surface: prefer the explicit prop (passed by the host),
+  // and fall back to the global manager only when the host hasn't been
+  // updated to pass it. The global state can desync from reality (it's
+  // localStorage-backed and not always cleared on URL nav), so the prop
+  // is the more reliable source of truth.
+  const [globalMode, setGlobalMode] = useState<PanelMode>(() => panelModeManager.getMode());
   useEffect(() => {
     const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
-      setPanelMode(e.detail.mode);
+      setGlobalMode(e.detail.mode);
     };
     document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
     return () => {
       document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
     };
   }, []);
+  const effectiveSurface: PanelMode = surface ?? globalMode;
 
-  // Dispatch the same document-level events used by interactive popout steps.
-  // The sidebar's docs-panel handler picks up pop-out for the editor tab; the
-  // FloatingPanelManager handles dock requests.
-  const handleTogglePanelMode = useCallback(() => {
-    if (panelMode === 'sidebar') {
-      document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
-    } else {
-      document.dispatchEvent(new CustomEvent('pathfinder-request-dock'));
-    }
-  }, [panelMode]);
+  // Dispatch document-level requests; each surface's host listens for these.
+  // (See docs-panel.tsx, FloatingPanelManager.tsx, FullScreenPanel.tsx.)
+  const dispatchRequest = useCallback((eventName: string) => {
+    document.dispatchEvent(new CustomEvent(eventName));
+  }, []);
 
   // Keep draft in sync when title changes externally (e.g. guide loaded from library)
   useEffect(() => {
@@ -485,21 +499,84 @@ export function BlockEditorHeader({
             </>
           )}
 
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={panelMode === 'sidebar' ? 'corner-up-right' : 'arrow-to-right'}
-            onClick={handleTogglePanelMode}
-            tooltip={
-              panelMode === 'sidebar'
-                ? 'Pop out the editor into a floating window'
-                : 'Dock the editor back into the sidebar'
-            }
-            aria-label={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
-            data-testid="pathfinder-block-editor-toggle-popout"
-          >
-            {panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
-          </Button>
+          {effectiveSurface === 'sidebar' && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="corner-up-right"
+                onClick={() => dispatchRequest('pathfinder-request-pop-out')}
+                tooltip="Pop out the editor into a floating window"
+                aria-label="Pop out editor"
+                data-testid="pathfinder-block-editor-toggle-popout"
+              >
+                Pop out
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="expand-arrows"
+                onClick={() => dispatchRequest('pathfinder-request-full-screen')}
+                tooltip="Open the editor in full screen"
+                aria-label="Open editor in full screen"
+                data-testid="pathfinder-block-editor-go-fullscreen"
+              >
+                Full screen
+              </Button>
+            </>
+          )}
+          {effectiveSurface === 'floating' && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="arrow-to-right"
+                onClick={() => dispatchRequest('pathfinder-request-dock')}
+                tooltip="Dock the editor back into the sidebar"
+                aria-label="Dock editor"
+                data-testid="pathfinder-block-editor-toggle-popout"
+              >
+                Dock
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="expand-arrows"
+                onClick={() => dispatchRequest('pathfinder-request-full-screen')}
+                tooltip="Open the editor in full screen"
+                aria-label="Open editor in full screen"
+                data-testid="pathfinder-block-editor-go-fullscreen"
+              >
+                Full screen
+              </Button>
+            </>
+          )}
+          {effectiveSurface === 'fullscreen' && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="angle-left"
+                onClick={() => dispatchRequest('pathfinder-request-dock')}
+                tooltip="Exit full screen and return to the sidebar"
+                aria-label="Back to sidebar"
+                data-testid="pathfinder-block-editor-toggle-popout"
+              >
+                Back to sidebar
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="corner-up-right"
+                onClick={() => dispatchRequest('pathfinder-request-pop-out')}
+                tooltip="Pop out the editor into a floating window"
+                aria-label="Pop out editor"
+                data-testid="pathfinder-block-editor-go-floating"
+              >
+                Pop out
+              </Button>
+            </>
+          )}
 
           <div className={styles.moreButton}>
             <Dropdown overlay={moreMenu} placement="bottom-end">

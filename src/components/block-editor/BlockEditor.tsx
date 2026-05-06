@@ -97,6 +97,14 @@ export interface BlockEditorProps {
   onCopy?: (json: string) => void;
   /** Called when download is requested */
   onDownload?: (guide: JsonGuide) => void;
+  /**
+   * The host surface this editor instance is rendered in.
+   * When omitted the header falls back to the global `panelModeManager`,
+   * which can desync from the actual mounted surface — supplying this
+   * prop is strongly preferred for the three call sites (sidebar,
+   * floating panel, full screen) that already know their host.
+   */
+  surface?: 'sidebar' | 'floating' | 'fullscreen';
 }
 
 /**
@@ -237,7 +245,7 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
   return false;
 }
 
-function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
+function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, surface }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
   const { state } = editor;
@@ -988,6 +996,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
+        surface={surface}
       />
 
       {/* Content */}

@@ -2,36 +2,45 @@ import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { Box, Button, Icon, Input, Combobox, useStyles2, RadioButtonGroup, type ComboboxOption } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getPrTesterStyles } from './pr-tester.styles';
-import { fetchPrContentFilesFromUrl, isValidPrUrl, type PrContentFile } from './github-api';
+import { fetchPrContentFilesFromUrl, fetchPrManifest, isValidPrUrl, type PrJsonFile } from './github-api';
+import { buildPathPackageInfo, indexContentByPackageId, type PathPackageBuildResult } from './pr-path-package';
+import type { ManifestJson } from '../../types/package.types';
+import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
 
 const PR_URL_STORAGE_KEY = 'pathfinder-pr-tester-url';
 const SELECTED_FILE_STORAGE_KEY = 'pathfinder-pr-tester-selected';
+const SELECTED_PATH_STORAGE_KEY = 'pathfinder-pr-tester-selected-path';
 const TEST_MODE_STORAGE_KEY = 'pathfinder-pr-tester-mode';
 const FETCHED_FILES_STORAGE_KEY = 'pathfinder-pr-tester-files';
 const FETCHED_URL_STORAGE_KEY = 'pathfinder-pr-tester-fetched-url';
-const ORDERED_FILES_STORAGE_KEY = 'pathfinder-pr-tester-ordered-files';
 
 export interface PrTesterProps {
-  onOpenDocsPage: (url: string, title: string) => void;
-  onOpenLearningJourney?: (url: string, title: string) => void;
+  /**
+   * Open a docs page (or package). When `packageInfo` is supplied the docs
+   * panel will route through `fetchPackageContent` and render the real
+   * milestone toolbar / Alt+arrow navigation, exactly like the recommender's
+   * path packages.
+   */
+  onOpenDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
 }
 
 type FetchState = 'idle' | 'fetching' | 'fetched' | 'error';
 type TestMode = 'single' | 'all' | 'path';
 
 /**
- * PR Tester component for testing content.json files from GitHub PRs
+ * PR Tester — load JSON files from a GitHub PR and test them locally.
  *
- * Supports three modes:
- * 1. Single - Test one guide at a time
- * 2. Open All - Open all guides from the PR in separate tabs
- * 3. Learning Path - Create an ordered learning path for sequential testing
+ * Modes:
+ * 1. Single — open one content.json
+ * 2. Open all — open every content.json in separate tabs
+ * 3. Learning path — detect a `path`/`journey` manifest in the PR and open
+ *    it as a real package (cover page + milestone toolbar + Alt+arrow nav)
+ *    using the same pipeline the recommender uses for production paths.
  */
-export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProps) {
+export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   const styles = useStyles2(getPrTesterStyles);
 
-  // PR URL input (persisted to localStorage)
   const [prUrl, setPrUrl] = useState(() => {
     try {
       return localStorage.getItem(PR_URL_STORAGE_KEY) || '';
@@ -40,7 +49,6 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   });
 
-  // Test mode selection (persisted to localStorage)
   const [testMode, setTestMode] = useState<TestMode>(() => {
     try {
       return (localStorage.getItem(TEST_MODE_STORAGE_KEY) as TestMode) || 'single';
@@ -49,29 +57,25 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   });
 
-  // Fetch state
   const [fetchState, setFetchState] = useState<FetchState>('idle');
-  const [files, setFiles] = useState<PrContentFile[]>(() => {
-    // Try to restore files from localStorage
+  const [files, setFiles] = useState<PrJsonFile[]>(() => {
     try {
       const storedFiles = localStorage.getItem(FETCHED_FILES_STORAGE_KEY);
       const storedUrl = localStorage.getItem(FETCHED_URL_STORAGE_KEY);
       const currentUrl = localStorage.getItem(PR_URL_STORAGE_KEY);
-
-      // Only restore if the URL matches
       if (storedFiles && storedUrl === currentUrl) {
-        return JSON.parse(storedFiles) as PrContentFile[];
+        return JSON.parse(storedFiles) as PrJsonFile[];
       }
     } catch {
-      // Ignore errors
+      // Ignore
     }
     return [];
   });
-  const [orderedFiles, setOrderedFiles] = useState<PrContentFile[]>([]);
+
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
-  // User's explicit file selection (only set when user changes selection)
+  /** User's explicit content-file selection for single mode (only set when changed). */
   const [userSelectedFile, setUserSelectedFile] = useState<string | null>(() => {
     try {
       return localStorage.getItem(SELECTED_FILE_STORAGE_KEY);
@@ -80,29 +84,43 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   });
 
-  // Drag and drop state for path ordering
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  /** User's explicit path-package selection (only set when changed). */
+  const [userSelectedPath, setUserSelectedPath] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(SELECTED_PATH_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  });
 
-  // Success feedback for test action
+  /**
+   * All parsed manifests in the PR, indexed by directoryName.
+   *
+   * We keep every manifest (not just path/journey) because child packages of
+   * a path use their *own* `manifest.id` as the canonical key. Without those
+   * we can't translate `manifest.milestones` (package IDs) into raw URLs in
+   * the PR — directory names are storage, package IDs are identity.
+   */
+  const [allManifests, setAllManifests] = useState<Map<string, ManifestJson>>(new Map());
+  const [manifestsLoading, setManifestsLoading] = useState(false);
+
   const [testSuccess, setTestSuccess] = useState(false);
 
   // REACT: refs for cleanup on unmount (R1, R4)
   const abortControllerRef = useRef<AbortController>();
+  const manifestAbortRef = useRef<AbortController>();
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Cancel any in-flight fetch request
       abortControllerRef.current?.abort();
-      // Clear any pending success message timeout
+      manifestAbortRef.current?.abort();
       if (successTimeoutRef.current) {
         clearTimeout(successTimeoutRef.current);
       }
     };
   }, []);
 
-  // Persist PR URL to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(PR_URL_STORAGE_KEY, prUrl);
@@ -111,7 +129,6 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   }, [prUrl]);
 
-  // Persist test mode to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(TEST_MODE_STORAGE_KEY, testMode);
@@ -120,7 +137,6 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   }, [testMode]);
 
-  // Persist selected file to localStorage
   useEffect(() => {
     try {
       if (userSelectedFile) {
@@ -131,68 +147,19 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   }, [userSelectedFile]);
 
-  // Compute ordered files when files change, trying to restore order from localStorage
-  // Using useMemo instead of useEffect to avoid cascading renders
-  const computedOrderedFiles = useMemo(() => {
-    if (files.length === 0) {
-      return [];
-    }
-
+  useEffect(() => {
     try {
-      const storedOrder = localStorage.getItem(ORDERED_FILES_STORAGE_KEY);
-      const storedUrl = localStorage.getItem(FETCHED_URL_STORAGE_KEY);
-
-      // Only restore order if it's for the same PR URL
-      if (storedOrder && storedUrl === prUrl) {
-        const orderedIds = JSON.parse(storedOrder) as string[];
-
-        // Create a map of files by directory name for quick lookup
-        const filesMap = new Map(files.map((f) => [f.directoryName, f]));
-
-        // Restore order by mapping stored IDs to current files
-        const restoredOrder: PrContentFile[] = [];
-        const usedIds = new Set<string>();
-
-        // First, add files in the stored order
-        orderedIds.forEach((id) => {
-          const file = filesMap.get(id);
-          if (file) {
-            restoredOrder.push(file);
-            usedIds.add(id);
-          }
-        });
-
-        // Then add any new files that weren't in the stored order
-        files.forEach((file) => {
-          if (!usedIds.has(file.directoryName)) {
-            restoredOrder.push(file);
-          }
-        });
-
-        return restoredOrder;
+      if (userSelectedPath) {
+        localStorage.setItem(SELECTED_PATH_STORAGE_KEY, userSelectedPath);
       }
     } catch {
-      // Ignore errors, fall through to default
+      // Ignore localStorage errors
     }
+  }, [userSelectedPath]);
 
-    // Default: use files as-is
-    return files;
-  }, [files, prUrl]);
+  // Set initial fetch state based on restored files
+  const initialFetchState = useMemo(() => (files.length > 0 ? 'fetched' : 'idle') as FetchState, [files.length]);
 
-  // Sync orderedFiles with computed value, but allow manual reordering via setOrderedFiles
-  useEffect(() => {
-    setOrderedFiles(computedOrderedFiles);
-  }, [computedOrderedFiles]);
-
-  // Set initial fetch state based on restored files - moved to initialization
-  const initialFetchState = useMemo(() => {
-    if (files.length > 0) {
-      return 'fetched' as FetchState;
-    }
-    return 'idle' as FetchState;
-  }, [files.length]);
-
-  // Apply initial fetch state once
   useEffect(() => {
     if (fetchState === 'idle' && initialFetchState === 'fetched') {
       setFetchState('fetched');
@@ -200,7 +167,6 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
-  // Persist fetched files to localStorage
   useEffect(() => {
     try {
       if (files.length > 0) {
@@ -212,47 +178,145 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   }, [files, prUrl]);
 
-  // Persist ordered files to localStorage
-  useEffect(() => {
-    try {
-      if (orderedFiles.length > 0) {
-        const orderIds = orderedFiles.map((f) => f.directoryName);
-        localStorage.setItem(ORDERED_FILES_STORAGE_KEY, JSON.stringify(orderIds));
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [orderedFiles]);
+  // Content-only subset for single/all modes
+  const contentFiles = useMemo(() => files.filter((f) => f.kind === 'content'), [files]);
+  const manifestFiles = useMemo(() => files.filter((f) => f.kind === 'manifest'), [files]);
 
-  // Compute effective selected file: user selection if valid, otherwise first file
-  // This avoids calling setState in useEffect which causes cascading renders
+  /**
+   * Load every manifest.json in the PR in parallel.
+   *
+   * We keep them all (not just path/journey) so we can resolve milestone
+   * package IDs to raw URLs via each child manifest's `id` field, even when
+   * the directory name and the canonical package ID disagree.
+   */
+  useEffect(() => {
+    if (manifestFiles.length === 0) {
+      setAllManifests(new Map());
+      setManifestsLoading(false);
+      return;
+    }
+
+    manifestAbortRef.current?.abort();
+    const controller = new AbortController();
+    manifestAbortRef.current = controller;
+
+    setManifestsLoading(true);
+    let cancelled = false;
+
+    (async () => {
+      const results = await Promise.all(
+        manifestFiles.map(async (file) => {
+          const manifest = await fetchPrManifest(file.rawUrl, controller.signal);
+          return { file, manifest };
+        })
+      );
+      if (cancelled || controller.signal.aborted) {
+        return;
+      }
+      const next = new Map<string, ManifestJson>();
+      for (const { file, manifest } of results) {
+        if (manifest) {
+          next.set(file.directoryName, manifest);
+        }
+      }
+      setAllManifests(next);
+      setManifestsLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [manifestFiles]);
+
+  /** Subset that drives the path-mode UI: only path/journey manifests. */
+  const pathManifests = useMemo(() => {
+    const next = new Map<string, ManifestJson>();
+    for (const [dir, manifest] of allManifests) {
+      if (manifest.type === 'path' || manifest.type === 'journey') {
+        next.set(dir, manifest);
+      }
+    }
+    return next;
+  }, [allManifests]);
+
+  /**
+   * `manifest.milestones[]` lists package IDs, not directory names.
+   * Build the ID→file index by reading each child's manifest.id so the path
+   * tester resolves milestones the same way the production resolver does.
+   */
+  const contentByPackageId = useMemo(() => indexContentByPackageId(files, allManifests), [files, allManifests]);
+
+  // Effective selected single-mode file
   const selectedFile = useMemo(() => {
-    if (files.length === 0) {
+    if (contentFiles.length === 0) {
       return null;
     }
-    // Use user selection if it exists in current files
-    if (userSelectedFile && files.some((f) => f.directoryName === userSelectedFile)) {
+    if (userSelectedFile && contentFiles.some((f) => f.directoryName === userSelectedFile)) {
       return userSelectedFile;
     }
-    // Default to first file
-    return files[0]!.directoryName;
-  }, [files, userSelectedFile]);
+    return contentFiles[0]!.directoryName;
+  }, [contentFiles, userSelectedFile]);
 
-  // Build select options from files
   const fileOptions: Array<ComboboxOption<string>> = useMemo(
     () =>
-      files.map((file) => ({
+      contentFiles.map((file) => ({
         value: file.directoryName,
         label: file.directoryName,
         description: file.status,
       })),
-    [files]
+    [contentFiles]
   );
 
-  // Get currently selected file object
-  const currentFile = useMemo(() => files.find((f) => f.directoryName === selectedFile), [files, selectedFile]);
+  const currentFile = useMemo(
+    () => contentFiles.find((f) => f.directoryName === selectedFile),
+    [contentFiles, selectedFile]
+  );
 
-  // Handle fetch PR action
+  const pathManifestEntries = useMemo(() => Array.from(pathManifests.entries()), [pathManifests]);
+
+  // Effective selected path manifest
+  const selectedPath = useMemo(() => {
+    if (pathManifestEntries.length === 0) {
+      return null;
+    }
+    if (userSelectedPath && pathManifests.has(userSelectedPath)) {
+      return userSelectedPath;
+    }
+    return pathManifestEntries[0]![0];
+  }, [pathManifestEntries, pathManifests, userSelectedPath]);
+
+  const pathOptions: Array<ComboboxOption<string>> = useMemo(
+    () =>
+      pathManifestEntries.map(([dir, manifest]) => ({
+        value: dir,
+        label: manifest.id,
+        description: manifest.type,
+      })),
+    [pathManifestEntries]
+  );
+
+  /**
+   * Build the path package preview for the currently selected manifest. Pure
+   * derivation from `files` + `pathManifests` — no side effects, so we can
+   * memo it and use the same value for both the preview list and the action.
+   */
+  const pathBuild: PathPackageBuildResult | null = useMemo(() => {
+    if (!selectedPath) {
+      return null;
+    }
+    const manifest = pathManifests.get(selectedPath);
+    if (!manifest) {
+      return null;
+    }
+    return buildPathPackageInfo({
+      files,
+      manifest,
+      manifestDirectory: selectedPath,
+      contentByPackageId,
+    });
+  }, [files, pathManifests, selectedPath, contentByPackageId]);
+
   const handleFetchPr = useCallback(async () => {
     const cleanedUrl = prUrl.trim();
 
@@ -262,7 +326,6 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
       return;
     }
 
-    // REACT: abort any in-flight request before starting new one (R4, R7)
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
@@ -270,10 +333,10 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     setError(null);
     setWarning(null);
     setFiles([]);
+    setAllManifests(new Map());
 
     const result = await fetchPrContentFilesFromUrl(cleanedUrl, abortControllerRef.current.signal);
 
-    // Ignore aborted results - component may have unmounted or URL changed
     if (!result.success && result.error.type === 'aborted') {
       return;
     }
@@ -288,175 +351,65 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
     }
   }, [prUrl]);
 
-  // Create a learning path data structure from ordered files
-  const createLearningPathFromFiles = useCallback(
-    (files: PrContentFile[]): { url: string; title: string } => {
-      const prName = prUrl.match(/\/pull\/(\d+)/)?.[1] || 'PR';
-      const title = `PR ${prName} Test Path`;
-      // Use stable ID based on PR number and file list to preserve completion state
-      // This allows the "Reset guide" button to work and completion to persist
-      const fileSignature = files.map((f) => f.directoryName).join('-');
-      const pathId = `pr-test-${prName}-${fileSignature}`;
-
-      // Create a JSON guide with section structure
-      // Each guide becomes a section with an interactive step to proceed
-      // Note: Don't include heading in markdown - it's rendered separately by ContentRenderer
-      const jsonGuide = {
-        id: pathId,
-        title: title,
-        blocks: [
-          {
-            type: 'markdown',
-            content: `Testing ${files.length} guides from PR #${prName}\n\n${files.map((file, i) => `${i + 1}. ${file.directoryName}`).join('\n')}`,
-          },
-          {
-            type: 'section',
-            id: `${pathId}-intro`,
-            title: 'Ready to begin?',
-            blocks: [
-              {
-                type: 'markdown',
-                content: 'Click the button below to start testing the guides in sequence.',
-              },
-              {
-                type: 'interactive',
-                action: 'noop',
-                content: 'Click **Continue** to proceed to the first guide.',
-                skippable: false,
-              },
-            ],
-          },
-          // Add each guide as a section with unique ID
-          ...files.map((file, index) => ({
-            type: 'section',
-            id: `${pathId}-${file.directoryName}-${index}`,
-            title: `Guide ${index + 1}: ${file.directoryName}`,
-            blocks: [
-              {
-                type: 'markdown',
-                content: `Testing guide: **${file.directoryName}**\n\nStatus: **${file.status}**\n\n[${file.directoryName}](${file.rawUrl})`,
-              },
-              {
-                type: 'interactive',
-                action: 'noop',
-                content: `After testing **${file.directoryName}**, click **Continue** to ${index < files.length - 1 ? 'proceed to the next guide' : 'complete the test path'}.`,
-                skippable: false,
-              },
-            ],
-          })),
-        ],
-      };
-
-      // Create a bundled URL (which is always allowed by security)
-      const bundledUrl = `bundled:pr-tests/${pathId}`;
-
-      // Store the JSON guide in sessionStorage so it can be fetched
-      try {
-        sessionStorage.setItem(`pathfinder-bundled-${pathId}`, JSON.stringify(jsonGuide));
-      } catch (error) {
-        console.error('Failed to store learning path in sessionStorage:', error);
-      }
-
-      return {
-        url: bundledUrl,
-        title: title,
-      };
-    },
-    [prUrl]
-  );
-
-  // Handle test guide action
   const handleTestGuide = useCallback(() => {
-    if (!currentFile) {
-      return;
-    }
-
     if (testMode === 'single') {
-      // Single mode - open one guide
+      if (!currentFile) {
+        return;
+      }
       onOpenDocsPage(currentFile.rawUrl, currentFile.directoryName);
       setTestSuccess(true);
     } else if (testMode === 'all') {
-      // Open all guides in separate tabs
-      files.forEach((file) => {
+      contentFiles.forEach((file) => {
         onOpenDocsPage(file.rawUrl, file.directoryName);
       });
       setTestSuccess(true);
-    } else if (testMode === 'path' && onOpenLearningJourney) {
-      // Create a learning path from ordered files
-      const pathData = createLearningPathFromFiles(orderedFiles);
-      onOpenLearningJourney(pathData.url, pathData.title);
+    } else if (testMode === 'path') {
+      if (!pathBuild || !pathBuild.ok) {
+        return;
+      }
+      onOpenDocsPage(pathBuild.coverUrl, pathBuild.title, pathBuild.packageInfo);
       setTestSuccess(true);
     }
 
-    // REACT: track timeout for cleanup on unmount (R1)
     successTimeoutRef.current = setTimeout(() => setTestSuccess(false), 2000);
-  }, [currentFile, files, orderedFiles, testMode, onOpenDocsPage, onOpenLearningJourney, createLearningPathFromFiles]);
+  }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, testMode]);
 
-  // Handle URL input change - reset state when URL changes from stored URL
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.currentTarget.value;
     setPrUrl(newUrl);
     setTestSuccess(false);
 
-    // Only clear files if URL actually changed from the fetched URL
     try {
       const fetchedUrl = localStorage.getItem(FETCHED_URL_STORAGE_KEY);
       if (newUrl.trim() !== fetchedUrl) {
         setFetchState('idle');
         setError(null);
         setFiles([]);
-        // Clear cached data
+        setAllManifests(new Map());
         localStorage.removeItem(FETCHED_FILES_STORAGE_KEY);
         localStorage.removeItem(FETCHED_URL_STORAGE_KEY);
-        localStorage.removeItem(ORDERED_FILES_STORAGE_KEY);
       }
     } catch {
-      // Fallback if localStorage fails
       setFetchState('idle');
       setError(null);
       setFiles([]);
+      setAllManifests(new Map());
     }
   }, []);
 
-  // Handle file selection change
   const handleFileSelect = useCallback((option: ComboboxOption<string>) => {
     setUserSelectedFile(option.value);
   }, []);
 
-  // Handle test mode change
+  const handlePathSelect = useCallback((option: ComboboxOption<string>) => {
+    setUserSelectedPath(option.value);
+  }, []);
+
   const handleTestModeChange = useCallback((value: TestMode) => {
     setTestMode(value);
   }, []);
 
-  // Drag and drop handlers for path ordering
-  const handleDragStart = useCallback((index: number) => {
-    setDraggedIndex(index);
-  }, []);
-
-  const handleDragOver = useCallback(
-    (e: React.DragEvent, index: number) => {
-      e.preventDefault();
-      if (draggedIndex === null || draggedIndex === index) {
-        return;
-      }
-
-      const newOrderedFiles = [...orderedFiles];
-      const draggedFile = newOrderedFiles[draggedIndex]!;
-      newOrderedFiles.splice(draggedIndex, 1);
-      newOrderedFiles.splice(index, 0, draggedFile);
-
-      setOrderedFiles(newOrderedFiles);
-      setDraggedIndex(index);
-    },
-    [draggedIndex, orderedFiles]
-  );
-
-  const handleDragEnd = useCallback(() => {
-    setDraggedIndex(null);
-  }, []);
-
-  // Get status badge class
-  const getStatusClass = (status: PrContentFile['status']) => {
+  const getStatusClass = (status: PrJsonFile['status']) => {
     switch (status) {
       case 'added':
         return `${styles.statusBadge} ${styles.statusAdded}`;
@@ -469,26 +422,74 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
 
   const isFetching = fetchState === 'fetching';
   const hasFetched = fetchState === 'fetched';
-  const hasMultipleFiles = files.length > 1;
-  const hasSingleFile = files.length === 1;
+  const hasMultipleContentFiles = contentFiles.length > 1;
+  const hasSingleContentFile = contentFiles.length === 1;
+  const hasAnyPathPackage = pathManifestEntries.length > 0;
 
+  // Path mode is only meaningful when at least one path/journey manifest is in the PR.
   const modeOptions: Array<SelectableValue<TestMode>> = [
     { label: 'Single', value: 'single' as TestMode, description: 'Test one guide at a time' },
-    { label: 'Open All', value: 'all' as TestMode, description: 'Open all guides in tabs' },
-    ...(onOpenLearningJourney
-      ? [{ label: 'Learning Path', value: 'path' as TestMode, description: 'Create sequential path' }]
-      : []),
+    { label: 'Open all', value: 'all' as TestMode, description: 'Open all guides in tabs' },
+    {
+      label: 'Learning path',
+      value: 'path' as TestMode,
+      description: hasAnyPathPackage
+        ? 'Test a path/journey package as a real journey'
+        : 'No path/journey manifest found in this PR',
+    },
   ];
 
   const getActionButtonText = () => {
     if (testMode === 'single') {
       return 'Test guide';
     } else if (testMode === 'all') {
-      return `Open all ${files.length} guides`;
+      return `Open all ${contentFiles.length} guides`;
     } else {
       return 'Test as learning path';
     }
   };
+
+  const isActionDisabled = (() => {
+    if (testMode === 'single') {
+      return !currentFile;
+    }
+    if (testMode === 'all') {
+      return contentFiles.length === 0;
+    }
+    return !pathBuild || !pathBuild.ok;
+  })();
+
+  /**
+   * Human-readable explanation when the path build is not OK. Surfaces in a
+   * warning box so the author knows why "Test as learning path" is disabled.
+   */
+  const pathErrorMessage = useMemo(() => {
+    if (!hasFetched || testMode !== 'path') {
+      return null;
+    }
+    if (manifestsLoading) {
+      return null;
+    }
+    if (!hasAnyPathPackage) {
+      return 'No path or journey manifest found in this PR. Add a manifest.json with type "path" or "journey" to test as a learning path.';
+    }
+    if (!pathBuild) {
+      return null;
+    }
+    if (pathBuild.ok) {
+      return null;
+    }
+    if (pathBuild.reason === 'no_milestones') {
+      return 'The selected manifest has no milestones to chain together.';
+    }
+    if (pathBuild.reason === 'missing_cover') {
+      return 'The selected manifest has no sibling content.json in the PR. Add the cover page to test it as a learning path.';
+    }
+    if (pathBuild.reason === 'missing_milestones' && pathBuild.missingMilestones?.length) {
+      return `Missing milestone content in this PR: ${pathBuild.missingMilestones.join(', ')}. Include each milestone's content.json in the PR.`;
+    }
+    return null;
+  }, [hasFetched, testMode, manifestsLoading, hasAnyPathPackage, pathBuild]);
 
   return (
     <div className={styles.formGroup} data-testid={testIds.prTester.form}>
@@ -504,9 +505,10 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         placeholder="https://github.com/grafana/interactive-tutorials/pull/70"
         data-testid={testIds.prTester.prNumberInput}
       />
-      <p className={styles.helpText}>Paste a GitHub pull request URL. We will look for content.json files.</p>
+      <p className={styles.helpText}>
+        Paste a GitHub pull request URL. We look for content.json and manifest.json files.
+      </p>
 
-      {/* Fetch PR Button */}
       <Box marginTop={1}>
         <Button
           variant="primary"
@@ -520,16 +522,14 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         </Button>
       </Box>
 
-      {/* Test Mode Selection */}
-      {hasFetched && hasMultipleFiles && (
+      {hasFetched && (hasMultipleContentFiles || hasAnyPathPackage) && (
         <div className={styles.modeContainer}>
           <label className={styles.label}>Test mode</label>
           <RadioButtonGroup options={modeOptions} value={testMode} onChange={handleTestModeChange} fullWidth />
         </div>
       )}
 
-      {/* File Selection (when multiple files and in single mode) */}
-      {hasFetched && hasMultipleFiles && testMode === 'single' && (
+      {hasFetched && hasMultipleContentFiles && testMode === 'single' && (
         <div className={styles.selectContainer}>
           <label className={styles.label}>Guide to test</label>
           <Combobox
@@ -541,40 +541,55 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         </div>
       )}
 
-      {/* Path Ordering Interface (when in path mode) */}
+      {/* Path mode: pick a manifest + show its milestones in manifest order */}
       {hasFetched && testMode === 'path' && (
         <div className={styles.pathOrderContainer}>
-          <label className={styles.label}>
-            <Icon name="draggabledots" /> Drag to reorder guides
-          </label>
-          <div className={styles.fileList}>
-            {orderedFiles.map((file, index) => (
-              <div
-                key={file.directoryName}
-                className={`${styles.fileItem} ${draggedIndex === index ? styles.fileItemDragging : ''}`}
-                draggable // eslint-disable-line no-restricted-syntax -- Dev-only PR tester, native DnD acceptable here
-                onDragStart={() => handleDragStart(index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDragEnd={handleDragEnd}
-              >
-                <div className={styles.fileItemNumber}>{index + 1}</div>
-                <div className={styles.fileItemContent}>
-                  <Icon name="draggabledots" className={styles.dragHandle} />
-                  <span className={styles.fileName}>{file.directoryName}</span>
-                  <span className={getStatusClass(file.status)}>{file.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          {manifestsLoading && (
+            <p className={styles.helpText}>
+              <Icon name="fa fa-spinner" /> Loading manifests...
+            </p>
+          )}
+          {!manifestsLoading && hasAnyPathPackage && pathManifestEntries.length > 1 && (
+            <div className={styles.selectContainer}>
+              <label className={styles.label}>Path package to test</label>
+              <Combobox options={pathOptions} value={selectedPath} onChange={handlePathSelect} />
+            </div>
+          )}
+          {!manifestsLoading && pathBuild && (
+            <>
+              <label className={styles.label}>Milestones (from manifest)</label>
+              <ol className={styles.guidesList}>
+                {pathBuild.ok
+                  ? pathBuild.packageInfo.resolvedMilestones?.map((milestone) => (
+                      <li key={milestone.title} className={styles.guidesListItem}>
+                        <Icon name="document-info" />
+                        <span>{milestone.title}</span>
+                      </li>
+                    ))
+                  : null}
+                {!pathBuild.ok && pathBuild.reason === 'missing_milestones'
+                  ? pathManifests.get(selectedPath ?? '')?.milestones?.map((id) => {
+                      const isMissing = pathBuild.missingMilestones?.includes(id);
+                      return (
+                        <li key={id} className={styles.guidesListItem}>
+                          <Icon name={isMissing ? 'exclamation-triangle' : 'document-info'} />
+                          <span>{id}</span>
+                          {isMissing && <span className={getStatusClass('removed')}>not in PR</span>}
+                        </li>
+                      );
+                    })
+                  : null}
+              </ol>
+            </>
+          )}
         </div>
       )}
 
-      {/* All Guides Preview (when in all mode) */}
       {hasFetched && testMode === 'all' && (
         <div className={styles.allGuidesPreview}>
-          <label className={styles.label}>Will open {files.length} guides:</label>
+          <label className={styles.label}>Will open {contentFiles.length} guides:</label>
           <ul className={styles.guidesList}>
-            {files.map((file) => (
+            {contentFiles.map((file) => (
               <li key={file.directoryName} className={styles.guidesListItem}>
                 <Icon name="document-info" />
                 <span>{file.directoryName}</span>
@@ -585,8 +600,7 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         </div>
       )}
 
-      {/* Ready Text (when single file) */}
-      {hasFetched && hasSingleFile && currentFile && (
+      {hasFetched && hasSingleContentFile && testMode === 'single' && currentFile && (
         <div className={styles.readyText}>
           <Icon name="check" />
           Ready: {currentFile.directoryName}
@@ -594,21 +608,14 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         </div>
       )}
 
-      {/* Test Guide Button */}
       {hasFetched && (
         <Box marginTop={1}>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleTestGuide}
-            disabled={testMode === 'single' ? !currentFile : files.length === 0}
-          >
+          <Button variant="secondary" size="sm" onClick={handleTestGuide} disabled={isActionDisabled}>
             {getActionButtonText()}
           </Button>
         </Box>
       )}
 
-      {/* Error Message */}
       {error && (
         <div className={`${styles.resultBox} ${styles.resultError}`}>
           <p className={styles.resultText}>
@@ -617,7 +624,6 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         </div>
       )}
 
-      {/* Warning Message */}
       {warning && (
         <div className={`${styles.resultBox} ${styles.resultWarning}`}>
           <p className={styles.resultText}>
@@ -626,7 +632,14 @@ export function PrTester({ onOpenDocsPage, onOpenLearningJourney }: PrTesterProp
         </div>
       )}
 
-      {/* Success Message */}
+      {pathErrorMessage && (
+        <div className={`${styles.resultBox} ${styles.resultWarning}`}>
+          <p className={styles.resultText}>
+            <Icon name="info-circle" /> {pathErrorMessage}
+          </p>
+        </div>
+      )}
+
       {testSuccess && (
         <div className={`${styles.resultBox} ${styles.resultSuccess}`}>
           <p className={styles.resultText}>

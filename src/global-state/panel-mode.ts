@@ -1,12 +1,29 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
+import type { PackageOpenInfo } from '../types/content-panel.types';
 
-export type PanelMode = 'sidebar' | 'floating';
+export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
 
 export interface PendingGuide {
   url: string;
   title: string;
+  /**
+   * Type discriminator so the consumer routes to the right open method.
+   * `'learning-journey'` → `panel.openLearningJourney` (creates a journey
+   * tab with milestone navigation). Anything else → `panel.openDocsPage`.
+   * Mirrors the `type` field on the `auto-launch-tutorial` event.
+   */
+  type?: 'learning-journey' | 'docs' | 'interactive';
+  /**
+   * Carry the manifest + pre-resolved milestones across surface handoffs.
+   *
+   * Required for synthetic packages whose URL is not a recognised package
+   * URL (e.g. PR-tester journeys backed by raw GitHub URLs). Without this,
+   * the receiving surface falls through to plain `fetchContent` and the
+   * milestone toolbar / Alt+arrow navigation never appear.
+   */
+  packageInfo?: PackageOpenInfo;
 }
 
 /**
@@ -29,6 +46,9 @@ class PanelModeManager {
     if (stored === 'floating') {
       return 'floating';
     }
+    if (stored === 'fullscreen') {
+      return 'fullscreen';
+    }
     return 'sidebar';
   }
 
@@ -48,8 +68,11 @@ class PanelModeManager {
 
     localStorage.setItem(StorageKeys.PANEL_MODE, mode);
 
-    if (mode === 'floating') {
-      // Close the Grafana extension sidebar to free the slot
+    if (mode === 'floating' || mode === 'fullscreen') {
+      // Close the Grafana extension sidebar to free the slot. Full screen
+      // also closes the sidebar so the two CombinedLearningJourneyPanel
+      // instances do not collide on the __DocsPluginActiveTabId window
+      // global or on tab storage writes.
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
     }
 

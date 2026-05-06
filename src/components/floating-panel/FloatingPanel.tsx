@@ -20,6 +20,8 @@ export interface FloatingPanelProps {
   guideUrl?: string;
   /** Called when user clicks dock-to-sidebar button */
   onSwitchToSidebar: () => void;
+  /** Called when user clicks open-in-full-screen button. Hidden when omitted. */
+  onSwitchToFullScreen?: () => void;
   /** Called when user closes the floating panel entirely */
   onClose: () => void;
   /** Content to render inside the panel */
@@ -41,6 +43,7 @@ export function FloatingPanel({
   guideUrl,
   stepProgress,
   onSwitchToSidebar,
+  onSwitchToFullScreen,
   onClose,
   children,
 }: FloatingPanelProps) {
@@ -219,6 +222,15 @@ export function FloatingPanel({
               onClick={handleSwitchToSidebar}
               aria-label="Dock to sidebar"
             />
+            {onSwitchToFullScreen && (
+              <IconButton
+                name="expand-arrows"
+                size="sm"
+                tooltip="Open in full screen"
+                onClick={onSwitchToFullScreen}
+                aria-label="Open in full screen"
+              />
+            )}
             <IconButton
               name="minus"
               size="sm"

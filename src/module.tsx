@@ -78,8 +78,9 @@ try {
       isPathfinderDocked = dockedValue === pluginJson.id || dockedValue === 'Interactive learning';
     }
     if (isPathfinderDocked) {
-      if (panelModeManager.getMode() === 'floating') {
-        // Don't restore sidebar — floating panel is active
+      const persistedMode = panelModeManager.getMode();
+      if (persistedMode === 'floating' || persistedMode === 'fullscreen') {
+        // Don't restore sidebar — another presentation surface owns the panel
         localStorage.removeItem('grafana.navigation.extensionSidebarDocked');
       } else {
         sidebarState.setPendingOpenSource('browser_restore', 'restore');
@@ -140,6 +141,11 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Optional source override for analytics — allows callers to identify the origin
   // of a ?doc= deep link (e.g. ?doc=foo&source=learning-hub)
   const sourceParam = urlParams.get('source');
+  // Optional type override. Some package URLs (e.g. interactive-learning.grafana.net
+  // packages/<id>/content.json) classify as 'interactive' via findDocPage even though
+  // they back a learning journey. The ?type= URL hint is the escape hatch that lets
+  // share/refresh links preserve the journey kind (and milestone toolbar).
+  const typeParam = urlParams.get('type');
   const kioskSessionParam = urlParams.get('kiosk_session');
 
   if (kioskSessionParam) {
@@ -154,6 +160,24 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete('panelMode');
     window.history.replaceState({}, '', cleanUrl.toString());
+  } else if (panelModeParam === 'fullscreen') {
+    panelModeManager.setMode('fullscreen');
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('panelMode');
+    window.history.replaceState({}, '', cleanUrl.toString());
+    // Route to the full screen page so the rest of init wires up auto-launch
+    // against that route. The doc + type params (if present) flow through the
+    // existing handler and are consumed by FullScreenPanel on mount.
+    const docForFullScreen = urlParams.get('doc');
+    const typeForFullScreen = urlParams.get('type');
+    let target = `/a/${pluginJson.id}/fullscreen`;
+    if (docForFullScreen) {
+      target += `?doc=${encodeURIComponent(docForFullScreen)}`;
+      if (typeForFullScreen) {
+        target += `&type=${encodeURIComponent(typeForFullScreen)}`;
+      }
+    }
+    locationService.replace(target);
   }
 
   // Use the source param if provided, otherwise default to 'url_param'
@@ -164,6 +188,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     url.searchParams.delete('doc');
     url.searchParams.delete('page');
     url.searchParams.delete('source');
+    url.searchParams.delete('type');
     url.searchParams.delete('kiosk_session');
     window.history.replaceState({}, '', url.toString());
 
@@ -199,6 +224,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           url.searchParams.delete('doc');
           url.searchParams.delete('page');
           url.searchParams.delete('source');
+          url.searchParams.delete('type');
           url.searchParams.delete('kiosk_session');
           window.history.replaceState({}, '', url.toString());
 
@@ -208,7 +234,9 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         }
 
         const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
-        const isFloatingMode = panelModeManager.getMode() === 'floating';
+        const currentMode = panelModeManager.getMode();
+        const isFloatingMode = currentMode === 'floating';
+        const isFullScreenMode = currentMode === 'fullscreen';
 
         sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
 
@@ -221,13 +249,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           url.searchParams.delete('doc');
           url.searchParams.delete('page');
           url.searchParams.delete('source');
+          url.searchParams.delete('type');
           url.searchParams.delete('kiosk_session');
           window.history.replaceState({}, '', url.toString());
         }
 
-        // In floating mode, the panel mounts on its own — don't open the sidebar.
-        // In sidebar mode, open the sidebar so the guide has somewhere to render.
-        if (!isFloatingMode) {
+        // In floating or full screen mode, the panel mounts on its own —
+        // don't open the extension sidebar (which would mount a second panel
+        // and collide on tab storage / __DocsPluginActiveTabId).
+        if (!isFloatingMode && !isFullScreenMode) {
           attemptAutoOpen(needsRedirect ? 500 : 200);
         }
 
@@ -250,7 +280,11 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
                 detail: {
                   url: docsPage.url,
                   title: docsPage.title,
-                  type: docsPage.type,
+                  // Honor an explicit ?type=learning-journey hint over findDocPage's
+                  // URL-based classification — package URLs like
+                  // interactive-learning.grafana.net/packages/<id>/content.json
+                  // classify as 'interactive' even when they back a journey.
+                  type: typeParam === 'learning-journey' ? 'learning-journey' : docsPage.type,
                   source: docOpenSource,
                 },
               })

@@ -2,8 +2,17 @@
  * GitHub API utilities for PR Tester
  *
  * Provides URL parsing and API fetch functions to retrieve
- * content.json files from GitHub pull requests.
+ * content.json AND manifest.json files from GitHub pull requests.
+ *
+ * Manifest files are surfaced alongside content so the PR tester can
+ * detect path/journey packages and assemble a real `PackageOpenInfo`
+ * (manifest + pre-resolved milestones) rather than synthesising a
+ * single mega-guide.
  */
+
+import { ManifestJsonObjectSchema } from '../../types/package.schema';
+import type { ManifestJson } from '../../types/package.types';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
 
 /** Parsed GitHub PR URL components */
 export interface ParsedPrUrl {
@@ -12,11 +21,20 @@ export interface ParsedPrUrl {
   prNumber: number;
 }
 
-/** Content file metadata from a PR */
-export interface PrContentFile {
+/** Distinguishes the two file kinds the PR tester cares about. */
+export type PrJsonFileKind = 'content' | 'manifest';
+
+/**
+ * JSON file metadata from a PR.
+ *
+ * `directoryName` is shared between sibling `content.json` and `manifest.json`
+ * within the same package directory, so callers can pair them up by name.
+ */
+export interface PrJsonFile {
   directoryName: string;
   rawUrl: string;
   status: 'added' | 'modified' | 'removed' | 'renamed' | 'unchanged';
+  kind: PrJsonFileKind;
 }
 
 /** Error types for GitHub API operations */
@@ -43,7 +61,7 @@ interface GitHubPrFileEntry {
 
 /** Result type for PR content file fetching */
 export type FetchPrFilesResult =
-  | { success: true; files: PrContentFile[]; warning?: string }
+  | { success: true; files: PrJsonFile[]; warning?: string }
   | { success: false; error: GitHubApiError };
 
 // Pattern to extract owner, repo, and PR number from GitHub PR URL
@@ -106,20 +124,31 @@ export function isValidPrUrl(url: string): boolean {
 }
 
 /**
- * Extract directory name from a content.json file path
+ * Extract directory name from a JSON file path.
+ * Strips the trailing `content.json` or `manifest.json` segment.
  *
  * @param filePath - File path (e.g., "connect-metrics-data/content.json")
  * @returns Directory name (e.g., "connect-metrics-data")
  */
 function extractDirectoryName(filePath: string): string {
-  // Remove the content.json suffix and any trailing slashes
   return (
     filePath
-      .replace(/\/?content\.json$/, '')
+      .replace(/\/?(content|manifest)\.json$/, '')
       .split('/')
       .filter(Boolean)
       .join('/') || filePath
   );
+}
+
+/** Returns the file kind for paths the PR tester cares about. */
+function classifyJsonFile(filePath: string): PrJsonFileKind | null {
+  if (filePath.endsWith('/content.json') || filePath === 'content.json') {
+    return 'content';
+  }
+  if (filePath.endsWith('/manifest.json') || filePath === 'manifest.json') {
+    return 'manifest';
+  }
+  return null;
 }
 
 /**
@@ -292,21 +321,28 @@ export async function fetchPrContentFiles(
     const totalFilesInPr = filesData.length;
     const mightHaveMoreFiles = totalFilesInPr >= MAX_FILES_PER_PAGE;
 
-    // Filter for content.json files and construct raw URLs
-    const contentFiles: PrContentFile[] = (filesData as GitHubPrFileEntry[])
-      .filter(
-        (file) =>
-          typeof file.filename === 'string' &&
-          file.filename.endsWith('content.json') &&
-          !UNSAFE_PATH_PATTERN.test(file.filename)
-      )
-      .map((file) => ({
-        directoryName: extractDirectoryName(file.filename),
-        rawUrl: buildRawContentUrl(owner, repo, headSha, file.filename),
-        status: file.status as PrContentFile['status'],
-      }));
+    // Filter for content.json + manifest.json and construct raw URLs.
+    const jsonFiles: PrJsonFile[] = (filesData as GitHubPrFileEntry[]).flatMap((file) => {
+      if (typeof file.filename !== 'string' || UNSAFE_PATH_PATTERN.test(file.filename)) {
+        return [];
+      }
+      const kind = classifyJsonFile(file.filename);
+      if (!kind) {
+        return [];
+      }
+      return [
+        {
+          directoryName: extractDirectoryName(file.filename),
+          rawUrl: buildRawContentUrl(owner, repo, headSha, file.filename),
+          status: file.status as PrJsonFile['status'],
+          kind,
+        },
+      ];
+    });
 
-    if (contentFiles.length === 0) {
+    const contentCount = jsonFiles.filter((f) => f.kind === 'content').length;
+
+    if (contentCount === 0) {
       return {
         success: false,
         error: {
@@ -319,12 +355,12 @@ export async function fetchPrContentFiles(
     // Generate warning if we hit the GitHub API pagination limit
     // We can only see the first 100 files from the PR - there might be more content.json files beyond that
     const warning = mightHaveMoreFiles
-      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentFiles.length} content.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
+      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentCount} content.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
       : undefined;
 
     return {
       success: true,
-      files: contentFiles,
+      files: jsonFiles,
       warning,
     };
   } catch (error) {
@@ -372,4 +408,39 @@ export async function fetchPrContentFilesFromUrl(prUrl: string, signal?: AbortSi
   }
 
   return fetchPrContentFiles(parsed.owner, parsed.repo, parsed.prNumber, signal);
+}
+
+/**
+ * Fetch and loosely parse a manifest.json from a PR raw URL.
+ *
+ * Uses {@link ManifestJsonObjectSchema} (no cross-field refinement) so partial
+ * or in-progress manifests still yield enough metadata for the PR tester to
+ * decide whether the PR contains a path/journey package. Returns `undefined`
+ * for network errors, schema failures, or invalid JSON — callers fall back
+ * to per-guide testing in those cases.
+ *
+ * @param rawUrl - Raw GitHub URL to manifest.json (from {@link PrJsonFile.rawUrl})
+ * @param signal - Optional AbortSignal for request cancellation
+ */
+export async function fetchPrManifest(rawUrl: string, signal?: AbortSignal): Promise<ManifestJson | undefined> {
+  try {
+    const response = await fetch(rawUrl, {
+      method: 'GET',
+      // Compose with the supplied signal so explicit cancel still wins, but
+      // don't hang indefinitely if the caller forgets one.
+      signal: signal ?? AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT),
+      redirect: 'follow',
+    });
+    if (!response.ok) {
+      return undefined;
+    }
+    const json: unknown = await response.json();
+    const parsed = ManifestJsonObjectSchema.safeParse(json);
+    if (!parsed.success) {
+      return undefined;
+    }
+    return parsed.data as unknown as ManifestJson;
+  } catch {
+    return undefined;
+  }
 }

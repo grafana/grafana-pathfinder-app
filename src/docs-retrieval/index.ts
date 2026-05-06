@@ -27,6 +27,8 @@ export {
   derivePathSlug,
 } from './content-fetcher';
 
+export { fetchPackageInfoFromUrl, isPackageContentUrl } from './package-info-from-url';
+
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrl as getPreviousMilestoneUrlFromContent,

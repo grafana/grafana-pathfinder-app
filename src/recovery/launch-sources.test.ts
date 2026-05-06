@@ -27,6 +27,7 @@ const ALL_LAUNCH_SOURCES = [
   'experiment_treatment_navigation',
   'auto_open',
   'floating_panel_dock',
+  'fullscreen_handoff',
   'live_session_attendee',
   'devtools',
   // Needs alignment check

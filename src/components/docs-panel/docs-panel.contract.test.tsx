@@ -122,6 +122,8 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
       'testIds.docsPanel.tab(',
       'testIds.docsPanel.tabCloseButton(',
       'testIds.docsPanel.tabDropdownItem(',
+      'testIds.docsPanel.popOutButton',
+      'testIds.docsPanel.fullScreenButton',
       'testIds.devTools.previewBanner',
       'testIds.devTools.previewModeIndicator',
       'testIds.devTools.returnToEditorButton',

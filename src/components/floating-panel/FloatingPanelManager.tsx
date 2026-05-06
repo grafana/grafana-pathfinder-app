@@ -1,10 +1,11 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { usePendingGuideLaunch, useAlignmentReevaluation } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
-import { getConfigWithDefaults } from '../../constants';
+import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { coerceLaunchSource } from '../../recovery';
 import { FloatingPanel } from './FloatingPanel';
@@ -97,7 +98,22 @@ function FloatingPanelInner() {
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
-      panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
+      // packageInfo (e.g. from the PR tester) carries the manifest +
+      // pre-resolved milestones, so openDocsPage creates a journey tab with
+      // the milestone toolbar even when the URL is a raw GitHub URL that
+      // openLearningJourney's package-URL detection wouldn't recognise.
+      if (pendingGuide.packageInfo) {
+        panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
+          source: 'floating_panel_dock',
+          packageInfo: pendingGuide.packageInfo,
+        });
+      } else if (pendingGuide.type === 'learning-journey') {
+        // Preserve the journey tab type so docking back to sidebar restores
+        // it as a journey (with milestone navigation) rather than a flat docs tab.
+        panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
+      } else {
+        panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
+      }
     }
 
     return () => {
@@ -231,6 +247,64 @@ function FloatingPanelInner() {
     panelModeManager.setMode('sidebar');
   }, []);
 
+  const handleSwitchToFullScreen = useCallback(() => {
+    // Editor: no guide URL — just switch the route. The editor tab is
+    // already in tabStorage, so FullScreenPanel rehydrates it on mount.
+    if (isEditorTab) {
+      reportAppInteraction(UserInteraction.FullScreenEnter, {
+        guide_url: '',
+        guide_title: title,
+        source: 'floating_panel',
+        content_type: 'editor',
+      });
+      panelModeManager.setMode('fullscreen');
+      locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
+      return;
+    }
+    if (!guideUrl) {
+      return;
+    }
+    reportAppInteraction(UserInteraction.FullScreenEnter, {
+      guide_url: guideUrl,
+      guide_title: title,
+      source: 'floating_panel',
+    });
+    // Preserve the journey type through the handoff so the milestone
+    // toolbar renders on the full screen page.
+    const tabType = activeTab?.type === 'learning-journey' ? 'learning-journey' : 'docs';
+    panelModeManager.setPendingGuide({
+      url: guideUrl,
+      title,
+      type: tabType,
+      // Forward synthetic packageInfo (e.g. PR-tester journeys backed by
+      // raw GitHub URLs) so the full-screen page rebuilds the milestone
+      // toolbar on the other side of the handoff.
+      packageInfo: activeTab?.packageInfo,
+    });
+    panelModeManager.setMode('fullscreen');
+    // Include type in the URL so refresh/share rehydrates as a journey
+    // even if findDocPage's URL-based classification can't tell.
+    locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}?doc=${encodeURIComponent(guideUrl)}&type=${tabType}`);
+  }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
+
+  // Symmetric counterpart to the sidebar's `pathfinder-request-full-screen`
+  // listener — lets surface-aware components (notably the BlockEditor toolbar)
+  // ask floating to hand off to fullscreen without knowing about the panel
+  // internals.
+  useEffect(() => {
+    const handleFullScreenRequest = () => {
+      handleSwitchToFullScreen();
+    };
+    document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+    return () => {
+      document.removeEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+    };
+  }, [handleSwitchToFullScreen]);
+
+  // The editor tab is also a valid full-screen target even though it isn't
+  // a guide. Show the button for guides AND the editor.
+  const canSwitchToFullScreen = hasActiveGuide || isEditorTab;
+
   return (
     <FloatingPanel
       title={title}
@@ -238,11 +312,12 @@ function FloatingPanelInner() {
       guideUrl={guideUrl}
       stepProgress={stepProgress}
       onSwitchToSidebar={handleSwitchToSidebar}
+      onSwitchToFullScreen={canSwitchToFullScreen ? handleSwitchToFullScreen : undefined}
       onClose={handleClose}
     >
       {isEditorTab ? (
         <Suspense fallback={<SkeletonLoader type="documentation" />}>
-          <BlockEditor />
+          <BlockEditor surface="floating" />
         </Suspense>
       ) : (
         <FloatingPanelContent
@@ -250,6 +325,8 @@ function FloatingPanelInner() {
           pendingAlignment={activeTab?.pendingAlignment}
           onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
           onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
+          activeTab={activeTab ?? null}
+          model={panel}
         />
       )}
     </FloatingPanel>

@@ -1,7 +1,13 @@
 /**
  * Tests for GitHub API utilities used by PR Tester
  */
-import { parsePrUrl, isValidPrUrl, fetchPrContentFiles, fetchPrContentFilesFromUrl } from './github-api';
+import {
+  parsePrUrl,
+  isValidPrUrl,
+  fetchPrContentFiles,
+  fetchPrContentFilesFromUrl,
+  fetchPrManifest,
+} from './github-api';
 
 describe('parsePrUrl', () => {
   describe('valid PR URLs', () => {
@@ -170,11 +176,13 @@ describe('fetchPrContentFiles', () => {
         directoryName: 'guide-one',
         rawUrl: `https://raw.githubusercontent.com/grafana/interactive-tutorials/${validSha}/guide-one/content.json`,
         status: 'added',
+        kind: 'content',
       });
       expect(result.files[1]).toEqual({
         directoryName: 'guide-two',
         rawUrl: `https://raw.githubusercontent.com/grafana/interactive-tutorials/${validSha}/guide-two/content.json`,
         status: 'modified',
+        kind: 'content',
       });
     }
 
@@ -797,6 +805,187 @@ describe('fetchPrContentFilesFromUrl', () => {
     await fetchPrContentFilesFromUrl('https://github.com/grafana/interactive-tutorials/pull/70', controller.signal);
 
     // Verify signal was passed through
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal })
+    );
+  });
+});
+
+describe('fetchPrContentFiles — manifest.json support', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const validSha = '0123456789abcdef0123456789abcdef01234567';
+
+  function mockPrFiles(files: Array<{ filename: string; status: string }>) {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ head: { sha: validSha } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(files),
+      });
+  }
+
+  it('should include manifest.json files alongside content.json with correct kind', async () => {
+    mockPrFiles([
+      { filename: 'my-path/manifest.json', status: 'added' },
+      { filename: 'my-path/content.json', status: 'added' },
+      { filename: 'guide-one/content.json', status: 'modified' },
+      { filename: 'src/foo.ts', status: 'added' },
+    ]);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(3);
+      const byKind = result.files.reduce<Record<string, number>>((acc, f) => {
+        acc[f.kind] = (acc[f.kind] ?? 0) + 1;
+        return acc;
+      }, {});
+      expect(byKind).toEqual({ content: 2, manifest: 1 });
+      const manifest = result.files.find((f) => f.kind === 'manifest');
+      expect(manifest).toEqual({
+        directoryName: 'my-path',
+        rawUrl: `https://raw.githubusercontent.com/org/repo/${validSha}/my-path/manifest.json`,
+        status: 'added',
+        kind: 'manifest',
+      });
+    }
+  });
+
+  it('should not match files named like *content.json or *manifest.json without the directory separator', async () => {
+    mockPrFiles([
+      { filename: 'fake-content.json', status: 'added' },
+      { filename: 'fake-manifest.json', status: 'added' },
+      { filename: 'real/content.json', status: 'added' },
+    ]);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]!.directoryName).toBe('real');
+      expect(result.files[0]!.kind).toBe('content');
+    }
+  });
+
+  it('should still return no_files when only manifest.json files are present', async () => {
+    mockPrFiles([{ filename: 'orphan/manifest.json', status: 'added' }]);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe('no_files');
+    }
+  });
+
+  it('should count only content files in the pagination warning', async () => {
+    const files = [
+      ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/content.json`, status: 'added' })),
+      ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/manifest.json`, status: 'added' })),
+      ...Array.from({ length: 92 }, (_, i) => ({ filename: `src/f${i}.ts`, status: 'added' })),
+    ];
+    mockPrFiles(files);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // 4 content + 4 manifest = 8
+      expect(result.files).toHaveLength(8);
+      expect(result.warning).toContain('Found 4 content.json');
+    }
+  });
+});
+
+describe('fetchPrManifest', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should fetch and parse a valid path manifest', async () => {
+    const manifest = {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['guide-one', 'guide-two'],
+    };
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(manifest),
+    });
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/my-path/manifest.json');
+
+    expect(result).toBeDefined();
+    expect(result?.id).toBe('my-path');
+    expect(result?.type).toBe('path');
+    expect(result?.milestones).toEqual(['guide-one', 'guide-two']);
+  });
+
+  it('should return undefined for non-OK responses', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+    });
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/missing/manifest.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('should return undefined when the JSON does not match the manifest schema', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ not: 'a manifest' }),
+    });
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/bad/manifest.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('should return undefined on fetch errors (no throw)', async () => {
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network failure'));
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/x/manifest.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('should forward an explicit AbortSignal when provided', async () => {
+    const controller = new AbortController();
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+    });
+
+    await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
+
     expect(global.fetch).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ signal: controller.signal })
