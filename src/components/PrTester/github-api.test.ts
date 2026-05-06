@@ -219,7 +219,7 @@ describe('fetchPrContentFiles', () => {
     }
   });
 
-  it('should return no_files error when no content.json found', async () => {
+  it('should return no_files error when no content.json or manifest.json found', async () => {
     const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [
       { filename: 'README.md', status: 'modified' },
@@ -243,7 +243,7 @@ describe('fetchPrContentFiles', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.type).toBe('no_files');
-      expect(result.error.message).toContain('No content.json files found');
+      expect(result.error.message).toContain('No content.json or manifest.json');
     }
   });
 
@@ -884,18 +884,24 @@ describe('fetchPrContentFiles — manifest.json support', () => {
     }
   });
 
-  it('should still return no_files when only manifest.json files are present', async () => {
+  it('should succeed with manifest-only PRs so the UI can surface a missing-cover hint', async () => {
+    // A PR that only modifies a path package's manifest.json (e.g. fixing
+    // milestone order or targeting) is still useful: returning the manifest
+    // entry lets PrTester preview it and report the missing cover via
+    // `buildPathPackageInfo` instead of blanket-failing with "no files".
     mockPrFiles([{ filename: 'orphan/manifest.json', status: 'added' }]);
 
     const result = await fetchPrContentFiles('org', 'repo', 1);
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.type).toBe('no_files');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]!.kind).toBe('manifest');
+      expect(result.files[0]!.directoryName).toBe('orphan');
     }
   });
 
-  it('should count only content files in the pagination warning', async () => {
+  it('should report both content and manifest counts in the pagination warning', async () => {
     const files = [
       ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/content.json`, status: 'added' })),
       ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/manifest.json`, status: 'added' })),
@@ -909,7 +915,8 @@ describe('fetchPrContentFiles — manifest.json support', () => {
     if (result.success) {
       // 4 content + 4 manifest = 8
       expect(result.files).toHaveLength(8);
-      expect(result.warning).toContain('Found 4 content.json');
+      expect(result.warning).toContain('4 content.json');
+      expect(result.warning).toContain('4 manifest.json');
     }
   });
 });

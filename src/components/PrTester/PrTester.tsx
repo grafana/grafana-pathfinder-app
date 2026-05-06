@@ -204,23 +204,38 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     let cancelled = false;
 
     (async () => {
-      const results = await Promise.all(
-        manifestFiles.map(async (file) => {
-          const manifest = await fetchPrManifest(file.rawUrl, controller.signal);
-          return { file, manifest };
-        })
-      );
-      if (cancelled || controller.signal.aborted) {
-        return;
-      }
-      const next = new Map<string, ManifestJson>();
-      for (const { file, manifest } of results) {
-        if (manifest) {
-          next.set(file.directoryName, manifest);
+      try {
+        const results = await Promise.all(
+          manifestFiles.map(async (file) => {
+            const manifest = await fetchPrManifest(file.rawUrl, controller.signal);
+            return { file, manifest };
+          })
+        );
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+        const next = new Map<string, ManifestJson>();
+        for (const { file, manifest } of results) {
+          if (manifest) {
+            next.set(file.directoryName, manifest);
+          }
+        }
+        setAllManifests(next);
+      } catch (error) {
+        // `fetchPrManifest` already swallows its own errors, but anything
+        // else inside this block (Promise.all rejection from an unexpected
+        // throw, a post-unmount setState, etc.) must still flip us out of
+        // the loading state. Without this `finally`, the path-mode UI
+        // would be stuck on "Loading manifests..." with no recovery path.
+        if (!cancelled && !controller.signal.aborted) {
+          console.error('[PrTester] manifest preload failed', error);
+          setAllManifests(new Map());
+        }
+      } finally {
+        if (!cancelled && !controller.signal.aborted) {
+          setManifestsLoading(false);
         }
       }
-      setAllManifests(next);
-      setManifestsLoading(false);
     })();
 
     return () => {

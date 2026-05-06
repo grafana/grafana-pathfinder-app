@@ -341,21 +341,29 @@ export async function fetchPrContentFiles(
     });
 
     const contentCount = jsonFiles.filter((f) => f.kind === 'content').length;
+    const manifestCount = jsonFiles.length - contentCount;
 
-    if (contentCount === 0) {
+    // Only fail when the PR has neither content nor manifest files we
+    // care about. A PR that only modifies a path package's `manifest.json`
+    // (e.g. fixing milestone order or targeting) is still useful to
+    // surface — PrTester will show the manifest preview and a clear
+    // "missing_cover" hint via the path-build pipeline so the author
+    // knows which sibling content.json to add.
+    if (jsonFiles.length === 0) {
       return {
         success: false,
         error: {
           type: 'no_files',
-          message: 'No content.json files found in this PR',
+          message: 'No content.json or manifest.json files found in this PR',
         },
       };
     }
 
-    // Generate warning if we hit the GitHub API pagination limit
-    // We can only see the first 100 files from the PR - there might be more content.json files beyond that
+    // Generate warning if we hit the GitHub API pagination limit.
+    // The summary distinguishes content vs manifest counts so the user can
+    // tell at a glance which kinds of files we found in the first page.
     const warning = mightHaveMoreFiles
-      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentCount} content.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
+      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentCount} content.json and ${manifestCount} manifest.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
       : undefined;
 
     return {
