@@ -130,7 +130,9 @@ export function BlockEditorContent({
             </>
           ) : (
             <>
-              <span style={{ fontSize: '13px', color: '#888' }}>Click blocks to select them for merging</span>
+              <span style={{ fontSize: '13px', color: '#888' }}>
+                Tick the checkbox next to each block you want to merge
+              </span>
               <Button
                 variant="secondary"
                 size="sm"
