@@ -297,14 +297,27 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     locationService.push(PLUGIN_BASE_URL);
   }, [guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
 
+  // Stable ref to the latest exit-to-sidebar callback. Without it, the
+  // empty-state fallback effect below would re-subscribe whenever
+  // `handleExitToSidebar` is recreated (i.e. whenever `guideUrl` or `title`
+  // changes — which is on every milestone navigation / content reload). If
+  // any of those updates lands in the same render where `hasActiveGuide`
+  // is transiently false (e.g. activeTabId pointing at a tab still being
+  // swapped in), the effect would spuriously fire and kick the user out
+  // of full screen.
+  const handleExitToSidebarRef = useRef(handleExitToSidebar);
+  handleExitToSidebarRef.current = handleExitToSidebar;
+
   // Empty-state fallback: if restoration completes with nothing to show
   // and no guide is being loaded, route the user back to the sidebar so
-  // they don't land on a dead full screen page.
+  // they don't land on a dead full screen page. Deps are intentionally
+  // limited to the actual trigger booleans — the callback is read from
+  // the ref above so identity changes don't re-fire this effect.
   useEffect(() => {
     if (restorationDone && !hasActiveGuide && !isEditorTab && !guideOpenInFlightRef.current) {
-      handleExitToSidebar();
+      handleExitToSidebarRef.current();
     }
-  }, [restorationDone, hasActiveGuide, isEditorTab, handleExitToSidebar]);
+  }, [restorationDone, hasActiveGuide, isEditorTab]);
 
   // Symmetric counterparts to the sidebar/floating event handlers — these
   // let surface-aware components (notably the BlockEditor toolbar) ask

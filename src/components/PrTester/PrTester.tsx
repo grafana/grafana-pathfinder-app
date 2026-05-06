@@ -183,6 +183,31 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   const manifestFiles = useMemo(() => files.filter((f) => f.kind === 'manifest'), [files]);
 
   /**
+   * Stable signature for the manifest set. The preload effect below depends
+   * on this string instead of the `manifestFiles` array reference so we don't
+   * abort + restart in-flight fetches every time `files` changes — even when
+   * the manifest subset is identical (e.g. a content-only update). The rawUrl
+   * encodes both the file path AND the head SHA, so a force-push or directory
+   * rename produces a different fingerprint and correctly triggers a refetch.
+   */
+  const manifestFingerprint = useMemo(
+    () =>
+      manifestFiles
+        .map((f) => f.rawUrl)
+        .sort()
+        .join('|'),
+    [manifestFiles]
+  );
+
+  /**
+   * Latest manifestFiles, read inside the preload effect via ref so the
+   * effect can depend on the stable fingerprint while still using the
+   * up-to-date file list when it does run.
+   */
+  const manifestFilesRef = useRef(manifestFiles);
+  manifestFilesRef.current = manifestFiles;
+
+  /**
    * Load every manifest.json in the PR in parallel.
    *
    * We keep them all (not just path/journey) so we can resolve milestone
@@ -190,7 +215,8 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
    * the directory name and the canonical package ID disagree.
    */
   useEffect(() => {
-    if (manifestFiles.length === 0) {
+    const currentManifestFiles = manifestFilesRef.current;
+    if (currentManifestFiles.length === 0) {
       setAllManifests(new Map());
       setManifestsLoading(false);
       return;
@@ -206,7 +232,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     (async () => {
       try {
         const results = await Promise.all(
-          manifestFiles.map(async (file) => {
+          currentManifestFiles.map(async (file) => {
             const manifest = await fetchPrManifest(file.rawUrl, controller.signal);
             return { file, manifest };
           })
@@ -242,7 +268,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       cancelled = true;
       controller.abort();
     };
-  }, [manifestFiles]);
+  }, [manifestFingerprint]);
 
   /** Subset that drives the path-mode UI: only path/journey manifests. */
   const pathManifests = useMemo(() => {
