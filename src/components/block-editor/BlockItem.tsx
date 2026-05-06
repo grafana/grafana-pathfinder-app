@@ -17,7 +17,6 @@ import {
   isMultistepBlock,
   isGuidedBlock,
   isConditionalBlock,
-  isInputBlock,
 } from '../../types/json-guide.types';
 import { getBlockPreview } from './utils';
 import { testIds } from '../../constants/testIds';
@@ -186,23 +185,26 @@ export function BlockItem({
         </div>
       )}
 
-      {/* Content */}
+      {/* Content — single inline row.
+          - Sections render their authored title (if any) instead of preview.
+          - Interactive/input blocks no longer render a separate sub-type
+            badge; the action verb already appears in the preview.
+          - Conditional blocks keep their orange/green meta badges. */}
       <div className={styles.content}>
         <div className={styles.header}>
           <span className={styles.blockNumber}>{index + 1}</span>
           <span className={styles.typeIcon}>{meta.icon}</span>
           <Badge text={meta.name} color="blue" />
-          {isInteractiveBlock(block.block) && (
-            <Badge text={block.block.action.charAt(0).toUpperCase() + block.block.action.slice(1)} color="purple" />
-          )}
-          {isInputBlock(block.block) && (
-            <Badge
-              text={block.block.inputType.charAt(0).toUpperCase() + block.block.inputType.slice(1)}
-              color="purple"
-            />
-          )}
-          {isSectionBlock(block.block) && block.block.title && (
-            <span style={{ marginLeft: '8px', fontWeight: 500 }}>{block.block.title}</span>
+          {isSectionBlock(block.block) && block.block.title ? (
+            <span className={styles.sectionTitle} title={block.block.title}>
+              {block.block.title}
+            </span>
+          ) : (
+            preview && (
+              <span className={styles.headlinePreview} title={preview}>
+                {preview}
+              </span>
+            )
           )}
           {isConditionalBlock(block.block) && (
             <>
@@ -213,14 +215,13 @@ export function BlockItem({
               {block.block.display === 'section' && <Badge text="Section" color="green" />}
             </>
           )}
-          <LintBadge path={['blocks', index]} />
         </div>
-        {preview && (
-          <div className={styles.preview} title={preview}>
-            {preview}
-          </div>
-        )}
       </div>
+
+      {/* Lint badge sits between the content and the actions so a long
+          preview can use the full middle column without the badge
+          competing for primary text width. */}
+      <LintBadge path={['blocks', index]} />
 
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}

@@ -314,14 +314,18 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     minWidth: 0,
     display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.5),
+    alignItems: 'center',
   }),
 
+  // Single inline row: number + icon + type badge + (section title OR
+  // preview) + any block-type-specific badges. The preview/title gets
+  // `flex: 1; min-width: 0` so it ellipsises when the row is narrow.
   header: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
+    gap: theme.spacing(0.75),
+    minWidth: 0,
+    flex: 1,
   }),
 
   typeIcon: css({
@@ -333,14 +337,28 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     // No color override - let Badge component control colors for vibrancy
   }),
 
-  preview: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
+  // Section title — primary-weight text, ellipsised.
+  sectionTitle: css({
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    maxWidth: '100%',
+    minWidth: 0,
+    flex: 1,
+  }),
+
+  // Inline preview text replacing the old separate preview row.
+  // Monospace, secondary, ellipsised so long previews collapse cleanly.
+  headlinePreview: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
     fontFamily: theme.typography.fontFamilyMonospace,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    flex: 1,
   }),
 
   actions: css({
@@ -486,18 +504,15 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     boxShadow: `0 0 0 2px ${theme.colors.warning.transparent}`,
   }),
 
-  // Block sequence number badge
+  // Block sequence number — borderless, monospace, dim. Replaces the
+  // 20px chip with a quieter inline indicator.
   blockNumber: css({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: '20px',
-    height: '20px',
-    padding: `0 ${theme.spacing(0.5)}`,
-    borderRadius: '10px',
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    fontSize: theme.typography.bodySmall.fontSize,
+    minWidth: '16px',
+    height: '16px',
+    fontSize: '11px',
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.secondary,
     flexShrink: 0,

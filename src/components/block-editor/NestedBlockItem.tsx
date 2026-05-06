@@ -125,23 +125,31 @@ export function NestedBlockItem({
         </div>
       )}
 
-      {/* Content - matches BlockItem layout */}
+      {/* Content — single inline row mirroring BlockItem.
+          - Sub-type purple badge dropped (action verb is already in
+            preview text).
+          - Preview is inline; sections render their authored title. */}
       <div className={styles.content}>
         <div className={styles.header}>
           {index !== undefined && <span className={styles.blockNumber}>{index + 1}</span>}
           <span className={styles.icon}>{meta?.icon}</span>
           <Badge text={meta?.name ?? block.type} color="blue" />
-          {'action' in block && (
-            <Badge text={String(block.action).charAt(0).toUpperCase() + String(block.action).slice(1)} color="purple" />
+          {block.type === 'section' && 'title' in block && typeof block.title === 'string' && block.title ? (
+            <span className={styles.sectionTitle} title={block.title}>
+              {block.title}
+            </span>
+          ) : (
+            preview && (
+              <span className={styles.headlinePreview} title={preview}>
+                {preview}
+              </span>
+            )
           )}
-          {path && <LintBadge path={path} />}
         </div>
-        {preview && (
-          <div className={styles.preview} title={preview}>
-            {preview}
-          </div>
-        )}
       </div>
+
+      {/* Lint badge between content and actions — see BlockItem for rationale. */}
+      {path && <LintBadge path={path} />}
 
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
