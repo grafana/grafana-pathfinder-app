@@ -277,6 +277,10 @@ export function BlockEditorHeader({
   // More menu for less-used actions. New + Library moved here (from
   // the toolbar) — both are infrequent and "New" is destructive, so
   // it's an improvement to guard them behind a menu.
+  // Context item can return null (backend available, draft, no
+  // unsynced changes) — gate its trailing divider on the item itself,
+  // not on backend availability, to avoid an orphan double-divider.
+  const contextItem = moreMenuContextItem();
   const moreMenu = (
     <Menu>
       <Menu.Item
@@ -294,8 +298,8 @@ export function BlockEditorHeader({
         />
       )}
       <Menu.Divider />
-      {moreMenuContextItem()}
-      {isBackendAvailable && <Menu.Divider />}
+      {contextItem}
+      {contextItem && <Menu.Divider />}
       <Menu.Item label="Import" icon="upload" onClick={onOpenImport} />
       <Menu.Divider />
       <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid={testIds.blockEditor.copyJsonButton} />
@@ -453,24 +457,24 @@ export function BlockEditorHeader({
               Draft/Published distinction is genuinely informative. */}
           {isBackendAvailable && backendBadge()}
 
-          {/* Divider separates the at-a-glance status from the
-              interactive controls so the saved icon and selection
-              trigger no longer read as a paired cluster. */}
-          <div className={styles.divider} />
-
           {/* Selection-mode trigger — only meaningful in edit mode
-              with at least one block. Active state mirrors the
-              view-mode toggle's primary highlight. */}
+              with at least one block. The preceding divider exists
+              specifically to break the visual pairing between the
+              status icon and this `check-square` button, so it only
+              appears when the trigger does. */}
           {viewMode === 'edit' && hasBlocks && (
-            <IconButton
-              name="check-square"
-              size="sm"
-              variant={isSelectionMode ? 'primary' : 'secondary'}
-              onClick={onToggleSelectionMode}
-              aria-label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
-              tooltip={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
-              data-testid={testIds.blockEditor.toggleSelectionButton}
-            />
+            <>
+              <div className={styles.divider} />
+              <IconButton
+                name="check-square"
+                size="sm"
+                variant={isSelectionMode ? 'primary' : 'secondary'}
+                onClick={onToggleSelectionMode}
+                aria-label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+                tooltip={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+                data-testid={testIds.blockEditor.toggleSelectionButton}
+              />
+            </>
           )}
 
           <ButtonGroup data-testid={testIds.blockEditor.viewModeToggle}>
