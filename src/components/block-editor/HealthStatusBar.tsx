@@ -3,16 +3,13 @@
  *
  * Sticky bar at the bottom of the editor showing severity counts and an
  * expandable body listing every diagnostic the lint pipeline has
- * surfaced. Click the bar to toggle the expanded body; each row links
- * to the offending block via `data-block-id`.
+ * surfaced. Click the bar to toggle the expanded body; each row's
+ * `Locate →` action flashes the offending block in place.
  *
- * Reads from `useGuideLintResult()` (populated by the BlockEditor each
- * time the guide changes — Phase 1) and is mounted by BlockEditor in
- * edit mode.
- *
- * Phase 3 v1 scope: read-only listing + jump-to-block. Per-guide
- * dismissal (writing `metadata.lintIgnores`) is deferred until the
- * editor's `updateGuideMetadata` API can carry arbitrary metadata.
+ * Read-only by design: diagnostics can't be dismissed. The lint rules
+ * exist to nudge authors toward resilient guide design, so allowing
+ * silencing would defeat their purpose. Author-facing fix is to
+ * address the diagnostic, not hide it.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -316,12 +313,7 @@ export function HealthStatusBar({ blocks }: HealthStatusBarProps) {
                           }
                           placement="top"
                         >
-                          <IconButton
-                            name="question-circle"
-                            size="sm"
-                            aria-label="What do these severities mean?"
-                            tooltip=""
-                          />
+                          <IconButton name="question-circle" size="sm" aria-label="What do these severities mean?" />
                         </Tooltip>
                       )}
                     </div>

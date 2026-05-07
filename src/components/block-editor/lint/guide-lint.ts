@@ -206,18 +206,10 @@ export function lintGuide(guide: JsonGuide | null | undefined): GuideLintResult 
     ...runCrossBlockChecks(guide),
   ];
 
-  // Suppress diagnostics whose code the author has dismissed for this
-  // guide via `metadata.lintIgnores`. We only allow editor-only codes
-  // (those starting with `editor.`) to be silenced — schema-level
-  // errors and canonical warnings can't be dismissed because they
-  // represent real correctness issues the runtime would also fail on.
-  const ignoreSet = new Set(guide?.metadata?.lintIgnores ?? []);
-  const diagnostics = allDiagnostics.filter((d) => !(d.code.startsWith('editor.') && ignoreSet.has(d.code)));
-
   return {
-    diagnostics,
-    forPath: makeForPath(diagnostics),
-    forPathDirect: makeForPathDirect(diagnostics),
+    diagnostics: allDiagnostics,
+    forPath: makeForPath(allDiagnostics),
+    forPathDirect: makeForPathDirect(allDiagnostics),
     isValid: result.isValid,
   };
 }

@@ -20,24 +20,6 @@ export interface JsonGuide {
   title: string;
   /** Content blocks that make up the guide */
   blocks: JsonBlock[];
-  /**
-   * Per-guide editor metadata. Optional and additive — runtime ignores it.
-   * Currently used by the block editor's Health panel to remember which
-   * advisory diagnostics the author has dismissed for this guide.
-   */
-  metadata?: GuideMetadata;
-}
-
-/**
- * Editor-only metadata attached to a guide. Not consumed by the runtime.
- */
-export interface GuideMetadata {
-  /**
-   * Diagnostic codes (e.g. `editor.unusedSection`) the author has chosen
-   * to suppress for this guide. Codes outside the editor's known set are
-   * ignored on read.
-   */
-  lintIgnores?: string[];
 }
 
 // ============ BLOCK UNION ============
