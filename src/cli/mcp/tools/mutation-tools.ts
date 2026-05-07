@@ -47,6 +47,11 @@ export function registerMutationTools(server: McpServer): void {
     {
       description:
         'Append a block to the package. Block type and field schemas mirror the CLI. Use pathfinder_help with command "add-block" to see per-type fields. Returns the updated artifact.',
+      annotations: {
+        title: 'Add Pathfinder block',
+        readOnlyHint: false,
+        destructiveHint: false,
+      },
       inputSchema: {
         ...ArtifactInputSchema,
         type: z.enum(BlockTypeEnum as [string, ...string[]]).describe('Block type discriminator.'),
@@ -86,6 +91,11 @@ export function registerMutationTools(server: McpServer): void {
     'pathfinder_add_step',
     {
       description: 'Append a step to a multistep or guided block. Returns the updated artifact.',
+      annotations: {
+        title: 'Add Pathfinder step',
+        readOnlyHint: false,
+        destructiveHint: false,
+      },
       inputSchema: {
         ...ArtifactInputSchema,
         parentId: z.string().describe('Parent multistep or guided block id.'),
@@ -104,6 +114,11 @@ export function registerMutationTools(server: McpServer): void {
     'pathfinder_add_choice',
     {
       description: 'Append a choice to a quiz block. Returns the updated artifact.',
+      annotations: {
+        title: 'Add Pathfinder choice',
+        readOnlyHint: false,
+        destructiveHint: false,
+      },
       inputSchema: {
         ...ArtifactInputSchema,
         parentId: z.string().describe('Parent quiz block id.'),
@@ -122,6 +137,11 @@ export function registerMutationTools(server: McpServer): void {
     'pathfinder_edit_block',
     {
       description: 'Update fields on an existing block. Returns the updated artifact.',
+      annotations: {
+        title: 'Edit Pathfinder block',
+        readOnlyHint: false,
+        destructiveHint: true,
+      },
       inputSchema: {
         ...ArtifactInputSchema,
         id: z.string().describe('Block id to edit.'),
@@ -138,6 +158,11 @@ export function registerMutationTools(server: McpServer): void {
     'pathfinder_remove_block',
     {
       description: 'Remove a block by id. Returns the updated artifact.',
+      annotations: {
+        title: 'Remove Pathfinder block',
+        readOnlyHint: false,
+        destructiveHint: true,
+      },
       inputSchema: {
         ...ArtifactInputSchema,
         id: z.string().describe('Block id to remove.'),
@@ -160,6 +185,11 @@ export function registerMutationTools(server: McpServer): void {
     'pathfinder_set_manifest',
     {
       description: 'Update fields on the package manifest. Returns the updated artifact.',
+      annotations: {
+        title: 'Set Pathfinder manifest',
+        readOnlyHint: false,
+        destructiveHint: true,
+      },
       inputSchema: {
         ...ArtifactInputSchema,
         fields: FlagValuesSchema.describe('Manifest fields to set (description, category, language, etc.).'),

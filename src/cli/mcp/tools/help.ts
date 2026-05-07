@@ -17,6 +17,10 @@ export function registerHelpTool(server: McpServer): void {
     {
       description:
         'Returns the structured help surface for a CLI command, equivalent to `pathfinder-cli <command> --help --format json`. Pass an empty command for the list of commands.',
+      annotations: {
+        title: 'Show Pathfinder help',
+        readOnlyHint: true,
+      },
       inputSchema: {
         command: z
           .string()

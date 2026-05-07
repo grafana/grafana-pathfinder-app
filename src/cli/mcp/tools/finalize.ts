@@ -31,6 +31,10 @@ export function registerFinalizeTool(server: McpServer): void {
     {
       description:
         'Finalize an artifact for publishing. Validates, then returns the App Platform write payload (resource, path templates, viewer link) and a localExport fallback. The MCP does not perform the write — the controlling agent (e.g. Grafana Assistant) does.',
+      annotations: {
+        title: 'Finalize Pathfinder artifact',
+        readOnlyHint: true,
+      },
       inputSchema: {
         artifact: z.object({
           content: z.record(z.string(), z.unknown()),

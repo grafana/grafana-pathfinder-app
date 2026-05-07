@@ -41,6 +41,10 @@ export function registerAuthoringStart(server: McpServer): void {
     {
       description:
         'First tool to call. Returns Pathfinder authoring context, workflow, and tool discovery hints. Read this once per authoring session before calling any mutation tool.',
+      annotations: {
+        title: 'Start Pathfinder authoring',
+        readOnlyHint: true,
+      },
       inputSchema: {},
     },
     async () => textResult(JSON.stringify(AUTHORING_CONTEXT, null, 2))

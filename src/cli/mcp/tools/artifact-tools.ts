@@ -21,6 +21,11 @@ export function registerArtifactTools(server: McpServer): void {
     {
       description:
         'Create a fresh authoring artifact (content.json + manifest.json) for a new guide. Returns { content, manifest } for use as input to subsequent authoring tools.',
+      annotations: {
+        title: 'Create Pathfinder package',
+        readOnlyHint: false,
+        destructiveHint: false,
+      },
       inputSchema: {
         title: z.string().describe('Guide title shown to learners.'),
         id: z
