@@ -232,26 +232,32 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     return unlisten;
   }, [guideUrl, title, activeTab]);
 
-  // Step progress for the header counter — same window-global polling as
-  // the floating panel since the interactive engine writes those globals.
+  // Step progress for the header counter. Subscribes to the
+  // `pathfinder-step-progress` event published by interactive-section
+  // whenever execution OR completion state changes — so the chip
+  // reflects "X of Y completed" and updates immediately on completion
+  // / reset (the previous polling-on-window-globals approach went
+  // stale because those globals only update while a step is *executing*).
   const [stepProgress, setStepProgress] = useState<string | undefined>();
   useEffect(() => {
     if (!hasActiveGuide) {
       setStepProgress(undefined);
       return;
     }
-    const update = () => {
-      const stepIndex = (window as any).__DocsPluginCurrentStepIndex as number | undefined;
-      const totalSteps = (window as any).__DocsPluginTotalSteps as number | undefined;
-      if (stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0) {
-        setStepProgress(`${stepIndex + 1}/${totalSteps}`);
+    const handle = (e: Event) => {
+      const detail = (e as CustomEvent<{ totalSteps?: number; completedCount?: number }>).detail;
+      const total = detail?.totalSteps ?? 0;
+      const done = detail?.completedCount ?? 0;
+      if (total > 0) {
+        setStepProgress(`${done}/${total}`);
       } else {
         setStepProgress(undefined);
       }
     };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
+    window.addEventListener('pathfinder-step-progress', handle);
+    return () => {
+      window.removeEventListener('pathfinder-step-progress', handle);
+    };
   }, [hasActiveGuide]);
 
   const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(panel, activeTabId, activeTab);
@@ -264,11 +270,14 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       guide_url: guideUrl || '',
       guide_title: title,
     });
-    panelModeManager.restoreSidebarTabSnapshot();
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
     sidebarState.openSidebar('Interactive learning');
-    locationService.push(PLUGIN_BASE_URL);
+    // Land the user back on the page they were on before they entered full
+    // screen. Falls back to the plugin home for cold-loaded `/fullscreen`
+    // URLs (no captured prior path).
+    const priorPath = panelModeManager.consumePriorPath();
+    locationService.push(priorPath ?? PLUGIN_BASE_URL);
   }, [guideUrl, title]);
 
   /**

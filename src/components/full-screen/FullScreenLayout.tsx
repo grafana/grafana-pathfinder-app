@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IconButton, useStyles2 } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import { getFullScreenStyles } from './full-screen.styles';
@@ -85,43 +86,49 @@ export function FullScreenLayout({
       role="region"
       aria-label="Pathfinder full screen"
     >
-      <div className={styles.header}>
-        <IconButton
-          name="angle-left"
-          size="md"
-          tooltip="Back to sidebar"
-          onClick={onExit}
-          data-testid={testIds.fullScreenMode.exitButton}
-          aria-label="Back to sidebar"
-        />
-        <span className={styles.headerTitle} title={title}>
-          {title}
-        </span>
-        {stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
-        <div className={styles.headerActions}>
-          {hasActiveGuide && guideUrl && (
-            <IconButton
-              name={linkCopied ? 'check' : 'link'}
-              size="sm"
-              tooltip={linkCopied ? 'Copied!' : 'Copy workshop link'}
-              onClick={handleCopyLink}
-              aria-label="Copy workshop link"
-              data-testid={testIds.fullScreenMode.copyLinkButton}
-            />
-          )}
-          {onGoFloating && hasActiveGuide && (
-            <IconButton
-              name="corner-up-right"
-              size="sm"
-              tooltip="Pop out to floating panel"
-              onClick={onGoFloating}
-              aria-label="Pop out to floating panel"
-              data-testid={testIds.fullScreenMode.goFloatingButton}
-            />
-          )}
+      <div className={styles.stickyTopBar}>
+        <div className={styles.header}>
+          <IconButton
+            name="angle-left"
+            size="md"
+            tooltip="Back to sidebar"
+            onClick={onExit}
+            data-testid={testIds.fullScreenMode.exitButton}
+            aria-label="Back to sidebar"
+          />
+          <span className={styles.headerTitle} title={title}>
+            {title}
+          </span>
+          {stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
+          <div className={styles.headerActions}>
+            {hasActiveGuide && guideUrl && (
+              <IconButton
+                name={linkCopied ? 'check' : 'link'}
+                size="sm"
+                tooltip={
+                  linkCopied
+                    ? t('fullScreen.copyLinkCopied', 'Copied!')
+                    : t('fullScreen.copyLinkTooltip', 'Copy link to this guide')
+                }
+                onClick={handleCopyLink}
+                aria-label={t('fullScreen.copyLinkTooltip', 'Copy link to this guide')}
+                data-testid={testIds.fullScreenMode.copyLinkButton}
+              />
+            )}
+            {onGoFloating && hasActiveGuide && (
+              <IconButton
+                name="corner-up-right"
+                size="sm"
+                tooltip="Pop out to floating panel"
+                onClick={onGoFloating}
+                aria-label="Pop out to floating panel"
+                data-testid={testIds.fullScreenMode.goFloatingButton}
+              />
+            )}
+          </div>
         </div>
+        {subHeader}
       </div>
-      {subHeader}
       <div className={styles.body}>
         <div className={styles.contentWrap}>{children}</div>
       </div>

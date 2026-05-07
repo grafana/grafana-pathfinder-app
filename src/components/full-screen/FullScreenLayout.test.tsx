@@ -17,6 +17,10 @@ const mockTheme = {
   spacing: (...args: number[]) => args.map((n) => `${n * 8}px`).join(' '),
   shape: { radius: { default: '4px', pill: '9999px' } },
   shadows: { z1: '0 1px 2px rgba(0,0,0,0.1)' },
+  // The sticky-top-bar style references `theme.zIndex.navbarFixed` so the
+  // dock-back chrome floats above scrolling content. The mock only needs
+  // a numeric stand-in.
+  zIndex: { navbarFixed: 1000 },
   colors: {
     text: { primary: '#000', secondary: '#666', disabled: '#aaa' },
     background: { primary: '#fff', secondary: '#f5f5f5', canvas: '#fafafa' },
@@ -110,6 +114,18 @@ describe('FullScreenLayout', () => {
     );
 
     expect(screen.getByTestId(testIds.fullScreenMode.copyLinkButton)).toBeInTheDocument();
+  });
+
+  it('uses the reworded "Copy link to this guide" tooltip and aria-label (no internal "workshop" jargon)', () => {
+    render(
+      <FullScreenLayout title="My guide" hasActiveGuide={true} guideUrl="bundled:foo" onExit={() => {}}>
+        <div />
+      </FullScreenLayout>
+    );
+
+    const button = screen.getByTestId(testIds.fullScreenMode.copyLinkButton);
+    expect(button.getAttribute('aria-label')).toBe('Copy link to this guide');
+    expect(button.getAttribute('aria-label')).not.toMatch(/workshop/i);
   });
 
   it('hides the go-floating button when no handler is provided', () => {

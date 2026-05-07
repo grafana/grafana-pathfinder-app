@@ -187,27 +187,32 @@ function FloatingPanelInner() {
   // tab is its own kind of "active content" but isn't a guide, so leave it false.
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
 
-  // Track interactive step progress from window globals set by the
-  // interactive engine. Poll on a short interval since these globals
-  // update outside React's state system.
+  // Track interactive step progress via the `pathfinder-step-progress`
+  // event published by interactive-section. The previous polling on
+  // `__DocsPluginCurrentStepIndex` only updated while a step was
+  // *executing*, so the chip went stale immediately after each step
+  // finished. Now we listen for completion changes too and show
+  // "completed / total" instead of a moving cursor.
   const [stepProgress, setStepProgress] = useState<string | undefined>();
   useEffect(() => {
     if (!hasActiveGuide) {
       setStepProgress(undefined);
       return;
     }
-    const update = () => {
-      const stepIndex = (window as any).__DocsPluginCurrentStepIndex as number | undefined;
-      const totalSteps = (window as any).__DocsPluginTotalSteps as number | undefined;
-      if (stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0) {
-        setStepProgress(`${stepIndex + 1}/${totalSteps}`);
+    const handle = (e: Event) => {
+      const detail = (e as CustomEvent<{ totalSteps?: number; completedCount?: number }>).detail;
+      const total = detail?.totalSteps ?? 0;
+      const done = detail?.completedCount ?? 0;
+      if (total > 0) {
+        setStepProgress(`${done}/${total}`);
       } else {
         setStepProgress(undefined);
       }
     };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
+    window.addEventListener('pathfinder-step-progress', handle);
+    return () => {
+      window.removeEventListener('pathfinder-step-progress', handle);
+    };
   }, [hasActiveGuide]);
 
   // After restoration completes, if there's no guide to show and none
@@ -265,6 +270,8 @@ function FloatingPanelInner() {
         source: 'floating_panel',
         content_type: 'editor',
       });
+      // Remember where the user was so explicit Exit can land back there.
+      panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
       panelModeManager.setPendingGuide({ title, type: 'editor' });
       panelModeManager.setMode('fullscreen');
       locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
@@ -290,6 +297,8 @@ function FloatingPanelInner() {
       // toolbar on the other side of the handoff.
       packageInfo: activeTab?.packageInfo,
     });
+    // Remember where the user was so explicit Exit can land back there.
+    panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
     panelModeManager.setMode('fullscreen');
     // Include type in the URL so refresh/share rehydrates as a journey
     // even if findDocPage's URL-based classification can't tell.

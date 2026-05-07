@@ -160,4 +160,23 @@ describe('panelModeManager', () => {
       expect(consumed?.packageInfo?.resolvedMilestones).toHaveLength(2);
     });
   });
+
+  describe('priorPath capture', () => {
+    it('round-trips a captured prior path once via consume', () => {
+      panelModeManager.capturePriorPath('/dashboards?tab=foo');
+      expect(panelModeManager.consumePriorPath()).toBe('/dashboards?tab=foo');
+      // Cleared after consume so a future Exit doesn't replay a stale path.
+      expect(panelModeManager.consumePriorPath()).toBeNull();
+    });
+
+    it('returns null when nothing was captured (cold-loaded /fullscreen URL)', () => {
+      expect(panelModeManager.consumePriorPath()).toBeNull();
+    });
+
+    it('overwrites a previously captured path on second capture', () => {
+      panelModeManager.capturePriorPath('/dashboards');
+      panelModeManager.capturePriorPath('/connections');
+      expect(panelModeManager.consumePriorPath()).toBe('/connections');
+    });
+  });
 });

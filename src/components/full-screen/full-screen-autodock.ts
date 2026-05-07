@@ -61,6 +61,16 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
 
   const { guideUrl, title, activeTab, myPluginId } = inputs;
 
+  // Defer the actual mode/sidebar side effects to the next macrotask.
+  // The history listener fires synchronously on `locationService.push`,
+  // which means it runs INSIDE `NavigateHandler.execute` between
+  // `handleDoMode` (the push) and `markAsCompleted`. If we tear down
+  // the FullScreenPanel React tree here, `markAsCompleted` is racing
+  // against unmount and the step's persistence write may never happen.
+  // A `setTimeout(0)` delay yields the microtask queue so the handler's
+  // pending `await markAsCompleted()` chain can settle first.
+  const deferred = (fn: () => void) => setTimeout(fn, 0);
+
   if (isExtensionSidebarOwnedByOther(myPluginId)) {
     // Sidebar is taken — pop out as a floating overlay so we co-exist
     // with whatever plugin owns the sidebar instead of stealing it.
@@ -81,7 +91,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
         packageInfo: activeTab.packageInfo,
       });
     }
-    panelModeManager.setMode('floating');
+    deferred(() => panelModeManager.setMode('floating'));
     return 'floating';
   }
 
@@ -92,9 +102,16 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
     reason: 'navigation_away',
   });
 
-  panelModeManager.restoreSidebarTabSnapshot();
-  panelModeManager.setMode('sidebar');
-  sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
-  sidebarState.openSidebar('Interactive learning');
+  // No `restoreSidebarTabSnapshot()`: we intentionally keep the latest
+  // tabStorage state full-screen wrote (active milestone URL, completion,
+  // etc.) so the docking sidebar restores the user where they left off,
+  // not where they started. Sidebar and full-screen share intent — the
+  // snapshot mechanism is only useful when surfaces have separate tab
+  // sets (i.e. floating).
+  deferred(() => {
+    panelModeManager.setMode('sidebar');
+    sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
+    sidebarState.openSidebar('Interactive learning');
+  });
   return 'sidebar';
 }

@@ -1685,7 +1685,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           guide_title: activeTab.title,
           content_type: 'editor',
         });
-        panelModeManager.snapshotSidebarTabs();
+        // Remember where we came from so explicit Exit can land back on the
+        // user's prior Grafana page instead of the plugin home.
+        //
+        // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
+        // full-screen surfaces share intent (same tabs, same active guide),
+        // so the snapshot/restore would clobber the milestone progress
+        // full-screen wrote back to tabStorage and the user would land at
+        // the prior milestone on dock-back.
+        panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
         panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
         panelModeManager.setMode('fullscreen');
         locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
@@ -1719,7 +1727,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         content_type: getContentTypeForAnalytics(guideUrl, activeTab.type || 'docs'),
       });
 
-      panelModeManager.snapshotSidebarTabs();
+      // Remember where we came from so explicit Exit can land back on the
+      // user's prior Grafana page instead of the plugin home.
+      //
+      // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
+      // full-screen surfaces share intent (same tabs, same active guide),
+      // so the snapshot/restore would clobber the milestone progress
+      // full-screen wrote back to tabStorage and the user would land at
+      // the prior milestone on dock-back.
+      panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
       panelModeManager.setMode('fullscreen');
       // Encode the tab type in the URL so a refresh / shared link rehydrates
       // the right kind of tab. Without this, FullScreenPanel's URL fallback

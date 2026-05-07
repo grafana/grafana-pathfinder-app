@@ -43,6 +43,7 @@ class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
   private _sidebarTabSnapshot: string | null = null;
   private _sidebarActiveTabSnapshot: string | null = null;
+  private _priorPath: string | null = null;
   /**
    * Get the current panel mode from localStorage.
    * Defaults to 'sidebar' for backward compatibility.
@@ -163,6 +164,29 @@ class PanelModeManager {
     }
     this._sidebarTabSnapshot = null;
     this._sidebarActiveTabSnapshot = null;
+  }
+
+  /**
+   * Capture the Grafana route the user was on right before entering full
+   * screen, so the explicit "Return to sidebar" button can land them back
+   * where they came from instead of the plugin home (My Learning).
+   *
+   * Captured at the same call sites as {@link snapshotSidebarTabs}: the
+   * sidebar / floating "switch to full screen" handlers, immediately
+   * before the route push to `/fullscreen`.
+   */
+  public capturePriorPath(path: string): void {
+    this._priorPath = path;
+  }
+
+  /**
+   * Consume and clear the captured prior path. Returns null if nothing
+   * was captured (e.g. cold-loaded `/fullscreen` URL with no entry route).
+   */
+  public consumePriorPath(): string | null {
+    const path = this._priorPath;
+    this._priorPath = null;
+    return path;
   }
 }
 

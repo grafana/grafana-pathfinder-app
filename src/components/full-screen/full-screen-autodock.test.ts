@@ -70,8 +70,18 @@ function defaultInputs(overrides: Partial<Parameters<typeof dockOnLeavingFullScr
 describe('dockOnLeavingFullScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Auto-dock now defers `setMode` and friends via `setTimeout(0)` so the
+    // navigate handler's `markAsCompleted` chain can settle before the
+    // fullscreen tree unmounts. Use fake timers so we can assert both the
+    // synchronous decisions (analytics, pending-guide) and the deferred
+    // side effects in the same test.
+    jest.useFakeTimers();
     (panelModeManager.getMode as jest.Mock).mockReturnValue('fullscreen');
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   describe('guards', () => {
@@ -79,6 +89,7 @@ describe('dockOnLeavingFullScreen', () => {
       (panelModeManager.getMode as jest.Mock).mockReturnValue('sidebar');
 
       const outcome = dockOnLeavingFullScreen(defaultInputs());
+      jest.runAllTimers();
 
       expect(outcome).toBe('noop');
       expect(panelModeManager.setMode).not.toHaveBeenCalled();
@@ -88,6 +99,7 @@ describe('dockOnLeavingFullScreen', () => {
 
     it('no-ops when only search/hash changed (pathname still on fullscreen route)', () => {
       const outcome = dockOnLeavingFullScreen(defaultInputs({ pathname: FULL_SCREEN_PATHNAME }));
+      jest.runAllTimers();
 
       expect(outcome).toBe('noop');
       expect(panelModeManager.setMode).not.toHaveBeenCalled();
@@ -96,11 +108,16 @@ describe('dockOnLeavingFullScreen', () => {
   });
 
   describe('sidebar branch (sidebar free or owned by us)', () => {
-    it('switches to sidebar mode and opens the extension sidebar', () => {
+    it('switches to sidebar mode and opens the extension sidebar (deferred to next macrotask)', () => {
       const outcome = dockOnLeavingFullScreen(defaultInputs());
 
+      // Side effects are deferred — nothing should have happened yet.
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+
+      jest.runAllTimers();
+
       expect(outcome).toBe('sidebar');
-      expect(panelModeManager.restoreSidebarTabSnapshot).toHaveBeenCalledTimes(1);
       expect(panelModeManager.setMode).toHaveBeenCalledWith('sidebar');
       expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('fullscreen_handoff', 'open');
       expect(sidebarState.openSidebar).toHaveBeenCalledWith('Interactive learning');
@@ -108,9 +125,21 @@ describe('dockOnLeavingFullScreen', () => {
       expect(panelModeManager.setPendingGuide).not.toHaveBeenCalled();
     });
 
+    it('does NOT call restoreSidebarTabSnapshot — fullscreen and sidebar share intent, the latest tabStorage state must win', () => {
+      // Regression: the snapshot/restore mechanism overwrote the milestone
+      // position fullscreen wrote during the user's session (e.g. step
+      // navigation) with the stale "before-fullscreen" snapshot, dumping
+      // the user back at page 1 of the journey on dock.
+      dockOnLeavingFullScreen(defaultInputs());
+      jest.runAllTimers();
+
+      expect(panelModeManager.restoreSidebarTabSnapshot).not.toHaveBeenCalled();
+    });
+
     it('reports analytics with destination=sidebar and reason=navigation_away', () => {
       dockOnLeavingFullScreen(defaultInputs());
 
+      // Analytics fires synchronously, before the deferred side effects.
       expect(reportAppInteraction).toHaveBeenCalledWith('full_screen_exit', {
         destination: 'sidebar',
         guide_url: baseTab.baseUrl,
@@ -131,8 +160,13 @@ describe('dockOnLeavingFullScreen', () => {
       (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
     });
 
-    it('switches to floating mode without opening the sidebar', () => {
+    it('switches to floating mode without opening the sidebar (deferred)', () => {
       const outcome = dockOnLeavingFullScreen(defaultInputs());
+
+      // Mode change is deferred so navigate-handler can settle.
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
+
+      jest.runAllTimers();
 
       expect(outcome).toBe('floating');
       expect(panelModeManager.setMode).toHaveBeenCalledWith('floating');
@@ -143,6 +177,8 @@ describe('dockOnLeavingFullScreen', () => {
     it('hands off the active tab via setPendingGuide so the floating panel rebuilds the journey', () => {
       dockOnLeavingFullScreen(defaultInputs());
 
+      // setPendingGuide fires synchronously so the consumer (floating
+      // panel mount) sees the handoff data the moment it mounts.
       expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith({
         url: baseTab.baseUrl,
         title: baseTab.title,
@@ -174,6 +210,7 @@ describe('dockOnLeavingFullScreen', () => {
 
     it('skips setPendingGuide when there is no guideUrl or activeTab', () => {
       dockOnLeavingFullScreen(defaultInputs({ guideUrl: undefined, activeTab: undefined }));
+      jest.runAllTimers();
 
       expect(panelModeManager.setPendingGuide).not.toHaveBeenCalled();
       // Mode change still fires so the floating panel mounts (it can fall

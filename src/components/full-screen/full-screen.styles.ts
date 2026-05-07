@@ -10,6 +10,21 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
     minHeight: 0,
     background: theme.colors.background.primary,
   }),
+  // Pinned bar wrapping the header + optional subHeader so both stay
+  // visible as a single block while the user scrolls a long milestone
+  // body. In the happy path `.body` owns the scroll and this wrapper
+  // doesn't actually move; the sticky positioning is belt-and-braces
+  // for the cases where Grafana's `PageLayoutType.Custom` chain
+  // doesn't fully constrain height to the viewport and document-level
+  // scroll kicks in — without sticky, the user loses the dock-back
+  // affordance mid-journey.
+  stickyTopBar: css({
+    flexShrink: 0,
+    position: 'sticky',
+    top: 0,
+    zIndex: theme.zIndex.navbarFixed,
+    background: theme.colors.background.primary,
+  }),
   // Compact header that mirrors the floating panel's chrome — small
   // padding, body-small typography, icon-only actions. Avoids a "second
   // page-header" feel stacked under Grafana's own navbar.
@@ -94,6 +109,17 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
       width: '12px',
       height: '12px',
       flexShrink: 0,
+    },
+    // Container query mirroring the sidebar's `secondaryActionButton`:
+    // the button collapses to icon-only when its parent toolbar
+    // (`milestoneActions` from `getMilestoneStyles`, which declares
+    // `containerType: inline-size`) gets too narrow. Same threshold so
+    // sidebar and full-screen flip together at the same breakpoint.
+    '@container (max-width: 360px)': {
+      padding: theme.spacing(0.5),
+      '& > span': {
+        display: 'none',
+      },
     },
   }),
 });
