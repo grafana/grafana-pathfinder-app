@@ -9,15 +9,15 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 
 ## Status
 
-| Phase | Title                                  | Status      | Detailed plan                                                                       | Tracking         |
-| ----- | -------------------------------------- | ----------- | ----------------------------------------------------------------------------------- | ---------------- |
-| P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md)     | _epic issue TBD_ |
-| P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)       | _epic issue TBD_ |
-| P2    | npm + Docker distribution              | Complete    | [ai-authoring-2-distribution.md](./phases/ai-authoring-2-distribution.md)           | _epic issue TBD_ |
-| P3    | TypeScript MCP server                  | Complete    | [ai-authoring-3-ts-mcp.md](./phases/ai-authoring-3-ts-mcp.md)                       | _epic issue TBD_ |
-| P4    | Assistant handoff and viewer link      | In progress | [ai-authoring-4-assistant-handoff.md](./phases/ai-authoring-4-assistant-handoff.md) | _epic issue TBD_ |
-| P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                                   | —                |
-| P6    | CDN repository tools (TS MCP)          | Not started | _to be drafted at start_                                                            | _epic issue TBD_ |
+| Phase | Title                                  | Status      | Detailed plan                                                                             | Tracking         |
+| ----- | -------------------------------------- | ----------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md)           | _epic issue TBD_ |
+| P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)             | _epic issue TBD_ |
+| P2    | npm + Docker distribution              | Complete    | [ai-authoring-2-distribution.md](./phases/ai-authoring-2-distribution.md)                 | _epic issue TBD_ |
+| P3    | TypeScript MCP server                  | Complete    | [ai-authoring-3-ts-mcp.md](./phases/ai-authoring-3-ts-mcp.md)                             | _epic issue TBD_ |
+| P4    | Assistant handoff and viewer link      | In progress | [ai-authoring-4-assistant-handoff.md](./phases/ai-authoring-4-assistant-handoff.md)       | _epic issue TBD_ |
+| P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                                         | —                |
+| P6    | CDN repository tools (TS MCP)          | Complete    | [ai-authoring-6-cdn-repository-tools.md](./phases/ai-authoring-6-cdn-repository-tools.md) | _epic issue TBD_ |
 
 Each row's "Detailed plan" cell is filled in when an agent runs the per-phase planning step and writes `docs/design/phases/ai-authoring-N-<slug>.md`.
 

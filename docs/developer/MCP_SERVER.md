@@ -117,7 +117,7 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ## Tool surface
 
-12 tools, registered in `src/cli/mcp/tools/`:
+16 tools, registered in `src/cli/mcp/tools/`:
 
 | Tool                                   | Module                | Wraps                                                                  |
 | -------------------------------------- | --------------------- | ---------------------------------------------------------------------- |
@@ -133,6 +133,23 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 | `pathfinder_inspect`                   | `inspection-tools.ts` | `runInspect`                                                           |
 | `pathfinder_validate`                  | `inspection-tools.ts` | `runValidate`                                                          |
 | `pathfinder_finalize_for_app_platform` | `finalize.ts`         | `runValidate` + handoff payload from `APP-PLATFORM-PUBLISH-HANDOFF.md` |
+| `pathfinder_list_packages`             | `repository-tools.ts` | CDN `repository.json` + filters (P6)                                   |
+| `pathfinder_get_package`               | `repository-tools.ts` | CDN `content.json` + `manifest.json` for one id                        |
+| `pathfinder_get_manifest`              | `repository-tools.ts` | CDN `manifest.json` only (cheaper variant)                             |
+| `pathfinder_launch_package`            | `repository-tools.ts` | Builds `?doc=<cdn-url>` deep link                                      |
+
+### Repository tools (P6)
+
+The four `repository-tools.ts` tools are read-only against a public package CDN. They are stateless (no artifact in/out) and need no auth.
+
+- **Default repository**: `https://interactive-learning.grafana.net/packages/`.
+- **Override**: set `PATHFINDER_REPOSITORY_URL` (trailing slash optional) on the process. The HTTP transport's deploy passes this through unchanged; for stdio clients, set it on the `npx pathfinder-mcp` invocation.
+- **Caching**: `repository.json` is cached in-process for 60 seconds with single-flight dedup. Per-package `content.json` / `manifest.json` fetches are uncached.
+- **Validation is non-fatal**: the get-tools always return `raw` (the bytes the CDN served) plus a `validation` report. Schema drift surfaces as `validation.issues` and never hard-fails. This is intentional — these tools are a discovery surface and clients debugging drift need to see the actual bytes.
+- **Errors are structured, never thrown**: `{ status: "error", code, message, httpStatus? }` with `code` ∈ `HTTP_ERROR | NETWORK_ERROR | PARSE_ERROR | NOT_FOUND`.
+- **`pathfinder_launch_package`** returns a relative `launchPath` always; an absolute `launchUrl` when `instanceUrl` is provided. Pass `panelMode: "floating"` to append `&panelMode=floating`. The link is consumed by the existing `?doc=<interactive-learning.grafana.net URL>` path in `src/utils/find-doc-page.ts:60-86` (`isInteractiveLearningUrl` allowlist).
+
+> Naming note: a future P5 GCS-sessions design also proposes a `pathfinder_get_manifest` tool — but session-scoped, taking a `sessionToken`. P6 ships first with the public-CDN semantics; if/when P5 lands it must rename or add a discriminator. See [P6 phase plan — Decision log](../design/phases/ai-authoring-6-cdn-repository-tools.md#decision-log).
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 
