@@ -117,8 +117,8 @@
     "@emotion/css": "11.13.5",
     "@grafana/assistant": "^0.1.19",
     "@grafana/data": "^12.4.3",
-    "@grafana/faro-react": "^2.0.2",
-    "@grafana/faro-web-tracing": "^2.0.2",
+    "@grafana/faro-react": "^2.3.1",
+    "@grafana/faro-web-tracing": "^2.3.1",
     "@grafana/i18n": "^12.4.3",
     "@grafana/scenes": "^7.4.2",
     "@grafana/schema": "^12.4.3",
@@ -148,6 +148,7 @@
     "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "react-router": "^7.15.0",
     "react-router-dom": "^7.0.0",
     "rxjs": "7.8.2",
     "zod": "^4.1.13"
