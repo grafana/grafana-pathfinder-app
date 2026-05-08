@@ -6,9 +6,15 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Field, Input, Badge, useStyles2, Alert, Switch } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, Alert, Switch } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { ConditionChipsField } from './ConditionChipsField';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonSectionBlock } from '../../../types/json-guide.types';
@@ -101,13 +107,19 @@ export function SectionBlockForm({
     }
   }, [buildBlock, onSubmitAndRecord]);
 
-  const handleRequirementClick = useCallback((req: string) => {
-    setRequirements((prev) => {
-      if (prev.includes(req)) {
-        return prev;
-      }
-      return prev ? `${prev}, ${req}` : req;
-    });
+  const requirementsLint = useFieldLint(requirements);
+  const objectivesLint = useFieldLint(objectives);
+  const fixRequirementsToken = useCallback((bad: string, good: string) => {
+    setRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixObjectivesToken = useCallback((bad: string, good: string) => {
+    setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const removeRequirementsToken = useCallback((bad: string) => {
+    setRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeObjectivesToken = useCallback((bad: string) => {
+    setObjectives((prev) => removeTokenFromConditionField(prev, bad));
   }, []);
 
   // Handle title change - just update title, don't auto-generate ID yet
@@ -161,39 +173,39 @@ export function SectionBlockForm({
       </Field>
 
       {/* Requirements */}
-      <Field
-        label="Requirements"
-        description="Conditions that must be met before section is accessible (comma-separated)"
-      >
-        <Input
+      <Field label="Requirements" description="Conditions that must be met before this section is accessible">
+        <ConditionChipsField
           value={requirements}
-          onChange={(e) => setRequirements(e.currentTarget.value)}
-          placeholder="e.g., is-admin, on-page:/settings"
+          onChange={setRequirements}
+          mode="requirements"
+          testId="section-block-requirements"
         />
       </Field>
-      <div className={styles.requirementsContainer}>
-        <span className={styles.requirementsLabel}>Quick add:</span>
-        <div className={styles.requirementsChips}>
-          {COMMON_REQUIREMENTS.map((req) => (
-            <Badge
-              key={req}
-              text={req}
-              color="blue"
-              className={styles.requirementChip}
-              onClick={() => handleRequirementClick(req)}
-            />
-          ))}
-        </div>
-      </div>
+      <ConditionLintMessages
+        diagnostics={requirementsLint}
+        onApplyFix={fixRequirementsToken}
+        onRemoveToken={removeRequirementsToken}
+        testId="section-block-requirements-lint"
+      />
 
       {/* Objectives */}
-      <Field label="Objectives" description="Objectives tracked for section completion (comma-separated)">
-        <Input
+      <Field
+        label="Objectives"
+        description="Post-conditions for section completion. If they're already met, the section is marked complete and skipped."
+      >
+        <ConditionChipsField
           value={objectives}
-          onChange={(e) => setObjectives(e.currentTarget.value)}
-          placeholder="e.g., completed-setup, configured-datasource"
+          onChange={setObjectives}
+          mode="objectives"
+          testId="section-block-objectives"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={objectivesLint}
+        onApplyFix={fixObjectivesToken}
+        onRemoveToken={removeObjectivesToken}
+        testId="section-block-objectives-lint"
+      />
 
       {/* Auto-collapse on completion */}
       <Field

@@ -190,7 +190,16 @@ export async function stopRecording(page: Page): Promise<void> {
 
 /**
  * Click a block action button (edit, delete, etc.) ensuring proper visibility.
- * Handles dnd-kit overlay issues by scrolling into view and hovering first.
+ *
+ * Secondary actions (eye, copy, delete, record) live in a hover-revealed
+ * group with `pointer-events: none` at rest, so a direct `.hover()` on
+ * those buttons hangs waiting for stability. Hover the parent block
+ * card first (selected via `data-block-card`) so the secondary-actions
+ * group gets `pointer-events: auto`, then hover/click the button.
+ *
+ * Edit is always visible and would work without the parent hover, but
+ * routing every action button through the same path keeps the helper
+ * uniform.
  *
  * @param page - Playwright page
  * @param testId - The data-testid of the button to click
@@ -199,6 +208,10 @@ export async function stopRecording(page: Page): Promise<void> {
 export async function clickBlockAction(page: Page, testId: string, options?: { index?: number }): Promise<void> {
   const button = page.getByTestId(testId).nth(options?.index ?? 0);
   await button.scrollIntoViewIfNeeded();
+  const parentCard = button.locator('xpath=ancestor::*[@data-block-card]').first();
+  if ((await parentCard.count()) > 0) {
+    await parentCard.hover();
+  }
   await button.hover();
   await button.click();
 }

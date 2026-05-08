@@ -34,6 +34,8 @@ import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
 import { BlockEditorModals } from './BlockEditorModals';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
+import { useGuideLint } from './lint';
+import { HealthStatusBar } from './HealthStatusBar';
 import { ConfirmModal } from './NotificationModals';
 import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
 import { testIds } from '../../constants/testIds';
@@ -244,7 +246,17 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const hasLoadedFromStorage = useRef(false);
 
   // Block editor context - replaces window globals for section/conditional editing
-  const { sectionContext, conditionalContext } = useBlockEditorContext();
+  const { sectionContext, conditionalContext, setGuideLintResult } = useBlockEditorContext();
+
+  // Compute guide-level lint and publish it to context so per-block badges
+  // and the Health panel read from a single cached source. `useGuideLint`
+  // caches by structural hash, so this is cheap on re-renders that don't
+  // change the guide.
+  const currentGuide = editor.getGuide();
+  const guideLint = useGuideLint(currentGuide);
+  useEffect(() => {
+    setGuideLintResult(guideLint);
+  }, [guideLint, setGuideLintResult]);
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();
@@ -988,9 +1000,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
+        hasBlocks={hasBlocks}
+        isSelectionMode={selection.isSelectionMode}
+        onToggleSelectionMode={selection.toggleSelectionMode}
       />
 
-      {/* Content */}
       <BlockEditorContent
         viewMode={state.viewMode}
         blocks={state.blocks}
@@ -1006,7 +1020,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           emptyStateText: styles.emptyStateText,
           blockPreviewContainer: styles.blockPreviewContainer,
         }}
-        onToggleSelectionMode={selection.toggleSelectionMode}
         onMergeToMultistep={handleMergeToMultistep}
         onMergeToGuided={handleMergeToGuided}
         onClearSelection={selection.clearSelection}
@@ -1025,6 +1038,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
       {/* Footer with add block button (only in edit mode) */}
       <BlockEditorFooter viewMode={state.viewMode} onBlockTypeSelect={handleBlockTypeSelect} />
+
+      {state.viewMode === 'edit' && <HealthStatusBar blocks={state.blocks} />}
 
       {/* Modals */}
       <BlockEditorModals

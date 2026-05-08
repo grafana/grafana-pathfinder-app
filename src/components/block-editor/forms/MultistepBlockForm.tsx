@@ -5,11 +5,17 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, TextArea, Checkbox, Badge, useStyles2, Alert } from '@grafana/ui';
+import { Button, Field, TextArea, Checkbox, useStyles2, Alert } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { StepEditor } from './StepEditor';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { ConditionChipsField } from './ConditionChipsField';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock, JsonStep } from '../types';
 import type { JsonMultistepBlock } from '../../../types/json-guide.types';
@@ -76,13 +82,19 @@ export function MultistepBlockForm({
     [content, steps, requirements, objectives, skippable, onSubmit]
   );
 
-  const handleRequirementClick = useCallback((req: string) => {
-    setRequirements((prev) => {
-      if (prev.includes(req)) {
-        return prev;
-      }
-      return prev ? `${prev}, ${req}` : req;
-    });
+  const requirementsLint = useFieldLint(requirements);
+  const objectivesLint = useFieldLint(objectives);
+  const fixRequirementsToken = useCallback((bad: string, good: string) => {
+    setRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixObjectivesToken = useCallback((bad: string, good: string) => {
+    setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const removeRequirementsToken = useCallback((bad: string) => {
+    setRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeObjectivesToken = useCallback((bad: string) => {
+    setObjectives((prev) => removeTokenFromConditionField(prev, bad));
   }, []);
 
   const isValid = content.trim().length > 0 && steps.length > 0;
@@ -117,36 +129,39 @@ export function MultistepBlockForm({
       </Field>
 
       {/* Requirements */}
-      <Field label="Requirements" description="Conditions for the entire multistep block (comma-separated)">
-        <Input
+      <Field label="Requirements" description="Conditions that must be met before this multistep runs">
+        <ConditionChipsField
           value={requirements}
-          onChange={(e) => setRequirements(e.currentTarget.value)}
-          placeholder="e.g., navmenu-open, exists-reftarget"
+          onChange={setRequirements}
+          mode="requirements"
+          testId="multistep-block-requirements"
         />
       </Field>
-      <div className={styles.requirementsContainer}>
-        <span className={styles.requirementsLabel}>Quick add:</span>
-        <div className={styles.requirementsChips}>
-          {COMMON_REQUIREMENTS.map((req) => (
-            <Badge
-              key={req}
-              text={req}
-              color="blue"
-              className={styles.requirementChip}
-              onClick={() => handleRequirementClick(req)}
-            />
-          ))}
-        </div>
-      </div>
+      <ConditionLintMessages
+        diagnostics={requirementsLint}
+        onApplyFix={fixRequirementsToken}
+        onRemoveToken={removeRequirementsToken}
+        testId="multistep-block-requirements-lint"
+      />
 
       {/* Objectives */}
-      <Field label="Objectives" description="Objectives tracked for completion (comma-separated)">
-        <Input
+      <Field
+        label="Objectives"
+        description="Post-conditions checked after the multistep. If they're already met when it starts, the multistep is skipped."
+      >
+        <ConditionChipsField
           value={objectives}
-          onChange={(e) => setObjectives(e.currentTarget.value)}
-          placeholder="e.g., opened-menu, selected-option"
+          onChange={setObjectives}
+          mode="objectives"
+          testId="multistep-block-objectives"
         />
       </Field>
+      <ConditionLintMessages
+        diagnostics={objectivesLint}
+        onApplyFix={fixObjectivesToken}
+        onRemoveToken={removeObjectivesToken}
+        testId="multistep-block-objectives-lint"
+      />
 
       {/* Skippable */}
       <Checkbox
