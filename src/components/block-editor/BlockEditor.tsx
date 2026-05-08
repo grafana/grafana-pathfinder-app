@@ -21,6 +21,7 @@ import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
 import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
 import { useGuideOperations } from './hooks/useGuideOperations';
 import { useBackendGuides } from './hooks/useBackendGuides';
+import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { BlockFormModal } from './BlockFormModal';
@@ -964,6 +965,12 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // instance id so reordering does not swap preview content. Legacy index-only pins may still
   // mis-associate until the user toggles preview again. Orphan entries are pruned on the next toggle.
 
+  // Track interactive progress for the full-guide preview so the header can render
+  // the "Reset guide" button instead of BlockPreview rendering it inside the
+  // content area (which would inject editor chrome into the rendered guide).
+  const previewProgressKey = `block-editor://preview/${state.guide.id}`;
+  const previewProgress = useGuidePreviewProgress(previewProgressKey);
+
   const handleTitleCommit = useCallback(
     (title: string) => {
       editor.updateGuideMetadata({ title });
@@ -1003,6 +1010,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         hasBlocks={hasBlocks}
         isSelectionMode={selection.isSelectionMode}
         onToggleSelectionMode={selection.toggleSelectionMode}
+        hasPreviewProgress={previewProgress.hasProgress}
+        onResetPreviewProgress={() => void previewProgress.reset()}
       />
 
       <BlockEditorContent

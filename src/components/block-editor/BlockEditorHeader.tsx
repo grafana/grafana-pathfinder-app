@@ -68,6 +68,13 @@ export interface BlockEditorHeaderProps {
   isSelectionMode: boolean;
   /** Toggle selection mode on/off */
   onToggleSelectionMode: () => void;
+  /**
+   * Preview-mode reset action. Provided by the parent so the header can render
+   * a "Reset guide" affordance in `viewMode === 'preview'` instead of having
+   * the BlockPreview content area render its own button.
+   */
+  hasPreviewProgress?: boolean;
+  onResetPreviewProgress?: () => void;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -190,6 +197,8 @@ export function BlockEditorHeader({
   hasBlocks,
   isSelectionMode,
   onToggleSelectionMode,
+  hasPreviewProgress = false,
+  onResetPreviewProgress,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -419,18 +428,26 @@ export function BlockEditorHeader({
           New / Library moved into the kebab menu; selection-mode
           trigger is a small icon button next to the view-mode toggle. */}
       <div className={styles.row}>
-        <div className={styles.titleArea}>
-          <input
-            ref={titleInputRef}
-            className={styles.guideTitleInput}
-            value={titleDraft}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={handleTitleKeyDown}
-            aria-label="Guide title"
-          />
-          {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
-        </div>
+        {/* In preview mode the rendered content already shows the guide title
+            as an <h1> (matching how it appears in production). Rendering the
+            editable title input here too would duplicate that heading, so we
+            collapse the title area to a flex spacer. */}
+        {viewMode === 'preview' ? (
+          <div className={styles.titleArea} aria-hidden="true" />
+        ) : (
+          <div className={styles.titleArea}>
+            <input
+              ref={titleInputRef}
+              className={styles.guideTitleInput}
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={handleTitleKeyDown}
+              aria-label="Guide title"
+            />
+            {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
+          </div>
+        )}
 
         <div className={styles.actions}>
           {/* Local-save indicator — subtle icon (replaces the green
@@ -456,6 +473,22 @@ export function BlockEditorHeader({
           {/* Backend publish status — kept as a Badge since the
               Draft/Published distinction is genuinely informative. */}
           {isBackendAvailable && backendBadge()}
+
+          {/* Preview-mode "Reset guide" trigger. Mirrors the affordance that
+              previously lived inside the preview content area, but lifted into
+              the header so the rendered guide stays free of editor chrome. */}
+          {viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="history-alt"
+              onClick={onResetPreviewProgress}
+              tooltip="Resets all interactive steps"
+              data-testid={testIds.blockEditor.previewResetButton}
+            >
+              Reset guide
+            </Button>
+          )}
 
           {/* Selection-mode trigger — only meaningful in edit mode
               with at least one block. The preceding divider exists
