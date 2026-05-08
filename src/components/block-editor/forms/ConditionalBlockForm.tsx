@@ -7,12 +7,18 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, TextArea, Badge, useStyles2, RadioButtonGroup } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, RadioButtonGroup } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { BranchBlocksEditor } from './BranchBlocksEditor';
+import { ConditionChipsField } from './ConditionChipsField';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type {
@@ -216,13 +222,41 @@ export function ConditionalBlockForm({
     [buildBlock, onSubmit]
   );
 
-  const handleConditionClick = useCallback((condition: string) => {
-    setConditions((prev) => {
-      if (prev.includes(condition)) {
-        return prev;
-      }
-      return prev ? `${prev}, ${condition}` : condition;
-    });
+  const conditionsLint = useFieldLint(conditions);
+  const whenTrueRequirementsLint = useFieldLint(whenTrueRequirements);
+  const whenTrueObjectivesLint = useFieldLint(whenTrueObjectives);
+  const whenFalseRequirementsLint = useFieldLint(whenFalseRequirements);
+  const whenFalseObjectivesLint = useFieldLint(whenFalseObjectives);
+
+  const fixConditionsToken = useCallback((bad: string, good: string) => {
+    setConditions((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenTrueRequirementsToken = useCallback((bad: string, good: string) => {
+    setWhenTrueRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenTrueObjectivesToken = useCallback((bad: string, good: string) => {
+    setWhenTrueObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenFalseRequirementsToken = useCallback((bad: string, good: string) => {
+    setWhenFalseRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixWhenFalseObjectivesToken = useCallback((bad: string, good: string) => {
+    setWhenFalseObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const removeConditionsToken = useCallback((bad: string) => {
+    setConditions((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenTrueRequirementsToken = useCallback((bad: string) => {
+    setWhenTrueRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenTrueObjectivesToken = useCallback((bad: string) => {
+    setWhenTrueObjectives((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenFalseRequirementsToken = useCallback((bad: string) => {
+    setWhenFalseRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeWhenFalseObjectivesToken = useCallback((bad: string) => {
+    setWhenFalseObjectives((prev) => removeTokenFromConditionField(prev, bad));
   }, []);
 
   // Parse conditions to check validity
@@ -234,31 +268,22 @@ export function ConditionalBlockForm({
       {/* Conditions */}
       <Field
         label="Conditions"
-        description="Conditions that determine which branch to show (comma-separated). All conditions must pass to show the 'true' branch."
+        description="Conditions that determine which branch to show. All conditions must pass to show the 'true' branch."
         required
       >
-        <TextArea
+        <ConditionChipsField
           value={conditions}
-          onChange={(e) => setConditions(e.currentTarget.value)}
-          placeholder="e.g., has-datasource:prometheus, on-page:/connections"
-          rows={2}
-          autoFocus
+          onChange={setConditions}
+          mode="conditions"
+          testId="conditional-block-conditions"
         />
       </Field>
-      <div className={styles.requirementsContainer}>
-        <span className={styles.requirementsLabel}>Quick add:</span>
-        <div className={styles.requirementsChips}>
-          {COMMON_REQUIREMENTS.map((req) => (
-            <Badge
-              key={req}
-              text={req}
-              color="blue"
-              className={styles.requirementChip}
-              onClick={() => handleConditionClick(req)}
-            />
-          ))}
-        </div>
-      </div>
+      <ConditionLintMessages
+        diagnostics={conditionsLint}
+        onApplyFix={fixConditionsToken}
+        onRemoveToken={removeConditionsToken}
+        testId="conditional-block-conditions-lint"
+      />
 
       {/* Description (optional, for authors only) */}
       <Field label="Description" description="Optional note for authors (not shown to users)">
@@ -345,22 +370,34 @@ export function ConditionalBlockForm({
                     placeholder="e.g., Configure Prometheus"
                   />
                 </Field>
-                <Field label="Requirements" description="Prerequisites for this section (comma-separated)">
-                  <TextArea
+                <Field label="Requirements" description="Prerequisites for this section">
+                  <ConditionChipsField
                     value={whenTrueRequirements}
-                    onChange={(e) => setWhenTrueRequirements(e.currentTarget.value)}
-                    placeholder="e.g., on-page:/datasources/prometheus"
-                    rows={2}
+                    onChange={setWhenTrueRequirements}
+                    mode="requirements"
+                    testId="conditional-block-whenTrue-requirements"
                   />
                 </Field>
-                <Field label="Objectives" description="Completion goals for this section (comma-separated)">
-                  <TextArea
+                <ConditionLintMessages
+                  diagnostics={whenTrueRequirementsLint}
+                  onApplyFix={fixWhenTrueRequirementsToken}
+                  onRemoveToken={removeWhenTrueRequirementsToken}
+                  testId="conditional-block-whenTrue-requirements-lint"
+                />
+                <Field label="Objectives" description="Completion goals for this section">
+                  <ConditionChipsField
                     value={whenTrueObjectives}
-                    onChange={(e) => setWhenTrueObjectives(e.currentTarget.value)}
-                    placeholder="e.g., prometheus-configured"
-                    rows={2}
+                    onChange={setWhenTrueObjectives}
+                    mode="objectives"
+                    testId="conditional-block-whenTrue-objectives"
                   />
                 </Field>
+                <ConditionLintMessages
+                  diagnostics={whenTrueObjectivesLint}
+                  onApplyFix={fixWhenTrueObjectivesToken}
+                  onRemoveToken={removeWhenTrueObjectivesToken}
+                  testId="conditional-block-whenTrue-objectives-lint"
+                />
               </div>
             )}
           </div>
@@ -388,22 +425,34 @@ export function ConditionalBlockForm({
                     placeholder="e.g., Install Prometheus"
                   />
                 </Field>
-                <Field label="Requirements" description="Prerequisites for this section (comma-separated)">
-                  <TextArea
+                <Field label="Requirements" description="Prerequisites for this section">
+                  <ConditionChipsField
                     value={whenFalseRequirements}
-                    onChange={(e) => setWhenFalseRequirements(e.currentTarget.value)}
-                    placeholder="e.g., on-page:/connections"
-                    rows={2}
+                    onChange={setWhenFalseRequirements}
+                    mode="requirements"
+                    testId="conditional-block-whenFalse-requirements"
                   />
                 </Field>
-                <Field label="Objectives" description="Completion goals for this section (comma-separated)">
-                  <TextArea
+                <ConditionLintMessages
+                  diagnostics={whenFalseRequirementsLint}
+                  onApplyFix={fixWhenFalseRequirementsToken}
+                  onRemoveToken={removeWhenFalseRequirementsToken}
+                  testId="conditional-block-whenFalse-requirements-lint"
+                />
+                <Field label="Objectives" description="Completion goals for this section">
+                  <ConditionChipsField
                     value={whenFalseObjectives}
-                    onChange={(e) => setWhenFalseObjectives(e.currentTarget.value)}
-                    placeholder="e.g., has-datasource:prometheus"
-                    rows={2}
+                    onChange={setWhenFalseObjectives}
+                    mode="objectives"
+                    testId="conditional-block-whenFalse-objectives"
                   />
                 </Field>
+                <ConditionLintMessages
+                  diagnostics={whenFalseObjectivesLint}
+                  onApplyFix={fixWhenFalseObjectivesToken}
+                  onRemoveToken={removeWhenFalseObjectivesToken}
+                  testId="conditional-block-whenFalse-objectives-lint"
+                />
               </div>
             )}
           </div>

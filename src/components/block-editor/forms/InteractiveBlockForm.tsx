@@ -12,7 +12,6 @@ import {
   TextArea,
   Combobox,
   Checkbox,
-  Badge,
   useStyles2,
   Stack,
   Switch,
@@ -20,9 +19,16 @@ import {
 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
+import { ConditionChipsField } from './ConditionChipsField';
+import { SuggestedRequirementsRow } from './SuggestedRequirementsRow';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import { testIds } from '../../../constants/testIds';
 import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
@@ -223,13 +229,29 @@ export function InteractiveBlockForm({
     [reftarget, targetvalue]
   );
 
-  const handleRequirementClick = useCallback((req: string) => {
-    setRequirements((prev) => {
-      if (prev.includes(req)) {
-        return prev;
-      }
-      return prev ? `${prev}, ${req}` : req;
-    });
+  // Real-time lint for the three condition-grammar fields. Debounced inside
+  // the hook so per-keystroke cost is just one synchronous tokenizer pass.
+  const requirementsLint = useFieldLint(requirements);
+  const objectivesLint = useFieldLint(objectives);
+  const verifyLint = useFieldLint(verify);
+
+  const fixRequirementsToken = useCallback((bad: string, good: string) => {
+    setRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixObjectivesToken = useCallback((bad: string, good: string) => {
+    setObjectives((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixVerifyToken = useCallback((bad: string, good: string) => {
+    setVerify((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const removeRequirementsToken = useCallback((bad: string) => {
+    setRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeObjectivesToken = useCallback((bad: string) => {
+    setObjectives((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeVerifyToken = useCallback((bad: string) => {
+    setVerify((prev) => removeTokenFromConditionField(prev, bad));
   }, []);
 
   // Swap an alternative selector into the primary reftarget position
@@ -455,29 +477,30 @@ export function InteractiveBlockForm({
 
       {/* Requirements - hidden for noop actions */}
       {!isNoop && (
-        <>
-          <Field label="Requirements" description="Conditions that must be met (comma-separated)">
-            <Input
-              value={requirements}
-              onChange={(e) => setRequirements(e.currentTarget.value)}
-              placeholder="e.g., exists-reftarget, on-page:/dashboards"
-            />
-          </Field>
-          <div className={styles.requirementsContainer}>
-            <span className={styles.requirementsLabel}>Quick add:</span>
-            <div className={styles.requirementsChips}>
-              {COMMON_REQUIREMENTS.map((req) => (
-                <Badge
-                  key={req}
-                  text={req}
-                  color="blue"
-                  className={styles.requirementChip}
-                  onClick={() => handleRequirementClick(req)}
-                />
-              ))}
-            </div>
-          </div>
-        </>
+        <Field label="Requirements" description="Conditions that must be met before this step runs">
+          <ConditionChipsField
+            value={requirements}
+            onChange={setRequirements}
+            mode="requirements"
+            testId="interactive-block-requirements"
+          />
+        </Field>
+      )}
+      {!isNoop && (
+        <ConditionLintMessages
+          diagnostics={requirementsLint}
+          onApplyFix={fixRequirementsToken}
+          onRemoveToken={removeRequirementsToken}
+          testId="interactive-block-requirements-lint"
+        />
+      )}
+      {!isNoop && (
+        <SuggestedRequirementsRow
+          action={action}
+          reftarget={reftarget}
+          requirements={requirements}
+          onApply={setRequirements}
+        />
       )}
 
       {/* Button Visibility - hidden for noop actions */}
@@ -587,15 +610,31 @@ export function InteractiveBlockForm({
               placeholder="e.g., on-page:/dashboards"
             />
           </Field>
+          <ConditionLintMessages
+            diagnostics={verifyLint}
+            onApplyFix={fixVerifyToken}
+            onRemoveToken={removeVerifyToken}
+            testId="interactive-block-verify-lint"
+          />
 
           {/* Objectives (optional) */}
-          <Field label="Objectives" description="Objectives tracked for completion (comma-separated)">
-            <Input
+          <Field
+            label="Objectives"
+            description="Post-conditions checked after this step. If they're already met when the step starts, the step is skipped — useful for destructive actions and idempotent operations."
+          >
+            <ConditionChipsField
               value={objectives}
-              onChange={(e) => setObjectives(e.currentTarget.value)}
-              placeholder="e.g., created-dashboard, saved-changes"
+              onChange={setObjectives}
+              mode="objectives"
+              testId="interactive-block-objectives"
             />
           </Field>
+          <ConditionLintMessages
+            diagnostics={objectivesLint}
+            onApplyFix={fixObjectivesToken}
+            onRemoveToken={removeObjectivesToken}
+            testId="interactive-block-objectives-lint"
+          />
         </>
       )}
 

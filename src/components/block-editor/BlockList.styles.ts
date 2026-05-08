@@ -14,8 +14,10 @@ import { GrafanaTheme2 } from '@grafana/data';
  */
 export const getNestedStyles = (theme: GrafanaTheme2) => ({
   nestedContainer: css({
-    marginLeft: theme.spacing(3),
-    paddingLeft: theme.spacing(2),
+    // Sidebar-tight indent: drop the 24px marginLeft, keep a slim
+    // border-left as the only nesting indicator (10px paddingLeft).
+    marginLeft: 0,
+    paddingLeft: theme.spacing(1.25),
     borderLeft: `3px solid ${theme.colors.primary.border}`,
     marginTop: theme.spacing(0.5),
     marginBottom: theme.spacing(0.5),
@@ -32,20 +34,26 @@ export const getNestedStyles = (theme: GrafanaTheme2) => ({
     opacity: 0,
     overflow: 'hidden',
   }),
+  // Inline "+ Add block" affordance for sections / conditional
+  // branches. Matches the height of block cards (40px) so the rhythm
+  // of the list stays consistent. Brightens to full strength on hover
+  // or while dragging (`dropZoneActive`).
   dropZone: css({
-    minHeight: '56px',
-    border: `2px dashed ${theme.colors.border.medium}`,
+    minHeight: '40px',
+    border: `1px dashed ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: 'transparent',
     color: theme.colors.text.secondary,
+    opacity: 0.6,
     transition: 'all 0.2s ease',
     cursor: 'pointer',
-    marginTop: theme.spacing(1),
+    marginTop: theme.spacing(0.25),
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
 
     '&:hover': {
+      opacity: 1,
       borderColor: theme.colors.primary.border,
       backgroundColor: theme.colors.action.hover,
       color: theme.colors.text.primary,
@@ -58,6 +66,7 @@ export const getNestedStyles = (theme: GrafanaTheme2) => ({
     minHeight: '60px',
     border: `3px solid ${theme.colors.primary.main}`,
     boxShadow: `0 0 12px ${theme.colors.primary.transparent}`,
+    opacity: 1,
   }),
   nestedBlockItem: css({
     marginBottom: theme.spacing(1),
@@ -95,7 +104,8 @@ export const getNestedStyles = (theme: GrafanaTheme2) => ({
  */
 export const getConditionalStyles = (theme: GrafanaTheme2) => ({
   conditionalContainer: css({
-    marginLeft: theme.spacing(3),
+    // Match nested section indent: dropped 24px marginLeft.
+    marginLeft: 0,
     marginTop: theme.spacing(0.5),
     marginBottom: theme.spacing(0.5),
     overflow: 'hidden',
@@ -116,12 +126,12 @@ export const getConditionalStyles = (theme: GrafanaTheme2) => ({
   trueBranch: css({
     borderLeft: `3px solid ${theme.colors.success.border}`,
     backgroundColor: theme.isDark ? 'rgba(34, 166, 113, 0.05)' : 'rgba(34, 166, 113, 0.03)',
-    paddingLeft: theme.spacing(2),
+    paddingLeft: theme.spacing(1.25),
   }),
   falseBranch: css({
     borderLeft: `3px solid ${theme.colors.warning.border}`,
     backgroundColor: theme.isDark ? 'rgba(255, 152, 48, 0.05)' : 'rgba(255, 152, 48, 0.03)',
-    paddingLeft: theme.spacing(2),
+    paddingLeft: theme.spacing(1.25),
   }),
   branchHeader: css({
     display: 'flex',
@@ -178,55 +188,65 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1.5),
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(0.75),
     backgroundColor: theme.colors.background.primary,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
     transition: 'all 0.15s ease',
-    minHeight: '52px',
+    minHeight: '40px',
 
     '&:hover': {
       borderColor: theme.colors.border.medium,
       boxShadow: theme.shadows.z1,
     },
+    // Mirror BlockItem: hover/focus reveals drag handle and secondary
+    // actions via data-attribute selectors.
+    '&:hover [data-drag-handle], &:focus-within [data-drag-handle]': {
+      opacity: 1,
+    },
+    '&:hover [data-secondary-actions], &:focus-within [data-secondary-actions]': {
+      opacity: 1,
+      pointerEvents: 'auto',
+    },
   }),
+  // Nested blocks live inside `nestedContainer` which has
+  // `overflow: hidden` (required for the section's collapse animation).
+  // Outset shadows would get clipped on the top of the first child and
+  // the right edge of every child, so all selection / drop / modified
+  // emphasis is drawn with INSET shadows here.
   selectedContainer: css({
     borderColor: theme.colors.primary.border,
     backgroundColor: theme.colors.primary.transparent,
-    boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
+    boxShadow: `inset 0 0 0 1px ${theme.colors.primary.border}`,
   }),
   // Just-dropped highlight animation
   justDroppedContainer: css({
-    animation: 'dropHighlight 1.5s ease-out',
-    '@keyframes dropHighlight': {
+    animation: 'dropHighlightNested 1.5s ease-out',
+    '@keyframes dropHighlightNested': {
       '0%': {
         borderColor: theme.colors.primary.main,
-        boxShadow: `0 0 0 3px ${theme.colors.primary.transparent}, 0 0 8px ${theme.colors.primary.main}`,
+        boxShadow: `inset 0 0 0 3px ${theme.colors.primary.transparent}`,
       },
       '100%': {
         borderColor: theme.colors.border.weak,
-        boxShadow: 'none',
+        boxShadow: 'inset 0 0 0 0 transparent',
       },
     },
   }),
   // Persistent highlight for the last modified block
   lastModifiedContainer: css({
     borderColor: theme.colors.warning.border,
-    boxShadow: `0 0 0 2px ${theme.colors.warning.transparent}`,
+    boxShadow: `inset 0 0 0 2px ${theme.colors.warning.transparent}`,
   }),
-  // Block sequence number badge
+  // Block sequence number — matches BlockItem's borderless quiet style.
   blockNumber: css({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: '20px',
-    height: '20px',
-    padding: `0 ${theme.spacing(0.5)}`,
-    borderRadius: '10px',
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    fontSize: theme.typography.bodySmall.fontSize,
+    minWidth: '16px',
+    height: '16px',
+    fontSize: '11px',
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.secondary,
     flexShrink: 0,
@@ -244,8 +264,10 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '24px',
+    width: '16px',
     color: theme.colors.text.disabled,
+    opacity: 0.4,
+    transition: 'opacity 0.15s ease',
     flexShrink: 0,
     pointerEvents: 'none', // Don't block drag events - parent handles dragging
   }),
@@ -253,44 +275,59 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     minWidth: 0,
     display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.5),
+    alignItems: 'center',
   }),
+  // Single inline row mirroring BlockItem.header.
   header: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
+    gap: theme.spacing(0.75),
+    minWidth: 0,
+    flex: 1,
   }),
   icon: css({
     fontSize: '16px',
     flexShrink: 0,
   }),
-  preview: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
+  sectionTitle: css({
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    maxWidth: '100%',
+    minWidth: 0,
+    flex: 1,
+  }),
+  headlinePreview: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
     fontFamily: theme.typography.fontFamilyMonospace,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    flex: 1,
   }),
   actions: css({
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: theme.spacing(1.5),
+    gap: theme.spacing(0.25),
     flexShrink: 0,
-    padding: theme.spacing(0.5),
   }),
   actionGroup: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.5),
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
+    gap: theme.spacing(0.25),
+  }),
+  secondaryActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.25),
+    opacity: 0,
+    pointerEvents: 'none',
+    transition: 'opacity 0.15s ease',
   }),
   actionButton: css({
     opacity: 0.7,

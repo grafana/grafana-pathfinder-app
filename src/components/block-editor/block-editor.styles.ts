@@ -15,7 +15,10 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: theme.colors.background.primary,
-    // No height constraint or overflow - let parent scroll container handle scrolling
+    // Fill the scrolling parent so the status bar (at the column's
+    // bottom) sits at the visible bottom of the editor; longer guides
+    // grow the column and trigger the parent's scroll.
+    minHeight: '100%',
   }),
 
   // Header with title and controls - sticky so it stays visible when scrolling
@@ -62,11 +65,11 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'nowrap',
   }),
 
-  // Main content area
+  // Main content area. Sizes to its blocks so the "Add Block" footer
+  // sits directly underneath them; leftover column space is absorbed by
+  // the HealthStatusBar's `marginTop: auto`.
   content: css({
-    flex: 1,
-    minHeight: 0,
-    padding: theme.spacing(2),
+    padding: theme.spacing(1),
   }),
 
   // Empty state
@@ -101,16 +104,18 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.secondary,
   }),
 
-  // Footer with add block button - entire area is clickable
+  // Footer "+ Add block" — the primary entry point. Matches the height
+  // of block cards and inline section "+ Add block" zones for a
+  // consistent vertical rhythm down the list.
   footer: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: theme.spacing(2),
-    minHeight: '56px',
-    border: `2px dashed ${theme.colors.border.medium}`,
+    margin: `${theme.spacing(0.25)} ${theme.spacing(1)} ${theme.spacing(1)}`,
+    minHeight: '40px',
+    border: `1px dashed ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: 'transparent',
     color: theme.colors.text.secondary,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -234,7 +239,7 @@ export const getBlockListStyles = (theme: GrafanaTheme2) => ({
   list: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(0.5), // Tighter gap between blocks
+    gap: theme.spacing(0.25), // Compact: 2px between blocks
   }),
 
   insertZone: css({
@@ -272,8 +277,8 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     alignItems: 'stretch',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1),
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(0.75),
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.primary,
@@ -284,34 +289,45 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
       borderColor: theme.colors.border.medium,
       boxShadow: theme.shadows.z1,
     },
+    // Reveal hover-revealed affordances when the row is hovered or
+    // contains keyboard focus.
+    '&:hover [data-drag-handle], &:focus-within [data-drag-handle]': {
+      opacity: 1,
+    },
+    '&:hover [data-secondary-actions], &:focus-within [data-secondary-actions]': {
+      opacity: 1,
+      pointerEvents: 'auto',
+    },
   }),
 
   dragHandle: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '24px',
+    width: '16px',
     color: theme.colors.text.disabled,
+    opacity: 0.4,
+    transition: 'opacity 0.15s ease',
     flexShrink: 0,
     pointerEvents: 'none', // Visual indicator only - parent handles dragging
-
-    '&:hover': {
-      color: theme.colors.text.secondary,
-    },
   }),
 
   content: css({
     flex: 1,
     minWidth: 0,
     display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.5),
+    alignItems: 'center',
   }),
 
+  // Single inline row: number + icon + type badge + (section title OR
+  // preview) + any block-type-specific badges. The preview/title gets
+  // `flex: 1; min-width: 0` so it ellipsises when the row is narrow.
   header: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
+    gap: theme.spacing(0.75),
+    minWidth: 0,
+    flex: 1,
   }),
 
   typeIcon: css({
@@ -323,14 +339,28 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     // No color override - let Badge component control colors for vibrancy
   }),
 
-  preview: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
+  // Section title — primary-weight text, ellipsised.
+  sectionTitle: css({
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    maxWidth: '100%',
+    minWidth: 0,
+    flex: 1,
+  }),
+
+  // Inline preview text replacing the old separate preview row.
+  // Monospace, secondary, ellipsised so long previews collapse cleanly.
+  headlinePreview: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
     fontFamily: theme.typography.fontFamilyMonospace,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    flex: 1,
   }),
 
   actions: css({
@@ -338,19 +368,28 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: theme.spacing(1.5),
+    gap: theme.spacing(0.25),
     flexShrink: 0,
-    padding: theme.spacing(0.5),
   }),
 
+  // The "Edit" button always sits inline; secondary actions live in a
+  // separate hover-revealed group (see `secondaryActions`).
   actionGroup: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.5),
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
+    gap: theme.spacing(0.25),
+  }),
+
+  // Hover-revealed bucket for eye / copy / delete / record. Targeted
+  // by the parent container's `:hover` and `:focus-within` selectors
+  // via the `data-secondary-actions` attribute.
+  secondaryActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.25),
+    opacity: 0,
+    pointerEvents: 'none',
+    transition: 'opacity 0.15s ease',
   }),
 
   actionButton: css({
@@ -467,18 +506,15 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     boxShadow: `0 0 0 2px ${theme.colors.warning.transparent}`,
   }),
 
-  // Block sequence number badge
+  // Block sequence number — borderless, monospace, dim. Replaces the
+  // 20px chip with a quieter inline indicator.
   blockNumber: css({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: '20px',
-    height: '20px',
-    padding: `0 ${theme.spacing(0.5)}`,
-    borderRadius: '10px',
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    fontSize: theme.typography.bodySmall.fontSize,
+    minWidth: '16px',
+    height: '16px',
+    fontSize: '11px',
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.secondary,
     flexShrink: 0,

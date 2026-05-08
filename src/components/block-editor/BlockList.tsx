@@ -679,6 +679,21 @@ export function BlockList({
                 )
                 .filter((nestedIndex): nestedIndex is number => nestedIndex !== null)
             );
+            // Map of nestedIndex → preview guide, so SectionNestedBlocks
+            // can render each nested-block preview inline directly after
+            // its owning block (rather than dumping all of them at the
+            // end of the section).
+            const nestedPreviewByIndex = new Map<number, JsonGuide>();
+            pinnedPreviews.forEach((preview) => {
+              if (
+                preview.target.type === 'section' &&
+                preview.target.sectionId === block.id &&
+                preview.target.source === 'nested' &&
+                typeof preview.target.nestedIndex === 'number'
+              ) {
+                nestedPreviewByIndex.set(preview.target.nestedIndex, preview.guide);
+              }
+            });
             const sectionBlocks: JsonBlock[] = isSection ? (block.block as JsonSectionBlock).blocks : [];
             const conditionalChildCount = isConditional
               ? (block.block as JsonConditionalBlock).whenTrue.length +
@@ -695,6 +710,7 @@ export function BlockList({
                     index,
                   }}
                   disabled={isSelectionMode}
+                  path={['blocks', index]}
                 >
                   <BlockItem
                     block={block}
@@ -734,6 +750,7 @@ export function BlockList({
                 {isConditional && (
                   <ConditionalBranches
                     block={block}
+                    parentIndex={index}
                     isCollapsed={collapsedSections.has(block.id)}
                     conditionalStyles={conditionalStyles}
                     nestedStyles={nestedStyles}
@@ -766,6 +783,7 @@ export function BlockList({
                 {isSection && (
                   <SectionNestedBlocks
                     block={block}
+                    parentIndex={index}
                     sectionBlocks={sectionBlocks}
                     isCollapsed={collapsedSections.has(block.id)}
                     nestedStyles={nestedStyles}
@@ -792,18 +810,29 @@ export function BlockList({
                     onPreviewSection={onNestedSectionBlockPreview}
                     canPreviewBlockType={canPreviewBlockType}
                     pinnedNestedIndices={pinnedNestedIndices}
+                    nestedPreviews={nestedPreviewByIndex}
+                    previewClasses={previewClasses}
                   />
                 )}
 
+                {/* Render only root-block and whole-section previews
+                    here. Per-nested-block previews now render inline
+                    inside SectionNestedBlocks above. */}
                 {previewClasses &&
-                  previewsForBlock.map((preview) => {
-                    const showPreviewTitle = preview.target.type === 'section' && preview.target.source === 'root';
-                    return (
-                      <div key={previewKey(preview.target)} className={previewClasses.container}>
-                        <BlockPreview guide={preview.guide} showTitle={showPreviewTitle} />
-                      </div>
-                    );
-                  })}
+                  previewsForBlock
+                    .filter(
+                      (preview) =>
+                        preview.target.type === 'root' ||
+                        (preview.target.type === 'section' && preview.target.source === 'root')
+                    )
+                    .map((preview) => {
+                      const showPreviewTitle = preview.target.type === 'section' && preview.target.source === 'root';
+                      return (
+                        <div key={previewKey(preview.target)} className={previewClasses.container}>
+                          <BlockPreview guide={preview.guide} showTitle={showPreviewTitle} />
+                        </div>
+                      );
+                    })}
 
                 {activeId !== null && !isRootZoneRedundant(index + 1) && (
                   <DroppableInsertZone

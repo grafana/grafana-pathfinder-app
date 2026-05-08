@@ -97,6 +97,47 @@ export const PARAMETERIZED_REQUIREMENT_EXAMPLES: ReadonlyArray<{ prefix: string;
 ]);
 
 /**
+ * Plain-language one-liner per requirement type / parameterized prefix,
+ * suitable for tooltips in authoring tools (CLI help text, MCP help, the
+ * block editor's chip picker). Keep the wording short — these surface in
+ * tight UI surfaces.
+ *
+ * Keys are the canonical token strings: fixed types are the literal token
+ * (`'exists-reftarget'`), parameterized types are the prefix including the
+ * trailing `:` or `-` (`'on-page:'`, `'var-'`).
+ *
+ * Centralizing here means CLI / MCP / editor never disagree about what a
+ * given requirement does.
+ */
+export const REQUIREMENT_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze({
+  // Fixed types
+  'exists-reftarget': 'The target element must be present in the DOM',
+  'navmenu-open': "Grafana's left navigation menu must be open and docked",
+  'has-datasources': 'At least one data source must be configured',
+  'is-admin': 'Current user must have Grafana admin privileges',
+  'is-logged-in': 'Current user must be authenticated',
+  'is-editor': 'Current user must have editor role or higher',
+  'dashboard-exists': 'At least one dashboard must exist',
+  'form-valid': 'All required form fields must be filled correctly',
+  'is-terminal-active': 'A terminal session must be active',
+  // Parameterized prefixes
+  'has-permission:': 'User has a specific Grafana permission (e.g. has-permission:dashboards:write)',
+  'has-role:': 'User has a specific org role (e.g. has-role:editor)',
+  'has-datasource:': 'A data source matching the given name or type exists (e.g. has-datasource:prometheus)',
+  'datasource-configured:': 'A data source matching the given name is configured and tested',
+  'has-plugin:': 'A plugin with the given ID is installed (e.g. has-plugin:grafana-clock-panel)',
+  'plugin-enabled:': 'A plugin with the given ID is installed and enabled',
+  'has-dashboard-named:': 'A dashboard with the exact title (case-insensitive) exists',
+  'on-page:': 'Current URL path matches the given value (e.g. on-page:/explore)',
+  'has-feature:': 'A Grafana feature toggle is enabled (e.g. has-feature:publicDashboards)',
+  'in-environment:': 'Running in a specific environment (e.g. in-environment:cloud)',
+  'min-version:': 'Grafana version is at least the given semver (e.g. min-version:11.0.0)',
+  'section-completed:': 'A previous tutorial section is marked complete (e.g. section-completed:setup)',
+  'var-': 'A guide variable matches an expected value (e.g. var-policyAccepted:true)',
+  'renderer:': 'Renderer context matches (e.g. renderer:pathfinder)',
+});
+
+/**
  * Levenshtein distance, capped at `max` for early-exit.
  */
 function levenshteinDistance(a: string, b: string, max = 3): number {
