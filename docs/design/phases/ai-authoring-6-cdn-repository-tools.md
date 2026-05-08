@@ -49,7 +49,7 @@
 
 - [x] All four tools callable against the default CDN with no configuration (covered by integration tests using mocked `fetch`).
 - [x] `PATHFINDER_REPOSITORY_URL` overrides the default end-to-end (test: "honors the PATHFINDER_REPOSITORY_URL override end-to-end").
-- [x] `pathfinder_launch_package` returns a `launchPath` that opens the targeted CDN guide when appended to a Grafana instance origin (URL shape verified; runs through the existing `?doc=<cdn-url>` path in `src/utils/find-doc-page.ts:60-86` which is unchanged by this phase).
+- [~] `pathfinder_launch_package` returns a `launchPath` that **resolves to the Pathfinder plugin** when appended to a Grafana instance origin (URL shape verified). However, the URL does not currently load the targeted CDN guide as an interactive tutorial — partial. Tracked as [#855](https://github.com/grafana/grafana-pathfinder-app/issues/855); see Deviations below.
 - [x] Schema drift in CDN-hosted manifest does not hard-fail `pathfinder_get_package` or `pathfinder_get_manifest` — raw JSON returned alongside `validation.issues`.
 - [x] `pkg/plugin/mcp.go` unchanged from `main`.
 
@@ -82,7 +82,13 @@
 
 ## Deviations
 
-_None._
+### 2026-05-08 — `pathfinder_launch_package` ships partial
+
+- **What was planned:** four fully-functional read-only tools, with `pathfinder_launch_package` returning a deep link that opens the targeted CDN guide as an interactive tutorial in Pathfinder.
+- **What changed:** the URL the tool constructs is correct in shape (matches the path `src/utils/find-doc-page.ts:60-86` already anticipates) and resolves to the Pathfinder plugin, but the targeted CDN guide does **not** currently load as an interactive tutorial — Pathfinder opens to a generic docs view instead. The bug is in `handleAutoLaunchTutorial` (`src/components/docs-panel/docs-panel.tsx:1484-1522`), which routes `type: 'interactive'` URLs to `model.openDocsPage(url, title, { source })` without the `packageInfo` argument the recommendations panel passes. Without `packageInfo`, the content pipeline falls through to generic `fetchContent` instead of `fetchPackageContent`, and the package-aware interactive scaffolding never engages.
+- **Reason:** P6 was scoped as additive to the TS MCP only — `pkg/plugin/mcp.go` and the Pathfinder app-side code were both explicitly out of scope. The fix lives on the app side, so it cannot ship in P6 without expanding scope. Two of three other P6 tools (`pathfinder_get_package`, `pathfinder_get_manifest`) cover the inspection use case; `pathfinder_list_packages` covers discovery. The launch tool ships marked partial rather than dropped because (a) its URL is correct and resolves to the plugin, (b) clients can still share the link as a "click here to see this guide in your Grafana" affordance even if interactive launch is not yet wired, and (c) the contract — request shape, response shape — is what we want long-term, so dropping and re-adding the tool would be churn.
+- **Mitigation:** every success response includes a `warning: { status: "partial", message, tracking }` field pointing at [#855](https://github.com/grafana/grafana-pathfinder-app/issues/855). The tool description and the `MCP_SERVER.md` table both flag the partial status. A focused unit test (`repository-tools.test.ts` — "always surfaces a partial-status warning with a tracking link on success") asserts the warning is present so a future fix that removes it must do so deliberately.
+- **Propagation:** issue #855 filed with full diagnosis, repro, proposed fix (estimated ~30 lines in `docs-panel.tsx` plus a test), and links back to PR #844 and this phase plan. Re-reviewed when the app-side fix PR opens.
 
 ---
 

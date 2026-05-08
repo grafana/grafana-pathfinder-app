@@ -131,12 +131,18 @@ function registerGetManifest(server: McpServer): void {
   );
 }
 
+// URL of the open issue tracking the partial-tool status. Surfaced to the
+// agent on every launch response so the limitation cannot be missed.
+const LAUNCH_PACKAGE_BUG_URL = 'https://github.com/grafana/grafana-pathfinder-app/issues/855';
+
 function registerLaunchPackage(server: McpServer): void {
   server.registerTool(
     'pathfinder_launch_package',
     {
       description:
-        "Construct a deep link that opens a CDN-hosted package in the Pathfinder viewer. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname; return launchPath to the user as-is and let them combine it with their instance.",
+        'PARTIAL — see ' +
+        LAUNCH_PACKAGE_BUG_URL +
+        ". Constructs a Pathfinder deep-link URL for a CDN-hosted package. The URL shape is correct and resolves to the Pathfinder plugin, but the targeted CDN guide does NOT currently load as an interactive tutorial — it opens to a generic docs view. The bug is in the app-side auto-launch handler, not in this tool. Until that fix lands, prefer pathfinder_get_package or pathfinder_get_manifest for inspecting CDN content; only call this tool when you specifically need the URL shape (e.g., to share a link in a chat) and warn the user about the limitation. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname.",
       inputSchema: {
         id: z.string().min(1).describe('Package id (kebab-case).'),
         instanceUrl: z
@@ -176,6 +182,12 @@ function registerLaunchPackage(server: McpServer): void {
         type: found.entry.type,
         cdnContentUrl,
         launchPath,
+        warning: {
+          status: 'partial',
+          message:
+            'The launchPath/launchUrl resolves to the Pathfinder plugin but does NOT currently load the targeted CDN guide as an interactive tutorial — it opens to a generic docs view. This is an app-side bug being tracked separately. When surfacing this URL to a user, include a heads-up that the interactive launch is not yet wired up for CDN packages. For inspecting content, prefer pathfinder_get_package or pathfinder_get_manifest.',
+          tracking: LAUNCH_PACKAGE_BUG_URL,
+        },
       };
       if (typeof instanceUrl === 'string' && instanceUrl.trim() !== '') {
         const trimmed = instanceUrl.trim().replace(/\/+$/, '');

@@ -261,4 +261,14 @@ describe('pathfinder_launch_package', () => {
     expect(payload.status).toBe('error');
     expect(payload.code).toBe('NOT_FOUND');
   });
+
+  it('always surfaces a partial-status warning with a tracking link on success', async () => {
+    mockFetchJsonOnce(sampleIndex);
+    const payload = await callTool('pathfinder_launch_package', { id: 'business-value' });
+    const warning = payload.warning as { status: string; message: string; tracking: string };
+    expect(warning).toBeDefined();
+    expect(warning.status).toBe('partial');
+    expect(warning.message).toMatch(/does NOT currently load|generic docs view/i);
+    expect(warning.tracking).toBe('https://github.com/grafana/grafana-pathfinder-app/issues/855');
+  });
 });
