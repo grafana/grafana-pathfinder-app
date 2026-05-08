@@ -506,7 +506,7 @@ export function BlockEditorHeader({
           <Button
             variant="secondary"
             size="sm"
-            icon={panelMode === 'sidebar' ? 'corner-up-right' : 'arrow-to-right'}
+            icon={panelMode === 'sidebar' ? 'corner-up-right' : 'corner-down-right'}
             onClick={handleTogglePanelMode}
             tooltip={
               panelMode === 'sidebar'
