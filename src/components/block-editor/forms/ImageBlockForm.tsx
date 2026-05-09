@@ -76,6 +76,7 @@ export function ImageBlockForm({
   const [alt, setAlt] = useState(initial?.alt ?? '');
   const [width, setWidth] = useState(initial?.width?.toString() ?? '');
   const [height, setHeight] = useState(initial?.height?.toString() ?? '');
+  const [urlError, setUrlError] = useState<string | null>(null);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -93,11 +94,10 @@ export function ImageBlockForm({
       };
       onSubmit(block);
     },
-    [src, alt, width, height, onSubmit]
+    [src, alt, width, height, onSubmit, urlError]
   );
 
   const isValid = isValidUrl(src);
-  const [urlError, setUrlError] = useState<string | null>(null);
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
