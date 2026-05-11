@@ -36,4 +36,4 @@ Treat them as complementary: prevent-doc-drift handles _new_ drift introduced by
 ### Other Claude Code specifics
 
 - **Full pre-merge check**: `npm run check` runs typecheck + lint + prettier + lint:go + test:go + test:ci in one command.
-- **Memory system**: Long-lived user / project / feedback notes live in `~/.claude/projects/-Users-jayclifford-Repos-grafana-pathfinder-app/memory/`. See the `auto memory` section in the system prompt for the file format.
+- **Memory system**: Long-lived user / project / feedback notes live under `~/.claude/projects/<project-slug>/memory/`, where `<project-slug>` is the absolute path to this repo with `/` replaced by `-` (for example, a clone at `/Users/alice/code/grafana-pathfinder-app` resolves to `-Users-alice-code-grafana-pathfinder-app`). See the `auto memory` section in the system prompt for the file format.
