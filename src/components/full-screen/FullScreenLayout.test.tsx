@@ -76,14 +76,14 @@ describe('FullScreenLayout', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the step counter when stepProgress is provided', () => {
+  it('shows the step counter as an explicit "Step X of Y" label when stepProgress is provided', () => {
     render(
       <FullScreenLayout title="My guide" hasActiveGuide={true} stepProgress="3/7" onExit={() => {}}>
         <div />
       </FullScreenLayout>
     );
 
-    expect(screen.getByText('3/7')).toBeInTheDocument();
+    expect(screen.getByText('Step 3 of 7')).toBeInTheDocument();
   });
 
   it('omits the step counter when stepProgress is undefined', () => {
@@ -93,7 +93,7 @@ describe('FullScreenLayout', () => {
       </FullScreenLayout>
     );
 
-    expect(screen.queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Step \d+ of \d+$/)).not.toBeInTheDocument();
   });
 
   it('hides the copy-link button when guideUrl is missing', () => {

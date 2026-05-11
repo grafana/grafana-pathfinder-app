@@ -99,7 +99,17 @@ export function FullScreenLayout({
           <span className={styles.headerTitle} title={title}>
             {title}
           </span>
-          {stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
+          {stepProgress && (
+            <span
+              className={styles.stepCounter}
+              aria-label={t('fullScreen.stepProgressLabel', 'Step {{progress}}', { progress: stepProgress })}
+            >
+              {t('fullScreen.stepProgress', 'Step {{done}} of {{total}}', {
+                done: stepProgress.split('/')[0],
+                total: stepProgress.split('/')[1],
+              })}
+            </span>
+          )}
           <div className={styles.headerActions}>
             {hasActiveGuide && guideUrl && (
               <IconButton
