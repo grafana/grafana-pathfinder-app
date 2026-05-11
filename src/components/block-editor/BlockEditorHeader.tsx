@@ -148,12 +148,11 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
   //   on that line as well.
   // - `flexWrap` + `rowGap` let the buttons inside the cluster spill onto a
   //   second line once even the icon-only collapse can't keep them on one row.
-  // - The `@container` rule fires off `row`'s `containerType: inline-size`
-  //   (above): under 640px (sidebar / floating-panel widths) we hide each
-  //   Grafana `Button`'s label `<span>` (rendered as a direct `<span class="content">`
-  //   child of `<button>`) and tighten its horizontal padding so the buttons
-  //   read as icon-only. The native tooltip / aria-label keeps them
-  //   discoverable. Full-screen (>= 640px wide) keeps the labels.
+  // - Label collapse below 640px is opt-in via the `collapsibleLabel` class
+  //   on each Button that wants it (rather than a broad `& button > span`
+  //   rule scoped to the whole cluster). That avoids accidentally hiding
+  //   spans nested inside Badges, IconButtons, or future Grafana `Button`
+  //   internals that might add their own child `<span>`s.
   actions: css({
     display: 'flex',
     alignItems: 'center',
@@ -163,11 +162,20 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     flexWrap: 'wrap',
     rowGap: theme.spacing(0.5),
     marginLeft: 'auto',
+  }),
+  // Opt-in collapse for Grafana `Button` components that carry a text label.
+  // Under 640px we hide Button's content `<span>` (its direct child) and
+  // tighten horizontal padding, leaving the icon visible. Tooltips and
+  // aria-labels carry the meaning. Targets `& > span` so it only affects
+  // the labeled span that Grafana renders as a direct child of the
+  // `<button>` element this class is applied to — never any descendants.
+  // Container query fires off `row`'s `containerType: inline-size`.
+  collapsibleLabel: css({
     '@container (max-width: 640px)': {
-      '& button > span': { display: 'none' },
-      '& button': {
-        paddingLeft: theme.spacing(0.75),
-        paddingRight: theme.spacing(0.75),
+      paddingLeft: theme.spacing(0.75),
+      paddingRight: theme.spacing(0.75),
+      '& > span': {
+        display: 'none',
       },
     },
   }),
@@ -402,6 +410,7 @@ export function BlockEditorHeader({
           onClick={onSaveDraft}
           disabled={isPostingToBackend}
           tooltip="Save as draft without publishing"
+          className={styles.collapsibleLabel}
           data-testid={testIds.blockEditor.saveDraftButton}
         >
           Save as draft
@@ -419,6 +428,7 @@ export function BlockEditorHeader({
             onClick={onSaveDraft}
             disabled={isPostingToBackend}
             tooltip="Save current changes to library draft"
+            className={styles.collapsibleLabel}
             data-testid={testIds.blockEditor.saveDraftButton}
           >
             Update draft
@@ -433,6 +443,7 @@ export function BlockEditorHeader({
           onClick={onPostToBackend}
           disabled={isPostingToBackend}
           tooltip="Publish and make visible to users"
+          className={styles.collapsibleLabel}
           data-testid={testIds.blockEditor.publishButton}
         >
           Publish
@@ -449,6 +460,7 @@ export function BlockEditorHeader({
         onClick={onPostToBackend}
         disabled={isPostingToBackend}
         tooltip="Save changes and keep published"
+        className={styles.collapsibleLabel}
         data-testid={testIds.blockEditor.publishButton}
       >
         Update
@@ -557,6 +569,7 @@ export function BlockEditorHeader({
                 : 'Dock the editor back into the sidebar'
             }
             aria-label={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
+            className={styles.collapsibleLabel}
             data-testid="pathfinder-block-editor-toggle-popout"
           >
             {panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
@@ -572,6 +585,7 @@ export function BlockEditorHeader({
               onClick={handleGoFullScreen}
               tooltip="Open the editor in full screen"
               aria-label="Open editor in full screen"
+              className={styles.collapsibleLabel}
               data-testid="pathfinder-block-editor-go-fullscreen"
             >
               Full screen
