@@ -9,15 +9,15 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 
 ## Status
 
-| Phase | Title                                  | Status      | Detailed plan                                                                   | Tracking         |
-| ----- | -------------------------------------- | ----------- | ------------------------------------------------------------------------------- | ---------------- |
-| P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md) | _epic issue TBD_ |
-| P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)   | _epic issue TBD_ |
-| P2    | npm + Docker distribution              | Complete    | [ai-authoring-2-distribution.md](./phases/ai-authoring-2-distribution.md)       | _epic issue TBD_ |
-| P3    | TypeScript MCP server                  | Complete    | [ai-authoring-3-ts-mcp.md](./phases/ai-authoring-3-ts-mcp.md)                   | _epic issue TBD_ |
-| P4    | Assistant handoff and viewer link      | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
-| P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                               | —                |
-| P6    | CDN repository tools (TS MCP)          | Not started | _to be drafted at start_                                                        | _epic issue TBD_ |
+| Phase | Title                                  | Status      | Detailed plan                                                                             | Tracking         |
+| ----- | -------------------------------------- | ----------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| P0    | Assistant handoff spike                | Complete    | [ai-authoring-0-assistant-spike.md](./phases/ai-authoring-0-assistant-spike.md)           | _epic issue TBD_ |
+| P1    | CLI authoring foundation               | Complete    | [ai-authoring-1-cli-foundation.md](./phases/ai-authoring-1-cli-foundation.md)             | _epic issue TBD_ |
+| P2    | npm + Docker distribution              | Complete    | [ai-authoring-2-distribution.md](./phases/ai-authoring-2-distribution.md)                 | _epic issue TBD_ |
+| P3    | TypeScript MCP server                  | Complete    | [ai-authoring-3-ts-mcp.md](./phases/ai-authoring-3-ts-mcp.md)                             | _epic issue TBD_ |
+| P4    | Assistant handoff and viewer link      | In progress | [ai-authoring-4-assistant-handoff.md](./phases/ai-authoring-4-assistant-handoff.md)       | _epic issue TBD_ |
+| P5    | Existing-tool migration and follow-ups | Deferred    | —                                                                                         | —                |
+| P6    | CDN repository tools (TS MCP)          | Complete    | [ai-authoring-6-cdn-repository-tools.md](./phases/ai-authoring-6-cdn-repository-tools.md) | _epic issue TBD_ |
 
 Each row's "Detailed plan" cell is filled in when an agent runs the per-phase planning step and writes `docs/design/phases/ai-authoring-N-<slug>.md`.
 
@@ -186,33 +186,37 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 ## P4 — Assistant handoff and viewer deep link
 
-**Goal.** Grafana Assistant on Cloud can take a finalization payload, perform the App Platform write, and return a working floating-mode viewer link. Assistant on OSS falls through cleanly to `localExport`.
+**Goal.** Per-instance Grafana Assistant integration with the deployed `pathfinder-mcp` succeeds: the agent receives capability-branched, deterministic instructions; the App Platform write performed by Assistant lands and the user clicks through to a working floating-mode viewer link; OSS and non-Grafana clients fall through to `localExport` cleanly and are pointed at the block-editor Import flow as the re-publish path.
 
 **Scope.**
 
-- Teach Grafana Assistant to consume the handoff structure and execute the POST/PUT against `interactiveguides` using its existing namespace-resolution and authenticated-write capabilities.
-- Implement the create-vs-update branching from [`APP-PLATFORM-PUBLISH-HANDOFF.md` — Create and update behavior](./APP-PLATFORM-PUBLISH-HANDOFF.md#create-and-update-behavior): POST for the auto-ID common path, GET-then-PUT only when an explicit `--id` was supplied at create time.
-- Draft/published confirmation prompt — default to draft.
-- Viewer deep link: return `floatingPath` on App Platform success; suppress on `localExport`.
-- OSS fallback: detect absent App Platform and follow `localExport` without offering a link.
-- Verify the existing `doc=api:<id>` resolution path (`module.tsx` → `findDocPage` → `fetchContent`) works for AI-authored resources unchanged.
+- Rewrite `src/cli/mcp/tools/finalize.ts` instructions to a structured `clientGuidance` object keyed by client capability (`grafanaAppPlatform` / `grafanaOss` / `nonGrafanaClient`), each with explicit `appliesWhen`, `steps`, and (where applicable) `errorHandling` and `confirmationPrompt` fields. Replace the prose `instructions[]` with a routing-only preamble.
+- Encode deterministic error-code → action rules (404 → switch to `grafanaOss`; 403 → tell user, offer `localExport`; 409 on PUT → re-GET, confirm, retry once; 5xx/timeout → retry once, then `localExport`; other 4xx → surface verbatim, offer `localExport`).
+- Surface the existing block-editor Import flow (`src/components/block-editor/ImportGuideModal.tsx`) in `localExport.instructions` and in both fallback branches as the user's re-publish path.
+- Verify the `?doc=api:<id>` resolution path works for AI-authored resources unchanged (`src/module.tsx` → `src/utils/find-doc-page.ts` → `fetchContent` `backend-guide:` branch).
+- Capture the cross-doc canonical-`id` consistency snapshot at every boundary.
+- Sync [`APP-PLATFORM-PUBLISH-HANDOFF.md`](./APP-PLATFORM-PUBLISH-HANDOFF.md), [`HOSTED-AUTHORING-MCP.md`](./HOSTED-AUTHORING-MCP.md), and [`docs/developer/MCP_SERVER.md`](../developer/MCP_SERVER.md) with deployed reality (Cloud Run, open + edge mitigations) and add a deployed-logs runbook.
+- Real-instance integration tests: Cloud (Assistant configured per [the per-instance MCP-server docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/)), OSS / aggregator-off, and a non-Grafana client (Cursor or Claude Desktop over stdio).
 
-**Out of scope.** Recommendation-engine parity for custom guides (downstream of CRD work, not this design). CRD extension to round-trip manifest fields.
+**Out of scope.**
 
-**Dependencies.** P0 (resolved 2026-04-28 — green-light, see [spike report](./phases/ai-authoring-0-assistant-spike.md)), P3.
+- **Broad rollout to all Assistant instances via Assistant's default MCP list.** Requires Assistant-team coordination on the write-tool surface from the [P0 spike Handoff](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase). Moved to [P5 — Deferred follow-ups](#p5--deferred-follow-ups).
+- MCP agent UX hardening issues #1–#5 from [`MCP-AGENT-UX-HARDENING.md`](./MCP-AGENT-UX-HARDENING.md) — owned by a separate hardening phase. Issue #6 (deploy/log-inspection discoverability) is incidentally closed by the runbook task in this phase.
+- Recommendation-engine parity for custom guides (downstream of CRD work).
+- CRD extension to round-trip manifest fields.
 
-**Wiring items inherited from P0 (must be addressed in P4 planning):**
+**Dependencies.** P0 (resolved 2026-04-28 — green-light, see [spike report](./phases/ai-authoring-0-assistant-spike.md)), P3. The hosted Cloud Run deploy already exists; P4 redeploys after the instruction rewrite lands.
 
-- **Pick the Assistant write-tool surface.** Assistant has no generic "call this App Platform path with this JSON body and method" tool. P4 must coordinate with the Assistant team and choose among: a Pathfinder-specific publish tool exposed by Assistant; a small generic App Platform write tool in Assistant; or documented reuse of an existing pattern. This is the first concrete decision in P4's plan.
-- **Path is component-shaped, not template-shaped, on the Assistant side.** Assistant builds App Platform paths from `(group, version, namespace, resource, name)`. The handoff already exposes those component fields; P4 should not assume `itemPathTemplate`/`collectionPathTemplate` are consumed verbatim by Assistant. They remain useful for non-Assistant clients.
-- **Confirmation UX is in the loop.** Assistant's per-tool confirmation layer means a publish action will surface a user-visible prompt. Design the handoff so that prompt reads sensibly and the boundary-decision-4 "AI client owns user agency" flow lands on this confirmation rather than an extra one in front of it.
-- **Where does the centrally hosted TS MCP run such that Assistant can reach it?** Assistant connects to a hosted MCP URL, not to the per-instance plugin endpoint. P4 must coordinate with the Assistant team to choose a hosting model (Grafana-org service, similar to `mcp/mcp-data` from `grafana/data-platform-tools`) and to wire Assistant's tool list with that URL. See [`HOSTED-AUTHORING-MCP.md` — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs).
+**Detailed plan.** [`phases/ai-authoring-4-assistant-handoff.md`](./phases/ai-authoring-4-assistant-handoff.md). Tracked under epic [grafana/grafana-pathfinder-app#811](https://github.com/grafana/grafana-pathfinder-app/issues/811); commits on the `p4-assistant-handoff-rescoped` branch reference the epic via `Refs #811`.
 
 **Exit criteria.**
 
-- End-to-end: user asks Assistant on Cloud to create a guide → Assistant authors via MCP → asks for save/publish → POSTs to App Platform → returns floating viewer link → user clicks link → guide opens in Pathfinder.
-- End-to-end on OSS: same flow up to publish, then `localExport` triggers, files written, no viewer link offered.
+- End-to-end on Cloud (per-instance Assistant config): user asks Assistant to create a guide → Assistant authors via MCP → asks draft/published → user confirms → POST to App Platform → Assistant returns absolute floating viewer URL → user clicks → guide opens in Pathfinder.
+- End-to-end on OSS / aggregator-off: same flow up to publish, then `localExport` triggers, files written, user pointed at the block-editor Import flow, no viewer link offered.
+- Non-Grafana client (Cursor or Claude Desktop over stdio): the `nonGrafanaClient` branch fires, no POST attempted, files land in the workspace, block-editor Import path surfaced.
 - Cross-doc consistency check: `id`, `metadata.name`, `?doc=api:<id>` are the same string at every boundary.
+
+**Status note (2026-05-01, after first integration tests).** D3 (non-Grafana client) passes end-to-end. D1 (Cloud Assistant) is **partial**: Assistant correctly drives the authoring loop and reads `clientGuidance.grafanaAppPlatform`, then stops at the publish step because it has no generic App Platform write tool, falling through to the block-editor Import flow. This is the [P0 spike](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase) executor gap, not an instruction-quality gap. **The MCP server will not be extended to perform the write itself** — the central Cloud Run deployment holds no per-instance credentials by design (see [HOSTED-AUTHORING-MCP.md — The MCP server does not write to App Platform — by deployment design](./HOSTED-AUTHORING-MCP.md#the-mcp-server-does-not-write-to-app-platform--by-deployment-design)). Closing D1 requires giving Assistant a write capability, drafted in Assistant's tool-pattern (operation enum, scoping field, format hints, endpoint + payload shape, confirmation policy). Tracked as P4 OQ6 in the [phase plan](./phases/ai-authoring-4-assistant-handoff.md).
 
 ---
 
@@ -220,17 +224,66 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 Tracked here so they don't get lost; not scoped for the MVP.
 
+- **Broad rollout to all Assistant instances via Assistant's default MCP list (deferred from P4).** P4 ships per-instance Assistant integration via [the public MCP-server config docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/) — operators add the deployed Cloud Run URL on their own instance. Broad rollout, where every Cloud Assistant instance reaches `pathfinder-mcp` by default, requires coordination with the Assistant team on the write-tool surface (see [P0 spike Handoff](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase) — Pathfinder-specific publish tool vs. generic App Platform write tool vs. existing-pattern reuse) and on the default-MCP-list mechanism. Re-evaluate after P4 ships and per-instance integration is exercised in production.
 - Migrate Go MCP runtime tools to the TS package: `list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, `create_guide_template`. These are stateless and could move cleanly. `launch_guide` and the `pending-launch` queue stay in `pkg/plugin/mcp.go` indefinitely — they are coupled to per-instance frontend polling (`src/hooks/usePendingGuideLaunch.ts`) and genuinely belong in-process. Migration retires the hand-maintained Go schema summaries in `pkg/plugin/mcp.go` (`guideSchemas`).
 - `pathfinder-cli apply` batch command — collapse N mutations into one CLI invocation if it becomes useful for human authors. Originally motivated by amortizing Node cold-start across MCP tool calls, which no longer applies once the MCP imports the CLI directly. Re-evaluate against the human-authoring use case.
 - CRD extension to round-trip manifest fields, lighting up recommendation-engine parity for custom guides for both block-editor and AI-authored guides simultaneously.
-- **Server-side session state for the authoring artifact (deferred from P3).** The current stateless model passes the full `{content, manifest}` artifact in _and_ out of every mutation tool. Real multi-hop authoring runs on Cloud Run (2026-05-01) showed total wire bytes scaling roughly O(N²) in the number of hops — a 27-hop adversarial guide cost ~50× more agent-side tokens than a single-shot author of the same final artifact. Implementation notes for whoever picks this up:
-  - **Trigger.** Re-open this when (a) a real authoring run regularly exceeds ~30 hops, or (b) the agent host's per-tool-call payload limit becomes the binding constraint. Until then, the stateless design's debugging and fan-out properties outweigh the token win.
-  - **Shape.** Key the artifact by MCP `mcp-session-id`, hold it in process memory keyed off that id, and let mutation tools accept either `{artifact}` (current) or `{sessionId}` (new). Returning the full artifact stays as the default; an opt-in `returnDelta: true` flag returns just `{addedBlockId, manifestPatch?}` for cost-sensitive clients.
-  - **Eviction.** LRU with a hard cap (e.g. 128 sessions × 1 MB ≈ 128 MB per replica, well under the current `--memory=512Mi`). TTL on idle sessions (10 min) so a dropped client doesn't pin memory. Drop-on-`DELETE /mcp` plus drop-on-error.
-  - **Concurrency.** Per-session lock so concurrent mutations on one session serialize cleanly. Cross-replica is fine to _not_ solve — Cloud Run's `--concurrency=80` keeps a session sticky to one replica in practice; on miss the client gets `404 session_not_found` and falls back to passing the full artifact, same as today.
-  - **Observability.** Log `sessionId` (already present as the MCP transport header) plus `artifactBytesResident` so we can reason about retained-set size before tuning the cap.
-  - **What this does not solve.** The agent's _own_ context still grows hop-over-hop because each tool result is re-anchored in its prompt. The server-side cache shrinks the wire bytes but not the agent-side context. A meaningful fix to that requires the agent host to compress or summarize prior tool results, which is out of scope for this server.
-  - **Adjacent option (cheaper).** A `pathfinder_apply_ops` tool that takes an array of mutations and returns one final artifact would cut multi-hop cost ~10× without any server-side state. Worth shipping first, then revisit session state if it's still the bottleneck.
+- **GCS-backed authoring sessions (deferred from P3).** The current stateless model passes the full `{content, manifest}` artifact in _and_ out of every mutation tool. Real multi-hop authoring runs on Cloud Run (2026-05-01) showed total wire bytes scaling roughly O(N²) in the number of hops — a 27-hop adversarial guide cost ~50× more agent-side tokens than a single-shot author of the same final artifact. Token cost is the visible problem; the deeper one is **agent confabulation** — when the artifact lives in the agent's context across hops, the agent occasionally edits it speculatively between mutations, producing extra validation roundtrips. Both are solved by storing the artifact server-side and removing it from the wire. This is **not** a package repository (see [Repository-ification deferred](#) below) — App Platform is the per-tenant package store; this bucket is ephemeral working storage for drafts.
+  - **Trigger.** Re-open after P4 ships in production, when (a) per-instance Assistant traffic exceeds a few real authoring runs per day, or (b) agent-confabulation cost becomes legible in real session traces. Until then, the stateless design's simplicity and zero-state-liability outweigh the token win.
+
+  - **Storage layout.** Each session is a package directory at `gs://pathfinder-mcp/<SESSION_TOKEN>/`, mirroring the on-disk package layout exactly:
+
+    ```
+    gs://pathfinder-mcp/<SESSION_TOKEN>/content.json
+    gs://pathfinder-mcp/<SESSION_TOKEN>/manifest.json
+    ```
+
+    `<SESSION_TOKEN>` is the bearer capability (high entropy, opaque). The guide `id` field inside `content.json` stays as P1's kebab-case-with-suffix value. These two identifiers serve different purposes — token = access key, guide id = human identity — and must not be conflated.
+
+  - **Session token format.** 22 chars Crockford base32 (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`) ≈ 110 bits of entropy. Source: `crypto.randomBytes`, never `Math.random`. Lowercased server-side on input. Avoids tokenization-fragile alphabets (no `+/=` from base64; no lookalikes from `I/L/O/U`). Created server-side on first mutation; returned in the `sessionToken` field of every mutation response. LLM-visible — the agent passes it back verbatim on subsequent calls, distinct from the transport-layer `Mcp-Session-Id` HTTP header which the LLM never sees.
+
+  - **Tool surface change — mutations return acks, not artifacts.** Load-bearing design decision. Each mutation tool (`create_package`, `add_block`, `add_step`, `add_choice`, `edit_block`, `remove_block`, `set_manifest`) implements read-modify-write against GCS: load `{content, manifest}` by `sessionToken`, invoke the imported CLI command function on the in-memory artifact, write the result back via `ifGenerationMatch`, and return a small confirmation:
+
+    ```ts
+    add_block({ sessionToken, block }) -> { sessionToken, generation, added: { kind, id } }
+    ```
+
+    The full artifact does not return to the agent's context. This is what removes both the token cost and the confabulation surface — the agent cannot drift on an artifact it does not have. **If the CLI command function errors (validation failure, schema violation), GCS is not updated** — the failed mutation leaves the session in its prior valid state and the agent receives the CLI's structured error verbatim, preserving the P3 "MCP performs no schema validation" contract. Reads become explicit, fine-grained, on-demand:
+    - `pathfinder_get_manifest({ sessionToken })` — manifest only
+    - `pathfinder_list_blocks({ sessionToken })` — block IDs and types, no content
+    - `pathfinder_get_block({ sessionToken, blockId })` — one block
+    - `pathfinder_inspect({ sessionToken })` — full artifact (escape hatch)
+    - `pathfinder_validate({ sessionToken })` — structured errors only
+    - `pathfinder_finalize_for_app_platform({ sessionToken })` — handoff payload, **the one place the full artifact returns to context**, because the agent's job there is to forward bytes to App Platform.
+
+  - **`pathfinder_apply_ops` is not needed.** An earlier sketch proposed a batched-mutations tool to amortize per-call artifact cost. Once mutations are GCS-backed and return acks, per-call cost is already small and `apply_ops` collapses into "what mutations do" with no batching primitive needed. Skip it.
+
+  - **First mutation creates the session implicitly.** `pathfinder_create_package` called without a `sessionToken` mints one and returns it. No separate `start_session` tool.
+
+  - **Stateless `{artifact}` mode preserved as fallback.** Every mutation tool still accepts `{artifact}` instead of `{sessionToken}` for: GCS unreachable, token corrupted past recovery, non-Grafana clients that want stateless, OSS / airgapped deployments without a backing bucket. `pathfinder_authoring_start` biases guidance toward `sessionToken` mode but the artifact-mode code path is not removed.
+
+  - **Concurrency.** GCS object generation numbers + `ifGenerationMatch` preconditions on every write. Mutation acks include `generation`; agents may pass `expectedGeneration` on the next call for optimistic concurrency. Two replicas racing on the same session resolve via 412 → refetch → retry. Storage is the coordination layer — no per-session lock, no cross-replica sticky routing, no Redis.
+
+  - **Retention — 7-day TTL, debug-only.** GCS bucket lifecycle rule: object age > 7 days → delete. The MCP also issues an explicit `DELETE` on `pathfinder_finalize_for_app_platform` success, so happy-path drafts evict immediately. The 7-day window exists for one reason: debugging failed/abandoned authoring runs. Long-term retention is a governance problem we explicitly do not take on — App Platform is where retained content lives, under each tenant's existing governance.
+
+  - **Confidentiality.** The token is the bearer capability:
+    - **Bucket is private.** Uniform bucket-level access on, no public ACLs, IAM-only. Service account scoped to this one bucket.
+    - **No GCS URLs cross the trust boundary.** Clients only ever see `<SESSION_TOKEN>`. All reads/writes flow through the MCP server, which holds the bucket credential.
+    - **No enumeration tool.** The MCP exposes no "list sessions" surface. P6's `pathfinder_list_packages` reads the public CDN repository, not this bucket.
+    - **Optional bind-to-`Mcp-Session-Id` on first write.** First mutation pins `<SESSION_TOKEN>` to the client's transport-layer `Mcp-Session-Id`. Subsequent mismatched calls return `404 not_found` (not `403`, to avoid confirming existence). Falls back gracefully when no `Mcp-Session-Id` is present (stdio transport).
+    - **Don't log content. Ever.** Log `sessionToken` _prefix_ (12 chars) or hash, `generation`, `artifactBytes`, `gcsLatencyMs`. Cloud Run access logs are queryable by support; raw tokens in logs would re-introduce the leak surface we just closed.
+
+  - **`pathfinder_authoring_start` rewrite.** Current guidance primes the agent on a stateless artifact-passing flow. The new guidance must teach: you receive a `sessionToken` on first mutation; pass it on every subsequent call; mutation responses are small confirmations, not the full artifact; use `inspect` / `get_manifest` / `get_block` / `list_blocks` to read state on demand; the artifact returns to your context only at finalize. This is the prompt-side fix that prevents defensive re-fetching after every mutation.
+
+  - **Cost.** Trivial. Class A ops ~$0.005/1000, Class B ~$0.0004/1000, storage ~$0.02/GB/month. A 30-hop run is ~$0.0002 in operations. At 1000 sessions/day with 7-day retention, expected resident set is well under 5 GB. Budget $5–10/month and don't think about it again.
+
+  - **Latency.** GCS in-region single-object GET/PUT is ~20–50ms p50, ~100–200ms p99. A 30-hop run pays ~1–3s of cumulative storage latency, dwarfed by LLM hop time. Writes are issued after the in-memory mutation succeeds; only the read on session entry blocks the response.
+
+  - **What this does not solve.** The agent's _own_ conversation history still grows hop-over-hop with prior tool acks and read responses. GCS removes the artifact from the wire and from the agent's working memory of "what the guide looks like" — but it does not compact the conversation history itself. Compaction is the agent host's job, out of scope for this server.
+
+  - **Repository-ification deferred.** `gs://pathfinder-mcp/` is _not_ a package repository in the [PATHFINDER-PACKAGE-DESIGN.md](./PATHFINDER-PACKAGE-DESIGN.md) sense. It has no `repository.json`, no per-tenant attribution, no notion of authorship, no published artifacts. Promoting it would require (a) tenant identity at the MCP layer, which the open + edge-rate-limit posture explicitly does not provide, (b) `repository.json` generation, (c) a publish-vs-draft governance model, and (d) durable retention with a real data-handling posture. None of those are in scope; all are better solved by App Platform under each tenant's existing governance.
+
+  - **Precondition: data-handling posture sign-off.** Even with anonymous bearer tokens and 7-day TTL, this design durably stores user-authored content on a service we operate. Users will paste customer-internal hostnames, real emails, or other sensitive strings into drafts. The mitigations (no logging of content, short TTL, deletion-on-finalize, private bucket, token-as-capability) are sufficient for ephemeral debug, but the _decision_ to retain at all needs an explicit yes from whoever owns the data-handling policy for the deployed Cloud Run service. This is a precondition for the phase, not a discovery during deploy review. If the answer is no, fall back to in-memory cache only (lose the debug archive) or to no caching (lose the token economy and confabulation fix).
 
 The "long-lived Node sidecar" item from earlier drafts of this design is no longer applicable — the MCP server itself is a Node process, so there is no Go-Node bridge to optimize.
 
