@@ -217,7 +217,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const content = activeTab?.content ?? null;
   const title = isEditorTab ? EDITOR_FULL_SCREEN_TITLE : activeTab?.title || 'Interactive learning';
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
-  const guideUrl = isEditorTab ? undefined : activeTab?.baseUrl || activeTab?.currentUrl;
+  // Prefer `currentUrl` (the milestone the user is reading) so when the user
+  // goes fullscreen → floating via `handleSwitchToFloating`, auto-docks via
+  // navigation away, or copies a shareable link, the milestone position
+  // carries through. `baseUrl` is the cover URL; for non-journey tabs the
+  // two fields are equal.
+  const guideUrl = isEditorTab ? undefined : activeTab?.currentUrl || activeTab?.baseUrl;
 
   // Auto-dock when something navigates the user off the fullscreen route.
   // Without this the user lands on (e.g.) /dashboards with mode still stuck

@@ -1632,7 +1632,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     const handlePopOut = () => {
       const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
       const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
-      const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
+      // Prefer `currentUrl` so a popped-out learning journey lands on the
+      // user's current milestone, not the cover page. For non-journey tabs
+      // the two fields are equal.
+      const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
 
       // Editor tab popout: the block editor itself moves into the floating panel.
       // No pendingGuide handoff — the floating panel detects the editor tab and
@@ -1731,7 +1734,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         return;
       }
 
-      const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
+      // Prefer `currentUrl` (the milestone the user is reading) over the
+      // cover-page `baseUrl` so the milestone position carries through to
+      // full screen. The dock-back direction already worked because the
+      // sidebar restores `currentUrl` from tabStorage on remount — this is
+      // the symmetric fix for the forward handoff. For non-journey tabs the
+      // two are equal so the swap is a no-op.
+      const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
       const supportedTab = activeTab && activeTab.id !== 'recommendations' && activeTab.type !== 'devtools' && guideUrl;
 
       if (!supportedTab) {

@@ -225,7 +225,11 @@ function FloatingPanelInner() {
   }, [restorationDone, hasActiveGuide, isEditorTab]);
 
   useAlignmentReevaluation(panel, activeTabId, activeTab);
-  const guideUrl = isEditorTab ? undefined : activeTab?.baseUrl || activeTab?.currentUrl;
+  // Prefer `currentUrl` (the milestone the user is reading) so when the user
+  // goes from floating → fullscreen via `handleSwitchToFullScreen`, or copies
+  // a shareable link, the milestone position carries through. `baseUrl` is
+  // the cover URL; for non-journey tabs the two fields are equal.
+  const guideUrl = isEditorTab ? undefined : activeTab?.currentUrl || activeTab?.baseUrl;
 
   const handleSwitchToSidebar = useCallback(() => {
     reportAppInteraction(UserInteraction.FloatingPanelDock, {
