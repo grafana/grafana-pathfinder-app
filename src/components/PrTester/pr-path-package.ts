@@ -14,8 +14,15 @@ import type { ManifestJson } from '../../types/package.types';
 import type { PrJsonFile } from './github-api';
 
 export interface PathPackageBuildInputs {
-  /** All JSON files discovered in the PR (content + manifest). */
-  files: readonly PrJsonFile[];
+  /**
+   * Content files indexed by directory name — used to locate the path
+   * package's own `content.json` (the cover page).
+   *
+   * The caller computes this once via {@link indexPrFiles} and shares it
+   * with {@link indexContentByPackageId}, avoiding a second iteration over
+   * the full `files` array per build.
+   */
+  contentByDir: ReadonlyMap<string, PrJsonFile>;
   /** A loaded path/journey manifest (one entry from the PR). */
   manifest: ManifestJson;
   /** Directory name of the package the manifest belongs to. */
@@ -84,12 +91,15 @@ export function indexPrFiles(files: readonly PrJsonFile[]): {
  * Manifests without a sibling `content.json` are skipped (no file to index);
  * orphan content files (no sibling manifest) are also skipped because their
  * canonical package ID is unknown.
+ *
+ * Takes a pre-computed `contentByDir` map so the caller can share one
+ * {@link indexPrFiles} iteration across this function and
+ * {@link buildPathPackageInfo}.
  */
 export function indexContentByPackageId(
-  files: readonly PrJsonFile[],
+  contentByDir: ReadonlyMap<string, PrJsonFile>,
   manifestsByDirectory: ReadonlyMap<string, ManifestJson>
 ): Map<string, PrJsonFile> {
-  const { contentByDir } = indexPrFiles(files);
   const result = new Map<string, PrJsonFile>();
   for (const [directory, manifest] of manifestsByDirectory) {
     const contentFile = contentByDir.get(directory);
@@ -112,7 +122,7 @@ export function indexContentByPackageId(
  * callers decide how to surface them.
  */
 export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackageBuildResult {
-  const { files, manifest, manifestDirectory, contentByPackageId } = inputs;
+  const { contentByDir, manifest, manifestDirectory, contentByPackageId } = inputs;
 
   if (manifest.type !== 'path' && manifest.type !== 'journey') {
     return { ok: false, reason: 'not_path_package' };
@@ -122,8 +132,6 @@ export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackag
   if (milestoneIds.length === 0) {
     return { ok: false, reason: 'no_milestones' };
   }
-
-  const { contentByDir } = indexPrFiles(files);
 
   const cover = contentByDir.get(manifestDirectory);
   if (!cover) {

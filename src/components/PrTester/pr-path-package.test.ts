@@ -48,7 +48,7 @@ function idIndexMatchingDir(files: readonly PrJsonFile[]): Map<string, PrJsonFil
       manifests.set(file.directoryName, guideManifest(file.directoryName));
     }
   }
-  return indexContentByPackageId(files, manifests);
+  return indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
 }
 
 describe('indexPrFiles', () => {
@@ -79,7 +79,7 @@ describe('indexContentByPackageId', () => {
       ['02-event-demo-suite', guideManifest('pathfinder-roadmap-event-demo-suite')],
     ]);
 
-    const index = indexContentByPackageId(files, manifests);
+    const index = indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
 
     expect(index.size).toBe(2);
     expect(index.get('pathfinder-roadmap-where-we-are')?.rawUrl).toBe(`${RAW_BASE}/01-where-we-are/content.json`);
@@ -94,7 +94,7 @@ describe('indexContentByPackageId', () => {
     const files: PrJsonFile[] = [manifestFile('orphan-manifest')];
     const manifests = new Map<string, ManifestJson>([['orphan-manifest', guideManifest('orphan')]]);
 
-    const index = indexContentByPackageId(files, manifests);
+    const index = indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
 
     expect(index.size).toBe(0);
   });
@@ -105,7 +105,7 @@ describe('indexContentByPackageId', () => {
     const files: PrJsonFile[] = [content('orphan-content')];
     const manifests = new Map<string, ManifestJson>();
 
-    const index = indexContentByPackageId(files, manifests);
+    const index = indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
 
     expect(index.size).toBe(0);
   });
@@ -124,7 +124,7 @@ describe('buildPathPackageInfo', () => {
     ];
 
     const result = buildPathPackageInfo({
-      files,
+      contentByDir: indexPrFiles(files).contentByDir,
       manifest,
       manifestDirectory: 'my-path',
       contentByPackageId: idIndexMatchingDir(files),
@@ -171,11 +171,12 @@ describe('buildPathPackageInfo', () => {
       ['pathfinder-roadmap-2026-lj/02-event-demo-suite', guideManifest('pathfinder-roadmap-event-demo-suite')],
     ]);
 
+    const { contentByDir } = indexPrFiles(files);
     const result = buildPathPackageInfo({
-      files,
+      contentByDir,
       manifest,
       manifestDirectory: 'pathfinder-roadmap-2026-lj',
-      contentByPackageId: indexContentByPackageId(files, manifests),
+      contentByPackageId: indexContentByPackageId(contentByDir, manifests),
     });
 
     expect(result.ok).toBe(true);
@@ -200,7 +201,7 @@ describe('buildPathPackageInfo', () => {
     ];
 
     const result = buildPathPackageInfo({
-      files,
+      contentByDir: indexPrFiles(files).contentByDir,
       manifest,
       manifestDirectory: 'my-path',
       contentByPackageId: idIndexMatchingDir(files),
@@ -212,7 +213,7 @@ describe('buildPathPackageInfo', () => {
   it('rejects guide-type manifests as not a path package', () => {
     const manifest: ManifestJson = { id: 'g', type: 'guide' };
     const result = buildPathPackageInfo({
-      files: [content('g')],
+      contentByDir: indexPrFiles([content('g')]).contentByDir,
       manifest,
       manifestDirectory: 'g',
       contentByPackageId: new Map(),
@@ -227,7 +228,7 @@ describe('buildPathPackageInfo', () => {
   it('reports no_milestones when the manifest has an empty milestones array', () => {
     const manifest = pathManifest({ milestones: [] });
     const result = buildPathPackageInfo({
-      files: [content('my-path')],
+      contentByDir: indexPrFiles([content('my-path')]).contentByDir,
       manifest,
       manifestDirectory: 'my-path',
       contentByPackageId: new Map(),
@@ -248,7 +249,7 @@ describe('buildPathPackageInfo', () => {
       manifestFile('guide-two'),
     ];
     const result = buildPathPackageInfo({
-      files,
+      contentByDir: indexPrFiles(files).contentByDir,
       manifest,
       manifestDirectory: 'my-path',
       contentByPackageId: idIndexMatchingDir(files),
@@ -270,7 +271,7 @@ describe('buildPathPackageInfo', () => {
       manifestFile('guide-two'),
     ];
     const result = buildPathPackageInfo({
-      files,
+      contentByDir: indexPrFiles(files).contentByDir,
       manifest,
       manifestDirectory: 'my-path',
       contentByPackageId: idIndexMatchingDir(files),

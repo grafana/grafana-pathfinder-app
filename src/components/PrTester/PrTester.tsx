@@ -3,7 +3,12 @@ import { Box, Button, Icon, Input, Combobox, useStyles2, RadioButtonGroup, type 
 import { SelectableValue } from '@grafana/data';
 import { getPrTesterStyles } from './pr-tester.styles';
 import { fetchPrContentFilesFromUrl, fetchPrManifest, isValidPrUrl, type PrJsonFile } from './github-api';
-import { buildPathPackageInfo, indexContentByPackageId, type PathPackageBuildResult } from './pr-path-package';
+import {
+  buildPathPackageInfo,
+  indexContentByPackageId,
+  indexPrFiles,
+  type PathPackageBuildResult,
+} from './pr-path-package';
 import type { ManifestJson } from '../../types/package.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
@@ -282,11 +287,23 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   }, [allManifests]);
 
   /**
+   * Index PR files by directory once and share the result with everything
+   * downstream (`indexContentByPackageId` for milestone resolution and
+   * `buildPathPackageInfo` for the cover-page lookup). Without this each
+   * call site would re-iterate `files`, doubling work on every render that
+   * touches the PR.
+   */
+  const contentByDir = useMemo(() => indexPrFiles(files).contentByDir, [files]);
+
+  /**
    * `manifest.milestones[]` lists package IDs, not directory names.
    * Build the ID→file index by reading each child's manifest.id so the path
    * tester resolves milestones the same way the production resolver does.
    */
-  const contentByPackageId = useMemo(() => indexContentByPackageId(files, allManifests), [files, allManifests]);
+  const contentByPackageId = useMemo(
+    () => indexContentByPackageId(contentByDir, allManifests),
+    [contentByDir, allManifests]
+  );
 
   // Effective selected single-mode file
   const selectedFile = useMemo(() => {
@@ -339,8 +356,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
 
   /**
    * Build the path package preview for the currently selected manifest. Pure
-   * derivation from `files` + `pathManifests` — no side effects, so we can
-   * memo it and use the same value for both the preview list and the action.
+   * derivation from the shared `contentByDir` index + `pathManifests` — no
+   * side effects, so we memo it and use the same value for both the preview
+   * list and the action.
    */
   const pathBuild: PathPackageBuildResult | null = useMemo(() => {
     if (!selectedPath) {
@@ -351,12 +369,12 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       return null;
     }
     return buildPathPackageInfo({
-      files,
+      contentByDir,
       manifest,
       manifestDirectory: selectedPath,
       contentByPackageId,
     });
-  }, [files, pathManifests, selectedPath, contentByPackageId]);
+  }, [contentByDir, pathManifests, selectedPath, contentByPackageId]);
 
   const handleFetchPr = useCallback(async () => {
     const cleanedUrl = prUrl.trim();
