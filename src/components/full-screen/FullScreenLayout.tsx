@@ -3,6 +3,7 @@ import { IconButton, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
+import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { getFullScreenStyles } from './full-screen.styles';
 
 export interface FullScreenLayoutProps {
@@ -52,14 +53,9 @@ export function FullScreenLayout({
     if (!guideUrl) {
       return;
     }
-    const url = new URL(window.location.href);
-    url.searchParams.set('doc', guideUrl);
-    url.searchParams.set('panelMode', 'fullscreen');
-    if (guideType) {
-      url.searchParams.set('type', guideType);
-    }
+    const shareUrl = buildPathfinderShareUrl({ doc: guideUrl, panelMode: 'fullscreen', guideType });
     navigator.clipboard
-      .writeText(url.toString())
+      .writeText(shareUrl)
       .then(() => {
         setLinkCopied(true);
         clearTimeout(copyTimerRef.current);

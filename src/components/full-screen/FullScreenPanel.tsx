@@ -1,23 +1,27 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SceneObjectBase, type SceneComponentProps, type SceneObjectState } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
-import { Icon, IconButton, useStyles2 } from '@grafana/ui';
-import { t } from '@grafana/i18n';
+import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
-import { cleanDocsUrl } from '../docs-panel/utils';
+import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
+import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
+import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
-import { usePendingGuideLaunch, useAlignmentReevaluation } from '../../hooks';
+import {
+  usePendingGuideLaunch,
+  useAlignmentReevaluation,
+  useAutoLaunchTutorial,
+  useStepProgressFromEvents,
+} from '../../hooks';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
-import { coerceLaunchSource } from '../../recovery';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { findDocPage } from '../../utils/find-doc-page';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
-import { getMilestoneStyles } from '../../styles/docs-panel.styles';
+import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
 import { FullScreenLayout } from './FullScreenLayout';
 import { getFullScreenStyles } from './full-screen.styles';
@@ -51,7 +55,6 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // Polls the Pathfinder backend for MCP launch_guide handoffs.
   usePendingGuideLaunch();
 
-  const milestoneStyles = useStyles2(getMilestoneStyles);
   const fullScreenStyles = useStyles2(getFullScreenStyles);
 
   const panel = useMemo(() => {
@@ -94,32 +97,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
-      // Editor handoff: no URL — switch the active tab to the editor (or
-      // create it if needed). This is what makes the Block editor toolbar's
-      // "Full screen" button replace an active fullscreen guide instead of
-      // no-opping when mode is already 'fullscreen'.
-      if (pendingGuide.type === 'editor') {
-        panel.openEditorTab();
-      } else if (pendingGuide.url) {
-        // packageInfo (e.g. from the PR tester) carries the manifest +
-        // pre-resolved milestones, so openDocsPage creates a journey tab with
-        // the milestone toolbar even when the URL is a raw GitHub URL that
-        // openLearningJourney's package-URL detection wouldn't recognise.
-        if (pendingGuide.packageInfo) {
-          panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
-            source: 'fullscreen_handoff',
-            packageInfo: pendingGuide.packageInfo,
-          });
-        } else if (pendingGuide.type === 'learning-journey') {
-          // Preserve the original tab type. openDocsPage without packageInfo
-          // creates a 'docs' tab, so calling it for a recognised journey URL
-          // would strip the journey type and the milestone toolbar's gate
-          // would fail.
-          panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
-        } else {
-          panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
-        }
-      }
+      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
     }
 
     return () => {
@@ -151,8 +129,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // for this render. Using the live state stops us from restoring on
     // top of a tab the handoff just opened — that would await tabStorage
     // and overwrite the new tab if storage was empty or stale.
+    // Permanent system tabs (`recommendations`, `devtools`, `editor`) don't
+    // count as user content — restoring on top of them is safe. Mirrors the
+    // sidebar's gate at `docs-panel.tsx` so all three surfaces agree on
+    // when "the panel is empty".
     const liveTabs = panel.state.tabs;
-    const hasOnlyDefaultTabs = liveTabs.length === 1 && liveTabs[0]?.id === 'recommendations';
+    const hasOnlyDefaultTabs = liveTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
     if (hasOnlyDefaultTabs) {
       panel.restoreTabsAsync().then(() => setRestorationDone(true));
     } else {
@@ -173,8 +155,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     if (!restorationDone || guideOpenInFlightRef.current) {
       return;
     }
-    const params = new URLSearchParams(window.location.search);
-    const docParam = params.get('doc');
+    const { doc: docParam, type: typeParam } = parsePathfinderDeepLink(window.location.search);
     if (!docParam) {
       return;
     }
@@ -182,8 +163,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     if (!docsPage) {
       return;
     }
-    const typeParam = params.get('type');
-    const isJourney = typeParam === 'learning-journey' || docsPage.type === 'learning-journey';
+    // The shared rule: explicit ?type=learning-journey wins over findDocPage's
+    // URL classification (which can mis-tag package URLs as 'interactive').
+    const isJourney = shouldOpenAsLearningJourney(typeParam, undefined) || docsPage.type === 'learning-journey';
     guideOpenInFlightRef.current = true;
     if (isJourney) {
       panel.openLearningJourney(docsPage.url, docsPage.title, { source: 'url_param' });
@@ -193,23 +175,13 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   }, [restorationDone, panel]);
 
   // Listen for auto-launch-tutorial events (shared across all panel surfaces).
-  useEffect(() => {
-    const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string; source?: string }>) => {
+  // The hook owns the routing; we just flip the in-flight flag synchronously
+  // so the empty-state fallback doesn't fire on top of an incoming guide.
+  useAutoLaunchTutorial(panel, {
+    onIncoming: () => {
       guideOpenInFlightRef.current = true;
-      const { url, title, type, source } = e.detail;
-      const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
-      const typedSource = coerceLaunchSource(source) ?? undefined;
-      if (openAsLearningJourney) {
-        panel.openLearningJourney(url, title, { source: typedSource });
-      } else {
-        panel.openDocsPage(url, title, { source: typedSource });
-      }
-    };
-    document.addEventListener('auto-launch-tutorial', handleAutoLaunch as EventListener);
-    return () => {
-      document.removeEventListener('auto-launch-tutorial', handleAutoLaunch as EventListener);
-    };
-  }, [panel]);
+    },
+  });
 
   // Active tab projection.
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -229,49 +201,34 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // on 'fullscreen', no panel rendered, and no way to complete the step
   // that took them there. Decision logic (sidebar vs floating fallback) is
   // factored out into `dockOnLeavingFullScreen` for unit testability.
+  //
+  // Latest tab/title/url are read through a ref so the listener subscribes
+  // exactly once on mount. Without the ref the effect re-subscribes on
+  // every milestone navigation (`activeTab` is a fresh `find()` reference
+  // per render), which churns the history subscription and risks dropping
+  // the very location event that triggered the navigation.
+  const dockInputsRef = useRef({ guideUrl, title, activeTab });
+  dockInputsRef.current = { guideUrl, title, activeTab };
   useEffect(() => {
     const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     const history = locationService.getHistory();
     const unlisten = history.listen((location: { pathname: string }) => {
+      const { guideUrl: latestGuideUrl, title: latestTitle, activeTab: latestActiveTab } = dockInputsRef.current;
       dockOnLeavingFullScreen({
         pathname: location.pathname,
         fullScreenPathname,
         myPluginId: pluginJson.id,
-        guideUrl,
-        title,
-        activeTab,
+        guideUrl: latestGuideUrl,
+        title: latestTitle,
+        activeTab: latestActiveTab,
       });
     });
     return unlisten;
-  }, [guideUrl, title, activeTab]);
+  }, []);
 
-  // Step progress for the header counter. Subscribes to the
-  // `pathfinder-step-progress` event published by interactive-section
-  // whenever execution OR completion state changes — so the chip
-  // reflects "X of Y completed" and updates immediately on completion
-  // / reset (the previous polling-on-window-globals approach went
-  // stale because those globals only update while a step is *executing*).
-  const [stepProgress, setStepProgress] = useState<string | undefined>();
-  useEffect(() => {
-    if (!hasActiveGuide) {
-      setStepProgress(undefined);
-      return;
-    }
-    const handle = (e: Event) => {
-      const detail = (e as CustomEvent<{ totalSteps?: number; completedCount?: number }>).detail;
-      const total = detail?.totalSteps ?? 0;
-      const done = detail?.completedCount ?? 0;
-      if (total > 0) {
-        setStepProgress(`${done}/${total}`);
-      } else {
-        setStepProgress(undefined);
-      }
-    };
-    window.addEventListener('pathfinder-step-progress', handle);
-    return () => {
-      window.removeEventListener('pathfinder-step-progress', handle);
-    };
-  }, [hasActiveGuide]);
+  // Step progress for the header counter. Shared subscription with the
+  // floating panel — see `useStepProgressFromEvents` for the rationale.
+  const stepProgress = useStepProgressFromEvents(hasActiveGuide);
 
   const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(panel, activeTabId, activeTab);
 
@@ -400,20 +357,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         return;
       }
       guideOpenInFlightRef.current = true;
-      if (pendingGuide.type === 'editor') {
-        panel.openEditorTab();
-      } else if (pendingGuide.url) {
-        if (pendingGuide.packageInfo) {
-          panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
-            source: 'fullscreen_handoff',
-            packageInfo: pendingGuide.packageInfo,
-          });
-        } else if (pendingGuide.type === 'learning-journey') {
-          panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
-        } else {
-          panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'fullscreen_handoff' });
-        }
-      }
+      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
     };
     document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
     return () => {
@@ -421,146 +365,21 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     };
   }, [panel]);
 
-  // Learning-journey milestone toolbar — the same arrow-nav + actions row
-  // the sidebar shows. Renders as a sub-header beneath the layout's main
-  // header. Null for non-journey tabs (the editor and bundled docs render
-  // without it, mirroring sidebar behavior).
-  const lj = activeTab?.content?.type === 'learning-journey' ? activeTab.content.metadata.learningJourney : undefined;
-  const showMilestoneProgress = activeTab?.type === 'learning-journey' && Boolean(lj);
-
-  const journeyToolbar =
-    showMilestoneProgress && activeTab && lj ? (
-      <div className={milestoneStyles.milestoneProgress}>
-        <div className={milestoneStyles.progressInfo}>
-          <div className={milestoneStyles.progressHeader}>
-            <IconButton
-              name="arrow-left"
-              size="sm"
-              aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
-              onClick={() => {
-                reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                  content_title: activeTab.title,
-                  content_url: activeTab.baseUrl,
-                  current_milestone: lj.currentMilestone || 0,
-                  total_milestones: lj.totalMilestones || 0,
-                  direction: 'backward',
-                  interaction_location: 'milestone_progress_bar',
-                  completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
-                });
-                panel.navigateToPreviousMilestone();
-              }}
-              tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
-              tooltipPlacement="top"
-              disabled={!panel.canNavigatePrevious() || activeTab.isLoading}
-              className={milestoneStyles.navButton}
-            />
-            <span className={milestoneStyles.milestoneText}>
-              {lj.currentMilestone === 0
-                ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                    total: lj.totalMilestones,
-                  })
-                : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                    current: lj.currentMilestone,
-                    total: lj.totalMilestones,
-                  })}
-            </span>
-            <IconButton
-              name="arrow-right"
-              size="sm"
-              aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
-              onClick={() => {
-                reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                  content_title: activeTab.title,
-                  content_url: activeTab.baseUrl,
-                  current_milestone: lj.currentMilestone || 0,
-                  total_milestones: lj.totalMilestones || 0,
-                  direction: 'forward',
-                  interaction_location: 'milestone_progress_bar',
-                  completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
-                });
-                // Mirror the sidebar: when the current milestone has no
-                // interactive steps in the rendered DOM, mark it done so
-                // progress advances even though there's nothing to "complete".
-                if (activeTab.currentUrl && activeTab.baseUrl) {
-                  const root = document.querySelector('[data-pathfinder-content="true"]');
-                  const hasInteractiveSteps = (root?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
-                  if (!hasInteractiveSteps) {
-                    const slug = getMilestoneSlug(activeTab.currentUrl);
-                    if (slug) {
-                      void markMilestoneDone(activeTab.baseUrl, slug, lj.totalMilestones);
-                    }
-                  }
-                }
-                panel.navigateToNextMilestone();
-              }}
-              tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
-              tooltipPlacement="top"
-              disabled={!panel.canNavigateNext() || activeTab.isLoading}
-              className={milestoneStyles.navButton}
-            />
-          </div>
-          <div className={milestoneStyles.milestoneActions}>
-            {(() => {
-              const currentMs = lj.milestones.find((m) => m.number === (lj.currentMilestone ?? 0));
-              const websiteUrl = currentMs?.websiteUrl ?? lj.websiteUrl;
-              const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
-              const url = websiteUrl || fallbackUrl;
-              if (!url) {
-                return null;
-              }
-              const externalUrl = cleanDocsUrl(url);
-              return (
-                <button
-                  className={fullScreenStyles.secondaryActionButton}
-                  aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
-                  onClick={() => {
-                    reportAppInteraction(UserInteraction.OpenExtraResource, {
-                      content_url: externalUrl,
-                      content_type: getContentTypeForAnalytics(externalUrl, activeTab.type || 'learning-journey'),
-                      link_text: activeTab.title,
-                      source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                      link_type: 'external_browser',
-                      interaction_location: 'full_screen_milestone_progress_bar',
-                      current_milestone: lj.currentMilestone || 0,
-                      total_milestones: lj.totalMilestones || 0,
-                    });
-                    setTimeout(() => {
-                      window.open(externalUrl, '_blank', 'noopener,noreferrer');
-                    }, 100);
-                  }}
-                >
-                  <Icon name="external-link-alt" size="sm" />
-                  <span>{t('docsPanel.open', 'Open')}</span>
-                </button>
-              );
-            })()}
-            {(hasInteractiveProgress || activeTab.type === 'interactive') && (
-              <button
-                className={fullScreenStyles.secondaryActionButton}
-                aria-label={t('docsPanel.resetGuide', 'Reset guide')}
-                title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
-                onClick={async () => {
-                  if (progressKey && activeTab) {
-                    await handleResetGuide(progressKey, activeTab);
-                  }
-                }}
-              >
-                <Icon name="history-alt" size="sm" />
-                <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
-              </button>
-            )}
-          </div>
-          <div className={milestoneStyles.progressBar}>
-            <div
-              className={milestoneStyles.progressFill}
-              style={{
-                width: `${((lj.currentMilestone || 0) / (lj.totalMilestones || 1)) * 100}%`,
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    ) : null;
+  // Learning-journey milestone toolbar — shared with the sidebar via the
+  // `LearningJourneyMilestoneToolbar` component. Renders as a sub-header
+  // beneath the layout's main header. Returns null for non-journey tabs
+  // (editor and bundled docs render without it, mirroring sidebar behavior).
+  const journeyToolbar = activeTab ? (
+    <LearningJourneyMilestoneToolbar
+      panel={panel}
+      activeTab={activeTab}
+      surface="fullscreen"
+      actionButtonClassName={fullScreenStyles.secondaryActionButton}
+      hasInteractiveProgress={hasInteractiveProgress}
+      progressKey={progressKey}
+      onResetGuide={handleResetGuide}
+    />
+  ) : null;
 
   const guideType: 'learning-journey' | 'docs' | undefined = hasActiveGuide
     ? activeTab?.type === 'learning-journey'

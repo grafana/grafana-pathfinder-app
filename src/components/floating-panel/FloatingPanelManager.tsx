@@ -1,13 +1,20 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
+import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
-import { usePendingGuideLaunch, useAlignmentReevaluation } from '../../hooks';
+import {
+  usePendingGuideLaunch,
+  useAlignmentReevaluation,
+  useAutoLaunchTutorial,
+  useStepProgressFromEvents,
+} from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { coerceLaunchSource } from '../../recovery';
+import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -98,28 +105,7 @@ function FloatingPanelInner() {
     const pendingGuide = panelModeManager.consumePendingGuide();
     if (pendingGuide) {
       guideOpenInFlightRef.current = true;
-      // Editor handoff: no URL — switch the active tab to the editor (or
-      // create it if needed). Mirrors the FullScreenPanel handler.
-      if (pendingGuide.type === 'editor') {
-        panel.openEditorTab();
-      } else if (pendingGuide.url) {
-        // packageInfo (e.g. from the PR tester) carries the manifest +
-        // pre-resolved milestones, so openDocsPage creates a journey tab with
-        // the milestone toolbar even when the URL is a raw GitHub URL that
-        // openLearningJourney's package-URL detection wouldn't recognise.
-        if (pendingGuide.packageInfo) {
-          panel.openDocsPage(pendingGuide.url, pendingGuide.title, {
-            source: 'floating_panel_dock',
-            packageInfo: pendingGuide.packageInfo,
-          });
-        } else if (pendingGuide.type === 'learning-journey') {
-          // Preserve the journey tab type so docking back to sidebar restores
-          // it as a journey (with milestone navigation) rather than a flat docs tab.
-          panel.openLearningJourney(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
-        } else {
-          panel.openDocsPage(pendingGuide.url, pendingGuide.title, { source: 'floating_panel_dock' });
-        }
-      }
+      openPendingGuide(panel, pendingGuide, 'floating_panel_dock');
     }
 
     return () => {
@@ -140,7 +126,11 @@ function FloatingPanelInner() {
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
-    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
+    // Permanent system tabs (`recommendations`, `devtools`, `editor`) don't
+    // count as user content — restoring on top of them is safe. Mirrors the
+    // sidebar's gate at `docs-panel.tsx` so all three surfaces agree on
+    // when "the panel is empty".
+    const hasOnlyDefaultTabs = tabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
     if (hasOnlyDefaultTabs) {
       panel.restoreTabsAsync().then(() => {
         setRestorationDone(true);
@@ -151,32 +141,14 @@ function FloatingPanelInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
-  // Listen for auto-launch-tutorial events (same as docs-panel)
-  useEffect(() => {
-    const handleAutoLaunch = (e: CustomEvent<{ url: string; title: string; type?: string; source?: string }>) => {
+  // Listen for auto-launch-tutorial events (shared across all panel surfaces).
+  // The hook owns the routing; we just flip the in-flight flag synchronously
+  // so the empty-state fallback doesn't fire on top of an incoming guide.
+  useAutoLaunchTutorial(panel, {
+    onIncoming: () => {
       guideOpenInFlightRef.current = true;
-      const { url, title, type, source } = e.detail;
-      // Match the sidebar's routing in `handleAutoLaunchTutorial`: learning
-      // journeys must go through `openLearningJourney` to get milestone
-      // navigation and progress tracking. Interactive guides from `?doc=`
-      // fall through to `openDocsPage`, which auto-detects interactive content.
-      const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
-      // Coerce the untrusted event.detail.source to a typed LaunchSource at
-      // the boundary so a typo or unknown literal falls through to the safe
-      // "needs check" default rather than entering the model untyped.
-      const typedSource = coerceLaunchSource(source) ?? undefined;
-      if (openAsLearningJourney) {
-        panel.openLearningJourney(url, title, { source: typedSource });
-      } else {
-        panel.openDocsPage(url, title, { source: typedSource });
-      }
-    };
-
-    document.addEventListener('auto-launch-tutorial', handleAutoLaunch as EventListener);
-    return () => {
-      document.removeEventListener('auto-launch-tutorial', handleAutoLaunch as EventListener);
-    };
-  }, [panel]);
+    },
+  });
 
   // Get active tab content
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -188,32 +160,8 @@ function FloatingPanelInner() {
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
 
   // Track interactive step progress via the `pathfinder-step-progress`
-  // event published by interactive-section. The previous polling on
-  // `__DocsPluginCurrentStepIndex` only updated while a step was
-  // *executing*, so the chip went stale immediately after each step
-  // finished. Now we listen for completion changes too and show
-  // "completed / total" instead of a moving cursor.
-  const [stepProgress, setStepProgress] = useState<string | undefined>();
-  useEffect(() => {
-    if (!hasActiveGuide) {
-      setStepProgress(undefined);
-      return;
-    }
-    const handle = (e: Event) => {
-      const detail = (e as CustomEvent<{ totalSteps?: number; completedCount?: number }>).detail;
-      const total = detail?.totalSteps ?? 0;
-      const done = detail?.completedCount ?? 0;
-      if (total > 0) {
-        setStepProgress(`${done}/${total}`);
-      } else {
-        setStepProgress(undefined);
-      }
-    };
-    window.addEventListener('pathfinder-step-progress', handle);
-    return () => {
-      window.removeEventListener('pathfinder-step-progress', handle);
-    };
-  }, [hasActiveGuide]);
+  // event — shared subscription with FullScreenPanel via the hook.
+  const stepProgress = useStepProgressFromEvents(hasActiveGuide);
 
   // After restoration completes, if there's no guide to show and none
   // is being loaded, fall back to sidebar mode. The editor tab counts as
@@ -306,7 +254,14 @@ function FloatingPanelInner() {
     panelModeManager.setMode('fullscreen');
     // Include type in the URL so refresh/share rehydrates as a journey
     // even if findDocPage's URL-based classification can't tell.
-    locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}?doc=${encodeURIComponent(guideUrl)}&type=${tabType}`);
+    locationService.push(
+      buildFullScreenRouteUrl({
+        pluginBaseUrl: PLUGIN_BASE_URL,
+        fullScreenRoute: ROUTES.FullScreen,
+        doc: guideUrl,
+        guideType: tabType,
+      })
+    );
   }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
 
   // Symmetric counterpart to the sidebar's `pathfinder-request-full-screen`
@@ -326,12 +281,21 @@ function FloatingPanelInner() {
   // The editor tab is also a valid full-screen target even though it isn't
   // a guide. Show the button for guides AND the editor.
   const canSwitchToFullScreen = hasActiveGuide || isEditorTab;
+  // Threaded through to the share-link builder so a copied floating link
+  // includes `type=learning-journey` for journey tabs (the receiving panel
+  // misclassifies package URLs as 'interactive' otherwise).
+  const guideType: 'learning-journey' | 'docs' | undefined = hasActiveGuide
+    ? activeTab?.type === 'learning-journey'
+      ? 'learning-journey'
+      : 'docs'
+    : undefined;
 
   return (
     <FloatingPanel
       title={title}
       hasActiveGuide={hasActiveGuide}
       guideUrl={guideUrl}
+      guideType={guideType}
       stepProgress={stepProgress}
       onSwitchToSidebar={handleSwitchToSidebar}
       onSwitchToFullScreen={canSwitchToFullScreen ? handleSwitchToFullScreen : undefined}

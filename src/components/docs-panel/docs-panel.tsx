@@ -49,7 +49,7 @@ import {
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
-import { useAlignmentReevaluation } from '../../hooks';
+import { useAlignmentReevaluation, useAutoLaunchTutorial } from '../../hooks';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 import {
@@ -93,6 +93,7 @@ import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { buildFullScreenRouteUrl, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
@@ -103,6 +104,8 @@ import {
   ModalBackdrop,
   AlignmentPrompt,
   FullScreenModeNotice,
+  PanelModeActionButtons,
+  LearningJourneyMilestoneToolbar,
 } from './components';
 // Import extracted utilities
 import {
@@ -1578,17 +1581,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // No need for automatic saving here as it's done when tabs are created/modified
   // Note: Click-outside and dropdown positioning now handled by useTabOverflow hook
 
-  // Auto-launch tutorial detection
-  useEffect(() => {
-    const handleAutoLaunchTutorial = (event: CustomEvent) => {
-      const { url, title, type, source } = event.detail;
-
-      // Determine whether to open as learning journey or docs/interactive page.
-      // Only use learning journey when explicitly from learning-hub source OR type is learning-journey.
-      // Interactive guides from ?doc= should open as docs-like tabs (which auto-detect interactive content).
-      const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
-
-      // Track auto-launch analytics - unified event for opening any resource
+  // Auto-launch tutorial detection.
+  //
+  // The hook owns the routing (typed source coercion + the
+  // `learning-journey || learning-hub` rule) so all surfaces agree on what
+  // an `auto-launch-tutorial` event means. The sidebar additionally fires
+  // `OpenResourceClick` analytics and a follow-up `auto-launch-complete`
+  // window event — both fire unconditionally, mirroring the legacy
+  // behavior, so callers downstream can wait for completion regardless of
+  // whether url/title were present.
+  useAutoLaunchTutorial(model, {
+    onIncoming: (detail) => {
+      const { url, title, type, source } = detail;
+      const openAsLearningJourney = shouldOpenAsLearningJourney(type, source);
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
         content_url: url,
@@ -1599,33 +1604,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           completion_percentage: 0, // Auto-launch is always starting fresh
         }),
       });
-
-      if (url && title) {
-        // Coerce the untrusted event.detail.source to a typed LaunchSource at
-        // the boundary. Unknown literals fall through to undefined ("needs
-        // check"), which is the safer default than passing typo'd strings
-        // through to the model.
-        const typedSource = coerceLaunchSource(source) ?? undefined;
-        if (openAsLearningJourney) {
-          model.openLearningJourney(url, title, { source: typedSource });
-        } else {
-          model.openDocsPage(url, title, { source: typedSource });
-        }
-      }
-
-      // send an event so we know the page has been loaded
-      const launchEvent = new CustomEvent('auto-launch-complete', {
-        detail: event.detail,
-      });
-      window.dispatchEvent(launchEvent);
-    };
-
-    document.addEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
-
-    return () => {
-      document.removeEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
-    };
-  }, [model]);
+      window.dispatchEvent(new CustomEvent('auto-launch-complete', { detail }));
+    },
+  });
 
   // Pop-out to floating panel: hand off the active guide before switching modes
   useEffect(() => {
@@ -1782,8 +1763,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       // would call findDocPage and classify a journey package URL as
       // 'interactive', losing the milestone toolbar on reload.
       const tabType = activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs';
-      const target = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}?doc=${encodeURIComponent(guideUrl)}&type=${tabType}`;
-      locationService.push(target);
+      locationService.push(
+        buildFullScreenRouteUrl({
+          pluginBaseUrl: PLUGIN_BASE_URL,
+          fullScreenRoute: ROUTES.FullScreen,
+          doc: guideUrl,
+          guideType: tabType,
+        })
+      );
     };
 
     document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
@@ -2370,30 +2357,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                         </button>
                       )}
-                      <button
-                        className={styles.secondaryActionButton}
-                        aria-label="Pop out to floating panel"
-                        title="Pop out guide to a floating panel"
-                        data-testid={testIds.docsPanel.popOutButton}
-                        onClick={() => {
-                          document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
-                        }}
-                      >
-                        <Icon name="corner-up-right" size="sm" />
-                        <span>Pop out</span>
-                      </button>
-                      <button
-                        className={styles.secondaryActionButton}
-                        aria-label="Open in full screen"
-                        title="Open guide in full screen"
-                        data-testid={testIds.docsPanel.fullScreenButton}
-                        onClick={() => {
-                          document.dispatchEvent(new CustomEvent('pathfinder-request-full-screen'));
-                        }}
-                      >
-                        <Icon name="expand-arrows" size="sm" />
-                        <span>Full screen</span>
-                      </button>
+                      <PanelModeActionButtons className={styles.secondaryActionButton} />
                       <Dropdown
                         placement="bottom-end"
                         overlay={
@@ -2442,224 +2406,68 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   </div>
                 )}
 
-                {/* Milestone Progress - only show for learning journey milestone pages */}
-                {showMilestoneProgress && (
-                  <div className={styles.milestoneProgress}>
-                    <div className={styles.progressInfo}>
-                      <div className={styles.progressHeader}>
-                        <IconButton
-                          name="arrow-left"
-                          size="sm"
-                          aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
-                          onClick={() => {
-                            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                              content_title: activeTab.title,
-                              content_url: activeTab.baseUrl,
-                              current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                              total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
-                              direction: 'backward',
-                              interaction_location: 'milestone_progress_bar',
-                              completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
-                            });
-
-                            model.navigateToPreviousMilestone();
-                          }}
-                          tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
-                          tooltipPlacement="top"
-                          disabled={!model.canNavigatePrevious() || activeTab.isLoading}
-                          className={styles.navButton}
-                        />
-                        <span className={styles.milestoneText}>
-                          {activeTab.content?.metadata.learningJourney?.currentMilestone === 0
-                            ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                              })
-                            : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                                current: activeTab.content?.metadata.learningJourney?.currentMilestone,
-                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                              })}
-                        </span>
-                        <IconButton
-                          name="arrow-right"
-                          size="sm"
-                          aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
-                          onClick={() => {
-                            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                              content_title: activeTab.title,
-                              content_url: activeTab.baseUrl,
-                              current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                              total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
-                              direction: 'forward',
-                              interaction_location: 'milestone_progress_bar',
-                              completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
-                            });
-
-                            // Mark current milestone done if it has no interactive steps
-                            if (
-                              activeTab.content?.type === 'learning-journey' &&
-                              activeTab.currentUrl &&
-                              activeTab.baseUrl
-                            ) {
-                              const hasInteractiveSteps =
-                                (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
-                              if (!hasInteractiveSteps) {
-                                const slug = getMilestoneSlug(activeTab.currentUrl);
-                                if (slug) {
-                                  void markMilestoneDone(
-                                    activeTab.baseUrl,
-                                    slug,
-                                    activeTab.content?.metadata?.learningJourney?.totalMilestones
-                                  );
-                                }
-                              }
-                            }
-
-                            model.navigateToNextMilestone();
-                          }}
-                          tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
-                          tooltipPlacement="top"
-                          disabled={!model.canNavigateNext() || activeTab.isLoading}
-                          className={styles.navButton}
-                        />
-                      </div>
-                      <div className={styles.milestoneActions}>
-                        {(() => {
-                          const lj = activeTab.content?.metadata.learningJourney;
-                          const currentMs = lj?.milestones.find((m) => m.number === (lj?.currentMilestone ?? 0));
-                          const websiteUrl = currentMs?.websiteUrl ?? lj?.websiteUrl;
-                          const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
-                          const url = websiteUrl || fallbackUrl;
-                          if (url) {
-                            const cleanUrl = cleanDocsUrl(url);
-                            return (
-                              <button
-                                className={styles.secondaryActionButton}
-                                aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
-                                onClick={() => {
-                                  reportAppInteraction(UserInteraction.OpenExtraResource, {
-                                    content_url: cleanUrl,
-                                    content_type: getContentTypeForAnalytics(
-                                      cleanUrl,
-                                      activeTab.type || 'learning-journey'
-                                    ),
-                                    link_text: activeTab.title,
-                                    source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                                    link_type: 'external_browser',
-                                    interaction_location: 'milestone_progress_bar',
-                                    current_milestone: lj?.currentMilestone || 0,
-                                    total_milestones: lj?.totalMilestones || 0,
-                                  });
-                                  setTimeout(() => {
-                                    window.open(cleanUrl, '_blank', 'noopener,noreferrer');
-                                  }, 100);
-                                }}
-                              >
-                                <Icon name="external-link-alt" size="sm" />
-                                <span>{t('docsPanel.open', 'Open')}</span>
-                              </button>
-                            );
-                          }
-                          return null;
-                        })()}
-                        {(hasInteractiveProgress || activeTab.type === 'interactive') && (
-                          <button
-                            className={styles.secondaryActionButton}
-                            aria-label={t('docsPanel.resetGuide', 'Reset guide')}
-                            title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
-                            onClick={async () => {
-                              if (progressKey && activeTab) {
-                                await handleResetGuide(progressKey, activeTab);
-                              }
-                            }}
-                          >
-                            <Icon name="history-alt" size="sm" />
-                            <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
-                          </button>
-                        )}
-                        <button
-                          className={styles.secondaryActionButton}
-                          aria-label="Pop out to floating panel"
-                          title="Pop out guide to a floating panel"
-                          data-testid={testIds.docsPanel.popOutButton}
-                          onClick={() => {
-                            document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
-                          }}
-                        >
-                          <Icon name="corner-up-right" size="sm" />
-                          <span>Pop out</span>
-                        </button>
-                        <button
-                          className={styles.secondaryActionButton}
-                          aria-label="Open in full screen"
-                          title="Open guide in full screen"
-                          data-testid={testIds.docsPanel.fullScreenButton}
-                          onClick={() => {
-                            document.dispatchEvent(new CustomEvent('pathfinder-request-full-screen'));
-                          }}
-                        >
-                          <Icon name="expand-arrows" size="sm" />
-                          <span>Full screen</span>
-                        </button>
-                        <Dropdown
-                          placement="bottom-end"
-                          overlay={
-                            <Menu>
-                              {isDevMode && (
-                                <Menu.Item
-                                  label={t('docsPanel.refreshDev', 'Refresh (dev)')}
-                                  icon="sync"
-                                  onClick={() => {
-                                    if (activeTab) {
-                                      reloadActiveTab(activeTab);
-                                    }
-                                  }}
-                                />
-                              )}
+                {/* Milestone Progress - shared with the fullscreen surface via
+                    LearningJourneyMilestoneToolbar. Returns null for non-journey
+                    tabs so the consumer can render unconditionally. */}
+                <LearningJourneyMilestoneToolbar
+                  panel={model}
+                  activeTab={activeTab}
+                  surface="sidebar"
+                  contentRoot={contentRef}
+                  actionButtonClassName={styles.secondaryActionButton}
+                  hasInteractiveProgress={hasInteractiveProgress}
+                  progressKey={progressKey}
+                  onResetGuide={handleResetGuide}
+                  trailingActions={
+                    <>
+                      <PanelModeActionButtons className={styles.secondaryActionButton} />
+                      <Dropdown
+                        placement="bottom-end"
+                        overlay={
+                          <Menu>
+                            {isDevMode && (
                               <Menu.Item
-                                label={t('docsPanel.giveFeedback', 'Give feedback')}
-                                icon="comment-alt-message"
+                                label={t('docsPanel.refreshDev', 'Refresh (dev)')}
+                                icon="sync"
                                 onClick={() => {
-                                  reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
-                                    interaction_location: 'milestone_progress_bar_feedback_menu',
-                                    panel_type: 'combined_learning_journey',
-                                    content_url: activeTab.content?.url || activeTab.baseUrl || '',
-                                    content_type: activeTab.type || 'learning-journey',
-                                  });
-                                  setTimeout(() => {
-                                    window.open(
-                                      'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
-                                      '_blank',
-                                      'noopener,noreferrer'
-                                    );
-                                  }, 100);
+                                  if (activeTab) {
+                                    reloadActiveTab(activeTab);
+                                  }
                                 }}
                               />
-                            </Menu>
-                          }
-                        >
-                          <IconButton
-                            name="ellipsis-v"
-                            size="sm"
-                            aria-label={t('docsPanel.menuAriaLabel', 'More options')}
-                            tooltip={t('docsPanel.menuTooltip', 'More options')}
-                          />
-                        </Dropdown>
-                      </div>
-                      <div className={styles.progressBar}>
-                        <div
-                          className={styles.progressFill}
-                          style={{
-                            width: `${
-                              ((activeTab.content?.metadata.learningJourney?.currentMilestone || 0) /
-                                (activeTab.content?.metadata.learningJourney?.totalMilestones || 1)) *
-                              100
-                            }%`,
-                          }}
+                            )}
+                            <Menu.Item
+                              label={t('docsPanel.giveFeedback', 'Give feedback')}
+                              icon="comment-alt-message"
+                              onClick={() => {
+                                reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                                  interaction_location: 'milestone_progress_bar_feedback_menu',
+                                  panel_type: 'combined_learning_journey',
+                                  content_url: activeTab.content?.url || activeTab.baseUrl || '',
+                                  content_type: activeTab.type || 'learning-journey',
+                                });
+                                setTimeout(() => {
+                                  window.open(
+                                    'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  );
+                                }, 100);
+                              }}
+                            />
+                          </Menu>
+                        }
+                      >
+                        <IconButton
+                          name="ellipsis-v"
+                          size="sm"
+                          aria-label={t('docsPanel.menuAriaLabel', 'More options')}
+                          tooltip={t('docsPanel.menuTooltip', 'More options')}
                         />
-                      </div>
-                    </div>
-                  </div>
-                )}
+                      </Dropdown>
+                    </>
+                  }
+                />
 
                 {/* Unified Content Renderer - works for both learning journeys and docs! */}
                 <div

@@ -122,8 +122,6 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
       'testIds.docsPanel.tab(',
       'testIds.docsPanel.tabCloseButton(',
       'testIds.docsPanel.tabDropdownItem(',
-      'testIds.docsPanel.popOutButton',
-      'testIds.docsPanel.fullScreenButton',
       'testIds.devTools.previewBanner',
       'testIds.devTools.previewModeIndicator',
       'testIds.devTools.returnToEditorButton',
@@ -137,6 +135,13 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   {
     file: 'components/ErrorDisplay.tsx',
     references: ['testIds.docsPanel.errorState', 'testIds.docsPanel.retryButton'],
+  },
+  {
+    // Pop out / Full screen buttons were extracted from `docs-panel.tsx` to
+    // de-duplicate two near-identical inline blocks. The test ids stay stable;
+    // their owning file moved.
+    file: 'components/PanelModeActionButtons.tsx',
+    references: ['testIds.docsPanel.popOutButton', 'testIds.docsPanel.fullScreenButton'],
   },
 ];
 

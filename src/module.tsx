@@ -14,6 +14,7 @@ import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
 import { validateRedirectPath } from './security/url-validator';
+import { parsePathfinderDeepLink, stripPathfinderParams } from './utils/pathfinder-search-params';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -135,18 +136,19 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Check for doc query parameter to auto-open specific docs page.
   // Dynamically imports findDocPage so the bundled JSON data stays out of module.js.
-  const urlParams = new URLSearchParams(window.location.search);
-  const docsParam = urlParams.get('doc');
-  const pageParam = urlParams.get('page');
-  // Optional source override for analytics — allows callers to identify the origin
-  // of a ?doc= deep link (e.g. ?doc=foo&source=learning-hub)
-  const sourceParam = urlParams.get('source');
-  // Optional type override. Some package URLs (e.g. interactive-learning.grafana.net
+  // Single typed read — `parsePathfinderDeepLink` is the source of truth for
+  // the param shape; previously the keys were duplicated across this file
+  // and would drift (e.g. one strip block used to omit `type`).
+  const deepLink = parsePathfinderDeepLink(window.location.search);
+  const docsParam = deepLink.doc;
+  const pageParam = deepLink.page;
+  const sourceParam = deepLink.source;
+  // Some package URLs (e.g. interactive-learning.grafana.net
   // packages/<id>/content.json) classify as 'interactive' via findDocPage even though
   // they back a learning journey. The ?type= URL hint is the escape hatch that lets
   // share/refresh links preserve the journey kind (and milestone toolbar).
-  const typeParam = urlParams.get('type');
-  const kioskSessionParam = urlParams.get('kiosk_session');
+  const typeParam = deepLink.type;
+  const kioskSessionParam = deepLink.kioskSession;
 
   if (kioskSessionParam) {
     (window as any).__pathfinderKioskSessionId = kioskSessionParam;
@@ -154,7 +156,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Check for panelMode param (e.g. ?panelMode=floating for workshop links).
   // Set synchronously so mode is active before any components mount.
-  const panelModeParam = urlParams.get('panelMode');
+  const panelModeParam = deepLink.panelMode;
   if (panelModeParam === 'floating') {
     panelModeManager.setMode('floating');
     const cleanUrl = new URL(window.location.href);
@@ -168,14 +170,14 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     // Route to the full screen page so the rest of init wires up auto-launch
     // against that route. The doc + type params (if present) flow through the
     // existing handler and are consumed by FullScreenPanel on mount.
-    const docForFullScreen = urlParams.get('doc');
-    const typeForFullScreen = urlParams.get('type');
     let target = `/a/${pluginJson.id}/fullscreen`;
-    if (docForFullScreen) {
-      target += `?doc=${encodeURIComponent(docForFullScreen)}`;
-      if (typeForFullScreen) {
-        target += `&type=${encodeURIComponent(typeForFullScreen)}`;
+    if (docsParam) {
+      const fullScreenParams = new URLSearchParams();
+      fullScreenParams.set('doc', docsParam);
+      if (typeParam) {
+        fullScreenParams.set('type', typeParam);
       }
+      target += `?${fullScreenParams.toString()}`;
     }
     locationService.replace(target);
   }
@@ -185,11 +187,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   if (docsParam && !shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     const url = new URL(window.location.href);
-    url.searchParams.delete('doc');
-    url.searchParams.delete('page');
-    url.searchParams.delete('source');
-    url.searchParams.delete('type');
-    url.searchParams.delete('kiosk_session');
+    stripPathfinderParams(url);
     window.history.replaceState({}, '', url.toString());
 
     import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
@@ -221,11 +219,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           );
           // Strip stale params so they don't re-fire on refresh
           const url = new URL(window.location.href);
-          url.searchParams.delete('doc');
-          url.searchParams.delete('page');
-          url.searchParams.delete('source');
-          url.searchParams.delete('type');
-          url.searchParams.delete('kiosk_session');
+          stripPathfinderParams(url);
           window.history.replaceState({}, '', url.toString());
 
           sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
@@ -246,11 +240,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
         if (!needsRedirect) {
           const url = new URL(window.location.href);
-          url.searchParams.delete('doc');
-          url.searchParams.delete('page');
-          url.searchParams.delete('source');
-          url.searchParams.delete('type');
-          url.searchParams.delete('kiosk_session');
+          stripPathfinderParams(url);
           window.history.replaceState({}, '', url.toString());
         }
 
