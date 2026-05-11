@@ -135,7 +135,10 @@ describe('buildPathPackageInfo', () => {
       return;
     }
     expect(result.coverUrl).toBe(`${RAW_BASE}/my-path/content.json`);
-    expect(result.title).toBe('my-path');
+    // Slug-formatted fallback when the manifest has no `description`. Mirrors
+    // the `formatSlug` convention used by `find-doc-page.ts` for `?doc=` deep
+    // links so PR-tester tabs and deep-link tabs read the same.
+    expect(result.title).toBe('My Path');
     expect(result.packageInfo.packageId).toBe('my-path');
     expect(result.packageInfo.packageManifest).toBe(manifest as unknown as Record<string, unknown>);
 
@@ -147,6 +150,76 @@ describe('buildPathPackageInfo', () => {
     expect(milestones[0]?.url).toBe(`${RAW_BASE}/guide-one/content.json`);
     expect(milestones[1]?.number).toBe(2);
     expect(milestones[1]?.url).toBe(`${RAW_BASE}/guide-two/content.json`);
+  });
+
+  describe('title resolution', () => {
+    function buildWithManifest(manifest: ManifestJson) {
+      const files: PrJsonFile[] = [manifestFile('my-path'), content('my-path')];
+      // Self-reference so the cover resolves; we only care about `result.title`.
+      return buildPathPackageInfo({
+        contentByDir: indexPrFiles(files).contentByDir,
+        manifest,
+        manifestDirectory: 'my-path',
+        contentByPackageId: new Map([['stub', content('my-path')]]),
+      });
+    }
+
+    it('prefers `manifest.description` over the slug-formatted id', () => {
+      const result = buildWithManifest({
+        id: 'pathfinder-roadmap-2026-lj',
+        type: 'path',
+        milestones: ['stub'],
+        description: 'Pathfinder roadmap 2026',
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.title).toBe('Pathfinder roadmap 2026');
+      }
+    });
+
+    it('falls back to slug-formatted id when description is missing', () => {
+      const result = buildWithManifest({
+        id: 'pathfinder-roadmap-2026',
+        type: 'path',
+        milestones: ['stub'],
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.title).toBe('Pathfinder Roadmap 2026');
+      }
+    });
+
+    it('falls back to slug-formatted id when description is whitespace-only', () => {
+      const result = buildWithManifest({
+        id: 'my-cool-path',
+        type: 'path',
+        milestones: ['stub'],
+        description: '   ',
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.title).toBe('My Cool Path');
+      }
+    });
+
+    it('keeps the raw id as the package identity even when title comes from description', () => {
+      const result = buildWithManifest({
+        id: 'pathfinder-roadmap-2026-lj',
+        type: 'path',
+        milestones: ['stub'],
+        description: 'Pathfinder roadmap 2026',
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Identity must remain the slug so milestone progress + storage keys
+        // match production lookups.
+        expect(result.packageInfo.packageId).toBe('pathfinder-roadmap-2026-lj');
+      }
+    });
   });
 
   it('resolves milestones via package id even when the directory name differs (the real-world prefix case)', () => {

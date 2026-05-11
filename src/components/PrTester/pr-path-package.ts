@@ -58,6 +58,17 @@ export type PathPackageBuildResult =
     };
 
 /**
+ * Format a package ID slug like `pathfinder-roadmap-2026` into a tab-friendly
+ * title `Pathfinder Roadmap 2026`. Mirrors the `formatSlug` helper in
+ * `src/utils/find-doc-page.ts` so deep-link tabs and PR-tester tabs use the
+ * same convention. Used as a fallback when a path manifest has no
+ * `description` to display.
+ */
+function formatPackageIdAsTitle(id: string): string {
+  return id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
  * Index PR JSON files by `(directoryName, kind)` for O(1) lookup during
  * milestone resolution.
  */
@@ -162,7 +173,16 @@ export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackag
     return { ok: false, reason: 'missing_milestones', missingMilestones };
   }
 
-  const title = manifest.id;
+  // Tab title preference order:
+  //   1. `manifest.description` — author-provided human-readable label.
+  //   2. Slug-formatted `manifest.id` — same dash-to-space + capitalize
+  //      convention `find-doc-page.ts` uses for `?doc=` deep links, so the
+  //      PR tester produces the same "Looks like a tab title" output for
+  //      paths whose authors haven't filled in a description yet.
+  // The raw slug `manifest.id` is preserved as the package identity inside
+  // `packageInfo` so milestone progress and storage keys stay correct.
+  const description = typeof manifest.description === 'string' ? manifest.description.trim() : '';
+  const title = description || formatPackageIdAsTitle(manifest.id);
 
   const packageInfo: PackageOpenInfo = {
     packageId: manifest.id,

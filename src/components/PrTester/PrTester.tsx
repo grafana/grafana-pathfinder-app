@@ -614,30 +614,41 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
               <Combobox options={pathOptions} value={selectedPath} onChange={handlePathSelect} />
             </div>
           )}
-          {!manifestsLoading && pathBuild && (
+          {/* Only render the milestones list when we actually have items to
+              show: a successful build, OR a `missing_milestones` failure
+              where each manifest milestone ID is rendered with its missing
+              badge. The other failure reasons (`no_milestones`,
+              `missing_cover`, `not_path_package`) are surfaced via
+              `pathErrorMessage` below — without this gate they leave the
+              "Milestones (from manifest)" label hovering above an empty
+              <ol>. */}
+          {!manifestsLoading && pathBuild?.ok && (
             <>
               <label className={styles.label}>Milestones (from manifest)</label>
               <ol className={styles.guidesList}>
-                {pathBuild.ok
-                  ? pathBuild.packageInfo.resolvedMilestones?.map((milestone) => (
-                      <li key={milestone.title} className={styles.guidesListItem}>
-                        <Icon name="document-info" />
-                        <span>{milestone.title}</span>
-                      </li>
-                    ))
-                  : null}
-                {!pathBuild.ok && pathBuild.reason === 'missing_milestones'
-                  ? pathManifests.get(selectedPath ?? '')?.milestones?.map((id) => {
-                      const isMissing = pathBuild.missingMilestones?.includes(id);
-                      return (
-                        <li key={id} className={styles.guidesListItem}>
-                          <Icon name={isMissing ? 'exclamation-triangle' : 'document-info'} />
-                          <span>{id}</span>
-                          {isMissing && <span className={getStatusClass('removed')}>not in PR</span>}
-                        </li>
-                      );
-                    })
-                  : null}
+                {pathBuild.packageInfo.resolvedMilestones?.map((milestone) => (
+                  <li key={milestone.title} className={styles.guidesListItem}>
+                    <Icon name="document-info" />
+                    <span>{milestone.title}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+          {!manifestsLoading && pathBuild && !pathBuild.ok && pathBuild.reason === 'missing_milestones' && (
+            <>
+              <label className={styles.label}>Milestones (from manifest)</label>
+              <ol className={styles.guidesList}>
+                {pathManifests.get(selectedPath ?? '')?.milestones?.map((id) => {
+                  const isMissing = pathBuild.missingMilestones?.includes(id);
+                  return (
+                    <li key={id} className={styles.guidesListItem}>
+                      <Icon name={isMissing ? 'exclamation-triangle' : 'document-info'} />
+                      <span>{id}</span>
+                      {isMissing && <span className={getStatusClass('removed')}>not in PR</span>}
+                    </li>
+                  );
+                })}
               </ol>
             </>
           )}

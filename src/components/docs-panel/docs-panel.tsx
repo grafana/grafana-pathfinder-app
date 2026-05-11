@@ -319,8 +319,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // hint would land here without the manifest, fetch via plain fetchContent,
     // and render as a "default doc" with no milestone toolbar.
     // See context-panel.tsx ("All packages route through openDocsPage").
+    //
+    // Forward `options` whole-cloth (rather than picking specific fields) so
+    // any future addition to `OpenLearningJourneyOptions` reaches `openDocsPage`
+    // automatically. `OpenLearningJourneyOptions` is structurally a subset of
+    // `OpenDocsOptions`, so this assignment is type-safe.
     if (isPackageContentUrl(url)) {
-      return this.openDocsPage(url, title, { source: options?.source });
+      return this.openDocsPage(url, title, options);
     }
     // Honour an explicit options.source by recording it first, so any
     // legacy stash is overwritten and we have a single source of truth for
