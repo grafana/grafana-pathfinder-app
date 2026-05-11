@@ -965,6 +965,19 @@ export function InteractiveSection({
 
     let stoppedDueToRequirements = false;
     let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
+    // Track the accumulated set OUTSIDE the React state so we can call
+    // persistCompletedSteps directly each step. The previous pattern wrapped
+    // the persist inside `setCompletedSteps((prev) => { ...; persistCompletedSteps(newSet); return newSet; })`,
+    // but React skips functional updater invocation when the component is
+    // unmounted — which happens mid-section when an auto-dock fires (a
+    // navigate step pushes a Grafana URL → FullScreenPanel unmounts and the
+    // orphaned do-section loop's per-step persists silently dropped). The
+    // all-complete sweep at the end of the loop still persisted, but the
+    // newly-mounted sidebar's InteractiveSection had already done its
+    // mount-time restore and only saw the pre-unmount snapshot. Keeping the
+    // accumulator local makes persists a direct side-effect that runs
+    // regardless of mount state. Verified via runtime logs (hypothesis H3).
+    let accumulatedCompleted = new Set(completedSteps);
 
     try {
       for (let i = startIndex; i < stepComponents.length; i++) {
@@ -1127,13 +1140,13 @@ export function InteractiveSection({
           // Track completed step for analytics
           completedStepsCount = i + 1; // i is 0-indexed, so +1 gives count of completed steps
 
-          // Mark step as completed immediately and persistently
-          setCompletedSteps((prev) => {
-            const newSet = new Set([...prev, stepInfo.stepId]);
-            // Persist immediately to ensure green state is preserved
-            persistCompletedSteps(newSet);
-            return newSet;
-          });
+          // Mark step as completed immediately and persistently.
+          // `persistCompletedSteps` is called DIRECTLY (not inside a setState
+          // updater) so it survives an unmount mid-section — see the long
+          // comment on `accumulatedCompleted` above for the auto-dock race.
+          accumulatedCompleted = new Set([...accumulatedCompleted, stepInfo.stepId]);
+          setCompletedSteps(accumulatedCompleted);
+          persistCompletedSteps(accumulatedCompleted);
 
           // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
           handleStepComplete(stepInfo.stepId, true);
@@ -1257,6 +1270,7 @@ export function InteractiveSection({
     checkRequirementsFromData,
     persistCompletedSteps,
     scrollToStep,
+    completedSteps,
   ]);
 
   /**
