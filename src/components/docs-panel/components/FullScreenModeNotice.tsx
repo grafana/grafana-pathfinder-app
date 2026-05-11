@@ -12,18 +12,23 @@
  * the next active tab for full-screen) while keeping content fetch /
  * milestone state ownership with the full-screen instance.
  *
- * Intentionally informational only — no "Return to full screen" CTA. The
- * full-screen page is already mounted on the dedicated route; the sidebar
- * is just a parallel surface the user happened to open.
+ * Includes a "Return to sidebar" CTA: switches panelMode back to 'sidebar'
+ * so this surface takes over rendering. If the user is currently sitting on
+ * the dedicated `/fullscreen` route, we also navigate away to the prior
+ * route — otherwise the FullScreenPanel stays mounted on that page and the
+ * user would re-enter fullscreen on next refresh.
  */
 
-import React from 'react';
-import { Icon, useStyles2 } from '@grafana/ui';
+import React, { useCallback } from 'react';
+import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { locationService } from '@grafana/runtime';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
+import { panelModeManager } from '../../../global-state/panel-mode';
+import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -64,6 +69,15 @@ const getStyles = (theme: GrafanaTheme2) => ({
 export function FullScreenModeNotice() {
   const styles = useStyles2(getStyles);
 
+  const handleReturnToSidebar = useCallback(() => {
+    panelModeManager.setMode('sidebar');
+    const fullScreenPath = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
+    if (window.location.pathname.startsWith(fullScreenPath)) {
+      const priorPath = panelModeManager.consumePriorPath();
+      locationService.push(priorPath ?? PLUGIN_BASE_URL);
+    }
+  }, []);
+
   return (
     <div className={styles.container} data-testid={testIds.fullScreenMode.notice}>
       <div className={styles.iconWrap}>
@@ -76,6 +90,15 @@ export function FullScreenModeNotice() {
           'Switch tabs in the sidebar to queue what shows the next time you return to the full-screen page.'
         )}
       </p>
+      <Button
+        variant="secondary"
+        size="sm"
+        icon="arrow-left"
+        onClick={handleReturnToSidebar}
+        data-testid={testIds.fullScreenMode.noticeReturnButton}
+      >
+        {t('docsPanel.fullScreenNoticeReturn', 'Return to sidebar')}
+      </Button>
     </div>
   );
 }
