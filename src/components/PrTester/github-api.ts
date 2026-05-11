@@ -423,19 +423,39 @@ export async function fetchPrContentFilesFromUrl(prUrl: string, signal?: AbortSi
  * inputs aborts. Equivalent to `AbortSignal.any` but without depending on
  * the runtime supporting it (the project's existing `AbortSignal.timeout`
  * mocks in tests show we can't assume the latest API surface).
+ *
+ * Returns a `dispose` callback the caller MUST invoke when the composed
+ * signal is no longer needed — typically in a `finally` after the fetch
+ * settles. Without it the bridge listeners stay attached to the inputs:
+ * `AbortSignal.timeout` self-cleans when it fires, but a long-lived
+ * caller signal (e.g. a component-level abort controller) accumulates
+ * one listener per call and keeps the composed controller's closure
+ * alive, blocking GC of both.
  */
-function composeAbortSignals(...signals: AbortSignal[]): AbortSignal {
+export function composeAbortSignals(...signals: AbortSignal[]): { signal: AbortSignal; dispose: () => void } {
   const controller = new AbortController();
   for (const s of signals) {
     if (s.aborted) {
       controller.abort(s.reason);
-      return controller.signal;
+      // Nothing to detach — we never registered listeners.
+      return { signal: controller.signal, dispose: () => {} };
     }
   }
+  const registered: Array<{ signal: AbortSignal; listener: () => void }> = [];
   for (const s of signals) {
-    s.addEventListener('abort', () => controller.abort(s.reason), { once: true });
+    const listener = () => controller.abort(s.reason);
+    s.addEventListener('abort', listener, { once: true });
+    registered.push({ signal: s, listener });
   }
-  return controller.signal;
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      for (const { signal, listener } of registered) {
+        signal.removeEventListener('abort', listener);
+      }
+      registered.length = 0;
+    },
+  };
 }
 
 /**
@@ -455,13 +475,17 @@ function composeAbortSignals(...signals: AbortSignal[]): AbortSignal {
  *                 even when the caller passes its own controller.
  */
 export async function fetchPrManifest(rawUrl: string, signal?: AbortSignal): Promise<ManifestJson | undefined> {
+  const timeoutSignal = AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT);
+  // When no caller signal is supplied the timeout signal stands alone — no
+  // composition needed, no listener cleanup required. Otherwise we bridge
+  // the two via `composeAbortSignals` and detach in `finally` below so the
+  // caller's (potentially long-lived) signal doesn't accumulate listeners
+  // across repeated `fetchPrManifest` calls.
+  const composed = signal ? composeAbortSignals(signal, timeoutSignal) : { signal: timeoutSignal, dispose: () => {} };
   try {
-    const timeoutSignal = AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT);
-    const composedSignal = signal ? composeAbortSignals(signal, timeoutSignal) : timeoutSignal;
-
     const response = await fetch(rawUrl, {
       method: 'GET',
-      signal: composedSignal,
+      signal: composed.signal,
       redirect: 'follow',
     });
     if (!response.ok) {
@@ -475,5 +499,7 @@ export async function fetchPrManifest(rawUrl: string, signal?: AbortSignal): Pro
     return parsed.data as unknown as ManifestJson;
   } catch {
     return undefined;
+  } finally {
+    composed.dispose();
   }
 }

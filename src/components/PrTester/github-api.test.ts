@@ -983,22 +983,30 @@ describe('fetchPrManifest', () => {
     expect(result).toBeUndefined();
   });
 
-  it('composes the caller signal with the fetch timeout — caller abort propagates', async () => {
+  it('composes the caller signal with the fetch timeout — caller abort propagates while in-flight', async () => {
     // Capture whatever signal fetch actually receives so we can prove that
-    // aborting the caller's controller also aborts the composed signal.
+    // aborting the caller's controller mid-flight also aborts the composed
+    // signal. We deliberately abort BEFORE the fetch promise settles, since
+    // the listeners are torn down in `finally` (the dispose path
+    // intentionally severs the bridge once the fetch returns — it isn't
+    // useful to keep the composed signal hot after the response is in).
     let observedSignal: AbortSignal | undefined;
+    let resolveFetch: ((value: Response) => void) | undefined;
     (global.fetch as jest.Mock).mockImplementation((_url: string, init: RequestInit) => {
       observedSignal = init.signal ?? undefined;
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
       });
     });
 
     const controller = new AbortController();
-    await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
+    const promise = fetchPrManifest(
+      'https://raw.githubusercontent.com/org/repo/abc/p/manifest.json',
+      controller.signal
+    );
 
+    // Yield once so the fetch mock runs and captures `init.signal`.
+    await Promise.resolve();
     expect(observedSignal).toBeDefined();
     // Composition means the signal passed to fetch is NOT the caller's
     // original ref (it's a new controller fed by both inputs), but it must
@@ -1007,6 +1015,15 @@ describe('fetchPrManifest', () => {
     expect(observedSignal!.aborted).toBe(false);
     controller.abort(new Error('user cancelled'));
     expect(observedSignal!.aborted).toBe(true);
+
+    // Settle the fetch so `fetchPrManifest`'s try/finally completes — we
+    // don't need the result, just clean shutdown for the test.
+    resolveFetch!({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+    } as unknown as Response);
+    await promise;
   });
 
   it('always carries a timeout even when the caller passes its own signal', async () => {
@@ -1032,5 +1049,32 @@ describe('fetchPrManifest', () => {
     } finally {
       (AbortSignal as unknown as { timeout: typeof originalTimeout }).timeout = originalTimeout;
     }
+  });
+
+  it('detaches its abort listener from the caller signal once the fetch settles (no leak across calls)', async () => {
+    // Without the `finally`-bound dispose, every fetchPrManifest call leaves a
+    // bridge listener on the caller's signal. The preload effect issues one
+    // fetch per manifest in `Promise.all`, so a PR with N manifests would
+    // accumulate N listeners on the same controller signal each preload —
+    // and keep accumulating across refetches (long-lived caller signals
+    // never fire on the happy path, so `{ once: true }` doesn't help).
+    const controller = new AbortController();
+    const addSpy = jest.spyOn(controller.signal, 'addEventListener');
+    const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+    });
+
+    await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
+
+    // Each completed call adds exactly one bridge listener and removes it.
+    const added = addSpy.mock.calls.filter((c) => c[0] === 'abort');
+    const removed = removeSpy.mock.calls.filter((c) => c[0] === 'abort');
+    expect(added.length).toBe(1);
+    expect(removed.length).toBe(1);
+    expect(removed[0]![1]).toBe(added[0]![1]);
   });
 });
