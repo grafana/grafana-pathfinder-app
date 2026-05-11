@@ -104,8 +104,48 @@ The tool returns structured fields, not only prose instructions:
     "path": "/a/grafana-pathfinder-app?doc=api%3Ahello-world-x7q2k1",
     "floatingPath": "/a/grafana-pathfinder-app?doc=api%3Ahello-world-x7q2k1&panelMode=floating"
   },
+  "clientGuidance": {
+    "grafanaAppPlatform": {
+      "appliesWhen": "Grafana-aware client running inside a Grafana instance with the Pathfinder backend aggregator enabled. If unsure, try this branch first; on a 404 from the collection POST, switch to grafanaOss.",
+      "confirmationPrompt": "Publish guide \"Hello world\" to <namespace> as <status>?",
+      "steps": [
+        "Resolve the current Grafana namespace from your runtime config.",
+        "Ask the user whether to save as draft or publish (default draft). Set resource.spec.status before writing.",
+        "Show the confirmationPrompt copy and only proceed on explicit yes.",
+        "POST resource to appPlatform.collectionPathTemplate (substitute {namespace}). Use appPlatform.createMethod (POST).",
+        "If overwriting an existing resource (you passed an explicit --id at create): GET appPlatform.itemPathTemplate, copy metadata.resourceVersion, then PUT using appPlatform.updateMethod.",
+        "On 2xx success, resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL and surface it. Do NOT surface a relative path."
+      ],
+      "errorHandling": [
+        "404 on collection POST → switch to grafanaOss (CRD/aggregator not installed). No retry.",
+        "403 → user lacks interactiveguides.create permission. Tell user, offer localExport. No retry.",
+        "409 on PUT → stale resourceVersion. Re-GET, copy resourceVersion, confirm with user, retry once. Second 409 → offer localExport.",
+        "5xx, network error, timeout → retry once with backoff, then offer localExport.",
+        "Other 4xx → surface error verbatim, offer localExport. No retry."
+      ]
+    },
+    "grafanaOss": {
+      "appliesWhen": "Grafana-aware client without App Platform (OSS, or Cloud with the aggregator toggle off), or fall-through from grafanaAppPlatform on a 404.",
+      "steps": [
+        "Follow localExport instructions to write content.json and manifest.json.",
+        "Tell the user where the files were written.",
+        "Tell the user how to load these files later: open Pathfinder → block editor → Import → paste content.json or upload it.",
+        "Do NOT surface the viewer link — it only resolves after a successful App Platform write."
+      ]
+    },
+    "nonGrafanaClient": {
+      "appliesWhen": "MCP client with no Grafana session (Cursor, Claude Desktop, CI). Cannot reach App Platform from here.",
+      "steps": [
+        "Do NOT attempt the App Platform write — there is no Grafana instance to write to.",
+        "Follow localExport instructions to write content.json and manifest.json to the user's workspace.",
+        "Tell the user where the files were written.",
+        "Tell the user how to load these files later: open Pathfinder → block editor → Import → paste content.json or upload it.",
+        "Do NOT surface the viewer link."
+      ]
+    }
+  },
   "localExport": {
-    "summary": "Fallback if you cannot reach the App Platform endpoint (non-Grafana-aware client, or Assistant-on-OSS where App Platform is unavailable).",
+    "summary": "Fallback used by the grafanaOss and nonGrafanaClient branches to preserve the authored guide as files on disk that the user can later import via the block editor.",
     "files": [
       { "path": "<dir>/content.json", "source": "artifact.content" },
       { "path": "<dir>/manifest.json", "source": "artifact.manifest" }
@@ -113,17 +153,17 @@ The tool returns structured fields, not only prose instructions:
     "instructions": [
       "Choose a directory the user can locate (project workspace, downloads folder, or a path the user names).",
       "Write artifact.content to <dir>/content.json and artifact.manifest to <dir>/manifest.json — both as pretty-printed JSON.",
-      "Tell the user the directory you wrote to. The viewer link in this response is NOT valid for local-export — it only resolves after a successful App Platform write."
+      "Tell the user the directory you wrote to.",
+      "Tell the user how to load these files into a Grafana instance later: open Pathfinder → block editor → Import → paste content.json or upload the file.",
+      "Do NOT surface the viewer link from this response — it only resolves after a successful App Platform write, not for local-export."
     ]
   },
   "instructions": [
-    "Try the App Platform path first if you have Grafana write authority for this user's instance:",
-    "  1. Resolve the current Grafana namespace.",
-    "  2. Ask the user whether to save as draft or publish.",
-    "  3. POST resource to collectionPathTemplate for create.",
-    "  4. If you passed an explicit --id matching an existing resource, GET it, copy metadata.resourceVersion into resource.metadata.resourceVersion, then PUT to itemPathTemplate.",
-    "  5. After a successful write, send the user viewer.floatingPath on their Grafana instance.",
-    "If your environment lacks App Platform (e.g., Grafana OSS) or you do not have Grafana write authority, follow localExport instead and tell the user where the files were written."
+    "This response carries structured guidance under clientGuidance keyed by client capability. Pick the branch whose appliesWhen matches your environment:",
+    "  - clientGuidance.grafanaAppPlatform: running inside Grafana with App Platform available.",
+    "  - clientGuidance.grafanaOss: running inside Grafana without App Platform.",
+    "  - clientGuidance.nonGrafanaClient: no Grafana session (Cursor, Claude Desktop, CI).",
+    "If unsure, try grafanaAppPlatform first; on a 404 from the collection POST, fall through to grafanaOss."
   ]
 }
 ```
@@ -132,27 +172,23 @@ The `id` field at the top level is the canonical package identifier — equal to
 
 Auto-generated IDs include a random suffix (e.g., `hello-world-x7q2k1`) so collisions in the target App Platform namespace are statistically negligible. The "GET-before-POST" overwrite check is only required when the agent passed an explicit `--id` to intentionally update an existing guide; in the common auto-ID case, the POST creates a fresh resource without an existence check.
 
-## Create and update behavior
+## Client guidance
 
-Recommended client behavior when App Platform is reachable and the client has write authority:
+The handoff carries three branches under `clientGuidance`, keyed by client capability. Each branch tells the agent what to do without making it self-classify from prose:
 
-1. Resolve current Grafana namespace.
-2. Ask user whether to save as draft or publish.
-3. Set `resource.spec.status` to the selected status.
-4. Try to create with `POST /apis/.../namespaces/{namespace}/interactiveguides`.
-5. **If the agent passed an explicit `--id`** at create time (intentional overwrite), fetch the existing resource, copy `metadata.resourceVersion`, ask the user to confirm overwrite, and `PUT /apis/.../interactiveguides/{id}`. **If the ID was auto-generated** (the common path, with a random suffix), no overwrite check is needed — the POST creates a fresh resource.
-6. Return the viewer link after success.
+- **`grafanaAppPlatform`** — Grafana-aware client (e.g. Grafana Assistant) inside an instance with the Pathfinder backend aggregator enabled. Performs the App Platform write, then surfaces the absolute viewer URL. Carries a deterministic error-code → action table (404 → switch to `grafanaOss`; 403 → tell user, offer `localExport`; 409 on PUT → re-GET, confirm, retry once; 5xx/timeout → retry once, then `localExport`; other 4xx → surface verbatim, offer `localExport`). Carries a suggested sentence-cased `confirmationPrompt`.
+- **`grafanaOss`** — Grafana-aware client without App Platform (OSS, or Cloud with the aggregator off), or fall-through from `grafanaAppPlatform` on 404. Skips the draft/published prompt, follows `localExport`, and points the user at the block-editor Import flow as the re-publish path.
+- **`nonGrafanaClient`** — MCP client with no Grafana session (Cursor, Claude Desktop, CI). Never attempts the write. Follows `localExport` and surfaces the same block-editor Import path.
 
-This matches the existing block editor's optimistic concurrency model, where `resourceVersion` protects against clobbering concurrent edits.
+Optimistic concurrency on the update path matches the block editor: `resourceVersion` protects against clobbering concurrent edits. Auto-generated IDs (the common path, with random suffix) skip the overwrite check entirely — the POST creates a fresh resource without an existence query.
 
 ## Local-export fallback
 
-If the client cannot reach the App Platform endpoint, the handoff response's `localExport` field tells the agent how to write the package to disk so the user can store, edit, or publish it later through another path. Two situations land here:
+If the client cannot reach App Platform, the `localExport` field tells the agent how to write the package to disk so the user can preserve and re-publish it. The `grafanaOss` and `nonGrafanaClient` branches both terminate here.
 
-1. **Non-Grafana-aware MCP clients** (Cursor, Claude Desktop, etc.) that have no Grafana instance authority. The agent already does file I/O in the user's workspace; it writes `content.json` and `manifest.json` there.
-2. **Assistant-on-OSS.** Grafana Assistant now runs on Grafana OSS, where App Platform is not available. The Assistant turn falls back to localExport and tells the user where the files were written.
+The viewer link in the response is **not** valid in either branch — the deep link resolves through the App Platform `InteractiveGuide` endpoint, which is exactly the path the fallback cannot use. The agent must suppress the viewer link and report the local file path instead.
 
-In both cases the viewer link in the response is **not** valid — the deep link resolves through the App Platform `InteractiveGuide` endpoint, which is exactly the path the fallback can't use. The agent should suppress the viewer link and report only the local file path.
+The re-publish loop is the existing block-editor Import flow (`src/components/block-editor/ImportGuideModal.tsx`): a user can later open Pathfinder in any Grafana, open the block editor, click Import, and paste or upload the `content.json` to land the guide in that instance. The handoff names this path explicitly so the agent surfaces it to the user without inventing wording.
 
 ## Draft versus published
 

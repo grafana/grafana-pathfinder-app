@@ -18,20 +18,34 @@ The MCP server **imports CLI commands as library functions**. There is no shell-
 The server runs in two deployment modes:
 
 1. **Self-serve (stdio transport).** `npx pathfinder-mcp` or `docker run grafana/pathfinder-cli mcp` for Cursor, Claude Desktop, or any local MCP client. The MCP client owns the process; auth is the user's local trust boundary.
-2. **Centrally hosted (HTTP transport).** The same code runs as a Grafana-org service for clients that cannot connect to a user-local process — most importantly Grafana Assistant on Cloud. Authentication uses the Grafana MCP token-verifier pattern (FastMCP `MultiAuth` + `GrafanaGoogleTokenVerifier`); see [Authentication and authorization](#authentication-and-authorization) below.
+2. **Centrally hosted (HTTP transport).** The same code runs as a Cloud Run service that any MCP-capable client can reach over HTTPS — most importantly Grafana Assistant on Cloud, configured per-instance via [the Assistant MCP servers docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/). Auth on the hosted endpoint is **open** — see [Authentication and authorization](#authentication-and-authorization) below for the rationale and the abuse-mitigation posture.
+
+The hosted deployment lives behind an operator-local script (`deploy-mcp.sh` in this repo, gitignored). Project, region, service name, and resulting URL are operator-specific and intentionally not in tracked files. For deploy-time mechanics and log inspection on the running service, see [`docs/developer/MCP_SERVER.md`](../developer/MCP_SERVER.md).
 
 This is a deliberate departure from an earlier draft of this design that placed authoring tools inside the existing Go plugin MCP at `/api/plugins/grafana-pathfinder-app/resources/mcp`. That earlier approach would have required shelling out from Go to a per-platform Node binary bundled inside the plugin tarball. Investigation found that the existing Go MCP is a dormant spike with no production callers, that the "ship in lockstep with the plugin" property it offered can be replaced by lockstep CI between the npm package and the plugin, and that the in-process TypeScript design is materially simpler — fewer build artifacts, no IPC, no per-call cold-start, and no class of bundled-binary failure modes. The existing `pkg/plugin/mcp.go` is preserved as a runtime-tools-only stub (see [Relationship to existing plugin MCP tools](#relationship-to-existing-plugin-mcp-tools)).
 
 ### Authentication and authorization
 
-**Any authenticated identity that reaches the MCP may call the authoring tools.** There is no role-based gate at the MCP layer. The authoring tool surface is stateless and produces no Grafana-instance side effects on its own — it returns artifacts. Publish authority is enforced **downstream**, at the App Platform write performed by the Grafana-authorized client (see [Grafana App Platform publish handoff](./APP-PLATFORM-PUBLISH-HANDOFF.md)). A viewer-role user who reaches `pathfinder_finalize_for_app_platform` and tries to PUT the resulting payload will be rejected by the App Platform API; the error surface is correct without an additional MCP-side check.
+**Any caller that reaches the MCP may call the authoring tools.** There is no role-based gate at the MCP layer, and the hosted HTTP transport ships open (`--allow-unauthenticated` on Cloud Run) per the [resolved P3 open question](./AI-AUTHORING-IMPLEMENTATION.md#does-the-hosted-http-mcp-need-auth-at-all). The authoring tool surface is stateless and produces no Grafana-instance side effects on its own — it returns artifacts. Publish authority is enforced **downstream**, at the App Platform write performed by the Grafana-authorized client (see [Grafana App Platform publish handoff](./APP-PLATFORM-PUBLISH-HANDOFF.md)). A viewer-role user whose client reaches `pathfinder_finalize_for_app_platform` and tries to PUT the resulting payload will be rejected by the App Platform API; the error surface is correct without an additional MCP-side check.
 
 Auth strategy by transport:
 
 - **Stdio.** No auth at the MCP layer. The MCP server runs as a child process of a local MCP client (Cursor, Claude Desktop) and trusts the local user. This is the same trust model every stdio-transport MCP server uses.
-- **HTTP (hosted).** The Grafana MCP token-verifier pattern. See FastMCP `MultiAuth` + `GrafanaGoogleTokenVerifier` in [`grafana/data-platform-tools` `mcp/mcp-data/server.py`](https://github.com/grafana/data-platform-tools/blob/5892defb0515fd66864ecb57627e5aafd8013fde/mcp/mcp-data/server.py#L143). Tokens are verified per request; no session state is established.
+- **HTTP (hosted).** Open + edge-mitigated. The dominant threat is cost (DoS / runaway compute on a public CPU-bound endpoint), not compromise — the MCP holds no privileged resource. Mitigations are autoscaling ceilings, per-IP edge rate limits, request size caps, and CPU/wallclock budgets per call. None require an identity provider, which preserves the OSS / airgapped story. If usage patterns shift, adding a token verifier later does not change the tool surface.
 
 Pathfinder is OSS, the authoring tools are publicly available on GitHub, and the agent's authority to write into a Grafana instance is delegated downstream through the App Platform path. There is no new identity provider, rate limiter, or tenant model introduced by the MCP layer itself.
+
+### The MCP server does not write to App Platform — by deployment design
+
+The MCP server is **deployed centrally** (a single Cloud Run service shared across all Grafana instances) and intentionally holds **no per-instance credentials**. The App Platform write is performed downstream by a Grafana-authorized client — Grafana Assistant, the block-editor Import flow, or a `kubectl`-style operator pipeline — using that client's own session against the user's Grafana instance.
+
+This is a load-bearing property, not a phasing artifact:
+
+- The MCP server has no path to obtain a token for an arbitrary Grafana instance. There is no service-account model that scales across customer tenancies, and bouncing user OAuth tokens through Cloud Run would introduce a credential surface this server is not designed to hold.
+- Adding a write tool to the MCP would require either (a) per-instance token configuration shipped from each calling client (UX wart, security surface), (b) federated auth (substantial new work, off-roadmap), or (c) accepting the MCP-must-hold-credentials risk (rejected).
+- The current split — MCP authors, the calling client writes — keeps the OSS / airgapped story intact and lets the hosted endpoint stay open + edge-mitigated rather than identity-gated.
+
+When a calling client cannot perform the write itself (e.g. Grafana Assistant on Cloud today, which lacks a generic "call this App Platform path with this body" tool — see [`AI-AUTHORING-IMPLEMENTATION.md` — P4](./AI-AUTHORING-IMPLEMENTATION.md#p4--assistant-handoff-and-viewer-deep-link)), the resolution is to give that client a write capability, not to move the write into the MCP. Currently exercised resolutions: the block-editor Import flow (manual paste/upload of `content.json`) on every branch, and `localExport` on the OSS / non-Grafana paths.
 
 ## Server responsibilities
 
