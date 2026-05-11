@@ -1204,10 +1204,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
     // Skip restoration when full screen owns the session — otherwise this
     // sidebar instance would auto-load tab content in parallel with the
-    // FullScreenPanel instance (drift on tabStorage). Restoration runs as
-    // soon as the user actually returns to sidebar mode (auto-dock listener
-    // or explicit Exit), at which point this effect re-runs via the gate.
-    if (panelModeManager.getMode() === 'fullscreen') {
+    // FullScreenPanel instance (drift on tabStorage). The `panelMode`
+    // dep makes this re-run when the user returns to sidebar mode
+    // (auto-dock listener, explicit Exit, or the "Return to sidebar"
+    // CTA on `FullScreenModeNotice`). The model's `_hasRestoredTabs`
+    // guard makes a second invocation a no-op when restoration already
+    // succeeded, so re-running here is safe in the happy path.
+    if (panelMode === 'fullscreen') {
       return;
     }
 
@@ -1215,7 +1218,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       model.restoreTabsAsync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - only run once after mount, tabs checked at mount time
+  }, [panelMode]);
 
   // Ensure permanent tabs (devtools, editor) exist when their gate is active.
   // Merged into a single effect so both additions read from the same up-to-date
