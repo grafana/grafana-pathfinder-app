@@ -63,15 +63,18 @@ export function AuthorNoteModal({ isOpen, initialNote, onSave, onClose }: Author
 
   return (
     <Modal title="Author note" isOpen={isOpen} onDismiss={onClose}>
-      {/* Stop pointer / mouse / click bubbling. The Modal portals to
-          document.body, but React event bubbling follows the React
-          tree — without this, textarea clicks bubble up to the
-          owning BlockItem's SortableBlock drag listener and arm a
-          phantom drag that the user can't escape. */}
+      {/* Stop pointer / mouse / click / key bubbling. The Modal portals
+          to document.body, but React event bubbling follows the React
+          tree — without this, textarea events bubble up to the owning
+          BlockItem's SortableBlock listeners. Key blocking is the
+          critical one: dnd-kit's KeyboardSensor uses Space to activate
+          a drag, so typing a space in the note input would otherwise
+          arm a phantom drag (and the list would jump on every space). */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <p className={styles.help}>
           Author-only note attached to this block. Useful for TODOs, reminders, or context for collaborators. Not

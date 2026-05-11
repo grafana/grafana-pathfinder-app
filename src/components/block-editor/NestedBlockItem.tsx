@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Icon, useStyles2, Badge, IconButton, Checkbox, Tooltip } from '@grafana/ui';
+import { useStyles2, Badge, IconButton, Checkbox } from '@grafana/ui';
 import { AuthorNoteModal } from './AuthorNoteModal';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { LintBadge } from './LintBadge';
@@ -152,14 +152,6 @@ export function NestedBlockItem({
               </span>
             )
           )}
-          {/* Author-only note indicator. Stripped on export. */}
-          {'authorNote' in block && typeof block.authorNote === 'string' && block.authorNote && (
-            <Tooltip content={block.authorNote} placement="top">
-              <span aria-label={`Author note: ${block.authorNote}`} className={styles.authorNoteIcon}>
-                <Icon name="comment-alt" size="sm" />
-              </span>
-            </Tooltip>
-          )}
         </div>
       </div>
 
@@ -175,8 +167,17 @@ export function NestedBlockItem({
         onPointerDown={(e) => e.stopPropagation()}
       >
         {/* Secondary actions — hidden by default, revealed on row hover
-            or keyboard focus. Edit stays anchored to the right edge. */}
+            or keyboard focus. Edit stays anchored to the right edge.
+            Delete is leftmost so the destructive action stays furthest
+            from Edit, reducing misclick risk. */}
         <div className={styles.secondaryActions} data-secondary-actions>
+          <ConfirmDeleteButton
+            onConfirm={onDelete ?? (() => {})}
+            className={styles.deleteButton}
+            tooltip="Delete block"
+            ariaLabel="Delete"
+            blockType={meta?.name.toLowerCase() ?? block.type}
+          />
           {onPreview && (
             <IconButton
               name={isPreviewActive ? 'eye-slash' : 'eye'}
@@ -203,28 +204,40 @@ export function NestedBlockItem({
             className={styles.actionButton}
             tooltip="Duplicate block"
           />
-          {onAuthorNoteChange && (
+          {/* Author note (unset case) — hover-revealed. Set case is
+              rendered below, always-visible, so the button doubles as
+              the "note exists" indicator. */}
+          {onAuthorNoteChange && !currentAuthorNote && (
             <IconButton
               name="comment-alt"
               size="sm"
-              aria-label={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              aria-label="Add author note"
               onClick={(e) => {
                 e.stopPropagation();
                 setNoteModalOpen(true);
               }}
               className={styles.actionButton}
-              tooltip={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              tooltip="Add author note"
               data-testid="pathfinder-block-editor-author-note-button-nested"
             />
           )}
-          <ConfirmDeleteButton
-            onConfirm={onDelete ?? (() => {})}
-            className={styles.deleteButton}
-            tooltip="Delete block"
-            ariaLabel="Delete"
-            blockType={meta?.name.toLowerCase() ?? block.type}
-          />
         </div>
+        {/* Author note (set case) — always-visible indicator + edit
+            entry-point. Tooltip carries the note text. */}
+        {onAuthorNoteChange && currentAuthorNote && (
+          <IconButton
+            name="comment-alt"
+            size="sm"
+            aria-label={`Author note: ${currentAuthorNote}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setNoteModalOpen(true);
+            }}
+            className={styles.actionButton}
+            tooltip={currentAuthorNote}
+            data-testid="pathfinder-block-editor-author-note-button-nested"
+          />
+        )}
         {/* Edit is the primary action — always visible, right-anchored. */}
         <IconButton
           name="edit"

@@ -747,7 +747,9 @@ export function BlockList({
                         : undefined
                     }
                     isPreviewActive={isBlockItemPreviewActive}
-                    onAuthorNoteChange={onBlockAuthorNoteChange ? (note) => onBlockAuthorNoteChange(block.id, note) : undefined}
+                    onAuthorNoteChange={
+                      onBlockAuthorNoteChange ? (note) => onBlockAuthorNoteChange(block.id, note) : undefined
+                    }
                   />
                 </SortableBlock>
 
@@ -779,9 +781,9 @@ export function BlockList({
                     onConditionalBranchBlockDelete={onConditionalBranchBlockDelete}
                     onConditionalBranchBlockDuplicate={onConditionalBranchBlockDuplicate}
                     onInsertBlockInConditional={onInsertBlockInConditional}
-                    onConditionalBranchBlockAuthorNoteChange={onConditionalBranchBlockAuthorNoteChange}
                     justDroppedId={justDroppedId}
                     lastModifiedId={lastModifiedId}
+                    onConditionalBranchBlockAuthorNoteChange={onConditionalBranchBlockAuthorNoteChange}
                   />
                 )}
 
@@ -810,7 +812,6 @@ export function BlockList({
                     onNestedBlockDelete={onNestedBlockDelete}
                     onNestedBlockDuplicate={onNestedBlockDuplicate}
                     onInsertBlockInSection={onInsertBlockInSection}
-                    onNestedBlockAuthorNoteChange={onNestedBlockAuthorNoteChange}
                     justDroppedId={justDroppedId}
                     lastModifiedId={lastModifiedId}
                     onPreviewSection={onNestedSectionBlockPreview}
@@ -818,6 +819,7 @@ export function BlockList({
                     pinnedNestedIndices={pinnedNestedIndices}
                     nestedPreviews={nestedPreviewByIndex}
                     previewClasses={previewClasses}
+                    onNestedBlockAuthorNoteChange={onNestedBlockAuthorNoteChange}
                   />
                 )}
 

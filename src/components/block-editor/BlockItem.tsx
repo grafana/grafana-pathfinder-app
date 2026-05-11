@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Icon, IconButton, useStyles2, Badge, Checkbox, Tooltip } from '@grafana/ui';
+import { IconButton, useStyles2, Badge, Checkbox } from '@grafana/ui';
 import { getBlockItemStyles } from './block-editor.styles';
 import { AuthorNoteModal } from './AuthorNoteModal';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
@@ -224,15 +224,6 @@ export function BlockItem({
               {block.block.display === 'section' && <Badge text="Section" color="green" />}
             </>
           )}
-          {/* Author-only note indicator. Tooltip shows the note text;
-              the field itself never reaches the published guide. */}
-          {block.block.authorNote && (
-            <Tooltip content={block.block.authorNote} placement="top">
-              <span aria-label={`Author note: ${block.block.authorNote}`} className={styles.authorNoteIcon}>
-                <Icon name="comment-alt" size="sm" />
-              </span>
-            </Tooltip>
-          )}
         </div>
       </div>
 
@@ -256,8 +247,17 @@ export function BlockItem({
         {/* Secondary actions — hidden by default, revealed on row hover or
             keyboard focus via the parent container's data-attribute
             selectors. They sit *before* Edit so the always-visible Edit
-            button stays anchored to the right edge of every row. */}
+            button stays anchored to the right edge of every row. Delete
+            is rendered first (leftmost) so the destructive action stays
+            furthest from Edit, reducing misclick risk. */}
         <div className={styles.secondaryActions} data-secondary-actions>
+          <ConfirmDeleteButton
+            onConfirm={onDelete}
+            className={styles.deleteButton}
+            tooltip="Delete block"
+            ariaLabel="Delete"
+            blockType={meta.name.toLowerCase()}
+          />
           {isSection && onRecord && (
             <IconButton
               name={isRecording ? 'square-shape' : 'circle'}
@@ -291,31 +291,42 @@ export function BlockItem({
             tooltip="Duplicate block"
             data-testid={testIds.blockEditor.duplicateButton}
           />
-          {/* Author note — opens the shared AuthorNoteModal. Same icon
-              as the inline indicator so authors learn the association.
-              Only rendered when the parent supplies the save callback. */}
-          {onAuthorNoteChange && (
+          {/* Author note (unset case) — hover-revealed alongside the other
+              secondary actions. When a note IS set, the same button is
+              rendered outside this hover-gated container so it stays
+              visible at rest as the "note exists" indicator. */}
+          {onAuthorNoteChange && !currentAuthorNote && (
             <IconButton
               name="comment-alt"
               size="sm"
-              aria-label={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              aria-label="Add author note"
               onClick={(e) => {
                 e.stopPropagation();
                 setNoteModalOpen(true);
               }}
               className={styles.actionButton}
-              tooltip={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              tooltip="Add author note"
               data-testid="pathfinder-block-editor-author-note-button"
             />
           )}
-          <ConfirmDeleteButton
-            onConfirm={onDelete}
-            className={styles.deleteButton}
-            tooltip="Delete block"
-            ariaLabel="Delete"
-            blockType={meta.name.toLowerCase()}
-          />
         </div>
+        {/* Author note (set case) — always-visible because it doubles as
+            the indicator that a note exists; tooltip carries the note
+            text so authors can peek without opening the modal. */}
+        {onAuthorNoteChange && currentAuthorNote && (
+          <IconButton
+            name="comment-alt"
+            size="sm"
+            aria-label={`Author note: ${currentAuthorNote}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setNoteModalOpen(true);
+            }}
+            className={styles.actionButton}
+            tooltip={currentAuthorNote}
+            data-testid="pathfinder-block-editor-author-note-button"
+          />
+        )}
         {/* Edit is the primary action — always visible, right-anchored. */}
         <IconButton
           name="edit"

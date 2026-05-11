@@ -62,6 +62,13 @@ export interface ConditionalBranchesProps {
   justDroppedId?: string | null;
   /** ID of the last modified block (for persistent highlight) */
   lastModifiedId?: string | null;
+  /** Save a new editor-only author note onto a conditional-branch nested block. */
+  onConditionalBranchBlockAuthorNoteChange?: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number,
+    note: string
+  ) => void;
 }
 
 export function ConditionalBranches({
@@ -83,9 +90,9 @@ export function ConditionalBranches({
   onConditionalBranchBlockDelete,
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
-  onConditionalBranchBlockAuthorNoteChange,
   justDroppedId,
   lastModifiedId,
+  onConditionalBranchBlockAuthorNoteChange,
 }: ConditionalBranchesProps) {
   const conditionalBlock = block.block as JsonConditionalBlock;
 
@@ -120,6 +127,7 @@ export function ConditionalBranches({
         onInsertBlockInConditional={onInsertBlockInConditional}
         justDroppedId={justDroppedId}
         lastModifiedId={lastModifiedId}
+        onConditionalBranchBlockAuthorNoteChange={onConditionalBranchBlockAuthorNoteChange}
       />
 
       {/* False branch */}
@@ -145,6 +153,7 @@ export function ConditionalBranches({
         onInsertBlockInConditional={onInsertBlockInConditional}
         justDroppedId={justDroppedId}
         lastModifiedId={lastModifiedId}
+        onConditionalBranchBlockAuthorNoteChange={onConditionalBranchBlockAuthorNoteChange}
       />
     </div>
   );
@@ -192,6 +201,13 @@ interface ConditionalBranchProps {
   justDroppedId?: string | null;
   /** ID of the last modified block (for persistent highlight) */
   lastModifiedId?: string | null;
+  /** Save a new editor-only author note onto a conditional-branch nested block. */
+  onConditionalBranchBlockAuthorNoteChange?: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number,
+    note: string
+  ) => void;
 }
 
 function ConditionalBranch({
@@ -214,9 +230,9 @@ function ConditionalBranch({
   onConditionalBranchBlockDelete,
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
-  onConditionalBranchBlockAuthorNoteChange,
   justDroppedId,
   lastModifiedId,
+  onConditionalBranchBlockAuthorNoteChange,
 }: ConditionalBranchProps) {
   const isTrue = branch === 'whenTrue';
   const branchKey = isTrue ? 'true' : 'false';
