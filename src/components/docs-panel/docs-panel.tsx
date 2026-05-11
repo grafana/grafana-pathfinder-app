@@ -1198,9 +1198,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
-    // Only restore if we haven't loaded tabs yet
-    // Check if tabs only contain the default system tab (recommendations)
-    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
+    // Only restore if no user-opened guide tabs exist — permanent system
+    // tabs (`recommendations`, `devtools`, `editor`) don't count, otherwise
+    // the gate fails on a remount where the permanent-tabs effect (below)
+    // has already appended `devtools`/`editor` before this effect re-runs.
+    // The previous `tabs.length === 1` check worked for the initial mount
+    // (where restoration is declared first and runs against [recommendations]
+    // only) but not for the "Return to sidebar" CTA on FullScreenModeNotice,
+    // which fires after permanent tabs are present.
+    const hasOnlyDefaultTabs = tabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
 
     // Skip restoration when full screen owns the session — otherwise this
     // sidebar instance would auto-load tab content in parallel with the
