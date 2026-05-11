@@ -144,7 +144,15 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
-    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
+    // Read live model state instead of closure'd `tabs`. The pending-guide
+    // useEffect above runs BEFORE this one and synchronously calls
+    // `panel.openDocsPage`, which mutates `panel.state.tabs` immediately
+    // but doesn't update the closure'd snapshot from `panel.useState()`
+    // for this render. Using the live state stops us from restoring on
+    // top of a tab the handoff just opened — that would await tabStorage
+    // and overwrite the new tab if storage was empty or stale.
+    const liveTabs = panel.state.tabs;
+    const hasOnlyDefaultTabs = liveTabs.length === 1 && liveTabs[0]?.id === 'recommendations';
     if (hasOnlyDefaultTabs) {
       panel.restoreTabsAsync().then(() => setRestorationDone(true));
     } else {
