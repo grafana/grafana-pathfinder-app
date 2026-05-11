@@ -3,7 +3,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, useTheme2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -32,7 +32,7 @@ const TerminalProviderLazy = lazy(() =>
     default: module.TerminalProvider,
   }))
 );
-import { GrafanaTheme2, usePluginContext } from '@grafana/data';
+import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 
@@ -1321,7 +1321,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Detect WYSIWYG preview tab to show "Return to editor" banner
   const isWysiwygPreview =
     activeTab?.baseUrl === 'bundled:wysiwyg-preview' || activeTab?.content?.url === 'bundled:wysiwyg-preview';
-  const theme = useStyles2((theme: GrafanaTheme2) => theme);
+  // `useTheme2()` is the canonical hook for grabbing the raw theme;
+  // `useStyles2((t) => t)` worked but mis-used the CSS-in-JS hook.
+  const theme = useTheme2();
 
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
   // when other tab properties change (isLoading, error, etc.)

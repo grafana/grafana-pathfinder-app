@@ -1,6 +1,5 @@
 import React, { useMemo, useRef } from 'react';
-import { useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
@@ -79,8 +78,10 @@ export function FloatingPanelContent({
   const docsStyles = useStyles2(docsContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
-  // Reuse the same theme-extraction pattern as the sidebar (docs-panel.tsx).
-  const theme = useStyles2((theme: GrafanaTheme2) => theme);
+  // `useTheme2()` is the canonical hook for grabbing the raw theme; the
+  // previous `useStyles2((t) => t)` pattern worked but mis-used the
+  // CSS-in-JS hook just for theme access.
+  const theme = useTheme2();
 
   // Install the same link click handler the sidebar uses so the
   // "Ready to Begin" / "Get started" CTA, content links, side/related
