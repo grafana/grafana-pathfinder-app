@@ -39,9 +39,15 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
+import { ConditionChipsField } from './ConditionChipsField';
+import {
+  useFieldLint,
+  ConditionLintMessages,
+  replaceTokenInConditionField,
+  removeTokenFromConditionField,
+} from '../lint';
 import type { JsonStep, JsonInteractiveAction } from '../types';
 
 // Exclude our overlay UI from being recorded as steps
@@ -324,6 +330,23 @@ export function StepEditor({
   const [editScrollContainer, setEditScrollContainer] = useState('');
   const [editRequirements, setEditRequirements] = useState('');
   const [editSkippable, setEditSkippable] = useState(false);
+
+  // Real-time lint for the per-step requirements fields (both add-form and
+  // edit-form). Cheap synchronous condition-validator pass behind a debounce.
+  const newRequirementsLint = useFieldLint(newRequirements);
+  const editRequirementsLint = useFieldLint(editRequirements);
+  const fixNewRequirementsToken = useCallback((bad: string, good: string) => {
+    setNewRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const fixEditRequirementsToken = useCallback((bad: string, good: string) => {
+    setEditRequirements((prev) => replaceTokenInConditionField(prev, bad, good));
+  }, []);
+  const removeNewRequirementsToken = useCallback((bad: string) => {
+    setNewRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
+  const removeEditRequirementsToken = useCallback((bad: string) => {
+    setEditRequirements((prev) => removeTokenFromConditionField(prev, bad));
+  }, []);
 
   // Keep a ref to current steps length so getStepCount always returns fresh value
   const stepsLengthRef = useRef(steps.length);
@@ -853,30 +876,22 @@ export function StepEditor({
                       {/* Per-step requirements */}
                       <Field
                         label="Step requirements (optional)"
-                        description="Conditions checked before this step executes (comma-separated)"
+                        description="Conditions checked before this step executes"
                         style={{ marginBottom: 0 }}
                       >
-                        <Input
+                        <ConditionChipsField
                           value={editRequirements}
-                          onChange={(e) => setEditRequirements(e.currentTarget.value)}
-                          placeholder="e.g., exists-reftarget, navmenu-open"
+                          onChange={setEditRequirements}
+                          mode="requirements"
+                          testId="step-editor-edit-requirements"
                         />
                       </Field>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
-                        {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
-                          <Badge
-                            key={req}
-                            text={req}
-                            color="blue"
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => {
-                              setEditRequirements((prev) =>
-                                prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req
-                              );
-                            }}
-                          />
-                        ))}
-                      </div>
+                      <ConditionLintMessages
+                        diagnostics={editRequirementsLint}
+                        onApplyFix={fixEditRequirementsToken}
+                        onRemoveToken={removeEditRequirementsToken}
+                        testId="step-editor-edit-requirements-lint"
+                      />
 
                       {/* Per-step skippable (guided only) */}
                       {isGuided && (
@@ -1145,28 +1160,22 @@ export function StepEditor({
           {/* Per-step requirements */}
           <Field
             label="Step requirements (optional)"
-            description="Conditions checked before this step executes (comma-separated)"
+            description="Conditions checked before this step executes"
             style={{ marginBottom: 0 }}
           >
-            <Input
+            <ConditionChipsField
               value={newRequirements}
-              onChange={(e) => setNewRequirements(e.currentTarget.value)}
-              placeholder="e.g., exists-reftarget, navmenu-open"
+              onChange={setNewRequirements}
+              mode="requirements"
+              testId="step-editor-new-requirements"
             />
           </Field>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '-4px' }}>
-            {COMMON_REQUIREMENTS.slice(0, 4).map((req) => (
-              <Badge
-                key={req}
-                text={req}
-                color="blue"
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setNewRequirements((prev) => (prev.includes(req) ? prev : prev ? `${prev}, ${req}` : req));
-                }}
-              />
-            ))}
-          </div>
+          <ConditionLintMessages
+            diagnostics={newRequirementsLint}
+            onApplyFix={fixNewRequirementsToken}
+            onRemoveToken={removeNewRequirementsToken}
+            testId="step-editor-new-requirements-lint"
+          />
 
           {/* Per-step skippable (guided only) */}
           {isGuided && (

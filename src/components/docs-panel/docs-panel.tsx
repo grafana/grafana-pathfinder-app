@@ -1063,6 +1063,26 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
     };
   }, []);
+
+  // Self-heal stale `'fullscreen'` mode left in localStorage from a previous
+  // session. The sidebar only mounts when Grafana renders the extension
+  // sidebar slot — if we're sitting in the sidebar surface AND the URL is
+  // not the full-screen route, the persisted mode is lying and we'd render
+  // the "Pathfinder is in full screen" placeholder forever (the auto-dock
+  // listener can only fire while FullScreenPanel is mounted). Resetting
+  // here covers tab-close + reopen and direct navigation from
+  // `/fullscreen` to another Grafana page via the global nav.
+  React.useEffect(() => {
+    if (panelMode !== 'fullscreen') {
+      return;
+    }
+    const onFullScreenRoute = window.location.pathname.startsWith(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
+    if (!onFullScreenRoute) {
+      panelModeManager.setMode('sidebar');
+      setPanelMode('sidebar');
+    }
+  }, [panelMode]);
+
   const isFullScreenActive = panelMode === 'fullscreen';
 
   // Get plugin configuration to check if live sessions are enabled
@@ -2150,7 +2170,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             return (
               <div className={styles.devToolsContent} data-testid="editor-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                  <BlockEditor surface="sidebar" />
+                  <BlockEditor />
                 </Suspense>
               </div>
             );

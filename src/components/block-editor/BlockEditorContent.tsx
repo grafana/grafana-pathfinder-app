@@ -45,8 +45,6 @@ export interface BlockEditorContentProps {
     emptyStateText: string;
     blockPreviewContainer: string;
   };
-  /** Selection mode toggle */
-  onToggleSelectionMode: () => void;
   /** Merge handlers */
   onMergeToMultistep: () => void;
   onMergeToGuided: () => void;
@@ -79,7 +77,6 @@ export function BlockEditorContent({
   operations,
   hasBlocks,
   styles,
-  onToggleSelectionMode,
   onMergeToMultistep,
   onMergeToGuided,
   onClearSelection,
@@ -99,61 +96,52 @@ export function BlockEditorContent({
 
   return (
     <div className={styles.content} data-testid={testIds.blockEditor.content}>
-      {/* Selection controls - shown in edit mode, above blocks */}
-      {viewMode === 'edit' && hasBlocks && (
+      {/* Selection toolbar — only renders when selection mode is
+          active. The trigger lives in BlockEditorHeader. */}
+      {viewMode === 'edit' && hasBlocks && isSelectionMode && (
         <div className={styles.selectionControls}>
-          {isSelectionMode ? (
-            selectedCount >= 2 ? (
-              <>
-                <span className={styles.selectionCount}>{selectedCount} blocks selected</span>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={onMergeToMultistep}
-                  data-testid={testIds.blockEditor.mergeMultistepButton}
-                >
-                  Create multistep
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={onMergeToGuided}
-                  data-testid={testIds.blockEditor.mergeGuidedButton}
-                >
-                  Create guided
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={onClearSelection}
-                  data-testid={testIds.blockEditor.clearSelectionButton}
-                >
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <>
-                <span style={{ fontSize: '13px', color: '#888' }}>Click blocks to select them for merging</span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={onClearSelection}
-                  data-testid={testIds.blockEditor.clearSelectionButton}
-                >
-                  Cancel
-                </Button>
-              </>
-            )
+          {selectedCount >= 2 ? (
+            <>
+              <span className={styles.selectionCount}>{selectedCount} blocks selected</span>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onMergeToMultistep}
+                data-testid={testIds.blockEditor.mergeMultistepButton}
+              >
+                Create multistep
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onMergeToGuided}
+                data-testid={testIds.blockEditor.mergeGuidedButton}
+              >
+                Create guided
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onClearSelection}
+                data-testid={testIds.blockEditor.clearSelectionButton}
+              >
+                Cancel
+              </Button>
+            </>
           ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="check-square"
-              onClick={onToggleSelectionMode}
-              data-testid={testIds.blockEditor.toggleSelectionButton}
-            >
-              Select blocks
-            </Button>
+            <>
+              <span style={{ fontSize: '13px', color: '#888' }}>
+                Tick the checkbox next to each block you want to merge
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onClearSelection}
+                data-testid={testIds.blockEditor.clearSelectionButton}
+              >
+                Cancel
+              </Button>
+            </>
           )}
         </div>
       )}

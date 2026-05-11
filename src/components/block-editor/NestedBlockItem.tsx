@@ -8,6 +8,7 @@
 import React, { useCallback } from 'react';
 import { useStyles2, Badge, IconButton, Checkbox } from '@grafana/ui';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
+import { LintBadge } from './LintBadge';
 import { getNestedBlockItemStyles } from './BlockList.styles';
 import { BLOCK_TYPE_METADATA } from './constants';
 import type { BlockType, JsonBlock } from './types';
@@ -16,6 +17,12 @@ export interface NestedBlockItemProps {
   block: JsonBlock;
   /** Position index within the container (0-based) */
   index?: number;
+  /**
+   * JSON path of this nested block in the guide, e.g.
+   * `['blocks', 0, 'blocks', 1]` for the second child of the first
+   * top-level section. Required for the per-block `<LintBadge>` to render.
+   */
+  path?: Array<string | number>;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
@@ -39,6 +46,7 @@ export interface NestedBlockItemProps {
 export function NestedBlockItem({
   block,
   index,
+  path,
   onEdit,
   onDelete,
   onDuplicate,
@@ -92,56 +100,66 @@ export function NestedBlockItem({
     .join(' ');
 
   return (
-    <div className={containerClass}>
-      {/* Selection checkbox (only for interactive blocks in selection mode) */}
-      {isSelectionMode && (
-        <div
-          className={styles.selectionCheckbox}
-          onClick={handleCheckboxClick}
-          title={
-            isSelectable
-              ? isSelected
-                ? 'Deselect'
-                : 'Select'
-              : 'Only interactive, multistep, and guided blocks can be selected'
-          }
-        >
-          <Checkbox value={isSelected} disabled={!isSelectable} onChange={onToggleSelect} />
-        </div>
-      )}
+    <div className={containerClass} data-block-card>
+      {/* Selection checkbox — only for selectable block types
+          (interactive / multistep / guided). Non-selectable blocks
+          render an empty spacer for alignment. */}
+      {isSelectionMode &&
+        (isSelectable ? (
+          <div
+            className={styles.selectionCheckbox}
+            onClick={handleCheckboxClick}
+            title={isSelected ? 'Deselect' : 'Select'}
+          >
+            <Checkbox value={isSelected} onChange={onToggleSelect} />
+          </div>
+        ) : (
+          <div className={styles.selectionCheckbox} aria-hidden="true" />
+        ))}
 
       {/* Drag handle - visual indicator only (hidden in selection mode) */}
       {!isSelectionMode && (
-        <div className={styles.dragHandle} title="Drag to reorder or move out of section">
-          <span style={{ fontSize: '12px' }}>⋮⋮</span>
+        <div className={styles.dragHandle} data-drag-handle title="Drag to reorder or move out of section">
+          <span style={{ fontSize: '14px', lineHeight: 1 }}>⋮</span>
         </div>
       )}
 
-      {/* Content - matches BlockItem layout */}
+      {/* Content — single inline row mirroring BlockItem.
+          - Sub-type purple badge dropped (action verb is already in
+            preview text).
+          - Preview is inline; sections render their authored title. */}
       <div className={styles.content}>
         <div className={styles.header}>
           {index !== undefined && <span className={styles.blockNumber}>{index + 1}</span>}
           <span className={styles.icon}>{meta?.icon}</span>
           <Badge text={meta?.name ?? block.type} color="blue" />
-          {'action' in block && (
-            <Badge text={String(block.action).charAt(0).toUpperCase() + String(block.action).slice(1)} color="purple" />
+          {block.type === 'section' && 'title' in block && typeof block.title === 'string' && block.title ? (
+            <span className={styles.sectionTitle} title={block.title}>
+              {block.title}
+            </span>
+          ) : (
+            preview && (
+              <span className={styles.headlinePreview} title={preview}>
+                {preview}
+              </span>
+            )
           )}
         </div>
-        {preview && (
-          <div className={styles.preview} title={preview}>
-            {preview}
-          </div>
-        )}
       </div>
+
+      {/* Lint badge between content and actions — see BlockItem for rationale. */}
+      {path && <LintBadge path={path} />}
 
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        <div className={styles.actionGroup}>
+        {/* Secondary actions — hidden by default, revealed on row hover
+            or keyboard focus. Edit stays anchored to the right edge. */}
+        <div className={styles.secondaryActions} data-secondary-actions>
           {onPreview && (
             <IconButton
               name={isPreviewActive ? 'eye-slash' : 'eye'}
-              size="md"
+              size="sm"
               aria-label={
                 isPreviewActive
                   ? `Hide preview for ${meta?.name ?? block.type} block`
@@ -157,16 +175,8 @@ export function NestedBlockItem({
             />
           )}
           <IconButton
-            name="edit"
-            size="md"
-            aria-label="Edit"
-            onClick={onEdit}
-            className={styles.editButton}
-            tooltip="Edit block"
-          />
-          <IconButton
             name="copy"
-            size="md"
+            size="sm"
             aria-label="Duplicate"
             onClick={onDuplicate}
             className={styles.actionButton}
@@ -180,6 +190,15 @@ export function NestedBlockItem({
             blockType={meta?.name.toLowerCase() ?? block.type}
           />
         </div>
+        {/* Edit is the primary action — always visible, right-anchored. */}
+        <IconButton
+          name="edit"
+          size="sm"
+          aria-label="Edit"
+          onClick={onEdit}
+          className={styles.editButton}
+          tooltip="Edit block"
+        />
       </div>
     </div>
   );

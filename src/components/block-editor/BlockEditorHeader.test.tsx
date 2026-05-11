@@ -23,6 +23,9 @@ const baseProps = {
   onUnpublish: jest.fn(),
   onNewGuide: jest.fn(),
   isBackendAvailable: true,
+  hasBlocks: false,
+  isSelectionMode: false,
+  onToggleSelectionMode: jest.fn(),
 };
 
 describe('BlockEditorHeader: pop out / dock button', () => {

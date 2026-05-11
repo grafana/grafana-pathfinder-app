@@ -8,6 +8,7 @@ import React, { useCallback, useMemo } from 'react';
 import { IconButton, useStyles2, Badge, Checkbox } from '@grafana/ui';
 import { getBlockItemStyles } from './block-editor.styles';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
+import { LintBadge } from './LintBadge';
 import { BLOCK_TYPE_METADATA } from './constants';
 import type { EditorBlock, BlockType } from './types';
 import {
@@ -16,7 +17,6 @@ import {
   isMultistepBlock,
   isGuidedBlock,
   isConditionalBlock,
-  isInputBlock,
 } from '../../types/json-guide.types';
 import { getBlockPreview } from './utils';
 import { testIds } from '../../constants/testIds';
@@ -160,48 +160,51 @@ export function BlockItem({
     .join(' ');
 
   return (
-    <div className={containerClass}>
-      {/* Selection checkbox (only for interactive blocks in selection mode) */}
-      {isSelectionMode && (
-        <div
-          className={styles.selectionCheckbox}
-          onClick={handleCheckboxClick}
-          title={
-            isSelectable
-              ? isSelected
-                ? 'Deselect'
-                : 'Select'
-              : 'Only interactive, multistep, and guided blocks can be selected'
-          }
-        >
-          <Checkbox value={isSelected} disabled={!isSelectable} onChange={handleToggleSelect} />
-        </div>
-      )}
+    <div className={containerClass} data-block-card>
+      {/* Selection checkbox — only for selectable block types
+          (interactive / multistep / guided). Non-selectable blocks
+          render an empty spacer of the same width so the row
+          alignment stays consistent across the list. */}
+      {isSelectionMode &&
+        (isSelectable ? (
+          <div
+            className={styles.selectionCheckbox}
+            onClick={handleCheckboxClick}
+            title={isSelected ? 'Deselect' : 'Select'}
+          >
+            <Checkbox value={isSelected} onChange={handleToggleSelect} />
+          </div>
+        ) : (
+          <div className={styles.selectionCheckbox} aria-hidden="true" />
+        ))}
 
       {/* Drag handle - visual indicator (hidden in selection mode) */}
       {!isSelectionMode && (
-        <div className={styles.dragHandle} title="Drag to reorder">
-          <span style={{ fontSize: '12px' }}>⋮⋮</span>
+        <div className={styles.dragHandle} data-drag-handle title="Drag to reorder">
+          <span style={{ fontSize: '14px', lineHeight: 1 }}>⋮</span>
         </div>
       )}
 
-      {/* Content */}
+      {/* Content — single inline row.
+          - Sections render their authored title (if any) instead of preview.
+          - Interactive/input blocks no longer render a separate sub-type
+            badge; the action verb already appears in the preview.
+          - Conditional blocks keep their orange/green meta badges. */}
       <div className={styles.content}>
         <div className={styles.header}>
           <span className={styles.blockNumber}>{index + 1}</span>
           <span className={styles.typeIcon}>{meta.icon}</span>
           <Badge text={meta.name} color="blue" />
-          {isInteractiveBlock(block.block) && (
-            <Badge text={block.block.action.charAt(0).toUpperCase() + block.block.action.slice(1)} color="purple" />
-          )}
-          {isInputBlock(block.block) && (
-            <Badge
-              text={block.block.inputType.charAt(0).toUpperCase() + block.block.inputType.slice(1)}
-              color="purple"
-            />
-          )}
-          {isSectionBlock(block.block) && block.block.title && (
-            <span style={{ marginLeft: '8px', fontWeight: 500 }}>{block.block.title}</span>
+          {isSectionBlock(block.block) && block.block.title ? (
+            <span className={styles.sectionTitle} title={block.block.title}>
+              {block.block.title}
+            </span>
+          ) : (
+            preview && (
+              <span className={styles.headlinePreview} title={preview}>
+                {preview}
+              </span>
+            )
           )}
           {isConditionalBlock(block.block) && (
             <>
@@ -213,22 +216,25 @@ export function BlockItem({
             </>
           )}
         </div>
-        {preview && (
-          <div className={styles.preview} title={preview}>
-            {preview}
-          </div>
-        )}
       </div>
+
+      {/* Lint badge sits between the content and the actions so a long
+          preview can use the full middle column without the badge
+          competing for primary text width. */}
+      <LintBadge path={['blocks', index]} />
 
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        <div className={styles.actionGroup}>
-          {/* Record button for sections */}
+        {/* Secondary actions — hidden by default, revealed on row hover or
+            keyboard focus via the parent container's data-attribute
+            selectors. They sit *before* Edit so the always-visible Edit
+            button stays anchored to the right edge of every row. */}
+        <div className={styles.secondaryActions} data-secondary-actions>
           {isSection && onRecord && (
             <IconButton
               name={isRecording ? 'square-shape' : 'circle'}
-              size="md"
+              size="sm"
               aria-label={isRecording ? 'Stop recording' : 'Record into section'}
               onClick={handleRecord}
               className={isRecording ? styles.recordingButton : styles.recordButton}
@@ -238,7 +244,7 @@ export function BlockItem({
           {onPreview && (
             <IconButton
               name={isPreviewActive ? 'eye-slash' : 'eye'}
-              size="md"
+              size="sm"
               aria-label={isPreviewActive ? `Hide preview for ${meta.name} block` : `Preview ${meta.name} block`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -250,17 +256,8 @@ export function BlockItem({
             />
           )}
           <IconButton
-            name="edit"
-            size="md"
-            aria-label="Edit block"
-            onClick={handleEdit}
-            className={styles.editButton}
-            tooltip="Edit block"
-            data-testid={testIds.blockEditor.editButton}
-          />
-          <IconButton
             name="copy"
-            size="md"
+            size="sm"
             aria-label="Duplicate block"
             onClick={handleDuplicate}
             className={styles.actionButton}
@@ -275,6 +272,16 @@ export function BlockItem({
             blockType={meta.name.toLowerCase()}
           />
         </div>
+        {/* Edit is the primary action — always visible, right-anchored. */}
+        <IconButton
+          name="edit"
+          size="sm"
+          aria-label="Edit block"
+          onClick={handleEdit}
+          className={styles.editButton}
+          tooltip="Edit block"
+          data-testid={testIds.blockEditor.editButton}
+        />
       </div>
 
       {/* Collapse toggle for sections/conditionals */}

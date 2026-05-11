@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, Badge, ButtonGroup, Tooltip, Dropdown, Menu, useStyles2 } from '@grafana/ui';
+import { Button, Badge, ButtonGroup, Icon, IconButton, Tooltip, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import type { ViewMode } from './types';
@@ -62,14 +62,12 @@ export interface BlockEditorHeaderProps {
   onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
-  /**
-   * The surface this header is rendered in. When provided, the toolbar
-   * uses it directly instead of reading the global panelModeManager,
-   * which can desync from the actual host (e.g. localStorage stuck on
-   * `'fullscreen'` after the user navigates back to the sidebar via
-   * Grafana's URL navigation).
-   */
-  surface?: PanelMode;
+  /** Whether the guide has any blocks (drives selection-mode trigger visibility) */
+  hasBlocks: boolean;
+  /** Whether selection mode is currently active */
+  isSelectionMode: boolean;
+  /** Toggle selection mode on/off */
+  onToggleSelectionMode: () => void;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -79,24 +77,19 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     backgroundColor: theme.colors.background.primary,
   }),
-  topRow: css({
+  // Single-row toolbar: title (flex 1) + actions cluster on the right.
+  // Wraps to a second line below ~360px.
+  row: css({
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: `${theme.spacing(1.5)} ${theme.spacing(2)} ${theme.spacing(1)}`,
-    gap: theme.spacing(2),
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+    gap: theme.spacing(1),
     flexWrap: 'wrap',
   }),
-  guideInfo: css({
+  titleArea: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1.5),
-    minWidth: 0,
-    flex: 1,
-  }),
-  guideTitleContainer: css({
-    display: 'flex',
-    flexDirection: 'column',
+    gap: theme.spacing(0.5),
     minWidth: 0,
     flex: 1,
     '&:hover .guide-id': {
@@ -115,8 +108,8 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     padding: '0 2px',
     margin: 0,
     outline: 'none',
-    width: '100%',
     minWidth: 0,
+    flex: 1,
     '&:hover': {
       borderBottomColor: theme.colors.border.medium,
     },
@@ -132,42 +125,35 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     opacity: 0,
     transition: 'opacity 0.15s',
     padding: '0 2px',
+    flexShrink: 0,
   }),
-  statusBadges: css({
+  // Right-side action cluster.
+  actions: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
     flexShrink: 0,
   }),
-  toolbarRow: css({
-    display: 'flex',
+  // Subtler "Saved" indicator (replaces the green chip) — small
+  // check-circle icon. Tooltip preserved for context.
+  savedIndicator: css({
+    display: 'inline-flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: `${theme.spacing(1)} ${theme.spacing(2)} ${theme.spacing(1.5)}`,
-    gap: theme.spacing(2),
-    flexWrap: 'wrap',
+    color: theme.colors.success.text,
+    flexShrink: 0,
   }),
-  // Both sections wrap their internal buttons when narrow (sidebar surface)
-  // so the Pop out / Full screen / Save controls reflow onto a second
-  // line instead of clipping past the panel's right edge.
-  leftSection: css({
-    display: 'flex',
+  savingIndicator: css({
+    display: 'inline-flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
-  }),
-  rightSection: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
-    rowGap: theme.spacing(0.5),
+    color: theme.colors.warning.text,
+    flexShrink: 0,
   }),
   divider: css({
     width: '1px',
     height: '20px',
     backgroundColor: theme.colors.border.weak,
-    margin: `0 ${theme.spacing(0.5)}`,
+    margin: `0 ${theme.spacing(0.25)}`,
+    flexShrink: 0,
   }),
   moreButton: css({
     '& > button': {
@@ -201,7 +187,9 @@ export function BlockEditorHeader({
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
-  surface,
+  hasBlocks,
+  isSelectionMode,
+  onToggleSelectionMode,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -209,28 +197,29 @@ export function BlockEditorHeader({
   const [titleDraft, setTitleDraft] = useState(guideTitle);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // Effective surface: prefer the explicit prop (passed by the host),
-  // and fall back to the global manager only when the host hasn't been
-  // updated to pass it. The global state can desync from reality (it's
-  // localStorage-backed and not always cleared on URL nav), so the prop
-  // is the more reliable source of truth.
-  const [globalMode, setGlobalMode] = useState<PanelMode>(() => panelModeManager.getMode());
+  // Track the current panel mode so the Pop out button can swap between
+  // "Pop out" (sidebar) and "Dock" (floating) at runtime.
+  const [panelMode, setPanelMode] = useState<PanelMode>(() => panelModeManager.getMode());
   useEffect(() => {
     const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
-      setGlobalMode(e.detail.mode);
+      setPanelMode(e.detail.mode);
     };
     document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
     return () => {
       document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
     };
   }, []);
-  const effectiveSurface: PanelMode = surface ?? globalMode;
 
-  // Dispatch document-level requests; each surface's host listens for these.
-  // (See docs-panel.tsx, FloatingPanelManager.tsx, FullScreenPanel.tsx.)
-  const dispatchRequest = useCallback((eventName: string) => {
-    document.dispatchEvent(new CustomEvent(eventName));
-  }, []);
+  // Dispatch the same document-level events used by interactive popout steps.
+  // The sidebar's docs-panel handler picks up pop-out for the editor tab; the
+  // FloatingPanelManager handles dock requests.
+  const handleTogglePanelMode = useCallback(() => {
+    if (panelMode === 'sidebar') {
+      document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
+    } else {
+      document.dispatchEvent(new CustomEvent('pathfinder-request-dock'));
+    }
+  }, [panelMode]);
 
   // Keep draft in sync when title changes externally (e.g. guide loaded from library)
   useEffect(() => {
@@ -285,11 +274,32 @@ export function BlockEditorHeader({
     );
   };
 
-  // More menu for less-used actions
+  // More menu for less-used actions. New + Library moved here (from
+  // the toolbar) — both are infrequent and "New" is destructive, so
+  // it's an improvement to guard them behind a menu.
+  // Context item can return null (backend available, draft, no
+  // unsynced changes) — gate its trailing divider on the item itself,
+  // not on backend availability, to avoid an orphan double-divider.
+  const contextItem = moreMenuContextItem();
   const moreMenu = (
     <Menu>
-      {moreMenuContextItem()}
-      {isBackendAvailable && <Menu.Divider />}
+      <Menu.Item
+        label="New guide"
+        icon="file-blank"
+        onClick={onNewGuide}
+        data-testid={testIds.blockEditor.newGuideButton}
+      />
+      {isBackendAvailable && (
+        <Menu.Item
+          label="Library"
+          icon="book-open"
+          onClick={onOpenGuideLibrary}
+          data-testid={testIds.blockEditor.libraryButton}
+        />
+      )}
+      <Menu.Divider />
+      {contextItem}
+      {contextItem && <Menu.Divider />}
       <Menu.Item label="Import" icon="upload" onClick={onOpenImport} />
       <Menu.Divider />
       <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid={testIds.blockEditor.copyJsonButton} />
@@ -405,69 +415,68 @@ export function BlockEditorHeader({
 
   return (
     <div className={styles.header}>
-      {/* Top Row: Guide info and status */}
-      <div className={styles.topRow}>
-        <div className={styles.guideInfo}>
-          <div className={styles.guideTitleContainer}>
-            <input
-              ref={titleInputRef}
-              className={styles.guideTitleInput}
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={commitTitle}
-              onKeyDown={handleTitleKeyDown}
-              aria-label="Guide title"
-            />
-            {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
-          </div>
+      {/* Single-row toolbar: title (flex 1) + actions on the right.
+          New / Library moved into the kebab menu; selection-mode
+          trigger is a small icon button next to the view-mode toggle. */}
+      <div className={styles.row}>
+        <div className={styles.titleArea}>
+          <input
+            ref={titleInputRef}
+            className={styles.guideTitleInput}
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={handleTitleKeyDown}
+            aria-label="Guide title"
+          />
+          {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
         </div>
 
-        <div className={styles.statusBadges}>
-          {/* Local save status — only shown when backend is unavailable */}
+        <div className={styles.actions}>
+          {/* Local-save indicator — subtle icon (replaces the green
+              chip). Only shown when backend isn't available. The icon
+              is deliberately a floppy `save` so it doesn't visually
+              clash with the `check-square` selection trigger that
+              follows. */}
           {!isBackendAvailable &&
             (isDirty ? (
               <Tooltip content="Saving changes to local storage">
-                <Badge text="Saving..." color="orange" icon="fa fa-spinner" />
+                <span className={styles.savingIndicator} aria-label="Saving">
+                  <Icon name="fa fa-spinner" size="sm" />
+                </span>
               </Tooltip>
             ) : (
               <Tooltip content="All changes saved to local storage">
-                <Badge text="Saved" color="green" icon="check" />
+                <span className={styles.savedIndicator} aria-label="Saved">
+                  <Icon name="save" size="sm" />
+                </span>
               </Tooltip>
             ))}
 
-          {/* Backend publish status */}
+          {/* Backend publish status — kept as a Badge since the
+              Draft/Published distinction is genuinely informative. */}
           {isBackendAvailable && backendBadge()}
-        </div>
-      </div>
 
-      {/* Toolbar Row: Tools and actions */}
-      <div className={styles.toolbarRow}>
-        {/* Left: New + Library */}
-        <div className={styles.leftSection}>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="file-blank"
-            onClick={onNewGuide}
-            data-testid={testIds.blockEditor.newGuideButton}
-          >
-            New
-          </Button>
-          {isBackendAvailable && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="book-open"
-              onClick={onOpenGuideLibrary}
-              data-testid={testIds.blockEditor.libraryButton}
-            >
-              Library
-            </Button>
+          {/* Selection-mode trigger — only meaningful in edit mode
+              with at least one block. The preceding divider exists
+              specifically to break the visual pairing between the
+              status icon and this `check-square` button, so it only
+              appears when the trigger does. */}
+          {viewMode === 'edit' && hasBlocks && (
+            <>
+              <div className={styles.divider} />
+              <IconButton
+                name="check-square"
+                size="sm"
+                variant={isSelectionMode ? 'primary' : 'secondary'}
+                onClick={onToggleSelectionMode}
+                aria-label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+                tooltip={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+                data-testid={testIds.blockEditor.toggleSelectionButton}
+              />
+            </>
           )}
-        </div>
 
-        {/* Right: View mode, publish, and more */}
-        <div className={styles.rightSection}>
           <ButtonGroup data-testid={testIds.blockEditor.viewModeToggle}>
             <Button
               variant={viewMode === 'edit' ? 'primary' : 'secondary'}
@@ -492,91 +501,23 @@ export function BlockEditorHeader({
             />
           </ButtonGroup>
 
-          {isBackendAvailable && (
-            <>
-              <div className={styles.divider} />
-              {renderBackendButton()}
-            </>
-          )}
+          {isBackendAvailable && renderBackendButton()}
 
-          {effectiveSurface === 'sidebar' && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="corner-up-right"
-                onClick={() => dispatchRequest('pathfinder-request-pop-out')}
-                tooltip="Pop out the editor into a floating window"
-                aria-label="Pop out editor"
-                data-testid="pathfinder-block-editor-toggle-popout"
-              >
-                Pop out
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="expand-arrows"
-                onClick={() => dispatchRequest('pathfinder-request-full-screen')}
-                tooltip="Open the editor in full screen"
-                aria-label="Open editor in full screen"
-                data-testid="pathfinder-block-editor-go-fullscreen"
-              >
-                Full screen
-              </Button>
-            </>
-          )}
-          {effectiveSurface === 'floating' && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="arrow-to-right"
-                onClick={() => dispatchRequest('pathfinder-request-dock')}
-                tooltip="Dock the editor back into the sidebar"
-                aria-label="Dock editor"
-                data-testid="pathfinder-block-editor-toggle-popout"
-              >
-                Dock
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="expand-arrows"
-                onClick={() => dispatchRequest('pathfinder-request-full-screen')}
-                tooltip="Open the editor in full screen"
-                aria-label="Open editor in full screen"
-                data-testid="pathfinder-block-editor-go-fullscreen"
-              >
-                Full screen
-              </Button>
-            </>
-          )}
-          {effectiveSurface === 'fullscreen' && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="angle-left"
-                onClick={() => dispatchRequest('pathfinder-request-dock')}
-                tooltip="Exit full screen and return to the sidebar"
-                aria-label="Back to sidebar"
-                data-testid="pathfinder-block-editor-toggle-popout"
-              >
-                Back to sidebar
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="corner-up-right"
-                onClick={() => dispatchRequest('pathfinder-request-pop-out')}
-                tooltip="Pop out the editor into a floating window"
-                aria-label="Pop out editor"
-                data-testid="pathfinder-block-editor-go-floating"
-              >
-                Pop out
-              </Button>
-            </>
-          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={panelMode === 'sidebar' ? 'corner-up-right' : 'arrow-to-right'}
+            onClick={handleTogglePanelMode}
+            tooltip={
+              panelMode === 'sidebar'
+                ? 'Pop out the editor into a floating window'
+                : 'Dock the editor back into the sidebar'
+            }
+            aria-label={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
+            data-testid="pathfinder-block-editor-toggle-popout"
+          >
+            {panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
+          </Button>
 
           <div className={styles.moreButton}>
             <Dropdown overlay={moreMenu} placement="bottom-end">

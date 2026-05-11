@@ -1,11 +1,15 @@
 /**
  * Block Editor Context
  *
- * React Context for tracking section/conditional editing context.
+ * React Context for tracking section/conditional editing context, plus the
+ * shared guide-lint result so per-block badges and the JSON-mode validator
+ * read from a single cached source of truth.
+ *
  * Replaces window.__blockEditorSectionContext and window.__blockEditorConditionalContext.
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
+import type { GuideLintResult } from './lint';
 
 /**
  * Context for tracking which section is being edited.
@@ -35,6 +39,14 @@ interface BlockEditorContextValue {
   setConditionalContext: (ctx: ConditionalContextValue | null) => void;
   /** Clear all editing context */
   clearContext: () => void;
+  /**
+   * Latest guide-lint result, or null until a guide-aware container has
+   * published one via `setGuideLintResult`. Consumers (BlockItem, future
+   * Health panel) read this to render badges without re-walking the tree.
+   */
+  guideLintResult: GuideLintResult | null;
+  /** Publish a new guide-lint result. Called by the BlockEditor on every guide change. */
+  setGuideLintResult: (result: GuideLintResult | null) => void;
 }
 
 export const BlockEditorContext = createContext<BlockEditorContextValue | null>(null);
@@ -46,6 +58,7 @@ interface BlockEditorContextProviderProps {
 export function BlockEditorContextProvider({ children }: BlockEditorContextProviderProps) {
   const [sectionContext, setSectionContextState] = useState<SectionContextValue | null>(null);
   const [conditionalContext, setConditionalContextState] = useState<ConditionalContextValue | null>(null);
+  const [guideLintResult, setGuideLintResultState] = useState<GuideLintResult | null>(null);
 
   const setSectionContext = useCallback((ctx: SectionContextValue | null) => {
     setSectionContextState(ctx);
@@ -60,6 +73,10 @@ export function BlockEditorContextProvider({ children }: BlockEditorContextProvi
     setConditionalContextState(null);
   }, []);
 
+  const setGuideLintResult = useCallback((result: GuideLintResult | null) => {
+    setGuideLintResultState(result);
+  }, []);
+
   const value = useMemo(
     () => ({
       sectionContext,
@@ -67,8 +84,18 @@ export function BlockEditorContextProvider({ children }: BlockEditorContextProvi
       setSectionContext,
       setConditionalContext,
       clearContext,
+      guideLintResult,
+      setGuideLintResult,
     }),
-    [sectionContext, conditionalContext, setSectionContext, setConditionalContext, clearContext]
+    [
+      sectionContext,
+      conditionalContext,
+      setSectionContext,
+      setConditionalContext,
+      clearContext,
+      guideLintResult,
+      setGuideLintResult,
+    ]
   );
 
   return <BlockEditorContext.Provider value={value}>{children}</BlockEditorContext.Provider>;
@@ -100,6 +127,16 @@ export function useBlockEditorContextSafe(): BlockEditorContextValue {
       setSectionContext: () => {},
       setConditionalContext: () => {},
       clearContext: () => {},
+      guideLintResult: null,
+      setGuideLintResult: () => {},
     }
   );
+}
+
+/**
+ * Convenience hook for components that just want to read the current lint
+ * result without touching the rest of the context surface.
+ */
+export function useGuideLintResult(): GuideLintResult | null {
+  return useBlockEditorContextSafe().guideLintResult;
 }

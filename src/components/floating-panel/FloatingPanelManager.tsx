@@ -335,7 +335,7 @@ function FloatingPanelInner() {
     >
       {isEditorTab ? (
         <Suspense fallback={<SkeletonLoader type="documentation" />}>
-          <BlockEditor surface="floating" />
+          <BlockEditor />
         </Suspense>
       ) : (
         <FloatingPanelContent

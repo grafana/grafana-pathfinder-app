@@ -61,12 +61,14 @@ export const getSortableStyles = (theme: GrafanaTheme2) => ({
     height: '2px',
     backgroundColor: theme.colors.border.medium,
     borderRadius: '2px',
+    opacity: 0.5,
     transition: 'all 0.15s ease',
   }),
   dropIndicatorLineActive: css({
     height: '4px',
     backgroundColor: theme.colors.primary.main,
     boxShadow: `0 0 8px ${theme.colors.primary.main}`,
+    opacity: 1,
   }),
   dropIndicatorLabel: css({
     position: 'absolute',
@@ -94,6 +96,7 @@ export function SortableBlock({
   disabled,
   children,
   passThrough = false,
+  path,
 }: {
   id: string;
   data: DragData;
@@ -101,6 +104,12 @@ export function SortableBlock({
   children: React.ReactNode;
   /** When true, disables pointer events so drops pass through to parent zones */
   passThrough?: boolean;
+  /**
+   * JSON path of this block in the guide, e.g. `['blocks', 0, 'blocks', 1]`.
+   * Emitted as `data-block-path` so the Health status bar can flash the
+   * exact nested block a diagnostic refers to.
+   */
+  path?: ReadonlyArray<string | number>;
 }) {
   const sortableStyles = useStyles2(getSortableStyles);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -120,6 +129,8 @@ export function SortableBlock({
       ref={setNodeRef}
       style={style}
       className={cx(sortableStyles.sortableItem, isDragging && sortableStyles.dragging)}
+      data-block-id={id}
+      data-block-path={path ? path.join('.') : undefined}
       {...attributes}
       {...listeners}
     >

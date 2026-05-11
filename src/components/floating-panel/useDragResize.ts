@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import {
@@ -20,6 +20,27 @@ function clampToViewport(x: number, y: number, width: number, height: number): {
     x: clamp(x, 0, window.innerWidth - width),
     y: clamp(y, 0, window.innerHeight - height),
   };
+}
+
+/**
+ * Clamp the entire geometry — both dimensions and position — so the
+ * panel always renders within the current viewport. Used on mount and
+ * on window resize so a position saved on a larger screen can never
+ * leave the panel stranded off-screen when the user comes back on a
+ * smaller window.
+ *
+ * Width/height clamp is one-way (shrink only) and is NOT persisted by
+ * this function: the panel still renders smaller, but the next time the
+ * viewport is large enough we want the user's preferred size restored.
+ * Persisting only happens through explicit drag/resize gestures, where
+ * the saved value reflects user intent.
+ */
+function clampGeometryToViewport(g: FloatingPanelGeometry): FloatingPanelGeometry {
+  const width = Math.min(g.width, Math.max(FLOATING_PANEL_MIN_WIDTH, window.innerWidth));
+  const height = Math.min(g.height, Math.max(FLOATING_PANEL_MIN_HEIGHT, window.innerHeight));
+  const x = Math.max(0, Math.min(g.x, window.innerWidth - width));
+  const y = Math.max(0, Math.min(g.y, window.innerHeight - height));
+  return { ...g, x, y, width, height };
 }
 
 /**
@@ -162,7 +183,25 @@ function useResize(
  * initializing from persisted values and exposing drag + resize handlers.
  */
 export function useDragResize() {
-  const [geometry, setGeometry] = useState<FloatingPanelGeometry>(() => panelModeManager.getPanelGeometry());
+  // Initial geometry is the persisted user preference clamped to the
+  // current viewport — a position saved on a 30" monitor must never
+  // leave the panel stranded off-screen on a 13" laptop.
+  const [geometry, setGeometry] = useState<FloatingPanelGeometry>(() =>
+    clampGeometryToViewport(panelModeManager.getPanelGeometry())
+  );
+
+  // Re-clamp whenever the browser is resized. We re-read from the
+  // manager (the user's preferred geometry) and clamp that, rather than
+  // clamping the current rendered geometry — that way, growing the
+  // browser back restores the original size, instead of leaving us
+  // stuck with an earlier shrink.
+  useEffect(() => {
+    const handler = () => {
+      setGeometry(clampGeometryToViewport(panelModeManager.getPanelGeometry()));
+    };
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const drag = useDrag(geometry, setGeometry);
   const resize = useResize(geometry, setGeometry);
