@@ -4,9 +4,10 @@
  * Individual block wrapper with drag handle, type indicator, preview, and actions.
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { IconButton, useStyles2, Badge, Checkbox } from '@grafana/ui';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Icon, IconButton, useStyles2, Badge, Checkbox, Tooltip } from '@grafana/ui';
 import { getBlockItemStyles } from './block-editor.styles';
+import { AuthorNoteModal } from './AuthorNoteModal';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { LintBadge } from './LintBadge';
 import { BLOCK_TYPE_METADATA } from './constants';
@@ -60,6 +61,8 @@ export interface BlockItemProps {
   onPreview?: () => void;
   /** Whether this block preview is currently open */
   isPreviewActive?: boolean;
+  /** Save a new author-only note onto this block. */
+  onAuthorNoteChange?: (note: string) => void;
 }
 
 /**
@@ -85,6 +88,7 @@ export function BlockItem({
   isLastModified = false,
   onPreview,
   isPreviewActive = false,
+  onAuthorNoteChange,
 }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
@@ -100,6 +104,11 @@ export function BlockItem({
   const isSection = isSectionBlock(block.block);
   const isConditional = isConditionalBlock(block.block);
   void totalBlocks;
+
+  // Author-note modal state. Lives at the row level so it can read /
+  // write the block's `authorNote` via the parent-supplied callback.
+  const [isNoteModalOpen, setNoteModalOpen] = useState(false);
+  const currentAuthorNote = block.block.authorNote ?? '';
 
   const handleEdit = useCallback(
     (e: React.MouseEvent) => {
@@ -215,6 +224,15 @@ export function BlockItem({
               {block.block.display === 'section' && <Badge text="Section" color="green" />}
             </>
           )}
+          {/* Author-only note indicator. Tooltip shows the note text;
+              the field itself never reaches the published guide. */}
+          {block.block.authorNote && (
+            <Tooltip content={block.block.authorNote} placement="top">
+              <span aria-label={`Author note: ${block.block.authorNote}`} className={styles.authorNoteIcon}>
+                <Icon name="comment-alt" size="sm" />
+              </span>
+            </Tooltip>
+          )}
         </div>
       </div>
 
@@ -225,7 +243,16 @@ export function BlockItem({
 
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
-      <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
+      {/* `onPointerDown` stop is required — `@dnd-kit` listens on pointer
+          events (separate from mouse events), so the existing
+          `onMouseDown` stop alone wasn't preventing the SortableBlock
+          drag listener from arming when an action button was clicked. */}
+      <div
+        className={styles.actions}
+        draggable={false}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         {/* Secondary actions — hidden by default, revealed on row hover or
             keyboard focus via the parent container's data-attribute
             selectors. They sit *before* Edit so the always-visible Edit
@@ -264,6 +291,23 @@ export function BlockItem({
             tooltip="Duplicate block"
             data-testid={testIds.blockEditor.duplicateButton}
           />
+          {/* Author note — opens the shared AuthorNoteModal. Same icon
+              as the inline indicator so authors learn the association.
+              Only rendered when the parent supplies the save callback. */}
+          {onAuthorNoteChange && (
+            <IconButton
+              name="comment-alt"
+              size="sm"
+              aria-label={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              onClick={(e) => {
+                e.stopPropagation();
+                setNoteModalOpen(true);
+              }}
+              className={styles.actionButton}
+              tooltip={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              data-testid="pathfinder-block-editor-author-note-button"
+            />
+          )}
           <ConfirmDeleteButton
             onConfirm={onDelete}
             className={styles.deleteButton}
@@ -294,6 +338,15 @@ export function BlockItem({
           tooltip={isCollapsed ? `Expand (${childCount} ${childCount === 1 ? 'block' : 'blocks'})` : 'Collapse'}
           aria-expanded={!isCollapsed}
           aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+        />
+      )}
+
+      {onAuthorNoteChange && (
+        <AuthorNoteModal
+          isOpen={isNoteModalOpen}
+          initialNote={currentAuthorNote}
+          onSave={onAuthorNoteChange}
+          onClose={() => setNoteModalOpen(false)}
         />
       )}
     </div>

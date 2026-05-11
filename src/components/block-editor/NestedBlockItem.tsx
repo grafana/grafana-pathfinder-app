@@ -5,8 +5,9 @@
  * Uses same layout as root-level BlockItem for consistency.
  */
 
-import React, { useCallback } from 'react';
-import { useStyles2, Badge, IconButton, Checkbox } from '@grafana/ui';
+import React, { useCallback, useState } from 'react';
+import { Icon, useStyles2, Badge, IconButton, Checkbox, Tooltip } from '@grafana/ui';
+import { AuthorNoteModal } from './AuthorNoteModal';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { LintBadge } from './LintBadge';
 import { getNestedBlockItemStyles } from './BlockList.styles';
@@ -37,6 +38,8 @@ export interface NestedBlockItemProps {
   onPreview?: () => void;
   /** Whether this nested block preview is currently open */
   isPreviewActive?: boolean;
+  /** Save a new author-only note onto this nested block. */
+  onAuthorNoteChange?: (note: string) => void;
 }
 
 /**
@@ -57,9 +60,14 @@ export function NestedBlockItem({
   isLastModified = false,
   onPreview,
   isPreviewActive = false,
+  onAuthorNoteChange,
 }: NestedBlockItemProps) {
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
+
+  // Author-note modal state — same pattern as BlockItem.
+  const [isNoteModalOpen, setNoteModalOpen] = useState(false);
+  const currentAuthorNote = 'authorNote' in block && typeof block.authorNote === 'string' ? block.authorNote : '';
 
   // Interactive, multistep, and guided blocks can be selected for merging
   const isSelectable =
@@ -144,6 +152,14 @@ export function NestedBlockItem({
               </span>
             )
           )}
+          {/* Author-only note indicator. Stripped on export. */}
+          {'authorNote' in block && typeof block.authorNote === 'string' && block.authorNote && (
+            <Tooltip content={block.authorNote} placement="top">
+              <span aria-label={`Author note: ${block.authorNote}`} className={styles.authorNoteIcon}>
+                <Icon name="comment-alt" size="sm" />
+              </span>
+            </Tooltip>
+          )}
         </div>
       </div>
 
@@ -152,7 +168,12 @@ export function NestedBlockItem({
 
       {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
-      <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className={styles.actions}
+        draggable={false}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         {/* Secondary actions — hidden by default, revealed on row hover
             or keyboard focus. Edit stays anchored to the right edge. */}
         <div className={styles.secondaryActions} data-secondary-actions>
@@ -182,6 +203,20 @@ export function NestedBlockItem({
             className={styles.actionButton}
             tooltip="Duplicate block"
           />
+          {onAuthorNoteChange && (
+            <IconButton
+              name="comment-alt"
+              size="sm"
+              aria-label={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              onClick={(e) => {
+                e.stopPropagation();
+                setNoteModalOpen(true);
+              }}
+              className={styles.actionButton}
+              tooltip={currentAuthorNote ? 'Edit author note' : 'Add author note'}
+              data-testid="pathfinder-block-editor-author-note-button-nested"
+            />
+          )}
           <ConfirmDeleteButton
             onConfirm={onDelete ?? (() => {})}
             className={styles.deleteButton}
@@ -200,6 +235,15 @@ export function NestedBlockItem({
           tooltip="Edit block"
         />
       </div>
+
+      {onAuthorNoteChange && (
+        <AuthorNoteModal
+          isOpen={isNoteModalOpen}
+          initialNote={currentAuthorNote}
+          onSave={onAuthorNoteChange}
+          onClose={() => setNoteModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
