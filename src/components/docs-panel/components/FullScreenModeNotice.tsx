@@ -12,11 +12,14 @@
  * the next active tab for full-screen) while keeping content fetch /
  * milestone state ownership with the full-screen instance.
  *
- * Includes a "Return to sidebar" CTA: switches panelMode back to 'sidebar'
- * so this surface takes over rendering. If the user is currently sitting on
- * the dedicated `/fullscreen` route, we also navigate away to the prior
- * route — otherwise the FullScreenPanel stays mounted on that page and the
- * user would re-enter fullscreen on next refresh.
+ * Includes a "Return to sidebar" CTA that mirrors the FullScreenPanel's
+ * back-arrow exit (`handleExitToSidebar`): switches panelMode back to
+ * 'sidebar', republishes the OpenExtensionSidebarEvent so Grafana
+ * re-mounts the extension sidebar from a clean slate (which is what
+ * re-triggers tab restoration on the sidebar's model instance — a
+ * `setMode` alone isn't enough), and navigates back to the captured
+ * prior route. Without the re-mount, the sidebar's model never restores
+ * the user's tabs and the user lands on the recommendations tab.
  */
 
 import React, { useCallback } from 'react';
@@ -28,7 +31,8 @@ import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
 import { panelModeManager } from '../../../global-state/panel-mode';
-import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
+import { sidebarState } from '../../../global-state/sidebar';
+import { PLUGIN_BASE_URL } from '../../../constants';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -70,12 +74,17 @@ export function FullScreenModeNotice() {
   const styles = useStyles2(getStyles);
 
   const handleReturnToSidebar = useCallback(() => {
+    // Order mirrors `FullScreenPanel.handleExitToSidebar` — the exact
+    // side-effect sequence is load-bearing. The `openSidebar` call
+    // republishes the OpenExtensionSidebarEvent which forces Grafana to
+    // re-mount the extension sidebar; that's what triggers the sidebar's
+    // panel restoration from storage (without the re-mount, `setMode`
+    // alone won't bring the user's tab back).
     panelModeManager.setMode('sidebar');
-    const fullScreenPath = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
-    if (window.location.pathname.startsWith(fullScreenPath)) {
-      const priorPath = panelModeManager.consumePriorPath();
-      locationService.push(priorPath ?? PLUGIN_BASE_URL);
-    }
+    sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
+    sidebarState.openSidebar('Interactive learning');
+    const priorPath = panelModeManager.consumePriorPath();
+    locationService.push(priorPath ?? PLUGIN_BASE_URL);
   }, []);
 
   return (

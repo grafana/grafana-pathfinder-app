@@ -8,8 +8,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { FullScreenModeNotice } from './FullScreenModeNotice';
 import { testIds } from '../../../constants/testIds';
 import { panelModeManager } from '../../../global-state/panel-mode';
+import { sidebarState } from '../../../global-state/sidebar';
 import { locationService } from '@grafana/runtime';
-import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
+import { PLUGIN_BASE_URL } from '../../../constants';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -34,22 +35,9 @@ jest.mock('@grafana/ui', () => {
   };
 });
 
-// jsdom's `window.location` is read-only via defineProperty, but
-// `history.pushState` updates the live `pathname`/`search` accessors —
-// which is what `FullScreenModeNotice` reads.
-function setPathname(pathname: string) {
-  window.history.pushState({}, '', pathname);
-}
-
 describe('FullScreenModeNotice', () => {
-  const ORIGINAL_PATHNAME = window.location.pathname + window.location.search;
-
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  afterEach(() => {
-    setPathname(ORIGINAL_PATHNAME || '/');
   });
 
   it('renders the icon, title, and informational body', () => {
@@ -69,41 +57,31 @@ describe('FullScreenModeNotice', () => {
     expect(screen.getByText('Return to sidebar')).toBeInTheDocument();
   });
 
-  it('switches panelMode back to sidebar when the CTA is clicked (and skips navigation when not on /fullscreen)', () => {
+  it('mirrors the back-arrow exit: setMode + setPendingOpenSource + openSidebar + push(priorPath)', () => {
     const setModeSpy = jest.spyOn(panelModeManager, 'setMode');
-    const consumePriorPathSpy = jest.spyOn(panelModeManager, 'consumePriorPath');
-    const pushSpy = locationService.push as jest.Mock;
-
-    // jsdom default URL is http://localhost/ — not /fullscreen
-    render(<FullScreenModeNotice />);
-    fireEvent.click(screen.getByTestId(testIds.fullScreenMode.noticeReturnButton));
-
-    expect(setModeSpy).toHaveBeenCalledWith('sidebar');
-    expect(pushSpy).not.toHaveBeenCalled();
-    expect(consumePriorPathSpy).not.toHaveBeenCalled();
-  });
-
-  it('navigates back to the prior path when clicked on the /fullscreen route', () => {
-    const setModeSpy = jest.spyOn(panelModeManager, 'setMode');
+    const setPendingOpenSourceSpy = jest.spyOn(sidebarState, 'setPendingOpenSource');
+    const openSidebarSpy = jest.spyOn(sidebarState, 'openSidebar').mockImplementation(() => undefined);
     const consumePriorPathSpy = jest.spyOn(panelModeManager, 'consumePriorPath').mockReturnValue('/dashboards/foo');
     const pushSpy = locationService.push as jest.Mock;
-    setPathname(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
 
     render(<FullScreenModeNotice />);
     fireEvent.click(screen.getByTestId(testIds.fullScreenMode.noticeReturnButton));
 
     expect(setModeSpy).toHaveBeenCalledWith('sidebar');
+    expect(setPendingOpenSourceSpy).toHaveBeenCalledWith('fullscreen_handoff', 'open');
+    expect(openSidebarSpy).toHaveBeenCalledWith('Interactive learning');
     expect(consumePriorPathSpy).toHaveBeenCalled();
     expect(pushSpy).toHaveBeenCalledWith('/dashboards/foo');
   });
 
   it('falls back to plugin home when no prior path was captured', () => {
     jest.spyOn(panelModeManager, 'consumePriorPath').mockReturnValue(null);
+    jest.spyOn(sidebarState, 'openSidebar').mockImplementation(() => undefined);
     const pushSpy = locationService.push as jest.Mock;
-    setPathname(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
 
     render(<FullScreenModeNotice />);
     fireEvent.click(screen.getByTestId(testIds.fullScreenMode.noticeReturnButton));
+
     expect(pushSpy).toHaveBeenCalledWith(PLUGIN_BASE_URL);
   });
 });
