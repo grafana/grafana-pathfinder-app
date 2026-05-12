@@ -115,7 +115,9 @@ export const JsonStepSchema = z
     reftarget: z
       .string()
       .optional()
-      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
+      .describe(
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+      ),
 
     targetvalue: z
       .string()
@@ -240,7 +242,9 @@ export const JsonInteractiveBlockSchema = z
     reftarget: z
       .string()
       .optional()
-      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
+      .describe(
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+      ),
 
     targetvalue: z
       .string()
@@ -473,7 +477,9 @@ export const JsonCodeBlockBlockSchema = z.object({
   reftarget: z
     .string()
     .min(1, 'Code block reftarget is required')
-    .describe('CSS selector for the target Monaco editor'),
+    .describe(
+      'Verified Grafana DOM selector for the target Monaco editor. Do NOT invent or guess. Confirm against the live Grafana DOM or ask the user for the selector — Monaco editors have stable data-testid attributes in Grafana. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.'
+    ),
   language: z.string().optional().describe('Source language hint (e.g., promql, logql, sql)'),
   code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
   content: z.string().optional().describe('Optional instructional text shown above the code'),
@@ -667,7 +673,12 @@ const ConditionalProps = {
     .enum(['inline', 'section'])
     .optional()
     .describe('Render the conditional inline or as a collapsible section'),
-  reftarget: z.string().optional().describe('CSS selector consumed by certain conditional styles'),
+  reftarget: z
+    .string()
+    .optional()
+    .describe(
+      'Verified Grafana DOM selector consumed by certain conditional styles. Do NOT invent or guess; confirm against the live Grafana DOM. A wrong selector silently fails at runtime — the validator cannot catch this.'
+    ),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional().describe(
     'Section config applied to the whenTrue branch'
   ),
