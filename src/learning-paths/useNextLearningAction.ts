@@ -124,8 +124,17 @@ export function computeNextAction(deps: ComputeNextActionDeps): NextLearningActi
  * Designed for the UserProfileBar component.
  */
 export function useNextLearningAction(): LearningProfileSummary {
-  const { paths, badgesWithStatus, progress, getPathGuides, getPathProgress, isPathCompleted, streakInfo, isLoading } =
-    useLearningPaths();
+  const {
+    paths,
+    badgesWithStatus,
+    progress,
+    getPathGuides,
+    getPathProgress,
+    isPathCompleted,
+    streakInfo,
+    isLoading,
+    isLoadingCourses,
+  } = useLearningPaths();
 
   const nextAction = useMemo(
     () => computeNextAction({ paths, getPathProgress, getPathGuides, isPathCompleted }),
@@ -146,6 +155,6 @@ export function useNextLearningAction(): LearningProfileSummary {
     streakDays: streakInfo.days,
     isActiveToday: streakInfo.isActiveToday,
     nextAction,
-    isLoading,
+    isLoading: isLoading || isLoadingCourses,
   };
 }

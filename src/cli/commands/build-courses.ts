@@ -195,6 +195,14 @@ export const buildCoursesCommand = new Command('build-courses')
     checkIntegrity(ossIndex, errs);
     checkIntegrity(cloudIndex, errs);
 
+    if (errs.errors.length > 0) {
+      console.error('Validation errors:');
+      for (const err of errs.errors) {
+        console.error(`  - ${err}`);
+      }
+      process.exit(1);
+    }
+
     const ossParse = CoursesPlatformIndexSchema.safeParse(ossIndex);
     const cloudParse = CoursesPlatformIndexSchema.safeParse(cloudIndex);
     if (!ossParse.success || !cloudParse.success) {
