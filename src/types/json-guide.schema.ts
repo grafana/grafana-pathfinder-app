@@ -99,6 +99,7 @@ export const JsonQuizChoiceSchema = z.object({
   text: z.string().min(1, 'Choice text is required').describe('Visible choice text'),
   correct: z.boolean().optional().describe('Mark this choice as correct'),
   hint: z.string().optional().describe('Hint shown when this choice is selected'),
+  pinned: z.boolean().optional().describe('Keep this choice at its authored index when the quiz is shuffled'),
 });
 
 // ============ STEP SCHEMA ============
@@ -355,6 +356,10 @@ export const JsonQuizBlockSchema = z
     maxAttempts: z.number().optional().describe('Number of attempts allowed when completionMode=max-attempts'),
     requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    shuffle: z
+      .boolean()
+      .optional()
+      .describe('Randomize choice display order (default: true); pinned choices keep their authored index'),
   })
   .superRefine((quiz, ctx) => {
     // Empty quizzes are a transient authoring state; the publish-time
@@ -795,7 +800,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'lazyRender',
     'scrollContainer',
   ]),
-  _choice: new Set(['id', 'text', 'correct', 'hint']),
+  _choice: new Set(['id', 'text', 'correct', 'hint', 'pinned']),
   markdown: new Set(['type', 'id', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
   html: new Set(['type', 'id', 'content']),
   image: new Set(['type', 'id', 'src', 'alt', 'width', 'height']),
@@ -861,6 +866,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'maxAttempts',
     'requirements',
     'skippable',
+    'shuffle',
   ]),
   input: new Set([
     'type',

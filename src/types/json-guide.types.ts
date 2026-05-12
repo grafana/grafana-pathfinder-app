@@ -390,6 +390,12 @@ export interface JsonQuizBlock {
   requirements?: string[];
   /** Whether quiz can be skipped */
   skippable?: boolean;
+  /**
+   * Randomize choice display order (default: true). Set to false to render
+   * in authored order. Choices with `pinned: true` keep their authored index
+   * even when shuffling is enabled.
+   */
+  shuffle?: boolean;
 }
 
 /**
@@ -404,6 +410,12 @@ export interface JsonQuizChoice {
   correct?: boolean;
   /** Hint shown when this wrong choice is selected */
   hint?: string;
+  /**
+   * Keep this choice at its authored index when the quiz is shuffled.
+   * Useful for "All of the above" / "None of the above" answers that must
+   * stay in a specific slot. Has no effect when `shuffle` is false.
+   */
+  pinned?: boolean;
 }
 
 // ============ INPUT BLOCK ============
