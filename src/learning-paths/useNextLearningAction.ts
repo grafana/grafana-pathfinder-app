@@ -124,8 +124,17 @@ export function computeNextAction(deps: ComputeNextActionDeps): NextLearningActi
  * Designed for the UserProfileBar component.
  */
 export function useNextLearningAction(): LearningProfileSummary {
-  const { paths, badgesWithStatus, progress, getPathGuides, getPathProgress, isPathCompleted, streakInfo, isLoading } =
-    useLearningPaths();
+  const {
+    paths,
+    badgesWithStatus,
+    progress,
+    getPathGuides,
+    getPathProgress,
+    isPathCompleted,
+    streakInfo,
+    isLoading,
+    isLoadingCourses,
+  } = useLearningPaths();
 
   const nextAction = useMemo(
     () => computeNextAction({ paths, getPathProgress, getPathGuides, isPathCompleted }),
@@ -146,6 +155,12 @@ export function useNextLearningAction(): LearningProfileSummary {
     streakDays: streakInfo.days,
     isActiveToday: streakInfo.isActiveToday,
     nextAction,
-    isLoading,
+    // OR both flags so callers (e.g. UserProfileBar's skeleton) keep showing
+    // a loading state until *both* the localStorage hydrate and the CDN
+    // course fetch have settled. Without `isLoadingCourses`, badgesTotal and
+    // nextAction briefly reflect the bundled fallback (4 badges, 1 course)
+    // and then snap to the CDN values — a visible flash. MyLearningTab uses
+    // the same `isLoading || isLoadingCourses` pattern.
+    isLoading: isLoading || isLoadingCourses,
   };
 }

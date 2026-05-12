@@ -195,6 +195,18 @@ export const buildCoursesCommand = new Command('build-courses')
     checkIntegrity(ossIndex, errs);
     checkIntegrity(cloudIndex, errs);
 
+    // Integrity checks run *after* the early `errs.errors.length` guard above,
+    // so we have to re-check here. Otherwise a course referencing a missing
+    // badge (or any cross-ref failure pushed by checkIntegrity) would slip
+    // through and we'd write a structurally-broken index to disk.
+    if (errs.errors.length > 0) {
+      console.error('Integrity errors:');
+      for (const err of errs.errors) {
+        console.error(`  - ${err}`);
+      }
+      process.exit(1);
+    }
+
     const ossParse = CoursesPlatformIndexSchema.safeParse(ossIndex);
     const cloudParse = CoursesPlatformIndexSchema.safeParse(cloudIndex);
     if (!ossParse.success || !cloudParse.success) {
