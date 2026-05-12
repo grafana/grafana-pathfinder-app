@@ -50,6 +50,8 @@ Add an optional `warnings: Array<{ code: string; message: string; path?: string 
 
 Where a field has a known canonical form, normalize in the CLI runner instead of failing. Current pattern (fail → agent retries → maybe fixes it) wastes context. Better: normalize and emit a `warnings[]` entry telling the agent what was changed so it learns the canonical form for next time. Candidate normalizations: YouTube URL forms, trailing slashes on URLs, slug-ification of titles, whitespace trimming.
 
+**Status (2026-05-12).** Built in [slice 2 — integrity and normalize](./phases/mcp-hardening-2-integrity-and-normalize.md). The mechanism lives in `src/cli/utils/input-normalizers.ts` exposing `normalizeBlockInput(type, fields) → { normalized, warnings }`; the `INPUT_NORMALIZED` warning constructor sits alongside the existing helpers in `src/cli/utils/warnings.ts`. First consumer is the `video` branch (YouTube URL forms). Adding more normalizations means extending the dispatch in `input-normalizers.ts` — no runner-side changes needed.
+
 ### M4. Selector catalog tool
 
 A new MCP tool `pathfinder_lookup_selector` returning curated, known-good Grafana DOM selectors keyed by area (panel editor, explore, dashboard settings, alerting, etc.). Makes it cheap for agents to do the right thing instead of inventing selectors. Referenced from `pathfinder_authoring_start.discovery` and from any field that accepts a `reftarget`.
@@ -73,6 +75,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Recommendation.** ETag + sharper description. Turns a confusing class-of-bug into a one-line diagnosis without introducing server-side state.
 
+**Status (2026-05-12).** Addressed in [slice 2 — integrity and normalize](./phases/mcp-hardening-2-integrity-and-normalize.md). Both load-bearing mitigations landed: every response now embeds `artifact.__etag` (SHA-256 over canonical-form `{content, manifest}`, truncated to 16 hex chars); every mutation tool verifies the echoed etag before dispatching and returns a dedicated `ARTIFACT_MUTATED` error with remediation-shaped text on mismatch. The artifact-input `.describe()` is sharpened to spell out the round-trip contract. OQ1 resolved — see slice 2 decision log. The opaque-handle alternative remains tracked under [P5 — GCS-backed authoring sessions](./AI-AUTHORING-IMPLEMENTATION.md#p5--deferred-follow-ups); slice 2 picks the cheapest fix that preserves statelessness.
+
 ### #2. YouTube watch links rejected
 
 **Observed.** Video block requires embed URLs (`youtube.com/embed/<id>`). Agents commonly pass watch (`youtube.com/watch?v=ID`) or short (`youtu.be/ID`) URLs and round-trip through validation failure before correcting.
@@ -84,6 +88,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 - **Remediation-shaped error.** If normalization fails (non-YouTube URL, malformed), return `INVALID_VIDEO_URL` with the exact expected form: _"Got `<url>`. Expected `youtube.com/embed/<id>`."_
 
 **Recommendation.** All three; auto-normalize is the load-bearing one.
+
+**Status (2026-05-12).** Addressed in [slice 2 — integrity and normalize](./phases/mcp-hardening-2-integrity-and-normalize.md). The CLI runner now normalizes `youtube.com/watch?v=ID`, `youtu.be/ID`, and `youtube.com/shorts/ID` (plus missing-protocol and `m.youtube.com` tolerant variants) to the canonical `youtube.com/embed/ID` form before `assertCliBlockFields` runs. An `INPUT_NORMALIZED` warning rides on the outcome naming the rewrite verbatim so the agent learns the canonical form. The video.src schema description names the auto-conversion safety net. `assertEmbeddableVideoUrl` in `cli-validators.ts` keeps its branches as defense-in-depth (dead code for normalized inputs but live for any path that bypasses the runners). The 14-case normalizer test matrix in `src/cli/__tests__/input-normalizers.test.ts` is the regression guard. Slice 2 also builds **M3** (the input-normalization mechanism) which is reusable for future cases (trailing slashes, whitespace, slug-ification).
 
 ### #3. `reftarget` (DOM selector) hallucination
 
@@ -206,7 +212,7 @@ A body of authoring best-practices already exists in `grafana/interactive-tutori
 
 ## Open questions
 
-- **OQ1.** Is the right artifact-integrity primitive an ETag (server-side hash check) or a client-visible `__etag` field on the artifact (visible to the model, becomes part of the contract)? The first is invisible plumbing; the second is self-documenting but adds a field to every artifact.
+- **OQ1. _Resolved 2026-05-12 (slice 2)._** Client-visible `__etag` on the artifact envelope (sibling to `content` and `manifest`). Invisible plumbing is impossible under the stateless contract — there is no per-call server state to remember the previous hash, so the agent must echo it back, which means the field must be on the wire. SHA-256 over canonical-form JSON, truncated to 16 hex chars. See the [slice's decision log](./phases/mcp-hardening-2-integrity-and-normalize.md#decision-log).
 - **OQ2.** Does giving steps block ids require a content-version bump and migration, or can existing artifacts auto-id on read? Depends on whether step ids are required or optional.
 - **OQ3.** Where does the curated selector catalog live (M4)? Hand-maintained JSON in the repo, generated from interactive-example guides, or pulled from a Grafana-side source of truth? Affects how it stays current.
 - **OQ4. _Resolved 2026-05-12 (slice 1)._** Surface in both — CLI text output (`Warnings:` block between `text` and `hints`, suppressed in `--quiet`) and `--format json` payload. MCP layer forwards verbatim. Additive `SuccessOutcome.warnings` field; no existing caller breaks. See the [slice's decision log](./phases/mcp-hardening-1-routing-and-composition.md#decision-log).
@@ -219,3 +225,7 @@ A body of authoring best-practices already exists in `grafana/interactive-tutori
 ### 2026-05-12 — Slice 1 (routing + composition + selector discipline)
 
 Issues #3, #7, #8 picked up by [`phases/mcp-hardening-1-routing-and-composition.md`](./phases/mcp-hardening-1-routing-and-composition.md). 11 tasks shipped across 9 atomic commits prefixed `MCP-HARDEN-1:` (tasks 9–11 bundled into a single slice-exit commit). Cross-cutting plumbing built once: M1 layers 1+3, M2 `warnings[]`. Full decision log lives in the slice plan. Open questions resolved in the slice (linked to slice's decision log above): OQ4 (warnings visibility), OQ6 (trigger vocabulary source), OQ7 (best-practices distillation strategy). Deferred from this slice: M4 (selector catalog — depends on OQ3), issues #1 / #2 / #4 / #5 (independent fixes that compose cleanly on top of the M1+M2 plumbing this slice built), and the Assistant-team coordination point on broad rollout (issue #7 final paragraph).
+
+### 2026-05-12 — Slice 2 (artifact integrity + input normalization)
+
+Issues #1, #2 picked up by [`phases/mcp-hardening-2-integrity-and-normalize.md`](./phases/mcp-hardening-2-integrity-and-normalize.md). Built **M3** (CLI-side input normalization) as the third cross-cutting mechanism, reusable by future normalizers. New error code `ARTIFACT_MUTATED` and new warning code `INPUT_NORMALIZED` (registered in `docs/developer/MCP_SERVER.md`). Open questions resolved: **OQ1** (ETag visibility — forced by the stateless contract to be on-the-wire as `artifact.__etag`). Deferred from this slice: M4 (still blocked on OQ3), issues #4 / #5 (next conversations), the opaque-handle alternative for #1 (tracked under P5 GCS-sessions in `AI-AUTHORING-IMPLEMENTATION.md`). Slice plan's decision log captures two additional in-slice calls: keep `assertEmbeddableVideoUrl` as defense-in-depth, and surface `INPUT_NORMALIZED` warnings on idempotent no-ops too.

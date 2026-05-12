@@ -6,9 +6,9 @@
 > Branch: `mcp-hardening-integrity-and-normalize`.
 > Tracking issue: _to be filed_.
 
-**Status:** In progress
+**Status:** Complete
 **Started:** 2026-05-12
-**Completed:** _YYYY-MM-DD_
+**Completed:** 2026-05-12
 
 ---
 
@@ -87,7 +87,7 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-2: ...`)
 ### Cross-cutting + docs
 
 - [x] **9. Extend the canonical-flow test.** ✓ _Complete (2026-05-12)._ Added four new assertions to `hardening-flow.test.ts` chained on the existing canonical flow: (a) `artifact.__etag` is non-empty 16-char hex on the first response; (b) etags across `created` / `markdownAdd` / `multistepAdd` / `stepAdd` are all distinct (state changes → hash changes); (c) a YouTube watch URL on `add_block(video)` produces `INPUT_NORMALIZED` + embed-URL persistence; (d) corrupting the artifact's `content.title` and re-passing produces an `ARTIFACT_MUTATED` error with remediation-shaped message. The composition guard is now end-to-end on slices 1+2.
-- [ ] **10. Docs update.** `docs/developer/MCP_SERVER.md` — add `__etag` to the response shape section, add `ARTIFACT_MUTATED` to a new "Error codes" subsection (or extend the warnings table), add `INPUT_NORMALIZED` to the warnings registry. `docs/design/MCP-AGENT-UX-HARDENING.md` — append Status (2026-05-12) to issues #1 and #2; mark OQ1 resolved; append slice-2 decision-log entry.
+- [x] **10. Docs update.** ✓ _Complete (2026-05-12)._ `docs/developer/MCP_SERVER.md` — added `INPUT_NORMALIZED` to the warnings code registry, added a new "Artifact integrity (`__etag`)" subsection under "Tool surface" covering the wire shape, the verification contract, and the `ARTIFACT_MUTATED` error response. `docs/design/MCP-AGENT-UX-HARDENING.md` — appended Status (2026-05-12) annotations to issues #1 and #2; added a status annotation to M3 documenting the slice-2 build; marked OQ1 resolved with a one-line answer pointing at the slice decision log; appended a slice-2 decision-log entry mirroring the slice-1 pattern.
 
 ### Test plan
 
@@ -140,4 +140,11 @@ _Empty at draft._
 
 ## Handoff to next phase
 
-_Fill at exit._
+- **M3 is now the canonical place to add input normalizations.** Extend `normalizeBlockInput` in `src/cli/utils/input-normalizers.ts` with new block-type branches; the runner-side wiring in `runAddBlock` and `runEditBlock` already pulls warnings into the outcome. Candidate next normalizers: trailing slashes on URLs (any block with a URL field), whitespace trimming on titles/descriptions, slug-ification of package ids when an agent passes a human title verbatim to `pathfinder_create_package` without an explicit id.
+- **`artifact.__etag` is now load-bearing.** Every response carrying an artifact embeds it (`outcomeResult` does this for all consumers). Every mutation verifies it (`verifyArtifactEtag` short-circuits each handler). When extending the mutation surface — adding a new mutation tool, accepting an artifact in a new tool — copy the `verifyArtifactEtag(artifact)` short-circuit at the top of the handler. `pathfinder_inspect` / `pathfinder_validate` intentionally don't verify (read-only, the bug class doesn't apply) but they do return etags via `outcomeResult` so the agent can continue the chain through them.
+- **`__etag` never reaches the CLI runner.** `asArtifact()` in `mutation-tools.ts` projects to `{content, manifest}` only. If a future code path introduces a new way to dispatch from MCP → CLI, mirror the same projection so the envelope stays at the MCP layer.
+- **`assertEmbeddableVideoUrl` is dead code for runner-mediated inputs but live for direct invocations.** Don't delete it; it's the defense-in-depth backstop. If you ever delete a normalizer, restore the corresponding validator branch first.
+- **`INPUT_NORMALIZED` warnings ride on idempotent no-ops.** Documented in the slice decision log — opposite of how `MULTISTEP_COMPOSITION_HINT` and `UNVERIFIED_SELECTOR` behave (those gate on `appended`). The asymmetry is intentional; future warnings should pick a side and document it.
+- **403 CLI tests pass.** The composition guard at `src/cli/mcp/__tests__/hardening-flow.test.ts` now covers slices 1+2 end-to-end. Drive that test if you change any hint surface, the etag, or the normalizer dispatch.
+- **OQ2 (step / choice block ids) is the natural next conversation.** Slice 1 closed issue #3 (selectors) and slice 2 closed #1 + #2; the remaining high-value issue is #4, which needs a design call on whether step ids are required (forcing a content-version bump and migration) or auto-id on read (existing artifacts get ids minted on first load).
+- **Hardening doc statuses updated.** Issues #1, #2 + M3 in `docs/design/MCP-AGENT-UX-HARDENING.md` now carry **Status (2026-05-12)** annotations. OQ1 marked resolved. Slice-2 entry appended to the decision log.

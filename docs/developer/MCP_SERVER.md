@@ -210,12 +210,43 @@ Codes are stable strings — the registry below is authoritative; new codes are 
 
 **Code registry:**
 
-| Code                         | Emitted by                                                                                | Meaning                                                                                                                                                                    |
-| ---------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MULTISTEP_COMPOSITION_HINT` | `runAddBlock` on `type: 'multistep'` append                                               | Composition nudge. `multistep` is for tightly-coupled ordered steps; prefer separate sibling blocks for loose sequences, and never use `action: noop` as filler.           |
-| `UNVERIFIED_SELECTOR`        | `runAddBlock` / `runAddStep` / `runEditBlock` whenever a non-empty `reftarget` is written | The CLI cannot verify a selector against the live Grafana DOM. Confirm against a running instance before publishing — wrong selectors silently break the guide at runtime. |
+| Code                         | Emitted by                                                                                | Meaning                                                                                                                                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MULTISTEP_COMPOSITION_HINT` | `runAddBlock` on `type: 'multistep'` append                                               | Composition nudge. `multistep` is for tightly-coupled ordered steps; prefer separate sibling blocks for loose sequences, and never use `action: noop` as filler.                                                        |
+| `UNVERIFIED_SELECTOR`        | `runAddBlock` / `runAddStep` / `runEditBlock` whenever a non-empty `reftarget` is written | The CLI cannot verify a selector against the live Grafana DOM. Confirm against a running instance before publishing — wrong selectors silently break the guide at runtime.                                              |
+| `INPUT_NORMALIZED`           | `runAddBlock` / `runEditBlock` whenever the CLI rewrites a user-supplied value            | Teach-on-write signal. Naming says what got rewritten (e.g., `youtube.com/watch?v=ID` → `youtube.com/embed/ID`). The call succeeded with the canonical form; pass the canonical form next time to avoid the round-trip. |
 
 The MCP layer surfaces `warnings` verbatim through `outcomeResult` — no transformation. CLI users see the same payload via `--format json` and a `Warnings:` block in text mode (suppressed in `--quiet`).
+
+### Artifact integrity (`__etag`)
+
+Every response that returns an artifact embeds an `__etag` string at the artifact envelope (sibling to `content` and `manifest`):
+
+```jsonc
+{
+  "status": "ok",
+  "artifact": {
+    "content": { ... },
+    "manifest": { ... },
+    "__etag": "a1b2c3d4e5f60718"
+  }
+}
+```
+
+The agent's contract is to **echo the artifact back verbatim — including `__etag` — on every subsequent mutation call**. The MCP layer recomputes the etag of `{content, manifest}` and compares; on mismatch, it returns an `ARTIFACT_MUTATED` error before any dispatch happens, with remediation-shaped text:
+
+```jsonc
+{
+  "status": "error",
+  "code": "ARTIFACT_MUTATED",
+  "message": "The artifact you passed in does not match the integrity tag the server issued. ...",
+  "data": { "expected": "...", "actual": "...", "field": "__etag" },
+}
+```
+
+This pinpoints the actual bug class — agent re-serializing or reformatting fields between hops — rather than letting it surface as a misleading `SCHEMA_VALIDATION`. When the input has no `__etag` (first call, older client), the check is skipped. The CLI runner never sees `__etag`; it is stripped at the MCP / state-bridge boundary.
+
+The etag is a SHA-256 over canonical-form (sorted-key) JSON of `{content, manifest}`, truncated to 16 hex chars / 64 bits. Determinism guards against whitespace and key-order shuffles. Array order is preserved (semantically meaningful for `blocks`). Not security-relevant — this is an integrity check, not authentication.
 
 ### Access log fields
 
