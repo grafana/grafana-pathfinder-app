@@ -1,0 +1,16 @@
+{
+  "id": "alloy-broken-scrape",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "CTF-style challenge: diagnose why an Alloy instance has stopped collecting Prometheus metrics, then fix it.",
+  "category": "challenges",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "startingLocation": "/",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}
