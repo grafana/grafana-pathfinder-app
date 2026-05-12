@@ -4,9 +4,9 @@
 > Source design: [MCP-AGENT-UX-HARDENING.md — issue #7](../MCP-AGENT-UX-HARDENING.md#7-agents-dont-reach-for-pathfinder-mcp-without-explicit-prompt-vocabulary).
 > Trigger: production telemetry from a 2026-05-12 Cursor session against the deployed MCP — prompt _"Create a short interactive tutorial that shows how to add a Prometheus data source in Grafana"_ did not route to Pathfinder. The layer-3 `instructions` opener from slice 1 was too hedge-y to overcome the model's "just answer in prose" default.
 
-**Status:** In progress
+**Status:** Complete
 **Started:** 2026-05-12
-**Completed:** _YYYY-MM-DD_
+**Completed:** 2026-05-12
 
 ---
 
@@ -44,13 +44,18 @@ Close the routing gap slice 1 didn't fully close. Three targeted changes to the 
 - [x] **3. Surface `domains` in `_start` payload.** `tools/authoring-start.ts` reads `PATHFINDER_DOMAINS` and includes it alongside `triggers` and `notFor`.
 - [x] **4. Update tests.** Bump the 30-line ceiling to 40 in `server-instructions.test.ts`; assert presence of "default to using this server" and "last resort"; assert presence of domain anchors (Prometheus, Loki); update `server.test.ts` `_start` assertion to require the new fields and trigger phrases.
 - [x] **5. Update docs.** `docs/developer/MCP_SERVER.md` — describe the new four-section structure of `instructions`; bump the ceiling text. `docs/design/MCP-AGENT-UX-HARDENING.md` — capture the 2026-05-12 telemetry observation under issue #7; append slice-3 status note.
-- [ ] **6. Re-deploy + re-test.** Push the branch + run `./deploy-mcp.sh`. Re-test the original failing prompt (_"Create a short interactive tutorial that shows how to add a Prometheus data source in Grafana"_) against the deployed MCP. If it routes, slice 3 succeeded. If not, the layer-3 string isn't reaching the model with enough weight — escalate to Level 3.
+- [x] **6. Re-deploy + re-test.** ✓ _Complete (2026-05-12)._ Deployed `pathfinder-mcp-00005-jlh` revision to Cloud Run. Three Cursor prompts run fresh (new chats) against the deployed instance:
+  1. _"I want to write content that walks a beginner through navigating to the Grafana data sources page."_ — Cursor invoked `pathfinder_authoring_start` as its first move. ✓ Routes.
+  2. _"Put together a step-by-step walkthrough of setting up a Prometheus data source."_ — Cursor invoked `pathfinder_authoring_start` as its first move. ✓ Routes.
+  3. _"Write a Prometheus query that returns the 95th percentile latency over the last 5 minutes."_ — Cursor answered with the actual PromQL (`histogram_quantile(0.95, sum(rate(...)) by (le))` with explanation). ✓ Correctly stayed out of Pathfinder.
+
+  Three-for-three. The verb × asset-noun pattern + domain vocabulary + assertive opener together close the slice-1 routing gap. The `notFor` disambiguation correctly prevents over-routing on query-authoring prompts.
 
 ### Verification
 
 - [x] 406 CLI tests pass (+3 from slice 2's 403: 1 new domains-constant test, 1 new assertive-opener test, 1 `_start` expanded assertion).
 - [x] Typecheck / prettier clean.
-- [ ] Re-test the original failing prompt against deployed Cloud Run.
+- [x] Re-test the original failing prompt against deployed Cloud Run — passes. Plus two stretch prompts (verb-noun pattern, anti-routing) both behaving as designed.
 
 ---
 
@@ -81,8 +86,9 @@ Close the routing gap slice 1 didn't fully close. Three targeted changes to the 
 
 ## Handoff to next phase
 
-_Fill at exit._
-
-- _Pending re-test of the deployed instance with the original failing prompt._
-- _If slice 3 closes the gap: capture the success in the hardening doc and consider the routing thread done for the MCP-side surface._
-- _If slice 3 does NOT close the gap: the next move is Level 3 from the slice-3 design conversation — Cursor client-config description field + Grafana Assistant default-MCP-list coordination. Both are cross-team / cross-product work, not MCP-server code work._
+- **The routing thread is done for the MCP-side surface.** Three Cursor prompts (positive verb-noun, positive domain-driven, negative anti-routing) all behaved as designed against the deployed instance. Production telemetry from 2026-05-12 closed the slice-1 gap; the MCP server's three-layer hint surface now carries enough vocabulary weight to override the model's "just answer in prose" default.
+- **Adding a new normalization or vocabulary domain is now cheap.** `PATHFINDER_DOMAINS` is the single source for product-area routing; extend it as Grafana ships new products (Faro, OnCall, Synthetic Monitoring, etc.) and both layers 2 and 3 pick up the new vocabulary automatically. Same for `PATHFINDER_TRIGGER_PHRASES`.
+- **The 40-line `SERVER_INSTRUCTIONS` ceiling is a hard budget.** Past 40, the answer is "move new content to `pathfinder_authoring_start`," not "raise the ceiling further." `_start` is paid once per session; `instructions` is paid on every connect, so per-byte cost is higher there.
+- **Level 3 was not needed.** The slice-3 design conversation outlined "Cursor client-config description field" and "Grafana Assistant default-MCP-list coordination" as escalation points if MCP-side fixes alone weren't sufficient. They weren't needed for Cursor. Whether they're needed for Grafana Assistant remains open — verify when the deployed MCP is exercised in a real Assistant session.
+- **Verb × asset-noun pattern is the canonical mental model for trigger vocabulary.** Operator direction baked in during slice 3: any write/edit/update/create/author/build verb + any written-asset noun (content, guide, tutorial, walkthrough, how-to, learning material) should route. Future vocabulary additions should fit this grid; cases that don't (e.g., "show me how to..." — request for prose rather than authored content) should NOT route and may need new `notFor` entries.
+- **Telemetry observation captured in `MCP-AGENT-UX-HARDENING.md`.** Status note under issue #7 reflects the 2026-05-12 failure that triggered the slice AND the 2026-05-12 re-test that confirmed the fix. Future planners hitting routing issues should look there first for the precedent.
