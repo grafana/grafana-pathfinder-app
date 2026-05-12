@@ -217,10 +217,16 @@ export const JsonImageBlockSchema = z.object({
  * Schema for video block.
  * @coupling Type: JsonVideoBlock
  */
+// JsonVideoBlockSchema — see the SafeUrlSchema description on `src` below.
+// YouTube watch (`/watch?v=`), short (`youtu.be/`), and shorts URLs are
+// auto-normalized to the embed form by the CLI runner before this schema
+// runs (see `src/cli/utils/input-normalizers.ts`).
 export const JsonVideoBlockSchema = z.object({
   type: z.literal('video'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
-  src: SafeUrlSchema.describe('Video URL (http/https only)'),
+  src: SafeUrlSchema.describe(
+    'Video URL (http/https only). YouTube must be an embed URL (`youtube.com/embed/<id>`); watch (`/watch?v=`), short (`youtu.be/`), and shorts URLs are auto-converted by the CLI to the embed form before this field is persisted.'
+  ),
   provider: z.enum(['youtube', 'native']).optional().describe('Video provider hint'),
   title: z.string().optional().describe('Display title'),
   start: z.number().min(0).optional().describe('Start time in seconds'),

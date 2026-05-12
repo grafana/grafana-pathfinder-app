@@ -238,7 +238,7 @@ describe('MCP server', () => {
     }
   });
 
-  it('forwards the YouTube watch-vs-embed remediation hint through pathfinder_add_block', async () => {
+  it('normalizes a YouTube watch URL through pathfinder_add_block and surfaces INPUT_NORMALIZED (issue #2)', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'video test', type: 'guide' });
@@ -249,10 +249,16 @@ describe('MCP server', () => {
         type: 'video',
         fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
       });
-      expect(result.status).toBe('error');
-      // The MCP must surface the CLI's exact remediation hint (URL rewrite)
-      // verbatim so the agent can self-correct in one round-trip.
-      expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      // M3 — the CLI rewrites the non-canonical form before validation, so
+      // the call succeeds in one round-trip and the agent gets a warning
+      // naming the rewrite. The persisted artifact carries the embed form.
+      expect(result.status).toBe('ok');
+      const warnings = result.warnings as Array<{ code: string; path?: string; message: string }> | undefined;
+      const normalized = warnings?.find((w) => w.code === 'INPUT_NORMALIZED');
+      expect(normalized).toBeDefined();
+      expect(normalized?.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      const blocks = result.artifact?.content.blocks as Array<{ src?: string }>;
+      expect(blocks?.[0]?.src).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     } finally {
       await close();
     }

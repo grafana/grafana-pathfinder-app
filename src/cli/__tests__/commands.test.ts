@@ -106,32 +106,45 @@ describe('runAddBlock', () => {
       expect(result.status).toBe('ok');
     });
 
-    it('rejects a YouTube watch URL with a remediation hint', async () => {
+    it('normalizes a YouTube watch URL to the embed form and emits INPUT_NORMALIZED', async () => {
       const dir = await bootstrap();
       const result = await runAddBlock({
         dir,
         type: 'video',
         flagValues: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
       });
-      expect(result.status).toBe('error');
-      if (result.status === 'error') {
-        expect(result.code).toBe('SCHEMA_VALIDATION');
-        expect(result.message).toContain('not embeddable');
-        expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
       }
+      // Issue #2: normalize-on-write replaces the round-tripping error
+      // path. The agent sees a soft warning naming the rewrite (so it
+      // learns the canonical form) and the block is persisted with the
+      // embed URL.
+      const warning = result.warnings?.find((w) => w.code === 'INPUT_NORMALIZED');
+      expect(warning).toBeDefined();
+      expect(warning?.path).toBe('src');
+      expect(warning?.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      const content = readContent(dir);
+      const block = content.blocks[0] as { src?: string };
+      expect(block.src).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     });
 
-    it('rejects a youtu.be share URL with a remediation hint', async () => {
+    it('normalizes a youtu.be share URL to the embed form', async () => {
       const dir = await bootstrap();
       const result = await runAddBlock({
         dir,
         type: 'video',
         flagValues: { src: 'https://youtu.be/dQw4w9WgXcQ' },
       });
-      expect(result.status).toBe('error');
-      if (result.status === 'error') {
-        expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
       }
+      expect(result.warnings?.some((w) => w.code === 'INPUT_NORMALIZED')).toBe(true);
+      const content = readContent(dir);
+      const block = content.blocks[0] as { src?: string };
+      expect(block.src).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     });
 
     it('passes non-YouTube URLs through unchanged (e.g. Vimeo)', async () => {

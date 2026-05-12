@@ -16,6 +16,13 @@
  *   `runEditBlock` whenever a non-empty `reftarget` is written. The CLI
  *   cannot verify selectors against the live Grafana DOM, so this is a
  *   floor-raising signal, not a validation pass (hardening doc issue #3).
+ * - `INPUT_NORMALIZED` — emitted by `runAddBlock` / `runEditBlock` (and
+ *   future siblings) whenever the CLI rewrites a user-supplied input into
+ *   its canonical form (M3 — see `src/cli/utils/input-normalizers.ts`).
+ *   First consumer: YouTube watch / short / shorts URLs converted to
+ *   embed form (hardening doc issue #2). Teach-on-write — the agent
+ *   sees what got rewritten so it learns the canonical form for next
+ *   time, instead of round-tripping through a validation failure.
  */
 
 import type { OutcomeWarning } from './output';
@@ -67,4 +74,23 @@ export function unverifiedSelectorWarning(path: string): OutcomeWarning {
  */
 export function isNonEmptySelector(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * Teach-on-write signal fired when the CLI rewrites a user-supplied input
+ * into its canonical form (M3 — see `input-normalizers.ts`). Pair with the
+ * normalized value being persisted: the agent sees what changed (so it
+ * learns the canonical form for next time) and the call succeeds in one
+ * round-trip instead of two.
+ *
+ * `field` is the dotted field name (e.g. `src`); `from` and `to` are the
+ * original and rewritten values, included verbatim so a reviewer can grep
+ * for either form.
+ */
+export function inputNormalizedWarning(field: string, from: string, to: string): OutcomeWarning {
+  return {
+    code: 'INPUT_NORMALIZED',
+    message: `${field} normalized: \`${from}\` → \`${to}\`. The CLI accepts both forms; use the canonical form (right-hand side) next time to avoid the round-trip.`,
+    path: field,
+  };
 }

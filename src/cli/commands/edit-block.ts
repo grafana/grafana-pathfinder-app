@@ -19,6 +19,7 @@ import {
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import { normalizeBlockInput } from '../utils/input-normalizers';
 import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
 
 export const editBlockCommand = new Command('edit-block')
@@ -120,22 +121,27 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     };
   }
 
-  const patch = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
+  const rawPatch = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
   // Drop bridge-defaulted empties — the user didn't provide them, so we
   // shouldn't accidentally clobber existing values.
-  for (const [k, v] of Object.entries(patch)) {
+  for (const [k, v] of Object.entries(rawPatch)) {
     if (Array.isArray(v) && v.length === 0) {
-      delete patch[k];
+      delete rawPatch[k];
     }
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (Object.keys(rawPatch).length === 0) {
     return {
       status: 'error',
       code: 'NO_CHANGES',
       message: 'edit-block needs at least one field flag to change. See --help for the field list of this block type.',
     };
   }
+
+  // M3 — apply known input normalizations to the patch before any
+  // validator runs. The persisted block carries the canonical form, and a
+  // warning rides on the outcome so the agent learns for next time.
+  const { normalized: patch, warnings: normalizationWarnings } = normalizeBlockInput(blockType, rawPatch);
 
   // CLI-strict semantic checks against the patch values.
   try {
@@ -177,11 +183,12 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     };
   }
 
+  // M3 — normalization warnings always ride on the successful outcome.
   // Issue #3 — fire the unverified-selector signal only when the patch
   // itself wrote a non-empty `reftarget`. Edits that touch other fields on
   // a block whose pre-existing reftarget is unchanged do not re-arm this
   // warning (the original write was the moment of risk).
-  const warnings: OutcomeWarning[] = [];
+  const warnings: OutcomeWarning[] = [...normalizationWarnings];
   if (changed.includes('reftarget') && isNonEmptySelector(patch.reftarget)) {
     warnings.push(unverifiedSelectorWarning(`<id:${args.id}>/reftarget`));
   }

@@ -22,6 +22,7 @@ import {
   type OutcomeWarning,
 } from '../utils/output';
 import { getSchemaRequiredFlagNames, parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import { normalizeBlockInput } from '../utils/input-normalizers';
 import { isNonEmptySelector, multistepCompositionHint, unverifiedSelectorWarning } from '../utils/warnings';
 import {
   EMPTY_CHOICES_MESSAGE,
@@ -168,10 +169,16 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   // Project Commander's parsed opts back into a schema-shaped object, drop
   // structural and addressing keys (the bridge already skips most), then
   // stamp the discriminator and any explicit `--id`.
-  const projected = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
-  delete projected.parent;
-  delete projected.branch;
-  delete projected.ifAbsent;
+  const rawProjected = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
+  delete rawProjected.parent;
+  delete rawProjected.branch;
+  delete rawProjected.ifAbsent;
+
+  // M3 — CLI-side input normalization. Rewrite known-canonical-form fields
+  // (e.g., YouTube watch/short URLs → embed) before any validator runs, so
+  // the persisted block carries the canonical form AND the validator sees
+  // a value it can pass. Accumulated warnings ride on the outcome.
+  const { normalized: projected, warnings: normalizationWarnings } = normalizeBlockInput(args.type, rawProjected);
 
   // CLI-strict semantic checks (URLs, regex, selectors, ranges) — schemas
   // stay loose so existing content keeps loading; the CLI is what holds new
@@ -298,8 +305,11 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
     };
   }
 
-  // Soft outcome-time hints — only on actual append, not idempotent no-ops.
-  const warnings: OutcomeWarning[] = [];
+  // Soft outcome-time hints. Normalization warnings (M3) ride on every
+  // successful call — including idempotent no-ops, because the agent still
+  // benefits from learning the canonical form. Composition / selector
+  // signals only fire on actual append.
+  const warnings: OutcomeWarning[] = [...normalizationWarnings];
   if (appended) {
     // Issue #8: agents default to `multistep` even when steps would compose
     // better as siblings.
