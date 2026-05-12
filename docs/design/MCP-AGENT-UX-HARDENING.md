@@ -100,6 +100,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Recommendation.** All four. This issue justifies M2 and M4 on its own.
 
+**Re-observed (2026-05-08).** Real Grafana Assistant testing reproduced this pattern in concert with #8 — the agent generated a 7-step `multistep` block with invented `reftarget` selectors on the steps that weren't `noop`. Confirms the mitigations above (description hardening, M2/M4 warnings + catalog, M1 layer 3) are still the right ones; this issue should be planned alongside #8, since both share the same root (no compositional opinionation) and the same mitigation surface in `pathfinder_authoring_start`.
+
 ### #4. Steps in multistep / guided blocks are unaddressable
 
 **Observed.** Verbatim agent feedback: _"edit-block does not expose steps as a flag (it only covers named scalar fields), and steps carry no block ids so remove-block can't target them directly. The only path was cascade-remove the multistep and rebuild it — which the tool did automatically."_
@@ -150,6 +152,52 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Recommendation.** Tracked deploy template + `MCP_SERVER.md` runbook section. Both are cheap, neither leaks specifics, and together they give a future agent enough breadcrumbs to (a) realize the server is on Cloud Run, (b) find the operator-specific details, and (c) know the canonical log query.
 
+### #7. Agents don't reach for Pathfinder MCP without explicit prompt vocabulary
+
+**Observed (2026-05-08).** Real Grafana Assistant use, prompt: _"can you create a short and simple pathfinder that shows how to use drilldown metrics with prometheus?"_ — Assistant did not invoke the MCP and instead "tried to show me around" with a generic explainer. Reproducible without explicit naming of "Pathfinder tools" in the prompt; routing flips when the user names them. Operator framing: _"Grafana Assistant may not have enough context about what the MCP server does or the tools do to know when to use which tool."_
+
+**Why this happens.** Several layers conspire:
+
+- Tool descriptions on the MCP side describe **behavior**, not **use case**. `pathfinder_create_package` reads _"Create a fresh authoring artifact (content.json + manifest.json) for a new guide"_ — the model has to translate that to "this is what runs when the user says create a pathfinder."
+- The MCP server passes no `instructions` string in the `initialize` handshake. `buildServer` at `src/cli/mcp/server.ts:24` registers tools but emits no system-level positioning text. **M1 layer 3 is unused.**
+- Grafana Assistant has many MCP servers / tools; routing is largely vocabulary matching. Without trigger vocabulary surfaced anywhere in the tool surface, the model has no signal to prefer Pathfinder over a generic answer.
+- Cross-team: Assistant-side configuration (default-MCP-list ordering, skill files preloaded into the system prompt) also affects routing and is outside this MCP server's reach.
+
+**Candidate mitigations.**
+
+- **Reposition tool descriptions** to lead with use case. Example for `pathfinder_create_package`: _"Use this tool when the user wants to author or create an interactive Pathfinder guide, tutorial, or walkthrough. Returns a fresh content.json + manifest.json artifact for use as input to subsequent authoring tools."_ Same shift for `pathfinder_authoring_start`, `pathfinder_finalize_for_app_platform`, and the mutation tools.
+- **Server-level `instructions`** (M1 layer 3) — one paragraph telling MCP-aware clients (Claude Code, Claude Desktop, Cursor, eventually Assistant) when to use this server. Covers trigger vocabulary: _"create a pathfinder", "write a tutorial", "build a walkthrough", "interactive guide", "step-by-step."_ Pair with one line on when NOT to use it (e.g. read-only docs lookups belong elsewhere).
+- **`triggers` field in `pathfinder_authoring_start`** — list canonical user-facing verbs/nouns this MCP handles. Helps any agent that already invoked `_start` reaffirm its routing choice; also a natural source for the cross-team Assistant skill (next bullet).
+- **Cross-team coordination with the Assistant team.** Capture as an open question: should the default Pathfinder MCP ship with an Assistant skill / preamble that primes Assistant on the vocabulary above? See OQ6.
+
+**Recommendation.** MCP-side reposition + server `instructions` first; both are within this doc's scope and don't require Assistant-team coordination. Revisit the Assistant skill / default-list ordering question after observing whether MCP-side fixes alone close the routing gap.
+
+### #8. Composition opinionation: agents default to multistep and noop without warrant
+
+**Observed (2026-05-08).** Two related patterns from real Grafana Assistant testing, same session as #7:
+
+- _"[an agent] generated a multistep block of 7 steps all noops."_ The agent reached for `multistep` with `action: noop` on every step — the action is the model's defensive fallback when it doesn't know what selector or button to invoke.
+- _"Assistant seems to like to put everything into a multistep block, doesn't know to break out to 7 steps 1 each."_
+
+Closely related to #3 — selector hallucination and noop-as-defense are two sides of the same coin (the agent is uncertain what to do interactively, and the schema accepts both invented selectors and noop steps).
+
+**Why this happens.** The MCP exposes block types as a flat surface with no opinion about composition. `pathfinder_authoring_start` answers "what block types exist" and "what fields do they take" but not "how should I compose them for a typical guide." `multistep` is a first-class peer of every other type; no description discourages overuse. `noop` validates fine, so when the agent has nothing concrete for the user to do, it picks `noop` instead of writing markdown prose. The CLI is policy-free by design — it accepts anything schema-valid — and that policy-free posture is exactly what fails the agent here.
+
+A body of authoring best-practices already exists in `grafana/interactive-tutorials` at [`.cursor/authoring-guide.mdc`](https://github.com/grafana/interactive-tutorials/blob/main/.cursor/authoring-guide.mdc), written for human authors. It is not currently surfaced through the MCP. The hardening work is **distillation**, not bulk inlining — the constraint is to give the agent enough opinion to compose well without clogging the context window with the full guide.
+
+**Candidate mitigations.**
+
+- **Distilled `compositionRules` section in `pathfinder_authoring_start`.** Source: the upstream `authoring-guide.mdc`. At minimum the rules to surface should include:
+  - Prefer separate sibling blocks over `multistep` unless the steps are tightly coupled and must be completed in order.
+  - Do not write `action: noop` steps as filler. If there's nothing concrete for the user to do, write a markdown block describing what they would do instead.
+  - If you do not have a verified Grafana DOM selector for a `reftarget` field, do NOT write a step that requires one. Write a markdown block, use a `button` action with visible text matching, or ask the user. (Cross-references #3.)
+- **Type-aware tool description.** When `pathfinder_add_block` is called with `type === 'multistep'`, append a one-line composition rule to the response — either as a `warning` (M2) or in the response `summary`: _"Use multistep only when steps are tightly coupled. For loose sequences, prefer separate sibling blocks."_
+- **Server-level `instructions`** (M1 layer 3) — one composition sentence alongside the routing vocabulary from #7.
+- **Best-practices propagation strategy.** Upstream lives in `grafana/interactive-tutorials` at `.cursor/authoring-guide.mdc`. Two options: (a) inline a distilled subset directly in `pathfinder_authoring_start` as static content; (b) ship a new MCP tool `pathfinder_authoring_best_practices` that returns the distilled text on demand (so context cost is paid only when the agent asks). Option (b) is more disciplined about context budget; option (a) is cheaper to maintain. See OQ7.
+- Cross-references #3. The `UNVERIFIED_SELECTOR` warning there closes the noop-as-defense escape hatch from the other side: when the agent does write a step with a selector, it gets a soft warning; when it can't, the composition rules above tell it to write markdown instead. **#3 and #8 should be planned together.**
+
+**Recommendation.** Distilled `compositionRules` section in `pathfinder_authoring_start` is the load-bearing fix; M1 layer 3 instructions and per-block-type description tightening are supporting work. **The hardest part is distillation discipline** — the upstream guide is rich, the agent's context budget is not. Plan this issue alongside #3 (selectors) and #7 (invocation routing); all three share the `pathfinder_authoring_start` payload as their primary mitigation surface.
+
 ## Open questions
 
 - **OQ1.** Is the right artifact-integrity primitive an ETag (server-side hash check) or a client-visible `__etag` field on the artifact (visible to the model, becomes part of the contract)? The first is invisible plumbing; the second is self-documenting but adds a field to every artifact.
@@ -157,6 +205,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 - **OQ3.** Where does the curated selector catalog live (M4)? Hand-maintained JSON in the repo, generated from interactive-example guides, or pulled from a Grafana-side source of truth? Affects how it stays current.
 - **OQ4.** Should `warnings[]` (M2) be surfaced to CLI users as well (stderr line, `--format json` field) or MCP-only? CLI users would benefit, but it is a CLI contract change.
 - **OQ5.** For #6, should the tracked deploy template be a `.example.sh` sibling (operator copies and edits) or a parameterized script that reads from `.env` / env vars (no copy step, but more moving parts)? The first is simpler and matches the existing personal-script pattern; the second is friendlier to multi-environment operators.
+- **OQ6.** What is the canonical trigger vocabulary list for the M1 layer 3 server `instructions` and the `triggers` field in `pathfinder_authoring_start` (#7)? Hand-maintained in this repo, derived from observed agent prompts in production telemetry, or co-owned with the Assistant team via a tracked vocabulary doc?
+- **OQ7.** What is the distillation strategy for the upstream authoring guide at `grafana/interactive-tutorials` `.cursor/authoring-guide.mdc` (#8)? Inline a curated subset into `pathfinder_authoring_start`, ship a separate `pathfinder_authoring_best_practices` tool returning the distilled text on demand, or both? Operator constraint: _"distill the right bits and not just clog the agent with context."_ Context budget is the binding tradeoff. Affects who owns the distillation (subject-matter expert at the source repo vs. a planner working from this hardening phase) and how it stays in sync upstream.
 
 ## Decision log
 

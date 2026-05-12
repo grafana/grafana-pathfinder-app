@@ -117,22 +117,42 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ## Tool surface
 
-12 tools, registered in `src/cli/mcp/tools/`:
+16 tools, registered in `src/cli/mcp/tools/`:
 
-| Tool                                   | Module                | Wraps                                                                  |
-| -------------------------------------- | --------------------- | ---------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | `authoring-start.ts`  | (static context block)                                                 |
-| `pathfinder_help`                      | `help.ts`             | `formatHelpAsJson` over the CLI commands                               |
-| `pathfinder_create_package`            | `artifact-tools.ts`   | `runCreate`                                                            |
-| `pathfinder_add_block`                 | `mutation-tools.ts`   | `runAddBlock`                                                          |
-| `pathfinder_add_step`                  | `mutation-tools.ts`   | `runAddStep`                                                           |
-| `pathfinder_add_choice`                | `mutation-tools.ts`   | `runAddChoice`                                                         |
-| `pathfinder_edit_block`                | `mutation-tools.ts`   | `runEditBlock`                                                         |
-| `pathfinder_remove_block`              | `mutation-tools.ts`   | `runRemoveBlock`                                                       |
-| `pathfinder_set_manifest`              | `mutation-tools.ts`   | `runSetManifest`                                                       |
-| `pathfinder_inspect`                   | `inspection-tools.ts` | `runInspect`                                                           |
-| `pathfinder_validate`                  | `inspection-tools.ts` | `runValidate`                                                          |
-| `pathfinder_finalize_for_app_platform` | `finalize.ts`         | `runValidate` + handoff payload from `APP-PLATFORM-PUBLISH-HANDOFF.md` |
+| Tool                                   | Module                | Wraps                                                                      |
+| -------------------------------------- | --------------------- | -------------------------------------------------------------------------- |
+| `pathfinder_authoring_start`           | `authoring-start.ts`  | (static context block)                                                     |
+| `pathfinder_help`                      | `help.ts`             | `formatHelpAsJson` over the CLI commands                                   |
+| `pathfinder_create_package`            | `artifact-tools.ts`   | `runCreate`                                                                |
+| `pathfinder_add_block`                 | `mutation-tools.ts`   | `runAddBlock`                                                              |
+| `pathfinder_add_step`                  | `mutation-tools.ts`   | `runAddStep`                                                               |
+| `pathfinder_add_choice`                | `mutation-tools.ts`   | `runAddChoice`                                                             |
+| `pathfinder_edit_block`                | `mutation-tools.ts`   | `runEditBlock`                                                             |
+| `pathfinder_remove_block`              | `mutation-tools.ts`   | `runRemoveBlock`                                                           |
+| `pathfinder_set_manifest`              | `mutation-tools.ts`   | `runSetManifest`                                                           |
+| `pathfinder_inspect`                   | `inspection-tools.ts` | `runInspect`                                                               |
+| `pathfinder_validate`                  | `inspection-tools.ts` | `runValidate`                                                              |
+| `pathfinder_finalize_for_app_platform` | `finalize.ts`         | `runValidate` + handoff payload from `APP-PLATFORM-PUBLISH-HANDOFF.md`     |
+| `pathfinder_list_packages`             | `repository-tools.ts` | CDN `repository.json` + filters (P6)                                       |
+| `pathfinder_get_package`               | `repository-tools.ts` | CDN `content.json` + `manifest.json` for one id                            |
+| `pathfinder_get_manifest`              | `repository-tools.ts` | CDN `manifest.json` only (cheaper variant)                                 |
+| `pathfinder_launch_package`            | `repository-tools.ts` | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug] |
+
+[p6-launch-bug]: https://github.com/grafana/grafana-pathfinder-app/issues/855
+
+### Repository tools (P6)
+
+The four `repository-tools.ts` tools are read-only against a public package CDN. They are stateless (no artifact in/out) and need no auth.
+
+- **Default repository**: `https://interactive-learning.grafana.net/packages/`.
+- **Override**: set `PATHFINDER_REPOSITORY_URL` (trailing slash optional) on the process. The HTTP transport's deploy passes this through unchanged; for stdio clients, set it on the `npx pathfinder-mcp` invocation.
+- **Caching**: `repository.json` is cached in-process for 60 seconds with single-flight dedup. Per-package `content.json` / `manifest.json` fetches are uncached.
+- **Validation is non-fatal**: the get-tools always return `raw` (the bytes the CDN served) plus a `validation` report. Schema drift surfaces as `validation.issues` and never hard-fails. This is intentional — these tools are a discovery surface and clients debugging drift need to see the actual bytes.
+- **Errors are structured, never thrown**: `{ status: "error", code, message, httpStatus? }` with `code` ∈ `HTTP_ERROR | NETWORK_ERROR | PARSE_ERROR | NOT_FOUND`.
+- **`pathfinder_launch_package`** returns a relative `launchPath` always; an absolute `launchUrl` when `instanceUrl` is provided. Pass `panelMode: "floating"` to append `&panelMode=floating`. The link is consumed by the existing `?doc=<interactive-learning.grafana.net URL>` path in `src/utils/find-doc-page.ts:60-86` (`isInteractiveLearningUrl` allowlist).
+- **`pathfinder_launch_package` ships PARTIAL** — see [#855][p6-launch-bug]. The URL it builds resolves to the Pathfinder plugin but does not currently load the targeted CDN guide as an interactive tutorial; it opens to a generic docs view instead. Every successful response carries a `warning: { status: "partial", message, tracking }` field so agents and clients see the limitation at runtime. The bug is in the app-side `auto-launch-tutorial` handler (`src/components/docs-panel/docs-panel.tsx`), which calls `openDocsPage(url, title)` without the `packageInfo` argument the recommendations panel passes — so the package-aware content pipeline never engages. The MCP tool will keep working as-is once the app-side fix lands.
+
+> Naming note: a future P5 GCS-sessions design also proposes a `pathfinder_get_manifest` tool — but session-scoped, taking a `sessionToken`. P6 ships first with the public-CDN semantics; if/when P5 lands it must rename or add a discriminator. See [P6 phase plan — Decision log](../design/phases/ai-authoring-6-cdn-repository-tools.md#decision-log).
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 
@@ -174,6 +194,24 @@ The HTTP transport emits one structured JSON line per request with these fields.
   "outcome": "ok",
 }
 ```
+
+### Inspecting deployed logs
+
+The hosted HTTP transport runs on Google Cloud Run. The deploy is operator-local — the script lives at `deploy-mcp.sh` in this repo and is gitignored, so the project ID, region, service name, and resulting URL are not in tracked files. Ask the operator (or read `deploy-mcp.sh` if you have a copy) for the specifics; the runtime model is fixed.
+
+Once you know the project and service, the canonical query for the structured access log fields above is:
+
+```bash
+gcloud logging read \
+  'resource.type=cloud_run_revision AND resource.labels.service_name=<service-name>' \
+  --project=<project-id> \
+  --limit=50 \
+  --format=json
+```
+
+The fields documented in [Access log fields](#access-log-fields) appear under each entry's `jsonPayload`. To filter for a single request shape, add `jsonPayload.path="/mcp"` or `jsonPayload.outcome="error"` to the filter expression. For a recent test run, sort newest-first with `--freshness=10m`.
+
+This is the verification path for any change that emits or modifies access-log fields, structured outcomes, or tool-call telemetry — drive the deployed service, then read the logs back. A local stdio run will not exercise the HTTP transport's logging code path.
 
 ## CLI is the sole validator
 

@@ -18,9 +18,10 @@ Quick verification: `node -v && npm -v && go version && docker --version && mage
 
 ```bash
 npm install
+npm run prepare    # install husky git hooks (pre-commit etc.)
 ```
 
-This installs frontend dependencies and runs the husky `prepare` hook to install pre-commit checks.
+The repo sets `ignore-scripts=true` in `.npmrc` as a supply-chain mitigation, so `npm install` skips all lifecycle scripts — including husky's `prepare`. Run `npm run prepare` once after the first clone to install pre-commit checks. CI explicitly installs Playwright browsers (`npx playwright install --with-deps`) where needed, so no other manual steps are required.
 
 ## Run in watch mode
 
