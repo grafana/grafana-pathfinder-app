@@ -14,7 +14,6 @@ export type { LearningProfileSummary, NextLearningAction } from './useNextLearni
 
 // Badge utilities
 export {
-  BADGES,
   getBadgesToAward,
   getBadgeById,
   getBadgesByTriggerType,
@@ -22,6 +21,9 @@ export {
   getTotalBadgeCount,
   sortBadgesForDisplay,
 } from './badges';
+
+// Bundled fallback (offline mode)
+export { FALLBACK_BADGES, FALLBACK_COURSES } from './bundled-courses';
 
 // Streak utilities
 export {
@@ -38,5 +40,9 @@ export {
 } from './streak-tracker';
 
 // Path data (runtime platform selection)
-export { getPathsData } from './paths-data';
-export type { PathsDataSet } from './paths-data';
+export { getPathsData, initCoursesData, resetCoursesData } from './paths-data';
+export type { PathsDataSet, CoursesDataSource } from './paths-data';
+
+// CDN fetch (exposed for tests / direct callers)
+export { fetchCourses, resetFetchCoursesCache } from './fetch-courses';
+export type { CoursesPlatform } from './fetch-courses';

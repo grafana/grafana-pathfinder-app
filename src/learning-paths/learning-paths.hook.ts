@@ -24,9 +24,10 @@ import {
   journeyCompletionStorage,
   milestoneCompletionStorage,
 } from '../lib/user-storage';
-import { BADGES } from './badges';
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { FALLBACK_BADGES } from './bundled-courses';
 import { getStreakInfo } from './streak-tracker';
-import { getPathsData } from './paths-data';
+import { getPathsData, initCoursesData } from './paths-data';
 import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
 
 // ============================================================================
@@ -81,17 +82,45 @@ export function useLearningPaths(): UseLearningPathsReturn {
   const [progress, setProgress] = useState<LearningProgress>(DEFAULT_PROGRESS);
   const [isLoading, setIsLoading] = useState(true);
 
+  // CDN course-list loading state
+  const [coursesLoaded, setCoursesLoaded] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
+
   // Dynamic guide data fetched from index.json for URL-based paths
   const [dynamicGuideData, setDynamicGuideData] = useState<Record<string, FetchedPathGuides>>({});
   const [isDynamicLoading, setIsDynamicLoading] = useState(false);
 
-  // Get raw paths for the current platform (OSS or Cloud)
-  const rawPaths = useMemo(() => {
-    return getPathsData().paths;
+  // Load CDN course list (or fall back to bundled) on mount
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      const { source } = await initCoursesData();
+      if (!mounted) {
+        return;
+      }
+      setUsingFallback(source === 'fallback');
+      setCoursesLoaded(true);
+      if (source === 'fallback') {
+        reportAppInteraction(UserInteraction.CoursesFallbackUsed);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Fetch dynamic guides for URL-based paths on mount
+  // Get raw paths for the current platform (OSS or Cloud).
+  // Re-derives once `coursesLoaded` flips so we pick up the CDN data.
+  const rawPaths = useMemo(() => {
+    return getPathsData().paths;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coursesLoaded]);
+
+  // Fetch dynamic guides for URL-based paths once the course list is ready
   useEffect(() => {
+    if (!coursesLoaded) {
+      return;
+    }
     const urlPaths = rawPaths.filter((p) => p.url);
     if (urlPaths.length === 0) {
       return;
@@ -121,8 +150,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
     return () => {
       abortController.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [coursesLoaded, rawPaths]);
 
   // Build effective paths: merge dynamic guides into URL-based paths
   const paths = useMemo((): LearningPath[] => {
@@ -226,10 +254,15 @@ export function useLearningPaths(): UseLearningPathsReturn {
     };
   }, [loadProgress]);
 
+  // Authoritative badge list: CDN-served when available, fallback otherwise.
+  const allBadges = useMemo(() => {
+    return coursesLoaded ? (getPathsData().badges ?? FALLBACK_BADGES) : FALLBACK_BADGES;
+  }, [coursesLoaded]);
+
   // Get badges with earned status (including legacy badges from previous versions)
   const badgesWithStatus = useMemo((): EarnedBadge[] => {
     // Start with all currently defined badges
-    const definedBadges = BADGES.map((badge) => {
+    const definedBadges = allBadges.map((badge) => {
       const earned = progress.earnedBadges.find((b) => b.id === badge.id);
       const isNew = progress.pendingCelebrations.includes(badge.id);
 
@@ -244,7 +277,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
     // Add any earned badges that are no longer defined (legacy/removed)
     // This ensures users don't lose badges they earned in previous versions
     const legacyBadges: EarnedBadge[] = progress.earnedBadges
-      .filter((earned) => !BADGES.find((b) => b.id === earned.id))
+      .filter((earned) => !allBadges.find((b) => b.id === earned.id))
       .map((earned) => ({
         id: earned.id,
         title: formatLegacyBadgeTitle(earned.id),
@@ -257,7 +290,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }));
 
     return [...definedBadges, ...legacyBadges];
-  }, [progress.earnedBadges, progress.pendingCelebrations]);
+  }, [allBadges, progress.earnedBadges, progress.pendingCelebrations]);
 
   // Calculate streak info
   const streakInfo = useMemo((): StreakInfo => {
@@ -429,7 +462,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
   return {
     paths,
-    allBadges: BADGES,
+    allBadges,
     badgesWithStatus,
     progress,
     getPathGuides,
@@ -442,6 +475,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
     streakInfo,
     isLoading,
     isDynamicLoading,
+    isLoadingCourses: !coursesLoaded,
+    usingFallback,
   };
 }
 

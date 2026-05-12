@@ -9,7 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
-import { useLearningPaths, BADGES, getPathsData } from '../../learning-paths';
+import { useLearningPaths, getPathsData } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { LearningPathCard } from './LearningPathCard';
 import { BadgeIcon } from './BadgeIcon';
@@ -22,7 +22,7 @@ import {
   interactiveStepStorage,
   interactiveCompletionStorage,
 } from '../../lib/user-storage';
-import type { EarnedBadge } from '../../types';
+import type { Badge, EarnedBadge } from '../../types';
 
 // Badge utilities extracted for testability
 import { getBadgeProgress, getBadgeRequirementText, type BadgeProgressInfo } from './badge-utils';
@@ -145,14 +145,24 @@ interface BadgeGridItemProps {
   completedGuides: string[];
   streakDays: number;
   paths: Array<{ id: string; guides: string[] }>;
+  allBadges: Badge[];
   styles: ReturnType<typeof getMyLearningStyles>;
   onSelect: (badge: EarnedBadge) => void;
 }
 
-function BadgeGridItem({ badge, index, completedGuides, streakDays, paths, styles, onSelect }: BadgeGridItemProps) {
+function BadgeGridItem({
+  badge,
+  index,
+  completedGuides,
+  streakDays,
+  paths,
+  allBadges,
+  styles,
+  onSelect,
+}: BadgeGridItemProps) {
   const isEarned = !!badge.earnedAt;
   const isLegacy = badge.isLegacy;
-  const baseBadge = BADGES.find((b) => b.id === badge.id);
+  const baseBadge = allBadges.find((b) => b.id === badge.id);
   const badgeProgress = baseBadge ? getBadgeProgress(baseBadge, completedGuides, streakDays, paths) : null;
 
   // Determine the badge item class based on state
@@ -217,6 +227,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const {
     paths,
+    allBadges,
     badgesWithStatus,
     progress,
     getPathGuides,
@@ -226,6 +237,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     resetPath,
     streakInfo,
     isLoading,
+    isLoadingCourses,
+    usingFallback,
   } = useLearningPaths();
 
   // Sort and filter paths: in-progress first, then not-started, then completed
@@ -279,7 +292,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     if (!selectedBadge) {
       return null;
     }
-    const baseBadge = BADGES.find((b) => b.id === selectedBadge.id);
+    const baseBadge = allBadges.find((b) => b.id === selectedBadge.id);
     if (!baseBadge) {
       return null;
     }
@@ -289,7 +302,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       progress.streakDays,
       paths.map((p) => ({ id: p.id, guides: p.guides }))
     );
-  }, [selectedBadge, progress.completedGuides, progress.streakDays, paths]);
+  }, [selectedBadge, progress.completedGuides, progress.streakDays, paths, allBadges]);
 
   // Handle opening a guide
   const handleOpenGuide = useCallback(
@@ -401,8 +414,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       }
 
       // Both unearned: sort by progress percentage (highest first)
-      const baseBadgeA = BADGES.find((badge) => badge.id === a.id);
-      const baseBadgeB = BADGES.find((badge) => badge.id === b.id);
+      const baseBadgeA = allBadges.find((badge) => badge.id === a.id);
+      const baseBadgeB = allBadges.find((badge) => badge.id === b.id);
 
       const progressA = baseBadgeA
         ? getBadgeProgress(baseBadgeA, progress.completedGuides, progress.streakDays, pathsForProgress)?.percentage || 0
@@ -413,12 +426,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       return progressB - progressA;
     });
-  }, [badgesWithStatus, progress.completedGuides, progress.streakDays, paths]);
+  }, [badgesWithStatus, progress.completedGuides, progress.streakDays, paths, allBadges]);
 
   // Badges to display (4 preview or all)
   const displayedBadges = showAllBadges ? sortedBadges : sortedBadges.slice(0, 4);
 
-  if (isLoading) {
+  if (isLoading || isLoadingCourses) {
     return (
       <div className={styles.container}>
         <SkeletonLoader type="recommendations" />
@@ -463,6 +476,18 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           )}
         </div>
       </div>
+
+      {usingFallback && (
+        <div className={styles.previewNotice} data-testid={testIds.learningPaths.fallbackNotice}>
+          <Icon name="info-circle" size="sm" />
+          <span>
+            {t(
+              'myLearning.fallbackNotice',
+              "Showing offline courses. We couldn't reach the course catalog; some learning paths may be unavailable."
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Learning Paths Section */}
       <div className={styles.section}>
@@ -557,6 +582,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
               completedGuides={progress.completedGuides}
               streakDays={progress.streakDays}
               paths={paths.map((p) => ({ id: p.id, guides: p.guides }))}
+              allBadges={allBadges}
               styles={styles}
               onSelect={setSelectedBadge}
             />

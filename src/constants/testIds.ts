@@ -282,6 +282,7 @@ export const testIds = {
     resetProgressButton: 'learning-paths-reset-progress',
     badgeToast: 'learning-paths-badge-toast',
     badgeToastDismiss: 'learning-paths-badge-toast-dismiss',
+    fallbackNotice: 'learning-paths-fallback-notice',
   },
 
   // Live Session

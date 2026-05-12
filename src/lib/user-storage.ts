@@ -1449,7 +1449,7 @@ export const learningProgressStorage = {
       // Import badge checking utilities dynamically to avoid circular deps
       const { getBadgesToAward, getBadgeById } = await import('../learning-paths');
       const { getPathsData } = await import('../learning-paths');
-      const paths = getPathsData().paths;
+      const { paths, badges } = getPathsData();
 
       const progress = await learningProgressStorage.get();
       if (!progress.completedGuides.includes(guideId)) {
@@ -1465,7 +1465,7 @@ export const learningProgressStorage = {
         const newlyAwardedBadges: string[] = [];
 
         // Check for ALL badges that should be awarded (including path completion)
-        const badgesToAward = getBadgesToAward(progress, paths);
+        const badgesToAward = getBadgesToAward(progress, paths, badges);
 
         for (const badgeId of badgesToAward) {
           if (!progress.earnedBadges.some((b) => b.id === badgeId)) {

@@ -1,113 +1,139 @@
 /**
- * Learning Paths Data Integrity Tests
+ * Course schema integrity tests
  *
- * Verifies structural consistency between paths.json and badges.ts:
- * - Every path badgeId has a corresponding BADGES entry
- * - Path-completion badge triggers point back to valid path IDs
- * - Emoji badges have the emoji field set
+ * Course definitions now live in the interactive-learning CDN. These tests
+ * exercise the wire schema with a representative inline fixture covering
+ * every badge trigger type, both static and URL-based courses, and the
+ * platform field. The schema is the contract between this plugin and the
+ * CDN; the CDN-side validation in interactive-tutorials uses the same Zod
+ * module via the pathfinder-cli.
  */
 
-import { BADGES } from './badges';
-import ossPathsData from './paths.json';
-import cloudPathsData from './paths-cloud.json';
-import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
+import { CoursesPlatformIndexSchema, COURSES_SCHEMA_VERSION } from '../types/courses.schema';
+import type { CoursesPlatformIndex } from '../types/courses.types';
 
-// Merge OSS + cloud paths (cloud adds URL-based paths, OSS has static bundled paths)
-const allPaths = [...(ossPathsData.paths as LearningPath[]), ...(cloudPathsData.paths as LearningPath[])];
-// Deduplicate by path ID (cloud overrides OSS if same ID exists)
-const pathsMap = new Map<string, LearningPath>();
-for (const path of allPaths) {
-  pathsMap.set(path.id, path);
-}
-const paths = Array.from(pathsMap.values());
-const allGuideMetadata = {
-  ...ossPathsData.guideMetadata,
-  ...cloudPathsData.guideMetadata,
-} as Record<string, GuideMetadataEntry>;
+const FIXTURE: CoursesPlatformIndex = {
+  schemaVersion: COURSES_SCHEMA_VERSION,
+  platform: 'cloud',
+  courses: [
+    {
+      id: 'getting-started',
+      title: 'Getting started with Grafana',
+      description: 'Learn the essentials.',
+      guides: ['welcome-to-grafana', 'first-dashboard'],
+      badgeId: 'grafana-fundamentals',
+      targetPlatform: 'oss',
+      estimatedMinutes: 25,
+      icon: 'grafana',
+    },
+    {
+      id: 'linux-server-integration',
+      title: 'Monitor a Linux server',
+      description: 'Set up full Linux server observability with Alloy.',
+      url: 'https://grafana.com/docs/learning-paths/linux-server-integration/',
+      guides: [],
+      badgeId: 'penguin-wrangler',
+      targetPlatform: 'cloud',
+      estimatedMinutes: 20,
+      icon: 'server',
+    },
+  ],
+  guideMetadata: {
+    'welcome-to-grafana': { title: 'Welcome', estimatedMinutes: 5 },
+    'first-dashboard': { title: 'First dashboard', estimatedMinutes: 10 },
+  },
+  badges: [
+    {
+      id: 'first-steps',
+      title: 'First steps',
+      description: 'Complete your first guide',
+      icon: 'rocket',
+      trigger: { type: 'guide-completed' },
+    },
+    {
+      id: 'grafana-fundamentals',
+      title: 'Grafana Fundamentals',
+      description: 'Complete the "Getting started with Grafana" course',
+      icon: 'grafana',
+      trigger: { type: 'path-completed', pathId: 'getting-started' },
+    },
+    {
+      id: 'penguin-wrangler',
+      title: 'Penguin Wrangler',
+      description: 'Wrangled a Linux server into full observability with Alloy',
+      icon: 'server',
+      emoji: '🐧',
+      trigger: { type: 'path-completed', pathId: 'linux-server-integration' },
+    },
+    {
+      id: 'consistent-learner',
+      title: 'Consistent Learner',
+      description: 'Maintain a 3-day learning streak',
+      icon: 'fire',
+      trigger: { type: 'streak', days: 3 },
+    },
+  ],
+};
 
-describe('paths.json / badges.ts data integrity', () => {
-  it('every path badgeId has a matching BADGES entry with a path-completed trigger', () => {
-    for (const path of paths) {
-      const badge = BADGES.find((b) => b.id === path.badgeId);
-      expect(badge).toBeDefined();
-      expect(badge!.trigger).toEqual({ type: 'path-completed', pathId: path.id });
-    }
+describe('CoursesPlatformIndex schema', () => {
+  it('accepts a well-formed fixture covering all trigger types', () => {
+    const result = CoursesPlatformIndexSchema.safeParse(FIXTURE);
+    expect(result.success).toBe(true);
   });
 
-  it('every path-completed badge references an existing path', () => {
-    const pathIds = new Set(paths.map((p) => p.id));
-
-    const pathBadges = BADGES.filter((b) => b.trigger.type === 'path-completed');
-    for (const badge of pathBadges) {
-      const trigger = badge.trigger as { type: 'path-completed'; pathId: string };
-      expect(pathIds.has(trigger.pathId)).toBe(true);
-    }
+  it('rejects an unknown trigger type', () => {
+    const bad = {
+      ...FIXTURE,
+      badges: [...FIXTURE.badges, { id: 'x', title: 'x', description: 'x', icon: 'x', trigger: { type: 'mystery' } }],
+    };
+    expect(CoursesPlatformIndexSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('every guide in a static path has a guideMetadata entry', () => {
-    const metadataKeys = Object.keys(allGuideMetadata);
-    for (const path of paths) {
-      // URL-based paths have empty guides (fetched dynamically at runtime)
-      if (path.url) {
-        continue;
+  it('rejects a missing badgeId on a course', () => {
+    const bad = {
+      ...FIXTURE,
+      courses: [{ ...FIXTURE.courses[0], badgeId: undefined as unknown as string }],
+    };
+    expect(CoursesPlatformIndexSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a non-https URL on a course', () => {
+    const bad = {
+      ...FIXTURE,
+      courses: [{ ...FIXTURE.courses[0], url: 'javascript:alert(1)' }],
+    };
+    expect(CoursesPlatformIndexSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('tolerates additional unknown fields (forward compat)', () => {
+    const augmented = { ...FIXTURE, somethingNew: 'value' };
+    expect(CoursesPlatformIndexSchema.safeParse(augmented).success).toBe(true);
+  });
+
+  describe('fixture integrity', () => {
+    it('every course badgeId points to a defined badge', () => {
+      const badgeIds = new Set(FIXTURE.badges.map((b) => b.id));
+      for (const course of FIXTURE.courses) {
+        expect(badgeIds.has(course.badgeId)).toBe(true);
       }
-      for (const guideId of path.guides) {
-        expect(metadataKeys).toContain(guideId);
+    });
+
+    it('every path-completed badge references an existing course', () => {
+      const courseIds = new Set(FIXTURE.courses.map((c) => c.id));
+      for (const badge of FIXTURE.badges) {
+        if (badge.trigger.type === 'path-completed') {
+          expect(courseIds.has(badge.trigger.pathId)).toBe(true);
+        }
       }
-    }
-  });
+    });
 
-  it('URL-based paths have a valid url and empty guides', () => {
-    const urlPaths = paths.filter((p) => p.url);
-    for (const path of urlPaths) {
-      expect(path.url).toMatch(/^https:\/\//);
-      expect(path.guides).toEqual([]);
-    }
-  });
-
-  it('remote guides have a valid URL in guideMetadata', () => {
-    for (const [, entry] of Object.entries(allGuideMetadata)) {
-      if (entry.url) {
-        expect(entry.url).toMatch(/^https:\/\//);
-        expect(entry.url).toContain('interactive-learning.grafana.net');
+    it('URL-based courses have valid https url and empty guides', () => {
+      for (const course of FIXTURE.courses) {
+        if (course.url) {
+          expect(course.url).toMatch(/^https:\/\//);
+          expect(course.guides).toEqual([]);
+        }
       }
-    }
-  });
-
-  it('cloud file adds paths not in the OSS file', () => {
-    const ossPathIds = new Set((ossPathsData.paths as LearningPath[]).map((p) => p.id));
-    const cloudOnlyPaths = (cloudPathsData.paths as LearningPath[]).filter((p) => !ossPathIds.has(p.id));
-    expect(cloudOnlyPaths.length).toBeGreaterThan(0);
-  });
-
-  it('no path ID collisions between OSS and cloud files', () => {
-    const ossPathIds = new Set((ossPathsData.paths as LearningPath[]).map((p) => p.id));
-    const cloudPathIds = new Set((cloudPathsData.paths as LearningPath[]).map((p) => p.id));
-    for (const id of ossPathIds) {
-      expect(cloudPathIds.has(id)).toBe(false);
-    }
-  });
-
-  it('learning journey badges have an emoji field', () => {
-    // Badges for URL-based (cloud) paths should have emoji
-    const cloudPathIds = new Set((cloudPathsData.paths as LearningPath[]).map((p) => p.id));
-    const cloudBadges = BADGES.filter(
-      (b) => b.trigger.type === 'path-completed' && cloudPathIds.has((b.trigger as { pathId: string }).pathId)
-    );
-
-    for (const badge of cloudBadges) {
-      expect(badge.emoji).toBeDefined();
-      expect(badge.emoji!.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('no duplicate path IDs', () => {
-    const ids = paths.map((p) => p.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('no duplicate badge IDs', () => {
-    const ids = BADGES.map((b) => b.id);
-    expect(new Set(ids).size).toBe(ids.length);
+    });
   });
 });

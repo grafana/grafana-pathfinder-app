@@ -14,6 +14,10 @@ const RECOMMENDER_PROD_URL = 'https://recommender.grafana.com';
 const RECOMMENDER_DEV_URL = 'https://recommender.grafana-dev.com';
 const KNOWN_RECOMMENDER_URLS = new Set([RECOMMENDER_PROD_URL, RECOMMENDER_DEV_URL]);
 
+const COURSES_CDN_PROD_URL = 'https://interactive-learning.grafana.net';
+const COURSES_CDN_DEV_URL = 'https://interactive-learning.grafana-dev.net';
+const COURSES_CDN_OPS_URL = 'https://interactive-learning.grafana-ops.net';
+
 /**
  * Derive the correct recommender URL from the Grafana instance hostname.
  * Instances on *.grafana-dev.net use the dev recommender; everything else uses prod.
@@ -28,6 +32,26 @@ export function getDefaultRecommenderUrl(hostnameOverride?: string): string {
     // SSR / test environments where window is unavailable
   }
   return RECOMMENDER_PROD_URL;
+}
+
+/**
+ * Base URL for the interactive-learning CDN that serves course definitions.
+ * Mirrors the recommender environment selection: dev for *.grafana-dev.net,
+ * ops for *.grafana-ops.net, prod for everything else.
+ */
+export function getCoursesCdnBaseUrl(hostnameOverride?: string): string {
+  try {
+    const hostname = hostnameOverride ?? window.location.hostname;
+    if (hostname.endsWith('.grafana-dev.net')) {
+      return COURSES_CDN_DEV_URL;
+    }
+    if (hostname.endsWith('.grafana-ops.net')) {
+      return COURSES_CDN_OPS_URL;
+    }
+  } catch {
+    // SSR / test environments where window is unavailable
+  }
+  return COURSES_CDN_PROD_URL;
 }
 
 /**

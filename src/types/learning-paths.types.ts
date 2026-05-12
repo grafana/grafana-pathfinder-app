@@ -249,6 +249,10 @@ export interface UseLearningPathsReturn {
   isLoading: boolean;
   /** Whether dynamic guide data is still being fetched for URL-based paths */
   isDynamicLoading: boolean;
+  /** Whether the course list is still being fetched from the CDN */
+  isLoadingCourses: boolean;
+  /** True when the bundled fallback is in use (CDN unreachable or invalid) */
+  usingFallback: boolean;
 }
 
 /**
