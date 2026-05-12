@@ -66,9 +66,15 @@ class GlobalSidebarState {
 
   // Sidebar management
   public openSidebar(componentTitle: string, props?: Record<string, unknown>): void {
+    const mode = panelModeManager.getMode();
     // In floating mode, the panel is already mounted and listening for
     // auto-launch-tutorial events. No sidebar open needed.
-    if (panelModeManager.getMode() === 'floating') {
+    // In full-screen mode, the dedicated full-screen page owns the active
+    // session; opening the sidebar would mount a *second*
+    // CombinedLearningJourneyPanel that races on tabStorage. The user can
+    // still open the sidebar via Grafana's nav (we can't intercept that),
+    // and the docs-panel renders FullScreenModeNotice in that case.
+    if (mode === 'floating' || mode === 'fullscreen') {
       return;
     }
 

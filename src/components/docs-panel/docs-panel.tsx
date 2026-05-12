@@ -3,7 +3,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, useTheme2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -32,9 +32,9 @@ const TerminalProviderLazy = lazy(() =>
     default: module.TerminalProvider,
   }))
 );
-import { GrafanaTheme2, usePluginContext } from '@grafana/data';
+import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
+import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
@@ -49,7 +49,7 @@ import {
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
-import { useAlignmentReevaluation } from '../../hooks';
+import { useAlignmentReevaluation, useAutoLaunchTutorial } from '../../hooks';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 import {
@@ -64,6 +64,8 @@ import {
   isLastMilestone,
   setPackageResolver,
   injectJourneyExtrasIntoJsonGuide,
+  fetchPackageInfoFromUrl,
+  isPackageContentUrl,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -90,11 +92,21 @@ import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } 
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
-import { panelModeManager } from '../../global-state/panel-mode';
+import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { buildFullScreenRouteUrl, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
-import { LoadingIndicator, ErrorDisplay, TabBarActions, ModalBackdrop, AlignmentPrompt } from './components';
+import {
+  LoadingIndicator,
+  ErrorDisplay,
+  TabBarActions,
+  ModalBackdrop,
+  AlignmentPrompt,
+  FullScreenModeNotice,
+  PanelModeActionButtons,
+  LearningJourneyMilestoneToolbar,
+} from './components';
 // Import extracted utilities
 import {
   isDocsLikeTab,
@@ -301,6 +313,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async openLearningJourney(url: string, title?: string, options?: OpenLearningJourneyOptions): Promise<string> {
+    // Package URLs always route through openDocsPage — that's the canonical
+    // path that loads the manifest and chooses the render type from it.
+    // Without this redirect, callers using the URL/handoff `?type=learning-journey`
+    // hint would land here without the manifest, fetch via plain fetchContent,
+    // and render as a "default doc" with no milestone toolbar.
+    // See context-panel.tsx ("All packages route through openDocsPage").
+    //
+    // Forward `options` whole-cloth (rather than picking specific fields) so
+    // any future addition to `OpenLearningJourneyOptions` reaches `openDocsPage`
+    // automatically. `OpenLearningJourneyOptions` is structurally a subset of
+    // `OpenDocsOptions`, so this assignment is type-safe.
+    if (isPackageContentUrl(url)) {
+      return this.openDocsPage(url, title, options);
+    }
     // Honour an explicit options.source by recording it first, so any
     // legacy stash is overwritten and we have a single source of truth for
     // the drain below.
@@ -578,6 +604,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
 
     if (!isAligned && !currentlyPending) {
+      // Same fullscreen guard as the load-time path: the prompt has no
+      // useful action to offer while the user is on the fullscreen route.
+      if (panelModeManager.getMode() === 'fullscreen') {
+        return;
+      }
       // User drifted away from a previously-aligned start. Surface the prompt.
       const next = {
         startingLocation,
@@ -858,7 +889,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     try {
       const launchSource = this._consumeAutoLaunchSource();
-      const packageInfo = packageInfoArg ?? this.state.tabs.find((t) => t.id === tabId)?.packageInfo;
+      let packageInfo = packageInfoArg ?? this.state.tabs.find((t) => t.id === tabId)?.packageInfo;
+      // Auto-derive packageInfo when opening a package URL via deep-link or
+      // handoff (no recommender). Without the manifest, downstream rendering
+      // falls through to plain fetchContent and the milestone toolbar never
+      // appears. See package-info-from-url.ts for the URL pattern.
+      if (!packageInfo && isPackageContentUrl(url)) {
+        packageInfo = await fetchPackageInfoFromUrl(url);
+      }
       const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
 
       // Check if fetch succeeded or failed
@@ -879,8 +917,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           startingLocation,
           launchSource: launchSource ?? undefined,
         });
+        // Suppress the alignment prompt while the panel is in fullscreen
+        // mode. The "Navigate" button would `locationService.push(...)` the
+        // entire app away from the fullscreen page, and there's no Grafana
+        // surface inside fullscreen to align against anyway. When the user
+        // exits back to sidebar, `useAlignmentReevaluation`'s location
+        // listener re-runs the gate against the new pathname.
+        const isFullScreenMode = panelModeManager.getMode() === 'fullscreen';
         const pendingAlignment =
-          evaluation.shouldPrompt && startingLocation
+          !isFullScreenMode && evaluation.shouldPrompt && startingLocation
             ? {
                 startingLocation,
                 currentPath,
@@ -904,6 +949,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
                     : fetchedContent.type === 'interactive'
                       ? 'interactive'
                       : t.type,
+                // Persist auto-derived packageInfo so subsequent reloads/restores
+                // skip the manifest fetch and render with the milestone toolbar.
+                packageInfo: packageInfo ?? t.packageInfo,
                 pathContext,
                 pendingAlignment,
               }
@@ -1005,6 +1053,45 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
+
+  // Track the current panel mode so the sidebar's content area can render a
+  // "Pathfinder is in full screen" placeholder when the dedicated full-screen
+  // page owns the active session. Without this, opening Grafana's extension
+  // sidebar while full screen is active would mount a *second*
+  // CombinedLearningJourneyPanel instance racing on the shared tabStorage —
+  // see Issue 3 in the autodock plan and `pathfinder-panel-mode-change`
+  // listener in BlockEditorHeader for the same pattern.
+  const [panelMode, setPanelMode] = React.useState<PanelMode>(() => panelModeManager.getMode());
+  React.useEffect(() => {
+    const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
+      setPanelMode(e.detail.mode);
+    };
+    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    return () => {
+      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    };
+  }, []);
+
+  // Self-heal stale `'fullscreen'` mode left in localStorage from a previous
+  // session. The sidebar only mounts when Grafana renders the extension
+  // sidebar slot — if we're sitting in the sidebar surface AND the URL is
+  // not the full-screen route, the persisted mode is lying and we'd render
+  // the "Pathfinder is in full screen" placeholder forever (the auto-dock
+  // listener can only fire while FullScreenPanel is mounted). Resetting
+  // here covers tab-close + reopen and direct navigation from
+  // `/fullscreen` to another Grafana page via the global nav.
+  React.useEffect(() => {
+    if (panelMode !== 'fullscreen') {
+      return;
+    }
+    const onFullScreenRoute = window.location.pathname.startsWith(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
+    if (!onFullScreenRoute) {
+      panelModeManager.setMode('sidebar');
+      setPanelMode('sidebar');
+    }
+  }, [panelMode]);
+
+  const isFullScreenActive = panelMode === 'fullscreen';
 
   // Get plugin configuration to check if live sessions are enabled
   const isLiveSessionsEnabled = pluginConfig.enableLiveSessions;
@@ -1119,15 +1206,33 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
-    // Only restore if we haven't loaded tabs yet
-    // Check if tabs only contain the default system tab (recommendations)
-    const hasOnlyDefaultTabs = tabs.length === 1 && tabs[0]?.id === 'recommendations';
+    // Only restore if no user-opened guide tabs exist — permanent system
+    // tabs (`recommendations`, `devtools`, `editor`) don't count, otherwise
+    // the gate fails on a remount where the permanent-tabs effect (below)
+    // has already appended `devtools`/`editor` before this effect re-runs.
+    // The previous `tabs.length === 1` check worked for the initial mount
+    // (where restoration is declared first and runs against [recommendations]
+    // only) but not for the "Return to sidebar" CTA on FullScreenModeNotice,
+    // which fires after permanent tabs are present.
+    const hasOnlyDefaultTabs = tabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
+
+    // Skip restoration when full screen owns the session — otherwise this
+    // sidebar instance would auto-load tab content in parallel with the
+    // FullScreenPanel instance (drift on tabStorage). The `panelMode`
+    // dep makes this re-run when the user returns to sidebar mode
+    // (auto-dock listener, explicit Exit, or the "Return to sidebar"
+    // CTA on `FullScreenModeNotice`). The model's `_hasRestoredTabs`
+    // guard makes a second invocation a no-op when restoration already
+    // succeeded, so re-running here is safe in the happy path.
+    if (panelMode === 'fullscreen') {
+      return;
+    }
 
     if (hasOnlyDefaultTabs) {
       model.restoreTabsAsync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - only run once after mount, tabs checked at mount time
+  }, [panelMode]);
 
   // Ensure permanent tabs (devtools, editor) exist when their gate is active.
   // Merged into a single effect so both additions read from the same up-to-date
@@ -1224,7 +1329,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Detect WYSIWYG preview tab to show "Return to editor" banner
   const isWysiwygPreview =
     activeTab?.baseUrl === 'bundled:wysiwyg-preview' || activeTab?.content?.url === 'bundled:wysiwyg-preview';
-  const theme = useStyles2((theme: GrafanaTheme2) => theme);
+  // `useTheme2()` is the canonical hook for grabbing the raw theme;
+  // `useStyles2((t) => t)` worked but mis-used the CSS-in-JS hook.
+  const theme = useTheme2();
 
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
   // when other tab properties change (isLoading, error, etc.)
@@ -1479,17 +1586,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // No need for automatic saving here as it's done when tabs are created/modified
   // Note: Click-outside and dropdown positioning now handled by useTabOverflow hook
 
-  // Auto-launch tutorial detection
-  useEffect(() => {
-    const handleAutoLaunchTutorial = (event: CustomEvent) => {
-      const { url, title, type, source } = event.detail;
-
-      // Determine whether to open as learning journey or docs/interactive page.
-      // Only use learning journey when explicitly from learning-hub source OR type is learning-journey.
-      // Interactive guides from ?doc= should open as docs-like tabs (which auto-detect interactive content).
-      const openAsLearningJourney = type === 'learning-journey' || source === 'learning-hub';
-
-      // Track auto-launch analytics - unified event for opening any resource
+  // Auto-launch tutorial detection.
+  //
+  // The hook owns the routing (typed source coercion + the
+  // `learning-journey || learning-hub` rule) so all surfaces agree on what
+  // an `auto-launch-tutorial` event means. The sidebar additionally fires
+  // `OpenResourceClick` analytics and a follow-up `auto-launch-complete`
+  // window event — both fire unconditionally, mirroring the legacy
+  // behavior, so callers downstream can wait for completion regardless of
+  // whether url/title were present.
+  useAutoLaunchTutorial(model, {
+    onIncoming: (detail) => {
+      const { url, title, type, source } = detail;
+      const openAsLearningJourney = shouldOpenAsLearningJourney(type, source);
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
         content_url: url,
@@ -1500,40 +1609,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           completion_percentage: 0, // Auto-launch is always starting fresh
         }),
       });
-
-      if (url && title) {
-        // Coerce the untrusted event.detail.source to a typed LaunchSource at
-        // the boundary. Unknown literals fall through to undefined ("needs
-        // check"), which is the safer default than passing typo'd strings
-        // through to the model.
-        const typedSource = coerceLaunchSource(source) ?? undefined;
-        if (openAsLearningJourney) {
-          model.openLearningJourney(url, title, { source: typedSource });
-        } else {
-          model.openDocsPage(url, title, { source: typedSource });
-        }
-      }
-
-      // send an event so we know the page has been loaded
-      const launchEvent = new CustomEvent('auto-launch-complete', {
-        detail: event.detail,
-      });
-      window.dispatchEvent(launchEvent);
-    };
-
-    document.addEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
-
-    return () => {
-      document.removeEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
-    };
-  }, [model]);
+      window.dispatchEvent(new CustomEvent('auto-launch-complete', { detail }));
+    },
+  });
 
   // Pop-out to floating panel: hand off the active guide before switching modes
   useEffect(() => {
     const handlePopOut = () => {
       const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
       const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
-      const guideUrl = activeTab?.baseUrl || activeTab?.currentUrl;
+      // Prefer `currentUrl` so a popped-out learning journey lands on the
+      // user's current milestone, not the cover page. For non-journey tabs
+      // the two fields are equal.
+      const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
 
       // Editor tab popout: the block editor itself moves into the floating panel.
       // No pendingGuide handoff — the floating panel detects the editor tab and
@@ -1562,7 +1650,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         return;
       }
 
-      panelModeManager.setPendingGuide({ url: guideUrl, title: activeTab.title });
+      panelModeManager.setPendingGuide({
+        url: guideUrl,
+        title: activeTab.title,
+        type: activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs',
+        // Forward synthetic packageInfo (e.g. PR-tester journeys whose URL
+        // is a raw GitHub URL, not a recognised package URL) so the floating
+        // panel rebuilds the milestone toolbar after the handoff.
+        packageInfo: activeTab.packageInfo,
+      });
 
       reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
         guide_url: guideUrl,
@@ -1580,6 +1676,113 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       document.removeEventListener('pathfinder-request-pop-out', handlePopOut);
     };
   }, [model]);
+
+  // Open active content in the full screen mode page. Mirrors the popout
+  // handoff: snapshot tabs, set pendingGuide, switch mode (which closes the
+  // sidebar), then push the route. Live sessions block the switch — a fresh
+  // SessionProvider on the new page would disconnect the session.
+  useEffect(() => {
+    const handleFullScreenRequest = () => {
+      if (isSessionActive) {
+        getAppEvents().publish({
+          type: 'alert-info',
+          payload: ['Leave the live session before switching to full screen.'],
+        });
+        return;
+      }
+
+      const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
+      const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
+
+      // Editor tab: the block editor itself moves into full screen.
+      // We set a pending editor handoff so when the user clicks "Full screen"
+      // on the editor while another guide is already in fullscreen
+      // (`setMode('fullscreen')` no-ops in that case), the receiving panel
+      // still switches its active tab to the editor — replacing the journey.
+      if (activeTab?.type === 'editor') {
+        reportAppInteraction(UserInteraction.FullScreenEnter, {
+          guide_url: '',
+          guide_title: activeTab.title,
+          content_type: 'editor',
+        });
+        // Remember where we came from so explicit Exit can land back on the
+        // user's prior Grafana page instead of the plugin home.
+        //
+        // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
+        // full-screen surfaces share intent (same tabs, same active guide),
+        // so the snapshot/restore would clobber the milestone progress
+        // full-screen wrote back to tabStorage and the user would land at
+        // the prior milestone on dock-back.
+        panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
+        panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
+        panelModeManager.setMode('fullscreen');
+        locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
+        return;
+      }
+
+      // Prefer `currentUrl` (the milestone the user is reading) over the
+      // cover-page `baseUrl` so the milestone position carries through to
+      // full screen. The dock-back direction already worked because the
+      // sidebar restores `currentUrl` from tabStorage on remount — this is
+      // the symmetric fix for the forward handoff. For non-journey tabs the
+      // two are equal so the swap is a no-op.
+      const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
+      const supportedTab = activeTab && activeTab.id !== 'recommendations' && activeTab.type !== 'devtools' && guideUrl;
+
+      if (!supportedTab) {
+        getAppEvents().publish({
+          type: 'alert-info',
+          payload: ['Open a guide before switching to full screen.'],
+        });
+        return;
+      }
+
+      panelModeManager.setPendingGuide({
+        url: guideUrl,
+        title: activeTab.title,
+        type: activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs',
+        // Forward synthetic packageInfo (e.g. PR-tester journeys whose URL
+        // is a raw GitHub URL, not a recognised package URL) so the
+        // full-screen page rebuilds the milestone toolbar after the handoff.
+        packageInfo: activeTab.packageInfo,
+      });
+
+      reportAppInteraction(UserInteraction.FullScreenEnter, {
+        guide_url: guideUrl,
+        guide_title: activeTab.title,
+        content_type: getContentTypeForAnalytics(guideUrl, activeTab.type || 'docs'),
+      });
+
+      // Remember where we came from so explicit Exit can land back on the
+      // user's prior Grafana page instead of the plugin home.
+      //
+      // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
+      // full-screen surfaces share intent (same tabs, same active guide),
+      // so the snapshot/restore would clobber the milestone progress
+      // full-screen wrote back to tabStorage and the user would land at
+      // the prior milestone on dock-back.
+      panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
+      panelModeManager.setMode('fullscreen');
+      // Encode the tab type in the URL so a refresh / shared link rehydrates
+      // the right kind of tab. Without this, FullScreenPanel's URL fallback
+      // would call findDocPage and classify a journey package URL as
+      // 'interactive', losing the milestone toolbar on reload.
+      const tabType = activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs';
+      locationService.push(
+        buildFullScreenRouteUrl({
+          pluginBaseUrl: PLUGIN_BASE_URL,
+          fullScreenRoute: ROUTES.FullScreen,
+          doc: guideUrl,
+          guideType: tabType,
+        })
+      );
+    };
+
+    document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+    return () => {
+      document.removeEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+    };
+  }, [model, isSessionActive]);
 
   // Scroll tracking
   useEffect(() => {
@@ -1932,6 +2135,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
         {(() => {
+          // Full-screen mode owns the active session — render the notice
+          // here instead of mounting a parallel CombinedLearningJourneyPanel.
+          // Tab bar above stays interactive so users can switch tabs and
+          // queue what's shown when they return to full screen (the same
+          // tab id is read by FullScreenPanel.restoreTabsAsync on next
+          // mount). See `FullScreenModeNotice` for the full rationale.
+          if (isFullScreenActive) {
+            return <FullScreenModeNotice />;
+          }
+
           // Show recommendations tab
           if (isRecommendationsTab) {
             return <contextPanel.Component model={contextPanel} />;
@@ -1943,10 +2156,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div className={styles.devToolsContent} data-testid="devtools-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                   <SelectorDebugPanel
-                    onOpenDocsPage={(url: string, title: string) => {
+                    onOpenDocsPage={(url: string, title: string, packageInfo?: PackageOpenInfo) => {
                       // Dev tools is a power-user surface; tag as aligned-by-construction
                       // so the implied-0th-step doesn't prompt during selector work.
-                      return model.openDocsPage(url, title, { source: 'devtools', skipReadyToBegin: true });
+                      // packageInfo is forwarded when the PR tester opens a real
+                      // path/journey package so the milestone toolbar and Alt+arrow
+                      // navigation work via the same pipeline as the recommender.
+                      return model.openDocsPage(url, title, {
+                        source: 'devtools',
+                        skipReadyToBegin: true,
+                        packageInfo,
+                      });
                     }}
                     onOpenLearningJourney={(url: string, title: string) => {
                       return model.openLearningJourney(url, title, { source: 'devtools' });
@@ -2142,17 +2362,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
                         </button>
                       )}
-                      <button
-                        className={styles.secondaryActionButton}
-                        aria-label="Pop out to floating panel"
-                        title="Pop out guide to a floating panel"
-                        onClick={() => {
-                          document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
-                        }}
-                      >
-                        <Icon name="corner-up-right" size="sm" />
-                        <span>Pop out</span>
-                      </button>
+                      <PanelModeActionButtons className={styles.secondaryActionButton} />
                       <Dropdown
                         placement="bottom-end"
                         overlay={
@@ -2201,211 +2411,68 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   </div>
                 )}
 
-                {/* Milestone Progress - only show for learning journey milestone pages */}
-                {showMilestoneProgress && (
-                  <div className={styles.milestoneProgress}>
-                    <div className={styles.progressInfo}>
-                      <div className={styles.progressHeader}>
-                        <IconButton
-                          name="arrow-left"
-                          size="sm"
-                          aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
-                          onClick={() => {
-                            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                              content_title: activeTab.title,
-                              content_url: activeTab.baseUrl,
-                              current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                              total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
-                              direction: 'backward',
-                              interaction_location: 'milestone_progress_bar',
-                              completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
-                            });
-
-                            model.navigateToPreviousMilestone();
-                          }}
-                          tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
-                          tooltipPlacement="top"
-                          disabled={!model.canNavigatePrevious() || activeTab.isLoading}
-                          className={styles.navButton}
-                        />
-                        <span className={styles.milestoneText}>
-                          {activeTab.content?.metadata.learningJourney?.currentMilestone === 0
-                            ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                              })
-                            : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                                current: activeTab.content?.metadata.learningJourney?.currentMilestone,
-                                total: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                              })}
-                        </span>
-                        <IconButton
-                          name="arrow-right"
-                          size="sm"
-                          aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
-                          onClick={() => {
-                            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                              content_title: activeTab.title,
-                              content_url: activeTab.baseUrl,
-                              current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
-                              total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
-                              direction: 'forward',
-                              interaction_location: 'milestone_progress_bar',
-                              completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
-                            });
-
-                            // Mark current milestone done if it has no interactive steps
-                            if (
-                              activeTab.content?.type === 'learning-journey' &&
-                              activeTab.currentUrl &&
-                              activeTab.baseUrl
-                            ) {
-                              const hasInteractiveSteps =
-                                (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
-                              if (!hasInteractiveSteps) {
-                                const slug = getMilestoneSlug(activeTab.currentUrl);
-                                if (slug) {
-                                  void markMilestoneDone(
-                                    activeTab.baseUrl,
-                                    slug,
-                                    activeTab.content?.metadata?.learningJourney?.totalMilestones
-                                  );
-                                }
-                              }
-                            }
-
-                            model.navigateToNextMilestone();
-                          }}
-                          tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
-                          tooltipPlacement="top"
-                          disabled={!model.canNavigateNext() || activeTab.isLoading}
-                          className={styles.navButton}
-                        />
-                      </div>
-                      <div className={styles.milestoneActions}>
-                        {(() => {
-                          const lj = activeTab.content?.metadata.learningJourney;
-                          const currentMs = lj?.milestones.find((m) => m.number === (lj?.currentMilestone ?? 0));
-                          const websiteUrl = currentMs?.websiteUrl ?? lj?.websiteUrl;
-                          const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
-                          const url = websiteUrl || fallbackUrl;
-                          if (url) {
-                            const cleanUrl = cleanDocsUrl(url);
-                            return (
-                              <button
-                                className={styles.secondaryActionButton}
-                                aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
-                                onClick={() => {
-                                  reportAppInteraction(UserInteraction.OpenExtraResource, {
-                                    content_url: cleanUrl,
-                                    content_type: getContentTypeForAnalytics(
-                                      cleanUrl,
-                                      activeTab.type || 'learning-journey'
-                                    ),
-                                    link_text: activeTab.title,
-                                    source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                                    link_type: 'external_browser',
-                                    interaction_location: 'milestone_progress_bar',
-                                    current_milestone: lj?.currentMilestone || 0,
-                                    total_milestones: lj?.totalMilestones || 0,
-                                  });
-                                  setTimeout(() => {
-                                    window.open(cleanUrl, '_blank', 'noopener,noreferrer');
-                                  }, 100);
-                                }}
-                              >
-                                <Icon name="external-link-alt" size="sm" />
-                                <span>{t('docsPanel.open', 'Open')}</span>
-                              </button>
-                            );
-                          }
-                          return null;
-                        })()}
-                        {(hasInteractiveProgress || activeTab.type === 'interactive') && (
-                          <button
-                            className={styles.secondaryActionButton}
-                            aria-label={t('docsPanel.resetGuide', 'Reset guide')}
-                            title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
-                            onClick={async () => {
-                              if (progressKey && activeTab) {
-                                await handleResetGuide(progressKey, activeTab);
-                              }
-                            }}
-                          >
-                            <Icon name="history-alt" size="sm" />
-                            <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
-                          </button>
-                        )}
-                        <button
-                          className={styles.secondaryActionButton}
-                          aria-label="Pop out to floating panel"
-                          title="Pop out guide to a floating panel"
-                          onClick={() => {
-                            document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
-                          }}
-                        >
-                          <Icon name="corner-up-right" size="sm" />
-                          <span>Pop out</span>
-                        </button>
-                        <Dropdown
-                          placement="bottom-end"
-                          overlay={
-                            <Menu>
-                              {isDevMode && (
-                                <Menu.Item
-                                  label={t('docsPanel.refreshDev', 'Refresh (dev)')}
-                                  icon="sync"
-                                  onClick={() => {
-                                    if (activeTab) {
-                                      reloadActiveTab(activeTab);
-                                    }
-                                  }}
-                                />
-                              )}
+                {/* Milestone Progress - shared with the fullscreen surface via
+                    LearningJourneyMilestoneToolbar. Returns null for non-journey
+                    tabs so the consumer can render unconditionally. */}
+                <LearningJourneyMilestoneToolbar
+                  panel={model}
+                  activeTab={activeTab}
+                  surface="sidebar"
+                  contentRoot={contentRef}
+                  actionButtonClassName={styles.secondaryActionButton}
+                  hasInteractiveProgress={hasInteractiveProgress}
+                  progressKey={progressKey}
+                  onResetGuide={handleResetGuide}
+                  trailingActions={
+                    <>
+                      <PanelModeActionButtons className={styles.secondaryActionButton} />
+                      <Dropdown
+                        placement="bottom-end"
+                        overlay={
+                          <Menu>
+                            {isDevMode && (
                               <Menu.Item
-                                label={t('docsPanel.giveFeedback', 'Give feedback')}
-                                icon="comment-alt-message"
+                                label={t('docsPanel.refreshDev', 'Refresh (dev)')}
+                                icon="sync"
                                 onClick={() => {
-                                  reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
-                                    interaction_location: 'milestone_progress_bar_feedback_menu',
-                                    panel_type: 'combined_learning_journey',
-                                    content_url: activeTab.content?.url || activeTab.baseUrl || '',
-                                    content_type: activeTab.type || 'learning-journey',
-                                  });
-                                  setTimeout(() => {
-                                    window.open(
-                                      'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
-                                      '_blank',
-                                      'noopener,noreferrer'
-                                    );
-                                  }, 100);
+                                  if (activeTab) {
+                                    reloadActiveTab(activeTab);
+                                  }
                                 }}
                               />
-                            </Menu>
-                          }
-                        >
-                          <IconButton
-                            name="ellipsis-v"
-                            size="sm"
-                            aria-label={t('docsPanel.menuAriaLabel', 'More options')}
-                            tooltip={t('docsPanel.menuTooltip', 'More options')}
-                          />
-                        </Dropdown>
-                      </div>
-                      <div className={styles.progressBar}>
-                        <div
-                          className={styles.progressFill}
-                          style={{
-                            width: `${
-                              ((activeTab.content?.metadata.learningJourney?.currentMilestone || 0) /
-                                (activeTab.content?.metadata.learningJourney?.totalMilestones || 1)) *
-                              100
-                            }%`,
-                          }}
+                            )}
+                            <Menu.Item
+                              label={t('docsPanel.giveFeedback', 'Give feedback')}
+                              icon="comment-alt-message"
+                              onClick={() => {
+                                reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+                                  interaction_location: 'milestone_progress_bar_feedback_menu',
+                                  panel_type: 'combined_learning_journey',
+                                  content_url: activeTab.content?.url || activeTab.baseUrl || '',
+                                  content_type: activeTab.type || 'learning-journey',
+                                });
+                                setTimeout(() => {
+                                  window.open(
+                                    'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  );
+                                }, 100);
+                              }}
+                            />
+                          </Menu>
+                        }
+                      >
+                        <IconButton
+                          name="ellipsis-v"
+                          size="sm"
+                          aria-label={t('docsPanel.menuAriaLabel', 'More options')}
+                          tooltip={t('docsPanel.menuTooltip', 'More options')}
                         />
-                      </div>
-                    </div>
-                  </div>
-                )}
+                      </Dropdown>
+                    </>
+                  }
+                />
 
                 {/* Unified Content Renderer - works for both learning journeys and docs! */}
                 <div

@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+_Rolling section for changes merged since v2.10.0. Renamed to the next version number at release time._
+
+### Added
+
+- **Pathfinder MCP Server**: TypeScript MCP server (`pathfinder-mcp`) for AI-assisted guide authoring. Supports stdio and HTTP transports, structured `clientGuidance` handoff per client capability (Grafana App Platform / OSS / non-Grafana), and read-only CDN repository tools so MCP clients (Cursor, Claude Desktop, Grafana Assistant) can discover and deep-link to published packages without per-instance plugin involvement. (#831, #844)
+- **Block editor authoring resilience + sidebar UX overhaul**: Lint primitives for real-time guide validation, convergence on the canonical validation pipeline, new `ConditionChipsField` for requirements and objectives, `HealthStatusBar` with cross-block diagnostics, and per-block `LintBadge` display. (#848)
+- **Prompted implied 0th step for guide launches**: Auto-recovery now offers a starting-location prompt when a launched guide's implied 0th step is not satisfied at the user's current location. (#810)
+- **External guide-import API**: External (CI / Terraform / scripts) flow for upserting guides via the Pathfinder Backend's K8s aggregator. Companion bash helper at `scripts/upsert-guide.sh` accepts any guide JSON. (#829, #830)
+- **Single-block preview in the block editor**: Preview individual blocks without rendering the whole guide. (#618)
+
+### Fixed
+
+- **Dock-to-sidebar arrow direction**: The arrow on the dock-to-sidebar control now points in the correct direction. (#857)
+- **Floating panel popout viewport**: The floating panel popout stays in view across viewport size changes. (#854)
+
+### Security
+
+- **Disable npm install scripts**: Added `.npmrc` with `ignore-scripts=true` to mitigate supply-chain attacks that ship malicious lifecycle scripts (reference: the `lightning` npm package compromise). Husky hooks must now be installed explicitly via `npm run prepare` after a fresh clone; CI installs Playwright browsers explicitly via `npx playwright install --with-deps`. (#865)
+- **`golang.org/x/net` to v0.53.0**: Go module security advisory update. (#853)
+
+### Chore
+
+- **`lint-staged` to v17** (#859)
+- **`npm` to v11.14.0** (#860)
+- **`actions/cache` to v5** (#814)
+- **GitHub Actions pinned-digest updates**: `sigstore/cosign-installer` to v4 (#839), `docker/setup-buildx-action` to v4 (#838), `docker/login-action` to v4 (#837), and `docker/build-push-action` to v7 (#836).
+
 ## 2.10.0
 
 > **⚠️ Terms and conditions updated (TERMS_VERSION 1.1.0)**

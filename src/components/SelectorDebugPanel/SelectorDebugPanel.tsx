@@ -3,6 +3,7 @@ import { Button, Badge, Icon, useStyles2, Stack } from '@grafana/ui';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { UrlTester } from 'components/UrlTester';
 import { PrTester } from 'components/PrTester';
+import type { PackageOpenInfo } from 'types/content-panel.types';
 
 // localStorage keys for section expansion state
 const STORAGE_KEY_PR_TESTER = 'pathfinder-devtools-pr-tester-expanded';
@@ -24,7 +25,13 @@ function getInitialExpanded(storageKey: string, defaultValue: boolean): boolean 
 }
 
 export interface SelectorDebugPanelProps {
-  onOpenDocsPage?: (url: string, title: string) => void;
+  /**
+   * Open a docs page or package. When `packageInfo` is supplied (e.g. from
+   * the PR tester opening a real path/journey package), the docs panel
+   * routes through `fetchPackageContent` so the milestone toolbar and
+   * Alt+arrow navigation work without any extra plumbing.
+   */
+  onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
   onOpenLearningJourney?: (url: string, title: string) => void;
 }
 
@@ -105,7 +112,7 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
         </div>
         {prTesterExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
-            <PrTester onOpenDocsPage={onOpenDocsPage} onOpenLearningJourney={onOpenLearningJourney} />
+            <PrTester onOpenDocsPage={onOpenDocsPage} />
           </div>
         )}
       </div>

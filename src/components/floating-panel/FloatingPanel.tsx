@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton, useStyles2 } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
 import { useHighlightDodge } from './useHighlightDodge';
@@ -18,8 +19,17 @@ export interface FloatingPanelProps {
   stepProgress?: string;
   /** URL of the currently active guide (for workshop link) */
   guideUrl?: string;
+  /**
+   * Tab type for the active guide. When 'learning-journey', the share URL
+   * appends `&type=learning-journey` so a recipient hitting the link cold
+   * gets the milestone toolbar (otherwise findDocPage may misclassify
+   * package URLs as 'interactive').
+   */
+  guideType?: 'learning-journey' | 'docs';
   /** Called when user clicks dock-to-sidebar button */
   onSwitchToSidebar: () => void;
+  /** Called when user clicks open-in-full-screen button. Hidden when omitted. */
+  onSwitchToFullScreen?: () => void;
   /** Called when user closes the floating panel entirely */
   onClose: () => void;
   /** Content to render inside the panel */
@@ -39,8 +49,10 @@ export function FloatingPanel({
   title,
   hasActiveGuide,
   guideUrl,
+  guideType,
   stepProgress,
   onSwitchToSidebar,
+  onSwitchToFullScreen,
   onClose,
   children,
 }: FloatingPanelProps) {
@@ -73,11 +85,9 @@ export function FloatingPanel({
     if (!guideUrl) {
       return;
     }
-    const url = new URL(window.location.href);
-    url.searchParams.set('doc', guideUrl);
-    url.searchParams.set('panelMode', 'floating');
+    const shareUrl = buildPathfinderShareUrl({ doc: guideUrl, panelMode: 'floating', guideType });
     navigator.clipboard
-      .writeText(url.toString())
+      .writeText(shareUrl)
       .then(() => {
         setLinkCopied(true);
         clearTimeout(copyTimerRef.current);
@@ -89,7 +99,7 @@ export function FloatingPanel({
       .catch(() => {
         // Clipboard may be unavailable
       });
-  }, [guideUrl]);
+  }, [guideUrl, guideType]);
 
   // Keyboard: Escape minimizes — only when the panel itself or document.body
   // has focus. Skip if another component already handled the event (modals,
@@ -219,6 +229,15 @@ export function FloatingPanel({
               onClick={handleSwitchToSidebar}
               aria-label="Dock to sidebar"
             />
+            {onSwitchToFullScreen && (
+              <IconButton
+                name="expand-arrows"
+                size="sm"
+                tooltip="Open in full screen"
+                onClick={onSwitchToFullScreen}
+                aria-label="Open in full screen"
+              />
+            )}
             <IconButton
               name="minus"
               size="sm"

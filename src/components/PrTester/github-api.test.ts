@@ -1,7 +1,13 @@
 /**
  * Tests for GitHub API utilities used by PR Tester
  */
-import { parsePrUrl, isValidPrUrl, fetchPrContentFiles, fetchPrContentFilesFromUrl } from './github-api';
+import {
+  parsePrUrl,
+  isValidPrUrl,
+  fetchPrContentFiles,
+  fetchPrContentFilesFromUrl,
+  fetchPrManifest,
+} from './github-api';
 
 describe('parsePrUrl', () => {
   describe('valid PR URLs', () => {
@@ -170,11 +176,13 @@ describe('fetchPrContentFiles', () => {
         directoryName: 'guide-one',
         rawUrl: `https://raw.githubusercontent.com/grafana/interactive-tutorials/${validSha}/guide-one/content.json`,
         status: 'added',
+        kind: 'content',
       });
       expect(result.files[1]).toEqual({
         directoryName: 'guide-two',
         rawUrl: `https://raw.githubusercontent.com/grafana/interactive-tutorials/${validSha}/guide-two/content.json`,
         status: 'modified',
+        kind: 'content',
       });
     }
 
@@ -211,7 +219,7 @@ describe('fetchPrContentFiles', () => {
     }
   });
 
-  it('should return no_files error when no content.json found', async () => {
+  it('should return no_files error when no content.json or manifest.json found', async () => {
     const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     const filesResponse = [
       { filename: 'README.md', status: 'modified' },
@@ -235,7 +243,7 @@ describe('fetchPrContentFiles', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.type).toBe('no_files');
-      expect(result.error.message).toContain('No content.json files found');
+      expect(result.error.message).toContain('No content.json or manifest.json');
     }
   });
 
@@ -801,5 +809,272 @@ describe('fetchPrContentFilesFromUrl', () => {
       expect.any(String),
       expect.objectContaining({ signal: controller.signal })
     );
+  });
+});
+
+describe('fetchPrContentFiles — manifest.json support', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const validSha = '0123456789abcdef0123456789abcdef01234567';
+
+  function mockPrFiles(files: Array<{ filename: string; status: string }>) {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ head: { sha: validSha } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(files),
+      });
+  }
+
+  it('should include manifest.json files alongside content.json with correct kind', async () => {
+    mockPrFiles([
+      { filename: 'my-path/manifest.json', status: 'added' },
+      { filename: 'my-path/content.json', status: 'added' },
+      { filename: 'guide-one/content.json', status: 'modified' },
+      { filename: 'src/foo.ts', status: 'added' },
+    ]);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(3);
+      const byKind = result.files.reduce<Record<string, number>>((acc, f) => {
+        acc[f.kind] = (acc[f.kind] ?? 0) + 1;
+        return acc;
+      }, {});
+      expect(byKind).toEqual({ content: 2, manifest: 1 });
+      const manifest = result.files.find((f) => f.kind === 'manifest');
+      expect(manifest).toEqual({
+        directoryName: 'my-path',
+        rawUrl: `https://raw.githubusercontent.com/org/repo/${validSha}/my-path/manifest.json`,
+        status: 'added',
+        kind: 'manifest',
+      });
+    }
+  });
+
+  it('should not match files named like *content.json or *manifest.json without the directory separator', async () => {
+    mockPrFiles([
+      { filename: 'fake-content.json', status: 'added' },
+      { filename: 'fake-manifest.json', status: 'added' },
+      { filename: 'real/content.json', status: 'added' },
+    ]);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]!.directoryName).toBe('real');
+      expect(result.files[0]!.kind).toBe('content');
+    }
+  });
+
+  it('should succeed with manifest-only PRs so the UI can surface a missing-cover hint', async () => {
+    // A PR that only modifies a path package's manifest.json (e.g. fixing
+    // milestone order or targeting) is still useful: returning the manifest
+    // entry lets PrTester preview it and report the missing cover via
+    // `buildPathPackageInfo` instead of blanket-failing with "no files".
+    mockPrFiles([{ filename: 'orphan/manifest.json', status: 'added' }]);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]!.kind).toBe('manifest');
+      expect(result.files[0]!.directoryName).toBe('orphan');
+    }
+  });
+
+  it('should report both content and manifest counts in the pagination warning', async () => {
+    const files = [
+      ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/content.json`, status: 'added' })),
+      ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/manifest.json`, status: 'added' })),
+      ...Array.from({ length: 92 }, (_, i) => ({ filename: `src/f${i}.ts`, status: 'added' })),
+    ];
+    mockPrFiles(files);
+
+    const result = await fetchPrContentFiles('org', 'repo', 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // 4 content + 4 manifest = 8
+      expect(result.files).toHaveLength(8);
+      expect(result.warning).toContain('4 content.json');
+      expect(result.warning).toContain('4 manifest.json');
+    }
+  });
+});
+
+describe('fetchPrManifest', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should fetch and parse a valid path manifest', async () => {
+    const manifest = {
+      id: 'my-path',
+      type: 'path',
+      milestones: ['guide-one', 'guide-two'],
+    };
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(manifest),
+    });
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/my-path/manifest.json');
+
+    expect(result).toBeDefined();
+    expect(result?.id).toBe('my-path');
+    expect(result?.type).toBe('path');
+    expect(result?.milestones).toEqual(['guide-one', 'guide-two']);
+  });
+
+  it('should return undefined for non-OK responses', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+    });
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/missing/manifest.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('should return undefined when the JSON does not match the manifest schema', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ not: 'a manifest' }),
+    });
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/bad/manifest.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('should return undefined on fetch errors (no throw)', async () => {
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network failure'));
+
+    const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/x/manifest.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('composes the caller signal with the fetch timeout — caller abort propagates while in-flight', async () => {
+    // Capture whatever signal fetch actually receives so we can prove that
+    // aborting the caller's controller mid-flight also aborts the composed
+    // signal. We deliberately abort BEFORE the fetch promise settles, since
+    // the listeners are torn down in `finally` (the dispose path
+    // intentionally severs the bridge once the fetch returns — it isn't
+    // useful to keep the composed signal hot after the response is in).
+    let observedSignal: AbortSignal | undefined;
+    let resolveFetch: ((value: Response) => void) | undefined;
+    (global.fetch as jest.Mock).mockImplementation((_url: string, init: RequestInit) => {
+      observedSignal = init.signal ?? undefined;
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    });
+
+    const controller = new AbortController();
+    const promise = fetchPrManifest(
+      'https://raw.githubusercontent.com/org/repo/abc/p/manifest.json',
+      controller.signal
+    );
+
+    // Yield once so the fetch mock runs and captures `init.signal`.
+    await Promise.resolve();
+    expect(observedSignal).toBeDefined();
+    // Composition means the signal passed to fetch is NOT the caller's
+    // original ref (it's a new controller fed by both inputs), but it must
+    // still propagate the caller's abort.
+    expect(observedSignal).not.toBe(controller.signal);
+    expect(observedSignal!.aborted).toBe(false);
+    controller.abort(new Error('user cancelled'));
+    expect(observedSignal!.aborted).toBe(true);
+
+    // Settle the fetch so `fetchPrManifest`'s try/finally completes — we
+    // don't need the result, just clean shutdown for the test.
+    resolveFetch!({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+    } as unknown as Response);
+    await promise;
+  });
+
+  it('always carries a timeout even when the caller passes its own signal', async () => {
+    // Regression: the previous `signal ?? AbortSignal.timeout(...)` pattern
+    // skipped the timeout entirely when a caller signal was supplied, so a
+    // hung GitHub endpoint would block until component unmount.
+    const originalTimeout = AbortSignal.timeout;
+    const timeoutSpy = jest.fn(originalTimeout.bind(AbortSignal));
+    (AbortSignal as unknown as { timeout: typeof originalTimeout }).timeout =
+      timeoutSpy as unknown as typeof originalTimeout;
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+    });
+
+    try {
+      const controller = new AbortController();
+      await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
+      expect(timeoutSpy).toHaveBeenCalledTimes(1);
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Number));
+    } finally {
+      (AbortSignal as unknown as { timeout: typeof originalTimeout }).timeout = originalTimeout;
+    }
+  });
+
+  it('detaches its abort listener from the caller signal once the fetch settles (no leak across calls)', async () => {
+    // Without the `finally`-bound dispose, every fetchPrManifest call leaves a
+    // bridge listener on the caller's signal. The preload effect issues one
+    // fetch per manifest in `Promise.all`, so a PR with N manifests would
+    // accumulate N listeners on the same controller signal each preload —
+    // and keep accumulating across refetches (long-lived caller signals
+    // never fire on the happy path, so `{ once: true }` doesn't help).
+    const controller = new AbortController();
+    const addSpy = jest.spyOn(controller.signal, 'addEventListener');
+    const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'p', type: 'path', milestones: ['a'] }),
+    });
+
+    await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/p/manifest.json', controller.signal);
+
+    // Each completed call adds exactly one bridge listener and removes it.
+    const added = addSpy.mock.calls.filter((c) => c[0] === 'abort');
+    const removed = removeSpy.mock.calls.filter((c) => c[0] === 'abort');
+    expect(added.length).toBe(1);
+    expect(removed.length).toBe(1);
+    expect(removed[0]![1]).toBe(added[0]![1]);
   });
 });

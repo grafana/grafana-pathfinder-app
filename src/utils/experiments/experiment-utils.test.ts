@@ -38,6 +38,7 @@ import {
   markGlobalAutoOpened,
   shouldAutoOpenForPath,
   isSidebarAlreadyInUse,
+  isExtensionSidebarOwnedByOther,
   isOnboardingFlowPath,
   getStorageKeys,
   syncExperimentStateFromUserStorage,
@@ -258,6 +259,46 @@ describe('experiment-utils', () => {
     it('should return true when sidebar is docked', () => {
       localStorage.setItem('grafana.navigation.extensionSidebarDocked', JSON.stringify({ pluginId: 'some-plugin' }));
       expect(isSidebarAlreadyInUse()).toBe(true);
+    });
+  });
+
+  describe('isExtensionSidebarOwnedByOther', () => {
+    const PATHFINDER_ID = 'grafana-grafanapathfinder-app';
+
+    afterEach(() => {
+      localStorage.removeItem('grafana.navigation.extensionSidebarDocked');
+    });
+
+    it('returns false when the localStorage key is absent (sidebar free)', () => {
+      expect(isExtensionSidebarOwnedByOther(PATHFINDER_ID)).toBe(false);
+    });
+
+    it('returns false when the docked plugin id matches our id', () => {
+      localStorage.setItem('grafana.navigation.extensionSidebarDocked', JSON.stringify({ pluginId: PATHFINDER_ID }));
+      expect(isExtensionSidebarOwnedByOther(PATHFINDER_ID)).toBe(false);
+    });
+
+    it('returns true when another plugin owns the sidebar', () => {
+      localStorage.setItem(
+        'grafana.navigation.extensionSidebarDocked',
+        JSON.stringify({ pluginId: 'grafana-assistant-app' })
+      );
+      expect(isExtensionSidebarOwnedByOther(PATHFINDER_ID)).toBe(true);
+    });
+
+    it('handles legacy plain-string format (no JSON wrapper)', () => {
+      localStorage.setItem('grafana.navigation.extensionSidebarDocked', 'grafana-assistant-app');
+      expect(isExtensionSidebarOwnedByOther(PATHFINDER_ID)).toBe(true);
+    });
+
+    it('returns false for legacy plain-string format that matches our id', () => {
+      localStorage.setItem('grafana.navigation.extensionSidebarDocked', PATHFINDER_ID);
+      expect(isExtensionSidebarOwnedByOther(PATHFINDER_ID)).toBe(false);
+    });
+
+    it('returns false when the JSON has no pluginId field', () => {
+      localStorage.setItem('grafana.navigation.extensionSidebarDocked', JSON.stringify({ other: 'data' }));
+      expect(isExtensionSidebarOwnedByOther(PATHFINDER_ID)).toBe(false);
     });
   });
 

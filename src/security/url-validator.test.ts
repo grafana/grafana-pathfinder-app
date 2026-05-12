@@ -183,6 +183,12 @@ describe('Localhost URL validators', () => {
       expect(isAllowedContentUrl('bundled:first-dashboard')).toBe(true);
     });
 
+    it('should always allow backend-guide and api schemes (custom guides authored in the block editor)', () => {
+      expect(isAllowedContentUrl('backend-guide:my-custom-guide')).toBe(true);
+      expect(isAllowedContentUrl('backend-guide:abc-123_def')).toBe(true);
+      expect(isAllowedContentUrl('api:my-custom-guide')).toBe(true);
+    });
+
     it('should always allow Grafana docs URLs', () => {
       expect(isAllowedContentUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
       expect(isAllowedContentUrl('https://grafana.com/tutorials/getting-started/')).toBe(true);

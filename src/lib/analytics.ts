@@ -85,6 +85,11 @@ export enum UserInteraction {
   FloatingPanelCopyLink = 'floating_panel_copy_link',
   FloatingPanelMoved = 'floating_panel_moved',
 
+  // Full Screen
+  FullScreenEnter = 'full_screen_enter',
+  FullScreenExit = 'full_screen_exit',
+  FullScreenCopyLink = 'full_screen_copy_link',
+
   // Access Control
   NoAccess = 'no_access',
 

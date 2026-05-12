@@ -2,8 +2,17 @@
  * GitHub API utilities for PR Tester
  *
  * Provides URL parsing and API fetch functions to retrieve
- * content.json files from GitHub pull requests.
+ * content.json AND manifest.json files from GitHub pull requests.
+ *
+ * Manifest files are surfaced alongside content so the PR tester can
+ * detect path/journey packages and assemble a real `PackageOpenInfo`
+ * (manifest + pre-resolved milestones) rather than synthesising a
+ * single mega-guide.
  */
+
+import { ManifestJsonObjectSchema } from '../../types/package.schema';
+import type { ManifestJson } from '../../types/package.types';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
 
 /** Parsed GitHub PR URL components */
 export interface ParsedPrUrl {
@@ -12,11 +21,20 @@ export interface ParsedPrUrl {
   prNumber: number;
 }
 
-/** Content file metadata from a PR */
-export interface PrContentFile {
+/** Distinguishes the two file kinds the PR tester cares about. */
+export type PrJsonFileKind = 'content' | 'manifest';
+
+/**
+ * JSON file metadata from a PR.
+ *
+ * `directoryName` is shared between sibling `content.json` and `manifest.json`
+ * within the same package directory, so callers can pair them up by name.
+ */
+export interface PrJsonFile {
   directoryName: string;
   rawUrl: string;
   status: 'added' | 'modified' | 'removed' | 'renamed' | 'unchanged';
+  kind: PrJsonFileKind;
 }
 
 /** Error types for GitHub API operations */
@@ -43,7 +61,7 @@ interface GitHubPrFileEntry {
 
 /** Result type for PR content file fetching */
 export type FetchPrFilesResult =
-  | { success: true; files: PrContentFile[]; warning?: string }
+  | { success: true; files: PrJsonFile[]; warning?: string }
   | { success: false; error: GitHubApiError };
 
 // Pattern to extract owner, repo, and PR number from GitHub PR URL
@@ -106,20 +124,31 @@ export function isValidPrUrl(url: string): boolean {
 }
 
 /**
- * Extract directory name from a content.json file path
+ * Extract directory name from a JSON file path.
+ * Strips the trailing `content.json` or `manifest.json` segment.
  *
  * @param filePath - File path (e.g., "connect-metrics-data/content.json")
  * @returns Directory name (e.g., "connect-metrics-data")
  */
 function extractDirectoryName(filePath: string): string {
-  // Remove the content.json suffix and any trailing slashes
   return (
     filePath
-      .replace(/\/?content\.json$/, '')
+      .replace(/\/?(content|manifest)\.json$/, '')
       .split('/')
       .filter(Boolean)
       .join('/') || filePath
   );
+}
+
+/** Returns the file kind for paths the PR tester cares about. */
+function classifyJsonFile(filePath: string): PrJsonFileKind | null {
+  if (filePath.endsWith('/content.json') || filePath === 'content.json') {
+    return 'content';
+  }
+  if (filePath.endsWith('/manifest.json') || filePath === 'manifest.json') {
+    return 'manifest';
+  }
+  return null;
 }
 
 /**
@@ -292,39 +321,54 @@ export async function fetchPrContentFiles(
     const totalFilesInPr = filesData.length;
     const mightHaveMoreFiles = totalFilesInPr >= MAX_FILES_PER_PAGE;
 
-    // Filter for content.json files and construct raw URLs
-    const contentFiles: PrContentFile[] = (filesData as GitHubPrFileEntry[])
-      .filter(
-        (file) =>
-          typeof file.filename === 'string' &&
-          file.filename.endsWith('content.json') &&
-          !UNSAFE_PATH_PATTERN.test(file.filename)
-      )
-      .map((file) => ({
-        directoryName: extractDirectoryName(file.filename),
-        rawUrl: buildRawContentUrl(owner, repo, headSha, file.filename),
-        status: file.status as PrContentFile['status'],
-      }));
+    // Filter for content.json + manifest.json and construct raw URLs.
+    const jsonFiles: PrJsonFile[] = (filesData as GitHubPrFileEntry[]).flatMap((file) => {
+      if (typeof file.filename !== 'string' || UNSAFE_PATH_PATTERN.test(file.filename)) {
+        return [];
+      }
+      const kind = classifyJsonFile(file.filename);
+      if (!kind) {
+        return [];
+      }
+      return [
+        {
+          directoryName: extractDirectoryName(file.filename),
+          rawUrl: buildRawContentUrl(owner, repo, headSha, file.filename),
+          status: file.status as PrJsonFile['status'],
+          kind,
+        },
+      ];
+    });
 
-    if (contentFiles.length === 0) {
+    const contentCount = jsonFiles.filter((f) => f.kind === 'content').length;
+    const manifestCount = jsonFiles.length - contentCount;
+
+    // Only fail when the PR has neither content nor manifest files we
+    // care about. A PR that only modifies a path package's `manifest.json`
+    // (e.g. fixing milestone order or targeting) is still useful to
+    // surface — PrTester will show the manifest preview and a clear
+    // "missing_cover" hint via the path-build pipeline so the author
+    // knows which sibling content.json to add.
+    if (jsonFiles.length === 0) {
       return {
         success: false,
         error: {
           type: 'no_files',
-          message: 'No content.json files found in this PR',
+          message: 'No content.json or manifest.json files found in this PR',
         },
       };
     }
 
-    // Generate warning if we hit the GitHub API pagination limit
-    // We can only see the first 100 files from the PR - there might be more content.json files beyond that
+    // Generate warning if we hit the GitHub API pagination limit.
+    // The summary distinguishes content vs manifest counts so the user can
+    // tell at a glance which kinds of files we found in the first page.
     const warning = mightHaveMoreFiles
-      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentFiles.length} content.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
+      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentCount} content.json and ${manifestCount} manifest.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
       : undefined;
 
     return {
       success: true,
-      files: contentFiles,
+      files: jsonFiles,
       warning,
     };
   } catch (error) {
@@ -372,4 +416,90 @@ export async function fetchPrContentFilesFromUrl(prUrl: string, signal?: AbortSi
   }
 
   return fetchPrContentFiles(parsed.owner, parsed.repo, parsed.prNumber, signal);
+}
+
+/**
+ * Compose multiple AbortSignals into one that aborts as soon as any of the
+ * inputs aborts. Equivalent to `AbortSignal.any` but without depending on
+ * the runtime supporting it (the project's existing `AbortSignal.timeout`
+ * mocks in tests show we can't assume the latest API surface).
+ *
+ * Returns a `dispose` callback the caller MUST invoke when the composed
+ * signal is no longer needed — typically in a `finally` after the fetch
+ * settles. Without it the bridge listeners stay attached to the inputs:
+ * `AbortSignal.timeout` self-cleans when it fires, but a long-lived
+ * caller signal (e.g. a component-level abort controller) accumulates
+ * one listener per call and keeps the composed controller's closure
+ * alive, blocking GC of both.
+ */
+export function composeAbortSignals(...signals: AbortSignal[]): { signal: AbortSignal; dispose: () => void } {
+  const controller = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) {
+      controller.abort(s.reason);
+      // Nothing to detach — we never registered listeners.
+      return { signal: controller.signal, dispose: () => {} };
+    }
+  }
+  const registered: Array<{ signal: AbortSignal; listener: () => void }> = [];
+  for (const s of signals) {
+    const listener = () => controller.abort(s.reason);
+    s.addEventListener('abort', listener, { once: true });
+    registered.push({ signal: s, listener });
+  }
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      for (const { signal, listener } of registered) {
+        signal.removeEventListener('abort', listener);
+      }
+      registered.length = 0;
+    },
+  };
+}
+
+/**
+ * Fetch and loosely parse a manifest.json from a PR raw URL.
+ *
+ * Uses {@link ManifestJsonObjectSchema} (no cross-field refinement) so partial
+ * or in-progress manifests still yield enough metadata for the PR tester to
+ * decide whether the PR contains a path/journey package. Returns `undefined`
+ * for network errors, schema failures, or invalid JSON — callers fall back
+ * to per-guide testing in those cases.
+ *
+ * @param rawUrl - Raw GitHub URL to manifest.json (from {@link PrJsonFile.rawUrl})
+ * @param signal - Optional AbortSignal for request cancellation. The fetch
+ *                 always carries its own timeout (`DEFAULT_CONTENT_FETCH_TIMEOUT`);
+ *                 the caller's signal is composed *with* the timeout so a
+ *                 hung GitHub endpoint can't block until component unmount
+ *                 even when the caller passes its own controller.
+ */
+export async function fetchPrManifest(rawUrl: string, signal?: AbortSignal): Promise<ManifestJson | undefined> {
+  const timeoutSignal = AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT);
+  // When no caller signal is supplied the timeout signal stands alone — no
+  // composition needed, no listener cleanup required. Otherwise we bridge
+  // the two via `composeAbortSignals` and detach in `finally` below so the
+  // caller's (potentially long-lived) signal doesn't accumulate listeners
+  // across repeated `fetchPrManifest` calls.
+  const composed = signal ? composeAbortSignals(signal, timeoutSignal) : { signal: timeoutSignal, dispose: () => {} };
+  try {
+    const response = await fetch(rawUrl, {
+      method: 'GET',
+      signal: composed.signal,
+      redirect: 'follow',
+    });
+    if (!response.ok) {
+      return undefined;
+    }
+    const json: unknown = await response.json();
+    const parsed = ManifestJsonObjectSchema.safeParse(json);
+    if (!parsed.success) {
+      return undefined;
+    }
+    return parsed.data as unknown as ManifestJson;
+  } catch {
+    return undefined;
+  } finally {
+    composed.dispose();
+  }
 }

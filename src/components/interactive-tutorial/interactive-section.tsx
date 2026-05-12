@@ -580,9 +580,13 @@ export function InteractiveSection({
       if (completedSteps && completedSteps.size !== allStepIds.size) {
         setCompletedSteps(allStepIds);
         setCurrentStepIndex(stepComponents.length); // Mark as all completed
+        // Persist so a remount (e.g. fullscreen → sidebar auto-dock fired
+        // by an interactive nav inside this section) doesn't lose the
+        // objectives-driven completion and re-lock every step.
+        persistCompletedSteps(allStepIds);
       }
     }
-  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
+  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps, persistCompletedSteps]);
 
   // Get plugin configuration to determine if auto-detection is enabled
   const pluginContext = usePluginContext();
@@ -876,6 +880,10 @@ export function InteractiveSection({
       setCompletedSteps(new Set());
       setCurrentStepIndex(0);
       startIndex = 0;
+      // Persist the cleared set so a mid-run unmount (auto-dock from
+      // fullscreen) doesn't restore stale "all complete" state and
+      // skip the re-run on the next mount.
+      persistCompletedSteps(new Set());
     }
 
     // Check section-level requirements first and apply same priority logic
@@ -957,6 +965,19 @@ export function InteractiveSection({
 
     let stoppedDueToRequirements = false;
     let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
+    // Track the accumulated set OUTSIDE the React state so we can call
+    // persistCompletedSteps directly each step. The previous pattern wrapped
+    // the persist inside `setCompletedSteps((prev) => { ...; persistCompletedSteps(newSet); return newSet; })`,
+    // but React skips functional updater invocation when the component is
+    // unmounted — which happens mid-section when an auto-dock fires (a
+    // navigate step pushes a Grafana URL → FullScreenPanel unmounts and the
+    // orphaned do-section loop's per-step persists silently dropped). The
+    // all-complete sweep at the end of the loop still persisted, but the
+    // newly-mounted sidebar's InteractiveSection had already done its
+    // mount-time restore and only saw the pre-unmount snapshot. Keeping the
+    // accumulator local makes persists a direct side-effect that runs
+    // regardless of mount state. Verified via runtime logs (hypothesis H3).
+    let accumulatedCompleted = new Set(completedSteps);
 
     try {
       for (let i = startIndex; i < stepComponents.length; i++) {
@@ -1119,13 +1140,13 @@ export function InteractiveSection({
           // Track completed step for analytics
           completedStepsCount = i + 1; // i is 0-indexed, so +1 gives count of completed steps
 
-          // Mark step as completed immediately and persistently
-          setCompletedSteps((prev) => {
-            const newSet = new Set([...prev, stepInfo.stepId]);
-            // Persist immediately to ensure green state is preserved
-            persistCompletedSteps(newSet);
-            return newSet;
-          });
+          // Mark step as completed immediately and persistently.
+          // `persistCompletedSteps` is called DIRECTLY (not inside a setState
+          // updater) so it survives an unmount mid-section — see the long
+          // comment on `accumulatedCompleted` above for the auto-dock race.
+          accumulatedCompleted = new Set([...accumulatedCompleted, stepInfo.stepId]);
+          setCompletedSteps(accumulatedCompleted);
+          persistCompletedSteps(accumulatedCompleted);
 
           // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
           handleStepComplete(stepInfo.stepId, true);
@@ -1169,6 +1190,12 @@ export function InteractiveSection({
         const allStepIds = new Set(stepComponents.map((step) => step.stepId));
         setCompletedSteps(allStepIds);
         setCurrentStepIndex(stepComponents.length);
+        // Persist so the user-visible "all done" state survives a
+        // remount triggered by the final step's navigation (the
+        // fullscreen auto-dock path) — without this, the new mount's
+        // restoration sees only the per-step persists from the loop
+        // and the section appears half-done despite finishing.
+        persistCompletedSteps(allStepIds);
 
         // Force re-evaluation of section completion state
         setTimeout(() => {
@@ -1243,6 +1270,7 @@ export function InteractiveSection({
     checkRequirementsFromData,
     persistCompletedSteps,
     scrollToStep,
+    completedSteps,
   ]);
 
   /**
@@ -1310,24 +1338,54 @@ export function InteractiveSection({
     registerSectionSteps(sectionId, stepComponents.length);
   }, [sectionId, stepComponents.length]);
 
-  // Expose current step context globally for analytics (when section is active)
+  // Expose current step context globally for analytics + drive the
+  // top-bar progress chip in FullScreenLayout / FloatingPanel.
+  //
+  // Globals (`__DocsPluginCurrentStepIndex`, `__DocsPluginTotalSteps`)
+  // are kept for backwards compatibility with anything reading them, but
+  // they're an "execution-only" signal — they go stale the moment a step
+  // finishes. The new `pathfinder-step-progress` event publishes the full
+  // `{ documentStepIndex, totalSteps, completedCount }` whenever
+  // execution state OR completion changes, so consumers can show
+  // "completed / total" instead of "currently-running" and update
+  // immediately on completion / reset.
   useEffect(() => {
     try {
-      // Set total steps for the entire document
-      (window as any).__DocsPluginTotalSteps = totalDocumentSteps;
+      // `totalDocumentSteps` is a module-level mutable counter (not React
+      // state), so it's read fresh inside the effect rather than as a dep.
+      const totalSteps = getTotalDocumentSteps();
+      (window as any).__DocsPluginTotalSteps = totalSteps;
 
-      // Set current step index based on section execution state
+      let documentStepIndex: number | undefined;
       if (currentlyExecutingStep) {
         const executingStepInfo = stepComponents.find((s) => s.stepId === currentlyExecutingStep);
         if (executingStepInfo) {
-          const { stepIndex: documentStepIndex } = getDocumentStepPosition(sectionId, executingStepInfo.index);
-          (window as any).__DocsPluginCurrentStepIndex = documentStepIndex;
+          const { stepIndex } = getDocumentStepPosition(sectionId, executingStepInfo.index);
+          documentStepIndex = stepIndex;
+          (window as any).__DocsPluginCurrentStepIndex = stepIndex;
         }
       }
+
+      // Total completed across ALL sections in the document — read from
+      // shared storage (the same source persistCompletedSteps writes to)
+      // so the chip reflects unified progress, not just this section.
+      const contentKey = getContentKey();
+      const completedDocumentCount = interactiveStepStorage.countAllCompleted(contentKey);
+
+      window.dispatchEvent(
+        new CustomEvent('pathfinder-step-progress', {
+          detail: {
+            sectionId,
+            totalSteps,
+            documentStepIndex,
+            completedCount: completedDocumentCount,
+          },
+        })
+      );
     } catch {
       // no-op
     }
-  }, [currentlyExecutingStep, stepComponents, sectionId]);
+  }, [currentlyExecutingStep, stepComponents, sectionId, completedSteps]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {

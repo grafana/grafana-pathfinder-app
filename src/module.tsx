@@ -14,6 +14,7 @@ import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
 import { validateRedirectPath } from './security/url-validator';
+import { parsePathfinderDeepLink, stripPathfinderParams } from './utils/pathfinder-search-params';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -78,8 +79,9 @@ try {
       isPathfinderDocked = dockedValue === pluginJson.id || dockedValue === 'Interactive learning';
     }
     if (isPathfinderDocked) {
-      if (panelModeManager.getMode() === 'floating') {
-        // Don't restore sidebar — floating panel is active
+      const persistedMode = panelModeManager.getMode();
+      if (persistedMode === 'floating' || persistedMode === 'fullscreen') {
+        // Don't restore sidebar — another presentation surface owns the panel
         localStorage.removeItem('grafana.navigation.extensionSidebarDocked');
       } else {
         sidebarState.setPendingOpenSource('browser_restore', 'restore');
@@ -134,13 +136,19 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Check for doc query parameter to auto-open specific docs page.
   // Dynamically imports findDocPage so the bundled JSON data stays out of module.js.
-  const urlParams = new URLSearchParams(window.location.search);
-  const docsParam = urlParams.get('doc');
-  const pageParam = urlParams.get('page');
-  // Optional source override for analytics — allows callers to identify the origin
-  // of a ?doc= deep link (e.g. ?doc=foo&source=learning-hub)
-  const sourceParam = urlParams.get('source');
-  const kioskSessionParam = urlParams.get('kiosk_session');
+  // Single typed read — `parsePathfinderDeepLink` is the source of truth for
+  // the param shape; previously the keys were duplicated across this file
+  // and would drift (e.g. one strip block used to omit `type`).
+  const deepLink = parsePathfinderDeepLink(window.location.search);
+  const docsParam = deepLink.doc;
+  const pageParam = deepLink.page;
+  const sourceParam = deepLink.source;
+  // Some package URLs (e.g. interactive-learning.grafana.net
+  // packages/<id>/content.json) classify as 'interactive' via findDocPage even though
+  // they back a learning journey. The ?type= URL hint is the escape hatch that lets
+  // share/refresh links preserve the journey kind (and milestone toolbar).
+  const typeParam = deepLink.type;
+  const kioskSessionParam = deepLink.kioskSession;
 
   if (kioskSessionParam) {
     (window as any).__pathfinderKioskSessionId = kioskSessionParam;
@@ -148,12 +156,30 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Check for panelMode param (e.g. ?panelMode=floating for workshop links).
   // Set synchronously so mode is active before any components mount.
-  const panelModeParam = urlParams.get('panelMode');
+  const panelModeParam = deepLink.panelMode;
   if (panelModeParam === 'floating') {
     panelModeManager.setMode('floating');
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete('panelMode');
     window.history.replaceState({}, '', cleanUrl.toString());
+  } else if (panelModeParam === 'fullscreen') {
+    panelModeManager.setMode('fullscreen');
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('panelMode');
+    window.history.replaceState({}, '', cleanUrl.toString());
+    // Route to the full screen page so the rest of init wires up auto-launch
+    // against that route. The doc + type params (if present) flow through the
+    // existing handler and are consumed by FullScreenPanel on mount.
+    let target = `/a/${pluginJson.id}/fullscreen`;
+    if (docsParam) {
+      const fullScreenParams = new URLSearchParams();
+      fullScreenParams.set('doc', docsParam);
+      if (typeParam) {
+        fullScreenParams.set('type', typeParam);
+      }
+      target += `?${fullScreenParams.toString()}`;
+    }
+    locationService.replace(target);
   }
 
   // Use the source param if provided, otherwise default to 'url_param'
@@ -161,10 +187,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   if (docsParam && !shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     const url = new URL(window.location.href);
-    url.searchParams.delete('doc');
-    url.searchParams.delete('page');
-    url.searchParams.delete('source');
-    url.searchParams.delete('kiosk_session');
+    stripPathfinderParams(url);
     window.history.replaceState({}, '', url.toString());
 
     import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
@@ -196,10 +219,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           );
           // Strip stale params so they don't re-fire on refresh
           const url = new URL(window.location.href);
-          url.searchParams.delete('doc');
-          url.searchParams.delete('page');
-          url.searchParams.delete('source');
-          url.searchParams.delete('kiosk_session');
+          stripPathfinderParams(url);
           window.history.replaceState({}, '', url.toString());
 
           sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
@@ -208,7 +228,9 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         }
 
         const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
-        const isFloatingMode = panelModeManager.getMode() === 'floating';
+        const currentMode = panelModeManager.getMode();
+        const isFloatingMode = currentMode === 'floating';
+        const isFullScreenMode = currentMode === 'fullscreen';
 
         sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
 
@@ -218,16 +240,14 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
         if (!needsRedirect) {
           const url = new URL(window.location.href);
-          url.searchParams.delete('doc');
-          url.searchParams.delete('page');
-          url.searchParams.delete('source');
-          url.searchParams.delete('kiosk_session');
+          stripPathfinderParams(url);
           window.history.replaceState({}, '', url.toString());
         }
 
-        // In floating mode, the panel mounts on its own — don't open the sidebar.
-        // In sidebar mode, open the sidebar so the guide has somewhere to render.
-        if (!isFloatingMode) {
+        // In floating or full screen mode, the panel mounts on its own —
+        // don't open the extension sidebar (which would mount a second panel
+        // and collide on tab storage / __DocsPluginActiveTabId).
+        if (!isFloatingMode && !isFullScreenMode) {
           attemptAutoOpen(needsRedirect ? 500 : 200);
         }
 
@@ -250,7 +270,11 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
                 detail: {
                   url: docsPage.url,
                   title: docsPage.title,
-                  type: docsPage.type,
+                  // Honor an explicit ?type=learning-journey hint over findDocPage's
+                  // URL-based classification — package URLs like
+                  // interactive-learning.grafana.net/packages/<id>/content.json
+                  // classify as 'interactive' even when they back a journey.
+                  type: typeParam === 'learning-journey' ? 'learning-journey' : docsPage.type,
                   source: docOpenSource,
                 },
               })
