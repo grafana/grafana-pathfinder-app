@@ -24,9 +24,17 @@ export function findDocPage(param: string): DocPage | null {
     return null;
   }
 
-  // Case: Custom guide stored in the Pathfinder backend (App Platform CRD)
-  if (param.startsWith('api:')) {
-    const resourceName = param.slice(4).trim();
+  // Case: Custom guide stored in the Pathfinder backend (App Platform CRD).
+  // The `api:` prefix is the canonical short form used in shareable URLs;
+  // `backend-guide:` is the internal URL scheme stored on tabs and used by
+  // `fetchContent`. Both flow into the same backend lookup, but they appear
+  // in `?doc=` from different sources: `api:` from the share-link builder,
+  // and raw `backend-guide:` from the auto-dock + return-to-fullscreen path
+  // and `FullScreenLayout`'s "Copy workshop link" (which copies the tab's
+  // `baseUrl` verbatim).
+  if (param.startsWith('api:') || param.startsWith('backend-guide:')) {
+    const prefix = param.startsWith('api:') ? 'api:' : 'backend-guide:';
+    const resourceName = param.slice(prefix.length).trim();
     if (!resourceName) {
       return null;
     }

@@ -1,13 +1,30 @@
 import React, { useMemo, useRef } from 'react';
-import { useStyles2 } from '@grafana/ui';
+import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import type { RawContent } from '../../types/content.types';
-import type { PendingAlignment } from '../../types/content-panel.types';
+import type { LearningJourneyTab, PendingAlignment } from '../../types/content-panel.types';
 import { AlignmentPrompt } from '../docs-panel/components';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
+import { useLinkClickHandler } from '../docs-panel/link-handler.hook';
+import type { OpenDocsOptions, OpenLearningJourneyOptions } from '../docs-panel/types';
+
+/**
+ * Subset of CombinedLearningJourneyPanel needed by useLinkClickHandler.
+ * Mirrors the inline shape the hook declares so we can pass `panel` directly.
+ */
+export interface FloatingPanelContentModel {
+  loadTabContent: (tabId: string, url: string) => void | Promise<void>;
+  openLearningJourney: (url: string, title?: string, options?: OpenLearningJourneyOptions) => void | Promise<string>;
+  openDocsPage?: (url: string, title?: string, options?: OpenDocsOptions) => void | Promise<string>;
+  getActiveTab: () => LearningJourneyTab | null;
+  navigateToNextMilestone: () => void;
+  navigateToPreviousMilestone: () => void;
+  canNavigateNext: () => boolean;
+  canNavigatePrevious: () => boolean;
+}
 
 interface FloatingPanelContentProps {
   /** The guide content to render */
@@ -26,6 +43,18 @@ interface FloatingPanelContentProps {
   onAlignmentConfirm?: () => void;
   /** Cancel callback for the alignment prompt */
   onAlignmentCancel?: () => void;
+  /**
+   * Active tab (used by the link click handler to enrich analytics and to
+   * navigate from the cover page's "Ready to Begin" / "Get started" button).
+   */
+  activeTab: LearningJourneyTab | null;
+  /**
+   * Panel model used by the link click handler for navigation actions
+   * (`loadTabContent`, milestone navigation, opening docs/journeys from
+   * embedded links, etc.). Without this, content links and the
+   * "Ready to Begin" CTA on the cover page have no handler.
+   */
+  model: FloatingPanelContentModel;
 }
 
 /**
@@ -41,12 +70,28 @@ export function FloatingPanelContent({
   pendingAlignment,
   onAlignmentConfirm,
   onAlignmentCancel,
+  activeTab,
+  model,
 }: FloatingPanelContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
+  // `useTheme2()` is the canonical hook for grabbing the raw theme; the
+  // previous `useStyles2((t) => t)` pattern worked but mis-used the
+  // CSS-in-JS hook just for theme access.
+  const theme = useTheme2();
+
+  // Install the same link click handler the sidebar uses so the
+  // "Ready to Begin" / "Get started" CTA, content links, side/related
+  // journey links, and the image lightbox all work in floating + fullscreen.
+  useLinkClickHandler({
+    contentRef,
+    activeTab,
+    theme,
+    model,
+  });
 
   // STABILITY: Memoize the context value keyed on the two underlying
   // primitives. React context uses referential equality, so an inline object

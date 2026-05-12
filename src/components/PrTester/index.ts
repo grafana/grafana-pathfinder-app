@@ -4,8 +4,10 @@ export {
   isValidPrUrl,
   fetchPrContentFiles,
   fetchPrContentFilesFromUrl,
+  fetchPrManifest,
   type ParsedPrUrl,
-  type PrContentFile,
+  type PrJsonFile,
+  type PrJsonFileKind,
   type GitHubApiError,
   type FetchPrFilesResult,
 } from './github-api';

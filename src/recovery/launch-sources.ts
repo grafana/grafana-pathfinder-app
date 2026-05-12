@@ -32,6 +32,7 @@ export type LaunchSource =
   | 'experiment_treatment_navigation'
   | 'auto_open'
   | 'floating_panel_dock'
+  | 'fullscreen_handoff'
   | 'live_session_attendee'
   | 'devtools'
   // Needs alignment check
@@ -84,6 +85,9 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<LaunchSource> = new Se
   'auto_open',
   // Floating panel docking back to sidebar — tab already exists.
   'floating_panel_dock',
+  // Sidebar/floating handing off to the full-screen route — the user just
+  // came from the same content; no need to re-prompt for alignment.
+  'fullscreen_handoff',
   // Live session attendees follow the presenter's coordinated location.
   'live_session_attendee',
   // Dev tools surface — power-user; don't prompt during selector work.

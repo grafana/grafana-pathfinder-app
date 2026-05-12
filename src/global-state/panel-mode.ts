@@ -1,12 +1,35 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
+import type { PackageOpenInfo } from '../types/content-panel.types';
 
-export type PanelMode = 'sidebar' | 'floating';
+export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
 
 export interface PendingGuide {
-  url: string;
+  /**
+   * URL of the guide to open. Optional — `'editor'` handoffs carry no URL
+   * (the receiving surface calls `panel.openEditor()`).
+   */
+  url?: string;
   title: string;
+  /**
+   * Type discriminator so the consumer routes to the right open method.
+   * - `'learning-journey'` → `panel.openLearningJourney`
+   * - `'docs'` / `'interactive'` → `panel.openDocsPage`
+   * - `'editor'` → `panel.openEditor` (no URL)
+   *
+   * Mirrors the `type` field on the `auto-launch-tutorial` event.
+   */
+  type?: 'learning-journey' | 'docs' | 'interactive' | 'editor';
+  /**
+   * Carry the manifest + pre-resolved milestones across surface handoffs.
+   *
+   * Required for synthetic packages whose URL is not a recognised package
+   * URL (e.g. PR-tester journeys backed by raw GitHub URLs). Without this,
+   * the receiving surface falls through to plain `fetchContent` and the
+   * milestone toolbar / Alt+arrow navigation never appear.
+   */
+  packageInfo?: PackageOpenInfo;
 }
 
 /**
@@ -20,6 +43,7 @@ class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
   private _sidebarTabSnapshot: string | null = null;
   private _sidebarActiveTabSnapshot: string | null = null;
+  private _priorPath: string | null = null;
   /**
    * Get the current panel mode from localStorage.
    * Defaults to 'sidebar' for backward compatibility.
@@ -28,6 +52,9 @@ class PanelModeManager {
     const stored = localStorage.getItem(StorageKeys.PANEL_MODE);
     if (stored === 'floating') {
       return 'floating';
+    }
+    if (stored === 'fullscreen') {
+      return 'fullscreen';
     }
     return 'sidebar';
   }
@@ -48,8 +75,11 @@ class PanelModeManager {
 
     localStorage.setItem(StorageKeys.PANEL_MODE, mode);
 
-    if (mode === 'floating') {
-      // Close the Grafana extension sidebar to free the slot
+    if (mode === 'floating' || mode === 'fullscreen') {
+      // Close the Grafana extension sidebar to free the slot. Full screen
+      // also closes the sidebar so the two CombinedLearningJourneyPanel
+      // instances do not collide on the __DocsPluginActiveTabId window
+      // global or on tab storage writes.
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
     }
 
@@ -134,6 +164,29 @@ class PanelModeManager {
     }
     this._sidebarTabSnapshot = null;
     this._sidebarActiveTabSnapshot = null;
+  }
+
+  /**
+   * Capture the Grafana route the user was on right before entering full
+   * screen, so the explicit "Return to sidebar" button can land them back
+   * where they came from instead of the plugin home (My Learning).
+   *
+   * Captured at the same call sites as {@link snapshotSidebarTabs}: the
+   * sidebar / floating "switch to full screen" handlers, immediately
+   * before the route push to `/fullscreen`.
+   */
+  public capturePriorPath(path: string): void {
+    this._priorPath = path;
+  }
+
+  /**
+   * Consume and clear the captured prior path. Returns null if nothing
+   * was captured (e.g. cold-loaded `/fullscreen` URL with no entry route).
+   */
+  public consumePriorPath(): string | null {
+    const path = this._priorPath;
+    this._priorPath = null;
+    return path;
   }
 }
 

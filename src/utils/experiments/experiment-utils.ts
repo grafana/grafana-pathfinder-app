@@ -220,6 +220,39 @@ export function isSidebarAlreadyInUse(): boolean {
 }
 
 /**
+ * True when the Grafana extension sidebar is currently docked to a plugin
+ * OTHER than the one whose id is supplied. Returns false when the sidebar
+ * is free or already owned by `myPluginId`.
+ *
+ * Use this to decide whether Pathfinder may take over the sidebar (e.g.
+ * after auto-docking out of fullscreen) or whether it must fall back to
+ * floating mode so it doesn't steal the surface from another plugin
+ * (notably Grafana Assistant).
+ *
+ * Mirrors the parse pattern in `module.tsx` so the JSON-object and legacy
+ * plain-string formats are both handled — older Grafana versions stored
+ * the docked plugin id as a bare string instead of `{ pluginId: ... }`.
+ */
+export function isExtensionSidebarOwnedByOther(myPluginId: string): boolean {
+  try {
+    const raw = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
+    if (!raw) {
+      return false;
+    }
+    let dockedPluginId: string | undefined;
+    try {
+      const parsed = JSON.parse(raw) as { pluginId?: unknown };
+      dockedPluginId = typeof parsed.pluginId === 'string' ? parsed.pluginId : undefined;
+    } catch {
+      dockedPluginId = raw;
+    }
+    return Boolean(dockedPluginId) && dockedPluginId !== myPluginId;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check if current path is the onboarding flow
  */
 export function isOnboardingFlowPath(path: string): boolean {

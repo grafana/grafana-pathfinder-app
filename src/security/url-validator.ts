@@ -88,6 +88,18 @@ export function isAllowedContentUrl(urlString: string): boolean {
     return true;
   }
 
+  // Custom guides authored in the block editor and persisted to the
+  // Pathfinder backend (App Platform CRD). The `backend-guide:` scheme
+  // is internal — it resolves to a GET against our own backend keyed by
+  // resource name, never against an arbitrary URL — and `api:` is the
+  // public-shareable alias for the same lookup. Both are trusted-by-
+  // construction (no opaque host, no XSS surface) and must be allow-
+  // listed here so they survive `restoreTabsFromStorage`'s validator
+  // when /fullscreen mounts mid-handoff.
+  if (urlString.startsWith('backend-guide:') || urlString.startsWith('api:')) {
+    return true;
+  }
+
   // Grafana docs are always allowed
   if (isGrafanaDocsUrl(urlString)) {
     return true;

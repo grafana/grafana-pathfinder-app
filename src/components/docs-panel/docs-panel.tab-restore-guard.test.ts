@@ -71,6 +71,8 @@ jest.mock('../../docs-retrieval', () => ({
   isLastMilestone: jest.fn(),
   setPackageResolver: jest.fn(),
   injectJourneyExtrasIntoJsonGuide: jest.fn(),
+  isPackageContentUrl: jest.fn(() => false),
+  fetchPackageInfoFromUrl: jest.fn(async () => undefined),
 }));
 
 jest.mock('../../package-engine', () => ({
