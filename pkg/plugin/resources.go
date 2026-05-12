@@ -12,6 +12,7 @@ import (
 // Terminal I/O is handled entirely via Grafana Live (see stream.go).
 func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/coda/register", a.handleCodaRegister)
+	mux.HandleFunc("/coda/exec", a.handleCodaExec)
 	mux.HandleFunc("/vms", a.handleVMs)
 	mux.HandleFunc("/vms/", a.handleVMByID)
 	mux.HandleFunc("/sample-apps", a.handleSampleApps)
