@@ -114,7 +114,7 @@ describe('ChallengeBlock', () => {
     expect(post.mock.calls[0]![1]).toMatchObject({ command: 'echo one', mode: 'raw' });
     expect(post.mock.calls[1]![1]).toMatchObject({ command: 'echo two', mode: 'raw' });
     expect(post.mock.calls[2]![1]).toMatchObject({
-      command: expect.stringContaining('/var/run/pathfinder-ready'),
+      command: expect.stringContaining('/tmp/pathfinder-ready'),
       mode: 'raw',
     });
 

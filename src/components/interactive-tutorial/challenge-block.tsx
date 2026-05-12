@@ -24,8 +24,10 @@ import { checkPostconditions } from '../../requirements-manager';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
-const SENTINEL_WRITE_COMMAND =
-  'mkdir -p /var/run && touch /var/run/pathfinder-ready.tmp && mv /var/run/pathfinder-ready.tmp /var/run/pathfinder-ready';
+// /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
+// atomic temp+rename guarantees the gated coda-exit-zero check never sees a
+// partially-written sentinel.
+const SENTINEL_WRITE_COMMAND = 'touch /tmp/pathfinder-ready.tmp && mv /tmp/pathfinder-ready.tmp /tmp/pathfinder-ready';
 
 export type ChallengeState =
   | 'idle'

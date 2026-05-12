@@ -535,7 +535,7 @@ export interface JsonChallengeBlock {
   /**
    * Bash commands run sequentially via /coda/exec after the VM is ready
    * and before "Check my work" becomes available. A sentinel file at
-   * /var/run/pathfinder-ready is written automatically after these run,
+   * /tmp/pathfinder-ready is written automatically after these run,
    * gating the success criterion so it cannot pass prematurely.
    * Non-zero exit on any command aborts setup and surfaces the error.
    */

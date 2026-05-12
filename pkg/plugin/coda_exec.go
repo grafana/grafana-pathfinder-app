@@ -34,7 +34,11 @@ const (
 	codaExecDefaultTimeoutMs = 5000
 	codaExecMaxTimeoutMs     = 30000
 	codaExecMaxOutputBytes   = 32 * 1024
-	codaSentinelPath         = "/var/run/pathfinder-ready"
+	// codaSentinelPath lives under /tmp (not /var/run) because the SSH user
+	// is typically unprivileged. The sentinel is a UI-race guard, not a
+	// security boundary — the SSH user already has full shell access — so
+	// world-writable /tmp is appropriate.
+	codaSentinelPath = "/tmp/pathfinder-ready"
 )
 
 // CodaExecRequest is the JSON body for POST /coda/exec.

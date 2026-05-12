@@ -4,7 +4,7 @@
  * Runs the command against the caller's active terminal VM via the
  * `/coda/exec` plugin resource. Always uses gated mode, so the check cannot
  * pass before the challenge's setup phase has written the sentinel file at
- * `/var/run/pathfinder-ready`. This protects against verifications firing
+ * `/tmp/pathfinder-ready`. This protects against verifications firing
  * before setup completes (e.g., user clicks "Check my work" the instant the
  * terminal connects, before the environment has been broken).
  *
