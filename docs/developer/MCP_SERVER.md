@@ -156,6 +156,18 @@ The four `repository-tools.ts` tools are read-only against a public package CDN.
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 
+### Server-level instructions (initialize handshake)
+
+The server emits a non-empty `instructions` string on the MCP `initialize` handshake — see `src/cli/mcp/lib/server-instructions.ts`. Compliant clients (Claude Code, Claude Desktop, Cursor, Grafana Assistant via per-instance MCP config) surface this text as system-level guidance before any tool call. It is the only hint surface that reaches the model **before** tool selection.
+
+The current text covers three things, in order:
+
+1. **Routing vocabulary** — what kinds of user prompts should route to this server (single-source list in `src/cli/mcp/lib/agent-routing.ts`).
+2. **`reftarget` discipline** — never invent or guess Grafana DOM selectors. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.
+3. **Composition opinionation** — prefer separate sibling blocks over `multistep`; never write `action: noop` steps as filler.
+
+Keep the string tight — every connected client pays this length on every session. The unit test in `src/cli/mcp/lib/__tests__/server-instructions.test.ts` enforces a 30-line ceiling; if a future edit needs more space, prefer moving content to `pathfinder_authoring_start` (returned in a tool call, paid once per session) over expanding this string.
+
 ### Response `summary` field
 
 Every mutation, creation, inspection, and validation tool response includes a `summary` field alongside `artifact`:
@@ -174,6 +186,36 @@ Every mutation, creation, inspection, and validation tool response includes a `s
 ```
 
 `summary` is a compact ordered tree of every block (`TreeNode[]` from `src/cli/utils/package-io/summary.ts`). Agents should read this for navigation and id lookup instead of re-parsing `artifact.content` after every mutation — strictly additive (the full artifact still ships) and a meaningful win on token cost. `pathfinder_finalize_for_app_platform` does not include a summary because it is the terminal call.
+
+### Outcome warnings (`warnings[]`)
+
+Success responses may include an optional `warnings` array carrying soft, non-fatal feedback that the agent (or a human reviewer) should consider. The shape:
+
+```jsonc
+{
+  "status": "ok",
+  "artifact": { ... },
+  "summary": [ ... ],
+  "warnings": [
+    {
+      "code": "UNVERIFIED_SELECTOR",
+      "message": "reftarget set without verification. ...",
+      "path": "blocks[2].steps[0]/reftarget"
+    }
+  ]
+}
+```
+
+Codes are stable strings — the registry below is authoritative; new codes are added in lockstep with `src/cli/utils/warnings.ts`. Clients should render warnings prominently (text mode does so by default; quiet mode suppresses for one-line invariants). Warnings are **never** errors — the call succeeded, and the agent should not retry on a warning alone.
+
+**Code registry:**
+
+| Code                         | Emitted by                                                                                | Meaning                                                                                                                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MULTISTEP_COMPOSITION_HINT` | `runAddBlock` on `type: 'multistep'` append                                               | Composition nudge. `multistep` is for tightly-coupled ordered steps; prefer separate sibling blocks for loose sequences, and never use `action: noop` as filler.           |
+| `UNVERIFIED_SELECTOR`        | `runAddBlock` / `runAddStep` / `runEditBlock` whenever a non-empty `reftarget` is written | The CLI cannot verify a selector against the live Grafana DOM. Confirm against a running instance before publishing — wrong selectors silently break the guide at runtime. |
+
+The MCP layer surfaces `warnings` verbatim through `outcomeResult` — no transformation. CLI users see the same payload via `--format json` and a `Warnings:` block in text mode (suppressed in `--quiet`).
 
 ### Access log fields
 

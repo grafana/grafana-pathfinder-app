@@ -6,9 +6,9 @@
 > Branch: `mcp-hardening-routing-and-composition`.
 > Tracking issue: _to be filed_.
 
-**Status:** In progress
+**Status:** Complete
 **Started:** 2026-05-12
-**Completed:** _YYYY-MM-DD_
+**Completed:** 2026-05-12
 
 ---
 
@@ -96,9 +96,9 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-1: ...`)
 
 ### Docs + cross-cutting
 
-- [ ] **9. Integration tests.** Add to `src/cli/mcp/__tests__/` an end-to-end test that drives the MCP through `_start` → `create_package` → `add_block(markdown)` → `add_block(multistep)` → `add_step(reftarget=…)` and asserts: (a) `_start` payload contains `triggers` and `compositionRules`; (b) `add_block(multistep)` outcome contains `MULTISTEP_COMPOSITION_HINT`; (c) `add_step` with `reftarget` contains `UNVERIFIED_SELECTOR`; (d) MCP `initialize` response includes server `instructions`.
-- [ ] **10. Update `docs/developer/MCP_SERVER.md`.** Add a "Warnings" section documenting the shape, the two codes shipped in this slice, and how clients should render them. Add a "Server instructions" section noting layer-3 hint surface and what it contains.
-- [ ] **11. Update `docs/design/MCP-AGENT-UX-HARDENING.md`.** For issues #3, #7, #8: append "**Status (YYYY-MM-DD):** addressed in [slice 1](./phases/mcp-hardening-1-routing-and-composition.md)." Append decision-log entries with the OQ4/OQ6/OQ7 resolutions chosen here.
+- [x] **9. Integration tests.** ✓ _Complete (2026-05-12)._ New dedicated test file `src/cli/mcp/__tests__/hardening-flow.test.ts` walks the canonical agent flow (`_start` → `create_package` → `add_block(markdown)` → `add_block(multistep)` → `add_step(reftarget=…)`) and asserts every hardening surface fires at the right layer: layer 3 (`getInstructions()`), layer 2 (`_start.triggers` + `_start.compositionRules`), outcome-time `MULTISTEP_COMPOSITION_HINT` on the multistep add, outcome-time `UNVERIFIED_SELECTOR` on the step add with `reftarget`. Also includes a markdown-control assertion to confirm the warning channel doesn't false-fire on unrelated calls. The focused per-surface tests in `server.test.ts` / `commands.test.ts` remain; this file is the composition guard.
+- [x] **10. Update `docs/developer/MCP_SERVER.md`.** ✓ _Complete (2026-05-12)._ Added two new sections under "Tool surface": **Server-level instructions** describes the layer-3 handshake surface, summarizes what the string covers (routing / `reftarget` discipline / composition), and points at the 30-line ceiling enforced by the unit test. **Outcome warnings** documents the `warnings[]` shape on success responses, includes a code registry table (`MULTISTEP_COMPOSITION_HINT`, `UNVERIFIED_SELECTOR`) with emitting runner and meaning, and clarifies that warnings are never errors and never trigger retry. Prettier reformatted the docs table.
+- [x] **11. Update `docs/design/MCP-AGENT-UX-HARDENING.md`.** ✓ _Complete (2026-05-12)._ Added a `**Status (2026-05-12).**` annotation to each of issues #3, #7, and #8 naming the slice and summarizing what landed for each. Updated OQ4, OQ6, and OQ7 with `_Resolved 2026-05-12 (slice 1)._` prefixes pointing at this slice's decision log. Replaced the empty Decision log section with a slice-1 summary entry that cross-references the per-issue status notes and lists the deferred items (M4 catalog, #1/#2/#4/#5, Assistant-team rollout coordination).
 
 ### Test plan
 
@@ -155,10 +155,12 @@ _Empty at draft._
 
 ## Handoff to next phase
 
-_Fill at exit. Anchor the next hardening slice (#1 ETag / #2 YouTube / #4 step ids) to what this slice now provides:_
-
-- _M1 layer 3 is now load-bearing — next slice can extend the `SERVER_INSTRUCTIONS` text without redesigning the wiring._
-- _M2 `warnings[]` is now the canonical place for soft hints — next slice's `ARTIFACT_MUTATED` (#1) and YouTube auto-normalize feedback (#2) plug in here._
-- _Trigger vocabulary lives in `agent-routing.ts` — extend, don't rewrite, when telemetry suggests new terms._
-- _`compositionRules` length budget enforced informally at ~15 lines — if next slice wants to add rules, weigh against the separate-tool escape hatch from OQ7._
-- _Selector catalog (M4) is still deferred; the `UNVERIFIED_SELECTOR` warning is the floor until OQ3 is answered._
+- **M2 `warnings[]` is now the canonical place for soft hints.** `SuccessOutcome.warnings: OutcomeWarning[]` is wired end-to-end (CLI text + JSON, MCP `outcomeResult` passthrough). Next slice's `ARTIFACT_MUTATED` (#1) and YouTube auto-normalize feedback (#2) plug in here without further plumbing — just add a constructor to `src/cli/utils/warnings.ts` and the code registry table in `docs/developer/MCP_SERVER.md`.
+- **M1 layer 3 is load-bearing.** `buildServer` passes `instructions` through `ServerOptions`; extending the string is a single edit in `src/cli/mcp/lib/server-instructions.ts`. A unit test enforces a 30-line ceiling; if you want to add a 4th rule, weigh against moving content to `_start` (paid once per session, not every connect) first.
+- **Trigger vocabulary single-sourced in `agent-routing.ts`.** Four readonly arrays (phrases, verbs, nouns, anti-routing) consumed by both `server-instructions.ts` (layer 3) and `tools/authoring-start.ts` (layer 2). Extend; don't rewrite. The 2026-05-08 Grafana Assistant session in hardening-doc issue #7 is the canonical reference.
+- **`compositionRules` length budget informally enforced at 15 rules; hard ceiling 20.** Ships at 11. The escape hatch for further growth (separate `pathfinder_authoring_best_practices` tool) is documented above the constant in `authoring-start.ts`. Triggering it requires a deliberate decision; default is to keep inline.
+- **Selector catalog (M4) deferred.** Still hinges on OQ3 (catalog source of truth). Until then, the `UNVERIFIED_SELECTOR` warning is the floor — agents that write a reftarget get a soft signal even though the CLI cannot verify it. Issue #3 closed at the four-layer-reinforcement bar; selector catalog would raise the floor further by making the right thing easy.
+- **Edit-block warning path uses `<id:X>/reftarget` form**, distinct from add-block / add-step which use `<position>/reftarget`. Anchored on the block id because edits don't have positional addresses. Reviewers grepping for the warning need to expect both shapes.
+- **Hardening doc statuses updated.** Issues #3 / #7 / #8 in `docs/design/MCP-AGENT-UX-HARDENING.md` now carry **Status (2026-05-12)** annotations and OQ4/OQ6/OQ7 are marked resolved. Decision rationale lives in this slice's decision log; the hardening doc points back here rather than duplicating content.
+- **8 atomic commits prefixed `MCP-HARDEN-1:`.** `git log --grep 'MCP-HARDEN-1'` is the audit trail.
+- **376 CLI tests pass.** The composition guard at `src/cli/mcp/__tests__/hardening-flow.test.ts` is the smoke test for this slice — drive that test if you change any hint surface.
