@@ -20,9 +20,15 @@
       ],
       "successCriteria": "coda-exit-zero:curl -sf 'http://localhost:9090/api/v1/query?query=up' | jq -e '.data.result | length > 0 and (any(.[]; .value[1] == \"1\"))'",
       "hintLevels": [
-        { "text": "Start by checking whether Alloy is actually running. `systemctl status alloy` is a good first stop." },
-        { "text": "Alloy is running but its config might be wrong. Open `/etc/alloy/config.alloy` and look at the scrape target's URL." },
-        { "text": "Node Exporter listens on port `9100`. The Alloy config currently points somewhere else. Fix the URL, then `sudo systemctl restart alloy`." }
+        {
+          "text": "Start by checking whether Alloy is actually running. `systemctl status alloy` is a good first stop."
+        },
+        {
+          "text": "Alloy is running but its config might be wrong. Open `/etc/alloy/config.alloy` and look at the scrape target's URL."
+        },
+        {
+          "text": "Node Exporter listens on port `9100`. The Alloy config currently points somewhere else. Fix the URL, then `sudo systemctl restart alloy`."
+        }
       ],
       "failureMessage": "Prometheus still has no live `up` series. Either Alloy isn't scraping, isn't running, or its remote_write isn't reaching Prometheus."
     },

@@ -215,7 +215,11 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }, [setupCommands]);
 
   // Watch terminal status while we're trying to connect. When it goes live,
-  // kick off setup.
+  // kick off setup. This effect reacts to an external system (the terminal
+  // connection state owned by useTerminalLive), which is the legitimate use
+  // of useEffect — setState here is the correct way to mirror that state
+  // transition into the challenge's own lifecycle.
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronize challenge state with external terminal connection lifecycle */
   useEffect(() => {
     if (state !== 'connecting') {
       return;
@@ -227,6 +231,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setState('setup-failed');
     }
   }, [state, terminalCtx?.status, runSetup]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleStart = useCallback(() => {
     if (!terminalCtx) {
