@@ -10,7 +10,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
-import { PATHFINDER_NOT_FOR, PATHFINDER_TRIGGER_PHRASES } from '../lib/agent-routing';
+import { PATHFINDER_DOMAINS, PATHFINDER_NOT_FOR, PATHFINDER_TRIGGER_PHRASES } from '../lib/agent-routing';
 import { textResult } from './result';
 
 const AUTHORING_CONTEXT = {
@@ -21,9 +21,11 @@ const AUTHORING_CONTEXT = {
   // server-level `instructions` string in `lib/server-instructions.ts`, so an
   // agent that reached this tool via layer-3 hints sees consistent vocabulary,
   // and clients that don't render `initialize.instructions` still get the
-  // routing signal here.
+  // routing signal here. `domains` added in slice 3 (2026-05-12) so the
+  // agent has explicit vocabulary for product-area follow-up prompts.
   triggers: [...PATHFINDER_TRIGGER_PHRASES],
   notFor: [...PATHFINDER_NOT_FOR],
+  domains: [...PATHFINDER_DOMAINS],
   workflow: [
     '1. Call pathfinder_create_package with a title to get a fresh artifact ({ content, manifest }).',
     '2. Add blocks via pathfinder_add_block (and pathfinder_add_step / pathfinder_add_choice for container children). Pass the artifact in and use the artifact returned in the response for the next call.',

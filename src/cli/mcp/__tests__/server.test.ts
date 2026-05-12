@@ -78,15 +78,27 @@ describe('MCP server', () => {
     const { client, close } = await spinUp();
     try {
       const ctx = await callTool(client, 'pathfinder_authoring_start');
-      // `triggers` and `notFor` reaffirm routing for agents that already
-      // reached the MCP, including clients that don't render the layer-3
-      // server `instructions`. Both come from `lib/agent-routing.ts` — see
-      // the matching layer-3 assertions earlier in this file.
+      // `triggers`, `notFor`, and `domains` reaffirm routing for agents that
+      // already reached the MCP, including clients that don't render the
+      // layer-3 server `instructions`. All three come from
+      // `lib/agent-routing.ts` — see the matching layer-3 assertions
+      // earlier in this file.
       expect(Array.isArray(ctx.triggers)).toBe(true);
       expect((ctx.triggers as string[]).length).toBeGreaterThan(0);
       expect(ctx.triggers).toContain('create a pathfinder');
+      // Slice 3 — verb × asset-noun expansion. The looser phrases must
+      // land so any write/edit/create verb + content/guide/tutorial noun
+      // routes here.
+      expect(ctx.triggers).toContain('write content');
+      expect(ctx.triggers).toContain('create a tutorial');
+      expect(ctx.triggers).toContain('author a guide');
       expect(Array.isArray(ctx.notFor)).toBe(true);
       expect((ctx.notFor as string[]).length).toBeGreaterThan(0);
+      // Slice 3 — domain vocabulary so an agent already in the MCP can
+      // reaffirm routing when product-area followups come in.
+      expect(Array.isArray(ctx.domains)).toBe(true);
+      expect(ctx.domains).toContain('Prometheus');
+      expect(ctx.domains).toContain('Loki');
     } finally {
       await close();
     }

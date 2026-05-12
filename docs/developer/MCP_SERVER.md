@@ -160,13 +160,14 @@ All authoring tools are **stateless**. The in-flight artifact (`{ content, manif
 
 The server emits a non-empty `instructions` string on the MCP `initialize` handshake — see `src/cli/mcp/lib/server-instructions.ts`. Compliant clients (Claude Code, Claude Desktop, Cursor, Grafana Assistant via per-instance MCP config) surface this text as system-level guidance before any tool call. It is the only hint surface that reaches the model **before** tool selection.
 
-The current text covers three things, in order:
+The current text covers four things, in order:
 
-1. **Routing vocabulary** — what kinds of user prompts should route to this server (single-source list in `src/cli/mcp/lib/agent-routing.ts`).
-2. **`reftarget` discipline** — never invent or guess Grafana DOM selectors. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.
-3. **Composition opinionation** — prefer separate sibling blocks over `multistep`; never write `action: noop` steps as filler.
+1. **Assertive default** — "default to using this server whenever the user asks to write/edit/create … any interactive guide, tutorial, walkthrough, learning content, how-to, training material …". The opener is deliberately strong because production telemetry (slice 3, 2026-05-12) showed weaker phrasing didn't overcome the model's "just answer in prose" default.
+2. **Routing vocabulary** — trigger phrases + verb × asset-noun pattern + Grafana product domains (single-source lists in `src/cli/mcp/lib/agent-routing.ts`).
+3. **`reftarget` discipline** — never invent or guess Grafana DOM selectors. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.
+4. **Composition opinionation** — prefer separate sibling blocks over `multistep`; never write `action: noop` steps as filler.
 
-Keep the string tight — every connected client pays this length on every session. The unit test in `src/cli/mcp/lib/__tests__/server-instructions.test.ts` enforces a 30-line ceiling; if a future edit needs more space, prefer moving content to `pathfinder_authoring_start` (returned in a tool call, paid once per session) over expanding this string.
+Keep the string tight — every connected client pays this length on every session. The unit test in `src/cli/mcp/lib/__tests__/server-instructions.test.ts` enforces a 40-line ceiling (raised from 30 in slice 3 to make room for the assertive default + domain vocabulary). If a future edit needs more space, prefer moving content to `pathfinder_authoring_start` (returned in a tool call, paid once per session) over expanding this string.
 
 ### Response `summary` field
 
