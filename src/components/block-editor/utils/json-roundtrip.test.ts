@@ -451,6 +451,31 @@ describe('JSON Round-trip Conversion', () => {
       expect(quiz.completionMode).toBe('max-attempts');
       expect(quiz.maxAttempts).toBe(3);
     });
+
+    test('quiz preserves shuffle and pinned fields', () => {
+      const guide: JsonGuide = {
+        ...baseGuide,
+        blocks: [
+          {
+            type: 'quiz',
+            question: 'Order matters here.',
+            shuffle: false,
+            choices: [
+              { id: 'a', text: 'Free', correct: true },
+              { id: 'b', text: 'Pro' },
+              { id: 'c', text: 'Advanced' },
+              { id: 'd', text: 'All of the above', pinned: true, hint: 'Only one is correct.' },
+            ],
+          },
+        ],
+      };
+      const { result } = roundTrip(guide);
+      expect(result.isValid).toBe(true);
+      const quiz = result.guide?.blocks[0] as JsonQuizBlock;
+      expect(quiz.shuffle).toBe(false);
+      expect(quiz.choices[3]!.pinned).toBe(true);
+      expect(quiz.choices[0]!.pinned).toBeUndefined();
+    });
   });
 
   describe('input blocks', () => {

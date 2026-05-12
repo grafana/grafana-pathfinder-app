@@ -444,6 +444,14 @@ describe('appendChoice', () => {
     }
     throw new Error('expected throw');
   });
+
+  it('preserves the pinned flag on the appended choice', () => {
+    const content = baseContent([quiz('q1', [{ id: 'a', text: 'A', correct: true }])]);
+    appendChoice(content, { id: 'd', text: 'All of the above', pinned: true }, 'q1');
+    const choices = (content.blocks[0] as JsonQuizBlock).choices;
+    expect(choices).toHaveLength(2);
+    expect(choices[1]!.pinned).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
