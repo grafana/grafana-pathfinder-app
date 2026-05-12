@@ -285,6 +285,36 @@ describe('MCP server', () => {
     }
   });
 
+  it('surfaces UNVERIFIED_SELECTOR through pathfinder_add_step (issue #3, M2 outcome-time)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'selector test', type: 'guide' });
+      let artifact = created.artifact!;
+      const withMs = await callTool(client, 'pathfinder_add_block', {
+        artifact,
+        type: 'multistep',
+        explicitId: 'ms-1',
+        fields: { content: 'walk' },
+      });
+      artifact = withMs.artifact!;
+      const stepped = await callTool(client, 'pathfinder_add_step', {
+        artifact,
+        parentId: 'ms-1',
+        fields: { action: 'button', reftarget: '[data-testid="save"]', description: 'Click Save' },
+      });
+      expect(stepped.status).toBe('ok');
+      // End-to-end: warning is emitted by `runAddStep`, rides on the CLI's
+      // `CommandOutcome`, and the MCP forwards it via `outcomeResult` so a
+      // connected client sees it in the tool response.
+      const warnings = stepped.warnings as Array<{ code: string; path?: string }> | undefined;
+      const unverified = warnings?.find((w) => w.code === 'UNVERIFIED_SELECTOR');
+      expect(unverified).toBeDefined();
+      expect(unverified?.path).toContain('reftarget');
+    } finally {
+      await close();
+    }
+  });
+
   it('surfaces MULTISTEP_COMPOSITION_HINT through pathfinder_add_block (issue #8, M2 outcome-time)', async () => {
     const { client, close } = await spinUp();
     try {

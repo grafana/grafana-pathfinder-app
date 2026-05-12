@@ -16,7 +16,6 @@
  *   `runEditBlock` whenever a non-empty `reftarget` is written. The CLI
  *   cannot verify selectors against the live Grafana DOM, so this is a
  *   floor-raising signal, not a validation pass (hardening doc issue #3).
- *   _Added in task 8._
  */
 
 import type { OutcomeWarning } from './output';
@@ -35,4 +34,37 @@ export function multistepCompositionHint(): OutcomeWarning {
     message:
       'multistep is for tightly-coupled ordered steps. Prefer separate sibling blocks for loose sequences, and never write `action: noop` steps as filler — write a markdown block instead.',
   };
+}
+
+/**
+ * Floor-raising signal fired when a `reftarget` field is written. Targets
+ * the failure mode in hardening doc issue #3 ("agents invent selectors
+ * because the CLI can't tell verified from invented and the runtime no-ops
+ * silently"). The signal is intentionally soft — the CLI does not have the
+ * ground truth needed to convert this into a validation error, so this
+ * lives on `warnings[]` instead. Pairs with the description-hardening on
+ * `reftarget` fields (task 7) and the layer-3 / layer-2 "never invent
+ * selectors" rules (tasks 2 / 5).
+ *
+ * `path` is a free-form locator string (e.g. `blocks[2]/reftarget`,
+ * `blocks[2].steps[0]/reftarget`, `<id>/reftarget`) describing where the
+ * write landed in the artifact, so a reviewer can grep for the warning and
+ * find the field without re-parsing.
+ */
+export function unverifiedSelectorWarning(path: string): OutcomeWarning {
+  return {
+    code: 'UNVERIFIED_SELECTOR',
+    message:
+      'reftarget set without verification. The CLI cannot confirm a selector matches the live Grafana DOM — confirm against a running Grafana instance before publishing. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.',
+    path,
+  };
+}
+
+/**
+ * Internal predicate: a value is a "non-empty selector" when it is a string
+ * with at least one non-whitespace character. Centralized so the three
+ * `runX` consumers all decide the same way.
+ */
+export function isNonEmptySelector(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }

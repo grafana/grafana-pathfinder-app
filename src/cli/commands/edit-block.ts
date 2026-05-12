@@ -14,10 +14,12 @@ import {
   readOutputOptions,
   renderError,
   type CommandOutcome,
+  type OutcomeWarning,
 } from '../utils/output';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
 
 export const editBlockCommand = new Command('edit-block')
   .description('Update fields on an existing block by id')
@@ -175,6 +177,15 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     };
   }
 
+  // Issue #3 — fire the unverified-selector signal only when the patch
+  // itself wrote a non-empty `reftarget`. Edits that touch other fields on
+  // a block whose pre-existing reftarget is unchanged do not re-arm this
+  // warning (the original write was the moment of risk).
+  const warnings: OutcomeWarning[] = [];
+  if (changed.includes('reftarget') && isNonEmptySelector(patch.reftarget)) {
+    warnings.push(unverifiedSelectorWarning(`<id:${args.id}>/reftarget`));
+  }
+
   return {
     status: 'ok',
     summary: `Updated ${blockType} block "${args.id}" (changed: ${changed.join(', ')})`,
@@ -185,6 +196,7 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
       'package valid': true,
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
     data: {
       type: blockType,
       id: args.id,

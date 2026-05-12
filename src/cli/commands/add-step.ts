@@ -16,8 +16,10 @@ import {
   readOutputOptions,
   renderError,
   type CommandOutcome,
+  type OutcomeWarning,
 } from '../utils/output';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
 
 export const addStepCommand = new Command('add-step')
   .description('Append a step to a multistep or guided block')
@@ -90,6 +92,13 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
     };
   }
 
+  // Issue #3 — surface the soft "this reftarget wasn't verified" signal so a
+  // reviewer can grep for the warning. See `unverifiedSelectorWarning`.
+  const warnings: OutcomeWarning[] = [];
+  if (isNonEmptySelector((candidate.data as { reftarget?: unknown }).reftarget)) {
+    warnings.push(unverifiedSelectorWarning(`${position}/reftarget`));
+  }
+
   return {
     status: 'ok',
     summary: `Added step (action: ${String(candidate.data.action)}) to "${args.parentId}" at ${position}`,
@@ -99,6 +108,7 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
       'package valid': true,
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
     hints: [
       `Add another step with: pathfinder-cli add-step ${args.dir} --parent ${args.parentId} --action <action>`,
       `Or move on with: pathfinder-cli add-block <type> ${args.dir}`,

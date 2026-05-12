@@ -22,7 +22,7 @@ import {
   type OutcomeWarning,
 } from '../utils/output';
 import { getSchemaRequiredFlagNames, parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
-import { multistepCompositionHint } from '../utils/warnings';
+import { isNonEmptySelector, multistepCompositionHint, unverifiedSelectorWarning } from '../utils/warnings';
 import {
   EMPTY_CHOICES_MESSAGE,
   EMPTY_CONDITIONS_MESSAGE,
@@ -298,12 +298,20 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
     };
   }
 
-  // Composition nudge — only on actual append, not idempotent no-ops. Issue
-  // #8 in the hardening doc: agents default to `multistep` as a one-size
-  // container even when the steps would compose better as siblings.
+  // Soft outcome-time hints — only on actual append, not idempotent no-ops.
   const warnings: OutcomeWarning[] = [];
-  if (appended && args.type === 'multistep') {
-    warnings.push(multistepCompositionHint());
+  if (appended) {
+    // Issue #8: agents default to `multistep` even when steps would compose
+    // better as siblings.
+    if (args.type === 'multistep') {
+      warnings.push(multistepCompositionHint());
+    }
+    // Issue #3: the CLI cannot verify a selector against the live Grafana
+    // DOM, but it CAN tell that a reftarget was written. Surface the soft
+    // signal so a careful reviewer can grep for it.
+    if (isNonEmptySelector(projected.reftarget)) {
+      warnings.push(unverifiedSelectorWarning(`${position}/reftarget`));
+    }
   }
 
   return {
