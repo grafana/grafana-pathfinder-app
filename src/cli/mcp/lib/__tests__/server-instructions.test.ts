@@ -25,9 +25,9 @@ describe('agent-routing constants', () => {
   it('exports non-empty use-case verbs and nouns so server-instructions can compose', () => {
     expect(PATHFINDER_USE_CASE_VERBS.length).toBeGreaterThan(0);
     expect(PATHFINDER_NOUNS.length).toBeGreaterThan(0);
-    // The first noun is the product name itself; downstream composition in
-    // `server-instructions.ts` slices off index 0 to avoid awkward
-    // "Grafana Pathfinder / Pathfinder" duplication.
+    // The first noun is the product name itself — pin it as a stability
+    // anchor so a future edit that reorders the list doesn't accidentally
+    // drop the canonical product name from the head position.
     expect(PATHFINDER_NOUNS[0]).toBe('Pathfinder');
   });
 

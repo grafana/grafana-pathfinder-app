@@ -48,7 +48,10 @@ export function normalizeBlockInput(
 // video — YouTube URL forms
 // ---------------------------------------------------------------------------
 
-const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{6,}$/;
+// YouTube video ids are 11 chars in practice. We accept 6-15 to tolerate any
+// historical or future variant without matching pathologically long strings —
+// the upper bound rejects junk that happens to share YouTube's alphabet.
+const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{6,15}$/;
 
 /**
  * Recognize the three common non-embed YouTube URL forms and return the

@@ -44,11 +44,11 @@ for (const schema of Object.values(BLOCK_SCHEMA_MAP)) {
   registerSchemaOptions(editBlockCommand, schema, { skipExisting: true, forceOptional: true });
 }
 
-// `--id` is in `id` is in the forbid-list inside editBlock (block-level rename
-// requires updating every reference in the package, which is non-trivial),
-// so hide it from --help. Keeping the flag registered (rather than removing)
-// preserves Commander parsing — passing `--id` still produces a structured
-// error from editBlock rather than Commander's "unknown option".
+// `--id` is in the forbid-list inside editBlock (block-level rename requires
+// updating every reference in the package, which is non-trivial), so hide it
+// from --help. Keeping the flag registered (rather than removing) preserves
+// Commander parsing — passing `--id` still produces a structured error from
+// editBlock rather than Commander's "unknown option".
 const idOption = editBlockCommand.options.find((o) => o.long === '--id');
 if (idOption) {
   idOption.hideHelp(true);
