@@ -232,6 +232,164 @@ describe('InteractiveQuiz: shuffle behavior', () => {
   });
 });
 
+// ─── Stability across re-renders ─────────────────────────────────────────────
+
+describe('InteractiveQuiz: render-order stability', () => {
+  beforeEach(() => {
+    resetQuizCounter();
+  });
+
+  const choices: QuizChoice[] = [
+    { id: 'a', text: 'Alpha', correct: false },
+    { id: 'b', text: 'Bravo', correct: true },
+    { id: 'c', text: 'Charlie', correct: false },
+    { id: 'd', text: 'Delta', correct: false },
+  ];
+
+  const readChoiceOrder = () =>
+    screen
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+      .filter((t): t is string => !!t && /^(Alpha|Bravo|Charlie|Delta)$/.test(t));
+
+  it('does not reshuffle when the parent re-renders with a new choices array reference', () => {
+    const spy = jest.spyOn(Math, 'random');
+    const seq = mulberry32(7);
+    spy.mockImplementation(() => seq());
+
+    try {
+      // Fresh array reference on each render — mirrors a parent that does not memoize.
+      const { rerender } = render(
+        <InteractiveQuiz question="Q" choices={[...choices]} shuffle={true}>
+          Q
+        </InteractiveQuiz>
+      );
+      const initial = readChoiceOrder();
+
+      for (let i = 0; i < 5; i++) {
+        rerender(
+          <InteractiveQuiz question="Q" choices={[...choices]} shuffle={true}>
+            Q
+          </InteractiveQuiz>
+        );
+        expect(readChoiceOrder()).toEqual(initial);
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('preserves the correct/completed state and rendered order through a parent re-render', () => {
+    const spy = jest.spyOn(Math, 'random');
+    const seq = mulberry32(7);
+    spy.mockImplementation(() => seq());
+
+    try {
+      const { rerender } = render(
+        <InteractiveQuiz question="Q" choices={[...choices]} shuffle={true}>
+          Q
+        </InteractiveQuiz>
+      );
+      const orderBefore = readChoiceOrder();
+
+      // Answer correctly.
+      fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
+      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
+      expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
+
+      // Force a parent re-render with an unrelated prop change (and a fresh choices reference).
+      rerender(
+        <InteractiveQuiz question="Q (edited)" choices={[...choices]} shuffle={true}>
+          Q (edited)
+        </InteractiveQuiz>
+      );
+
+      // Completion message still shown.
+      expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
+      // Rendered order is unchanged — the answered choice stays where the user clicked it.
+      expect(readChoiceOrder()).toEqual(orderBefore);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('preserves the incorrect/hint state and rendered order through a parent re-render', () => {
+    const withHints: QuizChoice[] = [
+      { id: 'a', text: 'Alpha', correct: false, hint: 'Alpha hint' },
+      { id: 'b', text: 'Bravo', correct: true },
+      { id: 'c', text: 'Charlie', correct: false, hint: 'Charlie hint' },
+    ];
+
+    const spy = jest.spyOn(Math, 'random');
+    const seq = mulberry32(7);
+    spy.mockImplementation(() => seq());
+
+    try {
+      const { rerender } = render(
+        <InteractiveQuiz question="Q" choices={[...withHints]} shuffle={true}>
+          Q
+        </InteractiveQuiz>
+      );
+      const orderBefore = screen
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+        .filter((t): t is string => !!t && /^(Alpha|Bravo|Charlie)$/.test(t));
+
+      // Pick a wrong answer so the hint surfaces.
+      fireEvent.click(screen.getByRole('button', { name: 'Charlie' }));
+      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
+      expect(screen.getByText('Charlie hint')).toBeInTheDocument();
+
+      // Force a re-render with a new choices reference.
+      rerender(
+        <InteractiveQuiz question="Q" choices={[...withHints]} shuffle={true}>
+          Q
+        </InteractiveQuiz>
+      );
+
+      // Hint still visible, order unchanged.
+      expect(screen.getByText('Charlie hint')).toBeInTheDocument();
+      const orderAfter = screen
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+        .filter((t): t is string => !!t && /^(Alpha|Bravo|Charlie)$/.test(t));
+      expect(orderAfter).toEqual(orderBefore);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('reshuffles when resetTrigger increments', () => {
+    // Use a seed where the first shuffle differs from the second.
+    const spy = jest.spyOn(Math, 'random');
+    const seq = mulberry32(7);
+    spy.mockImplementation(() => seq());
+
+    try {
+      const { rerender } = render(
+        <InteractiveQuiz question="Q" choices={choices} shuffle={true} resetTrigger={0}>
+          Q
+        </InteractiveQuiz>
+      );
+      const orderBefore = readChoiceOrder();
+
+      rerender(
+        <InteractiveQuiz question="Q" choices={choices} shuffle={true} resetTrigger={1}>
+          Q
+        </InteractiveQuiz>
+      );
+      const orderAfter = readChoiceOrder();
+
+      // Both orders contain the same set of choices.
+      expect(new Set(orderAfter)).toEqual(new Set(orderBefore));
+      // The reset effect drew fresh values from the RNG, so the order changed.
+      expect(orderAfter).not.toEqual(orderBefore);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 // ─── Deterministic RNG for tests ─────────────────────────────────────────────
 
 /**

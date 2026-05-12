@@ -150,6 +150,14 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   const [isRevealed, setIsRevealed] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
 
+  // Display order. Computed ONCE on mount via lazy init so a parent re-render
+  // cannot reorder choices mid-quiz. Re-shuffled only when the parent triggers
+  // a reset (see effect below). Selection, completion, hints, analytics, and
+  // test IDs are all id-keyed, so display-order changes never alter quiz state.
+  const [displayChoices, setDisplayChoices] = useState<QuizChoice[]>(() =>
+    shuffle ? shuffleQuizChoices(choices) : choices
+  );
+
   // Requirements checking
   const {
     isEnabled,
@@ -166,6 +174,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   });
 
   // Handle reset trigger from parent section.
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset quiz state when the parent section increments resetTrigger */
   useEffect(() => {
     if (resetTrigger && resetTrigger > 0) {
       setSelectedIds(new Set());
@@ -174,30 +183,20 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       setLastResult('none');
       setShowHint(null);
       setIsRevealed(false);
+      // Re-shuffle on retry so the user can't lean on remembered positions.
+      setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
       if (resetStep) {
         resetStep();
       }
     }
   }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Compute effective completion state
   const isCompleted = parentCompleted || stepCompleted || isLocallyCompleted;
 
   // Get correct answer IDs
   const correctIds = useMemo(() => new Set(choices.filter((c) => c.correct).map((c) => c.id)), [choices]);
-
-  // Compute display order. When `shuffle` is true, reshuffle on mount and any
-  // time `resetTrigger` increments (so retry yields a fresh order). Selection,
-  // completion, hints, analytics, and test IDs are all id-keyed, so changing
-  // render order is safe.
-  const displayChoices = useMemo(() => {
-    if (!shuffle) {
-      return choices;
-    }
-    return shuffleQuizChoices(choices);
-    // resetTrigger is intentional: a new value forces a reshuffle on retry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [choices, shuffle, resetTrigger]);
 
   // Compute displayed selection: show correct answers if quiz is completed but no selection made yet
   // This handles the case where quiz was completed in a previous session (page refresh)
