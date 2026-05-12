@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -59,9 +60,17 @@ func (a *App) handleCodaExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := r.Header.Get("X-Grafana-User")
+	// User identity comes from the plugin SDK's context (populated by Grafana
+	// for authenticated resource calls). Fall back to the X-Grafana-User
+	// header for setups where the SDK context isn't populated. Both
+	// ultimately resolve to the same Grafana login that the stream handler
+	// uses to key streamSessions.
+	user := userLoginFromContext(r.Context())
 	if user == "" {
-		a.writeError(w, "Grafana user header missing", http.StatusUnauthorized)
+		user = r.Header.Get("X-Grafana-User")
+	}
+	if user == "" {
+		a.writeError(w, "Could not identify Grafana user for this request", http.StatusUnauthorized)
 		return
 	}
 
@@ -113,6 +122,17 @@ func (a *App) handleCodaExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.writeJSON(w, resp, http.StatusOK)
+}
+
+// userLoginFromContext extracts the Grafana user login from the plugin SDK
+// context. Returns "" when the context has no user (unauthenticated request
+// or Grafana not forwarding identity to this plugin).
+func userLoginFromContext(ctx context.Context) string {
+	pluginCtx := backend.PluginConfigFromContext(ctx)
+	if pluginCtx.User != nil {
+		return pluginCtx.User.Login
+	}
+	return ""
 }
 
 // findSSHClientForUser returns the SSH client of the user's active terminal
