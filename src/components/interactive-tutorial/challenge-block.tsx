@@ -225,8 +225,23 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       setState('ready');
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setErrorDetail(`Setup failed: ${message}`);
+      // Grafana FetchError attaches the backend response on .data; fall back to
+      // .message and the status code so the surfaced error is actually useful
+      // (e.g. a 404 means /coda/exec doesn't exist in the running plugin
+      // binary — likely the backend wasn't rebuilt).
+      const fetchErr = err as { status?: number; statusText?: string; data?: { error?: string }; message?: string };
+      const backendMessage = fetchErr?.data?.error;
+      const status = fetchErr?.status;
+      let message: string;
+      if (status === 404) {
+        message =
+          'The /coda/exec backend route is missing. Rebuild the plugin binary (npm run build:backend:<platform>) and restart Grafana.';
+      } else if (backendMessage) {
+        message = status ? `${backendMessage} (HTTP ${status})` : backendMessage;
+      } else {
+        message = fetchErr?.message ?? String(err);
+      }
+      setErrorDetail(message);
       setState('setup-failed');
     }
   }, [setupCommands]);
@@ -310,8 +325,10 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         return 'Preparing your environment…';
       case 'checking':
         return 'Checking your work…';
-      case 'failed-check':
-        return `Not solved yet${errorDetail ? `: ${errorDetail}` : ''}`;
+      case 'failed-check': {
+        const detail = failureMessage || errorDetail;
+        return `Not solved yet${detail ? `: ${detail}` : ''}`;
+      }
       default:
         return null;
     }
@@ -336,7 +353,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
       {state === 'setup-failed' && (
         <Alert title="Could not start the challenge" severity="error">
-          {failureMessage || errorDetail}
+          {errorDetail || 'Unknown setup failure.'}
         </Alert>
       )}
 
