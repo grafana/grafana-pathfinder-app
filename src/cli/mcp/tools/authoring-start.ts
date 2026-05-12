@@ -37,6 +37,23 @@ const AUTHORING_CONTEXT = {
     'Block ids: leaf blocks auto-id as <type>-<n> if you do not pass an id. Container blocks (section, multistep, guided, conditional, assistant, quiz) require an explicit id.',
     'Mutation responses include a `summary` field — a compact tree of every block ({path, id, type, hint?, children?}). Use the summary for navigation and to reference block ids; you do not need to re-read `artifact.content` after every mutation.',
   ],
+  // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
+  // Curate ruthlessly — every connected client pays this length on every
+  // `_start` call. If this list grows past ~20 rules, ship a separate
+  // `pathfinder_authoring_best_practices` tool (OQ7) instead of expanding here.
+  compositionRules: [
+    'Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must run in order AND are tightly coupled.',
+    'Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a `markdown` block describing what they would do instead.',
+    'If you do not have a verified Grafana DOM selector for a `reftarget` field, do NOT write a step that requires one. Write a `markdown` block, use `action: button` with the visible button text, or ask the user — never invent a selector.',
+    'If a `multistep` would end up with only one step, replace it with an `interactive` block. Single-step multisteps add overhead with no benefit.',
+    "Use `section` blocks instead of markdown `##` headings — sections give the app control over rendering, closeable groups, and progress tracking. Don't open a guide with a `## Title` markdown block; the guide's `title` is already rendered in the enclosing frame.",
+    "Anchor the user on the first interactive step: add `on-page:/path` to its `requirements`, or use a `navigate` action — the guide can't assume it starts on the right page.",
+    'Add contextual `requirements` to every interactive step that touches the DOM. At minimum `on-page:/path`; also `navmenu-open` for nav clicks and `is-admin` (or a role) for admin-only features.',
+    "Use `verify` on actions that change state (save, create, navigate) so the next step can't run against a half-completed action.",
+    'Keep prose punchy and action-oriented — the guide shows in a sidebar. "Click **Save**" beats "The save button can be clicked."',
+    "Prefer `action: button` with the visible button text over a CSS selector when possible — Grafana's button text changes far less often than the DOM tree.",
+    'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
+  ],
   discovery: [
     'pathfinder_help — returns the structured CLI help surface, equivalent to `pathfinder-cli <cmd> --help --format json`. Use this when you need exact flag names or block-type field schemas.',
     'pathfinder_inspect — given an artifact, returns a tree summary so you can address blocks by id or JSONPath without re-reading the artifact yourself.',

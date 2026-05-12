@@ -92,6 +92,32 @@ describe('MCP server', () => {
     }
   });
 
+  it('surfaces distilled compositionRules in pathfinder_authoring_start (issue #8, OQ7 inline variant)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const ctx = await callTool(client, 'pathfinder_authoring_start');
+      const rules = ctx.compositionRules as string[];
+      expect(Array.isArray(rules)).toBe(true);
+      // Budget guard — distilled from grafana/interactive-tutorials, hard
+      // ceiling per the slice plan is 25 rules. If a future edit pushes the
+      // list past 20, that's the signal to consider shipping a separate
+      // `pathfinder_authoring_best_practices` tool (OQ7) instead.
+      expect(rules.length).toBeGreaterThanOrEqual(3);
+      expect(rules.length).toBeLessThanOrEqual(20);
+      const joined = rules.join('\n');
+      // The three load-bearing anchors from the slice plan — must always
+      // ship together (#3 selector hallucination, #8 multistep over-use,
+      // #8 noop-as-defense).
+      expect(joined).toMatch(/multistep/i);
+      expect(joined).toMatch(/sibling/i);
+      expect(joined).toMatch(/noop/i);
+      expect(joined).toMatch(/reftarget/i);
+      expect(joined).toMatch(/never invent|do not invent|do not guess/i);
+    } finally {
+      await close();
+    }
+  });
+
   it('describes every tool with a use-case-led opener so MCP clients can route on description-time hints (issue #7)', async () => {
     const { client, close } = await spinUp();
     try {

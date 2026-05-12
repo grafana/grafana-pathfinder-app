@@ -86,11 +86,7 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-1: ...`)
 
 ### Issue #8 — composition opinionation
 
-- [ ] **5. Distilled `compositionRules` in `_start`.** Add a `compositionRules: string[]` field to `AUTHORING_CONTEXT`. Source: `grafana/interactive-tutorials` `.cursor/authoring-guide.mdc` (fetch, curate, do not bulk inline). Minimum rules to include:
-  - _"Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must be completed in order and are tightly coupled."_
-  - _"Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a markdown block describing what they would do instead."_
-  - _"If you do not have a verified Grafana DOM selector for a `reftarget` field, do NOT write a step that requires one. Write a markdown block, use a `button` action with visible text matching, or ask the user."_
-  - 3–5 more curated from upstream — total length ~15 lines max. **Distillation discipline is the load-bearing part of this task.** If the rule list exceeds ~25 lines, stop and propose the separate-tool variant from OQ7 instead.
+- [x] **5. Distilled `compositionRules` in `_start`.** ✓ _Complete (2026-05-12)._ Added `compositionRules: string[]` to `AUTHORING_CONTEXT` with **11 distilled rules** sourced from `grafana/interactive-tutorials` `.cursor/authoring-guide.mdc` (fetched via `gh api`). The three load-bearing anchors from the slice plan are present (multistep-vs-sibling, no-noop-filler, never-invent-reftarget); the other 8 cover single-step multistep collapse, section vs. markdown headings, on-page anchoring, generous requirements, `verify` on state changes, prose discipline, button-text-over-selector, and lazy-render guidance. Comfortably under the 15-rule target — 25-rule ceiling left intact as headroom. Test in `server.test.ts` guards the rule count (≥3, ≤20), presence of all three load-bearing anchors, and budget headroom. OQ7 promoted to a resolved decision-log entry. 98 MCP tests pass (+1 new).
 - [ ] **6. `MULTISTEP_COMPOSITION_HINT` warning.** In `runAddBlock` (`src/cli/commands/add-block.ts`), when `type === 'multistep'`, append a warning to the outcome: `{ code: 'MULTISTEP_COMPOSITION_HINT', message: 'multistep is for tightly-coupled ordered steps. Prefer separate sibling blocks for loose sequences.' }`. Unit test: snapshot the outcome for an `add-block --type multistep` call and assert the warning is present.
 
 ### Issue #3 — selector discipline
@@ -142,9 +138,12 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-1: ...`)
 - **Rationale:** Production telemetry doesn't exist yet, so generated-from-data is premature. Cross-team ownership has coordination cost we don't need to pay until rollout. Inlining at call sites is the failure mode this file exists to prevent — layer 2 and layer 3 must stay in sync. Single-source-then-evolve is the cheapest correct path until telemetry can drive evolution.
 - **Touches:** `src/cli/mcp/lib/agent-routing.ts`, `src/cli/mcp/lib/server-instructions.ts`, `src/cli/mcp/tools/authoring-start.ts`.
 
-### Proposed at draft — to confirm or revise when their tasks land
+### 2026-05-12 — OQ7: best-practices distillation — inline in `_start.compositionRules`
 
-- **OQ7 — best-practices distillation:** Inline in `_start.compositionRules`, capped at ~15 lines. Rationale: cheaper to maintain than a separate tool; context budget is small at this scale. Revisit if list grows past ~25 lines (escape hatch: ship `pathfinder_authoring_best_practices` returning on-demand). Confirm at task 5.
+- **Decision:** Distilled 11 rules inline in `AUTHORING_CONTEXT.compositionRules`, sourced from `grafana/interactive-tutorials` `.cursor/authoring-guide.mdc`. Comfortably under the 15-rule target.
+- **Alternatives considered:** Separate `pathfinder_authoring_best_practices` tool (on-demand fetch); bulk-inline the upstream guide; per-block-type hints only.
+- **Rationale:** The upstream guide is ~300 lines; the cost of getting the agent to the right composition shape early is paid once per session, but the costs of bad composition (noop multisteps, invented selectors, missing requirements) compound across every hop. Inline rules also pair cleanly with the layer-3 server `instructions` so the three load-bearing rules (#3 selectors, #8 multistep, #8 noop) appear in both surfaces — agents see them before tool selection AND when they call `_start`. The separate-tool escape hatch is still preserved in code comments above the constant; trigger to revisit is a 20-rule cap on the inline list.
+- **Touches:** `src/cli/mcp/tools/authoring-start.ts`.
 
 ---
 
