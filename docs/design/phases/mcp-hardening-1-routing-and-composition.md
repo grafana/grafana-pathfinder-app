@@ -81,7 +81,7 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-1: ...`)
 
 ### Issue #7 — routing
 
-- [ ] **3. Use-case-led tool descriptions.** Rewrite the `description` field on every `registerTool` call across `tools/*.ts`. Pattern: lead with _"Use this tool when the user wants to <verb> <Pathfinder noun>."_ then _"Returns/does <behavior>."_ Inventory before writing — 11 registrations across 6 files (see surface table above). One commit; the change is mechanical.
+- [x] **3. Use-case-led tool descriptions.** ✓ _Complete (2026-05-12)._ Rewrote `description` on all 16 `registerTool` calls across 7 files (`authoring-start.ts`, `help.ts`, `inspection-tools.ts`, `artifact-tools.ts`, `finalize.ts`, `mutation-tools.ts`, `repository-tools.ts`). Authoring/repository tools lead with _"Use this tool when the user wants to …"_; meta-introspection tools (`pathfinder_help`, `pathfinder_inspect`, `pathfinder_validate`) lead with _"Use this when you need to …"_ Added a regression test in `server.test.ts` that grep-checks every registered tool description for the use-case-led opener via `/^Use this (tool )?(when|to)\b/i`. 13 server tests pass.
 - [ ] **4. `triggers` + `_start` description.** Add `triggers: string[]` to `AUTHORING_CONTEXT` in `authoring-start.ts` listing the starter vocabulary from `agent-routing.ts` (e.g. `"create a pathfinder"`, `"write a tutorial"`, `"build a walkthrough"`, `"interactive guide"`, `"step-by-step"`). Reword the `pathfinder_authoring_start` tool description to lead with use case. _Same starter list seeds the server `instructions` from task 2 — single source._
 
 ### Issue #8 — composition opinionation

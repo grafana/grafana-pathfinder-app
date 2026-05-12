@@ -74,6 +74,23 @@ describe('MCP server', () => {
     }
   });
 
+  it('describes every tool with a use-case-led opener so MCP clients can route on description-time hints (issue #7)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const { tools } = await client.listTools();
+      // The hardening slice (task 3) rewrites every registerTool description
+      // to lead with "Use this tool when the user wants to ..." or, for
+      // meta/introspection tools, "Use this when you need ...". This guard
+      // catches a future edit that reverts to behavior-led prose.
+      const offenders = tools
+        .filter((t) => !/^Use this (tool )?(when|to)\b/i.test(t.description ?? ''))
+        .map((t) => ({ name: t.name, description: t.description }));
+      expect(offenders).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
   it('lists every authoring tool', async () => {
     const { client, close } = await spinUp();
     try {

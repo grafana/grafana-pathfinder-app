@@ -40,7 +40,7 @@ export function registerAuthoringStart(server: McpServer): void {
     'pathfinder_authoring_start',
     {
       description:
-        'First tool to call. Returns Pathfinder authoring context, workflow, and tool discovery hints. Read this once per authoring session before calling any mutation tool.',
+        'Use this tool when the user wants to author, create, edit, or publish a Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call this first — once per authoring session before any other Pathfinder tool. Returns Pathfinder authoring context, workflow, composition rules, and discovery hints.',
       inputSchema: {},
     },
     async () => textResult(JSON.stringify(AUTHORING_CONTEXT, null, 2))
