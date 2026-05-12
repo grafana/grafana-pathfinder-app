@@ -22,16 +22,20 @@ export function fetchCourses(
   platform: CoursesPlatform,
   signal?: AbortSignal
 ): Promise<InferredCoursesPlatformIndex | null> {
-  const cached = inFlight[platform];
-  if (cached) {
-    return cached;
+  if (signal?.aborted) {
+    return Promise.resolve(null);
   }
 
-  const promise = doFetchCourses(platform, signal).finally(() => {
+  const cached = inFlight[platform];
+  if (cached) {
+    return withCallerAbort(cached, signal);
+  }
+
+  const promise = doFetchCourses(platform).finally(() => {
     inFlight[platform] = undefined;
   });
   inFlight[platform] = promise;
-  return promise;
+  return withCallerAbort(promise, signal);
 }
 
 /** For tests: reset the in-flight promise cache between scenarios. */
@@ -39,23 +43,61 @@ export function resetFetchCoursesCache(): void {
   inFlight = {};
 }
 
-async function doFetchCourses(
-  platform: CoursesPlatform,
-  externalSignal?: AbortSignal
+function withCallerAbort(
+  promise: Promise<InferredCoursesPlatformIndex | null>,
+  signal?: AbortSignal
 ): Promise<InferredCoursesPlatformIndex | null> {
+  if (!signal) {
+    return promise;
+  }
+  if (signal.aborted) {
+    return Promise.resolve(null);
+  }
+  const callerSignal = signal;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    function cleanup() {
+      callerSignal.removeEventListener('abort', onAbort);
+    }
+
+    function onAbort() {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(null);
+    }
+
+    callerSignal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        reject(error);
+      }
+    );
+  });
+}
+
+async function doFetchCourses(platform: CoursesPlatform): Promise<InferredCoursesPlatformIndex | null> {
   const url = new URL(`/courses/${platform}.json`, getCoursesCdnBaseUrl());
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), DEFAULT_CONTENT_FETCH_TIMEOUT);
-
-  const onExternalAbort = () => timeoutController.abort();
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      clearTimeout(timeoutId);
-      return null;
-    }
-    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
-  }
 
   try {
     const response = await fetch(url.toString(), { signal: timeoutController.signal });
@@ -85,8 +127,5 @@ async function doFetchCourses(
     return null;
   } finally {
     clearTimeout(timeoutId);
-    if (externalSignal) {
-      externalSignal.removeEventListener('abort', onExternalAbort);
-    }
   }
 }

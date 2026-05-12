@@ -48,6 +48,40 @@ function makeValidIndex(platform: 'oss' | 'cloud') {
   };
 }
 
+function mockAbortableDeferredFetch() {
+  const controls: { resolveFetch: (value: unknown) => void } = {
+    resolveFetch: (_value: unknown) => {
+      throw new Error('Fetch was not started');
+    },
+  };
+  mockFetch.mockImplementationOnce(
+    (_url: string, init?: RequestInit) =>
+      new Promise<unknown>((resolve, reject) => {
+        const signal = init?.signal;
+        const onAbort = () => {
+          signal?.removeEventListener('abort', onAbort);
+          reject(new DOMException('Aborted', 'AbortError'));
+        };
+
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+
+        signal?.addEventListener('abort', onAbort, { once: true });
+        controls.resolveFetch = (value) => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve({
+            ok: true,
+            json: async () => value,
+          });
+        };
+      })
+  );
+
+  return controls;
+}
+
 describe('fetchCourses', () => {
   it('parses a valid OSS index', async () => {
     const body = makeValidIndex('oss');
@@ -160,6 +194,38 @@ describe('fetchCourses', () => {
     expect(ra).not.toBeNull();
     expect(rb).not.toBeNull();
     expect(ra).toBe(rb);
+  });
+
+  it('lets a later caller abort without cancelling the shared request', async () => {
+    const fetchControls = mockAbortableDeferredFetch();
+
+    const first = fetchCourses('oss');
+    const controller = new AbortController();
+    const second = fetchCourses('oss', controller.signal);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    fetchControls.resolveFetch(makeValidIndex('oss'));
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).not.toBeNull();
+    expect(secondResult).toBeNull();
+  });
+
+  it("does not let the first caller's abort cancel the shared request", async () => {
+    const fetchControls = mockAbortableDeferredFetch();
+
+    const controller = new AbortController();
+    const first = fetchCourses('oss', controller.signal);
+    const second = fetchCourses('oss');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    fetchControls.resolveFetch(makeValidIndex('oss'));
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).toBeNull();
+    expect(secondResult).not.toBeNull();
   });
 
   it('tolerates additional unknown fields (forward compat via .loose())', async () => {

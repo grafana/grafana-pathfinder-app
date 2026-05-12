@@ -1,5 +1,14 @@
-import { wrapEnvelope, unwrapEnvelope, interactiveStepStorage, interactiveCompletionStorage } from './user-storage';
+import {
+  wrapEnvelope,
+  unwrapEnvelope,
+  interactiveStepStorage,
+  interactiveCompletionStorage,
+  learningProgressStorage,
+} from './user-storage';
 import { StorageKeys } from './storage-keys';
+import { resetCoursesData, resetFetchCoursesCache } from '../learning-paths';
+import { COURSES_SCHEMA_VERSION } from '../types/courses.schema';
+import type { CoursesPlatformIndex } from '../types/courses.types';
 
 // ============================================================================
 // ENVELOPE FORMAT TESTS
@@ -198,5 +207,67 @@ describe('interactiveCompletionStorage.clearAll', () => {
 
     expect(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION)).toBeNull();
     expect(localStorage.getItem(StorageKeys.LEARNING_PROGRESS)).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// learningProgressStorage.markGuideCompleted TESTS
+// ============================================================================
+
+const mockFetch = jest.fn();
+
+function makeCdnOnlyCourseIndex(): CoursesPlatformIndex {
+  return {
+    schemaVersion: COURSES_SCHEMA_VERSION,
+    platform: 'oss',
+    courses: [
+      {
+        id: 'cdn-only-path',
+        title: 'CDN-only path',
+        description: 'Loaded from the CDN',
+        guides: ['cdn-only-guide'],
+        badgeId: 'cdn-only-path-badge',
+      },
+    ],
+    guideMetadata: {
+      'cdn-only-guide': { title: 'CDN-only guide', estimatedMinutes: 5 },
+    },
+    badges: [
+      {
+        id: 'cdn-only-guide-badge',
+        title: 'CDN-only guide badge',
+        description: 'Complete the CDN-only guide',
+        icon: 'star',
+        trigger: { type: 'guide-completed', guideId: 'cdn-only-guide' },
+      },
+    ],
+  };
+}
+
+describe('learningProgressStorage.markGuideCompleted', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockFetch.mockReset();
+    global.fetch = mockFetch;
+    resetFetchCoursesCache();
+    resetCoursesData();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetFetchCoursesCache();
+    resetCoursesData();
+  });
+
+  it('loads CDN course data before awarding badges outside the hook loading gate', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => makeCdnOnlyCourseIndex() });
+
+    await learningProgressStorage.markGuideCompleted('cdn-only-guide');
+
+    const progress = await learningProgressStorage.get();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(progress.completedGuides).toContain('cdn-only-guide');
+    expect(progress.earnedBadges.map((badge) => badge.id)).toContain('cdn-only-guide-badge');
+    expect(progress.pendingCelebrations).toContain('cdn-only-guide-badge');
   });
 });

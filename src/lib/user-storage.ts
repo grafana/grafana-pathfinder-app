@@ -1447,9 +1447,10 @@ export const learningProgressStorage = {
   async markGuideCompleted(guideId: string): Promise<void> {
     try {
       // Import badge checking utilities dynamically to avoid circular deps
-      const { getBadgesToAward, getBadgeById } = await import('../learning-paths');
-      const { getPathsData } = await import('../learning-paths');
-      const { paths, badges } = getPathsData();
+      const { getBadgesToAward, getBadgeById, initCoursesData } = await import('../learning-paths');
+      const {
+        data: { paths, badges },
+      } = await initCoursesData();
 
       const progress = await learningProgressStorage.get();
       if (!progress.completedGuides.includes(guideId)) {
