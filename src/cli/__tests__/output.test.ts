@@ -111,6 +111,70 @@ describe('printOutcome', () => {
     expect(parsed.status).toBe('error');
     expect(parsed.code).toBe('BLOCK_NOT_FOUND');
   });
+
+  describe('warnings (M2 plumbing)', () => {
+    const withWarnings: CommandOutcome = {
+      status: 'ok',
+      summary: 'did the thing',
+      warnings: [
+        {
+          code: 'UNVERIFIED_SELECTOR',
+          message: 'reftarget set without verification. Confirm against the live Grafana DOM before publishing.',
+          path: 'blocks[0]/reftarget',
+        },
+        {
+          code: 'MULTISTEP_COMPOSITION_HINT',
+          message:
+            'multistep is for tightly-coupled ordered steps. Prefer separate sibling blocks for loose sequences.',
+        },
+      ],
+      hints: ['Validate with: pathfinder-cli validate <dir>'],
+    };
+
+    it('renders a Warnings block in text mode with one bullet per entry', () => {
+      const { stdout, result } = captureOutput(() => printOutcome(withWarnings, { format: 'text', quiet: false }));
+      expect(result).toBe(0);
+      expect(stdout).toContain('Warnings:');
+      expect(stdout).toContain('- UNVERIFIED_SELECTOR (blocks[0]/reftarget): reftarget set without verification.');
+      expect(stdout).toContain('- MULTISTEP_COMPOSITION_HINT: multistep is for tightly-coupled');
+    });
+
+    it('renders warnings before hints in text mode', () => {
+      const { stdout } = captureOutput(() => printOutcome(withWarnings, { format: 'text', quiet: false }));
+      const warningsIdx = stdout.indexOf('Warnings:');
+      const hintsIdx = stdout.indexOf('Validate with:');
+      expect(warningsIdx).toBeGreaterThan(-1);
+      expect(hintsIdx).toBeGreaterThan(warningsIdx);
+    });
+
+    it('suppresses the Warnings block in --quiet mode to preserve the one-line invariant', () => {
+      const { stdout, result } = captureOutput(() => printOutcome(withWarnings, { format: 'text', quiet: true }));
+      expect(result).toBe(0);
+      expect(stdout.trim()).toBe('ok did the thing');
+      expect(stdout).not.toContain('Warnings:');
+      expect(stdout).not.toContain('UNVERIFIED_SELECTOR');
+    });
+
+    it('serializes warnings verbatim in --format json so MCP callers see the structured payload', () => {
+      const { stdout, result } = captureOutput(() => printOutcome(withWarnings, { format: 'json', quiet: false }));
+      expect(result).toBe(0);
+      const parsed = JSON.parse(stdout);
+      expect(parsed.warnings).toHaveLength(2);
+      expect(parsed.warnings[0]).toEqual({
+        code: 'UNVERIFIED_SELECTOR',
+        message: 'reftarget set without verification. Confirm against the live Grafana DOM before publishing.',
+        path: 'blocks[0]/reftarget',
+      });
+      expect(parsed.warnings[1].code).toBe('MULTISTEP_COMPOSITION_HINT');
+      expect(parsed.warnings[1].path).toBeUndefined();
+    });
+
+    it('omits the Warnings block when warnings array is empty', () => {
+      const noWarnings: CommandOutcome = { status: 'ok', summary: 'did the thing', warnings: [] };
+      const { stdout } = captureOutput(() => printOutcome(noWarnings, { format: 'text', quiet: false }));
+      expect(stdout).not.toContain('Warnings:');
+    });
+  });
 });
 
 describe('issueToOutcome', () => {
