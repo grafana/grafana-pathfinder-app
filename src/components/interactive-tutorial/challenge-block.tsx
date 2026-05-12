@@ -1,0 +1,367 @@
+/**
+ * ChallengeBlock — CTF-style learning task rendered inside a Pathfinder guide.
+ *
+ * Lifecycle (see `ChallengeState`):
+ *   idle → connecting → preparing → ready → checking → solved | failed-check | setup-failed
+ *
+ * The block runs `setupCommands` server-side via `/coda/exec` after the VM
+ * connects, then makes "Check my work" available. A sentinel file is written
+ * as the last setup step, and the success criterion is evaluated with
+ * `checkPostconditions` (the underlying `coda-exit-zero` check always runs in
+ * gated mode), so it cannot pass before setup completes — defense in depth on
+ * top of the UI gating.
+ */
+
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { Button, Icon, useStyles2, Alert } from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
+import { getBackendSrv } from '@grafana/runtime';
+import { css } from '@emotion/css';
+
+import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import { checkPostconditions } from '../../requirements-manager';
+import { useStandalonePersistence } from './use-standalone-persistence';
+
+const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
+const SENTINEL_WRITE_COMMAND =
+  'mkdir -p /var/run && touch /var/run/pathfinder-ready.tmp && mv /var/run/pathfinder-ready.tmp /var/run/pathfinder-ready';
+
+export type ChallengeState =
+  | 'idle'
+  | 'connecting'
+  | 'preparing'
+  | 'ready'
+  | 'checking'
+  | 'solved'
+  | 'failed-check'
+  | 'setup-failed';
+
+export interface ChallengeHintProps {
+  text: string;
+}
+
+export interface ChallengeBlockProps {
+  title: string;
+  brief: React.ReactNode;
+  vmTemplate?: string;
+  vmScenario?: string;
+  vmApp?: string;
+  setupCommands?: string[];
+  successCriteria: string;
+  hintLevels?: ChallengeHintProps[];
+  failureMessage?: string;
+
+  stepId?: string;
+  isCompleted?: boolean;
+  onStepComplete?: (stepId: string) => void;
+  stepIndex?: number;
+  totalSteps?: number;
+}
+
+interface ExecResponse {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  durationMs: number;
+}
+
+async function runExec(command: string, mode: 'raw' | 'gated' = 'raw', timeoutMs = 10000): Promise<ExecResponse> {
+  return getBackendSrv().post<ExecResponse>(CODA_EXEC_URL, { command, mode, timeoutMs });
+}
+
+let challengeCounter = 0;
+
+const getStyles = (theme: GrafanaTheme2) => ({
+  container: css({
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    padding: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+    background: theme.colors.background.secondary,
+  }),
+  title: css({
+    margin: 0,
+    marginBottom: theme.spacing(1),
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.h4.fontWeight,
+  }),
+  brief: css({
+    marginBottom: theme.spacing(2),
+    '& p:last-child': { marginBottom: 0 },
+  }),
+  status: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(1.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
+  actions: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  }),
+  hints: css({
+    marginTop: theme.spacing(2),
+    paddingTop: theme.spacing(2),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+  }),
+  hint: css({
+    padding: theme.spacing(1, 1.5),
+    marginBottom: theme.spacing(1),
+    background: theme.colors.background.primary,
+    borderLeft: `3px solid ${theme.colors.info.border}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+  }),
+  hintIndex: css({
+    fontWeight: theme.typography.fontWeightBold,
+    color: theme.colors.info.text,
+    marginRight: theme.spacing(0.5),
+  }),
+  solved: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    color: theme.colors.success.text,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+});
+
+export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
+  title,
+  brief,
+  vmTemplate,
+  vmScenario,
+  vmApp,
+  setupCommands = [],
+  successCriteria,
+  hintLevels = [],
+  failureMessage,
+  stepId: providedStepId,
+  isCompleted: parentCompleted = false,
+  onStepComplete,
+  totalSteps,
+}) => {
+  const styles = useStyles2(getStyles);
+  const terminalCtx = useTerminalContext();
+
+  const [generatedStepId] = useState(() => {
+    challengeCounter += 1;
+    return `challenge-${challengeCounter}`;
+  });
+  const stepId = providedStepId ?? generatedStepId;
+
+  const [state, setState] = useState<ChallengeState>('idle');
+  const [errorDetail, setErrorDetail] = useState<string>('');
+  const [hintsRevealed, setHintsRevealed] = useState(0);
+  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
+  const setupStartedRef = useRef(false);
+
+  useStandalonePersistence(stepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+
+  const isCompleted = parentCompleted || isLocallyCompleted || state === 'solved';
+
+  const markComplete = useCallback(() => {
+    if (isLocallyCompleted) {
+      return;
+    }
+    setIsLocallyCompleted(true);
+    onStepComplete?.(stepId);
+    // Dispatch the same completion event used by the rest of the engine so
+    // sections, progress tracking, and analytics all see this as a normal
+    // step completion.
+    window.dispatchEvent(
+      new CustomEvent('interactive-action-completed', {
+        detail: { stepId, blockType: 'challenge', state: 'completed' },
+      })
+    );
+  }, [isLocallyCompleted, onStepComplete, stepId]);
+
+  const runSetup = useCallback(async () => {
+    if (setupStartedRef.current) {
+      return;
+    }
+    setupStartedRef.current = true;
+    setState('preparing');
+    try {
+      for (const cmd of setupCommands) {
+        const result = await runExec(cmd, 'raw', 30000);
+        if (result.exitCode !== 0) {
+          setErrorDetail(
+            `Setup command failed (exit ${result.exitCode}): ${cmd}\n${result.stderr.trim().slice(0, 500)}`
+          );
+          setState('setup-failed');
+          return;
+        }
+      }
+      // Sentinel write — must be last. Once present, the gated coda-exit-zero
+      // check is allowed to evaluate the author's success criterion.
+      const sentinel = await runExec(SENTINEL_WRITE_COMMAND, 'raw', 5000);
+      if (sentinel.exitCode !== 0) {
+        setErrorDetail(`Could not write readiness sentinel: ${sentinel.stderr.trim().slice(0, 500)}`);
+        setState('setup-failed');
+        return;
+      }
+      setState('ready');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorDetail(`Setup failed: ${message}`);
+      setState('setup-failed');
+    }
+  }, [setupCommands]);
+
+  // Watch terminal status while we're trying to connect. When it goes live,
+  // kick off setup.
+  useEffect(() => {
+    if (state !== 'connecting') {
+      return;
+    }
+    if (terminalCtx?.status === 'connected') {
+      runSetup();
+    } else if (terminalCtx?.status === 'error') {
+      setErrorDetail('Could not start the challenge VM. Please try again.');
+      setState('setup-failed');
+    }
+  }, [state, terminalCtx?.status, runSetup]);
+
+  const handleStart = useCallback(() => {
+    if (!terminalCtx) {
+      setErrorDetail('Terminal integration is not available.');
+      setState('setup-failed');
+      return;
+    }
+    setErrorDetail('');
+    setupStartedRef.current = false;
+    setState('connecting');
+    const vmOpts =
+      vmTemplate || vmScenario || vmApp
+        ? { template: vmTemplate || 'vm-aws', app: vmApp, scenario: vmScenario }
+        : undefined;
+    terminalCtx.openTerminal(vmOpts);
+    // If the terminal was already connected when the user clicked Start, the
+    // effect above won't fire because status didn't change. Trigger setup
+    // directly in that case.
+    if (terminalCtx.status === 'connected') {
+      runSetup();
+    }
+  }, [terminalCtx, vmTemplate, vmScenario, vmApp, runSetup]);
+
+  const handleCheckMyWork = useCallback(async () => {
+    setState('checking');
+    setErrorDetail('');
+    const result = await checkPostconditions({
+      requirements: successCriteria,
+      stepId,
+      maxRetries: 0,
+    });
+    if (result.pass) {
+      setState('solved');
+      markComplete();
+    } else {
+      const failure = result.error[0]?.error ?? 'Not solved yet.';
+      setErrorDetail(failure);
+      setState('failed-check');
+    }
+  }, [successCriteria, stepId, markComplete]);
+
+  const handleRevealNextHint = useCallback(() => {
+    setHintsRevealed((n) => Math.min(n + 1, hintLevels.length));
+  }, [hintLevels.length]);
+
+  const statusBanner = (() => {
+    switch (state) {
+      case 'connecting':
+        return 'Provisioning challenge VM…';
+      case 'preparing':
+        return 'Preparing your environment…';
+      case 'checking':
+        return 'Checking your work…';
+      case 'failed-check':
+        return `Not solved yet${errorDetail ? `: ${errorDetail}` : ''}`;
+      default:
+        return null;
+    }
+  })();
+
+  if (isCompleted) {
+    return (
+      <div className={styles.container} data-test-step-state="completed" data-testid={`challenge-block-${stepId}`}>
+        <h4 className={styles.title}>{title}</h4>
+        <div className={styles.brief}>{brief}</div>
+        <div className={styles.solved}>
+          <Icon name="check-circle" /> Challenge solved
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.container} data-test-step-state={state} data-testid={`challenge-block-${stepId}`}>
+      <h4 className={styles.title}>{title}</h4>
+      <div className={styles.brief}>{brief}</div>
+
+      {state === 'setup-failed' && (
+        <Alert title="Could not start the challenge" severity="error">
+          {failureMessage || errorDetail}
+        </Alert>
+      )}
+
+      {statusBanner && (
+        <div className={styles.status}>
+          <Icon name="fa fa-spinner" />
+          <span>{statusBanner}</span>
+        </div>
+      )}
+
+      <div className={styles.actions}>
+        {state === 'idle' && (
+          <Button variant="primary" icon="play" onClick={handleStart}>
+            Start challenge
+          </Button>
+        )}
+        {state === 'ready' && (
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+            Check my work
+          </Button>
+        )}
+        {state === 'failed-check' && (
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+            Check again
+          </Button>
+        )}
+        {state === 'setup-failed' && (
+          <Button variant="secondary" icon="sync" onClick={handleStart}>
+            Try again
+          </Button>
+        )}
+      </div>
+
+      {hintLevels.length > 0 && (state === 'ready' || state === 'failed-check') && (
+        <div className={styles.hints}>
+          {hintLevels.slice(0, hintsRevealed).map((hint, idx) => (
+            <div key={idx} className={styles.hint}>
+              <span className={styles.hintIndex}>Hint {idx + 1}:</span>
+              {hint.text}
+            </div>
+          ))}
+          {hintsRevealed < hintLevels.length && (
+            <Button size="sm" variant="secondary" icon="info-circle" onClick={handleRevealNextHint}>
+              {hintsRevealed === 0 ? 'Show a hint' : 'Show next hint'}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+ChallengeBlock.displayName = 'ChallengeBlock';
+
+/** Reset the anonymous challenge counter (test/Storybook helper). */
+export function resetChallengeCounter(): void {
+  challengeCounter = 0;
+}
