@@ -564,8 +564,14 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     listStyle: 'none', // Hide default markers since we use CSS counters
     counterReset: 'step-counter', // Initialize counter
 
-    // Increment counter for each step
-    '& > .interactive-step, & > .interactive-multistep, & > .interactive-guided': {
+    // Every direct child sits in a wrapper <li>. Only li[data-numbered="true"]
+    // participates in the sequential numbering — media (image/video) and wrapper
+    // (conditional) blocks render without a number. See issue #841.
+    '& > li': {
+      listStyle: 'none',
+    },
+
+    '& > li[data-numbered="true"]': {
       counterIncrement: 'step-counter',
       position: 'relative',
       paddingLeft: theme.spacing(4), // Space for the number
