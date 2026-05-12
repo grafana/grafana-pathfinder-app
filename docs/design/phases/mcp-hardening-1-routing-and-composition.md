@@ -82,7 +82,7 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-1: ...`)
 ### Issue #7 — routing
 
 - [x] **3. Use-case-led tool descriptions.** ✓ _Complete (2026-05-12)._ Rewrote `description` on all 16 `registerTool` calls across 7 files (`authoring-start.ts`, `help.ts`, `inspection-tools.ts`, `artifact-tools.ts`, `finalize.ts`, `mutation-tools.ts`, `repository-tools.ts`). Authoring/repository tools lead with _"Use this tool when the user wants to …"_; meta-introspection tools (`pathfinder_help`, `pathfinder_inspect`, `pathfinder_validate`) lead with _"Use this when you need to …"_ Added a regression test in `server.test.ts` that grep-checks every registered tool description for the use-case-led opener via `/^Use this (tool )?(when|to)\b/i`. 13 server tests pass.
-- [ ] **4. `triggers` + `_start` description.** Add `triggers: string[]` to `AUTHORING_CONTEXT` in `authoring-start.ts` listing the starter vocabulary from `agent-routing.ts` (e.g. `"create a pathfinder"`, `"write a tutorial"`, `"build a walkthrough"`, `"interactive guide"`, `"step-by-step"`). Reword the `pathfinder_authoring_start` tool description to lead with use case. _Same starter list seeds the server `instructions` from task 2 — single source._
+- [x] **4. `triggers` + `_start` description.** ✓ _Complete (2026-05-12)._ Added `triggers: string[]` (sourced from `PATHFINDER_TRIGGER_PHRASES`) and `notFor: string[]` (sourced from `PATHFINDER_NOT_FOR`) to `AUTHORING_CONTEXT` in `authoring-start.ts`. Tool description was already use-case-led from task 3 — task 4 is just the payload field addition. Same `agent-routing.ts` constants now feed three places: layer 3 (`server-instructions.ts`), layer 2 (this `_start` payload), and the lib-level unit tests in `server-instructions.test.ts`. Decision logged below promotes OQ6 from "proposed" to resolved. New test in `server.test.ts` asserts both fields appear and contain the canonical anchor phrase. 97 MCP tests pass (+2 new).
 
 ### Issue #8 — composition opinionation
 
@@ -135,9 +135,15 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-1: ...`)
 - **Rationale:** Additive to `SuccessOutcome`, no existing caller breaks. Single source of truth for the warning text. Quiet-mode users (one-line agent flows) still get the structured data via JSON if they care.
 - **Touches:** `src/cli/utils/output.ts`, `src/cli/__tests__/output.test.ts`.
 
+### 2026-05-12 — OQ6: trigger vocabulary source — hand-curated, single-source in `agent-routing.ts`
+
+- **Decision:** The starter vocabulary lives in `src/cli/mcp/lib/agent-routing.ts` as four exported readonly arrays (phrases, verbs, nouns, anti-routing). Three consumers read from it: `lib/server-instructions.ts` (layer 3), `tools/authoring-start.ts` (layer 2), and `lib/__tests__/server-instructions.test.ts` (regression guard). The starter list itself is curated from the 2026-05-08 Grafana Assistant session in hardening-doc issue #7.
+- **Alternatives considered:** Generate from production telemetry once it exists; co-own with the Assistant team via a tracked vocabulary doc; inline the strings directly at each call site.
+- **Rationale:** Production telemetry doesn't exist yet, so generated-from-data is premature. Cross-team ownership has coordination cost we don't need to pay until rollout. Inlining at call sites is the failure mode this file exists to prevent — layer 2 and layer 3 must stay in sync. Single-source-then-evolve is the cheapest correct path until telemetry can drive evolution.
+- **Touches:** `src/cli/mcp/lib/agent-routing.ts`, `src/cli/mcp/lib/server-instructions.ts`, `src/cli/mcp/tools/authoring-start.ts`.
+
 ### Proposed at draft — to confirm or revise when their tasks land
 
-- **OQ6 — trigger vocabulary source:** Hand-curated starter list in `src/cli/mcp/lib/agent-routing.ts`. Rationale: production telemetry doesn't exist yet; curated starter list is good enough for first rollout, evolves later with real prompts. Confirm at task 2 / task 4.
 - **OQ7 — best-practices distillation:** Inline in `_start.compositionRules`, capped at ~15 lines. Rationale: cheaper to maintain than a separate tool; context budget is small at this scale. Revisit if list grows past ~25 lines (escape hatch: ship `pathfinder_authoring_best_practices` returning on-demand). Confirm at task 5.
 
 ---

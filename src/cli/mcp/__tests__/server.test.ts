@@ -74,6 +74,24 @@ describe('MCP server', () => {
     }
   });
 
+  it('surfaces routing vocabulary in pathfinder_authoring_start (issue #7, layer 2)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const ctx = await callTool(client, 'pathfinder_authoring_start');
+      // `triggers` and `notFor` reaffirm routing for agents that already
+      // reached the MCP, including clients that don't render the layer-3
+      // server `instructions`. Both come from `lib/agent-routing.ts` — see
+      // the matching layer-3 assertions earlier in this file.
+      expect(Array.isArray(ctx.triggers)).toBe(true);
+      expect((ctx.triggers as string[]).length).toBeGreaterThan(0);
+      expect(ctx.triggers).toContain('create a pathfinder');
+      expect(Array.isArray(ctx.notFor)).toBe(true);
+      expect((ctx.notFor as string[]).length).toBeGreaterThan(0);
+    } finally {
+      await close();
+    }
+  });
+
   it('describes every tool with a use-case-led opener so MCP clients can route on description-time hints (issue #7)', async () => {
     const { client, close } = await spinUp();
     try {

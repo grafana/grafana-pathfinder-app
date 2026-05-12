@@ -10,12 +10,20 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { PATHFINDER_NOT_FOR, PATHFINDER_TRIGGER_PHRASES } from '../lib/agent-routing';
 import { textResult } from './result';
 
 const AUTHORING_CONTEXT = {
   version: CURRENT_SCHEMA_VERSION,
   product:
     'Grafana Pathfinder is a Grafana plugin that runs interactive, contextual guides as a sidebar in Grafana. A guide is a tree of "blocks" — markdown, interactive UI actions, sections, conditionals, multistep, quizzes — stored as JSON.',
+  // Routing reaffirmation surface (M1 layer 2). The same constants seed the
+  // server-level `instructions` string in `lib/server-instructions.ts`, so an
+  // agent that reached this tool via layer-3 hints sees consistent vocabulary,
+  // and clients that don't render `initialize.instructions` still get the
+  // routing signal here.
+  triggers: [...PATHFINDER_TRIGGER_PHRASES],
+  notFor: [...PATHFINDER_NOT_FOR],
   workflow: [
     '1. Call pathfinder_create_package with a title to get a fresh artifact ({ content, manifest }).',
     '2. Add blocks via pathfinder_add_block (and pathfinder_add_step / pathfinder_add_choice for container children). Pass the artifact in and use the artifact returned in the response for the next call.',
