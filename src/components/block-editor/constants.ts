@@ -102,6 +102,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Terminal connect',
     description: 'Button to open and connect to the terminal',
   },
+  challenge: {
+    type: 'challenge',
+    icon: '🏆',
+    grafanaIcon: 'shield-exclamation',
+    name: 'Challenge',
+    description: 'CTF-style task in a Coda VM with progressive hints',
+  },
   'code-block': {
     type: 'code-block',
     icon: '📋',
@@ -133,6 +140,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'guided',
   'terminal',
   'terminal-connect',
+  'challenge',
   'code-block',
   'quiz',
   'input',

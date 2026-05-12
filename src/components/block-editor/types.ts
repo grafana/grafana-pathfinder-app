@@ -29,6 +29,7 @@ export type BlockType =
   | 'input'
   | 'terminal'
   | 'terminal-connect'
+  | 'challenge'
   | 'code-block'
   | 'grot-guide';
 
