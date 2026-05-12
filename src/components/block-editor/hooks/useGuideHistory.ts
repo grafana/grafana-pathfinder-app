@@ -58,6 +58,8 @@ export interface HistoryOptions {
 interface HistoryEntry {
   state: BlockEditorState;
   label?: string;
+  /** Cached byte size of this entry's state (for incremental size tracking). */
+  estimatedSize: number;
 }
 
 export type GuideStateSetter = (
@@ -80,19 +82,19 @@ export interface UseGuideHistoryReturn {
   resetHistory: () => void;
 }
 
-function estimateBytes(entries: HistoryEntry[]): number {
-  // Rough — `JSON.stringify` is the canonical "size" measure we care
-  // about because that's what would land in localStorage if we ever
-  // persisted history. Skip if too many entries to avoid pathological
-  // O(n*size) loops on giant guides; the count cap fires first anyway.
-  if (entries.length === 0) {
-    return 0;
-  }
+function estimateSingleEntryBytes(state: BlockEditorState): number {
+  // Estimate size of a single state entry. This is called once per history
+  // push, avoiding the O(n*size) cost of serializing all entries on every edit.
   try {
-    return JSON.stringify(entries.map((e) => e.state)).length;
+    return JSON.stringify(state).length;
   } catch {
     return 0;
   }
+}
+
+function getTotalHistoryBytes(entries: HistoryEntry[]): number {
+  // Sum cached sizes (O(n) with no serialization cost).
+  return entries.reduce((sum, e) => sum + e.estimatedSize, 0);
 }
 
 export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryReturn {
@@ -124,44 +126,49 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
 
   const setState: GuideStateSetter = useCallback(
     (action, options) => {
-      setStateInternal((prev) => {
-        const next =
-          typeof action === 'function' ? (action as (p: BlockEditorState) => BlockEditorState)(prev) : action;
-        // No-op transitions (same reference) skip history regardless.
-        if (next === prev) {
-          return prev;
-        }
+      const next =
+        typeof action === 'function'
+          ? (action as (p: BlockEditorState) => BlockEditorState)(state)
+          : action;
+      
+      // No-op transitions (same reference) skip history regardless.
+      if (next === state) {
+        return;
+      }
 
-        if (!options?.skipHistory) {
-          const now = Date.now();
-          const key = options?.coalesceKey ?? null;
-          const insideCoalesceWindow =
-            key !== null && key === coalesceRef.current.key && now < coalesceRef.current.until;
+      // Apply the state update first (pure)
+      setStateInternal(next);
 
-          if (!insideCoalesceWindow) {
-            const past = pastRef.current;
-            past.push({ state: prev, label: options?.label });
-            // Count cap.
-            while (past.length > MAX_HISTORY) {
-              past.shift();
-            }
-            // Size cap (defensive, fires after count cap when payloads
-            // are individually huge).
-            while (past.length > 1 && estimateBytes(past) > MAX_HISTORY_BYTES) {
-              past.shift();
-            }
-            pastRef.current = past;
-            futureRef.current = [];
+      // Then handle history side effects outside the updater
+      if (!options?.skipHistory) {
+        const now = Date.now();
+        const key = options?.coalesceKey ?? null;
+        const insideCoalesceWindow =
+          key !== null && key === coalesceRef.current.key && now < coalesceRef.current.until;
+
+        if (!insideCoalesceWindow) {
+          const estimatedSize = estimateSingleEntryBytes(state);
+          const past = pastRef.current;
+          past.push({ state, label: options?.label, estimatedSize });
+          
+          // Count cap.
+          while (past.length > MAX_HISTORY) {
+            past.shift();
           }
-
-          coalesceRef.current = key !== null ? { key, until: now + COALESCE_MS } : { key: null, until: 0 };
-          refreshMeta();
+          // Size cap (defensive, fires after count cap when payloads
+          // are individually huge). Now uses incremental size tracking.
+          while (past.length > 1 && getTotalHistoryBytes(past) > MAX_HISTORY_BYTES) {
+            past.shift();
+          }
+          pastRef.current = past;
+          futureRef.current = [];
         }
 
-        return next;
-      });
+        coalesceRef.current = key !== null ? { key, until: now + COALESCE_MS } : { key: null, until: 0 };
+        refreshMeta();
+      }
     },
-    [refreshMeta]
+    [state, refreshMeta]
   );
 
   const undo = useCallback(() => {
@@ -169,37 +176,59 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
     if (past.length === 0) {
       return;
     }
-    setStateInternal((current) => {
-      const target = past.pop();
-      if (!target) {
-        return current;
-      }
-      pastRef.current = past;
-      futureRef.current.unshift({ state: current, label: target.label });
-      // Reset coalescing so the next setState starts a fresh entry.
-      coalesceRef.current = { key: null, until: 0 };
-      refreshMeta();
-      return target.state;
-    });
-  }, [refreshMeta]);
+    
+    // Pop from past (pure calculation)
+    const target = past.pop();
+    if (!target) {
+      return;
+    }
+    
+    // Calculate next state outside updater
+    const nextState = target.state;
+    
+    // Update refs (side effects outside updater)
+    const estimatedSize = estimateSingleEntryBytes(state);
+    pastRef.current = past;
+    futureRef.current.unshift({ state, label: target.label, estimatedSize });
+    
+    // Reset coalescing so the next setState starts a fresh entry.
+    coalesceRef.current = { key: null, until: 0 };
+    
+    // Apply state change
+    setStateInternal(nextState);
+    
+    // Refresh UI meta
+    refreshMeta();
+  }, [state, refreshMeta]);
 
   const redo = useCallback(() => {
     const future = futureRef.current;
     if (future.length === 0) {
       return;
     }
-    setStateInternal((current) => {
-      const target = future.shift();
-      if (!target) {
-        return current;
-      }
-      futureRef.current = future;
-      pastRef.current.push({ state: current, label: target.label });
-      coalesceRef.current = { key: null, until: 0 };
-      refreshMeta();
-      return target.state;
-    });
-  }, [refreshMeta]);
+    
+    // Shift from future (pure calculation)
+    const target = future.shift();
+    if (!target) {
+      return;
+    }
+    
+    // Calculate next state outside updater
+    const nextState = target.state;
+    
+    // Update refs (side effects outside updater)
+    const estimatedSize = estimateSingleEntryBytes(state);
+    futureRef.current = future;
+    pastRef.current.push({ state, label: target.label, estimatedSize });
+    
+    coalesceRef.current = { key: null, until: 0 };
+    
+    // Apply state change
+    setStateInternal(nextState);
+    
+    // Refresh UI meta
+    refreshMeta();
+  }, [state, refreshMeta]);
 
   const resetHistory = useCallback(() => {
     pastRef.current = [];

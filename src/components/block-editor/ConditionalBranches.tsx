@@ -83,6 +83,7 @@ export function ConditionalBranches({
   onConditionalBranchBlockDelete,
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
+  onConditionalBranchBlockAuthorNoteChange,
   justDroppedId,
   lastModifiedId,
 }: ConditionalBranchesProps) {
@@ -213,6 +214,7 @@ function ConditionalBranch({
   onConditionalBranchBlockDelete,
   onConditionalBranchBlockDuplicate,
   onInsertBlockInConditional,
+  onConditionalBranchBlockAuthorNoteChange,
   justDroppedId,
   lastModifiedId,
 }: ConditionalBranchProps) {
@@ -311,6 +313,11 @@ function ConditionalBranch({
                       }
                       isJustDropped={justDroppedId === `${block.id}-${branchKey}-${nestedIndex}`}
                       isLastModified={lastModifiedId === `${block.id}-${branchKey}-${nestedIndex}`}
+                      onAuthorNoteChange={
+                        onConditionalBranchBlockAuthorNoteChange
+                          ? (note) => onConditionalBranchBlockAuthorNoteChange(block.id, branch, nestedIndex, note)
+                          : undefined
+                      }
                     />
                   </div>
                 </SortableBlock>
