@@ -257,6 +257,70 @@ describe('runAddBlock', () => {
       expect(result.code).toBe('CONTAINER_NOT_FOUND');
     }
   });
+
+  describe('composition warnings (issue #8)', () => {
+    it('emits MULTISTEP_COMPOSITION_HINT when a multistep block is appended', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'multistep',
+        explicitId: 'walk',
+        flagValues: { content: 'walk' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings).toEqual([
+        {
+          code: 'MULTISTEP_COMPOSITION_HINT',
+          message: expect.stringMatching(/multistep is for tightly-coupled ordered steps/),
+        },
+      ]);
+    });
+
+    it('does NOT emit MULTISTEP_COMPOSITION_HINT for other block types', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'markdown',
+        flagValues: { content: 'hello' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings).toBeUndefined();
+    });
+
+    it('does NOT emit MULTISTEP_COMPOSITION_HINT on an --if-absent no-op', async () => {
+      const dir = await bootstrap();
+      // First call creates the multistep — expected to carry the hint.
+      const first = await runAddBlock({
+        dir,
+        type: 'multistep',
+        explicitId: 'walk',
+        flagValues: { content: 'walk' },
+      });
+      expect(first.status).toBe('ok');
+      if (first.status === 'ok') {
+        expect(first.warnings?.[0]?.code).toBe('MULTISTEP_COMPOSITION_HINT');
+      }
+      // Second call is an idempotent no-op — no append happened, so no hint.
+      const second = await runAddBlock({
+        dir,
+        type: 'multistep',
+        explicitId: 'walk',
+        ifAbsent: true,
+        flagValues: { content: 'walk' },
+      });
+      expect(second.status).toBe('ok');
+      if (second.status === 'ok') {
+        expect(second.data?.appended).toBe(false);
+        expect(second.warnings).toBeUndefined();
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

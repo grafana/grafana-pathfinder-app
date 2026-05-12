@@ -285,6 +285,29 @@ describe('MCP server', () => {
     }
   });
 
+  it('surfaces MULTISTEP_COMPOSITION_HINT through pathfinder_add_block (issue #8, M2 outcome-time)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'hint test', type: 'guide' });
+      const artifact = created.artifact!;
+      const result = await callTool(client, 'pathfinder_add_block', {
+        artifact,
+        type: 'multistep',
+        explicitId: 'ms-1',
+        fields: { content: 'walkthrough heading' },
+      });
+      expect(result.status).toBe('ok');
+      // The CLI's `warnings[]` field rides on `CommandOutcome` and the MCP
+      // forwards it verbatim via `outcomeResult` — no transformation. This
+      // assertion closes the loop end-to-end: warning emitted by the runner,
+      // serialized by the renderer, surfaced through the wire.
+      const warnings = result.warnings as Array<{ code: string }> | undefined;
+      expect(warnings?.[0]?.code).toBe('MULTISTEP_COMPOSITION_HINT');
+    } finally {
+      await close();
+    }
+  });
+
   it('appends a step to a multistep block via pathfinder_add_step', async () => {
     const { client, close } = await spinUp();
     try {

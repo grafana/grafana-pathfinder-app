@@ -19,8 +19,10 @@ import {
   readOutputOptions,
   renderError,
   type CommandOutcome,
+  type OutcomeWarning,
 } from '../utils/output';
 import { getSchemaRequiredFlagNames, parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import { multistepCompositionHint } from '../utils/warnings';
 import {
   EMPTY_CHOICES_MESSAGE,
   EMPTY_CONDITIONS_MESSAGE,
@@ -296,6 +298,14 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
     };
   }
 
+  // Composition nudge — only on actual append, not idempotent no-ops. Issue
+  // #8 in the hardening doc: agents default to `multistep` as a one-size
+  // container even when the steps would compose better as siblings.
+  const warnings: OutcomeWarning[] = [];
+  if (appended && args.type === 'multistep') {
+    warnings.push(multistepCompositionHint());
+  }
+
   return {
     status: 'ok',
     summary,
@@ -307,6 +317,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       ...(appended ? {} : { 'idempotent no-op': true }),
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
     hints: appended ? hintsFor(args.type, args.parentId, assignedId) : undefined,
     data: {
       type: args.type,
