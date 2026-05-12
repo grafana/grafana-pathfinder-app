@@ -16,6 +16,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Icon, useStyles2, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
@@ -66,7 +67,17 @@ interface ExecResponse {
 }
 
 async function runExec(command: string, mode: 'raw' | 'gated' = 'raw', timeoutMs = 10000): Promise<ExecResponse> {
-  return getBackendSrv().post<ExecResponse>(CODA_EXEC_URL, { command, mode, timeoutMs });
+  // Use .fetch with showErrorAlert: false so 4xx/5xx don't trigger Grafana's
+  // global error toast — the challenge block surfaces these errors in-place.
+  const resp = await lastValueFrom(
+    getBackendSrv().fetch<ExecResponse>({
+      url: CODA_EXEC_URL,
+      method: 'POST',
+      data: { command, mode, timeoutMs },
+      showErrorAlert: false,
+    })
+  );
+  return resp.data;
 }
 
 let challengeCounter = 0;
@@ -160,6 +171,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const [hintsRevealed, setHintsRevealed] = useState(0);
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
   const setupStartedRef = useRef(false);
+  // Status the terminal had when the user clicked Start. We use this to
+  // ignore a stale 'error' (or any other) status until the terminal has
+  // observably transitioned in response to our openTerminal call — otherwise
+  // clicking Try again after a credentials failure would immediately bail
+  // back to setup-failed before the new connection attempt completes.
+  const statusAtStartRef = useRef<string | undefined>(undefined);
 
   useStandalonePersistence(stepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
 
@@ -224,6 +241,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     if (state !== 'connecting') {
       return;
     }
+    // Don't react to the status that was already current when the user
+    // clicked Start/Try again — wait for it to change in response to our
+    // openTerminal call. Otherwise a stale 'error' from a prior failed
+    // attempt would cause Try again to immediately re-fail.
+    if (terminalCtx?.status === statusAtStartRef.current) {
+      return;
+    }
     if (terminalCtx?.status === 'connected') {
       runSetup();
     } else if (terminalCtx?.status === 'error') {
@@ -241,6 +265,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     }
     setErrorDetail('');
     setupStartedRef.current = false;
+    statusAtStartRef.current = terminalCtx.status;
     setState('connecting');
     const vmOpts =
       vmTemplate || vmScenario || vmApp

@@ -15,6 +15,7 @@
 
 import type { CheckResultError } from '../requirements-checker.utils';
 import { getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 
@@ -38,22 +39,30 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
   }
 
   try {
-    const resp = await getBackendSrv().post<CodaExecResponse>(CODA_EXEC_URL, {
-      command,
-      mode: 'gated',
-    });
+    // .fetch with showErrorAlert: false so a check that finds the env not
+    // ready (or any other backend error) doesn't trigger a global toast on
+    // top of the in-block failure message.
+    const resp = await lastValueFrom(
+      getBackendSrv().fetch<CodaExecResponse>({
+        url: CODA_EXEC_URL,
+        method: 'POST',
+        data: { command, mode: 'gated' },
+        showErrorAlert: false,
+      })
+    );
+    const data = resp.data;
 
-    const pass = resp.exitCode === 0;
+    const pass = data.exitCode === 0;
     return {
       requirement: check,
       pass,
       error: pass
         ? undefined
-        : `Check command exited with code ${resp.exitCode}${resp.stderr ? `: ${resp.stderr.trim().slice(0, 200)}` : ''}`,
+        : `Check command exited with code ${data.exitCode}${data.stderr ? `: ${data.stderr.trim().slice(0, 200)}` : ''}`,
       context: {
-        exitCode: resp.exitCode,
-        durationMs: resp.durationMs,
-        truncated: resp.truncated ?? false,
+        exitCode: data.exitCode,
+        durationMs: data.durationMs,
+        truncated: data.truncated ?? false,
       },
     };
   } catch (err) {

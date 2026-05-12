@@ -4,6 +4,7 @@
 
 import { codaExitZeroCheck } from './coda';
 import { getBackendSrv } from '@grafana/runtime';
+import { of, throwError } from 'rxjs';
 
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
@@ -12,15 +13,16 @@ jest.mock('@grafana/runtime', () => ({
 const mockedGetBackendSrv = getBackendSrv as jest.MockedFunction<typeof getBackendSrv>;
 
 function mockPost(response: unknown): jest.Mock {
-  const post = jest.fn().mockResolvedValue(response);
-  mockedGetBackendSrv.mockReturnValue({ post } as unknown as ReturnType<typeof getBackendSrv>);
-  return post;
+  // Frontend uses getBackendSrv().fetch(...) which returns an Observable.
+  const fetch = jest.fn().mockReturnValue(of({ data: response }));
+  mockedGetBackendSrv.mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
+  return fetch;
 }
 
 function mockPostError(error: unknown): jest.Mock {
-  const post = jest.fn().mockRejectedValue(error);
-  mockedGetBackendSrv.mockReturnValue({ post } as unknown as ReturnType<typeof getBackendSrv>);
-  return post;
+  const fetch = jest.fn().mockReturnValue(throwError(() => error));
+  mockedGetBackendSrv.mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
+  return fetch;
 }
 
 describe('codaExitZeroCheck', () => {
@@ -29,16 +31,17 @@ describe('codaExitZeroCheck', () => {
   });
 
   it('passes when exit code is 0', async () => {
-    const post = mockPost({ stdout: '', stderr: '', exitCode: 0, durationMs: 42 });
+    const fetch = mockPost({ stdout: '', stderr: '', exitCode: 0, durationMs: 42 });
 
     const result = await codaExitZeroCheck('coda-exit-zero:test -f /etc/foo');
 
     expect(result.pass).toBe(true);
-    expect(post).toHaveBeenCalledWith(
-      '/api/plugins/grafana-pathfinder-app/resources/coda/exec',
+    expect(fetch).toHaveBeenCalledWith(
       expect.objectContaining({
-        command: 'test -f /etc/foo',
-        mode: 'gated',
+        url: '/api/plugins/grafana-pathfinder-app/resources/coda/exec',
+        method: 'POST',
+        data: expect.objectContaining({ command: 'test -f /etc/foo', mode: 'gated' }),
+        showErrorAlert: false,
       })
     );
   });
@@ -54,11 +57,11 @@ describe('codaExitZeroCheck', () => {
   });
 
   it('always uses gated mode', async () => {
-    const post = mockPost({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    const fetch = mockPost({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
 
     await codaExitZeroCheck('coda-exit-zero:true');
 
-    expect(post).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: 'gated' }));
+    expect(fetch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ mode: 'gated' }) }));
   });
 
   it('fails with friendly message when command is missing', async () => {
@@ -87,13 +90,14 @@ describe('codaExitZeroCheck', () => {
   });
 
   it('preserves shell metacharacters in the command parameter', async () => {
-    const post = mockPost({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    const fetch = mockPost({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
 
     await codaExitZeroCheck('coda-exit-zero:curl -sf localhost:9090/-/healthy | grep -q ok');
 
-    expect(post).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ command: 'curl -sf localhost:9090/-/healthy | grep -q ok' })
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ command: 'curl -sf localhost:9090/-/healthy | grep -q ok' }),
+      })
     );
   });
 });

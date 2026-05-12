@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { from } from 'rxjs';
 
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
@@ -26,8 +27,17 @@ const mockedUseTerminalContext = useTerminalContext as jest.MockedFunction<typeo
 const mockedCheckPostconditions = checkPostconditions as jest.MockedFunction<typeof checkPostconditions>;
 const mockedGetBackendSrv = getBackendSrv as jest.MockedFunction<typeof getBackendSrv>;
 
+/**
+ * The challenge block calls getBackendSrv().fetch(...) which returns an
+ * Observable. The test mock translates a plain "post-like" mock function
+ * (taking url, body → resolved response) into the Observable shape so that
+ * existing .mockResolvedValue / .mockResolvedValueOnce calls keep working.
+ */
 function setBackend(post: jest.Mock): void {
-  mockedGetBackendSrv.mockReturnValue({ post } as unknown as ReturnType<typeof getBackendSrv>);
+  const fetch = jest.fn((opts: { url: string; data?: unknown }) => {
+    return from(Promise.resolve(post(opts.url, opts.data)).then((result) => ({ data: result })));
+  });
+  mockedGetBackendSrv.mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
 }
 
 interface MockCtxOverrides {
@@ -107,6 +117,31 @@ describe('ChallengeBlock', () => {
       command: expect.stringContaining('/var/run/pathfinder-ready'),
       mode: 'raw',
     });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+  });
+
+  it('recovers when Try again is clicked after a VM-provisioning failure', async () => {
+    // First mount with status='error' simulates the situation immediately
+    // after a credentials failure: the terminalCtx already reports 'error'.
+    // Without the stale-status guard, the effect would observe this stale
+    // 'error' on the next Try-again click and immediately fall back to
+    // setup-failed before the new connection attempt could complete.
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'error' });
+
+    const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    // Status hasn't changed yet — effect should NOT transition to setup-failed.
+    expect(screen.queryByText(/could not start the challenge/i)).not.toBeInTheDocument();
+
+    // The terminal eventually connects after openTerminal.
+    mockTerminalCtx({ status: 'connected' });
+    rerender(<ChallengeBlock {...baseProps} setupCommands={[]} />);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
