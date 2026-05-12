@@ -23,6 +23,7 @@ import { runEditBlock } from '../../commands/edit-block';
 import { runRemoveBlock } from '../../commands/remove-block';
 import { runSetManifest } from '../../commands/set-manifest';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
+import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { outcomeResult } from './result';
 import { withArtifact } from './state-bridge';
 
@@ -31,9 +32,50 @@ const ArtifactInputSchema = {
     .object({
       content: z.record(z.string(), z.unknown()),
       manifest: z.record(z.string(), z.unknown()).optional(),
+      __etag: z
+        .string()
+        .optional()
+        .describe(
+          'Integrity tag issued on the previous response. Pass back verbatim along with content and manifest; the server verifies it before dispatching.'
+        ),
     })
-    .describe('In-flight authoring artifact returned by the previous authoring tool. Pass it in unchanged.'),
+    .describe(
+      'In-flight authoring artifact returned by the previous authoring tool. Echo it back verbatim — including `__etag`. Do not re-serialize, reformat, re-key, or "fix" any field; even fields that look wrong are valid CLI output. The server hashes content+manifest and checks it against the echoed `__etag`; a mismatch returns ARTIFACT_MUTATED before the schema validator runs.'
+    ),
 };
+
+/**
+ * Verify the agent echoed the artifact back verbatim — issue #1. Returns
+ * an `ARTIFACT_MUTATED` outcome on mismatch, or `null` to proceed.
+ *
+ * When `__etag` is absent on the input we skip the check. This preserves
+ * graceful behavior for the first call (no previous response to echo
+ * from) and for any client that omits the field.
+ */
+function verifyArtifactEtag(artifact: {
+  content: Record<string, unknown>;
+  manifest?: Record<string, unknown>;
+  __etag?: string;
+}): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null {
+  if (typeof artifact.__etag !== 'string' || artifact.__etag.length === 0) {
+    return null;
+  }
+  const recomputed = computeArtifactEtag({ content: artifact.content, manifest: artifact.manifest });
+  if (recomputed === artifact.__etag) {
+    return null;
+  }
+  return outcomeResult({
+    status: 'error',
+    code: 'ARTIFACT_MUTATED',
+    message:
+      'The artifact you passed in does not match the integrity tag the server issued. Common cause: re-serializing or reformatting fields between calls (e.g., wrapping a markdown `content` string in an array, sorting keys, dropping fields you thought were optional). Re-fetch the latest artifact from your previous tool response and pass it back byte-for-byte.',
+    data: {
+      expected: artifact.__etag,
+      actual: recomputed,
+      field: ARTIFACT_ETAG_FIELD,
+    },
+  });
+}
 
 const FlagValuesSchema = z
   .record(z.string(), z.unknown())
@@ -64,6 +106,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, type, parentId, branch, ifAbsent, explicitId, before, after, position, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddBlock({
           dir,
@@ -94,6 +140,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, parentId, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddStep({ dir, parentId, flagValues: fields })
       );
@@ -113,6 +163,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, parentId, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddChoice({ dir, parentId, flagValues: fields })
       );
@@ -132,6 +186,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, id, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) => runEditBlock({ dir, id, flagValues: fields }));
       return outcomeResult(result.outcome, result.artifact, result.summary);
     }
@@ -153,6 +211,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, id, cascade, orphanChildren }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runRemoveBlock({ dir, id, cascade, orphanChildren })
       );
@@ -171,6 +233,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) => runSetManifest({ dir, flagValues: fields }));
       return outcomeResult(result.outcome, result.artifact, result.summary);
     }

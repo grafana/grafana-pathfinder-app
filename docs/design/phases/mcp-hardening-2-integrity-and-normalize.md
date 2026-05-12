@@ -79,14 +79,14 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-2: ...`)
 
 ### Issue #1 — Artifact integrity (ETag)
 
-- [ ] **5. `computeArtifactEtag` helper.** New `src/cli/utils/etag.ts`. Deterministic short hex digest (first 16 hex chars of SHA-256) over canonical-JSON serialization of `{content, manifest}`. Exclude `__etag` itself from the hash input so a round-tripped artifact hashes to its original value. Unit tests: same input → same hash, sorted-key stability, exclusion of `__etag` from hash input, manifest-undefined handling.
-- [ ] **6. Embed `__etag` on outgoing artifacts.** Update `outcomeResult` in `src/cli/mcp/tools/result.ts` to compute and embed `__etag` in the returned artifact when `artifact` is present. Document in the function comment that `__etag` lives at the envelope level (sibling to `content` / `manifest`), not inside the content shape.
-- [ ] **7. Verify `__etag` on mutation inputs.** Modify `ArtifactInputSchema` in `mutation-tools.ts` to accept an optional `__etag: z.string().optional()`. In each mutation handler, if `__etag` is present, recompute the etag of `{content, manifest}` and compare. On mismatch, return an `ARTIFACT_MUTATED` error via `outcomeResult` _before_ dispatching to the CLI runner. Strip `__etag` before passing to `withArtifact` so the CLI runner never sees it (state-bridge must not write it to tmpdir). Sharpen the `artifact` field `.describe()`: "Echo the artifact object from the previous response verbatim, including `__etag`. Do not re-serialize, reformat, re-key, or 'fix' any field — even fields that look wrong are valid CLI output."
-- [ ] **8. `state-bridge.ts` artifact-shape guard.** Make sure `withArtifact` ignores any unknown top-level keys on the incoming artifact wrapper (notably `__etag`). The CLI's `runX` functions take `{content, manifest}` only; the wrapper has no business reaching them.
+- [x] **5. `computeArtifactEtag` helper.** ✓ _Complete (2026-05-12)._ New `src/cli/utils/etag.ts` exports `computeArtifactEtag` (SHA-256 over canonical-form JSON of `{content, manifest}`, truncated to 16 hex chars / 64 bits), `splitArtifactEtag` (pulls `__etag` off the envelope and returns payload + tag), and `ARTIFACT_ETAG_FIELD` constant. Canonical form sorts keys at every depth; preserves array order (semantically meaningful for `blocks`). 12 unit tests in `etag.test.ts` cover determinism, key-order invariance, mutation detection, undefined manifest equivalence, array-reorder detection, and full round-trip / mismatch.
+- [x] **6. Embed `__etag` on outgoing artifacts.** ✓ _Complete (2026-05-12)._ `outcomeResult` in `result.ts` now embeds `__etag` on the returned artifact envelope (sibling to `content` / `manifest`). Function comment documents the placement and the round-trip contract. Every tool that already returned an artifact (create, mutations, inspect, validate) inherits this automatically — no per-tool change.
+- [x] **7. Verify `__etag` on mutation inputs.** ✓ _Complete (2026-05-12)._ `ArtifactInputSchema` accepts an optional `__etag: z.string().optional()`. New `verifyArtifactEtag` helper (top of `mutation-tools.ts`) recomputes the etag and compares; on mismatch returns `ARTIFACT_MUTATED` outcome (via `outcomeResult`) before any dispatch happens. Wired into all 6 mutation handlers (`add_block`, `add_step`, `add_choice`, `edit_block`, `remove_block`, `set_manifest`). Sharpened the `artifact` field `.describe()`: "Echo back verbatim including `__etag` … mismatch returns ARTIFACT_MUTATED before the schema validator runs."
+- [x] **8. `state-bridge.ts` artifact-shape guard.** ✓ _Complete (2026-05-12) — no code change required._ The existing `asArtifact()` helper at `mutation-tools.ts` reads only `content` and `manifest`, so `__etag` is naturally stripped before reaching `withArtifact`. The CLI runner never sees the envelope field. No defensive change needed; documenting here for the audit trail.
 
 ### Cross-cutting + docs
 
-- [ ] **9. Extend the canonical-flow test.** In `hardening-flow.test.ts`: (a) after each mutation, assert `artifact.__etag` is a non-empty string and changes across mutations; (b) pass the artifact unchanged on subsequent calls — confirm no `ARTIFACT_MUTATED` error; (c) add a corruption test that mutates `artifact.content.blocks[0].content` (a string field) and confirms `ARTIFACT_MUTATED` on the next mutation; (d) add a YouTube watch-URL add — confirm `status: ok` + `INPUT_NORMALIZED` warning + the artifact's video.src is the embed form.
+- [x] **9. Extend the canonical-flow test.** ✓ _Complete (2026-05-12)._ Added four new assertions to `hardening-flow.test.ts` chained on the existing canonical flow: (a) `artifact.__etag` is non-empty 16-char hex on the first response; (b) etags across `created` / `markdownAdd` / `multistepAdd` / `stepAdd` are all distinct (state changes → hash changes); (c) a YouTube watch URL on `add_block(video)` produces `INPUT_NORMALIZED` + embed-URL persistence; (d) corrupting the artifact's `content.title` and re-passing produces an `ARTIFACT_MUTATED` error with remediation-shaped message. The composition guard is now end-to-end on slices 1+2.
 - [ ] **10. Docs update.** `docs/developer/MCP_SERVER.md` — add `__etag` to the response shape section, add `ARTIFACT_MUTATED` to a new "Error codes" subsection (or extend the warnings table), add `INPUT_NORMALIZED` to the warnings registry. `docs/design/MCP-AGENT-UX-HARDENING.md` — append Status (2026-05-12) to issues #1 and #2; mark OQ1 resolved; append slice-2 decision-log entry.
 
 ### Test plan
@@ -109,9 +109,26 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MCP-HARDEN-2: ...`)
 
 ## Decision log
 
-### Proposed at draft — to confirm or revise when their task lands
+### 2026-05-12 — OQ1: ETag visibility — visible `__etag` on the artifact envelope
 
-- **OQ1 — ETag visibility (invisible plumbing vs. visible `__etag`):** Decision proposed — **visible `__etag` on the artifact envelope (sibling to `content` / `manifest`)**. Rationale: invisible plumbing is impossible under the stateless contract (no per-call server state to remember the previous hash). The agent must echo the etag back, which means it must be on the wire. Naming follows the `__etag` proposal in the hardening doc (double-underscore prefix signals "internal — pass through unchanged"). Confirm at task 5 / 6 land.
+- **Decision:** ETag lives at the artifact envelope (`artifact.__etag`), sibling to `content` and `manifest`. Computed by `outcomeResult` on the way out; verified by `verifyArtifactEtag` at the top of each mutation handler. SHA-256 truncated to 16 hex chars; canonical-form (sorted-key) JSON serialization.
+- **Alternatives considered:** Invisible server-side plumbing (impossible under the stateless contract — there's no per-call server state to remember the previous hash). Hash inside `content` (pollutes the schema-validated shape). Hash on `manifest` (couples to a field that's sometimes absent).
+- **Rationale:** The stateless contract forces the etag onto the wire so the agent can echo it back. Envelope-level placement keeps it out of the schema-validated content and gives a single `verifyArtifactEtag` entrypoint at the MCP layer. The `__etag` field name signals "internal — pass through unchanged" (double-underscore convention).
+- **Touches:** `src/cli/utils/etag.ts` (new), `src/cli/mcp/tools/result.ts`, `src/cli/mcp/tools/mutation-tools.ts`.
+
+### 2026-05-12 — `assertEmbeddableVideoUrl` left in place as defense-in-depth
+
+- **Decision:** The CLI validator function `assertEmbeddableVideoUrl` keeps its watch / youtu.be error branches even though the normalizer ahead of it now makes them dead code for runner-mediated inputs.
+- **Alternatives considered:** Simplify the validator down to "URL is http/https"; rely entirely on the normalizer.
+- **Rationale:** The normalizer runs in `runAddBlock` and `runEditBlock`, but any future code path that bypasses those runners (validate-only flows, direct CLI invocations against a hand-edited content.json) would lose the safety net. Defense-in-depth costs nothing here — both branches stay, the normalizer just makes them rare.
+- **Touches:** `src/cli/utils/cli-validators.ts` (unchanged).
+
+### 2026-05-12 — Normalization warnings ride on idempotent no-ops too
+
+- **Decision:** In `runAddBlock`, `INPUT_NORMALIZED` warnings are surfaced even when `--if-absent` skipped the append. Composition / selector warnings continue to fire only on actual append.
+- **Alternatives considered:** Suppress all warnings on no-ops (symmetric with composition / selector logic).
+- **Rationale:** The agent benefits from learning the canonical form regardless of whether the call ended up appending. A no-op shouldn't hide the fact that the input was non-canonical — the user might pass the same non-canonical form in a different call seconds later and trip the same round-trip if we suppress.
+- **Touches:** `src/cli/commands/add-block.ts`.
 
 ---
 
