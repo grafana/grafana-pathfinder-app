@@ -126,11 +126,8 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
 
   const setState: GuideStateSetter = useCallback(
     (action, options) => {
-      const next =
-        typeof action === 'function'
-          ? (action as (p: BlockEditorState) => BlockEditorState)(state)
-          : action;
-      
+      const next = typeof action === 'function' ? (action as (p: BlockEditorState) => BlockEditorState)(state) : action;
+
       // No-op transitions (same reference) skip history regardless.
       if (next === state) {
         return;
@@ -143,14 +140,13 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
       if (!options?.skipHistory) {
         const now = Date.now();
         const key = options?.coalesceKey ?? null;
-        const insideCoalesceWindow =
-          key !== null && key === coalesceRef.current.key && now < coalesceRef.current.until;
+        const insideCoalesceWindow = key !== null && key === coalesceRef.current.key && now < coalesceRef.current.until;
 
         if (!insideCoalesceWindow) {
           const estimatedSize = estimateSingleEntryBytes(state);
           const past = pastRef.current;
           past.push({ state, label: options?.label, estimatedSize });
-          
+
           // Count cap.
           while (past.length > MAX_HISTORY) {
             past.shift();
@@ -176,27 +172,27 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
     if (past.length === 0) {
       return;
     }
-    
+
     // Pop from past (pure calculation)
     const target = past.pop();
     if (!target) {
       return;
     }
-    
+
     // Calculate next state outside updater
     const nextState = target.state;
-    
+
     // Update refs (side effects outside updater)
     const estimatedSize = estimateSingleEntryBytes(state);
     pastRef.current = past;
     futureRef.current.unshift({ state, label: target.label, estimatedSize });
-    
+
     // Reset coalescing so the next setState starts a fresh entry.
     coalesceRef.current = { key: null, until: 0 };
-    
+
     // Apply state change
     setStateInternal(nextState);
-    
+
     // Refresh UI meta
     refreshMeta();
   }, [state, refreshMeta]);
@@ -206,26 +202,26 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
     if (future.length === 0) {
       return;
     }
-    
+
     // Shift from future (pure calculation)
     const target = future.shift();
     if (!target) {
       return;
     }
-    
+
     // Calculate next state outside updater
     const nextState = target.state;
-    
+
     // Update refs (side effects outside updater)
     const estimatedSize = estimateSingleEntryBytes(state);
     futureRef.current = future;
     pastRef.current.push({ state, label: target.label, estimatedSize });
-    
+
     coalesceRef.current = { key: null, until: 0 };
-    
+
     // Apply state change
     setStateInternal(nextState);
-    
+
     // Refresh UI meta
     refreshMeta();
   }, [state, refreshMeta]);
