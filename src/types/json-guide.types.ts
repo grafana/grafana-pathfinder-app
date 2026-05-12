@@ -43,6 +43,7 @@ export type JsonBlock =
   | JsonInputBlock
   | JsonTerminalBlock
   | JsonTerminalConnectBlock
+  | JsonChallengeBlock
   | JsonCodeBlockBlock
   | JsonGrotGuideBlock;
 
@@ -497,6 +498,64 @@ export interface JsonTerminalConnectBlock {
   vmScenario?: string;
 }
 
+// ============ CHALLENGE BLOCK ============
+
+/**
+ * Progressive hint shown to the user when they're stuck on a challenge.
+ */
+export interface JsonChallengeHint {
+  /** Markdown hint text */
+  text: string;
+}
+
+/**
+ * Challenge block: a CTF-style learning task that runs in a Coda VM.
+ *
+ * The block provisions a VM (same templates as terminal-connect), runs
+ * setup commands to put it into a deliberately broken state, and then
+ * verifies a success criterion when the user clicks "Check my work".
+ * Progressive hints can be revealed one at a time.
+ *
+ * @coupling Zod schema: JsonChallengeBlockSchema in json-guide.schema.ts
+ */
+export interface JsonChallengeBlock {
+  type: 'challenge';
+  /** Stable identifier for edit-block / remove-block addressing */
+  id?: string;
+  /** Short title shown above the brief */
+  title: string;
+  /** Markdown problem statement explaining what to do */
+  brief: string;
+  /** VM template to provision (defaults to "vm-aws") */
+  vmTemplate?: string;
+  /** Scenario name for the alloy-scenario template */
+  vmScenario?: string;
+  /** Sample app for the sample-app template */
+  vmApp?: string;
+  /**
+   * Bash commands run sequentially via /coda/exec after the VM is ready
+   * and before "Check my work" becomes available. A sentinel file at
+   * /var/run/pathfinder-ready is written automatically after these run,
+   * gating the success criterion so it cannot pass prematurely.
+   * Non-zero exit on any command aborts setup and surfaces the error.
+   */
+  setupCommands?: string[];
+  /**
+   * Requirement string evaluated when the user clicks "Check my work".
+   * Typically a `coda-exit-zero:<command>` check, but any requirement
+   * string is allowed.
+   */
+  successCriteria: string;
+  /** Progressive hints, revealed one at a time as the user clicks. */
+  hintLevels?: JsonChallengeHint[];
+  /** Message shown when the success check fails */
+  failureMessage?: string;
+  /** Standard interactive-block fields */
+  requirements?: string[];
+  objectives?: string[];
+  skippable?: boolean;
+}
+
 // ============ CODE BLOCK ============
 
 /**
@@ -722,6 +781,13 @@ export function isTerminalBlock(block: JsonBlock): block is JsonTerminalBlock {
  */
 export function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalConnectBlock {
   return block.type === 'terminal-connect';
+}
+
+/**
+ * Type guard for JsonChallengeBlock
+ */
+export function isChallengeBlock(block: JsonBlock): block is JsonChallengeBlock {
+  return block.type === 'challenge';
 }
 
 /**

@@ -456,6 +456,42 @@ export const JsonTerminalConnectBlockSchema = z.object({
   vmScenario: z.string().optional().describe('Scenario to run in the VM'),
 });
 
+// ============ CHALLENGE BLOCK SCHEMA ============
+
+/**
+ * Schema for a single challenge hint.
+ * @coupling Type: JsonChallengeHint
+ */
+export const JsonChallengeHintSchema = z.object({
+  text: z.string().min(1, 'Hint text is required'),
+});
+
+/**
+ * Schema for the challenge block (CTF-style learning task in a Coda VM).
+ * @coupling Type: JsonChallengeBlock
+ */
+export const JsonChallengeBlockSchema = z.object({
+  type: z.literal('challenge'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  title: z.string().min(1, 'Challenge title is required').describe('Short title shown above the brief'),
+  brief: z.string().min(1, 'Challenge brief is required').describe('Markdown problem statement'),
+  vmTemplate: z.string().optional().describe('VM template to provision (defaults to vm-aws)'),
+  vmScenario: z.string().optional().describe('Scenario for alloy-scenario template'),
+  vmApp: z.string().optional().describe('App for sample-app template'),
+  setupCommands: z
+    .array(z.string().min(1, 'Setup command cannot be empty'))
+    .optional()
+    .describe('Bash commands run server-side after VM is ready, before the challenge becomes verifiable'),
+  successCriteria: RequirementTokenSchema.describe(
+    'Requirement evaluated when the user clicks Check my work (typically coda-exit-zero:<command>)'
+  ),
+  hintLevels: z.array(JsonChallengeHintSchema).optional().describe('Progressive hints revealed on demand'),
+  failureMessage: z.string().optional().describe('Message shown when the success check fails'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions for the challenge'),
+  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  skippable: z.boolean().optional().describe('Allow user to skip this block'),
+});
+
 // ============ CODE BLOCK SCHEMA ============
 
 /**
@@ -607,6 +643,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonInputBlockSchema,
   JsonTerminalBlockSchema,
   JsonTerminalConnectBlockSchema,
+  JsonChallengeBlockSchema,
   JsonCodeBlockBlockSchema,
   JsonGrotGuideBlockSchema,
 ]);
