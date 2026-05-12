@@ -48,6 +48,32 @@ async function callTool(client: Client, name: string, args: Record<string, unkno
 }
 
 describe('MCP server', () => {
+  it('surfaces non-empty server `instructions` on the initialize handshake (M1 layer 3)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const instructions = client.getInstructions();
+      expect(typeof instructions).toBe('string');
+      expect(instructions!.length).toBeGreaterThan(0);
+      // Routing vocabulary (#7) — at least one canonical trigger phrase must
+      // make it through so MCP-aware clients have a concrete handle.
+      expect(instructions).toMatch(/create a pathfinder/i);
+      // Selector discipline (#3) — the layer-3 surface is the only hint that
+      // reaches the model BEFORE tool selection, so the "never invent
+      // selectors" rule has to land here, not just in field descriptions.
+      expect(instructions).toMatch(/reftarget/i);
+      expect(instructions).toMatch(/never invent/i);
+      // Composition rule (#8) — same reasoning. The model must see "prefer
+      // siblings over multistep, no noop filler" before it picks a tool.
+      expect(instructions).toMatch(/multistep/i);
+      expect(instructions).toMatch(/noop/i);
+      // Workflow anchor — every flow starts with `pathfinder_authoring_start`,
+      // so the instructions must point there explicitly.
+      expect(instructions).toContain('pathfinder_authoring_start');
+    } finally {
+      await close();
+    }
+  });
+
   it('lists every authoring tool', async () => {
     const { client, close } = await spinUp();
     try {
