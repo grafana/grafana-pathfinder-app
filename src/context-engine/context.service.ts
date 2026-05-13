@@ -888,12 +888,6 @@ export class ContextService {
   }
 
   /**
-   * Deduplicate external recommendations against bundled ones.
-   * Matches on manifest.id (for package-backed) or title (for all types).
-   * External recommendations that duplicate a bundled one are dropped —
-   * bundled content always wins.
-   */
-  /**
    * Prepend a synthetic Featured-slot card driven by the
    * `pathfinder.highlighted-guide-experiment` flag.
    *
@@ -940,6 +934,12 @@ export class ContextService {
     return [synthetic, ...featured];
   }
 
+  /**
+   * Deduplicate external recommendations against bundled ones.
+   * Matches on manifest.id (for package-backed) or title (for all types).
+   * External recommendations that duplicate a bundled one are dropped —
+   * bundled content always wins.
+   */
   static deduplicateRecommendations(externalRecs: Recommendation[], bundledRecs: Recommendation[]): Recommendation[] {
     const bundledIds = new Set<string>();
     const bundledTitles = new Set<string>();
