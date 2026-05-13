@@ -25,6 +25,8 @@ __pathfinderExperiment.showOverrides(); // returns the current overrides object
 __pathfinderExperiment.showCache(); // dumps per-page treatment keys + reset sentinel + user-storage
 __pathfinderExperiment.clearCache(); // clears the main-experiment auto-open tracking (sessionStorage + user-storage)
 __pathfinderExperiment.refetch(); // re-evaluates pathfinder.experiment-variant from MTFF (5s rate limit)
+__pathfinderExperiment.showExposures(); // lists (flag, variant) pairs already reported to analytics on this browser
+__pathfinderExperiment.clearExposures(); // clears the analytics dedup markers so the next reload re-fires pathfinder_feature_flag_evaluated
 ```
 
 Overrides are persisted in `localStorage` under `grafana-pathfinder-flag-overrides`, evaluated on every page load via the synchronous `getFeatureFlagValue` / `getExperimentConfig` / `getHighlightedGuideConfig` readers — they bypass MTFF entirely and produce a `[OpenFeature] Using local override for '<flag>'` warning every time they're read, which doubles as a visible reminder that you're in dev mode.
@@ -43,9 +45,7 @@ Object.keys(localStorage)
   .forEach((k) => localStorage.removeItem(k));
 
 // 3. Wipe analytics exposure-dedup markers (so pathfinder_feature_flag_evaluated fires again)
-Object.keys(localStorage)
-  .filter((k) => k.startsWith('grafana-pathfinder-experiment-exposure-reported-'))
-  .forEach((k) => localStorage.removeItem(k));
+__pathfinderExperiment.clearExposures();
 
 // 4. Clear leftover panel-mode (in case earlier floating-mode tests left it sticky)
 localStorage.removeItem('grafana-pathfinder-app-panel-mode');
@@ -206,7 +206,33 @@ Three events fire end-to-end for the highlighted-guide experiment. Filter the Ru
 | `pathfinder_docs_panel_interaction` | When the sidebar mounts after auto-open                                                    | `action: 'auto-open'`, `source: 'highlighted_guide_experiment'`                                |
 | `pathfinder_open_resource_click`    | When the user clicks the Featured card's "Start guide" button                              | `content_title`, `content_url`, `content_type`, `interaction_location: 'featured_card_button'` |
 
-The `pathfinder_feature_flag_evaluated` event is **deduped per browser per (hostname, flag, variant)** — second visits don't re-fire. To force a re-fire for QA, run step 3 of the reset snippet above (clears `grafana-pathfinder-experiment-exposure-reported-*` keys).
+### Why the exposure event might not fire
+
+`pathfinder_feature_flag_evaluated` is **deduped per browser per (hostname, flag, variant)** — once you've been exposed to an arm on a given stack, the event won't refire on subsequent page loads. This keeps exposure-event volume proportional to "users in each arm" rather than "pageviews per user," which is what every A/B analysis tool expects.
+
+The dedup state lives in `localStorage` under `grafana-pathfinder-experiment-exposure-reported-{hostname}:{flagKey}:{variant}`. The debug surface exposes two helpers for inspecting and resetting it:
+
+```js
+// Inspect: which (flag, variant) tuples have already fired the event on this stack?
+// Returns an array of { key, flag, variant } and pretty-prints the count.
+__pathfinderExperiment.showExposures();
+// e.g. → [
+//   { key: '…experiment-variant:treatment', flag: 'pathfinder.experiment-variant',           variant: 'treatment' },
+//   { key: '…highlighted-guide:control',    flag: 'pathfinder.highlighted-guide-experiment', variant: 'control'   },
+// ]
+
+// Reset: wipe all dedup markers for this hostname so the next reload re-fires.
+__pathfinderExperiment.clearExposures();
+location.reload();
+```
+
+When to use them:
+
+- **You expect an exposure event but it isn't showing up in analytics.** Run `showExposures()` first — if the (flag, variant) pair is listed, the event already fired on a previous load. Run `clearExposures()` and reload to force it to fire again.
+- **Demoing an experiment and want a fresh exposure on each demo run.** Bake `clearExposures()` into the reset between demos (step 3 of the reset snippet already does this).
+- **Validating variant reassignment behavior.** A user moved from `control` → `treatment` writes a _new_ marker (`...:treatment` vs `...:control`), so the event refires automatically. Use `showExposures()` to confirm both arms appear in the marker list after a reassignment test.
+
+Variant reassignment is the **only** condition where the event auto-refires across page loads without manual reset; everything else (same browser, same arm, same hostname) is deduped.
 
 ## Common gotchas
 
