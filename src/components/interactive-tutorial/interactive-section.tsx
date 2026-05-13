@@ -13,13 +13,24 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
-import { interactiveStepStorage, sectionCollapseStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import {
+  interactiveStepStorage,
+  sectionCollapseStorage,
+  sectionAcknowledgementStorage,
+  interactiveCompletionStorage,
+} from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
-import { getResumeInfo as computeResumeInfo, computeStepEligibility } from './step-section-utils';
+import {
+  getResumeInfo as computeResumeInfo,
+  computeStepEligibility,
+  analyzeAcknowledgement,
+  type ChildKind,
+} from './step-section-utils';
+import { classifySectionChild } from './section-child-classifier';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -144,6 +155,10 @@ export function InteractiveSection({
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
   const [isCollapsed, setIsCollapsed] = useState(false); // Collapse state for completed sections
+  // Issue #842: explicit acknowledgement that the user has read any trailing
+  // non-interactive content in the section. Only applied as a gate when
+  // `needsAcknowledgement` (computed below from the section's children).
+  const [isAcknowledged, setIsAcknowledged] = useState(false);
 
   // Section requirements state - tracks whether section-level requirements are met
   const [sectionRequirementsStatus, setSectionRequirementsStatus] = useState<{
@@ -390,6 +405,16 @@ export function InteractiveSection({
   // Section-level blocking is managed separately at the section level
 
   // Extract step information from children first (needed for completion calculation)
+  //
+  // ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4. Each `child.type === Foo`
+  // branch below is the runtime-component-identity counterpart to the
+  // parse-string entries in content-renderer.tsx. Adding a new interactive
+  // step component type requires updates in 4 places:
+  //   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
+  //   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
+  //   3. interactive-section.tsx `stepComponents` useMemo branches (this block)
+  //   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+  // See .cursor/rules/tracked-step-types.mdc for the full checklist.
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
     // Track step index separately from child index to handle non-step children
@@ -525,33 +550,82 @@ export function InteractiveSection({
     return steps;
   }, [children, sectionId]);
 
-  // Load persisted completed steps on mount/section change (declared after stepComponents)
+  // Objectives checking is handled by the step checker hook
+
+  // Classify every direct child in document order so we can detect sections
+  // that have trailing passive content (markdown / image / video / noop step)
+  // after the last interactive step, or sections that are 100% passive.
+  // See issue #842 — those sections must not auto-complete; the user must
+  // explicitly acknowledge them via "Mark section as complete".
+  const acknowledgementAnalysis = useMemo(() => {
+    const kinds: ChildKind[] = [];
+    React.Children.forEach(children, (child) => {
+      kinds.push(classifySectionChild(child));
+    });
+    return analyzeAcknowledgement(kinds);
+  }, [children]);
+  const { needsAcknowledgement, isAllPassive } = acknowledgementAnalysis;
+
+  // Load persisted completed steps + acknowledgement state on mount/section change.
+  // These two are restored together so we can apply the issue-#842 migration:
+  // sections that were already complete under the pre-#842 rules (all real
+  // steps done) are auto-acknowledged on first read, preventing existing
+  // completed sections from spontaneously becoming incomplete after upgrade.
   useEffect(() => {
     const contentKey = getContentKey();
 
-    interactiveStepStorage.getCompleted(contentKey, sectionId).then((restored) => {
+    Promise.all([
+      interactiveStepStorage.getCompleted(contentKey, sectionId),
+      sectionAcknowledgementStorage.get(contentKey, sectionId),
+    ]).then(([restored, restoredAck]) => {
+      let restoredCompletedSet = new Set<string>();
       if (restored.size > 0) {
         // Only keep steps that exist in current content
         const validIds = new Set(stepComponents.map((s) => s.stepId));
         const filtered = Array.from(restored).filter((id) => validIds.has(id));
         if (filtered.length > 0) {
-          const restoredSet = new Set(filtered);
-          setCompletedSteps(restoredSet);
+          restoredCompletedSet = new Set(filtered);
+          setCompletedSteps(restoredCompletedSet);
           // Move index to next uncompleted
-          const nextIdx = stepComponents.findIndex((s) => !restoredSet.has(s.stepId));
+          const nextIdx = stepComponents.findIndex((s) => !restoredCompletedSet.has(s.stepId));
           setCurrentStepIndex(nextIdx === -1 ? stepComponents.length : nextIdx);
         }
       }
-    });
-  }, [sectionId, stepComponents]);
 
-  // Objectives checking is handled by the step checker hook
+      if (restoredAck !== null) {
+        setIsAcknowledged(restoredAck);
+        return;
+      }
+
+      // Migration: no acknowledgement record exists. If the section needs
+      // acknowledgement under the new rules but the user's persisted
+      // completion already covered every real (non-noop) interactive step,
+      // they had a "complete" section under the old rules and we preserve
+      // that — auto-acknowledge and persist so they aren't asked to click
+      // a button on something they already finished.
+      if (needsAcknowledgement) {
+        const realSteps = stepComponents.filter((s) => s.targetAction !== 'noop');
+        const wasPreviouslyComplete =
+          realSteps.length > 0 && realSteps.every((s) => restoredCompletedSet.has(s.stepId));
+        if (wasPreviouslyComplete) {
+          setIsAcknowledged(true);
+          sectionAcknowledgementStorage.set(contentKey, sectionId, true);
+        }
+      }
+    });
+  }, [sectionId, stepComponents, needsAcknowledgement]);
 
   // Calculate base completion (steps completed) - needed for completion logic
   // Noop steps are always considered complete (they're informational only)
   const nonNoopSteps = stepComponents.filter((s) => s.targetAction !== 'noop');
-  const stepsCompleted =
-    stepComponents.length > 0 && (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
+  const allInteractiveStepsCompleted =
+    nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId));
+  // A section with no children at all has nothing to complete; preserve the
+  // historical guard that empty sections never report completion.
+  const hasAnyContent = stepComponents.length > 0 || isAllPassive;
+  // When the section has trailing passive content (or is entirely passive),
+  // require the user to acknowledge it before we treat the section as done.
+  const stepsCompleted = hasAnyContent && allInteractiveStepsCompleted && (!needsAcknowledgement || isAcknowledged);
 
   // Add objectives checking for section - disable if steps are already completed
   const objectivesChecker = useStepChecker({
@@ -1286,6 +1360,7 @@ export function InteractiveSection({
     setCompletedSteps(new Set());
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
+    setIsAcknowledged(false); // Reset acknowledgement so re-completion requires explicit click again
 
     // Expand the section if it was collapsed
     setIsCollapsed(false);
@@ -1300,6 +1375,7 @@ export function InteractiveSection({
     const contentKey = getContentKey();
     interactiveStepStorage.clear(contentKey, sectionId);
     sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
+    sectionAcknowledgementStorage.clear(contentKey, sectionId); // Clear acknowledgement state
 
     // Reset all step states in the global manager
     import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
@@ -1330,6 +1406,27 @@ export function InteractiveSection({
       }, 200);
     });
   }, [disabled, isRunning, stepComponents, sectionId]);
+
+  /**
+   * Issue #842: Mark a section complete when all interactive steps are done
+   * (or the section is entirely passive) and the user has read any trailing
+   * non-interactive content. Persists acknowledgement so the section stays
+   * complete across refresh and so the auto-collapse / progress wiring kicks in.
+   */
+  const handleMarkSectionComplete = useCallback(() => {
+    if (disabled || isRunning) {
+      return;
+    }
+    if (!needsAcknowledgement || isAcknowledged) {
+      return;
+    }
+    if (!allInteractiveStepsCompleted) {
+      return; // Defensive: button should be hidden in this case anyway.
+    }
+    setIsAcknowledged(true);
+    const contentKey = getContentKey();
+    sectionAcknowledgementStorage.set(contentKey, sectionId, true);
+  }, [disabled, isRunning, needsAcknowledgement, isAcknowledged, allInteractiveStepsCompleted, sectionId]);
 
   // Register this section's steps in the global registry BEFORE rendering children
   // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct
@@ -1802,6 +1899,25 @@ export function InteractiveSection({
               Cancel
             </Button>
           </div>
+        ) : needsAcknowledgement && !isAcknowledged && allInteractiveStepsCompleted && !isCompletedByObjectives ? (
+          // Issue #842: section has trailing passive content (or is entirely
+          // passive). Replace the Do/Reset button with an explicit
+          // acknowledgement so the user can't skip past unread content.
+          <Button
+            onClick={handleMarkSectionComplete}
+            disabled={disabled || !sectionRequirementsStatus.passed}
+            size="md"
+            variant="primary"
+            className="interactive-section-do-button"
+            data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
+            title={
+              isAllPassive
+                ? 'Mark this section complete once you have read the content above'
+                : 'Mark this section complete once you have read the remaining content'
+            }
+          >
+            Mark section as complete
+          </Button>
         ) : (
           <Button
             onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}

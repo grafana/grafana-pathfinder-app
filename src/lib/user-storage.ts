@@ -1097,19 +1097,20 @@ export const interactiveStepStorage = {
 
   /**
    * Clear all progress for a content key (all sections)
-   * Also clears section collapse states for the same content
+   * Also clears section collapse states and section acknowledgements for the same content
    */
   async clearAllForContent(contentKey: string): Promise<void> {
     try {
       completedCountCache.delete(contentKey);
       const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
       const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
+      const ackPrefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
 
       // Find and remove all matching keys
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix))) {
+        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
           keysToRemove.push(key);
         }
       }
@@ -1140,11 +1141,12 @@ export const interactiveStepStorage = {
       completedCountCache.clear();
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
+      const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
 
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix))) {
+        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
           keysToRemove.push(key);
         }
       }
@@ -1228,6 +1230,61 @@ export const sectionCollapseStorage = {
       await storage.removeItem(key);
     } catch (error) {
       console.warn('Failed to clear section collapse state:', error);
+    }
+  },
+};
+
+/**
+ * Section acknowledgement storage operations (issue #842).
+ *
+ * Tracks whether the user has clicked "Mark section as complete" for sections
+ * that contain trailing passive content (markdown / image / video / noop step)
+ * after the last interactive step, or that are composed entirely of passive
+ * content. Without this gate, those sections would auto-complete the moment
+ * the last interactive step finished and the user would never see the
+ * non-interactive content.
+ */
+export const sectionAcknowledgementStorage = {
+  /**
+   * Gets the acknowledgement state for a specific section.
+   * Returns `null` when no record exists in storage so callers can
+   * distinguish "never seen" from explicit values (used for the migration
+   * path for users upgrading from versions that pre-date issue #842).
+   */
+  async get(contentKey: string, sectionId: string): Promise<boolean | null> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      const isAcknowledged = await storage.getItem<boolean>(key);
+      return isAcknowledged ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Sets the acknowledgement state for a specific section.
+   */
+  async set(contentKey: string, sectionId: string, isAcknowledged: boolean): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      await storage.setItem(key, isAcknowledged);
+    } catch (error) {
+      console.warn('Failed to save section acknowledgement state:', error);
+    }
+  },
+
+  /**
+   * Clears acknowledgement state for a specific section.
+   */
+  async clear(contentKey: string, sectionId: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      await storage.removeItem(key);
+    } catch (error) {
+      console.warn('Failed to clear section acknowledgement state:', error);
     }
   },
 };
