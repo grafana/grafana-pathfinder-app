@@ -26,6 +26,12 @@ const baseProps = {
   hasBlocks: false,
   isSelectionMode: false,
   onToggleSelectionMode: jest.fn(),
+  onUndo: jest.fn(),
+  onRedo: jest.fn(),
+  canUndo: false,
+  canRedo: false,
+  undoLabel: null,
+  redoLabel: null,
 };
 
 describe('BlockEditorHeader: pop out / dock button', () => {

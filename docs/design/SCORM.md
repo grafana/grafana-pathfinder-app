@@ -632,7 +632,7 @@ A single SCORM import always produces a **tree of package directories**, each co
 The SCORM importer should be a command-line tool, not a web UI. This aligns with the Content-as-Code philosophy: imported content enters the pipeline via PR, just like authored content. The CLI takes a SCORM ZIP as input and produces a directory of Pathfinder packages plus an import report.
 
 ```bash
-npx pathfinder-scorm-import \
+npx pathfinder-cli@... scorm-import \
   --input sales-training.zip \
   --output ./imported/sales-training/ \
   --cdn-base https://interactive-learning.grafana.net/guides/ \

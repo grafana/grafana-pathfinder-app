@@ -57,6 +57,22 @@ export function readOutputOptions(cmd: Command): OutputOptions {
 // Outcomes
 // ---------------------------------------------------------------------------
 
+/**
+ * Soft hint attached to a successful outcome. Used for non-fatal feedback the
+ * caller (CLI user or MCP-driven agent) should consider but not retry on.
+ * The MCP layer surfaces these verbatim; the CLI renders them in text and
+ * JSON output. Codes are stable strings — see `docs/developer/MCP_SERVER.md`
+ * for the registry of well-known codes.
+ */
+export interface OutcomeWarning {
+  /** Stable warning code, e.g. `UNVERIFIED_SELECTOR`, `MULTISTEP_COMPOSITION_HINT`. */
+  code: string;
+  /** Human-readable message describing the concern and what to do about it. */
+  message: string;
+  /** Optional dotted/bracketed path locating the field the warning is about. */
+  path?: string;
+}
+
 export interface SuccessOutcome {
   status: 'ok';
   /** Single-line summary used by --quiet mode. Should fit on one terminal line. */
@@ -70,6 +86,13 @@ export interface SuccessOutcome {
    * this field — consumers should read structured data from `data`.
    */
   text?: string;
+  /**
+   * Optional soft-feedback entries (M2 — see
+   * `docs/design/MCP-AGENT-UX-HARDENING.md`). Rendered as a `Warnings:` block
+   * in text mode (suppressed in --quiet), and serialized verbatim in JSON
+   * mode so MCP callers see the same structured payload.
+   */
+  warnings?: OutcomeWarning[];
   /** Optional next-step hints. Hidden in --quiet; rendered as bullets in text. */
   hints?: string[];
   /** Stable JSON-format payload. Authoritative when --format json is requested. */
@@ -238,6 +261,13 @@ function formatSuccessText(outcome: SuccessOutcome, quiet: boolean): string {
       lines.push(textLine);
     }
   }
+  if (outcome.warnings && outcome.warnings.length > 0) {
+    lines.push('');
+    lines.push('Warnings:');
+    for (const warning of outcome.warnings) {
+      lines.push(`  - ${formatWarningLine(warning)}`);
+    }
+  }
   if (outcome.hints && outcome.hints.length > 0) {
     lines.push('');
     for (const hint of outcome.hints) {
@@ -245,6 +275,11 @@ function formatSuccessText(outcome: SuccessOutcome, quiet: boolean): string {
     }
   }
   return lines.join('\n');
+}
+
+function formatWarningLine(warning: OutcomeWarning): string {
+  const locus = warning.path ? ` (${warning.path})` : '';
+  return `${warning.code}${locus}: ${warning.message}`;
 }
 
 function formatDetailValue(value: string | number | boolean | string[]): string {
