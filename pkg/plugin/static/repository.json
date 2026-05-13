@@ -31,6 +31,22 @@
       "minVersion": "12.2.0"
     }
   },
+  "create-first-dashboard-challenge": {
+    "path": "create-first-dashboard-challenge/",
+    "title": "Challenge: create your first dashboard",
+    "type": "guide",
+    "description": "Standard-mode CTF: create a dashboard named 'My First Dashboard' in Grafana. Verified by inspecting Grafana state directly — no VM required.",
+    "category": "challenges",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
+    "startingLocation": "/",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
+  },
   "e2e-framework-test": {
     "path": "e2e-framework-test/",
     "title": "E2E framework test",

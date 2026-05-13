@@ -512,9 +512,18 @@ export const JsonChallengeBlockSchema = z.object({
   ...AuthorAnnotatedSchema.shape,
   type: z.literal('challenge'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  mode: z
+    .enum(['coda', 'standard'])
+    .optional()
+    .describe(
+      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' (default) runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>."
+    ),
   title: z.string().min(1, 'Challenge title is required').describe('Short title shown above the brief'),
   brief: z.string().min(1, 'Challenge brief is required').describe('Markdown problem statement'),
-  vmTemplate: z.string().optional().describe('VM template to provision (defaults to vm-aws)'),
+  vmTemplate: z
+    .string()
+    .optional()
+    .describe('VM template to provision (defaults to vm-aws); ignored when mode is standard'),
   vmScenario: z.string().optional().describe('Scenario for alloy-scenario template'),
   vmApp: z.string().optional().describe('App for sample-app template'),
   setupCommands: z

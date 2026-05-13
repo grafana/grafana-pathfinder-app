@@ -1136,6 +1136,7 @@ function renderParsedElement(
           key={key}
           title={sub(element.props.title) ?? element.props.title}
           brief={renderChildren(element.children)}
+          mode={element.props.mode}
           vmTemplate={element.props.vmTemplate}
           vmScenario={element.props.vmScenario}
           vmApp={element.props.vmApp}

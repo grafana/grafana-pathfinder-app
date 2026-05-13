@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "create-first-dashboard-challenge",
+  "title": "Challenge: create your first dashboard",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Create your first dashboard\n\nThis is a **standard challenge**. There's no VM, no terminal — you'll do this in your own Grafana instance. Click _Check my work_ when you think you're done."
+    },
+    {
+      "type": "challenge",
+      "id": "create-dashboard",
+      "mode": "standard",
+      "title": "Create a dashboard named \"My First Dashboard\"",
+      "brief": "Create a new dashboard in Grafana and save it with the exact title **My First Dashboard**. The content of the dashboard doesn't matter — only the title.",
+      "successCriteria": "has-dashboard-named:My First Dashboard",
+      "hintLevels": [
+        {
+          "text": "Open the main menu and look for **Dashboards** → **New** → **New dashboard**."
+        },
+        {
+          "text": "After creating the dashboard, click the gear icon (settings) to set its title, then save with `Ctrl+S` / `Cmd+S`. The title must match exactly: `My First Dashboard`."
+        }
+      ],
+      "failureMessage": "Pathfinder couldn't find a dashboard with that title yet. Make sure you've saved the dashboard with the exact title 'My First Dashboard'."
+    },
+    {
+      "type": "markdown",
+      "content": "## Nice work\n\nYou've built and saved your first Grafana dashboard. From here, you can add panels, configure data sources, and start visualising real data."
+    }
+  ]
+}

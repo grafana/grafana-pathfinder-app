@@ -46,6 +46,13 @@ export interface ChallengeHintProps {
 export interface ChallengeBlockProps {
   title: string;
   brief: React.ReactNode;
+  /**
+   * Execution model. 'standard' runs against the user's Grafana (no VM, no
+   * terminal, no setup phase — block renders with Check my work
+   * immediately). 'coda' (default for back-compat) runs in a Coda VM with
+   * the existing Start → connecting → preparing → ready flow.
+   */
+  mode?: 'coda' | 'standard';
   vmTemplate?: string;
   vmScenario?: string;
   vmApp?: string;
@@ -154,6 +161,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   title,
   brief,
+  mode = 'coda',
   vmTemplate,
   vmScenario,
   vmApp,
@@ -176,7 +184,11 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   });
   const stepId = providedStepId ?? generatedStepId;
 
-  const [state, setState] = useState<ChallengeState>('idle');
+  // Standard-mode challenges have no provisioning step to opt into — the
+  // brief and Check my work are visible immediately. Coda-mode challenges
+  // start at idle so the learner clicks Start (which triggers terminal
+  // open + setup script).
+  const [state, setState] = useState<ChallengeState>(mode === 'standard' ? 'ready' : 'idle');
   const [errorDetail, setErrorDetail] = useState<string>('');
   const [hintsRevealed, setHintsRevealed] = useState(0);
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);

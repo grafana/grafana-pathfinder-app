@@ -816,6 +816,7 @@ function convertChallengeBlock(block: JsonChallengeBlock, _path: string): Conver
       type: 'challenge-block',
       props: {
         title: block.title,
+        mode: block.mode,
         vmTemplate: block.vmTemplate,
         vmScenario: block.vmScenario,
         vmApp: block.vmApp,

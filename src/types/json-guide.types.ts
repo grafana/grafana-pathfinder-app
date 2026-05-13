@@ -550,11 +550,31 @@ export interface JsonChallengeBlock extends AuthorAnnotated {
   type: 'challenge';
   /** Stable identifier for edit-block / remove-block addressing */
   id?: string;
+  /**
+   * Execution model for the challenge.
+   *
+   * - `'standard'` — runs against the user's own Grafana instance. No VM,
+   *   no terminal. `successCriteria` is interpreted as a literal Pathfinder
+   *   requirement string (e.g. `has-dashboard-named:My Dashboard`). The
+   *   block renders the brief + Check my work immediately on mount; there's
+   *   no Start button because there's no heavyweight provisioning to opt
+   *   into. The `vmTemplate` / `vmScenario` / `vmApp` / `setupCommands` /
+   *   `setupScript` fields are ignored when `mode === 'standard'`.
+   * - `'coda'` (default when absent) — runs in a Coda VM with a terminal
+   *   panel. Setup commands run server-side; `successCriteria` is typically
+   *   a `coda-exit-zero:<command>` check against the VM. Full lifecycle:
+   *   idle → connecting → preparing → ready → checking → solved /
+   *   failed-check / setup-failed.
+   *
+   * The field is optional so legacy guides written before this discriminator
+   * existed continue to render as Coda challenges without modification.
+   */
+  mode?: 'coda' | 'standard';
   /** Short title shown above the brief */
   title: string;
   /** Markdown problem statement explaining what to do */
   brief: string;
-  /** VM template to provision (defaults to "vm-aws") */
+  /** VM template to provision (defaults to "vm-aws"). Ignored when `mode === 'standard'`. */
   vmTemplate?: string;
   /** Scenario name for the alloy-scenario template */
   vmScenario?: string;

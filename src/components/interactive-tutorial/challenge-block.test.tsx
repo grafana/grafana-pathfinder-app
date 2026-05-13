@@ -324,4 +324,65 @@ describe('ChallengeBlock', () => {
     expect(screen.getByText(/scrape target port/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /show.*hint/i })).not.toBeInTheDocument();
   });
+
+  describe('standard (non-Coda) mode', () => {
+    it('renders Check my work immediately without a Start button', () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      render(<ChallengeBlock {...baseProps} mode="standard" successCriteria="has-dashboard-named:My Dashboard" />);
+
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+
+    it('does NOT call openTerminal on mount or interaction', async () => {
+      const { openTerminal } = mockTerminalCtx({ status: 'disconnected' });
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: false,
+        error: [{ requirement: 'has-dashboard-named:My Dashboard', pass: false, error: 'not found' }],
+      });
+
+      render(<ChallengeBlock {...baseProps} mode="standard" successCriteria="has-dashboard-named:My Dashboard" />);
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+      await waitFor(() => {
+        expect(mockedCheckPostconditions).toHaveBeenCalled();
+      });
+      expect(openTerminal).not.toHaveBeenCalled();
+    });
+
+    it('passes the success criterion verbatim to checkPostconditions (no coda-exit-zero wrapping)', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        error: [],
+      });
+
+      render(<ChallengeBlock {...baseProps} mode="standard" successCriteria="has-dashboard-named:My Dashboard" />);
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+      await waitFor(() => {
+        expect(mockedCheckPostconditions).toHaveBeenCalledWith(
+          expect.objectContaining({ requirements: 'has-dashboard-named:My Dashboard' })
+        );
+      });
+    });
+
+    it('reaches solved state via the standard-mode check path', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        error: [],
+      });
+
+      render(<ChallengeBlock {...baseProps} mode="standard" successCriteria="has-dashboard-named:My Dashboard" />);
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+      });
+    });
+  });
 });
