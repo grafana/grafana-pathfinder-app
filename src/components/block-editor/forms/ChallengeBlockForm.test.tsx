@@ -84,18 +84,19 @@ beforeEach(() => {
 
 describe('ChallengeBlockForm', () => {
   describe('basic rendering', () => {
-    it('renders the three section headers and the required field labels', () => {
-      renderForm();
-      // Section headers (rendered as plain divs, not <label>s, so getByText is right).
+    it('renders the section headers and required fields (Coda mode shows all three)', () => {
+      // Render in Coda mode to see all three sections — Environment is
+      // mode-conditional and only appears for Coda challenges.
+      renderForm({ mode: 'coda', vmTemplate: 'vm-aws' });
       expect(screen.getByText('Challenge content')).toBeInTheDocument();
       expect(screen.getByText('Environment')).toBeInTheDocument();
       expect(screen.getByText('Verification')).toBeInTheDocument();
-      // Field labels (Grafana <Field> renders the label as plain text inside
-      // a <label>; required fields get a trailing " *" suffix so we use a
-      // regex matcher).
-      expect(screen.getByText(/^Title /)).toBeInTheDocument();
-      expect(screen.getByText(/^Brief /)).toBeInTheDocument();
-      expect(screen.getByText(/^Success check /)).toBeInTheDocument();
+      // Match labels exactly with the optional " *" required suffix and
+      // nothing else, so we don't collide with the test's seeded textarea
+      // values like "Brief text" / "Test challenge".
+      expect(screen.getByText(/^Title \*$/)).toBeInTheDocument();
+      expect(screen.getByText(/^Brief \*$/)).toBeInTheDocument();
+      expect(screen.getByText(/^Success check \*$/)).toBeInTheDocument();
     });
 
     it('uses the new label for the failure-message field', () => {
@@ -282,6 +283,92 @@ describe('ChallengeBlockForm', () => {
 
       const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
       expect(submitted.hintLevels).toBeUndefined();
+    });
+  });
+
+  describe('mode selector', () => {
+    it('renders both mode options', () => {
+      renderForm();
+      expect(screen.getByRole('radio', { name: /^Standard$/ })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^Coda VM$/ })).toBeInTheDocument();
+    });
+
+    it('infers Coda mode when the initial block has a vmTemplate', () => {
+      renderForm({ vmTemplate: 'vm-aws-sample-app' });
+      const codaRadio = screen.getByRole('radio', { name: /^Coda VM$/ });
+      expect(codaRadio).toBeChecked();
+    });
+
+    it('infers Coda mode when the initial block has a setupScript', () => {
+      renderForm({ setupScript: 'echo hi' });
+      expect(screen.getByRole('radio', { name: /^Coda VM$/ })).toBeChecked();
+    });
+
+    it('defaults a brand-new block to Standard mode', () => {
+      // No initial block at all — fresh creation flow.
+      render(<ChallengeBlockForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+      expect(screen.getByRole('radio', { name: /^Standard$/ })).toBeChecked();
+    });
+
+    it('hides the Environment section in Standard mode', () => {
+      // Brand-new block → Standard by default.
+      render(<ChallengeBlockForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+      expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+    });
+
+    it('shows the Environment section after switching to Coda mode', () => {
+      render(<ChallengeBlockForm onSubmit={jest.fn()} onCancel={jest.fn()} />);
+      // Initially Standard, no Environment section.
+      expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+      // Switch to Coda mode.
+      fireEvent.click(screen.getByRole('radio', { name: /^Coda VM$/ }));
+      expect(screen.getByText('Environment')).toBeInTheDocument();
+    });
+  });
+
+  describe('standard-mode success criterion', () => {
+    it('does NOT strip a coda-exit-zero prefix when seeding from a standard-mode block', () => {
+      // Author has hand-written a "coda-exit-zero:..." string in standard
+      // mode (unusual but supported as a literal requirement). The form
+      // should show it verbatim, not strip the prefix.
+      renderForm({ mode: 'standard', successCriteria: 'coda-exit-zero:still-shows-verbatim' });
+      const textbox = screen.getByPlaceholderText(/has-dashboard-named:My First Dashboard/) as HTMLTextAreaElement;
+      expect(textbox.value).toBe('coda-exit-zero:still-shows-verbatim');
+    });
+
+    it('emits the literal successCriteria on submit, without prepending coda-exit-zero', () => {
+      const onSubmit = jest.fn();
+      renderForm({ mode: 'standard', successCriteria: 'has-dashboard-named:My First Dashboard' }, onSubmit);
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
+      expect(submitted.successCriteria).toBe('has-dashboard-named:My First Dashboard');
+      expect(submitted.mode).toBe('standard');
+    });
+
+    it('drops Coda-only fields from submitted output even if state has them', () => {
+      const onSubmit = jest.fn();
+      // Block originally Coda — has all the Coda fields.
+      renderForm(
+        {
+          mode: 'coda',
+          vmTemplate: 'vm-aws-sample-app',
+          vmApp: 'nginx',
+          setupScript: 'echo setup',
+          successCriteria: 'coda-exit-zero:true',
+        },
+        onSubmit
+      );
+
+      // Switch to Standard mode.
+      fireEvent.click(screen.getByRole('radio', { name: /^Standard$/ }));
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
+      expect(submitted.mode).toBe('standard');
+      expect(submitted.vmTemplate).toBeUndefined();
+      expect(submitted.vmApp).toBeUndefined();
+      expect(submitted.setupScript).toBeUndefined();
     });
   });
 });

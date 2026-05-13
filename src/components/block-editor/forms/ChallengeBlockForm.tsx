@@ -17,6 +17,7 @@ import {
   Field,
   IconButton,
   Input,
+  RadioButtonGroup,
   TextArea,
   useStyles2,
   type ComboboxOption,
@@ -34,6 +35,51 @@ const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
   { label: 'Alloy scenario (vm-aws-alloy-scenario)', value: 'vm-aws-alloy-scenario' },
 ];
+
+type ChallengeMode = 'standard' | 'coda';
+
+const MODE_OPTIONS: Array<{ label: string; value: ChallengeMode; description?: string }> = [
+  {
+    label: 'Standard',
+    value: 'standard',
+    description: 'Verify against the learner’s own Grafana — no VM, no terminal.',
+  },
+  {
+    label: 'Coda VM',
+    value: 'coda',
+    description: 'Provision a Coda VM with a terminal; verify with a shell command.',
+  },
+];
+
+/**
+ * Pick the mode for a block being edited. Explicit `mode` field wins. For
+ * legacy blocks (no `mode` set) we infer from the presence of Coda-specific
+ * fields: `vmTemplate`, `vmScenario`, `vmApp`, `setupScript`, `setupCommands`.
+ * A brand-new block (no `initial`) defaults to 'standard' because that's the
+ * cheaper, more typical authoring path.
+ */
+function inferInitialMode(block: JsonChallengeBlock | null): ChallengeMode {
+  if (!block) {
+    return 'standard';
+  }
+  if (block.mode) {
+    return block.mode;
+  }
+  if (
+    block.vmTemplate ||
+    block.vmScenario ||
+    block.vmApp ||
+    block.setupScript ||
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy detection
+    (block.setupCommands && block.setupCommands.length > 0)
+  ) {
+    return 'coda';
+  }
+  // Legacy block with no Coda fields — default to Coda for safety, since the
+  // historical behaviour was Coda-only and the success criterion is almost
+  // certainly already shaped as `coda-exit-zero:...`.
+  return 'coda';
+}
 
 /** Hint with a stable client-side ID used as React key during reorder. */
 interface HintRow {
@@ -170,18 +216,24 @@ export function ChallengeBlockForm({
 
   const initial = initialData && isChallengeBlock(initialData) ? initialData : null;
 
+  const [mode, setMode] = useState<ChallengeMode>(() => inferInitialMode(initial));
   const [title, setTitle] = useState(initial?.title ?? '');
   const [brief, setBrief] = useState(initial?.brief ?? '');
   const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
   const [vmScenario, setVmScenario] = useState(initial?.vmScenario ?? '');
   const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
   const [setupScript, setSetupScript] = useState(() => seedSetupScript(initial));
-  // The form stores the bare bash command (no `coda-exit-zero:` prefix). On
-  // open we strip the prefix from any legacy value; on submit we prepend it
-  // again before writing back to `successCriteria`. This keeps the JSON shape
-  // and the runtime requirements pipeline unchanged while making the editor
-  // field feel like "Setup script" — multi-line, monospace, no boilerplate.
-  const [successCommand, setSuccessCommand] = useState(stripSuccessPrefix(initial?.successCriteria));
+  // In Coda mode the form stores the bare bash command (no `coda-exit-zero:`
+  // prefix). The form strips on open + prepends on submit so the JSON shape
+  // and requirements pipeline stay unchanged. In standard mode the field is
+  // a literal requirement string (e.g. `has-dashboard-named:My Dashboard`)
+  // and no prefix logic runs. The initial value is derived once based on
+  // the inferred initial mode; subsequent mode toggles do NOT mutate the
+  // field (we don't want to silently destroy the author's input).
+  const [successCommand, setSuccessCommand] = useState(() => {
+    const raw = initial?.successCriteria ?? '';
+    return inferInitialMode(initial) === 'coda' ? stripSuccessPrefix(raw) : raw;
+  });
   const [hints, setHints] = useState<HintRow[]>(() => toHintRows(initial?.hintLevels));
   const [failureMessage, setFailureMessage] = useState(initial?.failureMessage ?? '');
 
@@ -233,12 +285,18 @@ export function ChallengeBlockForm({
 
       const trimmedScript = setupScript.trim();
       const trimmedCommand = successCommand.trim();
-      // Re-attach the coda-exit-zero prefix on submit. Authors only see the
-      // bare command in the form; the stored requirement string keeps its
-      // canonical form so the requirements router can dispatch it.
-      const storedCriteria = trimmedCommand.startsWith(SUCCESS_CHECK_PREFIX)
-        ? trimmedCommand
-        : `${SUCCESS_CHECK_PREFIX}${trimmedCommand}`;
+      // Re-attach the coda-exit-zero prefix on submit ONLY in Coda mode.
+      // Authors see the bare command in the form; the stored requirement
+      // string keeps its canonical form so the requirements router can
+      // dispatch it. In standard mode the criterion is already a literal
+      // requirement string (e.g. `has-dashboard-named:Foo`) so we emit
+      // it verbatim.
+      const storedCriteria =
+        mode === 'coda'
+          ? trimmedCommand.startsWith(SUCCESS_CHECK_PREFIX)
+            ? trimmedCommand
+            : `${SUCCESS_CHECK_PREFIX}${trimmedCommand}`
+          : trimmedCommand;
       const hintLevels: JsonChallengeHint[] = hints
         .map((h) => ({ text: h.text.trim() }))
         .filter((h) => h.text.length > 0);
@@ -246,23 +304,27 @@ export function ChallengeBlockForm({
       // Form always emits setupScript (never setupCommands) — when an
       // existing block had legacy setupCommands, the field was seeded with
       // them joined on newlines, so the migration happens transparently
-      // on first save.
+      // on first save. In standard mode, Coda-specific fields are dropped
+      // entirely from the output regardless of what's in component state
+      // (so toggling modes mid-edit doesn't leak stale fields).
+      const isCoda = mode === 'coda';
       const block: JsonChallengeBlock = {
         type: 'challenge',
+        mode,
         title: title.trim(),
         brief: brief.trim(),
         successCriteria: storedCriteria,
-        ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
-        ...(vmScenario.trim() && { vmScenario: vmScenario.trim() }),
-        ...(vmApp.trim() && { vmApp: vmApp.trim() }),
-        ...(trimmedScript.length > 0 && { setupScript: trimmedScript }),
+        ...(isCoda && vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
+        ...(isCoda && vmScenario.trim() && { vmScenario: vmScenario.trim() }),
+        ...(isCoda && vmApp.trim() && { vmApp: vmApp.trim() }),
+        ...(isCoda && trimmedScript.length > 0 && { setupScript: trimmedScript }),
         ...(hintLevels.length > 0 && { hintLevels }),
         ...(failureMessage.trim() && { failureMessage: failureMessage.trim() }),
       };
 
       onSubmit(block as JsonBlock);
     },
-    [title, brief, vmTemplate, vmScenario, vmApp, setupScript, successCommand, hints, failureMessage, onSubmit]
+    [mode, title, brief, vmTemplate, vmScenario, vmApp, setupScript, successCommand, hints, failureMessage, onSubmit]
   );
 
   const isValid = title.trim().length > 0 && brief.trim().length > 0 && successCommand.trim().length > 0;
@@ -274,11 +336,22 @@ export function ChallengeBlockForm({
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Challenge content</div>
 
+        <Field
+          label="Mode"
+          description={
+            mode === 'standard'
+              ? 'Verifies against the learner’s own Grafana via a Pathfinder requirement. No VM, no terminal.'
+              : 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero).'
+          }
+        >
+          <RadioButtonGroup options={MODE_OPTIONS} value={mode} onChange={(v) => setMode(v)} fullWidth />
+        </Field>
+
         <Field label="Title" description="Short heading shown above the brief" required>
           <Input
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
-            placeholder="Fix the broken Prometheus scrape"
+            placeholder={mode === 'standard' ? 'Create your first dashboard' : 'Fix the broken Prometheus scrape'}
           />
         </Field>
 
@@ -292,69 +365,71 @@ export function ChallengeBlockForm({
         </Field>
       </div>
 
-      {/* ===== Environment ===== */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>Environment</div>
+      {/* ===== Environment (Coda mode only) ===== */}
+      {mode === 'coda' && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Environment</div>
 
-        <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
-          <Combobox
-            options={VM_TEMPLATE_OPTIONS}
-            value={vmTemplate}
-            onChange={(opt) => {
-              setVmTemplate(opt.value);
-              if (!opt.value || opt.value === 'vm-aws-alloy-scenario') {
-                setVmApp('');
-              }
-              if (!opt.value || opt.value !== 'vm-aws-alloy-scenario') {
-                setVmScenario('');
-              }
-            }}
-          />
-        </Field>
-
-        {isAlloyScenario && (
-          <Field label="Scenario" description="Alloy scenario to run on the VM">
+          <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
             <Combobox
-              options={scenarioOptions}
-              value={vmScenario || null}
-              onChange={(opt) => setVmScenario(opt?.value ?? '')}
-              loading={isLoadingScenarios}
-              createCustomValue
-              placeholder="Select a scenario..."
-              isClearable
+              options={VM_TEMPLATE_OPTIONS}
+              value={vmTemplate}
+              onChange={(opt) => {
+                setVmTemplate(opt.value);
+                if (!opt.value || opt.value === 'vm-aws-alloy-scenario') {
+                  setVmApp('');
+                }
+                if (!opt.value || opt.value !== 'vm-aws-alloy-scenario') {
+                  setVmScenario('');
+                }
+              }}
             />
           </Field>
-        )}
 
-        {isSampleApp && (
-          <Field label="App name" description="Sample app to deploy on the VM">
-            <Combobox
-              options={sampleAppOptions}
-              value={vmApp || null}
-              onChange={(opt) => setVmApp(opt?.value ?? '')}
-              loading={isLoadingApps}
-              createCustomValue
-              placeholder="Select a sample app..."
-              isClearable
+          {isAlloyScenario && (
+            <Field label="Scenario" description="Alloy scenario to run on the VM">
+              <Combobox
+                options={scenarioOptions}
+                value={vmScenario || null}
+                onChange={(opt) => setVmScenario(opt?.value ?? '')}
+                loading={isLoadingScenarios}
+                createCustomValue
+                placeholder="Select a scenario..."
+                isClearable
+              />
+            </Field>
+          )}
+
+          {isSampleApp && (
+            <Field label="App name" description="Sample app to deploy on the VM">
+              <Combobox
+                options={sampleAppOptions}
+                value={vmApp || null}
+                onChange={(opt) => setVmApp(opt?.value ?? '')}
+                loading={isLoadingApps}
+                createCustomValue
+                placeholder="Select a sample app..."
+                isClearable
+              />
+            </Field>
+          )}
+
+          <Field
+            label="Setup script"
+            description="Bash script run on the VM before the challenge starts. Multi-line is fine — use heredocs, control flow, whatever. A readiness sentinel is written automatically after this completes."
+          >
+            <TextArea
+              value={setupScript}
+              onChange={(e) => setSetupScript(e.currentTarget.value)}
+              placeholder={
+                'sudo systemctl stop alloy\nsudo sed -i "s/9090/9091/" /etc/alloy/config.alloy\nsudo systemctl start alloy'
+              }
+              rows={8}
+              className={challengeStyles.setupScriptInput}
             />
           </Field>
-        )}
-
-        <Field
-          label="Setup script"
-          description="Bash script run on the VM before the challenge starts. Multi-line is fine — use heredocs, control flow, whatever. A readiness sentinel is written automatically after this completes."
-        >
-          <TextArea
-            value={setupScript}
-            onChange={(e) => setSetupScript(e.currentTarget.value)}
-            placeholder={
-              'sudo systemctl stop alloy\nsudo sed -i "s/9090/9091/" /etc/alloy/config.alloy\nsudo systemctl start alloy'
-            }
-            rows={8}
-            className={challengeStyles.setupScriptInput}
-          />
-        </Field>
-      </div>
+        </div>
+      )}
 
       {/* ===== Verification ===== */}
       <div className={styles.section}>
@@ -364,24 +439,52 @@ export function ChallengeBlockForm({
           label="Success check"
           description={
             <div className={challengeStyles.successCritDescription}>
-              <div>
-                Bash command run inside the VM when the user clicks <em>Check my work</em>. The challenge is considered
-                solved when this exits 0. Common patterns:
-              </div>
-              <ul>
-                <li>
-                  File exists — <code>test -f /path/to/file</code>
-                </li>
-                <li>
-                  File contains a string — <code>grep -q &quot;pattern&quot; /path/to/file</code>
-                </li>
-                <li>
-                  Service responds — <code>curl -sf http://localhost:PORT/path</code>
-                </li>
-                <li>
-                  Process running — <code>pgrep -x process-name</code>
-                </li>
-              </ul>
+              {mode === 'coda' ? (
+                <>
+                  <div>
+                    Bash command run inside the VM when the user clicks <em>Check my work</em>. The challenge is
+                    considered solved when this exits 0. Common patterns:
+                  </div>
+                  <ul>
+                    <li>
+                      File exists — <code>test -f /path/to/file</code>
+                    </li>
+                    <li>
+                      File contains a string — <code>grep -q &quot;pattern&quot; /path/to/file</code>
+                    </li>
+                    <li>
+                      Service responds — <code>curl -sf http://localhost:PORT/path</code>
+                    </li>
+                    <li>
+                      Process running — <code>pgrep -x process-name</code>
+                    </li>
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <div>
+                    Pathfinder requirement evaluated when the user clicks <em>Check my work</em>. The challenge is
+                    considered solved when the requirement passes. Common patterns:
+                  </div>
+                  <ul>
+                    <li>
+                      Dashboard exists with a name — <code>has-dashboard-named:My Dashboard</code>
+                    </li>
+                    <li>
+                      Data source configured — <code>has-datasource:prometheus</code>
+                    </li>
+                    <li>
+                      User on a specific page — <code>on-page:/d/abc123</code>
+                    </li>
+                    <li>
+                      Plugin installed — <code>has-plugin:grafana-clock-panel</code>
+                    </li>
+                    <li>
+                      Feature toggle enabled — <code>has-feature:publicDashboards</code>
+                    </li>
+                  </ul>
+                </>
+              )}
             </div>
           }
           required
@@ -390,15 +493,22 @@ export function ChallengeBlockForm({
             <TextArea
               value={successCommand}
               onChange={(e) => {
-                // If the user pastes a value that still has the legacy
-                // prefix, silently strip it so internal state is always
-                // bare-command.
+                // In Coda mode: if the user pastes a value that still has
+                // the coda-exit-zero prefix, silently strip it so internal
+                // state is always bare-command. In standard mode the value
+                // is a literal requirement string so we leave it alone.
                 const next = e.currentTarget.value;
-                setSuccessCommand(
-                  next.startsWith(SUCCESS_CHECK_PREFIX) ? next.slice(SUCCESS_CHECK_PREFIX.length) : next
-                );
+                if (mode === 'coda' && next.startsWith(SUCCESS_CHECK_PREFIX)) {
+                  setSuccessCommand(next.slice(SUCCESS_CHECK_PREFIX.length));
+                } else {
+                  setSuccessCommand(next);
+                }
               }}
-              placeholder='curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
+              placeholder={
+                mode === 'coda'
+                  ? 'curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
+                  : 'has-dashboard-named:My First Dashboard'
+              }
               rows={3}
               className={challengeStyles.successCheckInput}
             />
