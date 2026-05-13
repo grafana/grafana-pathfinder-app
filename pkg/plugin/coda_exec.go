@@ -85,6 +85,19 @@ func (a *App) handleCodaExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if a.execRateLimiter != nil {
+		if ok, retryAfter := a.execRateLimiter.allow(user); !ok {
+			// Round up to whole seconds for the header (RFC 7231 §7.1.3).
+			secs := int(retryAfter.Seconds())
+			if secs < 1 {
+				secs = 1
+			}
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", secs))
+			a.writeError(w, "Rate limit exceeded — slow down /coda/exec calls", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	var req CodaExecRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		a.writeError(w, "Invalid request body", http.StatusBadRequest)
