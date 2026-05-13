@@ -260,7 +260,10 @@ describe('ChallengeBlock', () => {
     fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/not solved yet/i)).toBeInTheDocument();
+      // The author's failureMessage now renders as the primary content of
+      // the failed-check banner, without a "Not solved yet" preamble that
+      // didn't add information.
+      expect(screen.getByText(/try harder\./i)).toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument();
   });

@@ -124,6 +124,23 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
+  failedCheck: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(1.5),
+    padding: theme.spacing(1, 1.5),
+    backgroundColor: theme.colors.warning.transparent,
+    border: `1px solid ${theme.colors.warning.border}`,
+    borderRadius: theme.shape.radius.default,
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    '& > svg': {
+      flexShrink: 0,
+      marginTop: '2px',
+      color: theme.colors.warning.text,
+    },
+  }),
   actions: css({
     display: 'flex',
     gap: theme.spacing(1),
@@ -415,6 +432,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // cancelRequestedRef on the next iteration and calls resetToIdle itself.
   }, [state, resetToIdle]);
 
+  // The spinner banner only renders for *in-progress* states. Terminal
+  // states like failed-check get their own non-animated affordance — see
+  // the failed-check render below.
   const statusBanner = (() => {
     switch (state) {
       case 'connecting':
@@ -425,10 +445,6 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           : 'Preparing your environment…';
       case 'checking':
         return 'Checking your work…';
-      case 'failed-check': {
-        const detail = failureMessage || errorDetail;
-        return `Not solved yet${detail ? `: ${detail}` : ''}`;
-      }
       default:
         return null;
     }
@@ -461,6 +477,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         <div className={styles.status}>
           <Icon name="fa fa-spinner" />
           <span>{statusBanner}</span>
+        </div>
+      )}
+
+      {state === 'failed-check' && (
+        <div className={styles.failedCheck} role="status" aria-live="polite">
+          <Icon name="exclamation-triangle" />
+          <div>{failureMessage || errorDetail || "The check didn't pass — adjust and try again."}</div>
         </div>
       )}
 
