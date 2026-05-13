@@ -379,3 +379,9 @@ For PRs touching `pkg/**/*.go`, also verify:
 - `npm run test:go` passes
 - `go build ./...` succeeds
 - No new security issues (input validation, error handling, resource cleanup)
+
+## `npx` examples
+
+When generating `npx` examples of new potential CLIs and similar, these should all live under `pathfinder-cli@...`.
+For example, for a hypothetical new package `pathfinder-example`, write `npx pathfinder-cli@... example` instead of `npx pathfinder-example`.
+This ensures we don't get namesquatted.
