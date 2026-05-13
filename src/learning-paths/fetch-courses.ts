@@ -14,24 +14,65 @@ export type CoursesPlatform = 'oss' | 'cloud';
 let inFlight: Partial<Record<CoursesPlatform, Promise<InferredCoursesPlatformIndex | null>>> = {};
 
 /**
- * Fetch the platform index for the given platform. Concurrent calls for the
- * same platform share a single in-flight request so multiple hook mounts in
- * a single page load don't trigger duplicate fetches.
+ * Fetch the platform index for the given platform.
+ *
+ * Concurrent calls for the same platform share a single in-flight request so
+ * multiple hook mounts in a single page load don't trigger duplicate fetches.
+ *
+ * **Per-caller signal semantics**: the shared in-flight fetch is intentionally
+ * NOT bound to any single caller's `signal`. Each caller's `signal` only
+ * controls when *that caller* stops waiting and resolves to `null`; it never
+ * cancels the underlying request that other concurrent callers are still
+ * waiting on. (Earlier versions piped the first caller's signal straight into
+ * `fetch()`, which (a) silently ignored every subsequent caller's signal on a
+ * cache hit and (b) made the first caller's abort cancel everyone.)
  */
 export function fetchCourses(
   platform: CoursesPlatform,
   signal?: AbortSignal
 ): Promise<InferredCoursesPlatformIndex | null> {
-  const cached = inFlight[platform];
-  if (cached) {
-    return cached;
+  if (signal?.aborted) {
+    return Promise.resolve(null);
   }
 
-  const promise = doFetchCourses(platform, signal).finally(() => {
-    inFlight[platform] = undefined;
+  let shared = inFlight[platform];
+  if (!shared) {
+    shared = doFetchCourses(platform).finally(() => {
+      // Guard against `resetFetchCoursesCache()` (or a parallel future
+      // request) replacing the entry while this one was in flight.
+      if (inFlight[platform] === shared) {
+        inFlight[platform] = undefined;
+      }
+    });
+    inFlight[platform] = shared;
+  }
+
+  return wrapWithCallerSignal(shared, signal);
+}
+
+/**
+ * Wrap a shared promise with a per-caller `AbortSignal` so the caller can
+ * give up waiting without cancelling the underlying work. Resolves to `null`
+ * if the caller aborts before the shared promise settles.
+ */
+function wrapWithCallerSignal<T>(promise: Promise<T | null>, signal: AbortSignal | undefined): Promise<T | null> {
+  if (!signal) {
+    return promise;
+  }
+  return new Promise((resolve) => {
+    const onAbort = () => resolve(null);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      () => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(null);
+      }
+    );
   });
-  inFlight[platform] = promise;
-  return promise;
 }
 
 /** For tests: reset the in-flight promise cache between scenarios. */
@@ -39,23 +80,11 @@ export function resetFetchCoursesCache(): void {
   inFlight = {};
 }
 
-async function doFetchCourses(
-  platform: CoursesPlatform,
-  externalSignal?: AbortSignal
-): Promise<InferredCoursesPlatformIndex | null> {
+async function doFetchCourses(platform: CoursesPlatform): Promise<InferredCoursesPlatformIndex | null> {
   const url = new URL(`/courses/${platform}.json`, getCoursesCdnBaseUrl());
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), DEFAULT_CONTENT_FETCH_TIMEOUT);
-
-  const onExternalAbort = () => timeoutController.abort();
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      clearTimeout(timeoutId);
-      return null;
-    }
-    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
-  }
 
   try {
     const response = await fetch(url.toString(), { signal: timeoutController.signal });
@@ -85,8 +114,5 @@ async function doFetchCourses(
     return null;
   } finally {
     clearTimeout(timeoutId);
-    if (externalSignal) {
-      externalSignal.removeEventListener('abort', onExternalAbort);
-    }
   }
 }

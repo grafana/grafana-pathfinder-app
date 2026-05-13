@@ -1447,8 +1447,18 @@ export const learningProgressStorage = {
   async markGuideCompleted(guideId: string): Promise<void> {
     try {
       // Import badge checking utilities dynamically to avoid circular deps
-      const { getBadgesToAward, getBadgeById } = await import('../learning-paths');
-      const { getPathsData } = await import('../learning-paths');
+      const { getBadgesToAward, getBadgeById, getPathsData, initCoursesData } = await import('../learning-paths');
+
+      // Ensure the CDN course/badge cache has settled before reading it.
+      // `getPathsData()` is synchronous and returns the bundled fallback
+      // (4 badges) until `initCoursesData()` resolves. Without this await,
+      // completion paths that bypass the hook's loading gate (e.g.
+      // `markMilestoneDone` in learning-journey-helpers) would only see
+      // fallback badges and silently skip every CDN-only badge — and the
+      // miss is not retried until the user completes a *later* guide.
+      // `initCoursesData()` is idempotent and memoised, so this is a no-op
+      // once the hook has already kicked off the load on mount.
+      await initCoursesData();
       const { paths, badges } = getPathsData();
 
       const progress = await learningProgressStorage.get();
