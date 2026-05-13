@@ -1104,12 +1104,13 @@ export const interactiveStepStorage = {
       completedCountCache.delete(contentKey);
       const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
       const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
+      const ackPrefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
 
       // Find and remove all matching keys
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix))) {
+        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
           keysToRemove.push(key);
         }
       }
@@ -1140,11 +1141,12 @@ export const interactiveStepStorage = {
       completedCountCache.clear();
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
+      const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
 
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix))) {
+        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
           keysToRemove.push(key);
         }
       }
@@ -1228,6 +1230,73 @@ export const sectionCollapseStorage = {
       await storage.removeItem(key);
     } catch (error) {
       console.warn('Failed to clear section collapse state:', error);
+    }
+  },
+};
+
+/**
+ * Section acknowledgement state storage operations (issue #842 gate).
+ *
+ * Persists whether the user has clicked "Mark section as complete" for a
+ * section that requires explicit acknowledgement (trailing passive content
+ * after the last interactive step, or an all-passive section).
+ *
+ * Unlike `sectionCollapseStorage`, `.get()` returns `boolean | null`
+ * rather than defaulting absence to `false`. The distinction matters
+ * for the upgrade migration path: a section with all interactive steps
+ * completed under the pre-#842 rules has `ack === null`, which the
+ * migration auto-converts to `true` so existing finished work does not
+ * spontaneously become incomplete after upgrade.
+ */
+export const sectionAcknowledgementStorage = {
+  /**
+   * Gets the acknowledgement state for a specific section.
+   *
+   * Returns:
+   *   - `true`  if the user has explicitly acknowledged the section
+   *   - `false` if the user has explicitly de-acknowledged it (rare —
+   *             usually only via the reducer's reset path, which clears
+   *             the entry instead)
+   *   - `null`  if the section has never been acknowledged (no entry
+   *             in storage)
+   */
+  async get(contentKey: string, sectionId: string): Promise<boolean | null> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      const acknowledged = await storage.getItem<boolean>(key);
+      return acknowledged ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Sets the acknowledgement state for a specific section.
+   */
+  async set(contentKey: string, sectionId: string, isAcknowledged: boolean): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      await storage.setItem(key, isAcknowledged);
+    } catch (error) {
+      console.warn('Failed to save section acknowledgement state:', error);
+    }
+  },
+
+  /**
+   * Clears the acknowledgement state for a specific section.
+   *
+   * Called by the section reducer's RESET_SECTION and STEP_RESET paths so
+   * that a redo or full reset re-arms the gate.
+   */
+  async clear(contentKey: string, sectionId: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      await storage.removeItem(key);
+    } catch (error) {
+      console.warn('Failed to clear section acknowledgement state:', error);
     }
   },
 };

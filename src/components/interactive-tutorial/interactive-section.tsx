@@ -444,6 +444,14 @@ export function InteractiveSection({
   // Section-level blocking is managed separately at the section level
 
   // Extract step information from children first (needed for completion calculation)
+  //
+  // ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4. Adding a new interactive step
+  // component type requires updates in 4 places:
+  //   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
+  //   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
+  //   3. interactive-section.tsx `stepComponents` useMemo branches (this block)
+  //   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+  // See .cursor/rules/tracked-step-types.mdc for the full checklist.
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
     // Track step index separately from child index to handle non-step children

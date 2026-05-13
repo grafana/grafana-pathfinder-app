@@ -845,6 +845,15 @@ interface StandaloneStepPosition {
  * Note: input-block is intentionally excluded — it doesn't track completion,
  * doesn't use useStandalonePersistence, and would inflate the total step count
  * making 100% completion impossible.
+ *
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 4. Adding a new interactive step
+ * component type requires updates in 4 places:
+ *   1. content-renderer.tsx INTERACTIVE_STEP_TYPES (this constant)
+ *   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES (below)
+ *   3. interactive-section.tsx `stepComponents` useMemo branches
+ *   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+ * See .cursor/rules/tracked-step-types.mdc for the full checklist and the
+ * specific failure mode if each site is missed.
  */
 const INTERACTIVE_STEP_TYPES = new Set([
   'interactive-step',
@@ -877,6 +886,14 @@ function isInteractiveStepElement(element: ParsedElement): boolean {
  * Step types tracked by InteractiveSection as "steps" in its stepComponents array.
  * Must stay in sync with InteractiveSection's React.Children.forEach extraction logic.
  * Note: input-block is NOT tracked by InteractiveSection as a section step.
+ *
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 4. Adding a new interactive step
+ * component type requires updates in 4 places:
+ *   1. content-renderer.tsx INTERACTIVE_STEP_TYPES (above)
+ *   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES (this constant)
+ *   3. interactive-section.tsx `stepComponents` useMemo branches
+ *   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+ * See .cursor/rules/tracked-step-types.mdc for the full checklist.
  */
 const SECTION_TRACKED_STEP_TYPES = new Set([
   'interactive-step',

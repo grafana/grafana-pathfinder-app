@@ -1,4 +1,10 @@
-import { wrapEnvelope, unwrapEnvelope, interactiveStepStorage, interactiveCompletionStorage } from './user-storage';
+import {
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+  sectionAcknowledgementStorage,
+  unwrapEnvelope,
+  wrapEnvelope,
+} from './user-storage';
 import { StorageKeys } from './storage-keys';
 
 // ============================================================================
@@ -198,5 +204,106 @@ describe('interactiveCompletionStorage.clearAll', () => {
 
     expect(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION)).toBeNull();
     expect(localStorage.getItem(StorageKeys.LEARNING_PROGRESS)).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// sectionAcknowledgementStorage TESTS (issue #842 gate)
+// ============================================================================
+
+describe('sectionAcknowledgementStorage', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('returns null when no acknowledgement entry exists', async () => {
+    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
+    expect(value).toBeNull();
+  });
+
+  it('round-trips an explicit true', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
+    expect(value).toBe(true);
+  });
+
+  it('round-trips an explicit false (distinguishable from null)', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', false);
+    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
+    expect(value).toBe(false);
+    expect(value).not.toBeNull();
+  });
+
+  it('clear() removes the entry — subsequent get returns null again', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.clear('guide-a', 'section-1');
+    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
+    expect(value).toBeNull();
+  });
+
+  it('isolates state by content key', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    expect(await sectionAcknowledgementStorage.get('guide-b', 'section-1')).toBeNull();
+  });
+
+  it('isolates state by section id', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-2')).toBeNull();
+  });
+
+  it('uses the SECTION_ACKNOWLEDGED_PREFIX storage key shape', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}guide-a-section-1`;
+    expect(localStorage.getItem(key)).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// interactiveStepStorage.clearAllForContent — ack-prefix sweep TESTS
+// ============================================================================
+
+describe('interactiveStepStorage.clearAllForContent — ack prefix sweep (#842)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('removes acknowledgement entries for the matched content key', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-a', 'section-2', true);
+
+    await interactiveStepStorage.clearAllForContent('guide-a');
+
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-2')).toBeNull();
+  });
+
+  it('does NOT remove acknowledgement entries for other content keys', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-b', 'section-1', true);
+
+    await interactiveStepStorage.clearAllForContent('guide-a');
+
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
+    expect(await sectionAcknowledgementStorage.get('guide-b', 'section-1')).toBe(true);
+  });
+});
+
+// ============================================================================
+// interactiveStepStorage.clearAll — ack-prefix sweep TESTS
+// ============================================================================
+
+describe('interactiveStepStorage.clearAll — ack prefix sweep (#842)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('removes all SECTION_ACKNOWLEDGED_PREFIX keys from localStorage', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-b', 'section-2', true);
+
+    await interactiveStepStorage.clearAll();
+
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
+    expect(await sectionAcknowledgementStorage.get('guide-b', 'section-2')).toBeNull();
   });
 });
