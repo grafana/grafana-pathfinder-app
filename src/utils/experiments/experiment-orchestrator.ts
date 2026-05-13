@@ -61,7 +61,6 @@ export function initializeExperiments(): ExperimentState {
 
   // Evaluate the global pathfinder-enabled rollout flag (separate from experiments)
   const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
-  console.warn(`[Pathfinder] pathfinder.enabled flag: ${pathfinderEnabled}`);
 
   // Evaluate main experiment config
   const mainConfig: ExperimentConfig = getExperimentConfig('pathfinder.experiment-variant');
@@ -76,17 +75,9 @@ export function initializeExperiments(): ExperimentState {
     console.warn('[Pathfinder] Failed to sync experiment state from user storage:', error);
   });
 
-  // Log main experiment config
-  console.warn(
-    `[Pathfinder] Experiment config loaded: variant="${mainVariant}", pages=${JSON.stringify(targetPages)}, resetCache=${mainConfig.resetCache}`
-  );
-
   // Evaluate after-24h experiment config (used only for sidebar mounting decision)
   const after24hConfig: ExperimentConfig = getExperimentConfig('pathfinder.after-24h-experiment');
   const after24hVariant = after24hConfig.variant;
-
-  // Log after-24h experiment config
-  console.warn(`[Pathfinder] After-24h experiment config loaded: variant="${after24hVariant}"`);
 
   return {
     pathfinderEnabled,

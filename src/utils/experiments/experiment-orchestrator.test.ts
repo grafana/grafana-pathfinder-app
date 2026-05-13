@@ -145,32 +145,6 @@ describe('experiment-orchestrator', () => {
       );
       consoleSpy.mockRestore();
     });
-
-    it('should log experiment configs', () => {
-      mockGetExperimentConfig
-        .mockReturnValueOnce({
-          variant: 'treatment',
-          pages: ['/a/grafana-irm-app*'],
-          resetCache: false,
-        })
-        .mockReturnValueOnce({
-          variant: 'control',
-          pages: [],
-          resetCache: false,
-        });
-
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      initializeExperiments();
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Pathfinder] Experiment config loaded: variant="treatment"')
-      );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Pathfinder] After-24h experiment config loaded: variant="control"')
-      );
-      consoleSpy.mockRestore();
-    });
   });
 
   describe('shouldMountSidebar', () => {

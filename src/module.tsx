@@ -57,11 +57,18 @@ const {
   getAutoOpenFeatureFlag,
   getCurrentPath,
   createExperimentDebugger,
+  initializeHighlightedGuideExperiment,
+  setupHighlightedGuideAutoOpen,
 } = await import('./utils/experiments');
 const experimentState = initializeExperiments();
-const { pathfinderEnabled, mainConfig, mainVariant, after24hVariant } = experimentState;
+const { pathfinderEnabled, mainConfig, mainVariant, after24hVariant, hostname } = experimentState;
 
 createExperimentDebugger(mainConfig);
+
+// Initialize highlighted-guide experiment (reads flag, processes resetCache).
+// The popout half is set up later, after the sidebar-mount decision, so it
+// short-circuits when Pathfinder is dismounted.
+const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
 
 // Check if Pathfinder was already docked (browser restore scenario).
 // If floating mode is active, clear the docked state so Grafana doesn't
@@ -376,6 +383,14 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       featureFlagEnabled: getAutoOpenFeatureFlag(),
       pluginConfig: config,
     });
+
+    // Highlighted-guide sidebar auto-open: only meaningful when Pathfinder is
+    // mounted. If either existing experiment landed the user in 'control', the
+    // sidebar is dismounted, so the open-extension-sidebar event would have no
+    // surface to attach to.
+    if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+      setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
+    }
   }
 };
 

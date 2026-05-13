@@ -94,6 +94,52 @@ interface ExperimentConfig {
 
 ---
 
+### `pathfinder.highlighted-guide-experiment`
+
+**Type**: Object (`HighlightedGuideConfig`)
+
+**Purpose**: A/B test which guide performs better when surfaced as the featured guide on a specific Grafana page. Both arms keep Pathfinder visible — they differ only in which guide id is highlighted. When a matched page is visited, the Pathfinder sidebar auto-opens (once per browser per `guideId`) and the configured guide is prepended to the Featured slot of the recommendations panel.
+
+This flag is independent of `pathfinder.experiment-variant`: it does not hide Pathfinder, and its auto-open will simply no-op when the user's existing experiment dismounts the plugin.
+
+**Default**: `{ variant: 'excluded', pages: [], guideId: '', autoOpen: true, resetCache: false }`
+
+**Returned object shape**:
+
+```typescript
+interface HighlightedGuideConfig {
+  variant: 'excluded' | 'control' | 'treatment';
+  pages: string[]; // URL path patterns where the sidebar should auto-open (empty ⇒ no match)
+  guideId: string; // Doc id or shorthand: 'bundled:<id>' | 'api:<id>' | 'backend-guide:<id>' | full URL
+  autoOpen: boolean; // false ⇒ only Featured-slot injection, no auto-open of the sidebar
+  resetCache: boolean; // When toggled true, clears the once-per-browser markers
+  docType?: 'docs-page' | 'learning-journey' | 'interactive';
+  // Optional override for the Featured-card type and click-through flow. When omitted,
+  // `findDocPage` infers the type from the URL pattern. Set explicitly when the inference
+  // is wrong — e.g. a `/docs/learning-paths/...` URL that should open as a learning journey.
+}
+```
+
+**Variant behavior**:
+
+| Variant     | Auto-open + injection | Notes                                                    |
+| ----------- | --------------------- | -------------------------------------------------------- |
+| `excluded`  | No                    | Normal Pathfinder behavior — flag is a no-op             |
+| `control`   | Yes (variant A)       | Open sidebar + inject the arm's `guideId` (e.g. guide A) |
+| `treatment` | Yes (variant B)       | Open sidebar + inject the arm's `guideId` (e.g. guide B) |
+
+A typical A/B setup serves the **same** `pages[]` to both arms with **different** `guideId` values, so the only thing varying between cohorts is the guide content. Analytics distinguishes which arm via the existing `TrackingHook` exposure event (`pathfinder_feature_flag_evaluated` with `tracking_key: highlighted_guide_experiment`).
+
+**Page-pattern semantics — note the difference**: Empty `pages` is treated as **no match**, NOT "all pages" (unlike `pathfinder.experiment-variant`). This makes the safe default of `{ variant: 'excluded', pages: [] }` a true no-op even if the variant is accidentally flipped without configuring pages. Patterns support the same `*` suffix wildcards as `matchPathPattern`.
+
+**Once-per-browser semantics**: The auto-open marker is keyed `{hostname}:{guideId}` in localStorage (not sessionStorage). A new `guideId` from MTFF — including the arm-specific value at variant assignment time — produces a new key, so changing the experiment's guide naturally re-fires auto-open without operator intervention. Use `resetCache: true` to force-clear all markers for the current hostname (sentinel-guarded so true→true reloads don't repeatedly clear).
+
+**Injection-only mode**: When `autoOpen` is `false`, the sidebar auto-open is suppressed but the Featured-slot injection still runs on matched pages. Useful for a subtler treatment variant.
+
+**Tracking key**: `highlighted_guide_experiment`
+
+---
+
 ## How it works
 
 ### Architecture
