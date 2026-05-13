@@ -37,6 +37,20 @@ function isUrlGuide(entry: string): boolean {
   return entry.startsWith('http://') || entry.startsWith('https://');
 }
 
+function normalizeUrlGuidePrefix(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    parsed.search = '';
+    if (!parsed.pathname.endsWith('/')) {
+      parsed.pathname = `${parsed.pathname}/`;
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 /**
  * Derive a fallback display title for a URL guide from its path segments.
  * "https://grafana.com/docs/learning-paths/foo/bar/" -> "Bar".
@@ -392,7 +406,18 @@ export function useLearningPaths(): UseLearningPathsReturn {
             return [] as string[];
           }
           const completedSlugs = Array.from(await milestoneCompletionStorage.getCompleted(guideId));
-          await Promise.all([...baseTasks, milestoneCompletionStorage.clear(guideId)]);
+          const guidePrefix = normalizeUrlGuidePrefix(guideId);
+          const milestoneContentKeys = Object.keys(await interactiveCompletionStorage.getAll()).filter(
+            (key) => key !== guideId && normalizeUrlGuidePrefix(key).startsWith(guidePrefix)
+          );
+          await Promise.all([
+            ...baseTasks,
+            milestoneCompletionStorage.clear(guideId),
+            ...milestoneContentKeys.flatMap((key) => [
+              interactiveStepStorage.clearAllForContent(key),
+              interactiveCompletionStorage.clear(key),
+            ]),
+          ]);
           return completedSlugs;
         })
       );
