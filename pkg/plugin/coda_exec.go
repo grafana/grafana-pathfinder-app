@@ -65,15 +65,13 @@ func (a *App) handleCodaExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// User identity comes from the plugin SDK's context (populated by Grafana
-	// for authenticated resource calls). Fall back to the X-Grafana-User
-	// header for setups where the SDK context isn't populated. Both
-	// ultimately resolve to the same Grafana login that the stream handler
-	// uses to key streamSessions.
+	// User identity comes ONLY from the plugin SDK context. The
+	// X-Grafana-User header is not an acceptable fallback for this endpoint
+	// because it can be set by any client whose request reaches the plugin
+	// without going through Grafana's auth proxy, letting an attacker target
+	// any user's active VM. PluginContext.User is set by the SDK from the
+	// authenticated session and cannot be spoofed.
 	user := userLoginFromContext(r.Context())
-	if user == "" {
-		user = r.Header.Get("X-Grafana-User")
-	}
 	if user == "" {
 		a.writeError(w, "Could not identify Grafana user for this request", http.StatusUnauthorized)
 		return

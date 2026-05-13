@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"golang.org/x/crypto/ssh"
 )
@@ -130,7 +131,13 @@ func postExec(t *testing.T, app *App, body, user string) *httptest.ResponseRecor
 	req := httptest.NewRequest(http.MethodPost, "/coda/exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	if user != "" {
-		req.Header.Set("X-Grafana-User", user)
+		// Inject the user identity via the SDK's plugin context (the only
+		// channel the handler accepts, after the X-Grafana-User fallback was
+		// removed). Mirrors what httpadapter does for real requests.
+		pluginCtx := backend.PluginContext{
+			User: &backend.User{Login: user, Name: user},
+		}
+		req = req.WithContext(backend.WithPluginContext(req.Context(), pluginCtx))
 	}
 	rr := httptest.NewRecorder()
 	app.handleCodaExec(rr, req)
@@ -184,6 +191,22 @@ func TestHandleCodaExec_NoActiveSession(t *testing.T) {
 	rr := postExec(t, app, `{"command":"true"}`, "alice")
 	if rr.Code != http.StatusConflict {
 		t.Errorf("got %d, want %d", rr.Code, http.StatusConflict)
+	}
+}
+
+// TestHandleCodaExec_HeaderUserIsIgnored guarantees the X-Grafana-User header
+// is no longer trusted as a user-identity source. A spoofed header without a
+// matching plugin context must return 401, not silently target another user's
+// VM.
+func TestHandleCodaExec_HeaderUserIsIgnored(t *testing.T) {
+	app := newExecApp()
+	req := httptest.NewRequest(http.MethodPost, "/coda/exec", strings.NewReader(`{"command":"true"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Grafana-User", "victim")
+	rr := httptest.NewRecorder()
+	app.handleCodaExec(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("got %d, want %d (header-only identity must be rejected)", rr.Code, http.StatusUnauthorized)
 	}
 }
 
