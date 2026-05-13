@@ -27,11 +27,13 @@ import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '..
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import {
+  analyzeAcknowledgement,
   getResumeInfo as computeResumeInfo,
   computeStepEligibility,
   type AcknowledgementAnalysis,
 } from './step-section-utils';
-import { initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
+import { classifySectionChild } from './section-child-classifier';
+import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -619,6 +621,24 @@ export function InteractiveSection({
     return steps;
   }, [children, sectionId]);
 
+  // Acknowledgement-gate analysis (issue #842). Classifies each direct
+  // child by document-order kind and decides whether the section needs
+  // an explicit "Mark section as complete" click before completing.
+  //
+  // - Trailing passive content after the last interactive step → gate
+  //   fires (`needsAcknowledgement: true`).
+  // - 100% passive section → gate fires + `isAllPassive: true`; the
+  //   only available action is Mark.
+  // - Mid-section passive sandwiched between interactives → no gate.
+  // - All interactive (or empty) → no gate.
+  //
+  // Recomputes only on child-tree changes. The classification of each
+  // child is stable across renders if the React element identity is.
+  const gateAnalysis: AcknowledgementAnalysis = useMemo(() => {
+    const kinds = React.Children.toArray(children).map(classifySectionChild);
+    return analyzeAcknowledgement(kinds);
+  }, [children]);
+
   // Load persisted completion + acknowledgement state on first mount only
   // (#842, Bug 4 fix).
   //
@@ -655,14 +675,14 @@ export function InteractiveSection({
       if (cancelled) {
         return;
       }
-      // Phase 4: gate is inert. Phase 5 swaps in
-      // `analyzeAcknowledgement(stepKinds)`.
-      const inertGate: AcknowledgementAnalysis = { needsAcknowledgement: false, isAllPassive: false };
+      // Phase 5 (#842): the gate is on. The mount-only effect deps
+      // are deliberately empty — gateAnalysis is closed over for the
+      // migration decision only, evaluated once on first mount.
       const { state: restoredState, migrated } = restoreFromStorage({
         completed: restoredCompleted,
         acknowledged: restoredAck,
         stepComponents,
-        gate: inertGate,
+        gate: gateAnalysis,
       });
       dispatch({
         type: 'RESTORE',
@@ -688,19 +708,36 @@ export function InteractiveSection({
   // Calculate base completion (steps completed) - needed for completion logic
   // Noop steps are always considered complete (they're informational only)
   const nonNoopSteps = stepComponents.filter((s) => s.targetAction !== 'noop');
-  const stepsCompleted =
+  const allInteractiveStepsCompleted =
     stepComponents.length > 0 && (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
 
-  // Add objectives checking for section - disable if steps are already completed
+  // Add objectives checking for section - disable once interactive steps are done.
+  // Note: objectives are *separate* from acknowledgement — when objectives fire
+  // the section is done regardless of the gate (`doneVia: 'objectives'`).
   const objectivesChecker = useStepChecker({
     objectives,
     stepId: sectionId,
-    isEligibleForChecking: !stepsCompleted, // Stop checking once steps are done
+    isEligibleForChecking: !allInteractiveStepsCompleted,
   });
 
-  // UNIFIED completion calculation - objectives always win (clarification 1, 2)
   const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
-  const isCompleted = isCompletedByObjectives || stepsCompleted;
+
+  // Derive the high-level state kind from the reducer state + the gate
+  // analysis + objectives. `awaiting-ack` is the new state introduced
+  // in phase 5 — it surfaces only when every interactive step is done
+  // AND the gate predicate says so AND ack hasn't been granted yet.
+  const derived = useMemo(
+    () => deriveSectionState(sectionState, stepComponents, gateAnalysis, isCompletedByObjectives),
+    [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives]
+  );
+  const sectionKind = derived.kind;
+  const isCompleted = derived.isCompleted;
+  // `stepsCompleted` preserves the historical meaning ("all interactive
+  // steps are done") so existing call sites that care about that
+  // specific question keep working. Note that this no longer implies
+  // the section is *complete* — a trailing-gate section can have
+  // stepsCompleted=true while still sitting in `awaiting-ack`.
+  const stepsCompleted = derived.allInteractiveStepsCompleted;
 
   // Implied-0th-step alignment: when paused, show an inline hint so the user
   // understands why steps appear inactive — useful when they've scrolled past
@@ -1497,6 +1534,37 @@ export function InteractiveSection({
     });
   }, [disabled, isRunning, stepComponents, sectionId]);
 
+  /**
+   * Mark the section as acknowledged (issue #842).
+   *
+   * Available only when the gate is active and pending — i.e. the
+   * derived state is 'awaiting-ack'. For all-passive sections we
+   * synthesise a marker completion so the reducer's ACKNOWLEDGE
+   * invariant ("ack requires at least one completed step") is
+   * satisfied; the marker is internal and never user-visible.
+   */
+  const handleMarkSectionComplete = useCallback(() => {
+    if (disabled || isRunning || sectionKind !== 'awaiting-ack') {
+      return;
+    }
+
+    const contentKey = getContentKey();
+
+    if (gateAnalysis.isAllPassive) {
+      // All-passive section: the reducer needs at least one entry in
+      // `completed` before it accepts ACKNOWLEDGE. Inject a synthetic
+      // marker step id keyed to the section so it can't collide.
+      const markerId = `${sectionId}::ack-marker`;
+      dispatch({ type: 'COMPLETE_STEP', stepId: markerId, cursorAdvancedTo: 0 });
+      persistCompletedSteps(new Set([markerId]));
+    }
+
+    dispatch({ type: 'ACKNOWLEDGE' });
+    if (!isPreviewMode) {
+      sectionAcknowledgementStorage.set(contentKey, sectionId, true);
+    }
+  }, [disabled, isRunning, sectionKind, gateAnalysis.isAllPassive, isPreviewMode, persistCompletedSteps, sectionId]);
+
   // Register this section's steps in the global registry BEFORE rendering children
   // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct
   // when getDocumentStepPosition is called during the enhancedChildren memo
@@ -1970,6 +2038,21 @@ export function InteractiveSection({
               Cancel
             </Button>
           </div>
+        ) : sectionKind === 'awaiting-ack' ? (
+          /* Acknowledgement gate (issue #842) — surfaces only when every
+             interactive step is done (or the section is 100% passive) AND
+             the user hasn't yet clicked Mark. */
+          <Button
+            onClick={handleMarkSectionComplete}
+            disabled={disabled}
+            size="md"
+            variant="primary"
+            className="interactive-section-do-button"
+            data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
+            title="Mark section as complete and continue"
+          >
+            Mark section as complete
+          </Button>
         ) : (
           <Button
             onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}

@@ -18,26 +18,40 @@ import type { ChildKind } from './step-section-utils';
  *   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
  *   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
  *   3. interactive-section.tsx `stepComponents` useMemo branches
- *   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES (this set)
+ *   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES (this set,
+ *      lazily realised below)
  *
  * Forgetting this set: the issue-#842 acknowledgement gate misclassifies the
  * new type as *passive*, so sections containing it will wrongly require
- * the user to click "Mark section as complete" after finishing the step.
+ * the user to click "Mark section as complete" after finishing the work.
  *
  * See .cursor/rules/tracked-step-types.mdc for the full checklist.
  *
  * Note: `InteractiveStep` is handled by its own branch inside
  * `classifySectionChild` because its `targetAction` prop subdivides it
  * into interactive vs informational variants.
+ *
+ * Lazy realisation: the registry is computed on first call, not at
+ * module-init time. The docs-retrieval barrel ↔ interactive-tutorial
+ * cycle means a top-level `new Set([...])` resolves with `undefined`
+ * entries for any component whose module hasn't finished loading.
+ * Matches the well-documented `shouldNumberSectionChild` pattern in
+ * interactive-section.tsx.
  */
-const INTERACTIVE_STEP_COMPONENT_TYPES = new Set<unknown>([
-  InteractiveMultiStep,
-  InteractiveGuided,
-  InteractiveQuiz,
-  TerminalStep,
-  TerminalConnectStep,
-  CodeBlockStep,
-]);
+let interactiveStepComponentTypes: Set<unknown> | null = null;
+function getInteractiveStepComponentTypes(): Set<unknown> {
+  if (!interactiveStepComponentTypes) {
+    interactiveStepComponentTypes = new Set<unknown>([
+      InteractiveMultiStep,
+      InteractiveGuided,
+      InteractiveQuiz,
+      TerminalStep,
+      TerminalConnectStep,
+      CodeBlockStep,
+    ]);
+  }
+  return interactiveStepComponentTypes;
+}
 
 /**
  * Classify a direct child of an interactive section for the issue-#842
@@ -79,7 +93,7 @@ export function classifySectionChild(child: React.ReactNode): ChildKind {
     // is independent of the acknowledgement gate.
     return 'interactive';
   }
-  if (INTERACTIVE_STEP_COMPONENT_TYPES.has(childType)) {
+  if (getInteractiveStepComponentTypes().has(childType)) {
     return 'interactive';
   }
   return 'passive';
