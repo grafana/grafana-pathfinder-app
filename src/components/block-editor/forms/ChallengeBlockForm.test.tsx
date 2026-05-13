@@ -95,7 +95,7 @@ describe('ChallengeBlockForm', () => {
       // regex matcher).
       expect(screen.getByText(/^Title /)).toBeInTheDocument();
       expect(screen.getByText(/^Brief /)).toBeInTheDocument();
-      expect(screen.getByText(/^Success criterion /)).toBeInTheDocument();
+      expect(screen.getByText(/^Success check /)).toBeInTheDocument();
     });
 
     it('uses the new label for the failure-message field', () => {
@@ -210,6 +210,52 @@ describe('ChallengeBlockForm', () => {
       const submitted = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
       expect(submitted.setupScript).toBeUndefined();
       expect(submitted.setupCommands).toBeUndefined();
+    });
+  });
+
+  describe('success check field', () => {
+    it('seeds the field by stripping the coda-exit-zero prefix', () => {
+      renderForm({ successCriteria: 'coda-exit-zero:test -f /etc/foo' });
+      const textbox = screen.getByPlaceholderText(/curl -sf "localhost:9090/) as HTMLTextAreaElement;
+      expect(textbox.value).toBe('test -f /etc/foo');
+    });
+
+    it('re-attaches the prefix on submit', () => {
+      const onSubmit = jest.fn();
+      renderForm({ successCriteria: 'coda-exit-zero:original' }, onSubmit);
+      const textbox = screen.getByPlaceholderText(/curl -sf "localhost:9090/);
+      fireEvent.change(textbox, { target: { value: 'pgrep -x nginx' } });
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      const submitted = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
+      expect(submitted.successCriteria).toBe('coda-exit-zero:pgrep -x nginx');
+    });
+
+    it('silently strips the prefix when the user pastes a fully-prefixed value', () => {
+      const onSubmit = jest.fn();
+      renderForm({ successCriteria: 'coda-exit-zero:placeholder' }, onSubmit);
+      const textbox = screen.getByPlaceholderText(/curl -sf "localhost:9090/) as HTMLTextAreaElement;
+
+      // Simulate paste of a string that still contains the prefix.
+      fireEvent.change(textbox, { target: { value: 'coda-exit-zero:test -f /pasted' } });
+      // After the onChange handler, the stored value should be bare.
+      expect(textbox.value).toBe('test -f /pasted');
+
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+      const submitted = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
+      // Submit re-attaches; we never end up with a doubled prefix.
+      expect(submitted.successCriteria).toBe('coda-exit-zero:test -f /pasted');
+    });
+
+    it('shows a warning when the success check contains a comma', () => {
+      renderForm({ successCriteria: 'coda-exit-zero:placeholder' });
+      const textbox = screen.getByPlaceholderText(/curl -sf "localhost:9090/);
+
+      // No warning initially.
+      expect(screen.queryByText(/requirement separators/i)).not.toBeInTheDocument();
+
+      fireEvent.change(textbox, { target: { value: 'awk -F, "{ print $1 }" /tmp/x' } });
+      expect(screen.getByText(/requirement separators/i)).toBeInTheDocument();
     });
   });
 

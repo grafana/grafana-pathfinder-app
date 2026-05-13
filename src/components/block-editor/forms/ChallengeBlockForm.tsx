@@ -134,7 +134,29 @@ const getChallengeFormStyles = (theme: GrafanaTheme2) => ({
     fontStyle: 'italic',
     padding: theme.spacing(1),
   }),
+  successCheckInput: css({
+    fontFamily: theme.typography.fontFamilyMonospace,
+    fontSize: theme.typography.bodySmall.fontSize,
+  }),
+  commaWarning: css({
+    marginTop: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.warning.text,
+  }),
 });
+
+const SUCCESS_CHECK_PREFIX = 'coda-exit-zero:';
+
+/** Strip a leading `coda-exit-zero:` from a stored requirement so the form
+ *  can display just the bash command. Leaves other requirement strings
+ *  (e.g. hand-written `has-datasource:prometheus`) untouched — those are
+ *  edge cases best resolved by hand-editing the JSON. */
+function stripSuccessPrefix(criteria: string | undefined): string {
+  if (!criteria) {
+    return '';
+  }
+  return criteria.startsWith(SUCCESS_CHECK_PREFIX) ? criteria.slice(SUCCESS_CHECK_PREFIX.length) : criteria;
+}
 
 export function ChallengeBlockForm({
   initialData,
@@ -154,7 +176,12 @@ export function ChallengeBlockForm({
   const [vmScenario, setVmScenario] = useState(initial?.vmScenario ?? '');
   const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
   const [setupScript, setSetupScript] = useState(() => seedSetupScript(initial));
-  const [successCriteria, setSuccessCriteria] = useState(initial?.successCriteria ?? '');
+  // The form stores the bare bash command (no `coda-exit-zero:` prefix). On
+  // open we strip the prefix from any legacy value; on submit we prepend it
+  // again before writing back to `successCriteria`. This keeps the JSON shape
+  // and the runtime requirements pipeline unchanged while making the editor
+  // field feel like "Setup script" — multi-line, monospace, no boilerplate.
+  const [successCommand, setSuccessCommand] = useState(stripSuccessPrefix(initial?.successCriteria));
   const [hints, setHints] = useState<HintRow[]>(() => toHintRows(initial?.hintLevels));
   const [failureMessage, setFailureMessage] = useState(initial?.failureMessage ?? '');
 
@@ -205,6 +232,13 @@ export function ChallengeBlockForm({
       e.preventDefault();
 
       const trimmedScript = setupScript.trim();
+      const trimmedCommand = successCommand.trim();
+      // Re-attach the coda-exit-zero prefix on submit. Authors only see the
+      // bare command in the form; the stored requirement string keeps its
+      // canonical form so the requirements router can dispatch it.
+      const storedCriteria = trimmedCommand.startsWith(SUCCESS_CHECK_PREFIX)
+        ? trimmedCommand
+        : `${SUCCESS_CHECK_PREFIX}${trimmedCommand}`;
       const hintLevels: JsonChallengeHint[] = hints
         .map((h) => ({ text: h.text.trim() }))
         .filter((h) => h.text.length > 0);
@@ -217,7 +251,7 @@ export function ChallengeBlockForm({
         type: 'challenge',
         title: title.trim(),
         brief: brief.trim(),
-        successCriteria: successCriteria.trim(),
+        successCriteria: storedCriteria,
         ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
         ...(vmScenario.trim() && { vmScenario: vmScenario.trim() }),
         ...(vmApp.trim() && { vmApp: vmApp.trim() }),
@@ -228,10 +262,11 @@ export function ChallengeBlockForm({
 
       onSubmit(block as JsonBlock);
     },
-    [title, brief, vmTemplate, vmScenario, vmApp, setupScript, successCriteria, hints, failureMessage, onSubmit]
+    [title, brief, vmTemplate, vmScenario, vmApp, setupScript, successCommand, hints, failureMessage, onSubmit]
   );
 
-  const isValid = title.trim().length > 0 && brief.trim().length > 0 && successCriteria.trim().length > 0;
+  const isValid = title.trim().length > 0 && brief.trim().length > 0 && successCommand.trim().length > 0;
+  const successCommandHasComma = successCommand.includes(',');
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -326,36 +361,54 @@ export function ChallengeBlockForm({
         <div className={styles.sectionTitle}>Verification</div>
 
         <Field
-          label="Success criterion"
+          label="Success check"
           description={
             <div className={challengeStyles.successCritDescription}>
               <div>
-                Requirement evaluated when the user clicks <em>Check my work</em> — typically a{' '}
-                <code>coda-exit-zero:&lt;command&gt;</code> check. Common patterns:
+                Bash command run inside the VM when the user clicks <em>Check my work</em>. The challenge is considered
+                solved when this exits 0. Common patterns:
               </div>
               <ul>
                 <li>
-                  File exists — <code>coda-exit-zero:test -f /path/to/file</code>
+                  File exists — <code>test -f /path/to/file</code>
                 </li>
                 <li>
-                  File contains a string — <code>coda-exit-zero:grep -q &quot;pattern&quot; /path/to/file</code>
+                  File contains a string — <code>grep -q &quot;pattern&quot; /path/to/file</code>
                 </li>
                 <li>
-                  Service responds — <code>coda-exit-zero:curl -sf http://localhost:PORT/path</code>
+                  Service responds — <code>curl -sf http://localhost:PORT/path</code>
                 </li>
                 <li>
-                  Process running — <code>coda-exit-zero:pgrep -x process-name</code>
+                  Process running — <code>pgrep -x process-name</code>
                 </li>
               </ul>
             </div>
           }
           required
         >
-          <Input
-            value={successCriteria}
-            onChange={(e) => setSuccessCriteria(e.currentTarget.value)}
-            placeholder='coda-exit-zero:curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
-          />
+          <div>
+            <TextArea
+              value={successCommand}
+              onChange={(e) => {
+                // If the user pastes a value that still has the legacy
+                // prefix, silently strip it so internal state is always
+                // bare-command.
+                const next = e.currentTarget.value;
+                setSuccessCommand(
+                  next.startsWith(SUCCESS_CHECK_PREFIX) ? next.slice(SUCCESS_CHECK_PREFIX.length) : next
+                );
+              }}
+              placeholder='curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
+              rows={3}
+              className={challengeStyles.successCheckInput}
+            />
+            {successCommandHasComma && (
+              <div className={challengeStyles.commaWarning}>
+                ⚠ Commas in a success check are interpreted as requirement separators by the requirements pipeline and
+                will split this into multiple checks. Avoid commas in the command itself.
+              </div>
+            )}
+          </div>
         </Field>
 
         <Field
