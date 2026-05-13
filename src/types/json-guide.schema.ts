@@ -509,6 +509,7 @@ export const JsonChallengeHintSchema = z.object({
  * @coupling Type: JsonChallengeBlock
  */
 export const JsonChallengeBlockSchema = z.object({
+  ...AuthorAnnotatedSchema.shape,
   type: z.literal('challenge'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
   title: z.string().min(1, 'Challenge title is required').describe('Short title shown above the brief'),

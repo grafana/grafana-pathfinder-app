@@ -546,7 +546,7 @@ export interface JsonChallengeHint {
  *
  * @coupling Zod schema: JsonChallengeBlockSchema in json-guide.schema.ts
  */
-export interface JsonChallengeBlock {
+export interface JsonChallengeBlock extends AuthorAnnotated {
   type: 'challenge';
   /** Stable identifier for edit-block / remove-block addressing */
   id?: string;
