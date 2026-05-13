@@ -33,6 +33,13 @@ jest.mock('../../global-state/sidebar', () => ({
   },
 }));
 
+const mockSetActiveTab = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../lib/user-storage', () => ({
+  tabStorage: {
+    setActiveTab: (tabId: string) => mockSetActiveTab(tabId),
+  },
+}));
+
 const mockAttemptAutoOpen = jest.fn();
 jest.mock('./experiment-orchestrator', () => ({
   attemptAutoOpen: () => mockAttemptAutoOpen(),
@@ -141,6 +148,7 @@ describe('setupHighlightedGuideAutoOpen', () => {
   it('auto-opens and marks when page matches and no marker exists', () => {
     setupHighlightedGuideAutoOpen(baseConfig, '/connections/datasources/new', HOSTNAME);
     expect(mockSetPendingOpenSource).toHaveBeenCalledWith('highlighted_guide_experiment', 'auto-open');
+    expect(mockSetActiveTab).toHaveBeenCalledWith('recommendations');
     expect(mockAttemptAutoOpen).toHaveBeenCalled();
     expect(localStorage.getItem(`grafana-pathfinder-highlighted-guide-auto-open-${HOSTNAME}:bundled:onboarding`)).toBe(
       'true'

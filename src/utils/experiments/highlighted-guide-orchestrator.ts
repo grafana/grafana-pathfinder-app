@@ -20,6 +20,7 @@ import { locationService } from '@grafana/runtime';
 import pluginJson from '../../plugin.json';
 import { StorageKeys } from '../../lib/storage-keys';
 import { sidebarState } from '../../global-state/sidebar';
+import { tabStorage } from '../../lib/user-storage';
 import { getHighlightedGuideConfig, type HighlightedGuideConfig } from '../openfeature';
 import { attemptAutoOpen } from './experiment-orchestrator';
 import { isExtensionSidebarOwnedByOther } from './experiment-utils';
@@ -137,6 +138,13 @@ export function setupHighlightedGuideAutoOpen(
     }
     markHighlightedGuideAutoOpened(hostname, config.guideId);
     sidebarState.setPendingOpenSource('highlighted_guide_experiment', 'auto-open');
+    // Pin the active tab to 'recommendations' so the sidebar lands on the
+    // Featured slot rather than whatever was last open (editor, devtools, etc.).
+    // attemptAutoOpen's 200ms delay covers the async write; if it fails we accept
+    // the user seeing their previous tab — the marker is still set, so we don't loop.
+    tabStorage.setActiveTab('recommendations').catch((error) => {
+      console.warn('[Pathfinder] Failed to pin recommendations tab for highlighted-guide auto-open:', error);
+    });
     attemptAutoOpen();
     console.log(`[Pathfinder] Highlighted-guide auto-open fired (${source}) for guideId:`, config.guideId);
   };
