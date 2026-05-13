@@ -177,6 +177,10 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // than a hang. Reset to null whenever runSetup re-enters.
   const [setupProgress, setSetupProgress] = useState<{ current: number; total: number } | null>(null);
   const setupStartedRef = useRef(false);
+  // Cancellation flag checked by runSetup between commands. The in-flight
+  // command still completes (we don't abort fetches mid-flight today) but no
+  // subsequent commands run and the block returns to idle.
+  const cancelRequestedRef = useRef(false);
   // Status the terminal had when the user clicked Start. We use this to
   // ignore a stale 'error' (or any other) status until the terminal has
   // observably transitioned in response to our openTerminal call — otherwise
@@ -204,20 +208,36 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     );
   }, [isLocallyCompleted, onStepComplete, stepId]);
 
+  const resetToIdle = useCallback(() => {
+    setupStartedRef.current = false;
+    setSetupProgress(null);
+    setErrorDetail('');
+    setState('idle');
+  }, []);
+
   const runSetup = useCallback(async () => {
     if (setupStartedRef.current) {
       return;
     }
     setupStartedRef.current = true;
+    cancelRequestedRef.current = false;
     setState('preparing');
     // +1 for the sentinel write that always runs after author setup commands.
     const totalSteps = setupCommands.length + 1;
     setSetupProgress({ current: 0, total: totalSteps });
     try {
       for (let i = 0; i < setupCommands.length; i++) {
+        if (cancelRequestedRef.current) {
+          resetToIdle();
+          return;
+        }
         setSetupProgress({ current: i + 1, total: totalSteps });
         const cmd = setupCommands[i]!;
         const result = await runExec(cmd, 'raw', 30000);
+        if (cancelRequestedRef.current) {
+          resetToIdle();
+          return;
+        }
         if (result.exitCode !== 0) {
           setErrorDetail(
             `Setup command failed (exit ${result.exitCode}): ${cmd}\n${result.stderr.trim().slice(0, 500)}`
@@ -228,8 +248,16 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       // Sentinel write — must be last. Once present, the gated coda-exit-zero
       // check is allowed to evaluate the author's success criterion.
+      if (cancelRequestedRef.current) {
+        resetToIdle();
+        return;
+      }
       setSetupProgress({ current: totalSteps, total: totalSteps });
       const sentinel = await runExec(SENTINEL_WRITE_COMMAND, 'raw', 5000);
+      if (cancelRequestedRef.current) {
+        resetToIdle();
+        return;
+      }
       if (sentinel.exitCode !== 0) {
         setErrorDetail(`Could not write readiness sentinel: ${sentinel.stderr.trim().slice(0, 500)}`);
         setState('setup-failed');
@@ -330,6 +358,17 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setHintsRevealed((n) => Math.min(n + 1, hintLevels.length));
   }, [hintLevels.length]);
 
+  const handleCancel = useCallback(() => {
+    cancelRequestedRef.current = true;
+    if (state === 'connecting') {
+      // No setup is in flight yet — bail immediately. (Setup will see the
+      // flag if it starts after this and skip out before running anything.)
+      resetToIdle();
+    }
+    // For 'preparing': the in-flight runExec resolves first; the loop checks
+    // cancelRequestedRef on the next iteration and calls resetToIdle itself.
+  }, [state, resetToIdle]);
+
   const statusBanner = (() => {
     switch (state) {
       case 'connecting':
@@ -398,6 +437,11 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         {state === 'setup-failed' && (
           <Button variant="secondary" icon="sync" onClick={handleStart}>
             Try again
+          </Button>
+        )}
+        {(state === 'connecting' || state === 'preparing') && (
+          <Button variant="secondary" icon="times" onClick={handleCancel}>
+            Cancel
           </Button>
         )}
       </div>

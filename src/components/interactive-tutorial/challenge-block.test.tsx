@@ -220,6 +220,37 @@ describe('ChallengeBlock', () => {
     expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument();
   });
 
+  it('cancel button returns the block to idle without finishing setup', async () => {
+    // Setup never resolves so we can observe the Cancel button rendered
+    // during 'preparing' and verify the state machine returns to idle.
+    let resolveFirst: (value: unknown) => void = () => {};
+    const post = jest.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        })
+    );
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['sleep 30']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    // Wait for setup to start (preparing banner appears with the spinner).
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    // Resolve the in-flight post so the loop continues and sees the cancel flag.
+    resolveFirst({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+  });
+
   it('reveals hints one at a time when the user clicks', async () => {
     const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
     setBackend(post);
