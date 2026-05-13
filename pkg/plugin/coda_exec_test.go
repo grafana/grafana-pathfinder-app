@@ -25,10 +25,51 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestWrapGatedCommand(t *testing.T) {
-	got := wrapGatedCommand("echo hi")
-	want := "[ -f " + codaSentinelPath + " ] && ( echo hi )"
-	if got != want {
-		t.Errorf("wrapGatedCommand mismatch\ngot:  %q\nwant: %q", got, want)
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "simple command",
+			in:   "echo hi",
+			want: "[ -f " + codaSentinelPath + " ] && bash -c 'echo hi'",
+		},
+		{
+			name: "command with single quotes is escaped",
+			in:   `grep -q '^foo$' /tmp/f`,
+			want: `[ -f ` + codaSentinelPath + ` ] && bash -c 'grep -q '\''^foo$'\'' /tmp/f'`,
+		},
+		{
+			name: "breakout attempt stays quoted (regression: no shell-injection)",
+			in:   `false ) ; echo hax #`,
+			want: `[ -f ` + codaSentinelPath + ` ] && bash -c 'false ) ; echo hax #'`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := wrapGatedCommand(tc.in)
+			if got != tc.want {
+				t.Errorf("wrapGatedCommand mismatch\ngot:  %q\nwant: %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShellSingleQuote(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", "''"},
+		{"abc", "'abc'"},
+		{`a'b`, `'a'\''b'`},
+		{`a'b'c`, `'a'\''b'\''c'`},
+	}
+	for _, tc := range cases {
+		got := shellSingleQuote(tc.in)
+		if got != tc.want {
+			t.Errorf("shellSingleQuote(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 
@@ -418,6 +459,43 @@ func TestRunRemoteCommand_GatedMode(t *testing.T) {
 	}
 	if !strings.Contains(received, "echo inner") {
 		t.Errorf("gated wrapper missing inner command; got %q", received)
+	}
+	if !strings.Contains(received, "bash -c") {
+		t.Errorf("gated wrapper should invoke bash -c; got %q", received)
+	}
+}
+
+// TestRunRemoteCommand_GatedMode_NoBreakout verifies that the gated wrapper
+// keeps the user command inside its quoting context — a command with a
+// trailing `)` cannot escape and run unconditionally.
+func TestRunRemoteCommand_GatedMode_NoBreakout(t *testing.T) {
+	srv := newTestSSHServer(t)
+	defer srv.close()
+	var received string
+	srv.handler = func(cmd string) (string, string, int, time.Duration) {
+		received = cmd
+		return "", "", 0, 0
+	}
+
+	client := srv.dialClient(t)
+	defer func() { _ = client.Close() }()
+
+	// The breakout attempt: previously this rendered as
+	//   `[ -f sentinel ] && ( false ) ; echo hax # )`
+	// and `echo hax` would run regardless of the sentinel.
+	_, err := runRemoteCommand(context.Background(), client, `false ) ; echo hax #`, "gated")
+	if err != nil {
+		t.Fatalf("runRemoteCommand: %v", err)
+	}
+	// The whole malicious payload must remain inside a single-quoted bash -c arg.
+	wantQuoted := `bash -c 'false ) ; echo hax #'`
+	if !strings.Contains(received, wantQuoted) {
+		t.Errorf("breakout attempt was not safely quoted\ngot:  %q\nwant containing: %q", received, wantQuoted)
+	}
+	// And the `echo hax` must NOT appear outside the single-quoted region — i.e.
+	// no `; echo hax` directly attached to the gating `]`.
+	if strings.Contains(received, "] ;") || strings.Contains(received, "]; echo") {
+		t.Errorf("breakout chained a command outside the gate: %q", received)
 	}
 }
 

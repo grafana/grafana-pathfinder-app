@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -157,13 +158,26 @@ func (a *App) findSSHClientForUser(user string) (*ssh.Client, string) {
 }
 
 // wrapGatedCommand wraps a user command with a sentinel-file precondition.
-// The result has exit code from the inner command on success, or 1 if the
-// sentinel does not exist. Quoting note: the inner command is run by the
-// remote shell via SSH's standard exec channel, so shell metacharacters and
-// quoting in the user command are preserved by the wrapping (which only adds
-// a `&&` chain — no inner re-quoting).
+// If the sentinel exists, the user command runs via `bash -c '<command>'`
+// with the command single-quote-escaped — this prevents the command from
+// breaking out of its quoting context (e.g. via an unbalanced `)`) and
+// bypassing the sentinel guard.
+//
+// Without escape: `false ) ; echo hax #` would render as
+//   `[ -f sentinel ] && ( false ) ; echo hax # )`
+// which executes `echo hax` regardless of the sentinel. With the bash -c
+// wrapper the malformed command stays inside the single-quoted arg and the
+// gating is preserved.
 func wrapGatedCommand(command string) string {
-	return fmt.Sprintf("[ -f %s ] && ( %s )", codaSentinelPath, command)
+	return fmt.Sprintf("[ -f %s ] && bash -c %s", codaSentinelPath, shellSingleQuote(command))
+}
+
+// shellSingleQuote returns s wrapped in single quotes, with embedded single
+// quotes encoded using the standard `'\''` pattern (close, escaped quote,
+// reopen). The result is safe to use as a single argv element in a shell
+// command line.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // runRemoteCommand opens a fresh non-interactive SSH session on the given
