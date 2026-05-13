@@ -22,6 +22,7 @@ import {
   interactiveStepStorage,
   interactiveCompletionStorage,
   journeyCompletionStorage,
+  milestoneCompletionStorage,
 } from '../lib/user-storage';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { FALLBACK_BADGES } from './bundled-courses';
@@ -360,6 +361,18 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return;
       }
 
+      const completedMilestoneSlugs = (
+        await Promise.all(
+          path.guides.map(async (guideId) => {
+            if (!isUrlGuide(guideId)) {
+              return [];
+            }
+            const completed = await milestoneCompletionStorage.getCompleted(guideId);
+            return Array.from(completed);
+          })
+        )
+      ).flat();
+
       await Promise.all(
         path.guides.map((guideId) => {
           const contentKey = isUrlGuide(guideId) ? guideId : `bundled:${guideId}`;
@@ -367,11 +380,12 @@ export function useLearningPaths(): UseLearningPathsReturn {
             interactiveStepStorage.clearAllForContent(contentKey),
             interactiveCompletionStorage.clear(contentKey),
             journeyCompletionStorage.clear(contentKey),
+            ...(isUrlGuide(guideId) ? [milestoneCompletionStorage.clear(guideId)] : []),
           ]);
         })
       );
 
-      await learningProgressStorage.removeCompletedGuides(path.guides);
+      await learningProgressStorage.removeCompletedGuides([...path.guides, ...completedMilestoneSlugs]);
 
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
