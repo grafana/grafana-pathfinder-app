@@ -23,6 +23,7 @@ import {
   type ComboboxOption,
 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
+import { ConditionChipsField } from './ConditionChipsField';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { useCodaOptions } from './useCodaOptions';
 import { testIds } from '../../../constants/testIds';
@@ -490,33 +491,44 @@ export function ChallengeBlockForm({
           required
         >
           <div>
-            <TextArea
-              value={successCommand}
-              onChange={(e) => {
-                // In Coda mode: if the user pastes a value that still has
-                // the coda-exit-zero prefix, silently strip it so internal
-                // state is always bare-command. In standard mode the value
-                // is a literal requirement string so we leave it alone.
-                const next = e.currentTarget.value;
-                if (mode === 'coda' && next.startsWith(SUCCESS_CHECK_PREFIX)) {
-                  setSuccessCommand(next.slice(SUCCESS_CHECK_PREFIX.length));
-                } else {
-                  setSuccessCommand(next);
-                }
-              }}
-              placeholder={
-                mode === 'coda'
-                  ? 'curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
-                  : 'has-dashboard-named:My First Dashboard'
-              }
-              rows={3}
-              className={challengeStyles.successCheckInput}
-            />
-            {successCommandHasComma && (
-              <div className={challengeStyles.commaWarning}>
-                ⚠ Commas in a success check are interpreted as requirement separators by the requirements pipeline and
-                will split this into multiple checks. Avoid commas in the command itself.
-              </div>
+            {mode === 'coda' ? (
+              <>
+                <TextArea
+                  value={successCommand}
+                  onChange={(e) => {
+                    // If the user pastes a value that still has the
+                    // coda-exit-zero prefix, silently strip it so internal
+                    // state is always the bare command.
+                    const next = e.currentTarget.value;
+                    setSuccessCommand(
+                      next.startsWith(SUCCESS_CHECK_PREFIX) ? next.slice(SUCCESS_CHECK_PREFIX.length) : next
+                    );
+                  }}
+                  placeholder='curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
+                  rows={3}
+                  className={challengeStyles.successCheckInput}
+                />
+                {successCommandHasComma && (
+                  <div className={challengeStyles.commaWarning}>
+                    ⚠ Commas in a success check are interpreted as requirement separators by the requirements pipeline
+                    and will split this into multiple checks. Avoid commas in the command itself.
+                  </div>
+                )}
+              </>
+            ) : (
+              // Standard mode uses the same chip-based requirements editor
+              // every other interactive block uses — pick from a typed list,
+              // get per-prefix helpers (semver, datasource picker, etc.),
+              // see auto-recoverable indication, toggle to raw if needed.
+              // Multiple chips = "all must pass" (the requirements router
+              // already supports this; the field's comma-separated output
+              // flows through unchanged).
+              <ConditionChipsField
+                value={successCommand}
+                onChange={setSuccessCommand}
+                mode="verify"
+                testId="challenge-success-check"
+              />
             )}
           </div>
         </Field>

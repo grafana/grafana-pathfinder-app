@@ -329,11 +329,11 @@ describe('ChallengeBlockForm', () => {
   describe('standard-mode success criterion', () => {
     it('does NOT strip a coda-exit-zero prefix when seeding from a standard-mode block', () => {
       // Author has hand-written a "coda-exit-zero:..." string in standard
-      // mode (unusual but supported as a literal requirement). The form
-      // should show it verbatim, not strip the prefix.
+      // mode (unusual but supported as a literal requirement). The
+      // ConditionChipsField should render it verbatim as a single chip.
       renderForm({ mode: 'standard', successCriteria: 'coda-exit-zero:still-shows-verbatim' });
-      const textbox = screen.getByPlaceholderText(/has-dashboard-named:My First Dashboard/) as HTMLTextAreaElement;
-      expect(textbox.value).toBe('coda-exit-zero:still-shows-verbatim');
+      // The chip's text is rendered as a span inside the chips row.
+      expect(screen.getByText('coda-exit-zero:still-shows-verbatim')).toBeInTheDocument();
     });
 
     it('emits the literal successCriteria on submit, without prepending coda-exit-zero', () => {
@@ -344,6 +344,26 @@ describe('ChallengeBlockForm', () => {
       const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
       expect(submitted.successCriteria).toBe('has-dashboard-named:My First Dashboard');
       expect(submitted.mode).toBe('standard');
+    });
+
+    it('renders the success check as a ConditionChipsField with existing chips', () => {
+      // Use a value that doesn't collide with the field description's code
+      // examples (`has-dashboard-named:My Dashboard` appears there).
+      renderForm({ mode: 'standard', successCriteria: 'has-dashboard-named:Sales metrics' });
+      // The "Add condition" affordance from ConditionChipsField is what
+      // visually distinguishes this from the bash TextArea used in Coda mode.
+      expect(screen.getByRole('button', { name: /Add condition/i })).toBeInTheDocument();
+      expect(screen.getByText('has-dashboard-named:Sales metrics')).toBeInTheDocument();
+    });
+
+    it('emits the comma-separated chip list verbatim on submit (multi-requirement supported)', () => {
+      const onSubmit = jest.fn();
+      // Seed with two pre-existing chips to verify multi-chip pass-through.
+      renderForm({ mode: 'standard', successCriteria: 'has-dashboard-named:Foo, has-datasource:prometheus' }, onSubmit);
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
+      expect(submitted.successCriteria).toBe('has-dashboard-named:Foo, has-datasource:prometheus');
     });
 
     it('drops Coda-only fields from submitted output even if state has them', () => {
